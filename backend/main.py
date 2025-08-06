@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from .config import get_settings, Settings
-from .database import get_supabase
+from config import get_settings, Settings
+from database import get_supabase
 from supabase import Client
+from routers import stocks_router, options_router
 import logging
 
 # Configure logging
@@ -14,8 +15,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title=get_settings().PROJECT_NAME,
     version=get_settings().VERSION,
-    openapi_url=f"{get_settings().API_PREFIX}/openapi.json"
+    openapi_url=f"{get_settings().API_PREFIX}/openapi.json",
+    docs_url=f"{get_settings().API_PREFIX}/docs",
+    redoc_url=f"{get_settings().API_PREFIX}/redoc"
 )
+
+# Include routers
+app.include_router(stocks_router, prefix=get_settings().API_PREFIX)
+app.include_router(options_router, prefix=get_settings().API_PREFIX)
 
 # CORS middleware configuration
 app.add_middleware(
@@ -28,6 +35,11 @@ app.add_middleware(
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{get_settings().API_PREFIX}/auth/token")
+
+# Root endpoint
+@app.get("/")
+async def root():
+    return {"message": "Welcome to Tradistry API"}
 
 # Health check endpoint
 @app.get(f"{get_settings().API_PREFIX}/health")

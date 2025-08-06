@@ -1,24 +1,32 @@
 from supabase import create_client, Client
-from .config import get_settings
+from config import get_settings
+from functools import lru_cache
 
 settings = get_settings()
 
-class SupabaseClient:
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(SupabaseClient, cls).__new__(cls)
-            cls._instance.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-        return cls._instance
-    
-    @property
-    def client(self) -> Client:
-        return self._instance.client
+# Global variable to store the client instance
+_supabase_client: Client = None
 
 def get_supabase() -> Client:
     """
     Dependency function to get Supabase client.
     Use this in your FastAPI route dependencies.
     """
-    return SupabaseClient().client
+    global _supabase_client
+    if _supabase_client is None:
+        _supabase_client = create_client(
+            supabase_url=settings.SUPABASE_URL,
+            supabase_key=settings.SUPABASE_KEY
+        )
+    return _supabase_client
+
+# Alternative approach using lru_cache (also works well)
+@lru_cache()
+def get_supabase_cached() -> Client:
+    """
+    Alternative cached version - use this if you prefer
+    """
+    return create_client(
+        supabase_url=settings.SUPABASE_URL,
+        supabase_key=settings.SUPABASE_KEY
+    )
