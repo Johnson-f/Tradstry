@@ -23,7 +23,7 @@ CREATE TABLE public.stocks (
   CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 
--- Policies 
+-- Policies
 -- Enable Row Level Security on stocks table
 ALTER TABLE public.stocks ENABLE ROW LEVEL SECURITY;
 
@@ -42,3 +42,7 @@ CREATE POLICY "Users can update own stocks" ON public.stocks
 -- Policy for authenticated users to delete only their own stock records
 CREATE POLICY "Users can delete own stocks" ON public.stocks
     FOR DELETE USING (auth.uid() = user_id);
+
+
+-- New columns added
+-- ALTER TABLE public.stocks ADD COLUMN status character varying DEFAULT 'open';

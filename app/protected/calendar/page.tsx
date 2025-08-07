@@ -1,4 +1,5 @@
 "use client";
+import { AnalyticsDashboard } from '@/components/analytics-dashboard';
 
 
 
@@ -15,7 +16,11 @@ export default function CalendarPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
-            <div>COMING SOON</div>
+            <div>COMING SOON
+
+            <AnalyticsDashboard />
+            </div>
+
           </div>
         </div>
       </div>
