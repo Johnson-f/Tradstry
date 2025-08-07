@@ -17,6 +17,7 @@ class OptionBase(BaseModel):
     implied_volatility: float = Field(..., ge=0, le=1000)  # IV as percentage (e.g., 25.5 for 25.5%)
     entry_date: datetime
     exit_date: Optional[datetime] = None
+    # Optionak fields 
     notes: Optional[str] = None
     tags: Optional[list[str]] = None
     probability_of_profit: Optional[float] = Field(None, ge=0, le=100)

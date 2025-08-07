@@ -29,9 +29,6 @@ def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# Initialize services
-stock_service = StockService()
-
 @router.post("/", response_model=StockInDB, status_code=status.HTTP_201_CREATED)
 async def create_stock(stock: StockCreate, current_user: dict = Depends(UserService().get_current_user)):
     """
@@ -58,12 +55,12 @@ async def get_stocks(
         return await stock_service.get_positions_by_symbol(symbol, str(current_user.id))
     elif start_date and end_date:
         return await stock_service.get_positions_by_date_range(
-            start_date.isoformat(), 
+            start_date.isoformat(),
             end_date.isoformat(),
             str(current_user.id)
         )
     else:
-        return await stock_service.get_all(str(current_user.id))
+        return await stock_service.get_all(str(current_user["id"]))
 
 @router.get("/{stock_id}", response_model=StockInDB)
 async def get_stock(stock_id: int, current_user: dict = Depends(UserService().get_current_user)):
@@ -77,8 +74,8 @@ async def get_stock(stock_id: int, current_user: dict = Depends(UserService().ge
 
 @router.put("/{stock_id}", response_model=StockInDB)
 async def update_stock(
-    stock_id: int, 
-    stock_update: StockUpdate, 
+    stock_id: int,
+    stock_update: StockUpdate,
     current_user: dict = Depends(get_current_user)
 ):
     """
