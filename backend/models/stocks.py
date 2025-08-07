@@ -14,6 +14,7 @@ class StockBase(BaseModel):
     take_profit: Optional[float] = None
     entry_date: datetime
     exit_date: Optional[datetime] = None
+    # Optional fields 
     notes: Optional[str] = None
     tags: Optional[list[str]] = None
     risk_reward_ratio: Optional[float] = None
