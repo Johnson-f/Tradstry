@@ -1,12 +1,25 @@
 from typing import Optional, Dict, Any, Union
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
 from database import get_supabase
+from auth_service import AuthService
+import jwt
 
 class UserService:
     def __init__(self, supabase: Client = None):
         self.supabase = supabase or get_supabase()
+        self.auth_service = AuthService(supabase)
+
+    def is_token_expired(self, token: str) -> bool:
+        """Check if JWT token is expired"""
+        try:
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            exp = decoded.get('exp', 0)
+            current_time = datetime.utcnow().timestamp()
+            return current_time >= exp
+        except:
+            return True
 
     async def get_current_user(
         self,
@@ -23,6 +36,16 @@ class UserService:
             # Get the JWT token from the Authorization header
             token = credentials.credentials
 
+            # Check if token needs refresh
+            try:
+                refreshed_token = await self.auth_service.refresh_token_if_needed(token)
+                if refreshed_token != token:
+                    token = refreshed_token
+                    print("Token was refreshed in get_current_user")
+            except Exception as e:
+                print(f"Token refresh failed: {e}")
+                # Continue with original token and let it fail naturally if expired
+
             # Use Supabase to verify the JWT token
             user = self.supabase.auth.get_user(token)
 
@@ -33,9 +56,10 @@ class UserService:
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
-            # Try to get additional user data from users table
+            # Try to get additional user data from users table with authenticated client
             try:
-                response = self.supabase.table('users').select('*').eq('id', user.user.id).execute()
+                auth_client = await self.auth_service.get_authenticated_client(token)
+                response = auth_client.table('users').select('*').eq('id', user.user.id).execute()
 
                 if not response.data or len(response.data) == 0:
                     # Create user profile if it doesn't exist
@@ -46,7 +70,7 @@ class UserService:
                         'updated_at': user.user.updated_at,
                     }
                     try:
-                        self.supabase.table('users').upsert(user_data).execute()
+                        auth_client.table('users').upsert(user_data).execute()
                         return {**user_data, 'access_token': token}
                     except Exception:
                         # If users table doesn't exist, return auth user data
@@ -60,7 +84,8 @@ class UserService:
 
                 return {**response.data[0], 'access_token': token}
 
-            except Exception:
+            except Exception as e:
+                print(f"Error accessing users table: {e}")
                 # If users table doesn't exist or query fails, return auth user data
                 return {
                     'id': user.user.id,
@@ -70,7 +95,10 @@ class UserService:
                     'access_token': token
                 }
 
+        except HTTPException:
+            raise
         except Exception as e:
+            print(f"Authentication error: {e}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
@@ -79,10 +107,9 @@ class UserService:
 
     async def get_current_active_user(
         self,
-        current_user: Dict[str, Any] = Depends(get_current_user)
+        current_user: Dict[str, Any] = Depends(lambda: self.get_current_user)
     ) -> Dict[str, Any]:
         # Add any additional checks for active users here
-        # For example, check if the user is banned or has verified their email
         if current_user.get('banned'):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -5,12 +5,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStocks } from "@/lib/hooks/use-stocks";
 import { useOptions } from "@/lib/hooks/use-options";
-import { AnalyticsDashboard } from "@/components/journal/analytics-dashboard";
+
 import { StocksTable } from "@/components/journal/stocks-table";
 import { OptionsTable } from "@/components/journal/options-table";
 
 export default function JournalPage() {
-  const [activeTab, setActiveTab] = useState("stocks");
+  const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
   const { stocks, error: stocksError, isLoading: stocksLoading } = useStocks();
   const { error: optionsError, isLoading: optionsLoading } = useOptions();
 
@@ -26,7 +26,6 @@ export default function JournalPage() {
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-y-auto">
             <div className="p-8">
-              <AnalyticsDashboard />
               <div className="mt-8">
                 <Skeleton className="h-10 w-48 mb-4" />
                 <Skeleton className="h-12 w-full rounded-md" />
@@ -64,12 +63,11 @@ export default function JournalPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8 space-y-8">
-            <AnalyticsDashboard />
-
+           
             <Tabs
               defaultValue="stocks"
               className="space-y-4"
-              onValueChange={(value) => setActiveTab(value)}
+              onValueChange={(value) => setActiveTab(value as "stocks" | "options")}
             >
               <div className="flex items-center justify-between">
                 <TabsList>

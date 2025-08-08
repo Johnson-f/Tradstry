@@ -93,10 +93,13 @@ class ApiClient {
 
   // Generic request method
   private async request<T>(config: AxiosRequestConfig): Promise<T> {
+    console.log(`[API] Making request to: ${config.url}`, { method: config.method, data: config.data });
     try {
       const response = await this.axiosInstance.request<T>(config);
+      console.log(`[API] Response from ${config.url}:`, response.data);
       return response.data;
     } catch (error: any) {
+      console.error(`[API] Error from ${config.url}:`, error.response?.data || error.message);
       const apiError: ApiError = {
         message: error.response?.data?.detail || error.message || 'An error occurred',
         status: error.response?.status || 500,
