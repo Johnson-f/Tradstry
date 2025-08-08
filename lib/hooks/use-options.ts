@@ -1,6 +1,7 @@
-import useSWR from "swr";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback, useMemo } from "react";
 import { optionService } from "@/lib/services/options-service";
+import { useRealtimeOptions } from "./useRealtimeUpdates";
 import {
   OptionInDB,
   OptionCreate,
@@ -13,360 +14,337 @@ import {
 
 // Hook for fetching all options with optional filters
 export function useOptions(filters?: OptionFilters) {
-  const key = filters ? ["options", filters] : "options";
-
-  const { data, error, isLoading, mutate } = useSWR(
-    key,
-    () => optionService.getOptions(filters),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 60000, // 1 minute
-    }
-  );
+  const queryKey = filters ? ["options", filters] : ["options"];
+  const queryClient = useQueryClient();
+  
+  // Set up real-time updates for options
+  useRealtimeOptions(queryClient);
+  
+  const { data, error, isLoading } = useQuery({
+    queryKey,
+    queryFn: () => optionService.getOptions(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
 
   return {
     options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching a single option
 export function useOption(optionId: number | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    optionId ? `options/${optionId}` : null,
-    () => optionService.getOption(optionId!),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", optionId],
+    queryFn: () => optionService.getOption(optionId!),
+    enabled: !!optionId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
 
   return {
     option: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching open positions
 export function useOpenOptionPositions() {
-  const { data, error, isLoading, mutate } = useSWR(
-    "options/open",
-    () => optionService.getOpenPositions(),
-    {
-      refreshInterval: 30000, // Refresh every 30 seconds
-      revalidateOnFocus: true,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "open"],
+    queryFn: () => optionService.getOpenPositions(),
+    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchOnWindowFocus: true,
+    staleTime: 0, // Always consider data stale to ensure fresh data
+  });
 
   return {
     openPositions: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching closed positions
 export function useClosedOptionPositions() {
-  const { data, error, isLoading, mutate } = useSWR(
-    "options/closed",
-    () => optionService.getClosedPositions(),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "closed"],
+    queryFn: () => optionService.getClosedPositions(),
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   return {
     closedPositions: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching positions by symbol
 export function useOptionsBySymbol(symbol: string | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    symbol ? `options/symbol/${symbol}` : null,
-    () => optionService.getPositionsBySymbol(symbol!),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "symbol", symbol],
+    queryFn: () => optionService.getPositionsBySymbol(symbol!),
+    enabled: !!symbol,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    positions: data,
+    options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching positions by strategy
 export function useOptionsByStrategy(strategy: string | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    strategy ? `options/strategy/${strategy}` : null,
-    () => optionService.getPositionsByStrategy(strategy!),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "strategy", strategy],
+    queryFn: () => optionService.getPositionsByStrategy(strategy!),
+    enabled: !!strategy,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    positions: data,
+    options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching positions by option type
 export function useOptionsByType(optionType: OptionType | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    optionType ? `options/type/${optionType}` : null,
-    () => optionService.getPositionsByOptionType(optionType!),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "type", optionType],
+    queryFn: () => optionService.getPositionsByType(optionType!),
+    enabled: !!optionType,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    positions: data,
+    options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching positions by expiration date
 export function useOptionsByExpiration(expirationDate: string | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    expirationDate ? `options/expiration/${expirationDate}` : null,
-    () => optionService.getPositionsByExpiration(expirationDate!),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "expiration", expirationDate],
+    queryFn: () => optionService.getPositionsByExpiration(expirationDate!),
+    enabled: !!expirationDate,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    positions: data,
+    options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching options expiring within X days
 export function useOptionsExpiringWithin(days: number | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    days !== null ? `options/expiring/${days}` : null,
-    () => optionService.getOptionsExpiringWithin(days!),
-    {
-      refreshInterval: 3600000, // Refresh every hour
-      revalidateOnFocus: true,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "expiring", days],
+    queryFn: () => optionService.getOptionsExpiringWithin(days!),
+    enabled: days !== null,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    expiringOptions: data,
+    options: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for option trading statistics
 export function useOptionTradingStats() {
-  const { data, error, isLoading, mutate } = useSWR(
-    "options/stats",
-    () => optionService.getTradingStats(),
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 300000, // Refresh every 5 minutes
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "stats"],
+    queryFn: () => optionService.getTradingStats(),
+    refetchOnWindowFocus: false,
+  });
 
   return {
     stats: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for statistics by strategy
 export function useOptionStatsByStrategy() {
-  const { data, error, isLoading, mutate } = useSWR(
-    "options/stats/strategy",
-    () => optionService.getStatsByStrategy(),
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 300000, // Refresh every 5 minutes
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["options", "stats", "strategy"],
+    queryFn: () => optionService.getStatsByStrategy(),
+    refetchOnWindowFocus: false,
+  });
 
   return {
     statsByStrategy: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for option mutations (create, update, delete)
 export function useOptionMutations() {
-  const [isCreating, setIsCreating] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
-  const createOption = useCallback(async (optionData: OptionCreate) => {
-    setIsCreating(true);
-    try {
-      const newOption = await optionService.createOption(optionData);
-      // Revalidate relevant SWR caches
-      await Promise.all([mutateOptions(), mutateOpenPositions()]);
-      return newOption;
-    } finally {
-      setIsCreating(false);
-    }
-  }, []);
-
-  const updateOption = useCallback(
-    async (optionId: number, updateData: OptionUpdate) => {
-      setIsUpdating(true);
-      try {
-        const updatedOption = await optionService.updateOption(
-          optionId,
-          updateData
-        );
-        // Revalidate relevant SWR caches
-        await Promise.all([
-          mutateOptions(),
-          mutateOption(optionId),
-          mutateOpenPositions(),
-          mutateClosedPositions(),
-        ]);
-        return updatedOption;
-      } finally {
-        setIsUpdating(false);
-      }
+  const createOption = useMutation({
+    mutationFn: (data: OptionCreate) => optionService.createOption(data),
+    onSuccess: () => {
+      // Invalidate all option-related queries
+      queryClient.invalidateQueries({ queryKey: ["options"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
     },
-    []
-  );
+  });
 
-  const deleteOption = useCallback(async (optionId: number) => {
-    setIsDeleting(true);
-    try {
-      await optionService.deleteOption(optionId);
-      // Revalidate relevant SWR caches
-      await Promise.all([
-        mutateOptions(),
-        mutateOpenPositions(),
-        mutateClosedPositions(),
-      ]);
-    } finally {
-      setIsDeleting(false);
-    }
-  }, []);
-
-  const closePosition = useCallback(
-    async (optionId: number, exitPrice: number, exitDate?: string) => {
-      setIsUpdating(true);
-      try {
-        const closedOption = await optionService.closePosition(
-          optionId,
-          exitPrice,
-          exitDate
-        );
-        // Revalidate relevant SWR caches
-        await Promise.all([
-          mutateOptions(),
-          mutateOption(optionId),
-          mutateOpenPositions(),
-          mutateClosedPositions(),
-          mutateStats(),
-          mutateStatsByStrategy(),
-        ]);
-        return closedOption;
-      } finally {
-        setIsUpdating(false);
-      }
+  const updateOption = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: OptionUpdate }) =>
+      optionService.updateOption(id, data),
+    onSuccess: (_, { id }) => {
+      // Invalidate specific option and all relevant queries
+      queryClient.invalidateQueries({ queryKey: ["options", id] });
+      queryClient.invalidateQueries({ queryKey: ["options"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
     },
-    []
-  );
+  });
+
+  const deleteOption = useMutation({
+    mutationFn: (id: number) => optionService.deleteOption(id),
+    onSuccess: () => {
+      // Invalidate all option-related queries
+      queryClient.invalidateQueries({ queryKey: ["options"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+    },
+  });
+
+  const closePosition = useMutation({
+    mutationFn: (id: number) => optionService.closePosition(id),
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ["options"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
+      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+    },
+  });
 
   return {
-    createOption,
-    updateOption,
-    deleteOption,
-    closePosition,
-    isCreating,
-    isUpdating,
-    isDeleting,
+    createOption: createOption.mutateAsync,
+    updateOption: updateOption.mutateAsync,
+    deleteOption: deleteOption.mutateAsync,
+    closePosition: closePosition.mutateAsync,
+    isCreating: createOption.isPending,
+    isUpdating: updateOption.isPending,
+    isDeleting: deleteOption.isPending,
+    isClosing: closePosition.isPending,
   };
 }
 
-// Helper functions to mutate SWR caches
-function mutateOptions() {
-  return mutate(
-    (key) => Array.isArray(key) && key[0] === "options",
-    undefined,
-    { revalidate: true }
-  );
-}
+// Helper functions to manually invalidate caches (if needed outside of mutations)
+function useOptionCacheUtils() {
+  const queryClient = useQueryClient();
 
-function mutateOption(optionId: number) {
-  return mutate(`options/${optionId}`, undefined, { revalidate: true });
-}
+  const invalidateAllOptions = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["options"] });
+  }, [queryClient]);
 
-function mutateOpenPositions() {
-  return mutate("options/open", undefined, { revalidate: true });
-}
+  const invalidateOption = useCallback((optionId: number) => {
+    return queryClient.invalidateQueries({ queryKey: ["options", optionId] });
+  }, [queryClient]);
 
-function mutateClosedPositions() {
-  return mutate("options/closed", undefined, { revalidate: true });
-}
+  const invalidateOpenPositions = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["options", "open"] });
+  }, [queryClient]);
 
-function mutateStats() {
-  return mutate("options/stats", undefined, { revalidate: true });
-}
+  const invalidateClosedPositions = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
+  }, [queryClient]);
 
-function mutateStatsByStrategy() {
-  return mutate("options/stats/strategy", undefined, { revalidate: true });
-}
+  const invalidateStats = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
+  }, [queryClient]);
 
-// Helper function to mutate all option-related caches
-export function mutateAllOptionCaches() {
-  return Promise.all([
-    mutateOptions(),
-    mutateOpenPositions(),
-    mutateClosedPositions(),
-    mutateStats(),
-    mutateStatsByStrategy(),
+  const invalidateStatsByStrategy = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+  }, [queryClient]);
+
+  const invalidateAllOptionCaches = useCallback(async () => {
+    await Promise.all([
+      invalidateAllOptions(),
+      invalidateOpenPositions(),
+      invalidateClosedPositions(),
+      invalidateStats(),
+      invalidateStatsByStrategy(),
+    ]);
+  }, [
+    invalidateAllOptions,
+    invalidateOpenPositions,
+    invalidateClosedPositions,
+    invalidateStats,
+    invalidateStatsByStrategy,
   ]);
+
+  return {
+    invalidateAllOptions,
+    invalidateOption,
+    invalidateOpenPositions,
+    invalidateClosedPositions,
+    invalidateStats,
+    invalidateStatsByStrategy,
+    invalidateAllOptionCaches,
+  };
 }
 
 // Hook for calculating option metrics
 export function useOptionMetrics(option: OptionInDB | null) {
-  const metrics = useMemo(() => {
-    if (!option) return null;
+  return useMemo(() => {
+    if (!option) {
+      return {
+        profitLoss: 0,
+        profitLossPercent: 0,
+        riskRewardRatio: null,
+      };
+    }
+
+    // Calculate metrics
+    const entryCost = option.entry_price * option.quantity * 100;
+    const exitCost = option.exit_price ? option.exit_price * option.quantity * 100 : 0;
+    const commissions = option.commissions || 0;
+    const profitLoss = exitCost - entryCost - commissions;
+    const profitLossPercent = entryCost > 0 ? (profitLoss / entryCost) * 100 : 0;
+
+    // Calculate risk/reward ratio if stop loss and take profit are set
+    let riskRewardRatio = null;
+    if (option.stop_loss && option.take_profit) {
+      const risk = Math.abs(option.entry_price - option.stop_loss);
+      const reward = Math.abs(option.take_profit - option.entry_price);
+      riskRewardRatio = risk > 0 ? reward / risk : null;
+    }
 
     return {
-      profitLoss: optionService.calculateProfitLoss(option),
-      profitLossPercentage: optionService.calculateProfitLossPercentage(option),
-      maxProfit: optionService.calculateMaxProfit(option),
-      maxLoss: optionService.calculateMaxLoss(option),
-      daysToExpiration: optionService.calculateDaysToExpiration(option),
-      isInTheMoney: optionService.isInTheMoney(option),
-      intrinsicValue: optionService.calculateIntrinsicValue(option),
-      timeValue: optionService.calculateTimeValue(option),
+      profitLoss,
+      profitLossPercent,
+      riskRewardRatio,
     };
   }, [option]);
-
-  return metrics;
 }
