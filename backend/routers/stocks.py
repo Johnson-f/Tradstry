@@ -47,13 +47,13 @@ async def get_stocks(
     symbol: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    current_user: dict = Depends(get_current_user),
-    access_token: str = Header(None, alias="Authorization")
+    current_user: dict = Depends(get_current_user_with_token)  # Use the version that includes token
 ):
     """
     Get all stock trades with optional filtering.
     """
     user_id = str(current_user["id"])
+    access_token = current_user.get("access_token")  # Get token from user object
     
     # Debug logging
     print(f"DEBUG: Fetching trades for user_id: {user_id}")

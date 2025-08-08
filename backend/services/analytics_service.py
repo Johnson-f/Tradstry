@@ -15,9 +15,22 @@ class AnalyticsService:
         try:
             # Use rpc to call the SQL function
             result = self.supabase.rpc(function_name, params).execute()
-            if result.data and len(result.data) > 0:
-                # Return the first value from the result
-                return result.data[0].get(next(iter(result.data[0].keys())))
+            
+            # Check if result.data exists and handle both single values and arrays
+            if result.data is not None:
+                # If it's a list/array, get the first element
+                if isinstance(result.data, list):
+                    if len(result.data) > 0:
+                        # If the first element is a dict, get the value
+                        if isinstance(result.data[0], dict):
+                            return result.data[0].get(next(iter(result.data[0].keys())))
+                        else:
+                            # If it's a direct value in the list
+                            return result.data[0]
+                # If it's a direct value (float, int, etc.)
+                else:
+                    return result.data
+            
             return None
         except Exception as e:
             print(f"Error calling SQL function {function_name}: {str(e)}")
