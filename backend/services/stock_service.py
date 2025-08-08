@@ -11,24 +11,41 @@ class StockService(BaseDatabaseService[StockInDB, StockCreate, StockUpdate]):
     def __init__(self, supabase: Client = None):
         super().__init__("stocks", StockInDB, supabase or get_supabase())
     
-    async def get_open_positions(self, user_id: str) -> List[StockInDB]:
+    async def get_open_positions(self, user_id: str, access_token: str = None) -> List[StockInDB]:
         """Get all open stock positions for a user."""
-        return await self.query({"status": {"operator": "eq", "value": "open"}}, user_id)
+        return await self.query(
+            {"status": {"operator": "eq", "value": "open"}}, 
+            user_id,
+            access_token
+        )
     
-    async def get_closed_positions(self, user_id: str) -> List[StockInDB]:
+    async def get_closed_positions(self, user_id: str, access_token: str = None) -> List[StockInDB]:
         """Get all closed stock positions for a user."""
-        return await self.query({"status": {"operator": "eq", "value": "closed"}}, user_id)
+        return await self.query(
+            {"status": {"operator": "eq", "value": "closed"}}, 
+            user_id,
+            access_token
+        )
     
-    async def get_positions_by_symbol(self, symbol: str, user_id: str) -> List[StockInDB]:
+    async def get_positions_by_symbol(self, symbol: str, user_id: str, access_token: str = None) -> List[StockInDB]:
         """Get all positions for a specific stock symbol."""
-        return await self.query({"symbol": {"operator": "eq", "value": symbol.upper()}}, user_id)
+        return await self.query(
+            {"symbol": {"operator": "eq", "value": symbol.upper()}}, 
+            user_id,
+            access_token
+        )
     
     async def get_positions_by_date_range(self, 
                                        start_date: str, 
                                        end_date: str, 
-                                       user_id: str) -> List[StockInDB]:
+                                       user_id: str,
+                                       access_token: str = None) -> List[StockInDB]:
         """Get all positions within a date range."""
-        return await self.query({
-            "entry_date": {"operator": "gte", "value": start_date},
-            "entry_date": {"operator": "lte", "value": end_date}
-        }, user_id)
+        return await self.query(
+            {
+                "entry_date": {"operator": "gte", "value": start_date},
+                "entry_date": {"operator": "lte", "value": end_date}
+            }, 
+            user_id,
+            access_token
+        )

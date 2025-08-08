@@ -1,5 +1,5 @@
 "use client";
-import { AnalyticsDashboard } from '@/components/analytics-dashboard';
+import { AnalyticsDashboard } from '@/components/journal/analytics-dashboard';
 
 
 
