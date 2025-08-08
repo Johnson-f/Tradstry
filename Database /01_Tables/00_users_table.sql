@@ -42,3 +42,14 @@ CREATE TRIGGER update_users_updated_at
   BEFORE UPDATE ON public.users
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
+
+
+
+-- More functions that i ran 
+CREATE OR REPLACE FUNCTION auth_uid() 
+RETURNS uuid 
+LANGUAGE sql 
+STABLE 
+AS $$
+  SELECT auth.uid();
+$$;
