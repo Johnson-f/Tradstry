@@ -1,5 +1,5 @@
 "use client";
-import { AnalyticsDashboard } from '@/components/journal/analytics-dashboard';
+
 
 
 
@@ -18,7 +18,7 @@ export default function CalendarPage() {
           <div className="p-8">
             <div>COMING SOON
 
-            <AnalyticsDashboard />
+           
             </div>
 
           </div>

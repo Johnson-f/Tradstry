@@ -10,8 +10,8 @@ from utils.auth import get_user_with_retry
 option_service = OptionService()
 user_service = UserService()
 
-def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
-    """Dependency to get current user from Supabase JWT"""
+def get_current_user_and_token(authorization: str = Header(...)) -> tuple[Dict[str, Any], str]:
+    """Dependency to get current user and JWT token from Supabase"""
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -19,16 +19,24 @@ def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = authorization.split(" ")[1]
-    return get_user_with_retry(user_service.supabase, token)
+    user = get_user_with_retry(user_service.supabase, token)
+    return user, token
+
+def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
+    """Dependency to get current user from Supabase JWT - backward compatibility"""
+    user, _ = get_current_user_and_token(authorization)
+    return user
 
 router = APIRouter(prefix="/options", tags=["options"])
 
 @router.post("/", response_model=OptionInDB, status_code=status.HTTP_201_CREATED)
-async def create_option(option: OptionCreate, current_user: dict = Depends(get_current_user)):
+async def create_option(option: OptionCreate, user_and_token: tuple = Depends(get_current_user_and_token)):
     """
     Create a new options trade.
     """
-    return await option_service.create(option, str(current_user["id"]))
+    current_user, access_token = user_and_token
+    # Pass access_token for RLS authentication
+    return await option_service.create(option, str(current_user["id"]), access_token)
 
 @router.get("/", response_model=List[OptionInDB])
 async def get_options(
@@ -39,34 +47,39 @@ async def get_options(
     expiration_date: Optional[datetime] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    current_user: dict = Depends(get_current_user)
+    user_and_token: tuple = Depends(get_current_user_and_token)
 ):
     """
     Get all options trades with optional filtering.
     """
+    current_user, access_token = user_and_token
+    user_id = str(current_user["id"])
+    
     if status == 'open':
-        return await option_service.get_open_positions(str(current_user["id"]))
+        return await option_service.get_open_positions(user_id, access_token)
     elif status == 'closed':
-        return await option_service.get_closed_positions(str(current_user["id"]))
+        return await option_service.get_closed_positions(user_id, access_token)
     elif symbol:
-        return await option_service.get_positions_by_symbol(symbol, str(current_user["id"]))
+        return await option_service.get_positions_by_symbol(symbol, user_id, access_token)
     elif strategy_type:
-        return await option_service.get_positions_by_strategy(strategy_type, str(current_user["id"]))
+        return await option_service.get_positions_by_strategy(strategy_type, user_id, access_token)
     elif option_type:
-        return await option_service.get_positions_by_option_type(option_type, str(current_user["id"]))
+        return await option_service.get_positions_by_option_type(option_type, user_id, access_token)
     elif expiration_date:
         return await option_service.get_positions_by_expiration(
             expiration_date.isoformat(), 
-            str(current_user["id"])
+            user_id,
+            access_token
         )
     elif start_date and end_date:
         return await option_service.get_positions_by_date_range(
             start_date.isoformat(), 
             end_date.isoformat(),
-            str(current_user["id"])
+            user_id,
+            access_token
         )
     else:
-       return await option_service.get_all(str(current_user["id"]))
+       return await option_service.get_all_authenticated(user_id, access_token)
 
 @router.get("/{option_id}", response_model=OptionInDB)
 async def get_option(option_id: int, current_user: dict = Depends(get_current_user)):

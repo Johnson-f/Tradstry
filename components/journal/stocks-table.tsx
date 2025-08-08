@@ -1,6 +1,10 @@
 "use client";
 
-import { StockInDB } from "@/lib/types/trading";
+import { useState } from "react";
+import { toast } from "sonner";
+import { StockInDB, StockUpdate } from "@/lib/types/trading";
+import { useStockMutations } from "@/lib/hooks/use-stocks";
+import { EditStockDialog } from "./edit-stock-dialog";
 import {
   Table,
   TableBody,
@@ -12,6 +16,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { AddTradeDialog } from "./add-trade-dialog";
+import { ActionsDropdown } from "@/components/ui/actions-dropdown";
+
 
 interface StocksTableProps {
   stocks: StockInDB[];
@@ -19,6 +25,37 @@ interface StocksTableProps {
 }
 
 export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
+  const { updateStock, deleteStock, isUpdating, isDeleting } = useStockMutations();
+  const [editingStock, setEditingStock] = useState<StockInDB | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const handleEdit = (stock: StockInDB) => {
+    setEditingStock(stock);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSave = async (id: number, data: StockUpdate) => {
+    try {
+      await updateStock(id, data);
+      toast.success("Stock trade updated successfully.");
+    } catch (error) {
+      console.error("Error updating stock:", error);
+      toast.error("Failed to update stock trade. Please try again.");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (window.confirm("Are you sure you want to delete this stock trade?")) {
+      try {
+        await deleteStock(id);
+        toast.success("Stock trade deleted successfully.");
+      } catch (error) {
+        console.error("Error deleting stock:", error);
+        toast.error("Failed to delete stock trade. Please try again.");
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -42,7 +79,8 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
   const hasData = stocks && stocks.length > 0;
 
   return (
-    <div className="rounded-md border">
+    <>
+      <div className="rounded-md border">
       <div className="flex items-center justify-between p-4 border-b">
         <h3 className="text-lg font-semibold">Stock Trades</h3>
         <AddTradeDialog />
@@ -62,6 +100,7 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
             <TableHead>Exit Date</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">P/L</TableHead>
+            <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -121,6 +160,18 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
                       {stock.status}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-right">
+                    {/* P/L calculation would go here */}
+                    N/A
+                  </TableCell>
+                  <TableCell>
+                    <ActionsDropdown
+                      onEdit={() => handleEdit(stock)}
+                      onDelete={() => handleDelete(stock.id)}
+                      isDisabled={isUpdating || isDeleting}
+                      className="h-8 w-8 p-0"
+                    />
+                  </TableCell>
                 </TableRow>
               );
             })
@@ -137,5 +188,19 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
         </TableBody>
       </Table>
     </div>
+
+    {editingStock && (
+      <EditStockDialog
+        stock={editingStock}
+        isOpen={isEditDialogOpen}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setEditingStock(null);
+        }}
+        onSave={handleSave}
+        isSaving={isUpdating}
+      />
+    )}
+  </>
   );
 }

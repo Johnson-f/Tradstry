@@ -1,6 +1,7 @@
-import useSWR from 'swr';
-import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { stockService } from '@/lib/services/stock-service';
+import { useRealtimeStocks } from './useRealtimeUpdates';
 import {
   StockInDB,
   StockCreate,
@@ -11,236 +12,215 @@ import {
 
 // Hook for fetching all stocks with optional filters
 export function useStocks(filters?: StockFilters) {
-  const key = filters ? ['stocks', filters] : 'stocks';
-
-  const { data, error, isLoading, mutate } = useSWR(
-    key,
-    () => stockService.getStocks(filters),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 60000, // 1 minute
-    }
-  );
+  const queryKey = filters ? ['stocks', filters] : ['stocks'];
+  const queryClient = useQueryClient();
+  
+  // Set up real-time updates
+  useRealtimeStocks(queryClient);
+  
+  const { data, error, isLoading } = useQuery({
+    queryKey,
+    queryFn: () => stockService.getStocks(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
 
   return {
     stocks: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching a single stock
 export function useStock(stockId: number | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    stockId ? `stocks/${stockId}` : null,
-    () => stockService.getStock(stockId!),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['stocks', stockId],
+    queryFn: () => stockService.getStock(stockId!),
+    enabled: !!stockId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
 
   return {
     stock: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching open positions
 export function useOpenStockPositions() {
-  const { data, error, isLoading, mutate } = useSWR(
-    'stocks/open',
-    () => stockService.getOpenPositions(),
-    {
-      refreshInterval: 30000, // Refresh every 30 seconds
-      revalidateOnFocus: true,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['stocks', 'open'],
+    queryFn: () => stockService.getOpenPositions(),
+    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchOnWindowFocus: true,
+    staleTime: 0, // Always consider data stale to ensure fresh data
+  });
 
   return {
     openPositions: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching closed positions
 export function useClosedStockPositions() {
-  const { data, error, isLoading, mutate } = useSWR(
-    'stocks/closed',
-    () => stockService.getClosedPositions(),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['stocks', 'closed'],
+    queryFn: () => stockService.getClosedPositions(),
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   return {
     closedPositions: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for fetching positions by symbol
 export function useStocksBySymbol(symbol: string | null) {
-  const { data, error, isLoading, mutate } = useSWR(
-    symbol ? `stocks/symbol/${symbol}` : null,
-    () => stockService.getPositionsBySymbol(symbol!),
-    {
-      revalidateOnFocus: false,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['stocks', 'symbol', symbol],
+    queryFn: () => stockService.getPositionsBySymbol(symbol!),
+    enabled: !!symbol,
+    refetchOnWindowFocus: false,
+  });
 
   return {
     positions: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for stock trading statistics
 export function useStockTradingStats() {
-  const { data, error, isLoading, mutate } = useSWR(
-    'stocks/stats',
-    () => stockService.getTradingStats(),
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 300000, // Refresh every 5 minutes
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['stocks', 'stats'],
+    queryFn: () => stockService.getTradingStats(),
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   return {
     stats: data,
     isLoading,
     error,
-    mutate,
   };
 }
 
 // Hook for stock mutations (create, update, delete)
 export function useStockMutations() {
-  const [isCreating, setIsCreating] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
-  const createStock = useCallback(async (stockData: StockCreate) => {
-    setIsCreating(true);
-    try {
-      const newStock = await stockService.createStock(stockData);
-      // Revalidate relevant SWR caches
-      await Promise.all([
-        mutateStocks(),
-        mutateOpenPositions(),
-      ]);
-      return newStock;
-    } finally {
-      setIsCreating(false);
-    }
-  }, []);
+  const createStock = useMutation({
+    mutationFn: (data: StockCreate) => stockService.createStock(data),
+    onSuccess: () => {
+      // Invalidate all stock-related queries
+      queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+    },
+  });
 
-  const updateStock = useCallback(async (stockId: number, updateData: StockUpdate) => {
-    setIsUpdating(true);
-    try {
-      const updatedStock = await stockService.updateStock(stockId, updateData);
-      // Revalidate relevant SWR caches
-      await Promise.all([
-        mutateStocks(),
-        mutateStock(stockId),
-        mutateOpenPositions(),
-        mutateClosedPositions(),
-      ]);
-      return updatedStock;
-    } finally {
-      setIsUpdating(false);
-    }
-  }, []);
+  const updateStock = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: StockUpdate }) =>
+      stockService.updateStock(id, data),
+    onSuccess: (_, { id }) => {
+      // Invalidate specific stock and all relevant queries
+      queryClient.invalidateQueries({ queryKey: ['stocks', id] });
+      queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+    },
+  });
 
-  const deleteStock = useCallback(async (stockId: number) => {
-    setIsDeleting(true);
-    try {
-      await stockService.deleteStock(stockId);
-      // Revalidate relevant SWR caches
-      await Promise.all([
-        mutateStocks(),
-        mutateOpenPositions(),
-        mutateClosedPositions(),
-      ]);
-    } finally {
-      setIsDeleting(false);
-    }
-  }, []);
+  const deleteStock = useMutation({
+    mutationFn: (id: number) => stockService.deleteStock(id),
+    onSuccess: () => {
+      // Invalidate all stock-related queries
+      queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+    },
+  });
 
-  const closePosition = useCallback(async (
-    stockId: number,
-    exitPrice: number,
-    exitDate?: string
-  ) => {
-    setIsUpdating(true);
-    try {
-      const closedStock = await stockService.closePosition(stockId, exitPrice, exitDate);
-      // Revalidate relevant SWR caches
-      await Promise.all([
-        mutateStocks(),
-        mutateStock(stockId),
-        mutateOpenPositions(),
-        mutateClosedPositions(),
-        mutateStats(),
-      ]);
-      return closedStock;
-    } finally {
-      setIsUpdating(false);
-    }
-  }, []);
+  const closePosition = useMutation({
+    mutationFn: ({ id, exitPrice, exitDate }: { id: number; exitPrice: number; exitDate?: string }) =>
+      stockService.closePosition(id, exitPrice, exitDate),
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+    },
+  });
 
   return {
-    createStock,
-    updateStock,
-    deleteStock,
-    closePosition,
-    isCreating,
-    isUpdating,
-    isDeleting,
+    createStock: createStock.mutateAsync,
+    updateStock: updateStock.mutateAsync,
+    deleteStock: deleteStock.mutateAsync,
+    closePosition: closePosition.mutateAsync,
+    isCreating: createStock.isLoading,
+    isUpdating: updateStock.isLoading,
+    isDeleting: deleteStock.isLoading,
+    isClosing: closePosition.isLoading,
   };
 }
 
-// Helper functions to mutate SWR caches
-function mutateStocks() {
-  return mutate(
-    (key) => Array.isArray(key) && key[0] === 'stocks',
-    undefined,
-    { revalidate: true }
-  );
-}
+// Helper functions to manually invalidate caches (if needed outside of mutations)
+export function useStockCacheUtils() {
+  const queryClient = useQueryClient();
 
-function mutateStock(stockId: number) {
-  return mutate(`stocks/${stockId}`, undefined, { revalidate: true });
-}
+  const invalidateAllStocks = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ['stocks'] });
+  }, [queryClient]);
 
-function mutateOpenPositions() {
-  return mutate('stocks/open', undefined, { revalidate: true });
-}
+  const invalidateStock = useCallback((stockId: number) => {
+    return queryClient.invalidateQueries({ queryKey: ['stocks', stockId] });
+  }, [queryClient]);
 
-function mutateClosedPositions() {
-  return mutate('stocks/closed', undefined, { revalidate: true });
-}
+  const invalidateOpenPositions = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+  }, [queryClient]);
 
-function mutateStats() {
-  return mutate('stocks/stats', undefined, { revalidate: true });
-}
+  const invalidateClosedPositions = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+  }, [queryClient]);
 
-// Helper function to mutate all stock-related caches
-export function mutateAllStockCaches() {
-  return Promise.all([
-    mutateStocks(),
-    mutateOpenPositions(),
-    mutateClosedPositions(),
-    mutateStats(),
+  const invalidateStats = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+  }, [queryClient]);
+
+  const invalidateAllStockCaches = useCallback(async () => {
+    await Promise.all([
+      invalidateAllStocks(),
+      invalidateOpenPositions(),
+      invalidateClosedPositions(),
+      invalidateStats(),
+    ]);
+  }, [
+    invalidateAllStocks,
+    invalidateOpenPositions,
+    invalidateClosedPositions,
+    invalidateStats,
   ]);
+
+  return {
+    invalidateAllStocks,
+    invalidateStock,
+    invalidateOpenPositions,
+    invalidateClosedPositions,
+    invalidateStats,
+    invalidateAllStockCaches,
+  };
 }
