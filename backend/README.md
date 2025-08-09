@@ -40,6 +40,32 @@ Once the server is running, you can access:
 - Interactive API docs: `http://localhost:8000/docs`
 - Alternative API docs: `http://localhost:8000/redoc`
 
+## Analytics Features
+
+The API now supports comprehensive analytics with date range filtering:
+
+### Supported Analytics
+- **Stock Analytics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
+- **Options Analytics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
+- **Portfolio Analytics**: Combined metrics for both stocks and options
+
+### Date Range Filtering
+All analytics endpoints support the following query parameters:
+- `period_type`: `7d`, `30d`, `90d`, `1y`, `all_time`, `custom`
+- `custom_start_date`: ISO datetime for custom periods
+- `custom_end_date`: ISO datetime for custom periods
+
+### Example Usage
+```bash
+# Get 30-day stock win rate
+GET /api/analytics/stocks/win-rate?period_type=30d
+
+# Get custom date range portfolio analytics
+GET /api/analytics/portfolio?period_type=custom&custom_start_date=2024-01-01T00:00:00&custom_end_date=2024-03-31T23:59:59
+```
+
+For detailed API usage examples, see `API_USAGE.md`.
+
 ## Development
 
 - Use Python 3.8+

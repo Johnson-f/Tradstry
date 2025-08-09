@@ -18,18 +18,25 @@ import { Badge } from "@/components/ui/badge";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 
-
 interface StocksTableProps {
   stocks: StockInDB[];
   isLoading?: boolean;
 }
 
 export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
-  const { updateStock, deleteStock, isUpdating, isDeleting } = useStockMutations();
+  const { updateStock, deleteStock, isUpdating, isDeleting } =
+    useStockMutations();
   const [editingStock, setEditingStock] = useState<StockInDB | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const handleEdit = (stock: StockInDB) => {
+    console.log("handleEdit called with stock:", stock);
+    console.log("Stock ID:", stock?.id);
+    if (!stock?.id) {
+      console.error("Cannot edit stock: Stock ID is undefined", stock);
+      toast.error("Error: Cannot edit stock - missing ID");
+      return;
+    }
     setEditingStock(stock);
     setIsEditDialogOpen(true);
   };
@@ -45,6 +52,16 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
   };
 
   const handleDelete = async (id: number) => {
+    console.log("handleDelete called with ID:", id);
+    if (!id || id === undefined || isNaN(id)) {
+      console.error("Cannot delete stock: Invalid ID provided", {
+        id,
+        type: typeof id,
+      });
+      toast.error("Error: Invalid stock trade ID. Please try again.");
+      return;
+    }
+
     if (window.confirm("Are you sure you want to delete this stock trade?")) {
       try {
         await deleteStock(id);
@@ -81,126 +98,139 @@ export function StocksTable({ stocks, isLoading = false }: StocksTableProps) {
   return (
     <>
       <div className="rounded-md border">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h3 className="text-lg font-semibold">Stock Trades</h3>
-        <AddTradeDialog />
-      </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Symbol</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead className="text-right">Entry Price</TableHead>
-            <TableHead className="text-right">Exit Price</TableHead>
-            <TableHead className="text-right">Shares</TableHead>
-            <TableHead className="text-right">Commissions</TableHead>
-            <TableHead className="text-right">Stop Loss</TableHead>
-            <TableHead className="text-right">Take Profit</TableHead>
-            <TableHead>Entry Date</TableHead>
-            <TableHead>Exit Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">P/L</TableHead>
-            <TableHead className="w-10"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {hasData ? (
-            stocks.map((stock) => {
-              return (
-                <TableRow key={stock.id}>
-                  <TableCell className="font-medium">{stock.symbol}</TableCell>
-                  <TableCell className="capitalize">
-                    {stock.trade_type}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${stock.entry_price?.toFixed(2) || "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {stock.exit_price
-                      ? `$${stock.exit_price.toFixed(2)}`
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {stock.number_shares || "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {stock.commissions
-                      ? `$${stock.commissions.toFixed(2)}`
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {stock.stop_loss ? `$${stock.stop_loss.toFixed(2)}` : "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {stock.take_profit
-                      ? `$${stock.take_profit.toFixed(2)}`
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    {stock.entry_date
-                      ? new Date(stock.entry_date).toLocaleDateString()
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    {stock.exit_date
-                      ? new Date(stock.exit_date).toLocaleDateString()
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        stock.status === "open" ? "outline" : "secondary"
-                      }
-                      className={
-                        stock.status === "open"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : "bg-red-50 text-red-700 border-red-200"
-                      }
-                    >
-                      {stock.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {/* P/L calculation would go here */}
-                    N/A
-                  </TableCell>
-                  <TableCell>
-                    <ActionsDropdown
-                      onEdit={() => handleEdit(stock)}
-                      onDelete={() => handleDelete(stock.id)}
-                      isDisabled={isUpdating || isDeleting}
-                      className="h-8 w-8 p-0"
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          ) : (
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Stock Trades</h3>
+          <AddTradeDialog />
+        </div>
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={11}
-                className="h-24 text-center text-muted-foreground"
-              >
-                No stock trades found. Add your first trade to get started!
-              </TableCell>
+              <TableHead>Symbol</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead className="text-right">Entry Price</TableHead>
+              <TableHead className="text-right">Exit Price</TableHead>
+              <TableHead className="text-right">Shares</TableHead>
+              <TableHead className="text-right">Commissions</TableHead>
+              <TableHead className="text-right">Stop Loss</TableHead>
+              <TableHead className="text-right">Take Profit</TableHead>
+              <TableHead>Entry Date</TableHead>
+              <TableHead>Exit Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">P/L</TableHead>
+              <TableHead className="w-10"></TableHead>
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {hasData ? (
+              stocks.map((stock) => {
+                return (
+                  <TableRow key={stock.id}>
+                    <TableCell className="font-medium">
+                      {stock.symbol}
+                    </TableCell>
+                    <TableCell className="capitalize">
+                      {stock.trade_type}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      ${stock.entry_price?.toFixed(2) || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {stock.exit_price
+                        ? `$${stock.exit_price.toFixed(2)}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {stock.number_shares || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {stock.commissions
+                        ? `$${stock.commissions.toFixed(2)}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {stock.stop_loss
+                        ? `$${stock.stop_loss.toFixed(2)}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {stock.take_profit
+                        ? `$${stock.take_profit.toFixed(2)}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      {stock.entry_date
+                        ? new Date(stock.entry_date).toLocaleDateString()
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      {stock.exit_date
+                        ? new Date(stock.exit_date).toLocaleDateString()
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          stock.status === "open" ? "outline" : "secondary"
+                        }
+                        className={
+                          stock.status === "open"
+                            ? "bg-green-50 text-green-700 border-green-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                        }
+                      >
+                        {stock.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {/* P/L calculation would go here */}
+                      N/A
+                    </TableCell>
+                    <TableCell>
+                      <ActionsDropdown
+                        onEdit={() => {
+                          console.log("Edit button clicked for stock:", stock);
+                          handleEdit(stock);
+                        }}
+                        onDelete={() => {
+                          console.log(
+                            "Delete button clicked for stock ID:",
+                            stock?.id
+                          );
+                          handleDelete(stock.id);
+                        }}
+                        isDisabled={isUpdating || isDeleting}
+                        className="h-8 w-8 p-0"
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={11}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  No stock trades found. Add your first trade to get started!
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-    {editingStock && (
-      <EditStockDialog
-        stock={editingStock}
-        isOpen={isEditDialogOpen}
-        onClose={() => {
-          setIsEditDialogOpen(false);
-          setEditingStock(null);
-        }}
-        onSave={handleSave}
-        isSaving={isUpdating}
-      />
-    )}
-  </>
+      {editingStock && (
+        <EditStockDialog
+          stock={editingStock}
+          isOpen={isEditDialogOpen}
+          onClose={() => {
+            setIsEditDialogOpen(false);
+            setEditingStock(null);
+          }}
+          onSave={handleSave}
+          isSaving={isUpdating}
+        />
+      )}
+    </>
   );
 }

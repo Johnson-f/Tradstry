@@ -1,5 +1,5 @@
-import { apiClient } from './api-client';
-import { apiConfig } from '@/lib/config/api';
+import { apiClient } from "./api-client";
+import { apiConfig } from "@/lib/config/api";
 
 export interface StockAnalytics {
   winRate: number;
@@ -26,45 +26,73 @@ export interface PortfolioAnalytics {
 
 class AnalyticsService {
   // Stock Analytics Methods
-  async getStockWinRate(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.winRate);
+  async getStockWinRate(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.winRate, { params });
   }
 
-  async getStockAverageGain(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averageGain);
+  async getStockAverageGain(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averageGain, { params });
   }
 
-  async getStockAverageLoss(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averageLoss);
+  async getStockAverageLoss(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averageLoss, { params });
   }
 
-  async getStockRiskRewardRatio(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.riskRewardRatio);
+  async getStockRiskRewardRatio(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.riskRewardRatio, { params });
   }
 
-  async getStockTradeExpectancy(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.tradeExpectancy);
+  async getStockTradeExpectancy(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.tradeExpectancy, { params });
   }
 
-  async getStockNetPnl(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.netPnl);
+  async getStockNetPnl(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.netPnl, { params });
   }
 
-  async getStockAnalytics(): Promise<StockAnalytics> {
+  async getStockAnalytics(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<StockAnalytics> {
     const [
       winRate,
       averageGain,
       averageLoss,
       riskRewardRatio,
       tradeExpectancy,
-      netPnl
+      netPnl,
     ] = await Promise.all([
-      this.getStockWinRate(),
-      this.getStockAverageGain(),
-      this.getStockAverageLoss(),
-      this.getStockRiskRewardRatio(),
-      this.getStockTradeExpectancy(),
-      this.getStockNetPnl()
+      this.getStockWinRate(params),
+      this.getStockAverageGain(params),
+      this.getStockAverageLoss(params),
+      this.getStockRiskRewardRatio(params),
+      this.getStockTradeExpectancy(params),
+      this.getStockNetPnl(params)
     ]);
 
     return {
@@ -73,50 +101,78 @@ class AnalyticsService {
       averageLoss,
       riskRewardRatio,
       tradeExpectancy,
-      netPnl
+      netPnl,
     };
   }
 
   // Option Analytics Methods
-  async getOptionWinRate(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.winRate);
+  async getOptionWinRate(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.winRate, { params });
   }
 
-  async getOptionAverageGain(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averageGain);
+  async getOptionAverageGain(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averageGain, { params });
   }
 
-  async getOptionAverageLoss(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averageLoss);
+  async getOptionAverageLoss(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averageLoss, { params });
   }
 
-  async getOptionRiskRewardRatio(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.riskRewardRatio);
+  async getOptionRiskRewardRatio(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.riskRewardRatio, { params });
   }
 
-  async getOptionTradeExpectancy(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.tradeExpectancy);
+  async getOptionTradeExpectancy(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.tradeExpectancy, { params });
   }
 
-  async getOptionNetPnl(): Promise<number> {
-    return apiClient.get<number>(apiConfig.endpoints.analytics.options.netPnl);
+  async getOptionNetPnl(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.netPnl, { params });
   }
 
-  async getOptionAnalytics(): Promise<OptionAnalytics> {
+  async getOptionAnalytics(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<OptionAnalytics> {
     const [
       winRate,
       averageGain,
       averageLoss,
       riskRewardRatio,
       tradeExpectancy,
-      netPnl
+      netPnl,
     ] = await Promise.all([
-      this.getOptionWinRate(),
-      this.getOptionAverageGain(),
-      this.getOptionAverageLoss(),
-      this.getOptionRiskRewardRatio(),
-      this.getOptionTradeExpectancy(),
-      this.getOptionNetPnl()
+      this.getOptionWinRate(params),
+      this.getOptionAverageGain(params),
+      this.getOptionAverageLoss(params),
+      this.getOptionRiskRewardRatio(params),
+      this.getOptionTradeExpectancy(params),
+      this.getOptionNetPnl(params)
     ]);
 
     return {
@@ -125,22 +181,39 @@ class AnalyticsService {
       averageLoss,
       riskRewardRatio,
       tradeExpectancy,
-      netPnl
+      netPnl,
     };
   }
 
   // Portfolio Analytics
-  async getPortfolioAnalytics(): Promise<PortfolioAnalytics> {
-    return apiClient.get<PortfolioAnalytics>(apiConfig.endpoints.analytics.portfolio);
+  async getPortfolioAnalytics(params?: {
+    periodType?: string;
+    customStartDate?: string;
+    customEndDate?: string;
+  }): Promise<PortfolioAnalytics> {
+    const [stocks, options] = await Promise.all([
+      this.getStockAnalytics(params),
+      this.getOptionAnalytics(params),
+    ]);
+
+    return {
+      stocks,
+      options,
+    };
   }
 
   // Combined method to get analytics for either stocks or options
-  async getAnalytics(type: 'stocks' | 'options'): Promise<StockAnalytics | OptionAnalytics> {
-    if (type === 'stocks') {
-      return this.getStockAnalytics();
-    } else {
-      return this.getOptionAnalytics();
+  async getAnalytics(
+    type: 'stocks' | 'options',
+    params?: {
+      periodType?: string;
+      customStartDate?: string;
+      customEndDate?: string;
     }
+  ): Promise<StockAnalytics | OptionAnalytics> {
+    return type === 'stocks'
+      ? this.getStockAnalytics(params)
+      : this.getOptionAnalytics(params);
   }
 }
 

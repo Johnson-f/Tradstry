@@ -4,9 +4,9 @@ import { useOptions, useOptionMutations } from "@/lib/hooks/use-options";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+
 import { OptionInDB, OptionUpdate } from "@/lib/types/trading";
-import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 import { useState } from "react";
@@ -31,7 +31,11 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { Button as Button2 } from "@/components/ui/button";
 import {
@@ -67,7 +71,7 @@ function EditOptionDialog({
     exit_price: option?.exit_price,
     exit_date: option?.exit_date,
     notes: option?.notes || "",
-    status: option?.status || "open"
+    status: option?.status || "open",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,11 +97,9 @@ function EditOptionDialog({
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right font-medium">Symbol</Label>
-              <div className="col-span-3 py-2 text-sm">
-                {option.symbol}
-              </div>
+              <div className="col-span-3 py-2 text-sm">{option.symbol}</div>
             </div>
-            
+
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="status" className="text-right">
                 Status
@@ -105,7 +107,10 @@ function EditOptionDialog({
               <Select
                 value={formData.status}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, status: value as "open" | "closed" })
+                  setFormData({
+                    ...formData,
+                    status: value as "open" | "closed",
+                  })
                 }
               >
                 <SelectTrigger className="col-span-3">
@@ -121,7 +126,9 @@ function EditOptionDialog({
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right font-medium">Entry Date</Label>
               <div className="col-span-3 py-2 text-sm">
-                {option.entry_date ? format(new Date(option.entry_date), "PPP") : 'N/A'}
+                {option.entry_date
+                  ? format(new Date(option.entry_date), "PPP")
+                  : "N/A"}
               </div>
             </div>
 
@@ -133,11 +140,13 @@ function EditOptionDialog({
                 id="exit_price"
                 type="number"
                 step="0.01"
-                value={formData.exit_price || ''}
+                value={formData.exit_price || ""}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    exit_price: e.target.value ? parseFloat(e.target.value) : undefined,
+                    exit_price: e.target.value
+                      ? parseFloat(e.target.value)
+                      : undefined,
                   })
                 }
                 className="col-span-3"
@@ -166,7 +175,11 @@ function EditOptionDialog({
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
-                    selected={formData.exit_date ? new Date(formData.exit_date) : undefined}
+                    selected={
+                      formData.exit_date
+                        ? new Date(formData.exit_date)
+                        : undefined
+                    }
                     onSelect={(date) =>
                       setFormData({
                         ...formData,
@@ -215,10 +228,10 @@ function EditOptionDialog({
 
 export function OptionsTable({ className }: OptionsTableProps) {
   const { options, isLoading, error, mutate } = useOptions();
-  const { updateOption, deleteOption, isUpdating, isDeleting } = useOptionMutations();
+  const { updateOption, deleteOption, isUpdating, isDeleting } =
+    useOptionMutations();
   const [editingOption, setEditingOption] = useState<OptionInDB | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-
 
   const handleEdit = (option: OptionInDB) => {
     setEditingOption(option);
@@ -263,7 +276,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
         <h3 className="text-lg font-semibold">Options Trades</h3>
         <AddTradeDialog />
       </div>
-      
+
       {editingOption && (
         <EditOptionDialog
           open={isEditDialogOpen}
@@ -295,17 +308,39 @@ export function OptionsTable({ className }: OptionsTableProps) {
             // Loading skeleton
             Array.from({ length: 5 }).map((_, i) => (
               <TableRow key={`skeleton-${i}`}>
-                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-20" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-12 ml-auto" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-12" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-24" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-24" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-16" />
+                </TableCell>
               </TableRow>
             ))
           ) : options && options.length > 0 ? (
@@ -318,23 +353,26 @@ export function OptionsTable({ className }: OptionsTableProps) {
                   <TableCell className="font-medium">{option.symbol}</TableCell>
                   <TableCell>
                     <div className="text-sm text-muted-foreground">
-                      {option.strategy_type || 'N/A'}
+                      {option.strategy_type || "N/A"}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge 
-                      variant="outline" 
-                      className={option.trade_direction === 'Bullish' 
-                        ? 'bg-green-50 text-green-700 border-green-200' 
-                        : option.trade_direction === 'Bearish'
-                          ? 'bg-red-50 text-red-700 border-red-200'
-                          : 'bg-gray-50 text-gray-700 border-gray-200'
+                    <Badge
+                      variant="outline"
+                      className={
+                        option.trade_direction === "Bullish"
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : option.trade_direction === "Bearish"
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-gray-50 text-gray-700 border-gray-200"
                       }
                     >
-                      {option.trade_direction || 'N/A'}
+                      {option.trade_direction || "N/A"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">{option.number_of_contracts || 'N/A'}</TableCell>
+                  <TableCell className="text-right">
+                    {option.number_of_contracts || "N/A"}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={isCall ? "outline" : "secondary"}
@@ -348,28 +386,42 @@ export function OptionsTable({ className }: OptionsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.entry_price ? `$${option.entry_price.toFixed(2)}` : 'N/A'}
+                    {option.entry_price
+                      ? `$${option.entry_price.toFixed(2)}`
+                      : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.exit_price ? `$${option.exit_price.toFixed(2)}` : 'N/A'}
+                    {option.exit_price
+                      ? `$${option.exit_price.toFixed(2)}`
+                      : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.commissions ? `$${option.commissions.toFixed(2)}` : 'N/A'}
+                    {option.commissions
+                      ? `$${option.commissions.toFixed(2)}`
+                      : "N/A"}
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      {option.entry_date ? new Date(option.entry_date).toLocaleDateString() : 'N/A'}
+                      {option.entry_date
+                        ? new Date(option.entry_date).toLocaleDateString()
+                        : "N/A"}
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      {option.exit_date ? new Date(option.exit_date).toLocaleDateString() : '-'}
+                      {option.exit_date
+                        ? new Date(option.exit_date).toLocaleDateString()
+                        : "-"}
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant={isOpen ? "outline" : "secondary"}
-                      className={isOpen ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}
+                      className={
+                        isOpen
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : "bg-red-50 text-red-700 border-red-200"
+                      }
                     >
                       {option.status}
                     </Badge>

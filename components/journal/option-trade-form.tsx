@@ -434,7 +434,7 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
           />
         </div>
 
-        <FormField
+      {/* <FormField
           control={form.control}
           name="notes"
           render={({ field }) => (
@@ -450,7 +450,7 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
               <FormMessage />
             </FormItem>
           )}
-        />
+        /> */}
 
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={isSubmitting}>
