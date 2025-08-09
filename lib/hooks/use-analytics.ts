@@ -22,15 +22,34 @@ export interface UsePortfolioAnalyticsReturn {
   refetch: () => Promise<void>;
 }
 
-export function useAnalytics(type: 'stocks' | 'options'): UseAnalyticsReturn {
+interface AnalyticsFilters {
+  periodType?: string;
+  customStartDate?: Date | null;
+  customEndDate?: Date | null;
+}
+
+export function useAnalytics(
+  type: 'stocks' | 'options',
+  filters?: AnalyticsFilters
+): UseAnalyticsReturn {
+  // Format dates to ISO strings for the API
+  const formatDate = (date: Date | null | undefined): string | undefined => {
+    return date ? date.toISOString().split('T')[0] : undefined;
+  };
+
   const {
     data,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['analytics', type],
-    queryFn: () => analyticsService.getAnalytics(type),
+    queryKey: ['analytics', type, filters],
+    queryFn: () =>
+      analyticsService.getAnalytics(type, {
+        periodType: filters?.periodType,
+        customStartDate: formatDate(filters?.customStartDate),
+        customEndDate: formatDate(filters?.customEndDate),
+      }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
@@ -48,15 +67,24 @@ export function useAnalytics(type: 'stocks' | 'options'): UseAnalyticsReturn {
   };
 }
 
-export function usePortfolioAnalytics(): UsePortfolioAnalyticsReturn {
+export function usePortfolioAnalytics(filters?: AnalyticsFilters): UsePortfolioAnalyticsReturn {
+  // Format dates to ISO strings for the API
+  const formatDate = (date: Date | null | undefined): string | undefined => {
+    return date ? date.toISOString().split('T')[0] : undefined;
+  };
   const {
     data: portfolioData,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['portfolioAnalytics'],
-    queryFn: () => analyticsService.getPortfolioAnalytics(),
+    queryKey: ['portfolioAnalytics', filters],
+    queryFn: () =>
+      analyticsService.getPortfolioAnalytics({
+        periodType: filters?.periodType,
+        customStartDate: formatDate(filters?.customStartDate),
+        customEndDate: formatDate(filters?.customEndDate),
+      }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
@@ -83,11 +111,11 @@ export function useStockWinRate() {
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  return { 
-    winRate: winRate ?? null, 
-    isLoading, 
-    error: error as Error | null, 
-    refetch 
+  return {
+    winRate: winRate ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
   };
 }
 
@@ -104,10 +132,10 @@ export function useOptionWinRate() {
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  return { 
-    winRate: winRate ?? null, 
-    isLoading, 
-    error: error as Error | null, 
-    refetch 
+  return {
+    winRate: winRate ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
   };
 }

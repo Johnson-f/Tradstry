@@ -5,28 +5,38 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStocks } from "@/lib/hooks/use-stocks";
 import { useOptions } from "@/lib/hooks/use-options";
-import { useAnalytics } from "@/lib/hooks/use-analytics";
+import { useAnalytics, type AnalyticsFilters } from "@/lib/hooks/use-analytics";
 
 import { StocksTable } from "@/components/journal/stocks-table";
 import { OptionsTable } from "@/components/journal/options-table";
 import { AnalyticsSummary } from "@/components/analytics/analytics-summary";
-import { AnalyticsWidget } from "@/components/analytics/analytics-widget";
+import { DateRangePicker } from "@/components/analytics/date-range-picker";
 
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
+  const [filters, setFilters] = useState<AnalyticsFilters>({
+    periodType: "all_time",
+    customStartDate: null,
+    customEndDate: null,
+  });
+
   const { stocks, error: stocksError, isLoading: stocksLoading } = useStocks();
   const {
     options,
     error: optionsError,
     isLoading: optionsLoading,
   } = useOptions();
+  
   const {
     winRate,
     netPnl,
     tradeExpectancy,
+    averageGain,
+    averageLoss,
+    riskRewardRatio,
     isLoading: analyticsLoading,
     error: analyticsError,
-  } = useAnalytics(activeTab);
+  } = useAnalytics(activeTab, filters);
 
   const isLoading = activeTab === "stocks" ? stocksLoading : optionsLoading;
   const error = activeTab === "stocks" ? stocksError : optionsError;
@@ -73,7 +83,18 @@ export default function JournalPage() {
   return (
     <div className="h-screen flex flex-col">
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
+          <DateRangePicker 
+            onDateChange={({ startDate, endDate, periodType }) => {
+              setFilters({
+                periodType,
+                customStartDate: startDate,
+                customEndDate: endDate,
+              });
+            }}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -109,11 +130,14 @@ export default function JournalPage() {
 
               <TabsContent value="stocks" className="space-y-4">
                 <AnalyticsSummary
-                  type="stocks"
+                  type={activeTab}
                   winRate={winRate}
                   netPnl={netPnl}
                   tradeExpectancy={tradeExpectancy}
-                  totalTrades={stocks?.length || 0}
+                  totalTrades={totalTrades}
+                  averageGain={averageGain}
+                  averageLoss={averageLoss}
+                  riskRewardRatio={riskRewardRatio}
                   isLoading={analyticsLoading}
                 />
                 <StocksTable stocks={stocks || []} isLoading={stocksLoading} />
@@ -121,7 +145,7 @@ export default function JournalPage() {
 
               <TabsContent value="options" className="space-y-4">
                 <AnalyticsSummary
-                  type="options"
+                  type={activeTab}
                   winRate={winRate}
                   netPnl={netPnl}
                   tradeExpectancy={tradeExpectancy}

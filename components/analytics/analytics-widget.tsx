@@ -16,7 +16,7 @@ import { useAnalytics } from "@/lib/hooks/use-analytics";
 import Link from "next/link";
 
 interface AnalyticsWidgetProps {
-  type: 'stocks' | 'options';
+  type: "stocks" | "options";
   showViewMore?: boolean;
   className?: string;
 }
@@ -36,42 +36,47 @@ export function AnalyticsWidget({
   } = useAnalytics(type);
 
   const formatPercentage = (value: number | null): string => {
-    if (value === null || value === undefined) return 'N/A';
+    if (value === null || value === undefined) return "N/A";
     return `${value.toFixed(1)}%`;
   };
 
-  const formatCurrency = (value: number | null, compact: boolean = false): string => {
-    if (value === null || value === undefined) return 'N/A';
+  const formatCurrency = (
+    value: number | null,
+    compact: boolean = false
+  ): string => {
+    if (value === null || value === undefined) return "N/A";
 
     if (compact && Math.abs(value) >= 1000) {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        notation: 'compact',
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        notation: "compact",
         maximumFractionDigits: 1,
       }).format(value);
     }
 
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
   };
 
-  const getPerformanceStatus = (pnl: number | null): 'positive' | 'negative' | 'neutral' => {
-    if (pnl === null || pnl === undefined) return 'neutral';
-    if (pnl > 0) return 'positive';
-    if (pnl < 0) return 'negative';
-    return 'neutral';
+  const getPerformanceStatus = (
+    pnl: number | null
+  ): "positive" | "negative" | "neutral" => {
+    if (pnl === null || pnl === undefined) return "neutral";
+    if (pnl > 0) return "positive";
+    if (pnl < 0) return "negative";
+    return "neutral";
   };
 
-  const getWinRateStatus = (rate: number | null): 'high' | 'medium' | 'low' => {
-    if (rate === null || rate === undefined) return 'low';
-    if (rate >= 60) return 'high';
-    if (rate >= 45) return 'medium';
-    return 'low';
+  const getWinRateStatus = (rate: number | null): "high" | "medium" | "low" => {
+    if (rate === null || rate === undefined) return "low";
+    if (rate >= 60) return "high";
+    if (rate >= 45) return "medium";
+    return "low";
   };
 
   const performanceStatus = getPerformanceStatus(netPnl);
@@ -129,21 +134,32 @@ export function AnalyticsWidget({
                   <span className="text-sm text-muted-foreground">Net P&L</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className={`font-semibold ${
-                    performanceStatus === 'positive' ? 'text-green-600' :
-                    performanceStatus === 'negative' ? 'text-red-600' :
-                    'text-muted-foreground'
-                  }`}>
+                  <span
+                    className={`font-semibold ${
+                      performanceStatus === "positive"
+                        ? "text-green-600"
+                        : performanceStatus === "negative"
+                        ? "text-red-600"
+                        : "text-muted-foreground"
+                    }`}
+                  >
                     {formatCurrency(netPnl, true)}
                   </span>
                   <Badge
                     variant={
-                      performanceStatus === 'positive' ? 'default' :
-                      performanceStatus === 'negative' ? 'destructive' : 'secondary'
+                      performanceStatus === "positive"
+                        ? "default"
+                        : performanceStatus === "negative"
+                        ? "destructive"
+                        : "secondary"
                     }
                     className="text-xs h-5"
                   >
-                    {performanceStatus === 'positive' ? '↗' : performanceStatus === 'negative' ? '↘' : '→'}
+                    {performanceStatus === "positive"
+                      ? "↗"
+                      : performanceStatus === "negative"
+                      ? "↘"
+                      : "→"}
                   </Badge>
                 </div>
               </div>
@@ -152,18 +168,29 @@ export function AnalyticsWidget({
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-1">
                   <Target className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Win Rate</span>
+                  <span className="text-sm text-muted-foreground">
+                    Win Rate
+                  </span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="font-semibold">{formatPercentage(winRate)}</span>
+                  <span className="font-semibold">
+                    {formatPercentage(winRate)}
+                  </span>
                   <Badge
                     variant={
-                      winRateStatus === 'high' ? 'default' :
-                      winRateStatus === 'medium' ? 'secondary' : 'destructive'
+                      winRateStatus === "high"
+                        ? "default"
+                        : winRateStatus === "medium"
+                        ? "secondary"
+                        : "destructive"
                     }
                     className="text-xs h-5"
                   >
-                    {winRateStatus === 'high' ? 'High' : winRateStatus === 'medium' ? 'Med' : 'Low'}
+                    {winRateStatus === "high"
+                      ? "High"
+                      : winRateStatus === "medium"
+                      ? "Med"
+                      : "Low"}
                   </Badge>
                 </div>
               </div>
@@ -172,13 +199,19 @@ export function AnalyticsWidget({
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-1">
                   <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Expectancy</span>
+                  <span className="text-sm text-muted-foreground">
+                    Expectancy
+                  </span>
                 </div>
-                <span className={`font-semibold ${
-                  tradeExpectancy && tradeExpectancy > 0 ? 'text-green-600' :
-                  tradeExpectancy && tradeExpectancy < 0 ? 'text-red-600' :
-                  'text-muted-foreground'
-                }`}>
+                <span
+                  className={`font-semibold ${
+                    tradeExpectancy && tradeExpectancy > 0
+                      ? "text-green-600"
+                      : tradeExpectancy && tradeExpectancy < 0
+                      ? "text-red-600"
+                      : "text-muted-foreground"
+                  }`}
+                >
                   {formatCurrency(tradeExpectancy, true)}
                 </span>
               </div>
@@ -187,9 +220,17 @@ export function AnalyticsWidget({
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-1">
                   <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Avg. Gain</span>
+                  <span className="text-sm text-muted-foreground">
+                    Avg. Gain
+                  </span>
                 </div>
-                <span className={`font-semibold ${averageGain && averageGain > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                <span
+                  className={`font-semibold ${
+                    averageGain && averageGain > 0
+                      ? "text-green-600"
+                      : "text-muted-foreground"
+                  }`}
+                >
                   {formatCurrency(averageGain, true)}
                 </span>
               </div>
@@ -201,15 +242,21 @@ export function AnalyticsWidget({
                 <span>Overall Status:</span>
                 <Badge
                   variant={
-                    performanceStatus === 'positive' && winRateStatus !== 'low' ? 'default' :
-                    performanceStatus === 'negative' || winRateStatus === 'low' ? 'destructive' :
-                    'secondary'
+                    performanceStatus === "positive" && winRateStatus !== "low"
+                      ? "default"
+                      : performanceStatus === "negative" ||
+                        winRateStatus === "low"
+                      ? "destructive"
+                      : "secondary"
                   }
                   className="text-xs"
                 >
-                  {performanceStatus === 'positive' && winRateStatus !== 'low' ? 'Strong' :
-                   performanceStatus === 'negative' || winRateStatus === 'low' ? 'Needs Work' :
-                   'Average'}
+                  {performanceStatus === "positive" && winRateStatus !== "low"
+                    ? "Strong"
+                    : performanceStatus === "negative" ||
+                      winRateStatus === "low"
+                    ? "Needs Work"
+                    : "Average"}
                 </Badge>
               </div>
             </div>

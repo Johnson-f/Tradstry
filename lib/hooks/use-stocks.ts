@@ -1,23 +1,23 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
-import { stockService } from '@/lib/services/stock-service';
-import { useRealtimeStocks } from './useRealtimeUpdates';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { stockService } from "@/lib/services/stock-service";
+import { useRealtimeStocks } from "./useRealtimeUpdates";
 import {
   StockInDB,
   StockCreate,
   StockUpdate,
   StockFilters,
   TradingStats,
-} from '@/lib/types/trading';
+} from "@/lib/types/trading";
 
 // Hook for fetching all stocks with optional filters
 export function useStocks(filters?: StockFilters) {
-  const queryKey = filters ? ['stocks', filters] : ['stocks'];
+  const queryKey = filters ? ["stocks", filters] : ["stocks"];
   const queryClient = useQueryClient();
-  
+
   // Set up real-time updates
   useRealtimeStocks(queryClient);
-  
+
   const { data, error, isLoading } = useQuery({
     queryKey,
     queryFn: () => stockService.getStocks(filters),
@@ -35,7 +35,7 @@ export function useStocks(filters?: StockFilters) {
 // Hook for fetching a single stock
 export function useStock(stockId: number | null) {
   const { data, error, isLoading } = useQuery({
-    queryKey: ['stocks', stockId],
+    queryKey: ["stocks", stockId],
     queryFn: () => stockService.getStock(stockId!),
     enabled: !!stockId,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -52,7 +52,7 @@ export function useStock(stockId: number | null) {
 // Hook for fetching open positions
 export function useOpenStockPositions() {
   const { data, error, isLoading } = useQuery({
-    queryKey: ['stocks', 'open'],
+    queryKey: ["stocks", "open"],
     queryFn: () => stockService.getOpenPositions(),
     refetchInterval: 30000, // Refresh every 30 seconds
     refetchOnWindowFocus: true,
@@ -69,7 +69,7 @@ export function useOpenStockPositions() {
 // Hook for fetching closed positions
 export function useClosedStockPositions() {
   const { data, error, isLoading } = useQuery({
-    queryKey: ['stocks', 'closed'],
+    queryKey: ["stocks", "closed"],
     queryFn: () => stockService.getClosedPositions(),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -85,7 +85,7 @@ export function useClosedStockPositions() {
 // Hook for fetching positions by symbol
 export function useStocksBySymbol(symbol: string | null) {
   const { data, error, isLoading } = useQuery({
-    queryKey: ['stocks', 'symbol', symbol],
+    queryKey: ["stocks", "symbol", symbol],
     queryFn: () => stockService.getPositionsBySymbol(symbol!),
     enabled: !!symbol,
     refetchOnWindowFocus: false,
@@ -101,7 +101,7 @@ export function useStocksBySymbol(symbol: string | null) {
 // Hook for stock trading statistics
 export function useStockTradingStats() {
   const { data, error, isLoading } = useQuery({
-    queryKey: ['stocks', 'stats'],
+    queryKey: ["stocks", "stats"],
     queryFn: () => stockService.getTradingStats(),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -122,10 +122,10 @@ export function useStockMutations() {
     mutationFn: (data: StockCreate) => stockService.createStock(data),
     onSuccess: () => {
       // Invalidate all stock-related queries
-      queryClient.invalidateQueries({ queryKey: ['stocks'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "stats"] });
     },
   });
 
@@ -134,11 +134,11 @@ export function useStockMutations() {
       stockService.updateStock(id, data),
     onSuccess: (_, { id }) => {
       // Invalidate specific stock and all relevant queries
-      queryClient.invalidateQueries({ queryKey: ['stocks', id] });
-      queryClient.invalidateQueries({ queryKey: ['stocks'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", id] });
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "stats"] });
     },
   });
 
@@ -146,28 +146,36 @@ export function useStockMutations() {
     mutationFn: (id: number) => stockService.deleteStock(id),
     onSuccess: () => {
       // Invalidate all stock-related queries
-      queryClient.invalidateQueries({ queryKey: ['stocks'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "stats"] });
     },
   });
 
   const closePosition = useMutation({
-    mutationFn: ({ id, exitPrice, exitDate }: { id: number; exitPrice: number; exitDate?: string }) =>
-      stockService.closePosition(id, exitPrice, exitDate),
+    mutationFn: ({
+      id,
+      exitPrice,
+      exitDate,
+    }: {
+      id: number;
+      exitPrice: number;
+      exitDate?: string;
+    }) => stockService.closePosition(id, exitPrice, exitDate),
     onSuccess: () => {
       // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: ['stocks'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
-      queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "open"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "closed"] });
+      queryClient.invalidateQueries({ queryKey: ["stocks", "stats"] });
     },
   });
 
   return {
     createStock: createStock.mutateAsync,
-    updateStock: updateStock.mutateAsync,
+    updateStock: (id: number, data: StockUpdate) =>
+      updateStock.mutateAsync({ id, data }),
     deleteStock: deleteStock.mutateAsync,
     closePosition: closePosition.mutateAsync,
     isCreating: createStock.isLoading,
@@ -182,23 +190,26 @@ export function useStockCacheUtils() {
   const queryClient = useQueryClient();
 
   const invalidateAllStocks = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ['stocks'] });
+    return queryClient.invalidateQueries({ queryKey: ["stocks"] });
   }, [queryClient]);
 
-  const invalidateStock = useCallback((stockId: number) => {
-    return queryClient.invalidateQueries({ queryKey: ['stocks', stockId] });
-  }, [queryClient]);
+  const invalidateStock = useCallback(
+    (stockId: number) => {
+      return queryClient.invalidateQueries({ queryKey: ["stocks", stockId] });
+    },
+    [queryClient]
+  );
 
   const invalidateOpenPositions = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ['stocks', 'open'] });
+    return queryClient.invalidateQueries({ queryKey: ["stocks", "open"] });
   }, [queryClient]);
 
   const invalidateClosedPositions = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ['stocks', 'closed'] });
+    return queryClient.invalidateQueries({ queryKey: ["stocks", "closed"] });
   }, [queryClient]);
 
   const invalidateStats = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ['stocks', 'stats'] });
+    return queryClient.invalidateQueries({ queryKey: ["stocks", "stats"] });
   }, [queryClient]);
 
   const invalidateAllStockCaches = useCallback(async () => {

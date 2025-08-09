@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { optionService } from "@/lib/services/options-service";
 import { useRealtimeOptions } from "./useRealtimeUpdates";
 import {
@@ -7,20 +7,18 @@ import {
   OptionCreate,
   OptionUpdate,
   OptionFilters,
-  TradingStats,
   OptionType,
-  TradeDirection,
 } from "@/lib/types/trading";
 
 // Hook for fetching all options with optional filters
 export function useOptions(filters?: OptionFilters) {
   const queryKey = filters ? ["options", filters] : ["options"];
   const queryClient = useQueryClient();
-  
+
   // Set up real-time updates for options
   useRealtimeOptions(queryClient);
-  
-  const { data, error, isLoading } = useQuery({
+
+  const { data, error, isLoading, refetch } = useQuery({
     queryKey,
     queryFn: () => optionService.getOptions(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -31,6 +29,7 @@ export function useOptions(filters?: OptionFilters) {
     options: data,
     isLoading,
     error,
+    mutate: refetch,
   };
 }
 
@@ -120,7 +119,7 @@ export function useOptionsByStrategy(strategy: string | null) {
 export function useOptionsByType(optionType: OptionType | null) {
   const { data, error, isLoading } = useQuery({
     queryKey: ["options", "type", optionType],
-    queryFn: () => optionService.getPositionsByType(optionType!),
+    queryFn: () => optionService.getPositionsByOptionType(optionType!),
     enabled: !!optionType,
     refetchOnWindowFocus: false,
   });
@@ -206,7 +205,9 @@ export function useOptionMutations() {
       queryClient.invalidateQueries({ queryKey: ["options", "open"] });
       queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
       queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
-      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+      queryClient.invalidateQueries({
+        queryKey: ["options", "stats", "strategy"],
+      });
     },
   });
 
@@ -220,7 +221,9 @@ export function useOptionMutations() {
       queryClient.invalidateQueries({ queryKey: ["options", "open"] });
       queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
       queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
-      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+      queryClient.invalidateQueries({
+        queryKey: ["options", "stats", "strategy"],
+      });
     },
   });
 
@@ -232,25 +235,38 @@ export function useOptionMutations() {
       queryClient.invalidateQueries({ queryKey: ["options", "open"] });
       queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
       queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
-      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+      queryClient.invalidateQueries({
+        queryKey: ["options", "stats", "strategy"],
+      });
     },
   });
 
   const closePosition = useMutation({
-    mutationFn: (id: number) => optionService.closePosition(id),
+    mutationFn: ({
+      id,
+      exitPrice,
+      exitDate,
+    }: {
+      id: number;
+      exitPrice: number;
+      exitDate?: string;
+    }) => optionService.closePosition(id, exitPrice, exitDate),
     onSuccess: () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["options"] });
       queryClient.invalidateQueries({ queryKey: ["options", "open"] });
       queryClient.invalidateQueries({ queryKey: ["options", "closed"] });
       queryClient.invalidateQueries({ queryKey: ["options", "stats"] });
-      queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+      queryClient.invalidateQueries({
+        queryKey: ["options", "stats", "strategy"],
+      });
     },
   });
 
   return {
     createOption: createOption.mutateAsync,
-    updateOption: updateOption.mutateAsync,
+    updateOption: (id: number, data: OptionUpdate) =>
+      updateOption.mutateAsync({ id, data }),
     deleteOption: deleteOption.mutateAsync,
     closePosition: closePosition.mutateAsync,
     isCreating: createOption.isPending,
@@ -261,16 +277,19 @@ export function useOptionMutations() {
 }
 
 // Helper functions to manually invalidate caches (if needed outside of mutations)
-function useOptionCacheUtils() {
+export function useOptionCacheUtils() {
   const queryClient = useQueryClient();
 
   const invalidateAllOptions = useCallback(() => {
     return queryClient.invalidateQueries({ queryKey: ["options"] });
   }, [queryClient]);
 
-  const invalidateOption = useCallback((optionId: number) => {
-    return queryClient.invalidateQueries({ queryKey: ["options", optionId] });
-  }, [queryClient]);
+  const invalidateOption = useCallback(
+    (optionId: number) => {
+      return queryClient.invalidateQueries({ queryKey: ["options", optionId] });
+    },
+    [queryClient]
+  );
 
   const invalidateOpenPositions = useCallback(() => {
     return queryClient.invalidateQueries({ queryKey: ["options", "open"] });
@@ -285,7 +304,9 @@ function useOptionCacheUtils() {
   }, [queryClient]);
 
   const invalidateStatsByStrategy = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ["options", "stats", "strategy"] });
+    return queryClient.invalidateQueries({
+      queryKey: ["options", "stats", "strategy"],
+    });
   }, [queryClient]);
 
   const invalidateAllOptionCaches = useCallback(async () => {
@@ -327,19 +348,19 @@ export function useOptionMetrics(option: OptionInDB | null) {
     }
 
     // Calculate metrics
-    const entryCost = option.entry_price * option.quantity * 100;
-    const exitCost = option.exit_price ? option.exit_price * option.quantity * 100 : 0;
+    const entryCost = option.entry_price * option.number_of_contracts * 100;
+    const exitCost = option.exit_price
+      ? option.exit_price * option.number_of_contracts * 100
+      : 0;
     const commissions = option.commissions || 0;
     const profitLoss = exitCost - entryCost - commissions;
-    const profitLossPercent = entryCost > 0 ? (profitLoss / entryCost) * 100 : 0;
+    const profitLossPercent =
+      entryCost > 0 ? (profitLoss / entryCost) * 100 : 0;
 
-    // Calculate risk/reward ratio if stop loss and take profit are set
+    // Calculate risk/reward ratio - simplified for options
     let riskRewardRatio = null;
-    if (option.stop_loss && option.take_profit) {
-      const risk = Math.abs(option.entry_price - option.stop_loss);
-      const reward = Math.abs(option.take_profit - option.entry_price);
-      riskRewardRatio = risk > 0 ? reward / risk : null;
-    }
+    // For options, risk/reward calculation would depend on strategy type
+    // This is a placeholder for future implementation
 
     return {
       profitLoss,
