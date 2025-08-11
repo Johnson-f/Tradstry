@@ -10,7 +10,15 @@ import { OptionInDB, OptionUpdate } from "@/lib/types/trading";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 import { useState } from "react";
-import { toast } from "sonner";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { toast, Toaster } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -226,12 +234,28 @@ function EditOptionDialog({
   );
 }
 
+const ITEMS_PER_PAGE = 20;
+
 export function OptionsTable({ className }: OptionsTableProps) {
-  const { options, isLoading, error, mutate } = useOptions();
-  const { updateOption, deleteOption, isUpdating, isDeleting } =
-    useOptionMutations();
+  const { options = [], error, isLoading, refetch } = useOptions();
+  const { updateOption, deleteOption, isUpdating, isDeleting } = useOptionMutations();
   const [editingOption, setEditingOption] = useState<OptionInDB | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(options.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedOptions = options.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Optional: Scroll to top of table when changing pages
+    const tableElement = document.getElementById('options-table');
+    if (tableElement) {
+      tableElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   const handleEdit = (option: OptionInDB) => {
     setEditingOption(option);
@@ -239,25 +263,65 @@ export function OptionsTable({ className }: OptionsTableProps) {
   };
 
   const handleSave = async (id: number, data: OptionUpdate) => {
+    const toastId = toast.loading("Updating option trade...");
     try {
       await updateOption(id, data);
-      toast.success("Option trade updated successfully.");
-      mutate();
+      toast.success("Option trade updated successfully", { id: toastId });
+      refetch();
     } catch (error) {
       console.error("Error updating option:", error);
-      toast.error("Failed to update option trade. Please try again.");
+      toast.error("Failed to update option trade. Please try again.", { id: toastId });
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure you want to delete this option trade?")) {
+    if (!id || id === undefined || isNaN(id)) {
+      console.error("Cannot delete option: Invalid ID provided", {
+        id,
+        type: typeof id,
+      });
+      toast.error("Error: Invalid option trade ID. Please try again.");
+      return;
+    }
+
+    toast.dismiss(); // Dismiss any existing toasts
+    
+    const confirmed = await new Promise<boolean>((resolve) => {
+      toast(
+        <div className="flex flex-col space-y-2">
+          <p className="font-medium">Delete Option Trade</p>
+          <p>Are you sure you want to delete this option trade?</p>
+          <div className="flex justify-end space-x-2 mt-2">
+            <button 
+              onClick={() => resolve(false)}
+              className="px-3 py-1 text-sm rounded-md border hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={() => resolve(true)}
+              className="px-3 py-1 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </button>
+          </div>
+        </div>,
+        {
+          duration: 10000, // 10 seconds
+          id: 'delete-confirmation',
+        }
+      );
+    });
+
+    if (confirmed) {
+      const toastId = toast.loading("Deleting option trade...");
       try {
         await deleteOption(id);
-        toast.success("Option trade deleted successfully.");
-        mutate();
+        toast.success("Option trade deleted successfully", { id: toastId });
+        refetch();
       } catch (error) {
         console.error("Error deleting option:", error);
-        toast.error("Failed to delete option trade. Please try again.");
+        toast.error("Failed to delete option trade. Please try again.", { id: toastId });
       }
     }
   };
@@ -271,23 +335,25 @@ export function OptionsTable({ className }: OptionsTableProps) {
   }
 
   return (
-    <div className={`rounded-md border ${className}`}>
-      <div className="flex items-center justify-between p-4 border-b">
-        <h3 className="text-lg font-semibold">Options Trades</h3>
-        <AddTradeDialog />
-      </div>
+    <div className={className}>
+      <Toaster position="top-right" richColors expand={true} />
+      <div className="rounded-md border">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Options Trades</h3>
+          <AddTradeDialog />
+        </div>
 
-      {editingOption && (
-        <EditOptionDialog
-          open={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
-          option={editingOption}
-          onSave={handleSave}
-          isSaving={isUpdating}
-        />
-      )}
-      <Table>
-        <TableHeader>
+        {editingOption && (
+          <EditOptionDialog
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            option={editingOption}
+            onSave={handleSave}
+            isSaving={isUpdating}
+          />
+        )}
+        <Table id="options-table">
+          <TableHeader>
           <TableRow>
             <TableHead>Symbol</TableHead>
             <TableHead>Strategy</TableHead>
@@ -343,8 +409,8 @@ export function OptionsTable({ className }: OptionsTableProps) {
                 </TableCell>
               </TableRow>
             ))
-          ) : options && options.length > 0 ? (
-            options.map((option) => {
+          ) : paginatedOptions && paginatedOptions.length > 0 ? (
+            paginatedOptions.map((option) => {
               const isCall = option.option_type === "Call";
               const isOpen = option.status === "open";
 
@@ -449,6 +515,60 @@ export function OptionsTable({ className }: OptionsTableProps) {
           )}
         </TableBody>
       </Table>
+
+      {/* Pagination */}
+      {!isLoading && options.length > ITEMS_PER_PAGE && (
+        <div className="flex items-center justify-end space-x-2 py-4">
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                // Show pages around current page
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <PaginationItem key={pageNum}>
+                    <PaginationLink
+                      onClick={() => handlePageChange(pageNum)}
+                      isActive={currentPage === pageNum}
+                      className="cursor-pointer"
+                    >
+                      {pageNum}
+                    </PaginationLink>
+                  </PaginationItem>
+                );
+              })}
+
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                  className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+
+          <div className="text-sm text-muted-foreground">
+            {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, options.length)} of {options.length} trades
+          </div>
+        </div>
+      )}
+    </div>
     </div>
   );
 }
