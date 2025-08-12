@@ -9,6 +9,7 @@ import { OptionInDB, OptionUpdate } from "@/lib/types/trading";
 
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
+import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
 import { useState } from "react";
 import {
   Pagination,
@@ -366,6 +367,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
             <TableHead>Entry Date</TableHead>
             <TableHead>Exit Date</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Setups</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
@@ -406,6 +408,12 @@ export function OptionsTable({ className }: OptionsTableProps) {
                 </TableCell>
                 <TableCell>
                   <Skeleton className="h-4 w-16" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-20" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-8 w-8" />
                 </TableCell>
               </TableRow>
             ))
@@ -493,6 +501,16 @@ export function OptionsTable({ className }: OptionsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
+                    <SetupTradeAssociationCompact 
+                      tradeId={option.id} 
+                      tradeType="option" 
+                      onSetupAdded={() => {
+                        // Optionally refresh data or show success message
+                        toast.success("Setup added successfully");
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
                     <ActionsDropdown
                       onEdit={() => handleEdit(option)}
                       onDelete={() => handleDelete(option.id)}
@@ -505,7 +523,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
           ) : (
             <TableRow>
               <TableCell
-                colSpan={11}
+                colSpan={12}
                 className="h-24 text-center text-muted-foreground"
               >
                 No options trades found. Add your first option trade to get

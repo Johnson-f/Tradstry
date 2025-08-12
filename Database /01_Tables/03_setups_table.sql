@@ -44,6 +44,14 @@ CREATE INDEX IF NOT EXISTS idx_trade_setups_option ON public.trade_setups(option
 CREATE INDEX IF NOT EXISTS idx_trade_setups_setup ON public.trade_setups(setup_id);
 CREATE INDEX IF NOT EXISTS idx_trade_setups_user ON public.trade_setups(user_id);
 
+-- Ensure a trade can only be associated once per setup (supports ON CONFLICT)
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_stock_setup 
+  ON public.trade_setups(stock_id, setup_id) 
+  WHERE stock_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_option_setup 
+  ON public.trade_setups(option_id, setup_id) 
+  WHERE option_id IS NOT NULL;
+
 -- Enable Row Level Security
 ALTER TABLE public.setups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trade_setups ENABLE ROW LEVEL SECURITY;

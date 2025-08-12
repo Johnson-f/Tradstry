@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Any, Union
+from datetime import datetime
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
@@ -20,6 +21,76 @@ class UserService:
             return current_time >= exp
         except:
             return True
+
+    def get_current_user_from_token(self, token: str) -> Dict[str, Any]:
+        """Get current user from token string (synchronous version)"""
+        try:
+            # Check if token needs refresh
+            try:
+                # Note: This is calling an async method from sync - you may need to handle this
+                # For now, we'll skip the refresh in the sync version
+                pass
+            except Exception as e:
+                print(f"Token refresh skipped in sync method: {e}")
+
+            # Use Supabase to verify the JWT token
+            user = self.supabase.auth.get_user(token)
+
+            if not user or not user.user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # Try to get additional user data from users table
+            try:
+                # Use the service client for this query since we need authenticated access
+                response = self.supabase.table('users').select('*').eq('id', user.user.id).execute()
+
+                if not response.data or len(response.data) == 0:
+                    # Create user profile if it doesn't exist
+                    user_data = {
+                        'id': user.user.id,
+                        'email': user.user.email,
+                        'created_at': user.user.created_at,
+                        'updated_at': user.user.updated_at,
+                    }
+                    try:
+                        self.supabase.table('users').upsert(user_data).execute()
+                        return {**user_data, 'access_token': token}
+                    except Exception:
+                        # If users table doesn't exist, return auth user data
+                        return {
+                            'id': user.user.id,
+                            'email': user.user.email,
+                            'created_at': user.user.created_at,
+                            'updated_at': user.user.updated_at,
+                            'access_token': token
+                        }
+
+                return {**response.data[0], 'access_token': token}
+
+            except Exception as e:
+                print(f"Error accessing users table: {e}")
+                # If users table doesn't exist or query fails, return auth user data
+                return {
+                    'id': user.user.id,
+                    'email': user.user.email,
+                    'created_at': user.user.created_at,
+                    'updated_at': user.user.updated_at,
+                    'access_token': token
+                }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Authentication error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     async def get_current_user(
         self,

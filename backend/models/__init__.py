@@ -11,6 +11,11 @@ from .analytics import (
     PortfolioAnalytics,
     AnalyticsQuery
 )
+from .setups import (
+    SetupCategory, SetupBase, SetupCreate, SetupUpdate, SetupInDB,
+    TradeSetupBase, TradeSetupCreate, TradeSetupInDB, SetupWithTrades,
+    SetupAnalytics, TradeBySetup, SetupSummary
+)
 
 __all__ = [
     # Stock models
@@ -22,5 +27,10 @@ __all__ = [
 
     # Analytics models
     'PeriodType', 'DateRangeFilter', 'StockAnalytics', 'OptionAnalytics',
-    'PeriodInfo', 'PortfolioAnalytics', 'AnalyticsQuery'
+    'PeriodInfo', 'PortfolioAnalytics', 'AnalyticsQuery',
+
+    # Setup models
+    'SetupCategory', 'SetupBase', 'SetupCreate', 'SetupUpdate', 'SetupInDB',
+    'TradeSetupBase', 'TradeSetupCreate', 'TradeSetupInDB', 'SetupWithTrades',
+    'SetupAnalytics', 'TradeBySetup', 'SetupSummary'
 ]
