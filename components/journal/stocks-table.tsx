@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
+import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
 import {
   Pagination,
   PaginationContent,
@@ -174,6 +175,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
               <TableHead>Exit Date</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">P/L</TableHead>
+              <TableHead>Setups</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -191,6 +193,10 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                 </TableRow>
               ))
@@ -256,6 +262,16 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                   <TableCell className="text-right">
                     {/* P/L calculation would go here */}
                     N/A
+                  </TableCell>
+                  <TableCell>
+                    <SetupTradeAssociationCompact 
+                      tradeId={stock.id} 
+                      tradeType="stock" 
+                      onSetupAdded={() => {
+                        // Optionally refresh data or show success message
+                        toast.success("Setup added successfully");
+                      }}
+                    />
                   </TableCell>
                   <TableCell>
                     <ActionsDropdown
