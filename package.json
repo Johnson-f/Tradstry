@@ -59,7 +59,7 @@
     "react-resizable-panels": "^3.0.4",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
-    "stocksapi": "^1.0.2",
+    "stocksapi": "^1.2.0",
     "swr": "^2.3.4",
     "tailwind-merge": "^3.3.0",
     "tiptap": "^1.32.2",

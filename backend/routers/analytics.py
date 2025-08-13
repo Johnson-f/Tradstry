@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from services.analytics_service import AnalyticsService
 from services.user_service import UserService
@@ -7,7 +7,10 @@ from models.analytics import (
     PeriodType,
     StockAnalytics,
     OptionAnalytics,
-    PortfolioAnalytics
+    PortfolioAnalytics,
+    CombinedAnalytics,
+    DailyPnLTrade,
+    TickerProfitSummary
 )
 
 # Initialize services
@@ -136,6 +139,76 @@ async def get_stock_net_pnl(
         **date_params
     )
 
+@router.get("/stocks/profit-factor", response_model=float)
+async def get_stock_profit_factor(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the profit factor for stock trades with optional date range filtering.
+    Returns the ratio of gross profit to gross loss.
+    """
+    return await analytics_service.get_stock_profit_factor(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/avg-hold-time-winners", response_model=float)
+async def get_stock_avg_hold_time_winners(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average hold time for winning stock trades with optional date range filtering.
+    Returns the average hold time in days.
+    """
+    return await analytics_service.get_stock_avg_hold_time_winners(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/avg-hold-time-losers", response_model=float)
+async def get_stock_avg_hold_time_losers(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average hold time for losing stock trades with optional date range filtering.
+    Returns the average hold time in days.
+    """
+    return await analytics_service.get_stock_avg_hold_time_losers(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/biggest-winner", response_model=float)
+async def get_stock_biggest_winner(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the biggest winning trade profit for stocks with optional date range filtering.
+    Returns the profit amount of the biggest winning trade.
+    """
+    return await analytics_service.get_stock_biggest_winner(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/biggest-loser", response_model=float)
+async def get_stock_biggest_loser(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the biggest losing trade loss for stocks with optional date range filtering.
+    Returns the loss amount of the biggest losing trade as a positive number.
+    """
+    return await analytics_service.get_stock_biggest_loser(
+        current_user["id"],
+        **date_params
+    )
+
 # Options Analytics Endpoints
 @router.get("/options/win-rate", response_model=float)
 async def get_option_win_rate(
@@ -221,6 +294,76 @@ async def get_option_net_pnl(
         **date_params
     )
 
+@router.get("/options/profit-factor", response_model=float)
+async def get_option_profit_factor(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the profit factor for option trades with optional date range filtering.
+    Returns the ratio of gross profit to gross loss.
+    """
+    return await analytics_service.get_option_profit_factor(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/avg-hold-time-winners", response_model=float)
+async def get_option_avg_hold_time_winners(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average hold time for winning option trades with optional date range filtering.
+    Returns the average hold time in days.
+    """
+    return await analytics_service.get_option_avg_hold_time_winners(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/avg-hold-time-losers", response_model=float)
+async def get_option_avg_hold_time_losers(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average hold time for losing option trades with optional date range filtering.
+    Returns the average hold time in days.
+    """
+    return await analytics_service.get_option_avg_hold_time_losers(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/biggest-winner", response_model=float)
+async def get_option_biggest_winner(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the biggest winning trade profit for options with optional date range filtering.
+    Returns the profit amount of the biggest winning trade.
+    """
+    return await analytics_service.get_option_biggest_winner(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/biggest-loser", response_model=float)
+async def get_option_biggest_loser(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the biggest losing trade loss for options with optional date range filtering.
+    Returns the loss amount of the biggest losing trade as a positive number.
+    """
+    return await analytics_service.get_option_biggest_loser(
+        current_user["id"],
+        **date_params
+    )
+
 # Portfolio Analytics Endpoint
 @router.get("/portfolio", response_model=PortfolioAnalytics)
 async def get_portfolio_analytics(
@@ -232,6 +375,50 @@ async def get_portfolio_analytics(
     Returns detailed metrics for both stocks and options within the specified time period.
     """
     return await analytics_service.get_portfolio_analytics(
+        current_user["id"],
+        **date_params
+    )
+
+# Combined Portfolio Analytics Endpoint
+@router.get("/portfolio/combined", response_model=CombinedAnalytics)
+async def get_combined_portfolio_analytics(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get combined portfolio analytics (stocks + options together) with optional date range filtering.
+    Returns metrics calculated across all trades regardless of type.
+    """
+    return await analytics_service.get_combined_portfolio_analytics(
+        current_user["id"],
+        **date_params
+    )
+
+# Special Analytics Endpoints
+@router.get("/daily-pnl-trades", response_model=List[DailyPnLTrade])
+async def get_daily_pnl_trades(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get daily P&L and trade counts with optional date range filtering.
+    Returns daily breakdown of portfolio performance.
+    """
+    return await analytics_service.get_daily_pnl_trades(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/ticker-profit-summary", response_model=List[TickerProfitSummary])
+async def get_ticker_profit_summary(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get profit summary by ticker with optional date range filtering.
+    Returns performance breakdown by individual symbols.
+    """
+    return await analytics_service.get_ticker_profit_summary(
         current_user["id"],
         **date_params
     )
@@ -253,7 +440,12 @@ async def get_stock_summary(
         average_loss=await analytics_service.get_stock_average_loss(user_id, period_type.value),
         risk_reward_ratio=await analytics_service.get_stock_risk_reward_ratio(user_id, period_type.value),
         trade_expectancy=await analytics_service.get_stock_trade_expectancy(user_id, period_type.value),
-        net_pnl=await analytics_service.get_stock_net_pnl(user_id, period_type.value)
+        net_pnl=await analytics_service.get_stock_net_pnl(user_id, period_type.value),
+        profit_factor=await analytics_service.get_stock_profit_factor(user_id, period_type.value),
+        avg_hold_time_winners=await analytics_service.get_stock_avg_hold_time_winners(user_id, period_type.value),
+        avg_hold_time_losers=await analytics_service.get_stock_avg_hold_time_losers(user_id, period_type.value),
+        biggest_winner=await analytics_service.get_stock_biggest_winner(user_id, period_type.value),
+        biggest_loser=await analytics_service.get_stock_biggest_loser(user_id, period_type.value)
     )
 
 @router.get("/options/summary/{period_type}", response_model=OptionAnalytics)
@@ -272,5 +464,22 @@ async def get_option_summary(
         average_loss=await analytics_service.get_option_average_loss(user_id, period_type.value),
         risk_reward_ratio=await analytics_service.get_option_risk_reward_ratio(user_id, period_type.value),
         trade_expectancy=await analytics_service.get_option_trade_expectancy(user_id, period_type.value),
-        net_pnl=await analytics_service.get_option_net_pnl(user_id, period_type.value)
+        net_pnl=await analytics_service.get_option_net_pnl(user_id, period_type.value),
+        profit_factor=await analytics_service.get_option_profit_factor(user_id, period_type.value),
+        avg_hold_time_winners=await analytics_service.get_option_avg_hold_time_winners(user_id, period_type.value),
+        avg_hold_time_losers=await analytics_service.get_option_avg_hold_time_losers(user_id, period_type.value),
+        biggest_winner=await analytics_service.get_option_biggest_winner(user_id, period_type.value),
+        biggest_loser=await analytics_service.get_option_biggest_loser(user_id, period_type.value)
     )
+
+@router.get("/portfolio/combined/summary/{period_type}", response_model=CombinedAnalytics)
+async def get_combined_portfolio_summary(
+    period_type: PeriodType,
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get a summary of all combined portfolio analytics for a specific period.
+    Convenience endpoint that returns all combined metrics in one call.
+    """
+    user_id = current_user["id"]
+    return await analytics_service.get_combined_portfolio_analytics(user_id, period_type.value)

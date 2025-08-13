@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 
 class PeriodType(str, Enum):
@@ -48,6 +48,11 @@ class StockAnalytics(BaseModel):
     risk_reward_ratio: float = Field(description="Risk to reward ratio")
     trade_expectancy: float = Field(description="Expected value per trade")
     net_pnl: float = Field(description="Net profit/loss")
+    profit_factor: float = Field(description="Profit factor (gross profit / gross loss)")
+    avg_hold_time_winners: float = Field(description="Average hold time for winning trades in days")
+    avg_hold_time_losers: float = Field(description="Average hold time for losing trades in days")
+    biggest_winner: float = Field(description="Biggest winning trade profit")
+    biggest_loser: float = Field(description="Biggest losing trade loss (as positive number)")
 
 class OptionAnalytics(BaseModel):
     """Model for option trading analytics."""
@@ -57,6 +62,11 @@ class OptionAnalytics(BaseModel):
     risk_reward_ratio: float = Field(description="Risk to reward ratio")
     trade_expectancy: float = Field(description="Expected value per trade")
     net_pnl: float = Field(description="Net profit/loss")
+    profit_factor: float = Field(description="Profit factor (gross profit / gross loss)")
+    avg_hold_time_winners: float = Field(description="Average hold time for winning trades in days")
+    avg_hold_time_losers: float = Field(description="Average hold time for losing trades in days")
+    biggest_winner: float = Field(description="Biggest winning trade profit")
+    biggest_loser: float = Field(description="Biggest losing trade loss (as positive number)")
 
 class PeriodInfo(BaseModel):
     """Model for period information."""
@@ -69,6 +79,41 @@ class PortfolioAnalytics(BaseModel):
     stocks: StockAnalytics = Field(description="Stock trading analytics")
     options: OptionAnalytics = Field(description="Option trading analytics")
     period_info: PeriodInfo = Field(description="Information about the analysis period")
+
+class CombinedAnalytics(BaseModel):
+    """Model for combined portfolio analytics (stocks + options together)."""
+    win_rate: float = Field(description="Combined win rate as a percentage (0-100)")
+    average_gain: float = Field(description="Combined average gain for winning trades")
+    average_loss: float = Field(description="Combined average loss for losing trades (as positive number)")
+    risk_reward_ratio: float = Field(description="Combined risk to reward ratio")
+    trade_expectancy: float = Field(description="Combined expected value per trade")
+    net_pnl: float = Field(description="Combined net profit/loss")
+    profit_factor: float = Field(description="Combined profit factor (gross profit / gross loss)")
+    avg_hold_time_winners: float = Field(description="Combined average hold time for winning trades in days")
+    avg_hold_time_losers: float = Field(description="Combined average hold time for losing trades in days")
+    biggest_winner: float = Field(description="Combined biggest winning trade profit")
+    biggest_loser: float = Field(description="Combined biggest losing trade loss (as positive number)")
+
+class DailyPnLTrade(BaseModel):
+    """Model for daily P&L and trade count data."""
+    trade_date: str = Field(description="Trade date in YYYY-MM-DD format")
+    total_pnl: float = Field(description="Total P&L for the day")
+    total_trades: int = Field(description="Total number of trades for the day")
+    stock_trades: int = Field(description="Number of stock trades for the day")
+    option_trades: int = Field(description="Number of option trades for the day")
+
+class TickerProfitSummary(BaseModel):
+    """Model for ticker profit summary data."""
+    symbol: str = Field(description="Stock or option symbol")
+    total_trades: int = Field(description="Total number of trades")
+    winning_trades: int = Field(description="Number of winning trades")
+    losing_trades: int = Field(description="Number of losing trades")
+    win_rate: float = Field(description="Win rate as a percentage")
+    total_profit: float = Field(description="Total profit from winning trades")
+    total_loss: float = Field(description="Total loss from losing trades (as positive number)")
+    net_pnl: float = Field(description="Net profit/loss")
+    avg_profit: float = Field(description="Average profit per winning trade")
+    avg_loss: float = Field(description="Average loss per losing trade (as positive number)")
 
 class AnalyticsQuery(BaseModel):
     """Model for analytics query parameters."""
