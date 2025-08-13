@@ -9,7 +9,10 @@ from .analytics import (
     OptionAnalytics,
     PeriodInfo,
     PortfolioAnalytics,
-    AnalyticsQuery
+    AnalyticsQuery,
+    CombinedAnalytics,
+    DailyPnLTrade,
+    TickerProfitSummary
 )
 from .setups import (
     SetupCategory, SetupBase, SetupCreate, SetupUpdate, SetupInDB,
@@ -27,7 +30,8 @@ __all__ = [
 
     # Analytics models
     'PeriodType', 'DateRangeFilter', 'StockAnalytics', 'OptionAnalytics',
-    'PeriodInfo', 'PortfolioAnalytics', 'AnalyticsQuery',
+    'PeriodInfo', 'PortfolioAnalytics', 'AnalyticsQuery', 'CombinedAnalytics',
+    'DailyPnLTrade', 'TickerProfitSummary',
 
     # Setup models
     'SetupCategory', 'SetupBase', 'SetupCreate', 'SetupUpdate', 'SetupInDB',

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from supabase import Client
 from database import get_supabase
 from datetime import datetime
@@ -44,15 +44,14 @@ class AnalyticsService:
                           custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Helper method to build parameters for date range filtering."""
         params = {
-            "user_id": user_id,
-            "period_type": period_type
+            "p_time_range": period_type
         }
 
         if period_type == 'custom':
             if custom_start_date:
-                params["custom_start_date"] = custom_start_date.isoformat() if isinstance(custom_start_date, datetime) else custom_start_date
+                params["p_custom_start_date"] = custom_start_date.isoformat() if isinstance(custom_start_date, datetime) else custom_start_date
             if custom_end_date:
-                params["custom_end_date"] = custom_end_date.isoformat() if isinstance(custom_end_date, datetime) else custom_end_date
+                params["p_custom_end_date"] = custom_end_date.isoformat() if isinstance(custom_end_date, datetime) else custom_end_date
 
         return params
 
@@ -117,6 +116,56 @@ class AnalyticsService:
         result = await self._call_sql_function("stock_net_pnl", params)
         return float(result) if result is not None else 0.0
 
+    async def get_stock_profit_factor(self,
+                                   user_id: str,
+                                   period_type: str = 'all_time',
+                                   custom_start_date: Optional[datetime] = None,
+                                   custom_end_date: Optional[datetime] = None) -> float:
+        """Get the profit factor for stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_stock_profit_factor", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_avg_hold_time_winners(self,
+                                            user_id: str,
+                                            period_type: str = 'all_time',
+                                            custom_start_date: Optional[datetime] = None,
+                                            custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average hold time for winning stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_avg_hold_time_winners", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_avg_hold_time_losers(self,
+                                           user_id: str,
+                                           period_type: str = 'all_time',
+                                           custom_start_date: Optional[datetime] = None,
+                                           custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average hold time for losing stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_avg_hold_time_losers", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_biggest_winner(self,
+                                     user_id: str,
+                                     period_type: str = 'all_time',
+                                     custom_start_date: Optional[datetime] = None,
+                                     custom_end_date: Optional[datetime] = None) -> float:
+        """Get the biggest winning trade profit for stocks with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_biggest_winner", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_biggest_loser(self,
+                                    user_id: str,
+                                    period_type: str = 'all_time',
+                                    custom_start_date: Optional[datetime] = None,
+                                    custom_end_date: Optional[datetime] = None) -> float:
+        """Get the biggest losing trade loss for stocks with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_biggest_loser", params)
+        return float(result) if result is not None else 0.0
+
     # Option Analytics Methods
     async def get_option_win_rate(self,
                                 user_id: str,
@@ -178,7 +227,179 @@ class AnalyticsService:
         result = await self._call_sql_function("option_net_pnl", params)
         return float(result) if result is not None else 0.0
 
+    async def get_option_profit_factor(self,
+                                    user_id: str,
+                                    period_type: str = 'all_time',
+                                    custom_start_date: Optional[datetime] = None,
+                                    custom_end_date: Optional[datetime] = None) -> float:
+        """Get the profit factor for option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_profit_factor", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_avg_hold_time_winners(self,
+                                             user_id: str,
+                                             period_type: str = 'all_time',
+                                             custom_start_date: Optional[datetime] = None,
+                                             custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average hold time for winning option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_avg_hold_time_winners", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_avg_hold_time_losers(self,
+                                            user_id: str,
+                                            period_type: str = 'all_time',
+                                            custom_start_date: Optional[datetime] = None,
+                                            custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average hold time for losing option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_avg_hold_time_losers", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_biggest_winner(self,
+                                      user_id: str,
+                                      period_type: str = 'all_time',
+                                      custom_start_date: Optional[datetime] = None,
+                                      custom_end_date: Optional[datetime] = None) -> float:
+        """Get the biggest winning trade profit for options with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_biggest_winner", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_biggest_loser(self,
+                                     user_id: str,
+                                     period_type: str = 'all_time',
+                                     custom_start_date: Optional[datetime] = None,
+                                     custom_end_date: Optional[datetime] = None) -> float:
+        """Get the biggest losing trade loss for options with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_biggest_loser", params)
+        return float(result) if result is not None else 0.0
+
     # Combined Analytics Methods
+    async def get_combined_win_rate(self,
+                                  user_id: str,
+                                  period_type: str = 'all_time',
+                                  custom_start_date: Optional[datetime] = None,
+                                  custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined win rate for all trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_win_rate", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_average_gain(self,
+                                      user_id: str,
+                                      period_type: str = 'all_time',
+                                      custom_start_date: Optional[datetime] = None,
+                                      custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average gain for all winning trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_average_gain", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_average_loss(self,
+                                     user_id: str,
+                                     period_type: str = 'all_time',
+                                     custom_start_date: Optional[datetime] = None,
+                                     custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average loss for all losing trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_average_loss", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_risk_reward_ratio(self,
+                                           user_id: str,
+                                           period_type: str = 'all_time',
+                                           custom_start_date: Optional[datetime] = None,
+                                           custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined risk/reward ratio for all trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_risk_reward_ratio", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_trade_expectancy(self,
+                                          user_id: str,
+                                          period_type: str = 'all_time',
+                                          custom_start_date: Optional[datetime] = None,
+                                          custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined trade expectancy for all trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_trade_expectancy", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_profit_factor(self,
+                                       user_id: str,
+                                       period_type: str = 'all_time',
+                                       custom_start_date: Optional[datetime] = None,
+                                       custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined profit factor for all trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_profit_factor", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_avg_hold_time_winners(self,
+                                               user_id: str,
+                                               period_type: str = 'all_time',
+                                               custom_start_date: Optional[datetime] = None,
+                                               custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average hold time for all winning trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_avg_hold_time_winners", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_avg_hold_time_losers(self,
+                                              user_id: str,
+                                              period_type: str = 'all_time',
+                                              custom_start_date: Optional[datetime] = None,
+                                              custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average hold time for all losing trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_avg_hold_time_losers", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_biggest_winner(self,
+                                        user_id: str,
+                                        period_type: str = 'all_time',
+                                        custom_start_date: Optional[datetime] = None,
+                                        custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined biggest winning trade profit with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_biggest_winner", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_combined_biggest_loser(self,
+                                       user_id: str,
+                                       period_type: str = 'all_time',
+                                       custom_start_date: Optional[datetime] = None,
+                                       custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined biggest losing trade loss with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_biggest_loser", params)
+        return float(result) if result is not None else 0.0
+
+    # Special Analytics Methods
+    async def get_daily_pnl_trades(self,
+                                 user_id: str,
+                                 period_type: str = 'all_time',
+                                 custom_start_date: Optional[datetime] = None,
+                                 custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        """Get daily P&L and trade counts with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = self.supabase.rpc("get_daily_pnl_trades", params).execute()
+        return result.data if result.data else []
+
+    async def get_ticker_profit_summary(self,
+                                      user_id: str,
+                                      period_type: str = 'all_time',
+                                      custom_start_date: Optional[datetime] = None,
+                                      custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        """Get profit summary by ticker with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = self.supabase.rpc("get_ticker_profit_summary", params).execute()
+        return result.data if result.data else []
+
+    # Portfolio Analytics Methods
     async def get_portfolio_analytics(self,
                                     user_id: str,
                                     period_type: str = 'all_time',
@@ -192,7 +413,12 @@ class AnalyticsService:
                 "average_loss": await self.get_stock_average_loss(user_id, period_type, custom_start_date, custom_end_date),
                 "risk_reward_ratio": await self.get_stock_risk_reward_ratio(user_id, period_type, custom_start_date, custom_end_date),
                 "trade_expectancy": await self.get_stock_trade_expectancy(user_id, period_type, custom_start_date, custom_end_date),
-                "net_pnl": await self.get_stock_net_pnl(user_id, period_type, custom_start_date, custom_end_date)
+                "net_pnl": await self.get_stock_net_pnl(user_id, period_type, custom_start_date, custom_end_date),
+                "profit_factor": await self.get_stock_profit_factor(user_id, period_type, custom_start_date, custom_end_date),
+                "avg_hold_time_winners": await self.get_stock_avg_hold_time_winners(user_id, period_type, custom_start_date, custom_end_date),
+                "avg_hold_time_losers": await self.get_stock_avg_hold_time_losers(user_id, period_type, custom_start_date, custom_end_date),
+                "biggest_winner": await self.get_stock_biggest_winner(user_id, period_type, custom_start_date, custom_end_date),
+                "biggest_loser": await self.get_stock_biggest_loser(user_id, period_type, custom_start_date, custom_end_date)
             },
             "options": {
                 "win_rate": await self.get_option_win_rate(user_id, period_type, custom_start_date, custom_end_date),
@@ -200,8 +426,39 @@ class AnalyticsService:
                 "average_loss": await self.get_option_average_loss(user_id, period_type, custom_start_date, custom_end_date),
                 "risk_reward_ratio": await self.get_option_risk_reward_ratio(user_id, period_type, custom_start_date, custom_end_date),
                 "trade_expectancy": await self.get_option_trade_expectancy(user_id, period_type, custom_start_date, custom_end_date),
-                "net_pnl": await self.get_option_net_pnl(user_id, period_type, custom_start_date, custom_end_date)
+                "net_pnl": await self.get_option_net_pnl(user_id, period_type, custom_start_date, custom_end_date),
+                "profit_factor": await self.get_option_profit_factor(user_id, period_type, custom_start_date, custom_end_date),
+                "avg_hold_time_winners": await self.get_option_avg_hold_time_winners(user_id, period_type, custom_start_date, custom_end_date),
+                "avg_hold_time_losers": await self.get_option_avg_hold_time_losers(user_id, period_type, custom_start_date, custom_end_date),
+                "biggest_winner": await self.get_option_biggest_winner(user_id, period_type, custom_start_date, custom_end_date),
+                "biggest_loser": await self.get_option_biggest_loser(user_id, period_type, custom_start_date, custom_end_date)
             },
+            "period_info": {
+                "period_type": period_type,
+                "custom_start_date": custom_start_date.isoformat() if custom_start_date else None,
+                "custom_end_date": custom_end_date.isoformat() if custom_end_date else None
+            }
+        }
+
+    async def get_combined_portfolio_analytics(self,
+                                             user_id: str,
+                                             period_type: str = 'all_time',
+                                             custom_start_date: Optional[datetime] = None,
+                                             custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
+        """Get combined portfolio analytics (stocks + options together) with optional date range filtering."""
+        return {
+            "win_rate": await self.get_combined_win_rate(user_id, period_type, custom_start_date, custom_end_date),
+            "average_gain": await self.get_combined_average_gain(user_id, period_type, custom_start_date, custom_end_date),
+            "average_loss": await self.get_combined_average_loss(user_id, period_type, custom_start_date, custom_end_date),
+            "risk_reward_ratio": await self.get_combined_risk_reward_ratio(user_id, period_type, custom_start_date, custom_end_date),
+            "trade_expectancy": await self.get_combined_trade_expectancy(user_id, period_type, custom_start_date, custom_end_date),
+            "net_pnl": await self.get_stock_net_pnl(user_id, period_type, custom_start_date, custom_end_date) + 
+                      await self.get_option_net_pnl(user_id, period_type, custom_start_date, custom_end_date),
+            "profit_factor": await self.get_combined_profit_factor(user_id, period_type, custom_start_date, custom_end_date),
+            "avg_hold_time_winners": await self.get_combined_avg_hold_time_winners(user_id, period_type, custom_start_date, custom_end_date),
+            "avg_hold_time_losers": await self.get_combined_avg_hold_time_losers(user_id, period_type, custom_start_date, custom_end_date),
+            "biggest_winner": await self.get_combined_biggest_winner(user_id, period_type, custom_start_date, custom_end_date),
+            "biggest_loser": await self.get_combined_biggest_loser(user_id, period_type, custom_start_date, custom_end_date),
             "period_info": {
                 "period_type": period_type,
                 "custom_start_date": custom_start_date.isoformat() if custom_start_date else None,

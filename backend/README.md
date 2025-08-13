@@ -44,10 +44,20 @@ Once the server is running, you can access:
 
 The API now supports comprehensive analytics with date range filtering:
 
-### Supported Analytics
-- **Stock Analytics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
-- **Options Analytics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
-- **Portfolio Analytics**: Combined metrics for both stocks and options
+### Stock Analytics
+- **Core Metrics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
+- **Advanced Metrics**: Profit factor, average hold times (winners/losers), biggest winner/loser trades
+- **Date Range Filtering**: 7d, 30d, 90d, 1y, YTD, all_time, custom
+
+### Options Analytics
+- **Core Metrics**: Win rate, average gain/loss, risk/reward ratio, trade expectancy, net P&L
+- **Advanced Metrics**: Profit factor, average hold times (winners/losers), biggest winner/loser trades
+- **Date Range Filtering**: Same period options as stocks
+
+### Portfolio Analytics
+- **Separate Analytics**: Detailed metrics for stocks and options separately
+- **Combined Analytics**: Metrics calculated across all trades regardless of type
+- **Special Analytics**: Daily P&L breakdown, ticker profit summaries
 
 ### Date Range Filtering
 All analytics endpoints support the following query parameters:
@@ -57,12 +67,41 @@ All analytics endpoints support the following query parameters:
 
 ### Example Usage
 ```bash
-# Get 30-day stock win rate
-GET /api/analytics/stocks/win-rate?period_type=30d
+# Get 30-day stock profit factor
+GET /api/analytics/stocks/profit-factor?period_type=30d
 
-# Get custom date range portfolio analytics
-GET /api/analytics/portfolio?period_type=custom&custom_start_date=2024-01-01T00:00:00&custom_end_date=2024-03-31T23:59:59
+# Get combined portfolio analytics for custom date range
+GET /api/analytics/portfolio/combined?period_type=custom&custom_start_date=2024-01-01T00:00:00&custom_end_date=2024-03-31T23:59:59
+
+# Get daily P&L breakdown for last 7 days
+GET /api/analytics/daily-pnl-trades?period_type=7d
 ```
+
+### New Analytics Endpoints
+
+#### Stock Analytics
+- `/api/analytics/stocks/profit-factor` - Profit factor (gross profit / gross loss)
+- `/api/analytics/stocks/avg-hold-time-winners` - Average hold time for winning trades
+- `/api/analytics/stocks/avg-hold-time-losers` - Average hold time for losing trades
+- `/api/analytics/stocks/biggest-winner` - Biggest winning trade profit
+- `/api/analytics/stocks/biggest-loser` - Biggest losing trade loss
+
+#### Options Analytics
+- `/api/analytics/options/profit-factor` - Profit factor for options
+- `/api/analytics/options/avg-hold-time-winners` - Average hold time for winning option trades
+- `/api/analytics/options/avg-hold-time-losers` - Average hold time for losing option trades
+- `/api/analytics/options/biggest-winner` - Biggest winning option trade profit
+- `/api/analytics/options/biggest-loser` - Biggest losing option trade loss
+
+#### Combined Portfolio Analytics
+- `/api/analytics/portfolio/combined` - Analytics across all trades (stocks + options)
+- `/api/analytics/daily-pnl-trades` - Daily P&L and trade count breakdown
+- `/api/analytics/ticker-profit-summary` - Performance breakdown by individual symbols
+
+#### Convenience Endpoints
+- `/api/analytics/stocks/summary/{period_type}` - All stock metrics in one call
+- `/api/analytics/options/summary/{period_type}` - All option metrics in one call
+- `/api/analytics/portfolio/combined/summary/{period_type}` - All combined metrics in one call
 
 For detailed API usage examples, see `API_USAGE.md`.
 

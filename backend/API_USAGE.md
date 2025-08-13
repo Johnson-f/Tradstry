@@ -20,16 +20,26 @@ Authorization: Bearer <your_jwt_token>
 
 ## Stock Analytics Endpoints
 
-### Get Stock Win Rate
+### Core Metrics
 
 ```http
 GET /api/analytics/stocks/win-rate
+GET /api/analytics/stocks/average-gain
+GET /api/analytics/stocks/average-loss
+GET /api/analytics/stocks/risk-reward-ratio
+GET /api/analytics/stocks/trade-expectancy
+GET /api/analytics/stocks/net-pnl
 ```
 
-**Query Parameters:**
-- `period_type` (optional): `7d` | `30d` | `90d` | `1y` | `all_time` | `custom`
-- `custom_start_date` (optional): ISO datetime string
-- `custom_end_date` (optional): ISO datetime string
+### Advanced Metrics
+
+```http
+GET /api/analytics/stocks/profit-factor
+GET /api/analytics/stocks/avg-hold-time-winners
+GET /api/analytics/stocks/avg-hold-time-losers
+GET /api/analytics/stocks/biggest-winner
+GET /api/analytics/stocks/biggest-loser
+```
 
 **Examples:**
 
@@ -38,108 +48,152 @@ GET /api/analytics/stocks/win-rate
 curl -H "Authorization: Bearer <token>" \
   "http://localhost:8000/api/analytics/stocks/win-rate"
 
-# Get 30-day win rate
+# Get 30-day profit factor
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/api/analytics/stocks/win-rate?period_type=30d"
+  "http://localhost:8000/api/analytics/stocks/profit-factor?period_type=30d"
 
-# Get custom date range win rate
+# Get custom date range biggest winner
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/api/analytics/stocks/win-rate?period_type=custom&custom_start_date=2024-01-01T00:00:00&custom_end_date=2024-03-31T23:59:59"
-```
-
-### Get Stock Average Gain
-
-```http
-GET /api/analytics/stocks/average-gain
-```
-
-**Examples:**
-
-```bash
-# Get 7-day average gain
-curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/api/analytics/stocks/average-gain?period_type=7d"
-```
-
-### Get Stock Average Loss
-
-```http
-GET /api/analytics/stocks/average-loss
-```
-
-### Get Stock Risk/Reward Ratio
-
-```http
-GET /api/analytics/stocks/risk-reward-ratio
-```
-
-### Get Stock Trade Expectancy
-
-```http
-GET /api/analytics/stocks/trade-expectancy
-```
-
-### Get Stock Net P&L
-
-```http
-GET /api/analytics/stocks/net-pnl
+  "http://localhost:8000/api/analytics/stocks/biggest-winner?period_type=custom&custom_start_date=2024-01-01T00:00:00&custom_end_date=2024-03-31T23:59:59"
 ```
 
 ## Options Analytics Endpoints
 
-All options endpoints follow the same pattern as stock endpoints:
+### Core Metrics
 
-- `/api/analytics/options/win-rate`
-- `/api/analytics/options/average-gain`
-- `/api/analytics/options/average-loss`
-- `/api/analytics/options/risk-reward-ratio`
-- `/api/analytics/options/trade-expectancy`
-- `/api/analytics/options/net-pnl`
+```http
+GET /api/analytics/options/win-rate
+GET /api/analytics/options/average-gain
+GET /api/analytics/options/average-loss
+GET /api/analytics/options/risk-reward-ratio
+GET /api/analytics/options/trade-expectancy
+GET /api/analytics/options/net-pnl
+```
+
+### Advanced Metrics
+
+```http
+GET /api/analytics/options/profit-factor
+GET /api/analytics/options/avg-hold-time-winners
+GET /api/analytics/options/avg-hold-time-losers
+GET /api/analytics/options/biggest-winner
+GET /api/analytics/options/biggest-loser
+```
 
 ## Portfolio Analytics
 
-### Get Complete Portfolio Analytics
+### Separate Analytics
 
 ```http
 GET /api/analytics/portfolio
 ```
 
-Returns comprehensive analytics for both stocks and options.
+Returns comprehensive analytics for both stocks and options separately.
+
+### Combined Analytics
+
+```http
+GET /api/analytics/portfolio/combined
+```
+
+Returns analytics calculated across all trades regardless of type (stocks + options together).
 
 **Example:**
 
 ```bash
-# Get 1-year portfolio analytics
+# Get 1-year combined portfolio analytics
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/api/analytics/portfolio?period_type=1y"
+  "http://localhost:8000/api/analytics/portfolio/combined?period_type=1y"
 ```
 
 **Response:**
 
 ```json
 {
-  "stocks": {
-    "win_rate": 65.5,
-    "average_gain": 150.25,
-    "average_loss": 85.50,
-    "risk_reward_ratio": 0.57,
-    "trade_expectancy": 12.75,
-    "net_pnl": 2450.80
-  },
-  "options": {
-    "win_rate": 58.3,
-    "average_gain": 220.40,
-    "average_loss": 180.15,
-    "risk_reward_ratio": 0.82,
-    "trade_expectancy": 8.90,
-    "net_pnl": 1890.45
-  },
+  "win_rate": 62.1,
+  "average_gain": 185.30,
+  "average_loss": 132.80,
+  "risk_reward_ratio": 0.72,
+  "trade_expectancy": 15.25,
+  "net_pnl": 3250.60,
+  "profit_factor": 1.40,
+  "avg_hold_time_winners": 3.5,
+  "avg_hold_time_losers": 2.1,
+  "biggest_winner": 850.00,
+  "biggest_loser": 420.00,
   "period_info": {
     "period_type": "1y",
     "custom_start_date": null,
     "custom_end_date": null
   }
 }
+```
+
+## Special Analytics Endpoints
+
+### Daily P&L and Trades
+
+```http
+GET /api/analytics/daily-pnl-trades
+```
+
+Returns daily breakdown of portfolio performance.
+
+**Example:**
+
+```bash
+# Get daily P&L for last 30 days
+curl -H "Authorization: Bearer <token>" \
+  "http://localhost:8000/api/analytics/daily-pnl-trades?period_type=30d"
+```
+
+**Response:**
+
+```json
+[
+  {
+    "trade_date": "2024-03-15",
+    "total_pnl": 125.50,
+    "total_trades": 3,
+    "stock_trades": 2,
+    "option_trades": 1
+  }
+]
+```
+
+### Ticker Profit Summary
+
+```http
+GET /api/analytics/ticker-profit-summary
+```
+
+Returns performance breakdown by individual symbols.
+
+**Example:**
+
+```bash
+# Get ticker summary for all time
+curl -H "Authorization: Bearer <token>" \
+  "http://localhost:8000/api/analytics/ticker-profit-summary"
+```
+
+**Response:**
+
+```json
+[
+  {
+    "symbol": "AAPL",
+    "total_trades": 15,
+    "winning_trades": 10,
+    "losing_trades": 5,
+    "win_rate": 66.7,
+    "total_profit": 1250.00,
+    "total_loss": 450.00,
+    "net_pnl": 800.00,
+    "avg_profit": 125.00,
+    "avg_loss": 90.00
+  }
+]
 ```
 
 ## Convenience Endpoints
@@ -162,6 +216,12 @@ curl -H "Authorization: Bearer <token>" \
 
 ```http
 GET /api/analytics/options/summary/{period_type}
+```
+
+### Combined Portfolio Summary by Period
+
+```http
+GET /api/analytics/portfolio/combined/summary/{period_type}
 ```
 
 ## Period Types
@@ -255,6 +315,13 @@ const getPortfolioAnalytics = async (periodType = 'all_time') => {
   });
   return data;
 };
+
+const getCombinedAnalytics = async (periodType = 'all_time') => {
+  const { data } = await api.get('/analytics/portfolio/combined', {
+    params: { period_type: periodType }
+  });
+  return data;
+};
 ```
 
 ## Integration Tips
@@ -272,13 +339,13 @@ const getPortfolioAnalytics = async (periodType = 'all_time') => {
 ```javascript
 // Get key metrics for dashboard cards
 const getDashboardMetrics = async () => {
-  const [winRate, netPnl, expectancy] = await Promise.all([
+  const [winRate, netPnl, profitFactor] = await Promise.all([
     fetch('/api/analytics/stocks/win-rate?period_type=30d'),
     fetch('/api/analytics/stocks/net-pnl?period_type=30d'),
-    fetch('/api/analytics/stocks/trade-expectancy?period_type=30d')
+    fetch('/api/analytics/stocks/profit-factor?period_type=30d')
   ]).then(responses => Promise.all(responses.map(r => r.json())));
 
-  return { winRate, netPnl, expectancy };
+  return { winRate, netPnl, profitFactor };
 };
 ```
 
@@ -291,7 +358,7 @@ const getPerformanceComparison = async () => {
   
   const results = await Promise.all(
     periods.map(async (period) => {
-      const portfolio = await fetch(`/api/analytics/portfolio?period_type=${period}`)
+      const portfolio = await fetch(`/api/analytics/portfolio/combined?period_type=${period}`)
         .then(r => r.json());
       return { period, ...portfolio };
     })
@@ -316,7 +383,24 @@ const getQuarterlyReport = async (year, quarter) => {
   const { start, end } = quarters[quarter];
   
   return await fetch(
-    `/api/analytics/portfolio?period_type=custom&custom_start_date=${start}&custom_end_date=${end}`
+    `/api/analytics/portfolio/combined?period_type=custom&custom_start_date=${start}&custom_end_date=${end}`
   ).then(r => r.json());
+};
+```
+
+### Advanced Analytics Dashboard
+
+```javascript
+// Get comprehensive analytics for advanced dashboard
+const getAdvancedAnalytics = async (periodType = '30d') => {
+  const [stocks, options, combined, daily, tickers] = await Promise.all([
+    fetch(`/api/analytics/stocks/summary/${periodType}`),
+    fetch(`/api/analytics/options/summary/${periodType}`),
+    fetch(`/api/analytics/portfolio/combined/summary/${periodType}`),
+    fetch(`/api/analytics/daily-pnl-trades?period_type=${periodType}`),
+    fetch(`/api/analytics/ticker-profit-summary?period_type=${periodType}`)
+  ]).then(responses => Promise.all(responses.map(r => r.json())));
+
+  return { stocks, options, combined, daily, tickers };
 };
 ```
