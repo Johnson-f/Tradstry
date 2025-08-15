@@ -97,6 +97,17 @@ class ApiClient {
     try {
       const response = await this.axiosInstance.request<T>(config);
       console.log(`[API] Response from ${config.url}:`, response.data);
+      
+      // Extra logging for ticker-profit-summary
+      if (config.url?.includes('ticker-profit-summary')) {
+        console.log(`[API] Ticker Response Details:`, {
+          dataType: typeof response.data,
+          isArray: Array.isArray(response.data),
+          length: Array.isArray(response.data) ? response.data.length : 'N/A',
+          firstItem: Array.isArray(response.data) && response.data.length > 0 ? response.data[0] : null
+        });
+      }
+      
       return response.data;
     } catch (error: any) {
       console.error(`[API] Error from ${config.url}:`, error.response?.data || error.message);

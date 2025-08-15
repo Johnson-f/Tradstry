@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from services.analytics_service import AnalyticsService
 from services.user_service import UserService
 from models.analytics import (
@@ -41,17 +41,49 @@ def get_date_range_params(
             detail="custom_end_date must be after custom_start_date"
         )
 
-    # Validate start date is not in future
-    if custom_start_date and custom_start_date > datetime.now():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="custom_start_date cannot be in the future"
-        )
+    # No future date restrictions - users can navigate to any date range they want
 
     return {
         "period_type": period_type.value if period_type else "all_time",
         "custom_start_date": custom_start_date,
         "custom_end_date": custom_end_date
+    }
+
+# Helper function to parse date range parameters with limit
+def get_date_range_params_with_limit(
+    period_type: Optional[PeriodType] = Query(default=PeriodType.ALL_TIME, description="Period type for analysis"),
+    custom_start_date: Optional[datetime] = Query(default=None, description="Start date for custom period (ISO format)"),
+    custom_end_date: Optional[datetime] = Query(default=None, description="End date for custom period (ISO format)"),
+    limit: Optional[int] = Query(default=None, description="Limit the number of results returned")
+) -> Dict[str, Any]:
+    """Helper to extract and validate date range parameters with optional limit."""
+
+    # Validate custom period requirements
+    if period_type == PeriodType.CUSTOM and custom_start_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="custom_start_date is required when period_type is 'custom'"
+        )
+
+    # Validate date order
+    if custom_start_date and custom_end_date and custom_end_date <= custom_start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="custom_end_date must be after custom_start_date"
+        )
+
+    # Validate limit
+    if limit is not None and limit <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be a positive integer"
+        )
+
+    return {
+        "period_type": period_type.value if period_type else "all_time",
+        "custom_start_date": custom_start_date,
+        "custom_end_date": custom_end_date,
+        "limit": limit
     }
 
 # Stock Analytics Endpoints
@@ -411,11 +443,11 @@ async def get_daily_pnl_trades(
 
 @router.get("/ticker-profit-summary", response_model=List[TickerProfitSummary])
 async def get_ticker_profit_summary(
-    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    date_params: Dict[str, Any] = Depends(get_date_range_params_with_limit),
     current_user: dict = Depends(user_service.get_current_user)
 ):
     """
-    Get profit summary by ticker with optional date range filtering.
+    Get profit summary by ticker with optional date range filtering and limit.
     Returns performance breakdown by individual symbols.
     """
     return await analytics_service.get_ticker_profit_summary(

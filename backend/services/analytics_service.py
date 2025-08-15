@@ -19,7 +19,11 @@ class AnalyticsService:
 
             # Check if result.data exists and handle both single values and arrays
             if result.data is not None:
-                # If it's a list/array, get the first element
+                # For functions that return multiple rows (like get_daily_pnl_trades), return the full list
+                if function_name in ['get_daily_pnl_trades', 'get_ticker_profit_summary']:
+                    return result.data if isinstance(result.data, list) else []
+                
+                # For other analytics functions that return single values
                 if isinstance(result.data, list):
                     if len(result.data) > 0:
                         # If the first element is a dict, get the value
@@ -43,6 +47,24 @@ class AnalyticsService:
                           custom_start_date: Optional[datetime] = None,
                           custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Helper method to build parameters for date range filtering."""
+        params = {
+            "user_id": user_id,
+            "period_type": period_type
+        }
+
+        if period_type == 'custom':
+            if custom_start_date:
+                params["custom_start_date"] = custom_start_date.isoformat() if isinstance(custom_start_date, datetime) else custom_start_date
+            if custom_end_date:
+                params["custom_end_date"] = custom_end_date.isoformat() if isinstance(custom_end_date, datetime) else custom_end_date
+
+        return params
+
+    def _build_combined_date_params(self,
+                                   period_type: str = 'all_time',
+                                   custom_start_date: Optional[datetime] = None,
+                                   custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
+        """Helper method to build parameters for combined functions that use p_time_range."""
         params = {
             "p_time_range": period_type
         }
@@ -284,7 +306,7 @@ class AnalyticsService:
                                   custom_start_date: Optional[datetime] = None,
                                   custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined win rate for all trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_win_rate", params)
         return float(result) if result is not None else 0.0
 
@@ -294,7 +316,7 @@ class AnalyticsService:
                                       custom_start_date: Optional[datetime] = None,
                                       custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined average gain for all winning trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_average_gain", params)
         return float(result) if result is not None else 0.0
 
@@ -304,7 +326,7 @@ class AnalyticsService:
                                      custom_start_date: Optional[datetime] = None,
                                      custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined average loss for all losing trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_average_loss", params)
         return float(result) if result is not None else 0.0
 
@@ -314,7 +336,7 @@ class AnalyticsService:
                                            custom_start_date: Optional[datetime] = None,
                                            custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined risk/reward ratio for all trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_risk_reward_ratio", params)
         return float(result) if result is not None else 0.0
 
@@ -324,7 +346,7 @@ class AnalyticsService:
                                           custom_start_date: Optional[datetime] = None,
                                           custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined trade expectancy for all trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_trade_expectancy", params)
         return float(result) if result is not None else 0.0
 
@@ -334,7 +356,7 @@ class AnalyticsService:
                                        custom_start_date: Optional[datetime] = None,
                                        custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined profit factor for all trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_profit_factor", params)
         return float(result) if result is not None else 0.0
 
@@ -344,7 +366,7 @@ class AnalyticsService:
                                                custom_start_date: Optional[datetime] = None,
                                                custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined average hold time for all winning trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_avg_hold_time_winners", params)
         return float(result) if result is not None else 0.0
 
@@ -354,7 +376,7 @@ class AnalyticsService:
                                               custom_start_date: Optional[datetime] = None,
                                               custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined average hold time for all losing trades with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_avg_hold_time_losers", params)
         return float(result) if result is not None else 0.0
 
@@ -364,7 +386,7 @@ class AnalyticsService:
                                         custom_start_date: Optional[datetime] = None,
                                         custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined biggest winning trade profit with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_biggest_winner", params)
         return float(result) if result is not None else 0.0
 
@@ -374,30 +396,54 @@ class AnalyticsService:
                                        custom_start_date: Optional[datetime] = None,
                                        custom_end_date: Optional[datetime] = None) -> float:
         """Get the combined biggest losing trade loss with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         result = await self._call_sql_function("get_combined_biggest_loser", params)
         return float(result) if result is not None else 0.0
 
     # Special Analytics Methods
     async def get_daily_pnl_trades(self,
-                                 user_id: str,
-                                 period_type: str = 'all_time',
-                                 custom_start_date: Optional[datetime] = None,
-                                 custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Get daily P&L and trade counts with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
-        result = self.supabase.rpc("get_daily_pnl_trades", params).execute()
-        return result.data if result.data else []
+                                  user_id: str,
+                                  period_type: str = 'all_time',
+                                  custom_start_date: Optional[datetime] = None,
+                                  custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        """Get daily P&L and trade count breakdown with optional date range filtering."""
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
+        # Don't add user_id - the function gets user context from RLS/authentication
+        result = await self._call_sql_function("get_daily_pnl_trades", params)
+        
+        # The _call_sql_function already processes the .data, so result is the actual data
+        if isinstance(result, list):
+            return result
+        elif result is None:
+            return []
+        else:
+            # If it's a single item, wrap it in a list
+            return [result]
 
     async def get_ticker_profit_summary(self,
                                       user_id: str,
                                       period_type: str = 'all_time',
                                       custom_start_date: Optional[datetime] = None,
-                                      custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Get profit summary by ticker with optional date range filtering."""
-        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
-        result = self.supabase.rpc("get_ticker_profit_summary", params).execute()
-        return result.data if result.data else []
+                                      custom_end_date: Optional[datetime] = None,
+                                      limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get profit summary by ticker symbol with optional date range filtering and limit."""
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
+        
+        # Add limit parameter if provided
+        if limit is not None:
+            params['p_limit'] = limit
+            
+        # Don't add user_id - the function gets user context from RLS/authentication
+        result = await self._call_sql_function("get_ticker_profit_summary", params)
+        
+        # The _call_sql_function already processes the .data, so result is the actual data
+        if isinstance(result, list):
+            return result
+        elif result is None:
+            return []
+        else:
+            # If it's a single item, wrap it in a list
+            return [result]
 
     # Portfolio Analytics Methods
     async def get_portfolio_analytics(self,

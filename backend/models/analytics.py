@@ -105,15 +105,10 @@ class DailyPnLTrade(BaseModel):
 class TickerProfitSummary(BaseModel):
     """Model for ticker profit summary data."""
     symbol: str = Field(description="Stock or option symbol")
+    total_profit: float = Field(description="Total profit from trades")
+    stock_trades: int = Field(description="Number of stock trades")
+    option_trades: int = Field(description="Number of option trades")
     total_trades: int = Field(description="Total number of trades")
-    winning_trades: int = Field(description="Number of winning trades")
-    losing_trades: int = Field(description="Number of losing trades")
-    win_rate: float = Field(description="Win rate as a percentage")
-    total_profit: float = Field(description="Total profit from winning trades")
-    total_loss: float = Field(description="Total loss from losing trades (as positive number)")
-    net_pnl: float = Field(description="Net profit/loss")
-    avg_profit: float = Field(description="Average profit per winning trade")
-    avg_loss: float = Field(description="Average loss per losing trade (as positive number)")
 
 class AnalyticsQuery(BaseModel):
     """Model for analytics query parameters."""

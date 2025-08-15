@@ -44,6 +44,14 @@ export const apiConfig = {
         riskRewardRatio: "/analytics/stocks/risk-reward-ratio",
         tradeExpectancy: "/analytics/stocks/trade-expectancy",
         netPnl: "/analytics/stocks/net-pnl",
+        // Advanced metrics
+        profitFactor: "/analytics/stocks/profit-factor",
+        avgHoldTimeWinners: "/analytics/stocks/avg-hold-time-winners",
+        avgHoldTimeLosers: "/analytics/stocks/avg-hold-time-losers",
+        biggestWinner: "/analytics/stocks/biggest-winner",
+        biggestLoser: "/analytics/stocks/biggest-loser",
+        // Summary endpoint
+        summary: (periodType: string) => `/analytics/stocks/summary/${periodType}`,
       },
       options: {
         winRate: "/analytics/options/win-rate",
@@ -52,8 +60,22 @@ export const apiConfig = {
         riskRewardRatio: "/analytics/options/risk-reward-ratio",
         tradeExpectancy: "/analytics/options/trade-expectancy",
         netPnl: "/analytics/options/net-pnl",
+        // Advanced metrics
+        profitFactor: "/analytics/options/profit-factor",
+        avgHoldTimeWinners: "/analytics/options/avg-hold-time-winners",
+        avgHoldTimeLosers: "/analytics/options/avg-hold-time-losers",
+        biggestWinner: "/analytics/options/biggest-winner",
+        biggestLoser: "/analytics/options/biggest-loser",
+        // Summary endpoint
+        summary: (periodType: string) => `/analytics/options/summary/${periodType}`,
       },
       portfolio: "/analytics/portfolio",
+      // Combined portfolio analytics
+      portfolioCombined: "/analytics/portfolio/combined",
+      portfolioCombinedSummary: (periodType: string) => `/analytics/portfolio/combined/summary/${periodType}`,
+      // Special analytics
+      dailyPnLTrades: "/analytics/daily-pnl-trades",
+      tickerProfitSummary: "/analytics/ticker-profit-summary",
     },
     // Health check
     health: "/health",
