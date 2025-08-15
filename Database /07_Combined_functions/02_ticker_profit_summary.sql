@@ -2,7 +2,8 @@
 CREATE OR REPLACE FUNCTION public.get_ticker_profit_summary(
     p_time_range TEXT DEFAULT 'all_time',
     p_custom_start_date DATE DEFAULT NULL,
-    p_custom_end_date DATE DEFAULT NULL
+    p_custom_end_date DATE DEFAULT NULL,
+    p_limit INTEGER DEFAULT NULL
 )
 RETURNS TABLE (
     symbol VARCHAR,
@@ -100,11 +101,13 @@ AS $$
         (s.profit IS NOT NULL AND s.profit != 0) OR 
         (o.profit IS NOT NULL AND o.profit != 0)
     ORDER BY 
-        ABS(COALESCE(s.profit, 0) + COALESCE(o.profit, 0)) DESC;
+        ABS(COALESCE(s.profit, 0) + COALESCE(o.profit, 0)) DESC
+    LIMIT 
+        CASE WHEN p_limit IS NOT NULL AND p_limit > 0 THEN p_limit ELSE NULL END;
 $$;
 
 -- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION public.get_ticker_profit_summary(TEXT, DATE, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_ticker_profit_summary(TEXT, DATE, DATE, INTEGER) TO authenticated;
 
 -- Add a comment to the function
 COMMENT ON FUNCTION public.get_ticker_profit_summary IS 'Returns ticker symbols and their total profit from both stocks and options for the authenticated user.
@@ -120,6 +123,7 @@ Parameters:
   - ''all_time'': All available data (default)
 - p_custom_start_date: Start date for custom range (only used when p_time_range = ''custom'')
 - p_custom_end_date: End date for custom range (only used when p_time_range = ''custom'')
+- p_limit: Limit the number of results returned (optional)
 
 Returns:
 - symbol: The ticker symbol

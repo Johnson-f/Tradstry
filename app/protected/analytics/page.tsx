@@ -1,6 +1,6 @@
 "use client";
 
-import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
+import { AnalyticsTabs } from "@/components/analytics/analytics-tabs";
 
 export default function AnalyticsSectionPage() {
   return (
@@ -14,11 +14,7 @@ export default function AnalyticsSectionPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
-            <AnalyticsDashboard
-              showPortfolioOverview={true}
-              defaultTab="stocks"
-              compact={false}
-            />
+            <AnalyticsTabs />
           </div>
         </div>
       </div>
