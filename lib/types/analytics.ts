@@ -21,6 +21,10 @@ export interface StockAnalytics {
   avgHoldTimeLosers: number;
   biggestWinner: number;
   biggestLoser: number;
+  // New metrics
+  averagePositionSize: number;
+  averageRiskPerTrade: number;
+  lossRate: number;
 }
 
 export interface OptionAnalytics {
@@ -112,6 +116,10 @@ export interface UseAnalyticsReturn {
   avgHoldTimeLosers: number | null;
   biggestWinner: number | null;
   biggestLoser: number | null;
+  // New metrics
+  averagePositionSize: number | null;
+  averageRiskPerTrade: number | null;
+  lossRate: number | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<any>;
