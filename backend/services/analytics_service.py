@@ -48,15 +48,15 @@ class AnalyticsService:
                           custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Helper method to build parameters for date range filtering."""
         params = {
-            "user_id": user_id,
-            "period_type": period_type
+            "p_time_range": period_type  # Keep as p_time_range to match SQL function
         }
 
+        # Add custom date parameters when period_type is 'custom'
         if period_type == 'custom':
             if custom_start_date:
-                params["custom_start_date"] = custom_start_date.isoformat() if isinstance(custom_start_date, datetime) else custom_start_date
+                params["p_custom_start_date"] = custom_start_date.date() if isinstance(custom_start_date, datetime) else custom_start_date
             if custom_end_date:
-                params["custom_end_date"] = custom_end_date.isoformat() if isinstance(custom_end_date, datetime) else custom_end_date
+                params["p_custom_end_date"] = custom_end_date.date() if isinstance(custom_end_date, datetime) else custom_end_date
 
         return params
 
