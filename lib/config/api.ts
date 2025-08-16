@@ -50,24 +50,28 @@ export const apiConfig = {
         avgHoldTimeLosers: "/analytics/stocks/avg-hold-time-losers",
         biggestWinner: "/analytics/stocks/biggest-winner",
         biggestLoser: "/analytics/stocks/biggest-loser",
+        // New metrics
+        averagePositionSize: "/analytics/stocks/average-position-size",
+        averageRiskPerTrade: "/analytics/stocks/average-risk-per-trade",
+        lossRate: "/analytics/stocks/loss-rate",
         // Summary endpoint
         summary: (periodType: string) => `/analytics/stocks/summary/${periodType}`,
       },
       options: {
-        winRate: "/analytics/options/win-rate",
-        averageGain: "/analytics/options/average-gain",
-        averageLoss: "/analytics/options/average-loss",
-        riskRewardRatio: "/analytics/options/risk-reward-ratio",
-        tradeExpectancy: "/analytics/options/trade-expectancy",
-        netPnl: "/analytics/options/net-pnl",
+        winRate: '/analytics/options/win-rate',
+        averageGain: '/analytics/options/average-gain',
+        averageLoss: '/analytics/options/average-loss',
+        riskRewardRatio: '/analytics/options/risk-reward-ratio',
+        tradeExpectancy: '/analytics/options/trade-expectancy',
+        netPnl: '/analytics/options/net-pnl',
         // Advanced metrics
-        profitFactor: "/analytics/options/profit-factor",
-        avgHoldTimeWinners: "/analytics/options/avg-hold-time-winners",
-        avgHoldTimeLosers: "/analytics/options/avg-hold-time-losers",
-        biggestWinner: "/analytics/options/biggest-winner",
-        biggestLoser: "/analytics/options/biggest-loser",
-        // Summary endpoint
-        summary: (periodType: string) => `/analytics/options/summary/${periodType}`,
+        profitFactor: '/analytics/options/profit-factor',
+        avgHoldTimeWinners: '/analytics/options/avg-hold-time-winners',
+        avgHoldTimeLosers: '/analytics/options/avg-hold-time-losers',
+        biggestWinner: '/analytics/options/biggest-winner',
+        biggestLoser: '/analytics/options/biggest-loser',
+        // summary
+        summary: '/analytics/options/summary'
       },
       portfolio: "/analytics/portfolio",
       // Combined portfolio analytics

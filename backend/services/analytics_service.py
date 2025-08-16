@@ -188,6 +188,36 @@ class AnalyticsService:
         result = await self._call_sql_function("get_biggest_loser", params)
         return float(result) if result is not None else 0.0
 
+    async def get_stock_average_position_size(self,
+                                            user_id: str,
+                                            period_type: str = 'all_time',
+                                            custom_start_date: Optional[datetime] = None,
+                                            custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average position size for stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_average_position_size", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_average_risk_per_trade(self,
+                                             user_id: str,
+                                             period_type: str = 'all_time',
+                                             custom_start_date: Optional[datetime] = None,
+                                             custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average risk per trade for stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_average_risk_per_trade", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_stock_loss_rate(self,
+                                user_id: str,
+                                period_type: str = 'all_time',
+                                custom_start_date: Optional[datetime] = None,
+                                custom_end_date: Optional[datetime] = None) -> float:
+        """Get the loss rate for stock trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_stock_loss_rate", params)
+        return float(result) if result is not None else 0.0
+
     # Option Analytics Methods
     async def get_option_win_rate(self,
                                 user_id: str,
@@ -511,3 +541,48 @@ class AnalyticsService:
                 "custom_end_date": custom_end_date.isoformat() if custom_end_date else None
             }
         }
+        
+       
+    async def get_weekly_trading_metrics(self) -> Dict[str, Any]:
+        """Get weekly trading metrics for the current week.
+        
+        Returns:
+            Dict containing weekly trading metrics including total trades, win rate, P&L, etc.
+        """
+        try:
+            # Call the SQL function that returns weekly metrics
+            result = self.supabase.rpc("get_weekly_trading_metrics").execute()
+            
+            if result.data and len(result.data) > 0:
+                # Convert date objects to ISO format strings for JSON serialization
+                weekly_metrics = result.data[0]
+                weekly_metrics["week_start_date"] = weekly_metrics["week_start_date"].isoformat()
+                weekly_metrics["week_end_date"] = weekly_metrics["week_end_date"].isoformat()
+                return weekly_metrics
+            return {}
+            
+        except Exception as e:
+            print(f"Error getting weekly trading metrics: {str(e)}")
+            return {}
+            
+    async def get_monthly_trading_metrics(self) -> Dict[str, Any]:
+        """Get monthly trading metrics for the current month.
+        
+        Returns:
+            Dict containing monthly trading metrics including total trades, win rate, P&L, etc.
+        """
+        try:
+            # Call the SQL function that returns monthly metrics
+            result = self.supabase.rpc("get_monthly_trading_metrics").execute()
+            
+            if result.data and len(result.data) > 0:
+                # Convert date objects to ISO format strings for JSON serialization
+                monthly_metrics = result.data[0]
+                monthly_metrics["month_start_date"] = monthly_metrics["month_start_date"].isoformat()
+                monthly_metrics["month_end_date"] = monthly_metrics["month_end_date"].isoformat()
+                return monthly_metrics
+            return {}
+            
+        except Exception as e:
+            print(f"Error getting monthly trading metrics: {str(e)}")
+            return {}

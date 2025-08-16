@@ -10,7 +10,9 @@ from models.analytics import (
     PortfolioAnalytics,
     CombinedAnalytics,
     DailyPnLTrade,
-    TickerProfitSummary
+    TickerProfitSummary,
+    WeeklyTradingMetrics,
+    MonthlyTradingMetrics
 )
 
 # Initialize services
@@ -237,6 +239,48 @@ async def get_stock_biggest_loser(
     Returns the loss amount of the biggest losing trade as a positive number.
     """
     return await analytics_service.get_stock_biggest_loser(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/average-position-size", response_model=float)
+async def get_stock_average_position_size(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average position size for stock trades with optional date range filtering.
+    Returns the average position size (entry_price * number_shares) in the account's currency.
+    """
+    return await analytics_service.get_stock_average_position_size(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/average-risk-per-trade", response_model=float)
+async def get_stock_average_risk_per_trade(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average risk per trade for stock trades with optional date range filtering.
+    Returns the average risk amount per trade in the account's currency.
+    """
+    return await analytics_service.get_stock_average_risk_per_trade(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/stocks/loss-rate", response_model=float)
+async def get_stock_loss_rate(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the loss rate for stock trades with optional date range filtering.
+    Returns the loss rate as a percentage (0-100).
+    """
+    return await analytics_service.get_stock_loss_rate(
         current_user["id"],
         **date_params
     )
@@ -477,7 +521,10 @@ async def get_stock_summary(
         avg_hold_time_winners=await analytics_service.get_stock_avg_hold_time_winners(user_id, period_type.value),
         avg_hold_time_losers=await analytics_service.get_stock_avg_hold_time_losers(user_id, period_type.value),
         biggest_winner=await analytics_service.get_stock_biggest_winner(user_id, period_type.value),
-        biggest_loser=await analytics_service.get_stock_biggest_loser(user_id, period_type.value)
+        biggest_loser=await analytics_service.get_stock_biggest_loser(user_id, period_type.value),
+        average_position_size=await analytics_service.get_stock_average_position_size(user_id, period_type.value),
+        average_risk_per_trade=await analytics_service.get_stock_average_risk_per_trade(user_id, period_type.value),
+        loss_rate=await analytics_service.get_stock_loss_rate(user_id, period_type.value)
     )
 
 @router.get("/options/summary/{period_type}", response_model=OptionAnalytics)
@@ -515,3 +562,35 @@ async def get_combined_portfolio_summary(
     """
     user_id = current_user["id"]
     return await analytics_service.get_combined_portfolio_analytics(user_id, period_type.value)
+
+@router.get("/metrics/weekly", response_model=WeeklyTradingMetrics)
+async def get_weekly_metrics(
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get weekly trading metrics for the current week.
+    Returns metrics including total trades, win rate, P&L, and more for the current week.
+    """
+    metrics = await analytics_service.get_weekly_trading_metrics()
+    if not metrics:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No trading data available for the current week"
+        )
+    return metrics
+
+@router.get("/metrics/monthly", response_model=MonthlyTradingMetrics)
+async def get_monthly_metrics(
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get monthly trading metrics for the current month.
+    Returns metrics including total trades, win rate, P&L, and more for the current month.
+    """
+    metrics = await analytics_service.get_monthly_trading_metrics()
+    if not metrics:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No trading data available for the current month"
+        )
+    return metrics

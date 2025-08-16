@@ -57,6 +57,19 @@ class AnalyticsService {
     return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.biggestLoser, { params });
   }
 
+  // New Metrcs 
+  async getStockAveragePositionSize(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averagePositionSize, { params });
+  }
+  
+  async getStockAverageRiskPerTrade(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.averageRiskPerTrade, { params });
+  }
+  
+  async getStockLossRate(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.stocks.lossRate, { params });
+  }
+  
   async getStockAnalytics(params?: AnalyticsQuery): Promise<StockAnalytics> {
     const [
       winRate,
@@ -70,6 +83,9 @@ class AnalyticsService {
       avgHoldTimeLosers,
       biggestWinner,
       biggestLoser,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate,
     ] = await Promise.all([
       this.getStockWinRate(params),
       this.getStockAverageGain(params),
@@ -82,6 +98,9 @@ class AnalyticsService {
       this.getStockAvgHoldTimeLosers(params),
       this.getStockBiggestWinner(params),
       this.getStockBiggestLoser(params),
+      this.getStockAveragePositionSize(params),
+      this.getStockAverageRiskPerTrade(params),
+      this.getStockLossRate(params),
     ]);
 
     return {
@@ -96,6 +115,9 @@ class AnalyticsService {
       avgHoldTimeLosers,
       biggestWinner,
       biggestLoser,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate,
     };
   }
 

@@ -53,6 +53,9 @@ class StockAnalytics(BaseModel):
     avg_hold_time_losers: float = Field(description="Average hold time for losing trades in days")
     biggest_winner: float = Field(description="Biggest winning trade profit")
     biggest_loser: float = Field(description="Biggest losing trade loss (as positive number)")
+    average_position_size: float = Field(description="Average position size (entry_price * number_shares)")
+    average_risk_per_trade: float = Field(description="Average risk amount per trade")
+    loss_rate: float = Field(description="Loss rate as a percentage (0-100)")
 
 class OptionAnalytics(BaseModel):
     """Model for option trading analytics."""
@@ -109,6 +112,32 @@ class TickerProfitSummary(BaseModel):
     stock_trades: int = Field(description="Number of stock trades")
     option_trades: int = Field(description="Number of option trades")
     total_trades: int = Field(description="Total number of trades")
+
+class WeeklyTradingMetrics(BaseModel):
+    """Model for weekly trading metrics."""
+    week_start_date: str = Field(description="Start date of the week (YYYY-MM-DD)")
+    week_end_date: str = Field(description="End date of the week (YYYY-MM-DD)")
+    total_trades: int = Field(description="Total number of trades for the week")
+    profitable_trades: int = Field(description="Number of profitable trades")
+    unprofitable_trades: int = Field(description="Number of unprofitable trades")
+    win_rate: float = Field(description="Win rate as a percentage (0-100)")
+    net_pnl: float = Field(description="Net profit/loss for the week")
+    profit_factor: float = Field(description="Profit factor (gross profit / gross loss)")
+    max_drawdown: float = Field(description="Maximum drawdown during the week")
+    expectancy_per_trade: float = Field(description="Average profit per trade")
+
+class MonthlyTradingMetrics(BaseModel):
+    """Model for monthly trading metrics."""
+    month_start_date: str = Field(description="Start date of the month (YYYY-MM-DD)")
+    month_end_date: str = Field(description="End date of the month (YYYY-MM-DD)")
+    total_trades: int = Field(description="Total number of trades for the month")
+    profitable_trades: int = Field(description="Number of profitable trades")
+    unprofitable_trades: int = Field(description="Number of unprofitable trades")
+    win_rate: float = Field(description="Win rate as a percentage (0-100)")
+    net_pnl: float = Field(description="Net profit/loss for the month")
+    profit_factor: float = Field(description="Profit factor (gross profit / gross loss)")
+    max_drawdown: float = Field(description="Maximum drawdown during the month")
+    expectancy_per_trade: float = Field(description="Average profit per trade")
 
 class AnalyticsQuery(BaseModel):
     """Model for analytics query parameters."""

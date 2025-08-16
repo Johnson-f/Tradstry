@@ -57,6 +57,10 @@ export function useAnalytics(
     avgHoldTimeLosers: data?.avgHoldTimeLosers ?? null,
     biggestWinner: data?.biggestWinner ?? null,
     biggestLoser: data?.biggestLoser ?? null,
+    // New metrics (only available for stocks)
+    averagePositionSize: (data as StockAnalytics)?.averagePositionSize ?? null,
+    averageRiskPerTrade: (data as StockAnalytics)?.averageRiskPerTrade ?? null,
+    lossRate: (data as StockAnalytics)?.lossRate ?? null,
     isLoading,
     error: error as Error | null,
     refetch,
@@ -371,6 +375,82 @@ export function useCombinedPortfolioSummary(periodType: PeriodType) {
 
   return {
     combinedSummary: combinedSummary ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// New individual metric hooks for the new analytics
+export function useStockAveragePositionSize(filters?: AnalyticsFilters) {
+  const {
+    data: averagePositionSize,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<number>({
+    queryKey: ['stockAveragePositionSize', filters],
+    queryFn: () => analyticsService.getStockAveragePositionSize({
+      periodType: filters?.periodType,
+      customStartDate: filters?.customStartDate?.toISOString().split('T')[0],
+      customEndDate: filters?.customEndDate?.toISOString().split('T')[0],
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  return {
+    averagePositionSize: averagePositionSize ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useStockAverageRiskPerTrade(filters?: AnalyticsFilters) {
+  const {
+    data: averageRiskPerTrade,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<number>({
+    queryKey: ['stockAverageRiskPerTrade', filters],
+    queryFn: () => analyticsService.getStockAverageRiskPerTrade({
+      periodType: filters?.periodType,
+      customStartDate: filters?.customStartDate?.toISOString().split('T')[0],
+      customEndDate: filters?.customEndDate?.toISOString().split('T')[0],
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  return {
+    averageRiskPerTrade: averageRiskPerTrade ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useStockLossRate(filters?: AnalyticsFilters) {
+  const {
+    data: lossRate,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<number>({
+    queryKey: ['stockLossRate', filters],
+    queryFn: () => analyticsService.getStockLossRate({
+      periodType: filters?.periodType,
+      customStartDate: filters?.customStartDate?.toISOString().split('T')[0],
+      customEndDate: filters?.customEndDate?.toISOString().split('T')[0],
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  return {
+    lossRate: lossRate ?? null,
     isLoading,
     error: error as Error | null,
     refetch,
