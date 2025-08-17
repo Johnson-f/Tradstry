@@ -35,6 +35,18 @@ export const analyticsKeys = {
     custom_end_date?: string;
     limit?: string;
   }) => [...analyticsKeys.tickerSummary(), params] as const,
+  // Options analytics
+  options: {
+    averagePositionSize: (params: any) => [...analyticsKeys.all, 'options', 'average-position-size', params] as const,
+    averageRiskPerTrade: (params: any) => [...analyticsKeys.all, 'options', 'average-risk-per-trade', params] as const,
+    lossRate: (params: any) => [...analyticsKeys.all, 'options', 'loss-rate', params] as const,
+  },
+  // Combined analytics
+  combined: {
+    averagePositionSize: (params: any) => [...analyticsKeys.all, 'combined', 'average-position-size', params] as const,
+    averageRiskPerTrade: (params: any) => [...analyticsKeys.all, 'combined', 'average-risk-per-trade', params] as const,
+    lossRate: (params: any) => [...analyticsKeys.all, 'combined', 'loss-rate', params] as const,
+  },
 };
 
 // Daily P&L query hook
@@ -134,4 +146,180 @@ export function useRecentTickerSummary(limit: number = 6) {
   }), []);
 
   return useTickerProfitSummary(params);
+}
+
+// Options Analytics Hooks
+export function useOptionAveragePositionSize(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.options.averagePositionSize(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/options/average-position-size?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+}
+
+export function useOptionAverageRiskPerTrade(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.options.averageRiskPerTrade(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/options/average-risk-per-trade?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+}
+
+export function useOptionLossRate(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.options.lossRate(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/options/loss-rate?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+}
+
+// Combined Analytics Hooks
+export function useCombinedAveragePositionSize(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.combined.averagePositionSize(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/combined/average-position-size?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+}
+
+export function useCombinedAverageRiskPerTrade(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.combined.averageRiskPerTrade(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/combined/average-risk-per-trade?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+}
+
+export function useCombinedLossRate(params: {
+  period_type: string;
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) {
+  return useQuery({
+    queryKey: analyticsKeys.combined.lossRate(params),
+    queryFn: async (): Promise<number> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('period_type', params.period_type);
+      
+      if (params.custom_start_date) {
+        searchParams.set('custom_start_date', params.custom_start_date);
+      }
+      if (params.custom_end_date) {
+        searchParams.set('custom_end_date', params.custom_end_date);
+      }
+
+      return apiClient.get<number>(`/analytics/combined/loss-rate?${searchParams}`);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
 }

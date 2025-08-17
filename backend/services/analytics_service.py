@@ -22,7 +22,7 @@ class AnalyticsService:
                 # For functions that return multiple rows (like get_daily_pnl_trades), return the full list
                 if function_name in ['get_daily_pnl_trades', 'get_ticker_profit_summary']:
                     return result.data if isinstance(result.data, list) else []
-                
+
                 # For other analytics functions that return single values
                 if isinstance(result.data, list):
                     if len(result.data) > 0:
@@ -76,6 +76,15 @@ class AnalyticsService:
                 params["p_custom_end_date"] = custom_end_date.isoformat() if isinstance(custom_end_date, datetime) else custom_end_date
 
         return params
+
+    def _safe_isoformat(self, date_value):
+        """Safely convert date value to ISO format string."""
+        if date_value is None:
+            return None
+        if isinstance(date_value, str):
+            return date_value  # Already a string, return as-is
+        # It's a datetime object, convert to string
+        return date_value.isoformat()
 
     # Stock Analytics Methods
     async def get_stock_win_rate(self,
@@ -329,6 +338,36 @@ class AnalyticsService:
         result = await self._call_sql_function("get_options_biggest_loser", params)
         return float(result) if result is not None else 0.0
 
+    async def get_option_average_position_size(self,
+                                             user_id: str,
+                                             period_type: str = 'all_time',
+                                             custom_start_date: Optional[datetime] = None,
+                                             custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average position size for option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_average_position_size", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_average_risk_per_trade(self,
+                                              user_id: str,
+                                              period_type: str = 'all_time',
+                                              custom_start_date: Optional[datetime] = None,
+                                              custom_end_date: Optional[datetime] = None) -> float:
+        """Get the average risk per trade for option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_average_risk_per_trade", params)
+        return float(result) if result is not None else 0.0
+
+    async def get_option_loss_rate(self,
+                                 user_id: str,
+                                 period_type: str = 'all_time',
+                                 custom_start_date: Optional[datetime] = None,
+                                 custom_end_date: Optional[datetime] = None) -> float:
+        """Get the loss rate for option trades with optional date range filtering."""
+        params = self._build_date_params(user_id, period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_options_loss_rate", params)
+        return float(result) if result is not None else 0.0
+
     # Combined Analytics Methods
     async def get_combined_win_rate(self,
                                   user_id: str,
@@ -430,6 +469,54 @@ class AnalyticsService:
         result = await self._call_sql_function("get_combined_biggest_loser", params)
         return float(result) if result is not None else 0.0
 
+    async def get_combined_average_position_size(self,
+                                               user_id: str,
+                                               period_type: str = 'all_time',
+                                               custom_start_date: Optional[datetime] = None,
+                                               custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average position size with optional date range filtering."""
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_average_position_size", params)
+
+        # This function returns a table with multiple rows, extract the "Combined" row
+        if isinstance(result, list):
+            for row in result:
+                if isinstance(row, dict) and row.get('asset_type') == 'Combined':
+                    return float(row.get('average_position_size', 0))
+        return 0.0
+
+    async def get_combined_average_risk_per_trade(self,
+                                                user_id: str,
+                                                period_type: str = 'all_time',
+                                                custom_start_date: Optional[datetime] = None,
+                                                custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined average risk per trade with optional date range filtering."""
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_risk_per_trade", params)
+
+        # This function returns a table with multiple rows, extract the "Combined" row
+        if isinstance(result, list):
+            for row in result:
+                if isinstance(row, dict) and row.get('asset_type') == 'Combined':
+                    return float(row.get('average_risk_per_trade', 0))
+        return 0.0
+
+    async def get_combined_loss_rate(self,
+                                   user_id: str,
+                                   period_type: str = 'all_time',
+                                   custom_start_date: Optional[datetime] = None,
+                                   custom_end_date: Optional[datetime] = None) -> float:
+        """Get the combined loss rate with optional date range filtering."""
+        params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
+        result = await self._call_sql_function("get_combined_loss_rate", params)
+
+        # This function returns a table with multiple rows, extract the "Combined" row
+        if isinstance(result, list):
+            for row in result:
+                if isinstance(row, dict) and row.get('asset_type') == 'Combined':
+                    return float(row.get('loss_rate', 0))
+        return 0.0
+
     # Special Analytics Methods
     async def get_daily_pnl_trades(self,
                                   user_id: str,
@@ -440,7 +527,7 @@ class AnalyticsService:
         params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
         # Don't add user_id - the function gets user context from RLS/authentication
         result = await self._call_sql_function("get_daily_pnl_trades", params)
-        
+
         # The _call_sql_function already processes the .data, so result is the actual data
         if isinstance(result, list):
             return result
@@ -458,14 +545,14 @@ class AnalyticsService:
                                       limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get profit summary by ticker symbol with optional date range filtering and limit."""
         params = self._build_combined_date_params(period_type, custom_start_date, custom_end_date)
-        
+
         # Add limit parameter if provided
         if limit is not None:
             params['p_limit'] = limit
-            
+
         # Don't add user_id - the function gets user context from RLS/authentication
         result = await self._call_sql_function("get_ticker_profit_summary", params)
-        
+
         # The _call_sql_function already processes the .data, so result is the actual data
         if isinstance(result, list):
             return result
@@ -528,61 +615,58 @@ class AnalyticsService:
             "average_loss": await self.get_combined_average_loss(user_id, period_type, custom_start_date, custom_end_date),
             "risk_reward_ratio": await self.get_combined_risk_reward_ratio(user_id, period_type, custom_start_date, custom_end_date),
             "trade_expectancy": await self.get_combined_trade_expectancy(user_id, period_type, custom_start_date, custom_end_date),
-            "net_pnl": await self.get_stock_net_pnl(user_id, period_type, custom_start_date, custom_end_date) + 
+            "net_pnl": await self.get_stock_net_pnl(user_id, period_type, custom_start_date, custom_end_date) +
                       await self.get_option_net_pnl(user_id, period_type, custom_start_date, custom_end_date),
             "profit_factor": await self.get_combined_profit_factor(user_id, period_type, custom_start_date, custom_end_date),
             "avg_hold_time_winners": await self.get_combined_avg_hold_time_winners(user_id, period_type, custom_start_date, custom_end_date),
             "avg_hold_time_losers": await self.get_combined_avg_hold_time_losers(user_id, period_type, custom_start_date, custom_end_date),
             "biggest_winner": await self.get_combined_biggest_winner(user_id, period_type, custom_start_date, custom_end_date),
             "biggest_loser": await self.get_combined_biggest_loser(user_id, period_type, custom_start_date, custom_end_date),
-            "period_info": {
-                "period_type": period_type,
-                "custom_start_date": custom_start_date.isoformat() if custom_start_date else None,
-                "custom_end_date": custom_end_date.isoformat() if custom_end_date else None
-            }
+            "average_position_size": await self.get_combined_average_position_size(user_id, period_type, custom_start_date, custom_end_date),
+            "average_risk_per_trade": await self.get_combined_average_risk_per_trade(user_id, period_type, custom_start_date, custom_end_date),
+            "loss_rate": await self.get_combined_loss_rate(user_id, period_type, custom_start_date, custom_end_date)
         }
-        
-       
+
     async def get_weekly_trading_metrics(self) -> Dict[str, Any]:
         """Get weekly trading metrics for the current week.
-        
+
         Returns:
             Dict containing weekly trading metrics including total trades, win rate, P&L, etc.
         """
         try:
             # Call the SQL function that returns weekly metrics
             result = self.supabase.rpc("get_weekly_trading_metrics").execute()
-            
+
             if result.data and len(result.data) > 0:
-                # Convert date objects to ISO format strings for JSON serialization
+                # Safely convert date objects to ISO format strings for JSON serialization
                 weekly_metrics = result.data[0]
-                weekly_metrics["week_start_date"] = weekly_metrics["week_start_date"].isoformat()
-                weekly_metrics["week_end_date"] = weekly_metrics["week_end_date"].isoformat()
+                weekly_metrics["week_start_date"] = self._safe_isoformat(weekly_metrics.get("week_start_date"))
+                weekly_metrics["week_end_date"] = self._safe_isoformat(weekly_metrics.get("week_end_date"))
                 return weekly_metrics
             return {}
-            
+
         except Exception as e:
             print(f"Error getting weekly trading metrics: {str(e)}")
             return {}
-            
+
     async def get_monthly_trading_metrics(self) -> Dict[str, Any]:
         """Get monthly trading metrics for the current month.
-        
+
         Returns:
             Dict containing monthly trading metrics including total trades, win rate, P&L, etc.
         """
         try:
             # Call the SQL function that returns monthly metrics
             result = self.supabase.rpc("get_monthly_trading_metrics").execute()
-            
+
             if result.data and len(result.data) > 0:
-                # Convert date objects to ISO format strings for JSON serialization
+                # Safely convert date objects to ISO format strings for JSON serialization
                 monthly_metrics = result.data[0]
-                monthly_metrics["month_start_date"] = monthly_metrics["month_start_date"].isoformat()
-                monthly_metrics["month_end_date"] = monthly_metrics["month_end_date"].isoformat()
+                monthly_metrics["month_start_date"] = self._safe_isoformat(monthly_metrics.get("month_start_date"))
+                monthly_metrics["month_end_date"] = self._safe_isoformat(monthly_metrics.get("month_end_date"))
                 return monthly_metrics
             return {}
-            
+
         except Exception as e:
             print(f"Error getting monthly trading metrics: {str(e)}")
             return {}
