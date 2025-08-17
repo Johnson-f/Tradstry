@@ -7,6 +7,9 @@ import type {
   CombinedAnalytics,
   DailyPnLTrade,
   TickerProfitSummary,
+  WeeklyMetrics,
+  WeeklyTradingMetrics,
+  MonthlyMetrics,
   AnalyticsQuery
 } from "@/lib/types/analytics";
 
@@ -167,6 +170,19 @@ class AnalyticsService {
     return apiClient.get<number>(apiConfig.endpoints.analytics.options.biggestLoser, { params });
   }
 
+  // New Options Metrics
+  async getOptionAveragePositionSize(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averagePositionSize, { params });
+  }
+  
+  async getOptionAverageRiskPerTrade(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.averageRiskPerTrade, { params });
+  }
+  
+  async getOptionLossRate(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.options.lossRate, { params });
+  }
+
   async getOptionAnalytics(params?: AnalyticsQuery): Promise<OptionAnalytics> {
     const [
       winRate,
@@ -180,6 +196,9 @@ class AnalyticsService {
       avgHoldTimeLosers,
       biggestWinner,
       biggestLoser,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate,
     ] = await Promise.all([
       this.getOptionWinRate(params),
       this.getOptionAverageGain(params),
@@ -192,6 +211,9 @@ class AnalyticsService {
       this.getOptionAvgHoldTimeLosers(params),
       this.getOptionBiggestWinner(params),
       this.getOptionBiggestLoser(params),
+      this.getOptionAveragePositionSize(params),
+      this.getOptionAverageRiskPerTrade(params),
+      this.getOptionLossRate(params),
     ]);
 
     return {
@@ -206,6 +228,9 @@ class AnalyticsService {
       avgHoldTimeLosers,
       biggestWinner,
       biggestLoser,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate,
     };
   }
 
@@ -234,6 +259,19 @@ class AnalyticsService {
     return apiClient.get<CombinedAnalytics>(apiConfig.endpoints.analytics.portfolioCombined, { params });
   }
 
+  // Combined Individual Metrics
+  async getCombinedAveragePositionSize(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.combined.averagePositionSize, { params });
+  }
+  
+  async getCombinedAverageRiskPerTrade(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.combined.averageRiskPerTrade, { params });
+  }
+  
+  async getCombinedLossRate(params?: AnalyticsQuery): Promise<number> {
+    return apiClient.get<number>(apiConfig.endpoints.analytics.combined.lossRate, { params });
+  }
+
   // Special Analytics Methods (will use the endpoint in the calendar daily summary view)
   async getDailyPnLTrades(params?: AnalyticsQuery): Promise<DailyPnLTrade[]> {
     return apiClient.get<DailyPnLTrade[]>(apiConfig.endpoints.analytics.dailyPnLTrades, { params });
@@ -242,6 +280,19 @@ class AnalyticsService {
   // Endpoint for fetching tickers & Net P&L 
   async getTickerProfitSummary(params?: AnalyticsQuery): Promise<TickerProfitSummary[]> {
     return apiClient.get<TickerProfitSummary[]>(apiConfig.endpoints.analytics.tickerProfitSummary, { params });
+  }
+
+  // Weekly and Monthly Metrics
+  async getWeeklyTradingMetrics(): Promise<WeeklyTradingMetrics> {
+    return apiClient.get<WeeklyTradingMetrics>(apiConfig.endpoints.analytics.weeklyMetrics);
+  }
+
+  async getWeeklyMetrics(params?: AnalyticsQuery): Promise<WeeklyMetrics[]> {
+    return apiClient.get<WeeklyMetrics[]>(apiConfig.endpoints.analytics.weeklyMetrics, { params });
+  }
+
+  async getMonthlyMetrics(params?: AnalyticsQuery): Promise<MonthlyMetrics[]> {
+    return apiClient.get<MonthlyMetrics[]>(apiConfig.endpoints.analytics.monthlyMetrics, { params });
   }
 
   // Convenience Methods (not important)

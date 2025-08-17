@@ -70,16 +70,29 @@ export const apiConfig = {
         avgHoldTimeLosers: '/analytics/options/avg-hold-time-losers',
         biggestWinner: '/analytics/options/biggest-winner',
         biggestLoser: '/analytics/options/biggest-loser',
-        // summary
-        summary: '/analytics/options/summary'
+        // New metrics
+        averagePositionSize: '/analytics/options/average-position-size',
+        averageRiskPerTrade: '/analytics/options/average-risk-per-trade',
+        lossRate: '/analytics/options/loss-rate',
+        // Summary endpoint
+        summary: (periodType: string) => `/analytics/options/summary/${periodType}`
       },
       portfolio: "/analytics/portfolio",
       // Combined portfolio analytics
       portfolioCombined: "/analytics/portfolio/combined",
       portfolioCombinedSummary: (periodType: string) => `/analytics/portfolio/combined/summary/${periodType}`,
+      // Combined individual metrics
+      combined: {
+        averagePositionSize: "/analytics/combined/average-position-size",
+        averageRiskPerTrade: "/analytics/combined/average-risk-per-trade",
+        lossRate: "/analytics/combined/loss-rate",
+      },
       // Special analytics
       dailyPnLTrades: "/analytics/daily-pnl-trades",
       tickerProfitSummary: "/analytics/ticker-profit-summary",
+      // Weekly and monthly metrics
+      weeklyMetrics: "/analytics/metrics/weekly",
+      monthlyMetrics: "/analytics/metrics/monthly",
     },
     // Health check
     health: "/health",

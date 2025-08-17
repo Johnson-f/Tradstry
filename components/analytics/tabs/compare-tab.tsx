@@ -127,13 +127,16 @@ export function CompareTab({ filters }: CompareTabProps) {
     avg_hold_time_winners?: number;
     avg_hold_time_losers?: number;
     trade_expectancy?: number;
+    average_position_size?: number;
+    average_risk_per_trade?: number;
+    loss_rate?: number;
   };
   
   const stockApiData = stockData as unknown as SnakeCaseData | undefined;
   const optionApiData = optionData as unknown as SnakeCaseData | undefined;
   
   // Helper function to safely get number values with fallback
-  const getNumberValue = (data: any, snakeKey: keyof SnakeCaseData, camelKey: keyof StockAnalytics): number | undefined => {
+  const getNumberValue = (data: any, snakeKey: keyof SnakeCaseData, camelKey: keyof StockAnalytics | keyof OptionAnalytics): number | undefined => {
     const value = data?.[snakeKey] ?? data?.[camelKey];
     return typeof value === 'number' ? value : undefined;
   };
@@ -231,6 +234,27 @@ export function CompareTab({ filters }: CompareTabProps) {
         return value !== undefined ? value >= 0 : undefined;
       })(),
       description: 'Expected value per trade'
+    },
+    {
+      title: 'Avg. Position Size',
+      value: safeFormatCurrency(getNumberValue(stockData, 'average_position_size', 'averagePositionSize')),
+      description: 'Average size of positions'
+    },
+    {
+      title: 'Avg. Risk per Trade',
+      value: safeFormatCurrency(getNumberValue(stockData, 'average_risk_per_trade', 'averageRiskPerTrade')),
+      description: 'Average risk amount per trade'
+    },
+    {
+      title: 'Loss Rate',
+      value: (() => {
+        const lossRate = getNumberValue(stockData, 'loss_rate', 'lossRate');
+        if (lossRate === undefined) return 'N/A';
+        const percentage = lossRate > 1 ? lossRate : lossRate * 100;
+        return `${percentage.toFixed(1)}%`;
+      })(),
+      isPositive: false,
+      description: 'Percentage of losing trades'
     }
   ];
 
@@ -322,6 +346,27 @@ export function CompareTab({ filters }: CompareTabProps) {
         return value !== undefined ? value >= 0 : undefined;
       })(),
       description: 'Expected value per trade'
+    },
+    {
+      title: 'Avg. Position Size',
+      value: safeFormatCurrency(getNumberValue(optionData, 'average_position_size', 'averagePositionSize')),
+      description: 'Average size of positions'
+    },
+    {
+      title: 'Avg. Risk per Trade',
+      value: safeFormatCurrency(getNumberValue(optionData, 'average_risk_per_trade', 'averageRiskPerTrade')),
+      description: 'Average risk amount per trade'
+    },
+    {
+      title: 'Loss Rate',
+      value: (() => {
+        const lossRate = getNumberValue(optionData, 'loss_rate', 'lossRate');
+        if (lossRate === undefined) return 'N/A';
+        const percentage = lossRate > 1 ? lossRate : lossRate * 100;
+        return `${percentage.toFixed(1)}%`;
+      })(),
+      isPositive: false,
+      description: 'Percentage of losing trades'
     }
   ];
 

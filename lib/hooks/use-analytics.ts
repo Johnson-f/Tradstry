@@ -9,11 +9,13 @@ import type {
   CombinedAnalytics,
   DailyPnLTrade,
   TickerProfitSummary,
+  WeeklyTradingMetrics,
   UseAnalyticsReturn,
   UsePortfolioAnalyticsReturn,
   UseCombinedAnalyticsReturn,
   UseDailyPnLTradesReturn,
   UseTickerProfitSummaryReturn,
+  UseWeeklyTradingMetricsReturn,
   AnalyticsFilters,
   PeriodType
 } from "@/lib/types/analytics";
@@ -451,6 +453,27 @@ export function useStockLossRate(filters?: AnalyticsFilters) {
 
   return {
     lossRate: lossRate ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useWeeklyTradingMetrics(): UseWeeklyTradingMetricsReturn {
+  const {
+    data: weeklyData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['weeklyTradingMetrics'],
+    queryFn: () => analyticsService.getWeeklyTradingMetrics(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  return {
+    weeklyData: weeklyData ?? null,
     isLoading,
     error: error as Error | null,
     refetch,

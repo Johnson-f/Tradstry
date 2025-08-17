@@ -70,6 +70,9 @@ class OptionAnalytics(BaseModel):
     avg_hold_time_losers: float = Field(description="Average hold time for losing trades in days")
     biggest_winner: float = Field(description="Biggest winning trade profit")
     biggest_loser: float = Field(description="Biggest losing trade loss (as positive number)")
+    average_position_size: float = Field(description="Average position size (premium * number_contracts * 100)")
+    average_risk_per_trade: float = Field(description="Average risk amount per trade")
+    loss_rate: float = Field(description="Loss rate as a percentage (0-100)")
 
 class PeriodInfo(BaseModel):
     """Model for period information."""
@@ -96,6 +99,9 @@ class CombinedAnalytics(BaseModel):
     avg_hold_time_losers: float = Field(description="Combined average hold time for losing trades in days")
     biggest_winner: float = Field(description="Combined biggest winning trade profit")
     biggest_loser: float = Field(description="Combined biggest losing trade loss (as positive number)")
+    average_position_size: float = Field(description="Combined average position size")
+    average_risk_per_trade: float = Field(description="Combined average risk amount per trade")
+    loss_rate: float = Field(description="Combined loss rate as a percentage (0-100)")
 
 class DailyPnLTrade(BaseModel):
     """Model for daily P&L and trade count data."""

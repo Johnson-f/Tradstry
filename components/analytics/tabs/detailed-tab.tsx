@@ -3,6 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsService } from "@/lib/services/analytics-service";
+import { 
+  useCombinedAveragePositionSize,
+  useCombinedAverageRiskPerTrade,
+  useCombinedLossRate
+} from "@/hooks/use-analytics";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertCircle, PieChart, BarChart3, Calendar } from "lucide-react";
@@ -136,6 +141,18 @@ export function DetailedTab({ filters }: DetailedTabProps) {
 
   const apiParams = getApiQueryParams();
 
+  // Convert apiParams to hook format (snake_case)
+  const hookParams = {
+    period_type: apiParams.periodType,
+    custom_start_date: apiParams.customStartDate,
+    custom_end_date: apiParams.customEndDate
+  };
+
+  // Combined analytics hooks for individual metrics
+  const { data: avgPositionSize, isLoading: isLoadingPositionSize } = useCombinedAveragePositionSize(hookParams);
+  const { data: avgRiskPerTrade, isLoading: isLoadingRiskPerTrade } = useCombinedAverageRiskPerTrade(hookParams);
+  const { data: lossRate, isLoading: isLoadingLossRate } = useCombinedLossRate(hookParams);
+
   const { data, isLoading, error, refetch } = useQuery<CombinedAnalytics, Error>({
     queryKey: ['combinedPortfolioAnalytics', apiParams],
     queryFn: async () => {
@@ -216,7 +233,8 @@ export function DetailedTab({ filters }: DetailedTabProps) {
       title: 'Net P&L',
       value: formatCurrency(getApiValue(apiData.netPnl || apiData.net_pnl, 0)),
       isPositive: (apiData.netPnl || apiData.net_pnl || 0) >= 0,
-      description: 'Total profit/loss for the period'
+      description: 'Total profit/loss for the period',
+      isLoading: isLoading
     },
     {
       title: 'Win Rate',
@@ -277,6 +295,27 @@ export function DetailedTab({ filters }: DetailedTabProps) {
       value: formatCurrency(getApiValue(apiData.tradeExpectancy || apiData.trade_expectancy, 0)),
       isPositive: (apiData.tradeExpectancy || apiData.trade_expectancy || 0) >= 0,
       description: 'Expected value per trade'
+    },
+    {
+      title: 'Avg. Position Size',
+      value: formatCurrency(avgPositionSize || 0),
+      description: 'Average position size across all trades',
+      isPositive: true,
+      isLoading: isLoadingPositionSize
+    },
+    {
+      title: 'Avg. Risk Per Trade',
+      value: formatCurrency(avgRiskPerTrade || 0),
+      description: 'Average risk amount per trade',
+      isPositive: false,
+      isLoading: isLoadingRiskPerTrade
+    },
+    {
+      title: 'Loss Rate',
+      value: `${((lossRate || 0) * 100).toFixed(1)}%`,
+      description: 'Percentage of losing trades',
+      isPositive: (lossRate || 0) < 0.5,
+      isLoading: isLoadingLossRate
     }
   ];
 

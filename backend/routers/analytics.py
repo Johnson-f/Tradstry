@@ -440,6 +440,48 @@ async def get_option_biggest_loser(
         **date_params
     )
 
+@router.get("/options/average-position-size", response_model=float)
+async def get_option_average_position_size(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average position size for option trades with optional date range filtering.
+    Returns the average position size (premium * number_contracts * 100) in the account's currency.
+    """
+    return await analytics_service.get_option_average_position_size(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/average-risk-per-trade", response_model=float)
+async def get_option_average_risk_per_trade(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the average risk per trade for option trades with optional date range filtering.
+    Returns the average risk amount per trade in the account's currency.
+    """
+    return await analytics_service.get_option_average_risk_per_trade(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/options/loss-rate", response_model=float)
+async def get_option_loss_rate(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the loss rate for option trades with optional date range filtering.
+    Returns the loss rate as a percentage (0-100).
+    """
+    return await analytics_service.get_option_loss_rate(
+        current_user["id"],
+        **date_params
+    )
+
 # Portfolio Analytics Endpoint
 @router.get("/portfolio", response_model=PortfolioAnalytics)
 async def get_portfolio_analytics(
@@ -466,6 +508,48 @@ async def get_combined_portfolio_analytics(
     Returns metrics calculated across all trades regardless of type.
     """
     return await analytics_service.get_combined_portfolio_analytics(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/combined/average-position-size", response_model=float)
+async def get_combined_average_position_size(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the combined average position size for all trades with optional date range filtering.
+    Returns the average position size combining stocks and options.
+    """
+    return await analytics_service.get_combined_average_position_size(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/combined/average-risk-per-trade", response_model=float)
+async def get_combined_average_risk_per_trade(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the combined average risk per trade for all trades with optional date range filtering.
+    Returns the average risk amount per trade combining stocks and options.
+    """
+    return await analytics_service.get_combined_average_risk_per_trade(
+        current_user["id"],
+        **date_params
+    )
+
+@router.get("/combined/loss-rate", response_model=float)
+async def get_combined_loss_rate(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get the combined loss rate for all trades with optional date range filtering.
+    Returns the loss rate as a percentage (0-100) combining stocks and options.
+    """
+    return await analytics_service.get_combined_loss_rate(
         current_user["id"],
         **date_params
     )
@@ -548,7 +632,10 @@ async def get_option_summary(
         avg_hold_time_winners=await analytics_service.get_option_avg_hold_time_winners(user_id, period_type.value),
         avg_hold_time_losers=await analytics_service.get_option_avg_hold_time_losers(user_id, period_type.value),
         biggest_winner=await analytics_service.get_option_biggest_winner(user_id, period_type.value),
-        biggest_loser=await analytics_service.get_option_biggest_loser(user_id, period_type.value)
+        biggest_loser=await analytics_service.get_option_biggest_loser(user_id, period_type.value),
+        average_position_size=await analytics_service.get_option_average_position_size(user_id, period_type.value),
+        average_risk_per_trade=await analytics_service.get_option_average_risk_per_trade(user_id, period_type.value),
+        loss_rate=await analytics_service.get_option_loss_rate(user_id, period_type.value)
     )
 
 @router.get("/portfolio/combined/summary/{period_type}", response_model=CombinedAnalytics)
