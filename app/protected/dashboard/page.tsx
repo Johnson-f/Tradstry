@@ -1,17 +1,16 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { AnalyticsTabs } from "@/components/analytics/analytics-tabs";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { format, subDays, startOfYear, isWithinInterval } from "date-fns";
-import { Calendar as CalendarIcon, ChevronDown, RefreshCw } from "lucide-react";
+import { format, subDays, startOfYear } from "date-fns";
+import { ChevronDown, RefreshCw } from "lucide-react";
 
 type TimeRange = '7d' | '30d' | '90d' | 'ytd' | '1y' | 'all';
 
-export default function AnalyticsSectionPage() {
+export default function DashboardPage() {
   const [date, setDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
@@ -54,22 +53,9 @@ export default function AnalyticsSectionPage() {
     });
   }, [timeRange]);
 
-  // Handle manual date selection
-  const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate) {
-      setDate(selectedDate);
-      setDateRange({
-        start: selectedDate,
-        end: new Date()
-      });
-      setTimeRange('custom');
-    }
-  };
-
   // Handle refresh
   const handleRefresh = () => {
     // This will trigger a re-fetch of the data with the current filters
-    // The actual implementation will depend on how you're fetching your data
     console.log('Refreshing with date range:', dateRange);
   };
 
@@ -78,7 +64,7 @@ export default function AnalyticsSectionPage() {
       {/* Header - Fixed */}
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           
           {/* Filter Controls */}
           <div className="flex items-center gap-4">
@@ -109,7 +95,7 @@ export default function AnalyticsSectionPage() {
                         start: range.from,
                         end: range.to
                       });
-                      setTimeRange('custom');
+                      setTimeRange('custom' as TimeRange);
                     }
                   }}
                   initialFocus
@@ -130,18 +116,15 @@ export default function AnalyticsSectionPage() {
               <option value="1y">1-year</option>
               <option value="all">All time</option>
             </select>
-
-            {/* Refresh Button */}
-          
           </div>
         </div>
       </div>
-
+      
       {/* Main content - Scrollable area with native overflow */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
-            <AnalyticsTabs dateRange={dateRange} />
+            <div>COMING SOON</div>
           </div>
         </div>
       </div>

@@ -3,26 +3,57 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Home, Calendar, NotebookPen, ChartCandlestick, Settings, Library, PieChart, ChartNoAxesColumnIncreasing, BrainCog, Wallet, LogOut, Moon, Search, ChevronLeft, ChevronRight, Sun, Notebook } from "lucide-react";
+import {
+  Home,
+  Calendar,
+  NotebookPen,
+  ChartCandlestick,
+  GraduationCap,
+  Settings,
+  Library,
+  PieChart,
+  ChartNoAxesColumnIncreasing,
+  BrainCog,
+  Wallet,
+  LogOut,
+  Moon,
+  ChevronLeft,
+  ChevronRight,
+  Sun,
+  Notebook,
+  LayoutDashboard,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 import { SettingsDialog } from "./settings-dialog";
 
 const navItems = [
-  { label: "Dashboard", icon: Home, href: "/protected" },
+  { label: "Home", icon: Home, href: "/protected" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/protected/dashboard" },
   { label: "Journal", icon: NotebookPen, href: "/protected/journal" },
   { label: "Calendar", icon: Calendar, href: "/protected/calendar" },
   { label: "Setups", icon: Library, href: "/protected/setups" },
   { label: "Notebook", icon: Notebook, href: "/protected/notebook" },
   { label: "Analytics", icon: PieChart, href: "/protected/analytics" },
-  { label: "AI Reports", icon: ChartNoAxesColumnIncreasing, href: "/protected/performance" },
+  {
+    label: "AI Reports",
+    icon: ChartNoAxesColumnIncreasing,
+    href: "/protected/ai-reports",
+  },
   { label: "Mindset Lab", icon: BrainCog, href: "/protected/mindset" },
   { label: "Markets", icon: ChartCandlestick, href: "/protected/markets" },
   { label: "Brokerage", icon: Wallet, href: "/protected/brokerage" },
+  { label: "Education", icon: GraduationCap, href: "/protected/education" },
 ];
 
-export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void; }) {
+export default function Sidebar({
+  collapsed,
+  onCollapsedChange,
+}: {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -32,7 +63,7 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
   useEffect(() => {
     setMounted(true);
   }, []);
-  
+
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -47,7 +78,7 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
       <aside
         className={cn(
           "fixed top-0 left-0 h-screen shadow-xl flex flex-col justify-between transition-all duration-300 z-50",
-          collapsed ? "w-16" : "w-68", // Update the sidebar width here 
+          collapsed ? "w-16" : "w-68", // Update the sidebar width here
           "bg-[#23272f] bg-slate-900"
         )}
       >
@@ -61,8 +92,12 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
               </div>
               {!collapsed && (
                 <div>
-                  <div className="text-white font-bold text-base leading-tight">Tradistry</div>
-                  <div className="text-xs text-slate-400 leading-tight">Journal & Analytics</div>
+                  <div className="text-white font-bold text-base leading-tight">
+                    Tradistry
+                  </div>
+                  <div className="text-xs text-slate-400 leading-tight">
+                    Journal & Analytics
+                  </div>
                 </div>
               )}
             </div>
@@ -71,24 +106,12 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
               onClick={() => onCollapsedChange(!collapsed)}
               aria-label="Toggle sidebar"
             >
-              {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-            </button>
-          </div>
-          {/* Search Bar */}
-          <div className={cn("px-4 transition-all", collapsed ? "px-2" : "")}> 
-            <div className={cn(
-              "flex items-center bg-[#2d323c] rounded-lg",
-              collapsed ? "justify-center p-2" : "px-3 py-2"
-            )}>
-              <Search className="w-4 h-4 text-slate-400" />
-              {!collapsed && (
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="bg-transparent outline-none text-sm text-slate-200 ml-2 w-full placeholder:text-slate-400"
-                />
+              {collapsed ? (
+                <ChevronRight className="w-5 h-5" />
+              ) : (
+                <ChevronLeft className="w-5 h-5" />
               )}
-            </div>
+            </button>
           </div>
           {/* Navigation */}
           <nav className="mt-6 flex flex-col gap-1 px-2">
@@ -104,7 +127,9 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
                     )}
                   >
                     <item.icon className="w-5 h-5" />
-                    {!collapsed && <span className="text-sm flex-1">{item.label}</span>}
+                    {!collapsed && (
+                      <span className="text-sm flex-1">{item.label}</span>
+                    )}
                   </div>
                 </Link>
               );
@@ -131,8 +156,17 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
               collapsed ? "justify-center gap-0 w-10 h-10 p-0" : ""
             )}
           >
-            {mounted && (theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
-            {!collapsed && mounted && <span className="text-sm">{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+            {mounted &&
+              (theme === "dark" ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              ))}
+            {!collapsed && mounted && (
+              <span className="text-sm">
+                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              </span>
+            )}
           </button>
           <button
             className={cn(
@@ -146,7 +180,7 @@ export default function Sidebar({ collapsed, onCollapsedChange }: { collapsed: b
           </button>
         </div>
       </aside>
-      
+
       {/* Settings Dialog */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>

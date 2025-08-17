@@ -123,29 +123,28 @@ export function useTickerProfitSummary(params: {
   });
 }
 
-// Helper hook for weekly P&L data
-export function useWeeklyPnLTrades(weekStart: Date) {
-  const startDate = new Date(weekStart);
-  const endDate = new Date(weekStart);
-  endDate.setDate(startDate.getDate() + 6);
-  endDate.setHours(23, 59, 59, 999);
-
-  return useDailyPnLTrades({
+// Helper hook for P&L data by date range
+export function useWeeklyPnLTrades(startDate?: Date | null, endDate?: Date | null) {
+  const { data: dailyData, ...rest } = useDailyPnLTrades({
     period_type: 'custom',
-    custom_start_date: startDate.toISOString(),
-    custom_end_date: endDate.toISOString(),
+    custom_start_date: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+    custom_end_date: endDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]
   });
+
+  return {
+    data: dailyData,
+    ...rest
+  };
 }
 
-// Helper hook for recent ticker data (last 30 days)
-export function useRecentTickerSummary(limit: number = 6) {
-  // Use fixed params to prevent infinite re-renders
-  const params = useMemo(() => ({
-    period_type: 'all_time' as const,
-    // Don't include limit for now to debug
-  }), []);
-
-  return useTickerProfitSummary(params);
+// Helper hook for ticker data by date range
+export function useRecentTickerSummary(startDate?: Date | null, endDate?: Date | null, limit: number = 6) {
+  return useTickerProfitSummary({
+    period_type: 'custom',
+    custom_start_date: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+    custom_end_date: endDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+    limit: limit.toString()
+  });
 }
 
 // Options Analytics Hooks
