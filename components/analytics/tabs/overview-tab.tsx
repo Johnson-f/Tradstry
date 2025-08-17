@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart, Line, ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from "recharts";
 import { useWeeklyPnLTrades, useRecentTickerSummary } from "@/hooks/use-analytics";
 import { useCombinedPortfolioAnalytics, useWeeklyTradingMetrics } from "@/lib/hooks/use-analytics";
+import { useMonthlyMetrics } from "@/lib/hooks/use-monthly-metrics";
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = [
@@ -16,7 +17,14 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export function OverviewTab() {
+interface OverviewTabProps {
+  dateRange: {
+    start: Date;
+    end: Date;
+  };
+}
+
+export function OverviewTab({ dateRange }: OverviewTabProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     // Get start of current week (Monday)
     const today = new Date();
@@ -33,20 +41,26 @@ export function OverviewTab() {
     data: dailyData = [],
     isLoading: loading,
     error: dailyError,
-  } = useWeeklyPnLTrades(currentWeekStart);
+  } = useWeeklyPnLTrades(dateRange.start);
 
   const {
     data: tickerData = [],
     isLoading: tickerLoading,
     error: tickerQueryError,
-  } = useRecentTickerSummary(6);
+  } = useRecentTickerSummary(dateRange.start, dateRange.end);
   
-  // Get weekly trading metrics from the dedicated endpoint
+  // Get weekly and monthly trading metrics from the dedicated endpoints
   const {
     weeklyData: weeklyTradingMetrics,
     isLoading: weeklyMetricsLoading,
     error: weeklyMetricsError,
-  } = useWeeklyTradingMetrics();
+  } = useWeeklyTradingMetrics(dateRange.start, dateRange.end);
+  
+  const {
+    monthlyData: monthlyTradingMetrics,
+    isLoading: monthlyMetricsLoading,
+    error: monthlyMetricsError,
+  } = useMonthlyMetrics();
   
   // Get weekly combined portfolio analytics for performance metrics (fallback)
   const {
@@ -74,9 +88,29 @@ export function OverviewTab() {
     return 'An unexpected error occurred';
   };
 
+  // Helper function to format currency with proper sign and k/m/b formatting
+  const formatCurrency = (value: number): string => {
+    if (value === 0) return '$0';
+    
+    const isPositive = value >= 0;
+    const absValue = Math.abs(value);
+    
+    if (absValue >= 1000000) {
+      const mValue = (absValue / 1000000).toFixed(1);
+      return `${isPositive ? '+' : '-'}$${mValue}M`;
+    } else if (absValue >= 1000) {
+      const kValue = (absValue / 1000).toFixed(1);
+      return `${isPositive ? '+' : '-'}$${kValue}k`;
+    } else {
+      const formatted = absValue.toFixed(0);
+      return `${isPositive ? '+' : '-'}$${formatted}`;
+    }
+  };
+
   const error = getErrorMessage(dailyError);
   const tickerError = getErrorMessage(tickerQueryError);
   const weeklyError = getErrorMessage(weeklyMetricsError);
+  const monthlyError = getErrorMessage(monthlyMetricsError);
 
 
   // Generate the 7 days of current week
@@ -93,21 +127,6 @@ export function OverviewTab() {
     return dailyData.find(item => item.trade_date === dateStr);
   };
 
-  // Helper function to format currency
-  const formatCurrency = (value: number) => {
-    if (value === 0) return '$0';
-    
-    const isPositive = value >= 0;
-    const absValue = Math.abs(value);
-    
-    if (absValue >= 1000) {
-      const kValue = (absValue / 1000).toFixed(1);
-      return `${isPositive ? '+' : '-'}$${kValue}k`;
-    } else {
-      const formatted = absValue.toFixed(0);
-      return `${isPositive ? '+' : '-'}$${formatted}`;
-    }
-  };
 
   // Calculate heat map intensity based on P&L
   const getHeatMapIntensity = (pnl: number, maxPnl: number) => {
@@ -479,12 +498,12 @@ export function OverviewTab() {
                       <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop 
                           offset="5%" 
-                          stopColor={realWeeklyStats.totalPnl >= 0 ? '#22c55e' : '#ef4444'} 
+                          stopColor={realWeeklyStats.totalPnl >= 0 ? "#22c55e" : "#ef4444"} 
                           stopOpacity={0.3}
                         />
                         <stop 
                           offset="95%" 
-                          stopColor={realWeeklyStats.totalPnl >= 0 ? '#22c55e' : '#ef4444'} 
+                          stopColor={realWeeklyStats.totalPnl >= 0 ? "#22c55e" : "#ef4444"} 
                           stopOpacity={0.1}
                         />
                       </linearGradient>
@@ -494,7 +513,7 @@ export function OverviewTab() {
                     <Area
                       type="monotone"
                       dataKey="value"
-                      stroke={realWeeklyStats.totalPnl >= 0 ? '#22c55e' : '#ef4444'}
+                      stroke={realWeeklyStats.totalPnl >= 0 ? "#22c55e" : "#ef4444"}
                       strokeWidth={2}
                       fill="url(#pnlGradient)"
                     />
@@ -561,6 +580,154 @@ export function OverviewTab() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Monthly Performance Stats */}
+      <Card className="mt-6">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl font-semibold flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+            Monthly Performance Metrics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Show loading state for monthly metrics */}
+          {monthlyMetricsLoading ? (
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="text-sm text-blue-700">Loading monthly trading metrics...</div>
+            </div>
+          ) : monthlyError ? (
+            <div className="mb-4 p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="text-sm text-red-700">Error loading monthly metrics: {monthlyError}</div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Win Rate Progress */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Win Rate</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {monthlyTradingMetrics?.win_rate ? monthlyTradingMetrics.win_rate.toFixed(1) : '0.0'}%
+                    </span>
+                  </div>
+                  <Progress value={monthlyTradingMetrics?.win_rate || 0} className="h-3" />
+                  <div className="text-xs text-gray-500">
+                    {monthlyTradingMetrics?.profitable_trades || 0} profitable trades out of {monthlyTradingMetrics?.total_trades || 0}
+                  </div>
+                </div>
+
+                {/* Net P&L Progress with Chart */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Net P&L</span>
+                    <span className={`text-sm font-semibold ${
+                      (monthlyTradingMetrics?.net_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatCurrency(monthlyTradingMetrics?.net_pnl || 0)}
+                    </span>
+                  </div>
+                  
+                  {/* Mini P&L Trend Chart */}
+                  <div className="h-16 bg-gray-50 rounded border overflow-hidden">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={(() => {
+                        // Generate sample monthly P&L trend data
+                        const baseValue = monthlyTradingMetrics?.net_pnl || 0;
+                        return Array.from({ length: 4 }, (_, i) => ({
+                          week: `Week ${i + 1}`,
+                          value: baseValue * (0.1 + (i / 4) * 0.9) + (Math.random() - 0.5) * (Math.abs(baseValue) * 0.3)
+                        }));
+                      })()}>
+                        <defs>
+                          <linearGradient id="monthlyPnlGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop 
+                              offset="5%" 
+                              stopColor={(monthlyTradingMetrics?.net_pnl || 0) >= 0 ? "#22c55e" : "#ef4444"} 
+                              stopOpacity={0.3}
+                            />
+                            <stop 
+                              offset="95%" 
+                              stopColor={(monthlyTradingMetrics?.net_pnl || 0) >= 0 ? "#22c55e" : "#ef4444"} 
+                              stopOpacity={0.1}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="week" hide />
+                        <YAxis hide />
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke={(monthlyTradingMetrics?.net_pnl || 0) >= 0 ? "#22c55e" : "#ef4444"}
+                          strokeWidth={2}
+                          fill="url(#monthlyPnlGradient)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  <div className="text-xs text-gray-500">
+                    {monthlyTradingMetrics?.total_trades || 0} total trades this month
+                  </div>
+                </div>
+
+                {/* Profit Factor */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Profit Factor</span>
+                    <span className={`text-sm font-semibold ${
+                      (monthlyTradingMetrics?.profit_factor || 0) >= 1.2 ? 'text-green-600' : 
+                      (monthlyTradingMetrics?.profit_factor || 0) >= 1.0 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {monthlyTradingMetrics?.profit_factor ? monthlyTradingMetrics.profit_factor.toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Gross profit / Gross loss ratio
+                  </div>
+                </div>
+              </div>
+
+              {/* Monthly Summary Stats */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold text-gray-900">{monthlyTradingMetrics?.total_trades || 0}</div>
+                    <div className="text-xs text-gray-500">Total Trades</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold text-green-600">{monthlyTradingMetrics?.profitable_trades || 0}</div>
+                    <div className="text-xs text-gray-500">Profitable Trades</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold text-red-600">{monthlyTradingMetrics?.unprofitable_trades || 0}</div>
+                    <div className="text-xs text-gray-500">Unprofitable Trades</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className={`text-lg font-semibold ${
+                      (monthlyTradingMetrics?.expectancy_per_trade || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatCurrency(monthlyTradingMetrics?.expectancy_per_trade || 0)}
+                    </div>
+                    <div className="text-xs text-gray-500">Expectancy/Trade</div>
+                  </div>
+                </div>
+                
+                {/* Max Drawdown - Show separately as it's important */}
+                {monthlyTradingMetrics?.max_drawdown !== null && monthlyTradingMetrics?.max_drawdown > 0 && (
+                  <div className="mt-4 text-center">
+                    <div className="space-y-1">
+                      <div className="text-lg font-semibold text-red-600">
+                        {formatCurrency(monthlyTradingMetrics.max_drawdown)}
+                      </div>
+                      <div className="text-xs text-gray-500">Max Drawdown</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AnalyticsFilters } from './analytics-filters';
 import { OverviewTab } from './tabs/overview-tab';
 import { DetailedTab } from './tabs/detailed-tab';
 import { CompareTab } from './tabs/compare-tab';
@@ -10,25 +9,32 @@ import { AdvancedTab } from './tabs/advanced-tab';
 import { SetupTab } from './tabs/setup-tab';
 import { AnalyticsFilters as AnalyticsFiltersType } from '@/lib/types/analytics';
 
-export function AnalyticsTabs() {
+interface AnalyticsTabsProps {
+  dateRange: {
+    start: Date;
+    end: Date;
+  };
+}
+
+export function AnalyticsTabs({ dateRange }: AnalyticsTabsProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFiltersType>({
     periodType: '30d',
-    customStartDate: null,
-    customEndDate: null
+    startDate: dateRange.start,
+    endDate: dateRange.end
   });
 
-  const handleFiltersChange = (newFilters: AnalyticsFiltersType) => {
-    console.log('[AnalyticsTabs] Filters changed:', newFilters);
-    setAnalyticsFilters(newFilters);
-  };
+  // Update filters when dateRange changes
+  useState(() => {
+    setAnalyticsFilters(prev => ({
+      ...prev,
+      startDate: dateRange.start,
+      endDate: dateRange.end
+    }));
+  }, [dateRange]);
 
   return (
-    <div className="w-full space-y-6">
-      <AnalyticsFilters 
-        onFiltersChange={handleFiltersChange}
-        initialFilters={analyticsFilters}
-      />
+    <div className="w-full">
       <Tabs 
         defaultValue="overview" 
         className="w-full"
@@ -45,7 +51,10 @@ export function AnalyticsTabs() {
       
       <div className="mt-6">
         <TabsContent value="overview">
-          <OverviewTab filters={analyticsFilters} />
+          <OverviewTab 
+            filters={analyticsFilters} 
+            dateRange={dateRange}
+          />
         </TabsContent>
         <TabsContent value="detailed">
           <DetailedTab filters={analyticsFilters} />
