@@ -670,3 +670,58 @@ class AnalyticsService:
         except Exception as e:
             print(f"Error getting monthly trading metrics: {str(e)}")
             return {}
+
+
+
+    async def get_combined_trade_metrics(
+            self,
+            user_id: str,  # Keep for consistency with other methods, but not used
+            period_type: str = 'all_time',
+            custom_start_date: Optional[datetime] = None,
+            custom_end_date: Optional[datetime] = None
+        ) -> List[Dict[str, Any]]:
+            """
+            Get combined trade metrics (stocks + options) with date range filtering.
+            Note: user_id is accepted for consistency but SQL function uses auth.uid() internally.
+            
+            Args:
+                user_id: The user ID (not used - SQL function uses auth.uid())
+                period_type: Time period type ('7d', '30d', '90d', '1y', 'ytd', 'all_time', 'custom')
+                custom_start_date: Start date for custom period
+                custom_end_date: End date for custom period
+                
+            Returns:
+                List of dictionaries containing trade_date, total_trades, activity_level, and net_pnl
+            """
+            try:
+                # Build parameters for the SQL function (no user_id needed - uses auth.uid())
+                params = {
+                    'p_time_range': period_type,
+                }
+                
+                # Add custom dates if provided
+                if custom_start_date:
+                    params['p_custom_start_date'] = custom_start_date.strftime('%Y-%m-%d')
+                if custom_end_date:
+                    params['p_custom_end_date'] = custom_end_date.strftime('%Y-%m-%d')
+                
+                # Call the SQL function
+                result = self.supabase.rpc('get_combined_trade_metrics', params).execute()
+                
+                # Ensure dates are in ISO format for JSON serialization
+                if result.data:
+                    for item in result.data:
+                        if 'trade_date' in item and item['trade_date']:
+                            # Check if it's already a string or needs conversion
+                            if isinstance(item['trade_date'], str):
+                                # It's already a string, no need to convert
+                                pass
+                            else:
+                                # It's a datetime object, convert to ISO format
+                                item['trade_date'] = item['trade_date'].isoformat()
+                
+                return result.data or []
+                
+            except Exception as e:
+                print(f"Error getting combined trade metrics: {str(e)}")
+                return []            

@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Home,
-  Calendar,
   NotebookPen,
   ChartCandlestick,
   GraduationCap,
@@ -32,7 +31,6 @@ const navItems = [
   { label: "Home", icon: Home, href: "/protected" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/protected/dashboard" },
   { label: "Journal", icon: NotebookPen, href: "/protected/journal" },
-  { label: "Calendar", icon: Calendar, href: "/protected/calendar" },
   { label: "Setups", icon: Library, href: "/protected/setups" },
   { label: "Notebook", icon: Notebook, href: "/protected/notebook" },
   { label: "Analytics", icon: PieChart, href: "/protected/analytics" },

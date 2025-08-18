@@ -214,4 +214,18 @@ export interface UseMonthlyMetricsReturn {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+}
+
+export interface CombinedTradeMetric {
+  trade_date: string;
+  total_trades: number;
+  activity_level: number;
+  net_pnl: number;
+}
+
+export interface UseCombinedTradeMetricsReturn {
+  metricsData: CombinedTradeMetric[] | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
 } 

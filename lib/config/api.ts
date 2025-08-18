@@ -81,6 +81,7 @@ export const apiConfig = {
       // Combined portfolio analytics
       portfolioCombined: "/analytics/portfolio/combined",
       portfolioCombinedSummary: (periodType: string) => `/analytics/portfolio/combined/summary/${periodType}`,
+      combinedTradeMetrics: "/analytics/combined-trade-metrics",
       // Combined individual metrics
       combined: {
         averagePositionSize: "/analytics/combined/average-position-size",

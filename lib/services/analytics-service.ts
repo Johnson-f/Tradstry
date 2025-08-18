@@ -10,6 +10,7 @@ import type {
   WeeklyMetrics,
   WeeklyTradingMetrics,
   MonthlyMetrics,
+  CombinedTradeMetric,
   AnalyticsQuery
 } from "@/lib/types/analytics";
 
@@ -259,7 +260,20 @@ class AnalyticsService {
     return apiClient.get<CombinedAnalytics>(apiConfig.endpoints.analytics.portfolioCombined, { params });
   }
 
-  // Combined Individual Metrics
+  // Combined Analytics Methods
+  async getCombinedTradeMetrics(params?: AnalyticsQuery): Promise<CombinedTradeMetric[]> {
+    // Convert camelCase to snake_case for the backend
+    const snakeCaseParams = params ? {
+      period_type: params.periodType,
+      custom_start_date: params.customStartDate,
+      custom_end_date: params.customEndDate
+    } : undefined;
+    
+    return apiClient.get<CombinedTradeMetric[]>(apiConfig.endpoints.analytics.combinedTradeMetrics, { 
+      params: snakeCaseParams 
+    });
+  }
+
   async getCombinedAveragePositionSize(params?: AnalyticsQuery): Promise<number> {
     return apiClient.get<number>(apiConfig.endpoints.analytics.combined.averagePositionSize, { params });
   }
