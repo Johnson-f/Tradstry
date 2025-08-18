@@ -11,6 +11,9 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 import { getTimeBasedGreeting } from "@/lib/utils/greetings";
 import { MetricsCards } from "@/components/dashboard/metrics-cards";
 import { TradingHeatmap } from "@/components/dashboard/trading-heatmap";
+import { DailyPnLChart } from "@/components/dashboard/daily-pnl-chart";
+import { TradingMetrics } from "@/components/dashboard/trading-metrics";
+import { PnLCalendar } from "@/components/dashboard/pnl-calendar";
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all_time' | 'custom';
 
@@ -134,23 +137,36 @@ export default function DashboardPage() {
             <DashboardGreeting />
             
             {/* Metrics Cards */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <MetricsCards 
-                filters={{
-                  periodType: timeRange === 'custom' ? 'custom' : timeRange,
-                  customStartDate: timeRange === 'custom' ? dateRange.start : undefined,
-                  customEndDate: timeRange === 'custom' ? dateRange.end : undefined,
-                }}
+                timeRange={timeRange}
+                customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
+                customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
               />
-            </div>
-            
-            {/* Trading Activity Heatmap */}
-            <div className="space-y-4">
-              <TradingHeatmap 
-                periodType={timeRange === 'custom' ? 'custom' : timeRange}
-                customStartDate={timeRange === 'custom' ? dateRange.start.toISOString().split('T')[0] : undefined}
-                customEndDate={timeRange === 'custom' ? dateRange.end.toISOString().split('T')[0] : undefined}
-              />
+              
+              {/* Trading Metrics, Daily P&L Chart, and Trading Heatmap in a single row */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <TradingMetrics timeRange={timeRange} />
+                <DailyPnLChart 
+                  periodType={timeRange === 'custom' ? 'custom' : timeRange}
+                  customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
+                  customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
+                />
+                <TradingHeatmap 
+                  periodType={timeRange === 'custom' ? 'custom' : timeRange}
+                  customStartDate={timeRange === 'custom' ? format(dateRange.start, 'yyyy-MM-dd') : undefined}
+                  customEndDate={timeRange === 'custom' ? format(dateRange.end, 'yyyy-MM-dd') : undefined}
+                />
+              </div>
+              
+              {/* P&L Calendar */}
+              <div className="grid gap-4">
+                <PnLCalendar 
+                  timeRange={timeRange}
+                  customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
+                  customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
+                />
+              </div>
             </div>
           </div>
         </div>
