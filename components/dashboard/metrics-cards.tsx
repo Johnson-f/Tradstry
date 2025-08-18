@@ -8,24 +8,22 @@ import { format } from "date-fns";
 import type { AnalyticsFilters, CombinedAnalytics, AnalyticsQuery } from "@/lib/types/analytics";
 
 interface MetricsCardsProps {
-  filters?: AnalyticsFilters;
+  timeRange?: string;
+  customStartDate?: Date;
+  customEndDate?: Date;
 }
 
-export function MetricsCards({ filters }: MetricsCardsProps) {
-  // Convert filters to API query parameters
+export function MetricsCards({ timeRange = '30d', customStartDate, customEndDate }: MetricsCardsProps) {
+  // Convert props to API query parameters
   const getApiQueryParams = (): AnalyticsQuery => {
-    if (!filters) {
-      return { periodType: '30d' };
-    }
-
     const params: AnalyticsQuery = {
-      periodType: filters.periodType || '30d'
+      periodType: timeRange || '30d'
     };
 
     // Add custom date range if provided
-    if (filters.customStartDate && filters.customEndDate) {
-      params.customStartDate = format(filters.customStartDate, 'yyyy-MM-dd');
-      params.customEndDate = format(filters.customEndDate, 'yyyy-MM-dd');
+    if (timeRange === 'custom' && customStartDate && customEndDate) {
+      params.customStartDate = format(customStartDate, 'yyyy-MM-dd');
+      params.customEndDate = format(customEndDate, 'yyyy-MM-dd');
     }
 
     return params;

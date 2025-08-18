@@ -21,3 +21,11 @@ export function formatCurrency(value: number): string {
     maximumFractionDigits: 2,
   }).format(value);
 }
+
+export function formatPercentage(value: number, decimals: number = 1): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'percent',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  }).format(value / 100); // Divide by 100 since we expect input as percentage (e.g., 5.5 for 5.5%)
+}
