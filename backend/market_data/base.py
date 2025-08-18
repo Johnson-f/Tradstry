@@ -119,6 +119,31 @@ class CompanyInfo(BaseModel):
         }
 
 
+class EconomicEvent(BaseModel):
+    """Economic event data model"""
+    event_id: str
+    country: str
+    event_name: str
+    event_period: str
+    actual: Optional[Union[Decimal, str]] = None
+    previous: Optional[Union[Decimal, str]] = None
+    forecast: Optional[Union[Decimal, str]] = None
+    unit: Optional[str] = None
+    importance: int = Field(ge=1, le=3)  # 1=Low, 2=Medium, 3=High
+    timestamp: datetime
+    last_update: Optional[datetime] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    provider: str
+    
+    class Config:
+        json_encoders = {
+            Decimal: lambda v: float(v) if v is not None else None,
+            datetime: lambda v: v.isoformat(),
+            date: lambda v: v.isoformat()
+        }
+
+
 class MarketDataProvider(ABC):
     """Abstract base class for market data providers"""
     
@@ -179,13 +204,38 @@ class MarketDataProvider(ABC):
         """Get dividend data for a symbol"""
         return None
     
+    @abstractmethod
+    async def get_economic_events(
+        self,
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 50
+    ) -> List[EconomicEvent]:
+        """
+        Get economic calendar events
+        
+        Args:
+            countries: List of country codes (e.g., ['US', 'EU', 'GB'])
+            importance: Filter by importance (1=Low, 2=Medium, 3=High)
+            start_date: Start date for events
+            end_date: End date for events
+            limit: Maximum number of events to return
+            
+        Returns:
+            List of EconomicEvent objects
+        """
+        pass
+        
+    @abstractmethod
     async def get_news(
         self, 
         symbol: Optional[str] = None, 
         limit: int = 10
     ) -> Optional[List[Dict[str, Any]]]:
         """Get news for a symbol or general market"""
-        return None
+        pass
     
     async def get_technical_indicators(
         self, 

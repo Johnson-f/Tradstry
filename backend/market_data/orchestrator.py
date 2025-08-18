@@ -13,7 +13,8 @@ from .base import (
     StockQuote,
     HistoricalPrice,
     OptionQuote,
-    CompanyInfo
+    CompanyInfo,
+    EconomicEvent
 )
 from .config import MarketDataConfig
 from .providers import (
@@ -307,25 +308,69 @@ class MarketDataOrchestrator:
         )
     
     async def get_news(
-        self,
-        symbol: Optional[str] = None,
-        limit: int = 10
+        self, 
+        symbol: Optional[str] = None, 
+        limit: int = 10,
+        **kwargs
     ) -> FetchResult:
         """
-        Get news with automatic fallback.
+        Get news for a symbol or general market
         
         Args:
-            symbol: Optional stock symbol for company-specific news
-            limit: Maximum number of news items
+            symbol: Optional stock symbol to filter news
+            limit: Maximum number of news items to return
+            **kwargs: Additional provider-specific arguments
             
         Returns:
-            FetchResult containing news list or error
+            FetchResult containing list of news items
         """
         return await self._fetch_with_fallback(
             method_name="get_news",
             data_type="news",
             symbol=symbol,
-            limit=limit
+            limit=limit,
+            **kwargs
+        )
+        
+    async def get_economic_events(
+        self,
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 50,
+        **kwargs
+    ) -> FetchResult:
+        """
+        Get economic calendar events
+        
+        Args:
+            countries: List of country codes (e.g., ['US', 'EU', 'GB'])
+            importance: Filter by importance (1=Low, 2=Medium, 3=High)
+            start_date: Start date for events
+            end_date: End date for events
+            limit: Maximum number of events to return
+            **kwargs: Additional provider-specific arguments
+            
+        Returns:
+            FetchResult containing list of EconomicEvent objects
+        """
+        # Set default date range if not provided
+        today = date.today()
+        if not start_date:
+            start_date = today
+        if not end_date:
+            end_date = today + timedelta(days=30)  # Default to next 30 days
+            
+        return await self._fetch_with_fallback(
+            method_name="get_economic_events",
+            data_type="economic_events",
+            countries=countries,
+            importance=importance,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            **kwargs
         )
     
     async def get_intraday(

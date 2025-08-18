@@ -26,6 +26,66 @@ class MarketDataService:
         """Initialize the service with market data orchestrator"""
         self.orchestrator = MarketDataOrchestrator(config)
     
+    async def fetch_economic_events(
+        self,
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        days_ahead: int = 7,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch economic events and return them in a database-ready format.
+        
+        Args:
+            countries: List of country codes to filter by (e.g., ['US', 'EU', 'GB'])
+            importance: Filter by importance (1=Low, 2=Medium, 3=High)
+            days_ahead: Number of days in the future to fetch events for
+            limit: Maximum number of events to return
+            
+        Returns:
+            List of economic events in database-ready format
+        """
+        from datetime import date, timedelta
+        
+        # Calculate date range
+        today = date.today()
+        end_date = today + timedelta(days=days_ahead)
+        
+        # Fetch economic events
+        result = await self.orchestrator.get_economic_events(
+            countries=countries,
+            importance=importance,
+            start_date=today,
+            end_date=end_date,
+            limit=limit
+        )
+        
+        if not result.success:
+            self._log_error("fetch_economic_events", result.error)
+            return []
+            
+        # Convert to database-ready format
+        events = []
+        for event in result.data:
+            events.append({
+                'event_id': event.event_id,
+                'country': event.country,
+                'event_name': event.event_name,
+                'event_period': event.event_period,
+                'actual': str(event.actual) if event.actual is not None else None,
+                'previous': str(event.previous) if event.previous is not None else None,
+                'forecast': str(event.forecast) if event.forecast is not None else None,
+                'unit': event.unit,
+                'importance': event.importance,
+                'event_time': event.timestamp,
+                'last_updated': event.last_update or datetime.utcnow(),
+                'description': event.description,
+                'url': event.url,
+                'provider': event.provider
+            })
+            
+        return events
+        
     async def fetch_and_store_quote(self, symbol: str) -> Dict[str, Any]:
         """
         Fetch current quote and prepare for database storage.
