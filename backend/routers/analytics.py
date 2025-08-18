@@ -555,6 +555,23 @@ async def get_combined_loss_rate(
     )
 
 # Special Analytics Endpoints
+# Replace the existing get_combined_trade_metrics endpoint with this
+@router.get("/combined-trade-metrics")
+async def get_combined_trade_metrics(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get combined trade metrics (stocks + options) with optional date range filtering.
+    Returns daily metrics including total trades, activity level, and net P&L.
+    """
+    return await analytics_service.get_combined_trade_metrics(
+    current_user["id"],
+    period_type=date_params['period_type'],
+    custom_start_date=date_params.get('custom_start_date'),
+    custom_end_date=date_params.get('custom_end_date')
+)
+
 @router.get("/daily-pnl-trades", response_model=List[DailyPnLTrade])
 async def get_daily_pnl_trades(
     date_params: Dict[str, Any] = Depends(get_date_range_params),

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { apiClient } from '@/lib/services/api-client';
+import { analyticsService } from '@/lib/services/analytics-service';
 
 // Types for analytics data
 interface DailyPnLTrade {
@@ -235,12 +236,29 @@ export function useOptionLossRate(params: {
   });
 }
 
+// Combined Trade Metrics Hook
+export const useCombinedTradeMetrics = (params: {
+  period_type: '7d' | '30d' | '90d' | '1y' | 'all_time' | 'custom';
+  custom_start_date?: string;
+  custom_end_date?: string;
+}) => {
+  return useQuery({
+    queryKey: ['analytics', 'combined-trade-metrics', params],
+    queryFn: () => analyticsService.getCombinedTradeMetrics({
+      periodType: params.period_type,
+      customStartDate: params.custom_start_date,
+      customEndDate: params.custom_end_date,
+    }),
+    enabled: !!params.period_type,
+  });
+};
+
 // Combined Analytics Hooks
-export function useCombinedAveragePositionSize(params: {
+export const useCombinedAveragePositionSize = (params: {
   period_type: string;
   custom_start_date?: string;
   custom_end_date?: string;
-}) {
+}) => {
   return useQuery({
     queryKey: analyticsKeys.combined.averagePositionSize(params),
     queryFn: async (): Promise<number> => {
