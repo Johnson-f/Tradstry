@@ -144,6 +144,43 @@ class EconomicEvent(BaseModel):
         }
 
 
+class EarningsCalendar(BaseModel):
+    """Earnings calendar data model"""
+    symbol: str
+    date: date
+    time: Optional[str] = None  # 'amc' (after market close), 'bmo' (before market open), 'dmh' (during market hours)
+    eps: Optional[Decimal] = None
+    eps_estimated: Optional[Decimal] = None
+    revenue: Optional[Decimal] = None
+    revenue_estimated: Optional[Decimal] = None
+    fiscal_date_ending: Optional[date] = None
+    fiscal_year: Optional[int] = None
+    fiscal_quarter: Optional[int] = None
+    provider: str
+    
+    class Config:
+        json_encoders = {
+            Decimal: lambda v: float(v) if v is not None else None,
+            date: lambda v: v.isoformat()
+        }
+
+
+class EarningsCallTranscript(BaseModel):
+    """Earnings call transcript data model"""
+    symbol: str
+    date: date
+    quarter: str  # e.g., "Q1 2023"
+    year: int
+    transcript: str
+    participants: List[Dict[str, str]] = []  # List of participants with name and role
+    provider: str
+    
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat()
+        }
+
+
 class MarketDataProvider(ABC):
     """Abstract base class for market data providers"""
     
@@ -246,12 +283,55 @@ class MarketDataProvider(ABC):
         """Get technical indicators for a symbol"""
         return None
     
+    @abstractmethod
     async def get_economic_data(
         self, 
         indicator: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Any:
         """Get economic data"""
-        return None
+        pass
+        
+    @abstractmethod
+    async def get_earnings_calendar(
+        self,
+        symbol: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 10
+    ) -> List[EarningsCalendar]:
+        """
+        Get earnings calendar data
+        
+        Args:
+            symbol: Stock symbol to filter by
+            start_date: Start date for the calendar
+            end_date: End date for the calendar
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of EarningsCalendar objects
+        """
+        pass
+        
+    @abstractmethod
+    async def get_earnings_transcript(
+        self,
+        symbol: str,
+        year: int,
+        quarter: int
+    ) -> Optional[EarningsCallTranscript]:
+        """
+        Get earnings call transcript for a specific quarter
+        
+        Args:
+            symbol: Stock symbol
+            year: Fiscal year
+            quarter: Fiscal quarter (1-4)
+            
+        Returns:
+            EarningsCallTranscript if found, None otherwise
+        """
+        pass
     
     def _standardize_interval(self, interval: str) -> str:
         """Standardize interval format across providers"""
