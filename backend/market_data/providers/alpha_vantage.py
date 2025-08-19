@@ -419,6 +419,14 @@ class AlphaVantageProvider(MarketDataProvider):
             return None
             
         return data['feed'][:limit]
+    async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month"):
+        return []
+
+    async def get_earnings_transcript(self, symbol: str, year: str, quarter: str):
+        return {}
+
+    async def get_economic_data(self, function: str, **kwargs):
+        return {}
     
     async def get_earnings(
         self, 

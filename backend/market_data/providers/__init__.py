@@ -6,6 +6,7 @@ from .polygon import PolygonProvider
 from .twelve_data import TwelveDataProvider
 from .fmp import FMPProvider
 from .tiingo import TiingoProvider
+from .api_ninjas import APINinjasProvider 
 
 __all__ = [
     'AlphaVantageProvider',
@@ -13,5 +14,6 @@ __all__ = [
     'PolygonProvider',
     'TwelveDataProvider',
     'FMPProvider',
-    'TiingoProvider'
+    'TiingoProvider',
+    'APINinjasProvider'
 ]
