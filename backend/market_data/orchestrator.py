@@ -23,7 +23,8 @@ from .providers import (
     PolygonProvider,
     TwelveDataProvider,
     FMPProvider,
-    TiingoProvider
+    TiingoProvider,
+    APINinjasProvider
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,8 @@ class MarketDataOrchestrator:
             'polygon': PolygonProvider,
             'twelve_data': TwelveDataProvider,
             'fmp': FMPProvider,
-            'tiingo': TiingoProvider
+            'tiingo': TiingoProvider,
+            'api_ninjas': APINinjasProvider
         }
         
         for provider_name, provider_class in provider_classes.items():

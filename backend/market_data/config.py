@@ -67,6 +67,12 @@ class MarketDataConfig(BaseModel):
         rate_limit_per_minute=60  # Free tier: varies
     ))
     
+    api_ninjas: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("API_NINJAS_API_KEY"),
+        priority=ProviderPriority.MEDIUM,
+        rate_limit_per_minute=200  # Free tier: 200 requests per minute
+    ))
+    
     # Global settings
     enable_caching: bool = True
     cache_ttl_seconds: int = 300  # 5 minutes

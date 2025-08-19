@@ -448,7 +448,181 @@ class FinnhubProvider(MarketDataProvider):
         except Exception as e:
             self._log_error("get_news", f"Failed to fetch news for {symbol or 'market'}: {str(e)}")
             return []
+
+    async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month") -> List[Dict[str, Any]]:
+        """
+        Get earnings calendar data from Finnhub
+        
+        Args:
+            symbol: Stock symbol (optional, if None returns all earnings)
+            horizon: Time horizon - "3month", "6month", "1year"
+        
+        Returns:
+            List of earnings calendar events
+        """
+        try:
+            # Calculate date range based on horizon
+            end_date = datetime.now()
+            if horizon == "3month":
+                start_date = end_date - timedelta(days=90)
+            elif horizon == "6month":
+                start_date = end_date - timedelta(days=180)
+            elif horizon == "1year":
+                start_date = end_date - timedelta(days=365)
+            else:
+                start_date = end_date - timedelta(days=90)  # default to 3 months
+            
+            params = {
+                'from': start_date.strftime('%Y-%m-%d'),
+                'to': end_date.strftime('%Y-%m-%d')
+            }
+            
+            # Add symbol filter if provided
+            if symbol:
+                params['symbol'] = symbol.upper()
+            
+            data = await self._make_request('calendar/earnings', params)
+            
+            # Finnhub returns earnings calendar in 'earningsCalendar' key
+            earnings_data = data.get('earningsCalendar', [])
+            
+            # Transform data to standardized format
+            standardized_data = []
+            for event in earnings_data:
+                standardized_event = {
+                    'symbol': event.get('symbol', ''),
+                    'date': event.get('date', ''),
+                    'hour': event.get('hour', ''),
+                    'quarter': event.get('quarter', ''),
+                    'year': event.get('year', ''),
+                    'epsEstimate': event.get('epsEstimate'),
+                    'epsActual': event.get('epsActual'),
+                    'revenueEstimate': event.get('revenueEstimate'),
+                    'revenueActual': event.get('revenueActual')
+                }
+                standardized_data.append(standardized_event)
+            
+            return standardized_data
+            
+        except Exception as e:
+            logging.error(f"Error fetching earnings calendar: {str(e)}")
+            return []
     
+    async def get_earnings_transcript(self, symbol: str, year: str, quarter: str) -> Dict[str, Any]:
+        """
+        Get earnings call transcript from Finnhub
+        
+        Args:
+            symbol: Stock symbol
+            year: Year (e.g., "2024")
+            quarter: Quarter (1, 2, 3, or 4)
+        
+        Returns:
+            Dictionary containing transcript data
+        """
+        try:
+            # First, get the list of available transcripts for the symbol
+            params = {'symbol': symbol.upper()}
+            transcript_list = await self._make_request('stock/transcripts/list', params)
+            
+            # Find the specific transcript for the given year and quarter
+            transcripts = transcript_list.get('transcripts', [])
+            target_transcript_id = None
+            
+            for transcript in transcripts:
+                # Match by year and quarter
+                transcript_year = str(transcript.get('year', ''))
+                transcript_quarter = str(transcript.get('quarter', ''))
+                
+                if transcript_year == year and transcript_quarter == quarter:
+                    target_transcript_id = transcript.get('id')
+                    break
+            
+            if not target_transcript_id:
+                logging.warning(f"No transcript found for {symbol} Q{quarter} {year}")
+                return {
+                    'symbol': symbol,
+                    'year': year,
+                    'quarter': quarter,
+                    'transcript': '',
+                    'error': 'Transcript not found'
+                }
+            
+            # Get the actual transcript content
+            transcript_params = {'id': target_transcript_id}
+            transcript_data = await self._make_request('stock/transcripts', transcript_params)
+            
+            return {
+                'symbol': symbol,
+                'year': year,
+                'quarter': quarter,
+                'transcript': transcript_data.get('transcript', ''),
+                'transcript_id': target_transcript_id
+            }
+            
+        except Exception as e:
+            logging.error(f"Error fetching earnings transcript: {str(e)}")
+            return {
+                'symbol': symbol,
+                'year': year,
+                'quarter': quarter,
+                'transcript': '',
+                'error': str(e)
+            }
+    
+    async def get_economic_events(self, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Get economic calendar events from Finnhub
+        
+        Args:
+            **kwargs: Additional parameters like date range, impact level, etc.
+        
+        Returns:
+            List of economic events
+        """
+        try:
+            # Set default date range if not provided
+            end_date = kwargs.get('to', datetime.now().strftime('%Y-%m-%d'))
+            start_date = kwargs.get('from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+            
+            params = {
+                'from': start_date,
+                'to': end_date
+            }
+            
+            # Add additional filters if provided
+            if 'country' in kwargs:
+                params['country'] = kwargs['country']
+            if 'impact' in kwargs:
+                params['impact'] = kwargs['impact']
+            
+            data = await self._make_request('calendar/economic', params)
+            
+            # Finnhub returns economic events in 'economicCalendar' key
+            economic_events = data.get('economicCalendar', [])
+            
+            # Transform data to standardized format
+            standardized_events = []
+            for event in economic_events:
+                standardized_event = {
+                    'date': event.get('time', ''),
+                    'country': event.get('country', ''),
+                    'event': event.get('event', ''),
+                    'impact': event.get('impact', ''),
+                    'estimate': event.get('estimate'),
+                    'actual': event.get('actual'),
+                    'previous': event.get('prev'),
+                    'unit': event.get('unit', ''),
+                    'currency': event.get('currency', '')
+                }
+                standardized_events.append(standardized_event)
+            
+            return standardized_events
+            
+        except Exception as e:
+            logging.error(f"Error fetching economic events: {str(e)}")
+            return []
+            
     async def get_earnings(
         self, 
         symbol: str,

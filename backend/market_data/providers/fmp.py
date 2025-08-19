@@ -1030,7 +1030,10 @@ class FMPProvider(MarketDataProvider):
         except Exception as e:
             self._log_error("Dividends Error", f"Failed to fetch dividends for {symbol}: {str(e)}")
             return []
-    
+
+
+
+
     async def get_news(
         self, 
         symbol: Optional[str] = None, 
@@ -1095,6 +1098,74 @@ class FMPProvider(MarketDataProvider):
         except Exception as e:
             self._log_error("News Error", f"Failed to fetch news: {str(e)}")
             return []
+
+
+    async def get_earnings_calendar(self, from_date: str = None, to_date: str = None) -> Dict[str, Any]:
+        """Get earnings calendar for specified date range
+    
+    Args:
+        from_date: Start date in YYYY-MM-DD format (optional)
+        to_date: End date in YYYY-MM-DD format (optional)
+    
+    Returns:
+        Dict containing earnings calendar data
+    """
+        url = f"{self.base_url}/v3/earning_calendar"
+        params = {"apikey": self.api_key}
+    
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+    
+        return await self._make_request(url, params)
+
+    async def get_earnings_transcript(self, symbol: str, year: int, quarter: int) -> Dict[str, Any]:
+        """Get earnings call transcript for a specific company and quarter
+    
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            year: Year of the earnings call
+            quarter: Quarter number (1, 2, 3, or 4)
+    
+        Returns:
+            Dict containing earnings transcript data
+        """
+        url = f"{self.base_url}/v3/earning_call_transcript/{symbol}"
+        params = {
+            "apikey": self.api_key,
+            "year": year,
+            "quarter": quarter
+        }
+    
+        return await self._make_request(url, params)    
+
+    async def get_economic_data(self, indicator: str = None, from_date: str = None, to_date: str = None) -> Dict[str, Any]:
+        """Get economic calendar data for specified time period
+    
+        Args:
+            indicator: Specific economic indicator name (optional)
+            from_date: Start date in YYYY-MM-DD format (optional)
+            to_date: End date in YYYY-MM-DD format (optional, max 3 months from from_date)
+    
+        Returns:
+            Dict containing economic calendar data
+    
+        Note:
+            Maximum time interval between from_date and to_date is 3 months
+        """
+        url = f"{self.base_url}/v3/economic_calendar"
+        params = {"apikey": self.api_key}
+    
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        if indicator:
+            params["name"] = indicator
+    
+        return await self._make_request(url, params)
+    
     
     async def get_economic_events(
         self,
@@ -1194,3 +1265,4 @@ class FMPProvider(MarketDataProvider):
         except Exception as e:
             self._log_error("Economic Events Error", f"Failed to fetch economic events: {str(e)}")
             return []
+    

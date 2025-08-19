@@ -8,7 +8,7 @@ It includes comprehensive error handling, rate limiting, and data normalization.
 import asyncio
 import aiohttp
 from typing import Dict, List, Optional, Any, Union, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import logging
 import json
@@ -123,6 +123,7 @@ class TiingoProvider(MarketDataProvider):
         log_requests: bool = True
     ) -> None:
         super().__init__(api_key, "Tiingo")
+        self.log_requests = log_requests
         self.base_url = "https://api.tiingo.com"
         self.rate_limit = TIINGO_RATE_LIMITS.get(rate_limit_tier.lower(), DEFAULT_RATE_LIMIT)
         self.rate_limit_semaphore = asyncio.Semaphore(self.rate_limit // 60)  # Convert to requests per second
@@ -465,42 +466,42 @@ class TiingoProvider(MarketDataProvider):
             self._log_error("get_quote", f"Failed to fetch quote for {symbol}: {str(e)}")
             return None
     
-    def _validate_historical_params(
-        self,
-        symbol: str,
-        start_date: date,
-        end_date: date,
-        interval: str
-    ) -> Optional[Dict[str, Any]]:
+    def _validate_historical_params(self, symbol: str, start_date: date, end_date: date, interval: str) -> Optional[Dict[str, Any]]:
         """Validate and prepare parameters for historical data request"""
         if not symbol or not isinstance(symbol, str):
             self._log_error("Validation Error", "Symbol must be a non-empty string")
             return None
-            
-        symbol = symbol.upper().strip()
         
+        symbol = symbol.upper().strip()
+    
         # Validate dates
         if not isinstance(start_date, date) or not isinstance(end_date, date):
             self._log_error("Validation Error", "start_date and end_date must be date objects")
             return None
-            
+        
         if start_date > end_date:
             self._log_error("Validation Error", "start_date cannot be after end_date")
             return None
-            
-        # Validate interval
-        valid_intervals = {
-            '1d': 'daily',
-            '1w': 'weekly',
-            '1M': 'monthly',
-            '1y': 'annually'
-        }
         
-        freq = valid_intervals.get(interval)
+        # Fix: Map intervals correctly
+        # In your _validate_historical_params method, fix the interval mapping:
+        interval_mapping = {
+            Interval.DAILY: "daily",
+            Interval.WEEKLY: "weekly", 
+            Interval.MONTHLY: "monthly",
+            Interval.YEARLY: "annually",
+            "1d": "daily",
+            "1w": "weekly", 
+            "1M": "monthly",
+            "1y": "annually"
+        }
+    
+        freq = interval_mapping.get(interval)
         if not freq:
-            self._log_error("Validation Error", f"Invalid interval: {interval}. Must be one of: {', '.join(valid_intervals.keys())}")
+            valid_keys = list(interval_mapping.keys())
+            self._log_error("Validation Error", f"Invalid interval: {interval}. Must be one of: {', '.join(str(k) for k in valid_keys)}")
             return None
-            
+        
         return {
             'symbol': symbol,
             'start_date': start_date,
@@ -675,9 +676,12 @@ class TiingoProvider(MarketDataProvider):
             return None
         
         try:
+            company_name = data.get('name', symbol)  # Fallback to symbol if no name
+
             return CompanyInfo(
                 symbol=symbol,
-                name=data.get('name', ''),
+                name=company_name,
+                company_name=company_name,
                 exchange=data.get('exchangeCode'),
                 sector=None,  # Not provided by Tiingo
                 industry=None,  # Not provided by Tiingo
@@ -746,30 +750,105 @@ class TiingoProvider(MarketDataProvider):
             self._log_error("get_fundamentals", e)
             return None
     
-    async def get_news(
-        self, 
-        symbol: Optional[str] = None, 
-        limit: int = 10
-    ) -> Optional[List[Dict[str, Any]]]:
-        """Get news articles"""
-        if symbol:
-            params = {
-                'tickers': symbol,
-                'limit': limit
-            }
-        else:
-            params = {
-                'limit': limit
-            }
-        
-        data = await self._make_request("tiingo/news", params)
-        
-        if not data or not isinstance(data, list):
-            return None
-        
-        return data[:limit]
+  
     
     async def get_economic_data(self, indicator: str) -> Optional[Dict[str, Any]]:
         """Tiingo doesn't provide economic data in standard tier"""
         self._log_info(f"Economic data not available on Tiingo standard tier")
         return None
+
+    async def get_earnings_calendar(self, from_date: str = None, to_date: str = None) -> Dict[str, Any]:
+        """Get earnings calendar - NOTE: Tiingo does not have a dedicated earnings calendar endpoint
+    
+    This method will return an empty result or error since Tiingo doesn't provide
+    earnings calendar data. Consider using news API to get earnings-related news instead.
+    
+    Args:
+        from_date: Start date in YYYY-MM-DD format (not used)
+        to_date: End date in YYYY-MM-DD format (not used)
+    
+    Returns:
+        Dict indicating this feature is not available
+    """
+        return {
+            "error": "Earnings calendar not available in Tiingo API",
+            "message": "Tiingo does not provide earnings calendar data. Consider using news API for earnings-related information.",
+            "available_alternatives": ["get_news", "get_fundamentals"]
+        }
+
+    async def get_earnings_transcript(self, symbol: str, year: int, quarter: int) -> Dict[str, Any]:
+        """Get earnings call transcript - NOTE: Tiingo does not provide earnings transcripts
+    
+    This method will return an empty result since Tiingo doesn't provide
+    earnings transcript data. Consider using news API for earnings-related news.
+    
+    Args:
+        symbol: Stock symbol (e.g., 'AAPL')
+        year: Year of the earnings call (not used)
+        quarter: Quarter number (not used)
+    
+    Returns:
+        Dict indicating this feature is not available
+    """
+        return {
+            "error": "Earnings transcripts not available in Tiingo API",
+            "message": f"Tiingo does not provide earnings transcripts for {symbol}. Consider using news API for earnings-related information.",
+            "symbol": symbol,
+            "available_alternatives": ["get_news", "get_fundamentals"]
+        }
+    
+    async def get_economic_events(self, from_date: str = None, to_date: str = None) -> Dict[str, Any]:
+        """Get economic events/calendar - NOTE: Tiingo does not have economic calendar
+    
+    This method will return an empty result since Tiingo doesn't provide
+    economic calendar data. Consider using news API for economic news.
+    
+    Args:
+        from_date: Start date in YYYY-MM-DD format (not used)
+        to_date: End date in YYYY-MM-DD format (not used)
+    
+    Returns:
+        Dict indicating this feature is not available
+    """
+        return {
+            "error": "Economic events calendar not available in Tiingo API",
+            "message": "Tiingo does not provide economic calendar data. Consider using news API for economic news.",
+            "available_alternatives": ["get_news"]
+        }
+
+    async def get_news(self, symbol: str = None, limit: int = 100, sources: str = None, 
+                   tags: str = None, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
+        """Get financial news from Tiingo's news API"""
+    
+        # Check if news API is available (it often requires premium access)
+        try:
+            # Correct endpoint - remove the extra "tiingo/" part
+            url = f"tiingo/news"  # Not f"{self.base_url}/tiingo/news"
+            params = {"token": self.api_key}
+    
+            if symbol:
+                params["tickers"] = symbol
+            if sources:
+                params["sources"] = sources
+            if tags:
+                params["tags"] = tags
+            if start_date:
+                params["startDate"] = start_date
+            if end_date:
+                params["endDate"] = end_date
+            if limit:
+                params["limit"] = limit
+    
+            return await self._make_request(url, params)
+        
+        except Exception as e:
+            if "404" in str(e) or "Not Found" in str(e):
+                return {
+                    "error": "News API not available",
+                    "message": "Tiingo News API may require premium access or special permissions.",
+                    "symbol": symbol,
+                    "available_alternatives": ["Use a different news provider"]
+            }
+        else:
+            raise e
+    

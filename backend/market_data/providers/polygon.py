@@ -239,46 +239,32 @@ class PolygonProvider(MarketDataProvider):
             return None
     
     async def get_quote(self, symbol: str) -> Optional[StockQuote]:
-        """
-        Get current quote for a symbol with comprehensive error handling and fallbacks
-        
-        Args:
-            symbol: Stock symbol to get quote for (case-insensitive)
-            
-        Returns:
-            StockQuote object if successful, None otherwise
-        """
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return None
-            
         symbol = symbol.upper().strip()
-        
         try:
-            # Try to get the most recent trade first (most accurate price)
-            last_trade_data = await self._make_request(f"v2/last/trade/{symbol}")
-            
-            # Get previous close for change calculations
-            prev_close_data = await self._make_request(f"v2/aggs/ticker/{symbol}/prev")
-            
-            # Get snapshot data for additional market data
-            snapshot_data = await self._make_request(f"v2/snapshot/locale/us/markets/stocks/tickers/{symbol}")
-            
-            # Extract data with fallbacks
+            last_trade_endpoint = f"last/trade/{symbol}"
+            prev_close_endpoint = f"aggs/ticker/{symbol}/prev"
+            snapshot_endpoint = f"snapshot/locale/us/markets/stocks/tickers/{symbol}"
+            quotes_endpoint = f"quotes/{symbol}"
+
+            last_trade_data = await self._make_request(last_trade_endpoint, version='v2')
+            prev_close_data = await self._make_request(prev_close_endpoint, version='v2')
+            snapshot_data = await self._make_request(snapshot_endpoint, version='v2')
+
             last_price = None
             prev_close = None
             volume = None
             open_price = None
             high = None
             low = None
-            
-            # 1. Try to get last trade price
+
             if last_trade_data and 'results' in last_trade_data and last_trade_data['results']:
                 last_trade = last_trade_data['results']
                 if 'p' in last_trade:
                     last_price = self._safe_decimal(last_trade['p'])
-            
-            # 2. Try to get data from snapshot if last trade not available
+
             if snapshot_data and 'ticker' in snapshot_data and 'day' in snapshot_data['ticker']:
                 day_data = snapshot_data['ticker']['day']
                 if last_price is None and 'c' in day_data:
@@ -291,36 +277,30 @@ class PolygonProvider(MarketDataProvider):
                     high = self._safe_decimal(day_data['h'])
                 if 'l' in day_data:
                     low = self._safe_decimal(day_data['l'])
-            
-            # 3. Fallback to previous close if no current price
+
             if last_price is None and prev_close_data and 'results' in prev_close_data and prev_close_data['results']:
                 last_price = self._safe_decimal(prev_close_data['results'][0]['c'])
-            
-            # 4. If still no price, try the last quote endpoint
+
             if last_price is None:
-                quote_data = await self._make_request(f"v3/quotes/{symbol}")
+                quote_data = await self._make_request(quotes_endpoint)
                 if quote_data and 'results' in quote_data and quote_data['results']:
                     quote = quote_data['results'][0]
                     last_price = self._safe_decimal(quote.get('p'))
-            
-            # 5. Get previous close for change calculations
+
             if prev_close_data and 'results' in prev_close_data and prev_close_data['results']:
                 prev_close = self._safe_decimal(prev_close_data['results'][0]['c'])
-            
-            # If we still don't have a price, give up
+
             if last_price is None:
                 self._log_error("Data Unavailable", f"Could not retrieve price data for {symbol}")
                 return None
-            
-            # Calculate change and change percent
+
             change = None
             change_percent = None
-            
+
             if prev_close is not None and prev_close != 0:
                 change = last_price - prev_close
                 change_percent = (change / prev_close) * 100
-            
-            # Get timestamp (use current time as fallback)
+
             timestamp = datetime.now(timezone.utc)
             if last_trade_data and 'results' in last_trade_data and last_trade_data['results']:
                 try:
@@ -329,18 +309,17 @@ class PolygonProvider(MarketDataProvider):
                         timestamp = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
                 except (ValueError, TypeError):
                     pass
-            
-            # Get additional market data if available
+
             market_cap = None
             pe_ratio = None
-            
+
             if snapshot_data and 'ticker' in snapshot_data and 'ticker' in snapshot_data['ticker']:
                 ticker_data = snapshot_data['ticker']
                 if 'market_cap' in ticker_data:
                     market_cap = self._safe_decimal(ticker_data['market_cap'])
                 if 'pe' in ticker_data and ticker_data['pe'] is not None:
                     pe_ratio = self._safe_decimal(ticker_data['pe'])
-            
+
             return StockQuote(
                 symbol=symbol,
                 price=last_price,
@@ -356,11 +335,11 @@ class PolygonProvider(MarketDataProvider):
                 timestamp=timestamp,
                 provider=self.name
             )
-            
+
         except Exception as e:
             self._log_error("get_quote", f"Failed to fetch quote for {symbol}: {str(e)}")
             return None
-    
+
     async def get_historical(
         self, 
         symbol: str, 
@@ -371,182 +350,99 @@ class PolygonProvider(MarketDataProvider):
         adjusted: bool = True,
         sort: str = "asc"
     ) -> List[HistoricalPrice]:
-        """
-        Get historical price data for a symbol
-        
-        Args:
-            symbol: Stock symbol to get historical data for
-            start_date: Start date for historical data (default: 1 year ago)
-            end_date: End date for historical data (default: today)
-            interval: Time interval for data points (e.g., '1min', '1h', '1d', '1w', '1m')
-            limit: Maximum number of data points to return (1-50000)
-            adjusted: Whether to return adjusted data for corporate actions
-            sort: Sort order ('asc' or 'desc')
-            
-        Returns:
-            List of HistoricalPrice objects, empty list if no data or error
-        """
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return []
-            
         symbol = symbol.upper().strip()
-        
-        # Set default date range if not provided
         end_date = end_date or date.today()
-        start_date = start_date or (end_date - timedelta(days=365))  # Default to 1 year
-        
-        # Validate dates
+        start_date = start_date or (end_date - timedelta(days=365))
         if start_date > end_date:
             self._log_error("Invalid Date Range", f"Start date {start_date} is after end date {end_date}")
             return []
-        
-        # Limit the maximum date range based on interval to prevent excessive data
-        max_days = 365 * 5  # 5 years max for daily data
+        max_days = 365 * 5
         if interval in ['1min', '5min', '15min', '30min']:
-            max_days = 7  # 1 week max for minute data
+            max_days = 7
         elif interval in ['1h', '4h']:
-            max_days = 30  # 1 month max for hourly data
-        
+            max_days = 30
         if (end_date - start_date).days > max_days:
             start_date = end_date - timedelta(days=max_days)
             self._log_error("Date Range Adjusted", 
                           f"Date range exceeds maximum of {max_days} days. Adjusted to {start_date} - {end_date}")
-        
-        # Map interval to Polygon's timespan and multiplier
         timespan, multiplier = self._map_interval(interval)
-        
-        # Adjust multiplier for certain intervals
         if interval == '60min':
             multiplier = 1
-        
         try:
             all_prices = []
             current_start = start_date
-            
-            # Paginate requests if needed (Polygon has a limit of 50000 per request)
             while current_start <= end_date and len(all_prices) < limit:
-                # Calculate batch end date (max 1 year per request for minute data)
                 batch_end = min(
                     current_start + timedelta(days=365 if timespan == 'minute' else 365*5),
                     end_date
                 )
-                
-                # Build endpoint
                 endpoint = (
-                    f"v2/aggs/ticker/{symbol}/range/"
+                    f"aggs/ticker/{symbol}/range/"
                     f"{multiplier}/{timespan}/"
                     f"{current_start.strftime('%Y-%m-%d')}/"
                     f"{batch_end.strftime('%Y-%m-%d')}"
                 )
-                
-                # Prepare parameters
                 params = {
                     'adjusted': 'true' if adjusted else 'false',
                     'sort': sort,
-                    'limit': min(50000, limit - len(all_prices)),  # Polygon max is 50000
+                    'limit': min(50000, limit - len(all_prices)),
                 }
-                
-                # Make the request
                 data = await self._make_request(endpoint, params)
-                
                 if not data or 'results' not in data or not data['results']:
                     break
-                
-                # Process the batch of results
-                batch_prices = []
-                for bar in data['results']:
+                for item in data['results']:
                     try:
-                        timestamp_ms = bar.get('t')
-                        if not timestamp_ms:
-                            continue
-                            
-                        price_date = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-                        
-                        batch_prices.append(HistoricalPrice(
-                            symbol=symbol,
-                            date=price_date,
-                            open=self._safe_decimal(bar.get('o')),
-                            high=self._safe_decimal(bar.get('h')),
-                            low=self._safe_decimal(bar.get('l')),
-                            close=self._safe_decimal(bar.get('c')),
-                            volume=self._safe_int(bar.get('v', 0)),
-                            transactions=self._safe_int(bar.get('n', 0)),
-                            vwap=self._safe_decimal(bar.get('vw')),  # Volume weighted average price
+                        date_obj = datetime.fromtimestamp(item['t'] / 1000).date()
+                        open_price = self._safe_decimal(item.get('o'))
+                        high_price = self._safe_decimal(item.get('h'))
+                        low_price = self._safe_decimal(item.get('l'))
+                        close_price = self._safe_decimal(item.get('c'))
+                        volume = self._safe_int(item.get('v'))
+                        all_prices.append(HistoricalPrice(
+                            date=date_obj,
+                            open=open_price,
+                            high=high_price,
+                            low=low_price,
+                            close=close_price,
+                            volume=volume,
                             provider=self.name
                         ))
-                    except (ValueError, TypeError, KeyError) as e:
-                        self._log_error("Data Parsing", f"Error processing price bar: {str(e)}")
+                    except Exception as e:
+                        self._log_error("get_historical", f"Error parsing historical data item: {str(e)}")
                         continue
-                
-                # Add to results and check if we've reached the limit
-                all_prices.extend(batch_prices)
-                if len(all_prices) >= limit:
-                    all_prices = all_prices[:limit]
-                    break
-                
-                # Move to next batch
-                if batch_end >= end_date:
-                    break
-                    
                 current_start = batch_end + timedelta(days=1)
-            
-            # Sort by date (ascending) if not already sorted
-            if sort == 'asc':
-                all_prices.sort(key=lambda x: x.date)
-            else:
-                all_prices.sort(key=lambda x: x.date, reverse=True)
-            
             return all_prices
-            
         except Exception as e:
             self._log_error("get_historical", f"Failed to fetch historical data for {symbol}: {str(e)}")
             return []
-    
+
     async def get_company_info(self, symbol: str) -> Optional[CompanyInfo]:
-        """
-        Get comprehensive company information
-        
-        Args:
-            symbol: Stock symbol to get company info for
-            
-        Returns:
-            CompanyInfo object if successful, None otherwise
-        """
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return None
-            
         symbol = symbol.upper().strip()
-        
         try:
-            # Get basic company information
-            ticker_data = await self._make_request(f"v3/reference/tickers/{symbol}")
-            
-            # Get additional company details if available
-            details_data = await self._make_request(f"v1/meta/symbols/{symbol}/company")
-            
-            # Get financial metrics if available
-            metrics_data = await self._make_request(f"vX/reference/financials?ticker={symbol}&limit=1")
-            
-            # Get company logo if available
-            logo_data = await self._make_request(f"v1/meta/symbols/{symbol}/logo")
-            
-            # Extract basic information
+            ticker_details_endpoint = f"reference/tickers/{symbol}"
+            company_endpoint = f"meta/symbols/{symbol}/company"
+            financials_endpoint = f"vX/reference/financials"
+            logo_endpoint = f"meta/symbols/{symbol}/logo"
+
+            ticker_data = await self._make_request(ticker_details_endpoint)
+            details_data = await self._make_request(company_endpoint)
+            metrics_data = await self._make_request(financials_endpoint, {'ticker': symbol, 'limit': 1})
+            logo_data = await self._make_request(logo_endpoint)
+
             info = {}
             if ticker_data and 'results' in ticker_data and ticker_data['results']:
                 info.update(ticker_data['results'])
-            
-            # Extract additional details
             if details_data and isinstance(details_data, dict):
                 info.update(details_data)
-            
-            # Extract financial metrics
             metrics = {}
             if metrics_data and 'results' in metrics_data and metrics_data['results']:
                 metrics = metrics_data['results'][0]
-            
-            # Process address
             address = info.get('address', {})
             headquarters = (
                 f"{address.get('address1', '')}, "
@@ -554,8 +450,6 @@ class PolygonProvider(MarketDataProvider):
                 f"{address.get('state', '')} "
                 f"{address.get('postal_code', '')}"
             ).replace(' ,', ',').replace('  ', ' ').strip(' ,')
-            
-            # Process market cap (convert to integer if it's a string with M/B/T)
             market_cap = info.get('market_cap')
             if isinstance(market_cap, str):
                 try:
@@ -568,24 +462,18 @@ class PolygonProvider(MarketDataProvider):
                     market_cap = int(market_cap)
                 except (ValueError, TypeError):
                     market_cap = None
-            
-            # Extract key executives (for CEO)
             ceo = None
             if 'executives' in info and isinstance(info['executives'], list):
                 for exec_info in info['executives']:
                     if exec_info.get('title', '').lower() == 'ceo':
                         ceo = exec_info.get('name')
                         break
-            
-            # Extract founding year if available
             founded = None
             if 'founding_date' in info:
                 try:
                     founded = datetime.strptime(info['founding_date'], '%Y-%m-%d').year
                 except (ValueError, TypeError):
                     pass
-            
-            # Create and return the CompanyInfo object
             return CompanyInfo(
                 symbol=symbol,
                 name=info.get('name', ''),
@@ -604,30 +492,21 @@ class PolygonProvider(MarketDataProvider):
                 logo_url=logo_data.get('url', '') if logo_data and isinstance(logo_data, dict) else None,
                 ipo_date=info.get('list_date'),
                 currency=info.get('currency_name', 'USD'),
-                
-                # Financial metrics
                 pe_ratio=self._safe_decimal(metrics.get('pe_ratio')),
                 peg_ratio=self._safe_decimal(metrics.get('peg_ratio')),
                 eps=self._safe_decimal(metrics.get('eps')),
                 dividend_yield=self._safe_decimal(metrics.get('dividend_yield')),
                 beta=self._safe_decimal(metrics.get('beta')),
-                
-                # Additional details
                 is_etf=info.get('type', '').lower() == 'etf',
                 is_adr=info.get('is_adr', False),
                 is_fund=info.get('is_fund', False),
-                
-                # Timestamp
                 updated_at=datetime.now(timezone.utc).isoformat(),
-                
-                # Provider info
                 provider=self.name
             )
-            
         except Exception as e:
             self._log_error("get_company_info", f"Failed to fetch company info for {symbol}: {str(e)}")
             return None
-    
+
     async def get_options_chain(
         self, 
         symbol: str, 
@@ -637,28 +516,10 @@ class PolygonProvider(MarketDataProvider):
         limit: int = 1000,
         include_all_expirations: bool = False
     ) -> List[OptionQuote]:
-        """
-        Get options chain for a symbol with comprehensive filtering
-        
-        Args:
-            symbol: The underlying stock symbol
-            expiration: Expiration date (date object or 'YYYY-MM-DD' string). 
-                      If None, returns all expirations
-            option_type: Filter by option type ('call' or 'put')
-            strike_price: Filter by strike price
-            limit: Maximum number of options to return (1-1000)
-            include_all_expirations: If True, includes all expirations (overrides expiration param)
-            
-        Returns:
-            List of OptionQuote objects, empty list if no data or error
-        """
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return []
-            
         symbol = symbol.upper().strip()
-        
-        # Validate and format expiration date if provided
         expiration_date = None
         if expiration and not include_all_expirations:
             if isinstance(expiration, str):
@@ -672,162 +533,51 @@ class PolygonProvider(MarketDataProvider):
             else:
                 self._log_error("Invalid Date Type", "Expiration must be a date object or YYYY-MM-DD string")
                 return []
-        
-        # Validate option type
         if option_type and option_type.lower() not in ['call', 'put']:
             self._log_error("Invalid Option Type", "Option type must be 'call' or 'put'")
             return []
-            
-        # Ensure limit is within bounds
         limit = max(1, min(1000, limit))
-        
         try:
             all_options = []
             next_url = None
-            
-            # Initial request
             params = {
                 'underlying_ticker': symbol,
-                'limit': min(1000, limit),  # Polygon max is 1000 per request
+                'limit': min(1000, limit),
                 'sort': 'expiration_date',
                 'order': 'asc'
             }
-            
-            # Add filters
             if expiration_date and not include_all_expirations:
                 params['expiration_date'] = expiration_date.strftime('%Y-%m-%d')
-                
             if option_type:
                 params['contract_type'] = option_type.lower()
-                
             if strike_price is not None:
                 params['strike_price'] = str(strike_price)
-            
-            # Make initial request
-            data = await self._make_request("v3/reference/options/contracts", params)
-            
+            data = await self._make_request("reference/options/contracts", params)
             if not data or 'results' not in data or not data['results']:
                 return []
-                
-            # Process initial batch
             all_options.extend(self._process_options_data(data['results']))
-            
-            # Handle pagination if needed
             while len(all_options) < limit and 'next_url' in data:
                 next_url = data['next_url']
                 if not next_url:
                     break
-                    
-                # Extract the cursor for the next page
                 cursor = next_url.split('cursor=')[1] if 'cursor=' in next_url else None
                 if not cursor:
                     break
-                    
-                # Make next page request
                 data = await self._make_request(
-                    "v3/reference/options/contracts",
+                    "reference/options/contracts",
                     {'cursor': cursor, 'limit': min(1000, limit - len(all_options))}
                 )
-                
                 if not data or 'results' not in data or not data['results']:
                     break
-                    
                 all_options.extend(self._process_options_data(data['results']))
-            
-            # Apply limit and return
             return all_options[:limit]
-            
         except Exception as e:
             self._log_error("get_options_chain", f"Failed to fetch options chain for {symbol}: {str(e)}")
             return []
-    
-    def _process_options_data(self, contracts: List[Dict[str, Any]]) -> List[OptionQuote]:
-        """
-        Process raw options contract data into OptionQuote objects
-        
-        Args:
-            contracts: List of raw contract data from Polygon API
-            
-        Returns:
-            List of processed OptionQuote objects
-        """
-        options = []
-        for contract in contracts:
-            try:
-                if not isinstance(contract, dict):
-                    continue
-                    
-                # Extract basic contract info
-                contract_type = contract.get('contract_type', '').lower()
-                if contract_type not in ['call', 'put']:
-                    continue
-                
-                # Parse expiration date
-                expiration_date = None
-                exp_date_str = contract.get('expiration_date')
-                if exp_date_str:
-                    try:
-                        expiration_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
-                    except (ValueError, TypeError):
-                        pass
-                
-                # Extract strike price
-                strike_price = self._safe_decimal(contract.get('strike_price'))
-                
-                # Create the option quote
-                option = OptionQuote(
-                    symbol=contract.get('ticker', ''),
-                    underlying_symbol=contract.get('underlying_ticker', ''),
-                    option_type=contract_type,
-                    expiration_date=expiration_date,
-                    strike_price=strike_price,
-                    
-                    # Quote data
-                    last_price=self._safe_decimal(contract.get('last_trade', {}).get('p')),
-                    bid=self._safe_decimal(contract.get('bid')),
-                    ask=self._safe_decimal(contract.get('ask')),
-                    open_interest=self._safe_int(contract.get('open_interest')),
-                    volume=self._safe_int(contract.get('volume')),
-                    
-                    # Greeks
-                    delta=self._safe_decimal(contract.get('greeks', {}).get('delta')),
-                    gamma=self._safe_decimal(contract.get('greeks', {}).get('gamma')),
-                    theta=self._safe_decimal(contract.get('greeks', {}).get('theta')),
-                    vega=self._safe_decimal(contract.get('greeks', {}).get('vega')),
-                    rho=self._safe_decimal(contract.get('greeks', {}).get('rho')),
-                    implied_volatility=self._safe_decimal(contract.get('implied_volatility')),
-                    
-                    # Additional contract details
-                    exercise_style=contract.get('exercise_style', 'american'),
-                    shares_per_contract=self._safe_int(contract.get('shares_per_contract', 100)),
-                    
-                    # Timestamps
-                    last_trade_timestamp=contract.get('last_trade', {}).get('t'),
-                    last_quote_timestamp=contract.get('last_quote', {}).get('t'),
-                    
-                    # Provider info
-                    provider=self.name
-                )
-                
-                options.append(option)
-                
-            except Exception as e:
-                self._log_error("process_options_data", f"Error processing option contract: {str(e)}")
-                continue
-                
-        return options
-        
+
     async def get_market_status(self) -> Dict[str, Any]:
-        """
-        Get current market status (open/closed, holidays, etc.)
-        
-        Returns:
-            Dictionary with market status information
-        """
         try:
-            # Get market status
-            status_data = await self._make_request("v1/marketstatus/now")
-            
+            status_data = await self._make_request("marketstatus/now", version='v1')
             if not status_data or 'market' not in status_data:
                 return {
                     'is_open': False,
@@ -835,9 +585,7 @@ class PolygonProvider(MarketDataProvider):
                     'provider': self.name,
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 }
-            
             market = status_data['market']
-            
             return {
                 'is_open': market.get('isOpen', False),
                 'status': 'open' if market.get('isOpen') else 'closed',
@@ -851,7 +599,6 @@ class PolygonProvider(MarketDataProvider):
                 'provider': self.name,
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
-            
         except Exception as e:
             self._log_error("get_market_status", f"Failed to get market status: {str(e)}")
             return {
@@ -861,7 +608,7 @@ class PolygonProvider(MarketDataProvider):
                 'provider': self.name,
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
-            
+
     async def get_news(
         self, 
         symbol: Optional[str] = None,
@@ -869,124 +616,256 @@ class PolygonProvider(MarketDataProvider):
         published_after: Optional[Union[date, str]] = None,
         published_before: Optional[Union[date, str]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Get market news and company-specific news
-        
-        Args:
-            symbol: Stock symbol to get news for (optional)
-            limit: Maximum number of news items to return (1-1000)
-            published_after: Only return news published after this date
-            published_before: Only return news published before this date
-            
-        Returns:
-            List of news articles with metadata
-        """
         try:
-            # Validate and format parameters
             params = {}
-            
             if symbol:
                 params['ticker'] = symbol.upper().strip()
-                
-            # Set limit (Polygon allows 1-1000)
             params['limit'] = max(1, min(1000, limit))
-            
-            # Format date filters
             if published_after:
                 if isinstance(published_after, date):
                     params['published_utc.gte'] = published_after.strftime('%Y-%m-%d')
                 elif isinstance(published_after, str):
                     try:
-                        # Try to parse and reformat the date string
-                        dt = datetime.strptime(published_after, '%Y-%m-%d')
-                        params['published_utc.gte'] = dt.strftime('%Y-%m-%d')
+                        params['published_utc.gte'] = datetime.strptime(published_after, '%Y-%m-%d').strftime('%Y-%m-%d')
                     except ValueError:
-                        self._log_error("Invalid Date Format", "published_after must be in YYYY-MM-DD format")
-            
+                        pass
             if published_before:
                 if isinstance(published_before, date):
                     params['published_utc.lte'] = published_before.strftime('%Y-%m-%d')
                 elif isinstance(published_before, str):
                     try:
-                        dt = datetime.strptime(published_before, '%Y-%m-%d')
-                        params['published_utc.lte'] = dt.strftime('%Y-%m-%d')
+                        params['published_utc.lte'] = datetime.strptime(published_before, '%Y-%m-%d').strftime('%Y-%m-%d')
                     except ValueError:
-                        self._log_error("Invalid Date Format", "published_before must be in YYYY-MM-DD format")
-            
-            # Make the request
-            data = await self._make_request("v2/reference/news", params)
-            
+                        pass
+            data = await self._make_request("reference/news", params)
             if not data or 'results' not in data or not data['results']:
                 return []
-            
-            # Process and standardize the news articles
-            articles = []
-            for article in data['results']:
-                try:
-                    # Parse published timestamp
-                    published_ts = None
-                    if article.get('published_utc'):
-                        try:
-                            published_ts = datetime.strptime(
-                                article['published_utc'], 
-                                '%Y-%m-%dT%H:%M:%SZ'
-                            ).replace(tzinfo=timezone.utc)
-                        except (ValueError, TypeError):
-                            published_ts = None
-                    
-                    # Standardize the article data
-                    standardized = {
-                        'id': article.get('id', ''),
-                        'title': article.get('title', '').strip(),
-                        'author': article.get('author', '').strip(),
-                        'publisher': article.get('publisher', {}).get('name', ''),
-                        'published': published_ts.isoformat() if published_ts else None,
-                        'updated': article.get('updated_utc'),
-                        'article_url': article.get('article_url', ''),
-                        'tickers': [t.upper() for t in article.get('tickers', []) if t],
-                        'keywords': [k.lower() for k in article.get('keywords', []) if k],
-                        'image_url': article.get('image_url'),
-                        'description': article.get('description', '').strip(),
-                        'content': article.get('content', '').strip(),
-                        'provider': self.name
-                    }
-                    
-                    # Clean up any empty strings or None values
-                    standardized = {k: v for k, v in standardized.items() if v is not None and v != ''}
-                    
-                    articles.append(standardized)
-                    
-                except Exception as e:
-                    self._log_error("process_news_article", f"Error processing news article: {str(e)}")
-                    continue
-            
-            return articles
-            
+            return data['results']
         except Exception as e:
             self._log_error("get_news", f"Failed to fetch news: {str(e)}")
             return []
-    
-    async def get_dividends(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
-        """Get dividend data"""
-        data = await self._make_request(f"v3/reference/dividends", {'ticker': symbol})
+
+    async def get_dividends(self, symbol: str):
+        try:
+            endpoint = f"reference/dividends"
+            params = {'ticker': symbol.upper()}
+            data = await self._make_request(endpoint, params)
+            if not data or 'results' not in data or not data['results']:
+                return []
+            return data['results']
+        except Exception as e:
+            self._log_error("get_dividends", f"Failed to fetch dividends for {symbol}: {str(e)}")
+            return []
+
+    async def get_splits(self, symbol: str):
+        try:
+            endpoint = f"reference/splits"
+            params = {'ticker': symbol.upper()}
+            data = await self._make_request(endpoint, params)
+            if not data or 'results' not in data or not data['results']:
+                return []
+            return data['results']
+        except Exception as e:
+            self._log_error("get_splits", f"Failed to fetch splits for {symbol}: {str(e)}")
+            return []
+
+    async def get_market_holidays(self):
+        try:
+            endpoint = f"marketstatus/upcoming"
+            data = await self._make_request(endpoint)
+            if not data or 'markets' not in data:
+                return []
+            return data['markets']
+        except Exception as e:
+            self._log_error("get_market_holidays", f"Failed to fetch market holidays: {str(e)}")
+            return []
+
+    async def get_earnings_calendar(
+        self, 
+        ticker: Optional[str] = None,
+        date: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        importance: Optional[int] = None,
+        fiscal_year: Optional[int] = None,
+        fiscal_period: Optional[str] = None,
+        limit: int = 100,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get earnings calendar data from Polygon.io
         
-        if not data or 'results' not in data:
-            return None
+        Args:
+            ticker: Stock symbol to filter by
+            date: Specific date (YYYY-MM-DD format)
+            date_from: Start date for range query
+            date_to: End date for range query
+            importance: Importance level (0-5)
+            fiscal_year: Fiscal year filter
+            fiscal_period: Fiscal period (Q1, Q2, Q3, Q4, H1, H2, FY)
+            limit: Maximum number of results (default 100, max 50000)
         
-        return data['results']
+        Returns:
+            Dictionary containing earnings data
+        """
+        endpoint = "/benzinga/v1/earnings"
+        params = {}
+        
+        if ticker:
+            params['ticker'] = ticker
+        if date:
+            params['date'] = date
+        if date_from:
+            params['date.gte'] = date_from
+        if date_to:
+            params['date.lte'] = date_to
+        if importance is not None:
+            params['importance'] = importance
+        if fiscal_year:
+            params['fiscal_year'] = fiscal_year
+        if fiscal_period:
+            params['fiscal_period'] = fiscal_period
+        if limit:
+            params['limit'] = limit
+        
+        try:
+            data = await self._make_request(endpoint, params)
+            self.logger.info(f"Retrieved earnings calendar data for {ticker or 'all tickers'}")
+            return data
+        except Exception as e:
+            self.logger.error(f"Failed to get earnings calendar: {e}")
+            raise
     
+    async def get_earnings_transcript(
+        self, 
+        ticker: str,
+        quarter: Optional[int] = None,
+        year: Optional[int] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get earnings call transcript data
+        Note: This endpoint may not be available in all Polygon.io plans
+        
+        Args:
+            ticker: Stock symbol
+            quarter: Quarter (1-4)
+            year: Year
+            
+        Returns:
+            Dictionary containing transcript data or error message
+        """
+        # Note: Polygon.io doesn't have a direct earnings transcript endpoint
+        # This would typically require a premium data provider or custom implementation
+        self.logger.warning("Earnings transcripts not directly available via Polygon.io API")
+        
+        return {
+            "status": "not_available",
+            "message": "Earnings transcripts are not directly available through Polygon.io API",
+            "ticker": ticker,
+            "quarter": quarter,
+            "year": year,
+            "suggestion": "Consider using alternative data sources for earnings call transcripts"
+        }
+    
+    async def get_economic_data(
+        self,
+        indicator: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        limit: int = 100,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get economic data/indicators
+        Note: Polygon.io primarily focuses on market data, not economic indicators
+        
+        Args:
+            indicator: Economic indicator name
+            date_from: Start date
+            date_to: End date
+            limit: Maximum results
+            
+        Returns:
+            Dictionary with economic data or reference to alternative sources
+        """
+        # Polygon.io doesn't have dedicated economic data endpoints
+        # They focus on market data (stocks, options, forex, crypto)
+        
+        self.logger.warning("Economic indicators not available via Polygon.io")
+        
+        return {
+            "status": "not_available",
+            "message": "Economic data indicators are not available through Polygon.io API",
+            "indicator": indicator,
+            "suggestion": "Consider using FRED API, Alpha Vantage, or other economic data providers",
+            "available_data": [
+                "Stock market data",
+                "Options data", 
+                "Forex data",
+                "Cryptocurrency data",
+                "Market indices",
+                "Company financials"
+            ]
+        }
+    
+    async def get_economic_events(
+        self,
+        date: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        importance: Optional[str] = None,
+        country: Optional[str] = None,
+        limit: int = 100,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get economic events calendar
+        Note: Polygon.io doesn't provide economic events calendar
+        
+        Args:
+            date: Specific date
+            date_from: Start date
+            date_to: End date
+            importance: Event importance level
+            country: Country filter
+            limit: Maximum results
+            
+        Returns:
+            Dictionary with events data or alternative suggestions
+        """
+        # Polygon.io focuses on market data, not economic events calendar
+        
+        self.logger.warning("Economic events calendar not available via Polygon.io")
+        
+        return {
+            "status": "not_available",
+            "message": "Economic events calendar is not available through Polygon.io API",
+            "date": date,
+            "suggestion": "Consider using economic calendar APIs from:",
+            "alternatives": [
+                "Trading Economics API",
+                "Alpha Vantage Economic Data",
+                "FRED API (Federal Reserve Economic Data)",
+                "Forex Factory Calendar",
+                "Investing.com Economic Calendar API"
+            ],
+            "polygon_alternatives": {
+                "earnings_calendar": "Available via /benzinga/v1/earnings",
+                "market_holidays": "Available via /v1/marketstatus/upcoming",
+                "stock_splits": "Available via /v3/reference/splits",
+                "dividends": "Available via /v3/reference/dividends"
+            }
+        }
+
     async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get fundamental financials"""
-        data = await self._make_request(f"vX/reference/financials", {
-            'ticker': symbol,
-            'limit': 1
-        })
-        
+        endpoint = f"vX/reference/financials"
+        params = {'ticker': symbol, 'limit': 1}
+        data = await self._make_request(endpoint, params)
         if not data or 'results' not in data or not data['results']:
             return None
-        
         financials = data['results'][0].get('financials', {})
-        
         return {
             'symbol': symbol,
             'provider': self.name,

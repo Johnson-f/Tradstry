@@ -26,6 +26,17 @@ class MarketDataType(Enum):
     TECHNICAL_INDICATORS = "technical_indicators"
     ECONOMIC_DATA = "economic_data"
 
+class Interval(Enum):
+    """Time intervals for historical and intraday data"""
+    MIN_1 = "1min"
+    MIN_5 = "5min"
+    MIN_15 = "15min"
+    MIN_30 = "30min"
+    HOUR_1 = "1h"
+    HOUR_4 = "4h"
+    DAILY = "1d"
+    WEEKLY = "1w"
+    MONTHLY = "1m"
 
 class StockQuote(BaseModel):
     """Standard stock quote data model"""
@@ -40,7 +51,7 @@ class StockQuote(BaseModel):
     previous_close: Optional[Decimal] = None
     timestamp: datetime
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v),
@@ -61,7 +72,7 @@ class HistoricalPrice(BaseModel):
     dividend: Optional[Decimal] = None
     split: Optional[Decimal] = None
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v),
@@ -88,7 +99,7 @@ class OptionQuote(BaseModel):
     vega: Optional[Decimal] = None
     timestamp: datetime
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v),
@@ -101,6 +112,7 @@ class CompanyInfo(BaseModel):
     """Company information data model"""
     symbol: str
     name: str
+    company_name: str
     exchange: Optional[str] = None
     sector: Optional[str] = None
     industry: Optional[str] = None
@@ -112,7 +124,7 @@ class CompanyInfo(BaseModel):
     headquarters: Optional[str] = None
     founded: Optional[str] = None
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v)
@@ -135,7 +147,7 @@ class EconomicEvent(BaseModel):
     description: Optional[str] = None
     url: Optional[str] = None
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v) if v is not None else None,
@@ -157,7 +169,7 @@ class EarningsCalendar(BaseModel):
     fiscal_year: Optional[int] = None
     fiscal_quarter: Optional[int] = None
     provider: str
-    
+
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v) if v is not None else None,
@@ -174,7 +186,7 @@ class EarningsCallTranscript(BaseModel):
     transcript: str
     participants: List[Dict[str, str]] = []  # List of participants with name and role
     provider: str
-    
+
     class Config:
         json_encoders = {
             date: lambda v: v.isoformat()
@@ -183,64 +195,64 @@ class EarningsCallTranscript(BaseModel):
 
 class MarketDataProvider(ABC):
     """Abstract base class for market data providers"""
-    
+
     def __init__(self, api_key: str, name: str):
         self.api_key = api_key
         self.name = name
         self.base_url = ""
         self.rate_limit_per_minute = 60
         self.last_request_time = None
-        
+
     @abstractmethod
     async def get_quote(self, symbol: str) -> Optional[StockQuote]:
         """Get current quote for a symbol"""
         pass
-    
+
     @abstractmethod
     async def get_historical(
-        self, 
-        symbol: str, 
-        start_date: date, 
+        self,
+        symbol: str,
+        start_date: date,
         end_date: date,
         interval: str = "1d"
     ) -> Optional[List[HistoricalPrice]]:
         """Get historical prices for a symbol"""
         pass
-    
+
     @abstractmethod
     async def get_options_chain(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         expiration: Optional[date] = None
     ) -> Optional[List[OptionQuote]]:
         """Get options chain for a symbol"""
         pass
-    
+
     @abstractmethod
     async def get_company_info(self, symbol: str) -> Optional[CompanyInfo]:
         """Get company information"""
         pass
-    
+
     async def get_intraday(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         interval: str = "5min"
     ) -> Optional[List[HistoricalPrice]]:
         """Get intraday prices for a symbol"""
         return None
-    
+
     async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get fundamental data for a symbol"""
         return None
-    
+
     async def get_earnings(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
         """Get earnings data for a symbol"""
         return None
-    
+
     async def get_dividends(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
         """Get dividend data for a symbol"""
         return None
-    
+
     @abstractmethod
     async def get_economic_events(
         self,
@@ -252,45 +264,45 @@ class MarketDataProvider(ABC):
     ) -> List[EconomicEvent]:
         """
         Get economic calendar events
-        
+
         Args:
             countries: List of country codes (e.g., ['US', 'EU', 'GB'])
             importance: Filter by importance (1=Low, 2=Medium, 3=High)
             start_date: Start date for events
             end_date: End date for events
             limit: Maximum number of events to return
-            
+
         Returns:
             List of EconomicEvent objects
         """
         pass
-        
+
     @abstractmethod
     async def get_news(
-        self, 
-        symbol: Optional[str] = None, 
+        self,
+        symbol: Optional[str] = None,
         limit: int = 10
     ) -> Optional[List[Dict[str, Any]]]:
         """Get news for a symbol or general market"""
         pass
-    
+
     async def get_technical_indicators(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         indicator: str,
         interval: str = "daily"
     ) -> Optional[Dict[str, Any]]:
         """Get technical indicators for a symbol"""
         return None
-    
+
     @abstractmethod
     async def get_economic_data(
-        self, 
+        self,
         indicator: str
     ) -> Any:
         """Get economic data"""
         pass
-        
+
     @abstractmethod
     async def get_earnings_calendar(
         self,
@@ -301,18 +313,18 @@ class MarketDataProvider(ABC):
     ) -> List[EarningsCalendar]:
         """
         Get earnings calendar data
-        
+
         Args:
             symbol: Stock symbol to filter by
             start_date: Start date for the calendar
             end_date: End date for the calendar
             limit: Maximum number of results to return
-            
+
         Returns:
             List of EarningsCalendar objects
         """
         pass
-        
+
     @abstractmethod
     async def get_earnings_transcript(
         self,
@@ -322,17 +334,17 @@ class MarketDataProvider(ABC):
     ) -> Optional[EarningsCallTranscript]:
         """
         Get earnings call transcript for a specific quarter
-        
+
         Args:
             symbol: Stock symbol
             year: Fiscal year
             quarter: Fiscal quarter (1-4)
-            
+
         Returns:
             EarningsCallTranscript if found, None otherwise
         """
         pass
-    
+
     def _standardize_interval(self, interval: str) -> str:
         """Standardize interval format across providers"""
         interval_map = {
@@ -350,11 +362,11 @@ class MarketDataProvider(ABC):
             "monthly": "monthly"
         }
         return interval_map.get(interval.lower(), interval)
-    
+
     def _log_error(self, method: str, error: Exception):
         """Log errors with provider context"""
         logger.error(f"{self.name} - {method}: {str(error)}")
-    
+
     def _log_info(self, message: str):
         """Log info with provider context"""
         logger.info(f"{self.name}: {message}")
