@@ -1,380 +1,103 @@
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-import logging
 from supabase import Client
 from database import get_supabase
 from models.notes import (
+    NoteCreate, NoteUpdate, NoteInDB, NoteUpsertResponse,
     FolderCreate, FolderUpdate, FolderInDB,
-    NoteCreate, NoteUpdate, NoteInDB, NoteWithRelations,
-    TagCreate, TagInDB, TemplateInDB, TemplateCreate, TemplateUpdate
+    DeleteResponse
 )
-from services.base_database_service import BaseDatabaseService
-
-# Setup logging
-logger = logging.getLogger(__name__)
 
 class NotesService:
+    """Service for handling notes and folders operations using SQL functions."""
+    
     def __init__(self, supabase: Client = None):
-        self.supabase = supabase or get_supabase()
-        self.folders = BaseDatabaseService("folders", FolderInDB, self.supabase)
-        self.notes = BaseDatabaseService("notes", NoteInDB, self.supabase)
-        self.tags = BaseDatabaseService("tags", TagInDB, self.supabase)
-        self.templates = BaseDatabaseService("templates", TemplateInDB, self.supabase)
-
-    async def _get_note_with_relations(self, note_id: UUID, user_id: str) -> Optional[NoteWithRelations]:
-        """Get a note with its folder, tags, and template relations"""
-        # Get the note
-        result = self.supabase.rpc('get_notes', {
-            'p_note_id': str(note_id)
-        }).execute()
-
-        if not result.data or not result.data[0]:
-            return None
-
-        note_data = result.data[0]
-
-        # Get folder
-        folder = await self.get_folder(note_data['folder_id']) if note_data.get('folder_id') else None
-
-        # Get tags
-        tags_result = self.supabase.rpc('get_note_tags', {
-            'p_note_id': str(note_id)
-        }).execute()
-
-        tags = [TagInDB(**tag) for tag in (tags_result.data or [])]
-
-        # Get template if exists
-        template = None
-        if note_data.get('template_id'):
-            template_result = self.supabase.table('templates')\
-                .select('*')\
-                .eq('id', str(note_data['template_id']))\
-                .single()\
-                .execute()
-            if template_result.data:
-                template = TemplateInDB(**template_result.data)
-
-        # Get the full note data from the database since get_notes only returns limited fields
-        full_note_result = self.supabase.table('notes')\
-            .select('*')\
-            .eq('id', str(note_id))\
-            .eq('user_id', user_id)\
-            .single()\
-            .execute()
-        
-        if not full_note_result.data:
-            return None
-            
-        # Create NoteInDB instance with full data
-        note = NoteInDB(**full_note_result.data)
-
-        # Create and return NoteWithRelations
-        return NoteWithRelations(
-            **note.dict(),
-            folder=folder,
-            tags=tags,
-            template=template
-        )
-
-    async def list_tags(self, user_id: str, search: Optional[str] = None) -> List[TagInDB]:
-        """List all tags for the current user, optionally filtered by search term"""
-        try:
-            # Build the query
-            query = self.supabase.table('tags').select('*, note_count:note_tags(count)')
-            query = query.eq('user_id', user_id)
-
-            # Add search filter if provided
-            if search:
-                query = query.ilike('name', f'%{search}%')
-
-            # Order by name
-            query = query.order('name')
-
-            result = query.execute()
-
-            if not result.data:
-                return []
-
-            # Process the results to include note_count
-            tags = []
-            for tag_data in result.data:
-                tag_dict = {k: v for k, v in tag_data.items() if k != 'note_count'}
-                if 'note_count' in tag_data and tag_data['note_count']:
-                    tag_dict['note_count'] = len(tag_data['note_count'])
-                else:
-                    tag_dict['note_count'] = 0
-                tags.append(TagInDB(**tag_dict))
-
-            return tags
-
-        except Exception as e:
-            logger.error(f"Error listing tags: {str(e)}")
-            return []
-
-    # Folder Operations
-    async def create_folder(self, folder: FolderCreate, user_id: str) -> FolderInDB:
-        """
-        Create a new folder. Note that folders are global and not user-specific.
-        Only system folders can be created through the API.
-        """
-        # Only allow creating system folders through the API
-        if not folder.is_system:
-            raise ValueError("Only system folders can be created through the API")
-
-        # Call the database function to create a system folder
-        result = self.supabase.rpc('create_system_folder', {
-            'folder_name': folder.name,
-            'folder_slug': folder.slug,
-            'folder_description': folder.description
-        }).execute()
-
-        if not result.data:
-            raise ValueError("Failed to create system folder")
-
-        # Get the created folder
-        return await self.get_folder_by_slug(folder.slug)
-
-    async def get_folder(self, folder_id: UUID) -> Optional[FolderInDB]:
-        """Get a folder by ID"""
-        result = self.supabase.table('folders').select('*').eq('id', str(folder_id)).single().execute()
-        if not result.data:
-            return None
-        return FolderInDB(**result.data)
-
-    async def get_folder_by_slug(self, slug: str) -> Optional[FolderInDB]:
-        """Get a folder by its slug"""
-        result = self.supabase.table('folders').select('*').eq('slug', slug).single().execute()
-        if not result.data:
-            return None
-        return FolderInDB(**result.data)
-
-    async def list_folders(
+        self._supabase_client = supabase or get_supabase()
+    
+    def _get_client_with_token(self, access_token: str = None) -> Client:
+        """Get Supabase client with access token if provided."""
+        if access_token:
+            client = get_supabase()
+            client.auth.set_session(access_token, refresh_token="")
+            return client
+        return self._supabase_client
+    
+    # ==================== FOLDERS ====================
+    
+    async def get_folders(
         self,
-        search: Optional[str] = None,
+        search_term: Optional[str] = None,
         is_system: Optional[bool] = None,
         limit: int = 100,
         offset: int = 0,
         sort_by: str = 'name',
-        sort_order: str = 'ASC'
+        sort_order: str = 'ASC',
+        access_token: str = None
     ) -> List[FolderInDB]:
-        """
-        List folders with optional filtering and sorting.
-        Uses the get_folders database function.
-        """
-        # Call the database function
-        result = self.supabase.rpc('get_folders', {
-            'search_term': search,
+        """Get folders using the get_folders SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        params = {
+            'search_term': search_term,
             'is_system_param': is_system,
             'limit_rows': limit,
             'offset_rows': offset,
             'sort_by': sort_by,
-            'sort_order': sort_order.upper()
-        }).execute()
-
-        if not result.data:
-            return []
-
-        return [FolderInDB(**item) for item in result.data]
-
-    # Note: Folder updates and deletions are not allowed as per database design
-    # All folder modifications should be done through database migrations
-
-    # Note Operations
-    async def create_note(self, note: NoteCreate, user_id: str) -> NoteWithRelations:
-        """Create a new note"""
+            'sort_order': sort_order
+        }
+        
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+        
         try:
-            result = self.supabase.rpc('upsert_note', {
-                'p_folder_id': str(note.folder_id),
-                'p_title': note.title,
-                'p_content': note.content,
-                'p_is_pinned': note.is_pinned,
-                'p_is_favorite': note.is_favorite,
-                'p_is_archived': note.is_archived,
-                'p_metadata': note.metadata
-            }).execute()
-
-            if not result.data or not result.data[0]:
-                raise ValueError("Failed to create note")
-
-            note_id = UUID(result.data[0]['note_id'])
-
-            # Handle tags if provided
-            if note.tags:
-                await self._set_note_tags(note_id, note.tags, user_id)
-
-            return await self._get_note_with_relations(note_id, user_id)
-
+            response = client.rpc('get_folders', params).execute()
+            return [FolderInDB(**folder) for folder in response.data]
         except Exception as e:
-            raise ValueError(f"Error creating note: {str(e)}")
-
-    async def toggle_note_favorite(self, note_id: UUID, user_id: str) -> bool:
-        """Toggle favorite status of a note"""
-        # Verify note exists and belongs to user
-        existing_note = await self.get_note(note_id, user_id)
-        if not existing_note:
-            raise ValueError("Note not found or access denied")
-
-        result = self.supabase.rpc('toggle_note_favorite', {
-            'note_id': str(note_id)
-        }).execute()
-
-        if not result.data or len(result.data) == 0:
-            raise ValueError("Failed to toggle favorite status")
-
-        return result.data[0].get('toggle_note_favorite', False)
-
-    async def _set_note_tags(self, note_id: UUID, tags: List[str], user_id: str) -> None:
-        """Set tags for a note, replacing any existing tags"""
-        # First, remove all existing tags for this note
-        self.supabase.table('note_tags')\
-            .delete()\
-            .eq('note_id', str(note_id))\
-            .execute()
-
-        if not tags:
-            return
-
-        # Get or create tags and create associations
-        for tag_name in set(tags):  # Remove duplicates
-            if not tag_name.strip():
-                continue
-
-            # Get or create tag
-            tag_result = self.supabase.rpc('get_or_create_tag', {
-                'p_name': tag_name.strip(),
-                'p_user_id': user_id
-            }).execute()
-
-            if tag_result.data and len(tag_result.data) > 0:
-                tag_id = tag_result.data[0]['id']
-
-                # Create association
-                self.supabase.table('note_tags')\
-                    .insert({
-                        'note_id': str(note_id),
-                        'tag_id': tag_id,
-                        'user_id': user_id
-                    })\
-                    .execute()
-
-    # Template Methods
-    async def create_template(self, template: TemplateCreate, user_id: str) -> TemplateInDB:
-        """Create a new template"""
-        try:
-            result = self.supabase.rpc('create_template', {
-                'p_name': template.name,
-                'p_description': template.description,
-                'p_content': template.content
-            }).execute()
-
-            if not result.data:
-                raise ValueError("Failed to create template")
-
-            # Fetch the created template to return full data
-            template = await self.get_template(UUID(result.data[0]['create_template']))
-            if not template:
-                raise ValueError("Failed to fetch created template")
-
-            return template
-
-        except Exception as e:
-            raise ValueError(f"Error creating template: {str(e)}")
-
-    async def get_template(self, template_id: UUID) -> Optional[TemplateInDB]:
-        """Get a template by ID"""
-        try:
-            result = self.supabase.rpc('get_template', {
-                'p_template_id': str(template_id)
-            }).execute()
-
-            if not result.data or not result.data[0]:
-                return None
-
-            return TemplateInDB(**result.data[0])
-
-        except Exception as e:
-            logger.error(f"Error getting template: {str(e)}")
-            return None
-
-    async def list_templates(self, search: Optional[str] = None) -> List[TemplateInDB]:
-        """List all templates available to the user"""
-        try:
-            result = self.supabase.rpc('get_templates').execute()
-            templates = [TemplateInDB(**t) for t in (result.data or [])]
-
-            if search:
-                search_lower = search.lower()
-                templates = [
-                    t for t in templates
-                    if (t.name and search_lower in t.name.lower()) or
-                       (t.description and search_lower in t.description.lower())
-                ]
-
-            return templates
-
-        except Exception as e:
-            logger.error(f"Error listing templates: {str(e)}")
-            return []
-
-    async def update_template(
+            print(f"Error getting folders: {str(e)}")
+            raise
+    
+    # ==================== NOTES ====================
+    
+    async def upsert_note(
         self,
-        template_id: UUID,
-        template: TemplateUpdate,
-        user_id: str
-    ) -> Optional[TemplateInDB]:
-        """Update an existing template"""
+        folder_id: UUID,
+        title: str = 'Untitled Note',
+        content: Dict[str, Any] = None,
+        is_pinned: bool = False,
+        is_favorite: bool = False,
+        is_archived: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
+        note_id: Optional[UUID] = None,
+        access_token: str = None
+    ) -> NoteUpsertResponse:
+        """Create or update a note using the upsert_note SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        params = {
+            'p_folder_id': str(folder_id),
+            'p_title': title,
+            'p_content': content or {},
+            'p_is_pinned': is_pinned,
+            'p_is_favorite': is_favorite,
+            'p_is_archived': is_archived,
+            'p_metadata': metadata,
+            'p_id': str(note_id) if note_id else None
+        }
+        
         try:
-            # First verify the template exists and user has permission
-            existing = await self.get_template(template_id)
-            if not existing:
+            response = client.rpc('upsert_note', params).execute()
+            if response.data and len(response.data) > 0:
                 return None
-
-            # Prepare update data
-            update_data = {}
-            if template.name is not None:
-                update_data['p_name'] = template.name
-            if template.description is not None:
-                update_data['p_description'] = template.description
-            if template.content is not None:
-                update_data['p_content'] = template.content
-
-            if not update_data:
-                return existing
-
-            # Call the update function
-            result = self.supabase.rpc('update_template', {
-                'p_template_id': str(template_id),
-                **update_data
-            }).execute()
-
-            if not result.data or not result.data[0]:
-                return None
-
-            # Fetch the updated template
-            return await self.get_template(template_id)
-
+            raise Exception("No data returned from upsert_note")
         except Exception as e:
-            logger.error(f"Error updating template: {str(e)}")
-            return None
-
-    async def delete_template(self, template_id: UUID, user_id: str) -> bool:
-        """Delete a template (only user's own non-system templates)"""
-        try:
-            result = self.supabase.rpc('delete_template', {
-                'p_template_id': str(template_id)
-            }).execute()
-
-            return result.data and result.data[0] and result.data[0].get('delete_template', False)
-
-        except Exception as e:
-            logger.error(f"Error deleting template: {str(e)}")
-            return False
-
-    async def list_notes(
+            print(f"Error upserting note: {str(e)}")
+            raise
+    
+    async def get_notes(
         self,
-        user_id: str,
-        folder_slug: Optional[str] = None,  # Changed from folder_id
-        search: Optional[str] = None,
+        note_id: Optional[UUID] = None,
+        folder_slug: Optional[str] = None,
+        search_term: Optional[str] = None,
         is_favorite: Optional[bool] = None,
         is_pinned: Optional[bool] = None,
         is_archived: bool = False,
@@ -383,154 +106,357 @@ class NotesService:
         offset: int = 0,
         sort_by: str = 'updated_at',
         sort_order: str = 'DESC',
-        note_id: Optional[UUID] = None  # Added missing parameter
-    ) -> List[NoteWithRelations]:
-        """List notes with filtering and sorting options"""
-        result = self.supabase.rpc('get_notes', {
-            'p_folder_slug': folder_slug,  # Changed from p_folder_id
-            'p_include_deleted': include_deleted,
-            'p_is_archived': is_archived,
+        access_token: str = None
+    ) -> List[NoteInDB]:
+        """Get notes using the get_notes SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        params = {
+            'p_note_id': str(note_id) if note_id else None,
+            'p_folder_slug': folder_slug,
+            'p_search_term': search_term,
             'p_is_favorite': is_favorite,
             'p_is_pinned': is_pinned,
+            'p_is_archived': is_archived,
+            'p_include_deleted': include_deleted,
             'p_limit': limit,
-            'p_note_id': str(note_id) if note_id else None,  # Added missing parameter
             'p_offset': offset,
-            'p_search_term': search,
             'p_sort_by': sort_by,
             'p_sort_order': sort_order
-        }).execute()
-
-        if not result.data:
+        }
+        
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+        
+        try:
+            response = client.rpc('get_notes', params).execute()
+            return [NoteInDB(**note) for note in response.data]
+        except Exception as e:
+            print(f"Error getting notes: {str(e)}")
+            raise
+    
+    async def delete_note(
+        self,
+        note_id: UUID,
+        access_token: str = None
+    ) -> DeleteResponse:
+        """Soft delete a note (move to trash) using the delete_note SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        try:
+            response = client.rpc('delete_note', {'p_note_id': str(note_id)}).execute()
+            if response.data and len(response.data) > 0:
+                return DeleteResponse(**response.data[0])
+            raise Exception("No data returned from delete_note")
+        except Exception as e:
+            print(f"Error deleting note: {str(e)}")
+            raise
+    
+    async def permanent_delete_note(
+        self,
+        note_id: UUID,
+        access_token: str = None
+    ) -> DeleteResponse:
+        """Permanently delete a note from trash using the permanent_delete_note SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        try:
+            response = client.rpc('permanent_delete_note', {'p_note_id': str(note_id)}).execute()
+            if response.data and len(response.data) > 0:
+                return DeleteResponse(**response.data[0])
+            raise Exception("No data returned from permanent_delete_note")
+        except Exception as e:
+            print(f"Error permanently deleting note: {str(e)}")
+            raise
+    
+    async def restore_note(
+        self,
+        note_id: UUID,
+        target_folder_slug: str = 'notes',
+        access_token: str = None
+    ) -> DeleteResponse:
+        """Restore a note from trash using the restore_note SQL function."""
+        client = self._get_client_with_token(access_token)
+        
+        params = {
+            'p_note_id': str(note_id),
+            'p_target_folder_slug': target_folder_slug
+        }
+        
+        try:
+            response = client.rpc('restore_note', params).execute()
+            if response.data and len(response.data) > 0:
+                return DeleteResponse(**response.data[0])
+            raise Exception("No data returned from restore_note")
+        except Exception as e:
+            print(f"Error restoring note: {str(e)}")
+            raise
+    
+    # ==================== TAGS ====================
+    
+    def get_tags_with_counts(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all tags with note counts"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_tags_with_counts').execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting tags with counts: {str(e)}")
             return []
-
-        notes = []
-        for note_data in result.data:
-            note = await self._get_note_with_relations(UUID(note_data['id']), user_id)
-            if note:
-                notes.append(note)
-
-        return notes
-
-    async def delete_note(self, note_id: UUID, user_id: str, permanent: bool = False) -> bool:
-        """
-        Delete a note (soft delete by default, or permanent if specified)
-        Returns True if successful, False otherwise
-        """
-        # First verify the note exists and belongs to the user
-        existing_note = await self.get_note(note_id, user_id)
-        if not existing_note:
+    
+    def search_tags(self, search_term: str, limit: int = 10, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Search tags by name"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('search_tags', {
+                'p_search_term': search_term,
+                'p_limit': limit
+            }).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error searching tags: {str(e)}")
+            return []
+    
+    def rename_tag(self, tag_id: str, new_name: str, access_token: Optional[str] = None) -> Dict[str, Any]:
+        """Rename a tag"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('rename_tag', {
+                'p_tag_id': tag_id,
+                'p_new_name': new_name
+            }).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return {'success': False, 'message': 'Failed to rename tag'}
+        except Exception as e:
+            print(f"Error renaming tag: {str(e)}")
+            return {'success': False, 'message': str(e)}
+    
+    def tag_note(self, note_id: str, tag_name: str, tag_color: Optional[str] = None, access_token: Optional[str] = None) -> bool:
+        """Add a tag to a note"""
+        try:
+            client = self._get_client(access_token)
+            params = {
+                'p_note_id': note_id,
+                'p_tag_name': tag_name
+            }
+            if tag_color:
+                params['p_tag_color'] = tag_color
+            response = client.rpc('tag_note', params).execute()
+            return True
+        except Exception as e:
+            print(f"Error tagging note: {str(e)}")
             return False
-
-        if permanent:
-            # Permanently delete the note (only if already in trash)
-            result = self.supabase.rpc('permanent_delete_note', {
-                'p_note_id': str(note_id)
+    
+    def untag_note(self, note_id: str, tag_id: str, access_token: Optional[str] = None) -> bool:
+        """Remove a tag from a note"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('untag_note', {
+                'p_note_id': note_id,
+                'p_tag_id': tag_id
             }).execute()
-        else:
-            # Soft delete (move to trash)
-            result = self.supabase.rpc('delete_note', {
-                'p_note_id': str(note_id)
+            return True
+        except Exception as e:
+            print(f"Error untagging note: {str(e)}")
+            return False
+    
+    def get_notes_by_tag(self, tag_id: str, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all notes with a specific tag"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_notes_by_tag', {
+                'p_tag_id': tag_id
             }).execute()
-
-        return result.data and result.data[0] and result.data[0].get('success', False)
-
-    async def get_note(self, note_id: UUID, user_id: str) -> Optional[NoteWithRelations]:
-        """Get a single note by ID with its relations"""
-        return await self._get_note_with_relations(note_id, user_id)
-
-    async def update_note(self, note_id: UUID, note: NoteUpdate, user_id: str) -> Optional[NoteWithRelations]:
-        """Update an existing note"""
-        # First get the existing note to ensure it belongs to the user
-        existing_note = await self._get_note_with_relations(note_id, user_id)
-        if not existing_note:
-            return None
-
-        note_data = note.dict(exclude_unset=True, exclude={"tags"})
-
-        # Call the upsert_note database function
-        result = self.supabase.rpc('upsert_note', {
-            'p_id': str(note_id),
-            'p_folder_id': str(note_data.get('folder_id', existing_note.folder_id)),
-            'p_title': note_data.get('title', existing_note.title),
-            'p_content': note_data.get('content', existing_note.content),
-            'p_is_pinned': note_data.get('is_pinned', existing_note.is_pinned),
-            'p_is_favorite': note_data.get('is_favorite', existing_note.is_favorite),
-            'p_is_archived': note_data.get('is_archived', existing_note.is_archived),
-            'p_metadata': note_data.get('metadata')
-        }).execute()
-
-        if not result.data or not result.data[0]:
-            return None
-
-        # Handle tags if provided
-        if hasattr(note, 'tags') and note.tags is not None:
-            await self._set_note_tags(note_id, note.tags, user_id)
-
-        # Get the updated note with relations
-        return await self._get_note_with_relations(note_id, user_id)
-
-    # Tag Operations
-    async def _set_note_tags_old(self, note_id: UUID, tag_names: List[str], user_id: str) -> None:
-        """Set tags for a note, creating any that don't exist"""
-        # Clear existing tags for this note
-        await self.supabase.table("note_tags") \
-            .delete() \
-            .eq("note_id", str(note_id)) \
-            .execute()
-
-        if not tag_names:
-            return
-
-        # Get or create each tag
-        tag_ids = []
-        for tag_name in tag_names:
-            # Check if tag exists
-            result = self.supabase.table('tags')\
-                .select('id')\
-                .eq('name', tag_name)\
-                .eq('user_id', user_id)\
-                .maybe_single()\
-                .execute()
-
-            if result.data:
-                tag_ids.append(result.data['id'])
-            else:
-                # Create new tag
-                new_tag = await self.tags.create({
-                    'name': tag_name,
-                    'user_id': user_id,
-                    'color': self._generate_tag_color()
-                })
-                tag_ids.append(new_tag.id)
-
-        # Create note-tag associations
-        for tag_id in tag_ids:
-            self.supabase.table('note_tags').insert({
-                'note_id': str(note_id),
-                'tag_id': str(tag_id)
-            }).execute()
-
-    def _generate_tag_color(self) -> str:
-        """Generate a random color for a new tag"""
-        import random
-        colors = [
-            '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
-            '#D4A5A5', '#9B8B94', '#E2C2B9', '#F1BF98', '#E09F3E'
-        ]
-        return random.choice(colors)
-
-    async def get_note_tags(self, note_id: UUID, user_id: str) -> List[TagInDB]:
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting notes by tag: {str(e)}")
+            return []
+    
+    def get_note_tags(self, note_id: str, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all tags for a specific note"""
-        # First verify the note exists and belongs to the user
-        note = await self.get_note(note_id, user_id)
-        if not note:
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_note_tags', {
+                'p_note_id': note_id
+            }).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting note tags: {str(e)}")
             return []
-
-        result = self.supabase.rpc('get_note_tags', {
-            'p_note_id': str(note_id)
-        }).execute()
-
-        if not result.data:
+    
+    def get_or_create_tag(self, name: str, user_id: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get or create a tag"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_or_create_tag', {
+                'p_name': name,
+                'p_user_id': user_id
+            }).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error getting or creating tag: {str(e)}")
+            return None
+    
+    # ==================== TEMPLATES ====================
+    
+    def create_template(self, name: str, description: Optional[str] = None, content: Optional[Dict[str, Any]] = None, access_token: Optional[str] = None) -> Optional[str]:
+        """Create a new template"""
+        try:
+            client = self._get_client(access_token)
+            params = {'p_name': name}
+            if description:
+                params['p_description'] = description
+            if content:
+                params['p_content'] = content
+            response = client.rpc('create_template', params).execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"Error creating template: {str(e)}")
+            return None
+    
+    def update_template(self, template_id: str, name: Optional[str] = None, description: Optional[str] = None, content: Optional[Dict[str, Any]] = None, access_token: Optional[str] = None) -> bool:
+        """Update a template"""
+        try:
+            client = self._get_client(access_token)
+            params = {'p_template_id': template_id}
+            if name:
+                params['p_name'] = name
+            if description:
+                params['p_description'] = description
+            if content:
+                params['p_content'] = content
+            response = client.rpc('update_template', params).execute()
+            return response.data if response.data else False
+        except Exception as e:
+            print(f"Error updating template: {str(e)}")
+            return False
+    
+    def delete_template(self, template_id: str, access_token: Optional[str] = None) -> bool:
+        """Delete a template"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('delete_template', {
+                'p_template_id': template_id
+            }).execute()
+            return response.data if response.data else False
+        except Exception as e:
+            print(f"Error deleting template: {str(e)}")
+            return False
+    
+    def get_templates(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all templates (user's + system templates)"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_templates').execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting templates: {str(e)}")
             return []
-
-        return [TagInDB(**tag) for tag in result.data]
+    
+    def get_template(self, template_id: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get a single template by ID"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_template', {
+                'p_template_id': template_id
+            }).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error getting template: {str(e)}")
+            return None
+    
+    # ==================== ADDITIONAL NOTE FUNCTIONS ====================
+    
+    def move_note_to_trash(self, note_id: str, access_token: Optional[str] = None) -> bool:
+        """Move a note to trash"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('move_note_to_trash', {'note_id': note_id}).execute()
+            return True
+        except Exception as e:
+            print(f"Error moving note to trash: {str(e)}")
+            return False
+    
+    def restore_note_from_trash(self, note_id: str, target_folder_id: Optional[str] = None, access_token: Optional[str] = None) -> bool:
+        """Restore a note from trash"""
+        try:
+            client = self._get_client(access_token)
+            params = {'note_id': note_id}
+            if target_folder_id:
+                params['target_folder_id'] = target_folder_id
+            response = client.rpc('restore_note_from_trash', params).execute()
+            return True
+        except Exception as e:
+            print(f"Error restoring note from trash: {str(e)}")
+            return False
+    
+    def toggle_note_favorite(self, note_id: str, access_token: Optional[str] = None) -> Optional[bool]:
+        """Toggle favorite status of a note"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('toggle_note_favorite', {'note_id': note_id}).execute()
+            return response.data if response.data is not None else None
+        except Exception as e:
+            print(f"Error toggling note favorite: {str(e)}")
+            return None
+    
+    def get_favorite_notes(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all favorite notes for the current user"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_favorite_notes').execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting favorite notes: {str(e)}")
+            return []
+    
+    # ==================== ADDITIONAL FOLDER FUNCTIONS ====================
+    
+    def create_system_folder(self, folder_name: str, folder_slug: str, folder_description: Optional[str] = None, access_token: Optional[str] = None) -> Optional[str]:
+        """Create a system folder (admin only)"""
+        try:
+            client = self._get_client(access_token)
+            params = {
+                'folder_name': folder_name,
+                'folder_slug': folder_slug
+            }
+            if folder_description:
+                params['folder_description'] = folder_description
+            response = client.rpc('create_system_folder', params).execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"Error creating system folder: {str(e)}")
+            return None
+    
+    def get_folder_by_slug(self, folder_slug: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get folder by slug"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('get_folder_by_slug', {'folder_slug': folder_slug}).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error getting folder by slug: {str(e)}")
+            return None
+    
+    def create_system_template(self, name: str, description: str, content: Optional[Dict[str, Any]] = None, access_token: Optional[str] = None) -> Optional[str]:
+        """Create a system template (admin only)"""
+        try:
+            client = self._get_client(access_token)
+            params = {
+                'p_name': name,
+                'p_description': description
+            }
+            if content:
+                params['p_content'] = content
+            response = client.rpc('create_system_template', params).execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"Error creating system template: {str(e)}")
+            return None
