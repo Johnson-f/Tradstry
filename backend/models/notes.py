@@ -49,7 +49,7 @@ class NoteUpdate(BaseModel):
 
 class NoteInDB(NoteBase):
     id: UUID
-    user_id: UUID
+    user_id: Optional[UUID] = None
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
     created_at: datetime
