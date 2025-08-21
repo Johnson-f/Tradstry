@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.notes (
     is_archived BOOLEAN NOT NULL DEFAULT false,
     is_deleted BOOLEAN NOT NULL DEFAULT false,
     deleted_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     version INTEGER NOT NULL DEFAULT 1
