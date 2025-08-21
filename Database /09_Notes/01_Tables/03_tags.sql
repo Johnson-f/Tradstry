@@ -13,9 +13,9 @@ CREATE TABLE IF NOT EXISTS public.tags (
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
-CREATE POLICY "Users can manage their tags" 
-ON public.tags 
-FOR ALL 
+CREATE POLICY "Users can manage their tags"
+ON public.tags
+FOR ALL
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
 
@@ -54,7 +54,7 @@ RETURNS TABLE (
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) LANGUAGE sql SECURITY DEFINER AS $$
-    SELECT 
+    SELECT
         t.id,
         t.name,
         t.color,
@@ -72,7 +72,7 @@ $$;
 CREATE OR REPLACE FUNCTION rename_tag(
     p_tag_id UUID,
     p_new_name TEXT
-) RETURNS TABLE (success BOOLEAN, message TEXT) 
+) RETURNS TABLE (success BOOLEAN, message TEXT)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
     -- Check if tag exists and belongs to user
@@ -80,18 +80,18 @@ BEGIN
         RETURN QUERY SELECT false, 'Tag not found or access denied';
         RETURN;
     END IF;
-    
+
     -- Check if new name already exists
     IF EXISTS (SELECT 1 FROM public.tags WHERE name = p_new_name AND user_id = auth.uid() AND id != p_tag_id) THEN
         RETURN QUERY SELECT false, 'A tag with this name already exists';
         RETURN;
     END IF;
-    
+
     -- Update the tag name
-    UPDATE public.tags 
+    UPDATE public.tags
     SET name = p_new_name
     WHERE id = p_tag_id AND user_id = auth.uid();
-    
+
     RETURN QUERY SELECT true, 'Tag renamed successfully';
 EXCEPTION WHEN OTHERS THEN
     RETURN QUERY SELECT false, 'Error renaming tag: ' || SQLERRM;
@@ -108,7 +108,7 @@ CREATE OR REPLACE FUNCTION search_tags(
     color TEXT,
     note_count BIGINT
 ) LANGUAGE sql SECURITY DEFINER AS $$
-    SELECT 
+    SELECT
         t.id,
         t.name,
         t.color,
@@ -118,8 +118,8 @@ CREATE OR REPLACE FUNCTION search_tags(
     WHERE t.user_id = auth.uid()
     AND t.name ILIKE '%' || p_search_term || '%'
     GROUP BY t.id
-    ORDER BY 
-        CASE 
+    ORDER BY
+        CASE
             WHEN t.name ILIKE p_search_term || '%' THEN 0
             ELSE 1
         END,
@@ -127,7 +127,7 @@ CREATE OR REPLACE FUNCTION search_tags(
     LIMIT p_limit;
 $$;
 
--- Tag a note 
+-- Tag a note
 CREATE OR REPLACE FUNCTION tag_note(
     p_note_id UUID,
     p_tag_name TEXT,
@@ -139,32 +139,32 @@ BEGIN
     -- Get or create tag
     INSERT INTO public.tags (user_id, name, color)
     VALUES (auth.uid(), p_tag_name, COALESCE(p_tag_color, '#6B7280'))
-    ON CONFLICT (user_id, name) 
+    ON CONFLICT (user_id, name)
     DO UPDATE SET name = EXCLUDED.name
     RETURNING id INTO v_tag_id;
-    
+
     -- Add tag to note
     INSERT INTO public.note_tags (note_id, tag_id)
     SELECT p_note_id, v_tag_id
     WHERE EXISTS (
-        SELECT 1 FROM public.notes 
+        SELECT 1 FROM public.notes
         WHERE id = p_note_id AND user_id = auth.uid()
     )
     ON CONFLICT DO NOTHING;
 END;
 $$;
 
--- Remove tag from note 
+-- Remove tag from note
 CREATE OR REPLACE FUNCTION untag_note(
     p_note_id UUID,
     p_tag_id UUID
 ) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
     DELETE FROM public.note_tags nt
-    WHERE nt.note_id = p_note_id 
+    WHERE nt.note_id = p_note_id
     AND nt.tag_id = p_tag_id
     AND EXISTS (
-        SELECT 1 FROM public.notes n 
+        SELECT 1 FROM public.notes n
         WHERE n.id = p_note_id AND n.user_id = auth.uid()
     );
 END;
@@ -173,12 +173,12 @@ $$;
 -- Get notes by tag
 CREATE OR REPLACE FUNCTION get_notes_by_tag(
     p_tag_id UUID
-) RETURNS SETOF public.notes 
+) RETURNS SETOF public.notes
 LANGUAGE sql SECURITY DEFINER AS $$
     SELECT n.*
     FROM public.notes n
     JOIN public.note_tags nt ON n.id = nt.note_id
-    WHERE nt.tag_id = p_tag_id 
+    WHERE nt.tag_id = p_tag_id
     AND n.user_id = auth.uid()
     AND n.is_deleted = false;
 $$;
@@ -192,3 +192,110 @@ GRANT EXECUTE ON FUNCTION untag_note(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_notes_by_tag(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION rename_tag(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION search_tags(TEXT, INTEGER) TO authenticated;
+
+
+-- More codes for tags
+-- -- Function to get tags for a specific note
+CREATE OR REPLACE FUNCTION get_note_tags(p_note_id UUID)
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    color TEXT,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+) LANGUAGE sql SECURITY DEFINER AS $$
+    SELECT
+        t.id,
+        t.name,
+        t.color,
+        t.created_at,
+        t.updated_at
+    FROM public.tags t
+    JOIN public.note_tags nt ON t.id = nt.tag_id
+    WHERE nt.note_id = p_note_id
+    AND t.user_id = auth.uid()
+    ORDER BY t.name;
+$$;
+
+-- Function to get or create a tag
+CREATE OR REPLACE FUNCTION get_or_create_tag(
+    p_name TEXT,
+    p_user_id UUID
+) RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    color TEXT,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+) LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_tag_id UUID;
+    v_tag_record RECORD;
+BEGIN
+    -- First try to get existing tag
+    SELECT t.id INTO v_tag_id
+    FROM public.tags t
+    WHERE t.name = p_name
+    AND t.user_id = p_user_id;
+
+    -- If tag doesn't exist, create it
+    IF v_tag_id IS NULL THEN
+        INSERT INTO public.tags (user_id, name, color)
+        VALUES (p_user_id, p_name, '#6B7280')
+        RETURNING tags.id INTO v_tag_id;
+    END IF;
+
+    -- Return the tag record
+    SELECT
+        t.id,
+        t.name,
+        t.color,
+        t.created_at,
+        t.updated_at
+    INTO v_tag_record
+    FROM public.tags t
+    WHERE t.id = v_tag_id;
+
+    RETURN QUERY SELECT
+        v_tag_record.id,
+        v_tag_record.name,
+        v_tag_record.color,
+        v_tag_record.created_at,
+        v_tag_record.updated_at;
+END;
+$$;
+
+-- RLS policies for note_tags junction table
+CREATE POLICY "Users can view note_tags for their notes"
+ON public.note_tags FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM public.notes n
+        WHERE n.id = note_tags.note_id
+        AND n.user_id = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can create note_tags for their notes"
+ON public.note_tags FOR INSERT
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM public.notes n
+        WHERE n.id = note_tags.note_id
+        AND n.user_id = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can delete note_tags for their notes"
+ON public.note_tags FOR DELETE
+USING (
+    EXISTS (
+        SELECT 1 FROM public.notes n
+        WHERE n.id = note_tags.note_id
+        AND n.user_id = auth.uid()
+    )
+);
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION get_note_tags(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_or_create_tag(TEXT, UUID) TO authenticated;

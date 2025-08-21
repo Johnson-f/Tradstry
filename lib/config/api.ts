@@ -35,6 +35,32 @@ export const apiConfig = {
       dateRange: (startDate: string, endDate: string) =>
         `/options?start_date=${startDate}&end_date=${endDate}`,
     },
+    // Notes endpoints
+    notes: {
+      // Folders
+      folders: {
+        base: "/notes/folders/",
+        byId: (id: string) => `/notes/folders/${id}`,
+        bySlug: (slug: string) => `/notes/folders/slug/${slug}`,
+      },
+      // Notes
+      notes: {
+        base: "/notes/notes/",
+        byId: (id: string) => `/notes/notes/${id}`,
+        favorite: (id: string) => `/notes/notes/${id}/favorite`,
+      },
+      // Tags
+      tags: {
+        base: "/notes/tags/",
+        byNote: (noteId: string) => `/notes/notes/${noteId}/tags`,
+        removeFromNote: (noteId: string, tagName: string) => `/notes/notes/${noteId}/tags/${tagName}`,
+      },
+      // Templates
+      templates: {
+        base: "/notes/templates",
+        byId: (id: string) => `/notes/templates/${id}`,
+      },
+    },
     // Analytics endpoints
     analytics: {
       stocks: {
