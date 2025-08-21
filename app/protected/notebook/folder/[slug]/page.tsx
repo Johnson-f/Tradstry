@@ -1,17 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Plus, MoreVertical, Clock, Home } from "lucide-react";
+import { Search, Plus, MoreVertical, Clock, ArrowLeft } from "lucide-react";
 import { NotebookNavigation } from "@/components/notebook/notebook-navigation";
-import { useNotes, useFolderBySlug } from "@/lib/hooks/use-notes";
-import { Note } from "@/lib/types/notes";
+import { useFolderBySlug, useNotes } from "@/lib/hooks/use-notes";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-interface NoteWithPreview extends Note {
+type Note = {
+  id: string;
+  title: string;
+  content: string;
+  updated_at: string;
   preview: string;
-}
+};
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -25,39 +30,78 @@ const formatDate = (dateString: string) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-export default function NotebookPage() {
-  const [selectedNote, setSelectedNote] = useState<NoteWithPreview | null>(null);
+interface FolderPageProps {
+  params: {
+    slug: string;
+  };
+}
+
+export default function FolderPage({ params }: FolderPageProps) {
+  const { slug } = params;
+  const router = useRouter();
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch home folder data and recent notes
-  const { data: homeFolder } = useFolderBySlug('home');
+  // Fetch folder details
+  const { data: folder, isLoading: folderLoading, error: folderError } = useFolderBySlug(slug);
+  
+  // Fetch notes for this folder
   const { data: notes = [], isLoading: notesLoading } = useNotes({ 
-    folder_slug: 'home',
+    folder_slug: slug,
     is_archived: false,
     include_deleted: false,
     sort_by: 'updated_at',
     sort_order: 'DESC',
-    limit: 20
   });
 
-  // Create notes with preview
-  const notesWithPreview: NoteWithPreview[] = notes.map((note: Note) => ({
-    ...note,
-    preview: note.content?.substring(0, 100) + (note.content && note.content.length > 100 ? '...' : '') || 'No content',
-  }));
-
   // Filter notes based on search
-  const filteredNotes = notesWithPreview.filter(note =>
+  const filteredNotes = notes.filter((note: any) =>
     note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     note.content?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Set first note as selected when notes load
-  useEffect(() => {
-    if (!selectedNote && filteredNotes.length > 0) {
-      setSelectedNote(filteredNotes[0]);
-    }
-  }, [filteredNotes, selectedNote]);
+  // Create preview for notes
+  const notesWithPreview = filteredNotes.map((note: any) => ({
+    ...note,
+    preview: note.content?.substring(0, 100) + (note.content?.length > 100 ? '...' : '') || 'No content',
+  }));
+
+  if (folderLoading) {
+    return (
+      <div className="flex h-screen bg-background">
+        <NotebookNavigation />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading folder...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (folderError || !folder) {
+    return (
+      <div className="flex h-screen bg-background">
+        <NotebookNavigation />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="text-6xl">📁</div>
+            <h3 className="text-xl font-medium">Folder not found</h3>
+            <p className="text-muted-foreground">
+              The folder "{slug}" could not be found.
+            </p>
+            <Button asChild>
+              <Link href="/protected/notebook">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Notebook
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -67,35 +111,36 @@ export default function NotebookPage() {
       {/* Notes Sidebar */}
       <div className="w-80 border-r flex flex-col">
         <div className="p-4">
+          {/* Folder Header */}
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">{folder.name}</h2>
+            {folder.description && (
+              <p className="text-sm text-muted-foreground mt-1">{folder.description}</p>
+            )}
+          </div>
+
+          {/* Search */}
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search notes..."
+              placeholder={`Search in ${folder.name}...`}
               className="w-full pl-9"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           
-          <Button className="w-full justify-start gap-2 mb-6">
-            <Plus className="h-4 w-4" />
-            New Note
-          </Button>
-        </div>
-
-        <div className="px-4 mb-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-            <Home className="h-4 w-4" />
-            <span>{homeFolder?.name || 'Home'}</span>
-          </div>
-          {homeFolder?.description && (
-            <p className="text-xs text-muted-foreground px-6">
-              {homeFolder.description}
-            </p>
+          {/* New Note Button */}
+          {folder.slug !== 'trash' && (
+            <Button className="w-full justify-start gap-2 mb-6">
+              <Plus className="h-4 w-4" />
+              New Note
+            </Button>
           )}
         </div>
         
+        {/* Notes List */}
         <ScrollArea className="flex-1 px-3">
           {notesLoading ? (
             <div className="space-y-3">
@@ -103,16 +148,16 @@ export default function NotebookPage() {
                 <div key={i} className="p-3 rounded-lg bg-muted animate-pulse h-20" />
               ))}
             </div>
-          ) : filteredNotes.length === 0 ? (
+          ) : notesWithPreview.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-4xl mb-2">📝</div>
               <p className="text-muted-foreground">
                 {searchQuery 
                   ? `No notes found matching "${searchQuery}"`
-                  : 'No notes yet'
+                  : `No notes in ${folder.name} yet`
                 }
               </p>
-              {!searchQuery && (
+              {!searchQuery && folder.slug !== 'trash' && (
                 <Button className="mt-4" size="sm">
                   <Plus className="mr-2 h-4 w-4" />
                   Create your first note
@@ -121,7 +166,7 @@ export default function NotebookPage() {
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredNotes.map((note) => (
+              {notesWithPreview.map((note) => (
                 <div 
                   key={note.id}
                   className={`p-3 rounded-lg cursor-pointer transition-colors group ${
@@ -175,12 +220,14 @@ export default function NotebookPage() {
               </div>
               <h3 className="text-xl font-medium">No note selected</h3>
               <p className="text-muted-foreground">
-                Select a note from the sidebar or create a new one to get started.
+                Select a note from {folder.name} to get started{folder.slug !== 'trash' ? ' or create a new one' : ''}.
               </p>
-              <Button className="mt-2">
-                <Plus className="mr-2 h-4 w-4" />
-                New Note
-              </Button>
+              {folder.slug !== 'trash' && (
+                <Button className="mt-2">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Note
+                </Button>
+              )}
             </div>
           </div>
         )}

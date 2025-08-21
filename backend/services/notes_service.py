@@ -22,6 +22,10 @@ class NotesService:
             return client
         return self._supabase_client
     
+    def _get_client(self, access_token: str = None) -> Client:
+        """Get Supabase client - wrapper for _get_client_with_token for compatibility."""
+        return self._get_client_with_token(access_token)
+    
     # ==================== FOLDERS ====================
     
     async def get_folders(
