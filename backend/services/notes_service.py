@@ -91,7 +91,7 @@ class NotesService:
         try:
             response = client.rpc('upsert_note', params).execute()
             if response.data and len(response.data) > 0:
-                return None
+                return NoteUpsertResponse(**response.data[0])
             raise Exception("No data returned from upsert_note")
         except Exception as e:
             print(f"Error upserting note: {str(e)}")
