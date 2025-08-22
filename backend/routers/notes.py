@@ -393,7 +393,7 @@ async def get_templates(
     """
     Get all templates (user's + system templates).
     """
-    templates = notes_service.get_templates(
+    templates = await notes_service.get_templates(
         access_token=current_user.get("access_token")
     )
     return [TemplateInDB(**template) for template in templates]
@@ -509,8 +509,8 @@ async def get_trash_notes(
     Get all deleted notes (trash) for the current user.
     """
     return await notes_service.get_notes(
+        is_archived=True,
         include_deleted=True,
-        is_deleted=True,
         sort_by='updated_at',
         sort_order='DESC',
         access_token=current_user.get("access_token")

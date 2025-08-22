@@ -111,7 +111,7 @@ class NotesService:
         offset: int = 0,
         sort_by: str = 'updated_at',
         sort_order: str = 'DESC',
-        access_token: str = None
+        access_token: Optional[str] = None
     ) -> List[NoteInDB]:
         """Get notes using the get_notes SQL function."""
         client = self._get_client_with_token(access_token)
@@ -366,7 +366,7 @@ class NotesService:
             print(f"Error deleting template: {str(e)}")
             return False
     
-    def get_templates(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_templates(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all templates (user's + system templates)"""
         try:
             client = self._get_client(access_token)
