@@ -272,7 +272,7 @@ async def search_tags(
     )
     return [TagInDB(**tag) for tag in tags]
 
-@router.put("/tags/{tag_id}/rename", response_model=Dict[str, Any])
+@router.post("/tags/{tag_id}/rename", response_model=Dict[str, Any])
 async def rename_tag(
     tag_id: UUID,
     new_name: str = Query(..., description="New name for the tag"),
@@ -286,6 +286,22 @@ async def rename_tag(
         new_name=new_name,
         access_token=current_user.get("access_token")
     )
+    return result
+
+@router.delete("/tags/{tag_id}", response_model=Dict[str, Any])
+async def delete_tag(
+    tag_id: UUID,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete a tag.
+    """
+    result = notes_service.delete_tag(
+        tag_id=str(tag_id),
+        access_token=current_user.get("access_token")
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to delete tag"))
     return result
 
 @router.post("/tags/tag-note")
@@ -372,7 +388,7 @@ async def get_or_create_tag(
 
 @router.get("/templates", response_model=List[TemplateInDB])
 async def get_templates(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_with_token)
 ):
     """
     Get all templates (user's + system templates).
@@ -470,17 +486,35 @@ async def toggle_note_favorite(
         raise HTTPException(status_code=400, detail="Failed to toggle favorite")
     return {"is_favorite": new_status}
 
-@router.get("/notes/favorites", response_model=List[NoteInDB])
+@router.get("/favorites", response_model=List[NoteInDB])
 async def get_favorite_notes(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_with_token)
 ):
     """
     Get all favorite notes for the current user.
     """
-    notes = notes_service.get_favorite_notes(
+    return await notes_service.get_notes(
+        is_favorite=True,
+        include_deleted=False,
+        sort_by='updated_at',
+        sort_order='DESC',
         access_token=current_user.get("access_token")
     )
-    return [NoteInDB(**note) for note in notes]
+
+@router.get("/trash", response_model=List[NoteInDB])
+async def get_trash_notes(
+    current_user: dict = Depends(get_current_user_with_token)
+):
+    """
+    Get all deleted notes (trash) for the current user.
+    """
+    return await notes_service.get_notes(
+        include_deleted=True,
+        is_deleted=True,
+        sort_by='updated_at',
+        sort_order='DESC',
+        access_token=current_user.get("access_token")
+    )
 
 # ==================== TRASH OPERATIONS ====================
 

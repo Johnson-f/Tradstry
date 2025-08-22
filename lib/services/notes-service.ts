@@ -124,6 +124,17 @@ class NotesService {
     return apiClient.post<DeleteResponse>(`/notes/folders/${folderId}/restore`, request);
   }
 
+  /**
+   * Search in file
+   * @route POST /api/notes/search-in-file
+   * @param filePath - The path of the file to search in
+   * @param query - The search query
+   * @returns List of search results
+   */
+  async searchInFile(filePath: string, query: string): Promise<any> {
+    return apiClient.post(`/notes/search-in-file`, { filePath, query });
+  }
+
   // ==================== TAGS ====================
 
   /**
@@ -212,6 +223,16 @@ class NotesService {
     });
   }
 
+  /**
+   * Delete a tag
+   * @route DELETE /api/notes/tags/{tag_id}
+   * @param tagId - The ID of the tag to delete
+   * @returns Response indicating success or failure
+   */
+  async deleteTag(tagId: string): Promise<ApiSuccessResponse> {
+    return apiClient.delete<ApiSuccessResponse>(`/notes/tags/${tagId}`);
+  }
+
   // ==================== TEMPLATES ====================
 
   /**
@@ -280,12 +301,21 @@ class NotesService {
   }
 
   /**
-   * Get all favorite notes for the current user
-   * @route GET /api/notes/notes/favorites
-   * @returns List of all favorite notes
+   * Get favorite notes
+   * @route GET /api/notes/favorites
+   * @returns List of favorite notes
    */
   async getFavoriteNotes(): Promise<Note[]> {
-    return apiClient.get<Note[]>('/notes/notes/favorites');
+    return apiClient.get<Note[]>('/notes/favorites');
+  }
+
+  /**
+   * Get trashed/deleted notes
+   * @route GET /api/notes/trash
+   * @returns List of deleted notes
+   */
+  async getTrash(): Promise<Note[]> {
+    return apiClient.get<Note[]>('/notes/trash');
   }
 
   // ==================== TRASH OPERATIONS ====================

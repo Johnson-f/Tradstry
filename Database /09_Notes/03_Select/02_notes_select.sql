@@ -6,6 +6,7 @@ CREATE OR REPLACE FUNCTION get_notes(
     p_is_favorite BOOLEAN DEFAULT NULL,
     p_is_pinned BOOLEAN DEFAULT NULL,
     p_is_archived BOOLEAN DEFAULT false,
+    p_is_deleted BOOLEAN DEFAULT NULL,
     p_include_deleted BOOLEAN DEFAULT false,
     p_limit INTEGER DEFAULT 50,
     p_offset INTEGER DEFAULT 0,
@@ -94,7 +95,11 @@ BEGIN
     v_where_conditions := array_append(v_where_conditions, 
         'is_archived = ' || p_is_archived);
     
-    IF NOT p_include_deleted THEN
+    -- Handle deleted notes filtering
+    IF p_is_deleted IS NOT NULL THEN
+        v_where_conditions := array_append(v_where_conditions, 
+            'is_deleted = ' || p_is_deleted);
+    ELSIF NOT p_include_deleted THEN
         v_where_conditions := array_append(v_where_conditions, 'is_deleted = false');
     END IF;
     

@@ -129,8 +129,10 @@ $$;
 CREATE OR REPLACE FUNCTION get_templates()
 RETURNS TABLE (
     id UUID,
+    user_id UUID,
     name TEXT,
     description TEXT,
+    content JSONB,
     is_system BOOLEAN,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
@@ -138,8 +140,10 @@ RETURNS TABLE (
 LANGUAGE sql SECURITY DEFINER AS $$
     SELECT 
         id,
+        user_id,
         name,
         description,
+        content,
         is_system,
         created_at,
         updated_at
@@ -152,6 +156,7 @@ $$;
 CREATE OR REPLACE FUNCTION get_template(p_template_id UUID)
 RETURNS TABLE (
     id UUID,
+    user_id UUID,
     name TEXT,
     description TEXT,
     content JSONB,
@@ -162,6 +167,7 @@ RETURNS TABLE (
 LANGUAGE sql SECURITY DEFINER AS $$
     SELECT 
         id,
+        user_id,
         name,
         description,
         content,

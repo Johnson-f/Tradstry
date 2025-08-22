@@ -105,6 +105,7 @@ class NotesService:
         is_favorite: Optional[bool] = None,
         is_pinned: Optional[bool] = None,
         is_archived: bool = False,
+        is_deleted: Optional[bool] = None,
         include_deleted: bool = False,
         limit: int = 50,
         offset: int = 0,
@@ -122,6 +123,7 @@ class NotesService:
             'p_is_favorite': is_favorite,
             'p_is_pinned': is_pinned,
             'p_is_archived': is_archived,
+            'p_is_deleted': is_deleted,
             'p_include_deleted': include_deleted,
             'p_limit': limit,
             'p_offset': offset,
@@ -265,6 +267,20 @@ class NotesService:
             print(f"Error untagging note: {str(e)}")
             return False
     
+    def delete_tag(self, tag_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
+        """Delete a tag"""
+        try:
+            client = self._get_client(access_token)
+            response = client.rpc('delete_tag', {
+                'p_tag_id': tag_id
+            }).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return {"success": False, "message": "Failed to delete tag"}
+        except Exception as e:
+            print(f"Error deleting tag: {str(e)}")
+            return {"success": False, "message": str(e)}
+    
     def get_notes_by_tag(self, tag_id: str, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all notes with a specific tag"""
         try:
@@ -377,10 +393,11 @@ class NotesService:
     # ==================== ADDITIONAL NOTE FUNCTIONS ====================
     
     def move_note_to_trash(self, note_id: str, access_token: Optional[str] = None) -> bool:
-        """Move a note to trash"""
+        """Move a note to trash by calling the soft delete RPC."""
         try:
             client = self._get_client(access_token)
-            response = client.rpc('move_note_to_trash', {'note_id': note_id}).execute()
+            # Calling delete_note which should perform a soft delete.
+            response = client.rpc('delete_note', {'p_note_id': note_id}).execute()
             return True
         except Exception as e:
             print(f"Error moving note to trash: {str(e)}")
