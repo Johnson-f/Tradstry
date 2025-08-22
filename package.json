@@ -12,6 +12,8 @@
     "@hookform/resolvers": "^5.2.1",
     "@lexical/clipboard": "^0.34.0",
     "@lexical/code": "^0.34.0",
+    "@lexical/code-shiki": "^0.34.0",
+    "@lexical/devtools-core": "^0.34.0",
     "@lexical/dragon": "^0.34.0",
     "@lexical/file": "^0.34.0",
     "@lexical/hashtag": "^0.34.0",
