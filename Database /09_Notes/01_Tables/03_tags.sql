@@ -50,6 +50,7 @@ RETURNS TABLE (
     id UUID,
     name TEXT,
     color TEXT,
+    user_id UUID,  -- ADD THIS LINE
     note_count BIGINT,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
@@ -58,13 +59,14 @@ RETURNS TABLE (
         t.id,
         t.name,
         t.color,
+        t.user_id,  -- ADD THIS LINE
         COUNT(nt.note_id)::BIGINT as note_count,
         t.created_at,
         t.updated_at
     FROM public.tags t
     LEFT JOIN public.note_tags nt ON t.id = nt.tag_id
     WHERE t.user_id = auth.uid()
-    GROUP BY t.id, t.name, t.color, t.created_at, t.updated_at
+    GROUP BY t.id, t.name, t.color, t.user_id, t.created_at, t.updated_at  -- ADD user_id HERE TOO
     ORDER BY t.name;
 $$;
 
@@ -106,18 +108,20 @@ CREATE OR REPLACE FUNCTION search_tags(
     id UUID,
     name TEXT,
     color TEXT,
+    user_id UUID,  -- ADD THIS LINE
     note_count BIGINT
 ) LANGUAGE sql SECURITY DEFINER AS $$
     SELECT
         t.id,
         t.name,
         t.color,
+        t.user_id,  -- ADD THIS LINE
         COUNT(nt.note_id)::BIGINT as note_count
     FROM public.tags t
     LEFT JOIN public.note_tags nt ON t.id = nt.tag_id
     WHERE t.user_id = auth.uid()
     AND t.name ILIKE '%' || p_search_term || '%'
-    GROUP BY t.id
+    GROUP BY t.id, t.user_id  -- ADD user_id HERE TOO
     ORDER BY
         CASE
             WHEN t.name ILIKE p_search_term || '%' THEN 0
@@ -183,6 +187,28 @@ LANGUAGE sql SECURITY DEFINER AS $$
     AND n.is_deleted = false;
 $$;
 
+-- Function to delete a tag
+CREATE OR REPLACE FUNCTION delete_tag(
+    p_tag_id UUID
+) RETURNS TABLE (success BOOLEAN, message TEXT)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    -- Check if tag exists and belongs to user
+    IF NOT EXISTS (SELECT 1 FROM public.tags WHERE id = p_tag_id AND user_id = auth.uid()) THEN
+        RETURN QUERY SELECT false, 'Tag not found or access denied';
+        RETURN;
+    END IF;
+
+    -- Delete the tag (cascade will handle note_tags)
+    DELETE FROM public.tags
+    WHERE id = p_tag_id AND user_id = auth.uid();
+
+    RETURN QUERY SELECT true, 'Tag deleted successfully';
+EXCEPTION WHEN OTHERS THEN
+    RETURN QUERY SELECT false, 'Error deleting tag: ' || SQLERRM;
+END;
+$$;
+
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tags TO authenticated;
 GRANT SELECT, INSERT, DELETE ON public.note_tags TO authenticated;
@@ -192,6 +218,7 @@ GRANT EXECUTE ON FUNCTION untag_note(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_notes_by_tag(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION rename_tag(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION search_tags(TEXT, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION delete_tag(UUID) TO authenticated;
 
 
 -- More codes for tags
@@ -201,6 +228,7 @@ RETURNS TABLE (
     id UUID,
     name TEXT,
     color TEXT,
+    user_id UUID,  -- ADD THIS LINE
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) LANGUAGE sql SECURITY DEFINER AS $$
@@ -208,6 +236,7 @@ RETURNS TABLE (
         t.id,
         t.name,
         t.color,
+        t.user_id,  -- ADD THIS LINE
         t.created_at,
         t.updated_at
     FROM public.tags t
@@ -215,54 +244,6 @@ RETURNS TABLE (
     WHERE nt.note_id = p_note_id
     AND t.user_id = auth.uid()
     ORDER BY t.name;
-$$;
-
--- Function to get or create a tag
-CREATE OR REPLACE FUNCTION get_or_create_tag(
-    p_name TEXT,
-    p_user_id UUID
-) RETURNS TABLE (
-    id UUID,
-    name TEXT,
-    color TEXT,
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
-DECLARE
-    v_tag_id UUID;
-    v_tag_record RECORD;
-BEGIN
-    -- First try to get existing tag
-    SELECT t.id INTO v_tag_id
-    FROM public.tags t
-    WHERE t.name = p_name
-    AND t.user_id = p_user_id;
-
-    -- If tag doesn't exist, create it
-    IF v_tag_id IS NULL THEN
-        INSERT INTO public.tags (user_id, name, color)
-        VALUES (p_user_id, p_name, '#6B7280')
-        RETURNING tags.id INTO v_tag_id;
-    END IF;
-
-    -- Return the tag record
-    SELECT
-        t.id,
-        t.name,
-        t.color,
-        t.created_at,
-        t.updated_at
-    INTO v_tag_record
-    FROM public.tags t
-    WHERE t.id = v_tag_id;
-
-    RETURN QUERY SELECT
-        v_tag_record.id,
-        v_tag_record.name,
-        v_tag_record.color,
-        v_tag_record.created_at,
-        v_tag_record.updated_at;
-END;
 $$;
 
 -- RLS policies for note_tags junction table
@@ -299,3 +280,53 @@ USING (
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION get_note_tags(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_or_create_tag(TEXT, UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION get_or_create_tag(
+    p_name TEXT,
+    p_user_id UUID
+) RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    color TEXT,
+    user_id UUID,  -- ADD THIS LINE
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+) LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_tag_id UUID;
+    v_tag_record RECORD;
+BEGIN
+    -- First try to get existing tag
+    SELECT t.id INTO v_tag_id
+    FROM public.tags t
+    WHERE t.name = p_name
+    AND t.user_id = p_user_id;
+
+    -- If tag doesn't exist, create it
+    IF v_tag_id IS NULL THEN
+        INSERT INTO public.tags (user_id, name, color)
+        VALUES (p_user_id, p_name, '#6B7280')
+        RETURNING tags.id INTO v_tag_id;
+    END IF;
+
+    -- Return the tag record
+    SELECT
+        t.id,
+        t.name,
+        t.color,
+        t.user_id,  -- ADD THIS LINE
+        t.created_at,
+        t.updated_at
+    INTO v_tag_record
+    FROM public.tags t
+    WHERE t.id = v_tag_id;
+
+    RETURN QUERY SELECT
+        v_tag_record.id,
+        v_tag_record.name,
+        v_tag_record.color,
+        v_tag_record.user_id,  -- ADD THIS LINE
+        v_tag_record.created_at,
+        v_tag_record.updated_at;
+END;
+$$;

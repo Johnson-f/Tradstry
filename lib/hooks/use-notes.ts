@@ -41,6 +41,7 @@ export const notesKeys = {
   noteTags: (noteId: string) => ['notes', 'notes', noteId, 'tags'] as const,
   templates: () => ['notes', 'templates', 'all'] as const,
   template: (id: string) => ['notes', 'templates', id] as const,
+  trash: () => ['notes', 'trash'] as const,
 };
 
 // ==================== FOLDER HOOKS ====================
@@ -92,10 +93,20 @@ export function useNote(noteId: string) {
 /**
  * Hook to fetch favorite notes
  */
-export function useFavoriteNotes() {
+export function useFavorites() {
   return useQuery({
     queryKey: notesKeys.favoriteNotes(),
     queryFn: () => notesService.getFavoriteNotes(),
+  });
+}
+
+/**
+ * Hook to fetch trashed notes
+ */
+export function useTrash() {
+  return useQuery({
+    queryKey: notesKeys.trash(),
+    queryFn: () => notesService.getTrash(),
   });
 }
 
@@ -309,6 +320,21 @@ export function useGetOrCreateTag() {
 
   return useMutation({
     mutationFn: (name: string) => notesService.getOrCreateTag(name),
+    onSuccess: () => {
+      // Invalidate tags list
+      queryClient.invalidateQueries({ queryKey: notesKeys.tags() });
+    },
+  });
+}
+
+/**
+ * Hook to delete a tag
+ */
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (tagId: string) => notesService.deleteTag(tagId),
     onSuccess: () => {
       // Invalidate tags list
       queryClient.invalidateQueries({ queryKey: notesKeys.tags() });

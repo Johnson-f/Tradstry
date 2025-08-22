@@ -4,6 +4,8 @@ import { ThemeProvider } from "next-themes";
 import { Providers } from "./providers";
 import "./globals.css";
 
+import { Toaster } from "sonner";
+
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
   : "http://localhost:3000";
@@ -36,6 +38,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             {children}
+            <Toaster />
           </ThemeProvider>
         </Providers>
       </body>
