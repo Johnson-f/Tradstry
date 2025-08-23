@@ -1,3 +1,5 @@
+'use client';
+
 import type {BaseSelection, NodeKey, TextNode} from 'lexical';
 import type {JSX} from 'react';
 

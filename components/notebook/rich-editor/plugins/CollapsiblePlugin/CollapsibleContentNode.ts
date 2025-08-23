@@ -24,7 +24,8 @@ import {domOnBeforeMatch, setDomHiddenUntilFound} from './CollapsibleUtils';
 type SerializedCollapsibleContentNode = SerializedElementNode;
 
 export function $convertCollapsibleContentElement(
-  domNode: HTMLElement,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _domNode: HTMLElement,
 ): DOMConversionOutput | null {
   const node = $createCollapsibleContentNode();
   return {
@@ -43,7 +44,7 @@ export class CollapsibleContentNode extends ElementNode {
 
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {
     const dom = document.createElement('div');
-    dom.classList.add('Collapsible__content');
+    dom.classList.add('py-0', 'px-1', 'pb-1', 'pl-5');
     if (IS_CHROME) {
       editor.getEditorState().read(() => {
         const containerNode = this.getParentOrThrow();
@@ -73,7 +74,8 @@ export class CollapsibleContentNode extends ElementNode {
     return dom;
   }
 
-  updateDOM(prevNode: this, dom: HTMLElement): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  updateDOM(_prevNode: this, _dom: HTMLElement): boolean {
     return false;
   }
 
@@ -93,7 +95,7 @@ export class CollapsibleContentNode extends ElementNode {
 
   exportDOM(): DOMExportOutput {
     const element = document.createElement('div');
-    element.classList.add('Collapsible__content');
+    element.classList.add('py-0', 'px-1', 'pb-1', 'pl-5');
     element.setAttribute('data-lexical-collapsible-content', 'true');
     return {element};
   }

@@ -53,7 +53,13 @@ export class CollapsibleTitleNode extends ElementNode {
 
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {
     const dom = document.createElement('summary');
-    dom.classList.add('Collapsible__title');
+    dom.classList.add('cursor-pointer', 'py-1', 'px-1', 'pl-5', 'relative', 'font-bold', 'list-none', 'outline-none');
+    
+    // Add arrow indicator using a span element instead of CSS pseudo-elements
+    const arrow = document.createElement('span');
+    arrow.classList.add('absolute', 'left-2', 'top-1/2', '-translate-y-1/2', 'w-0', 'h-0', 'border-l-4', 'border-l-black', 'border-y-4', 'border-y-transparent', 'transition-transform', 'duration-200');
+    arrow.setAttribute('data-collapsible-arrow', 'true');
+    dom.appendChild(arrow);
     if (IS_CHROME) {
       dom.addEventListener('click', () => {
         editor.update(() => {

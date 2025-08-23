@@ -64,7 +64,8 @@ export class CollapsibleContainerNode extends ElementNode {
     return true;
   }
 
-  collapseAtStart(selection: RangeSelection): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  collapseAtStart(_selection: RangeSelection): boolean {
     // Unwrap the CollapsibleContainerNode by replacing it with the children
     // of its children (CollapsibleTitleNode, CollapsibleContentNode)
     const nodesToInsert: LexicalNode[] = [];
@@ -101,7 +102,7 @@ export class CollapsibleContainerNode extends ElementNode {
       });
       dom = detailsDom;
     }
-    dom.classList.add('Collapsible__container');
+    dom.classList.add('bg-gray-50', 'border', 'border-gray-200', 'rounded-lg', 'mb-2');
 
     return dom;
   }
@@ -132,7 +133,8 @@ export class CollapsibleContainerNode extends ElementNode {
 
   static importDOM(): DOMConversionMap<HTMLDetailsElement> | null {
     return {
-      details: (domNode: HTMLDetailsElement) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      details: (_domNode: HTMLDetailsElement) => {
         return {
           conversion: $convertDetailsElement,
           priority: 1,
@@ -151,7 +153,7 @@ export class CollapsibleContainerNode extends ElementNode {
 
   exportDOM(): DOMExportOutput {
     const element = document.createElement('details');
-    element.classList.add('Collapsible__container');
+    element.classList.add('bg-gray-50', 'border', 'border-gray-200', 'rounded-lg', 'mb-2');
     element.setAttribute('open', this.__open.toString());
     return {element};
   }

@@ -1,3 +1,5 @@
+'use client';
+
 import {$isCodeNode} from '@lexical/code';
 import {
   $getNearestNodeFromDOMNode,
@@ -52,11 +54,15 @@ export function CopyButton({editor, getCodeDOMNode}: Props) {
   }
 
   return (
-    <button className="menu-item" onClick={handleClick} aria-label="copy">
+    <button 
+      className="border border-transparent rounded p-1 bg-none cursor-pointer flex-shrink-0 flex items-center text-black/50 uppercase hover:border-black/30 hover:opacity-90 active:bg-blue-100 active:border-black/45" 
+      onClick={handleClick} 
+      aria-label="copy"
+    >
       {isCopyCompleted ? (
-        <i className="format success" />
+        <span className="h-4 w-4 opacity-60 flex text-black/50 bg-contain">✓</span>
       ) : (
-        <i className="format copy" />
+        <span className="h-4 w-4 opacity-60 flex text-black/50 bg-contain">📋</span>
       )}
     </button>
   );

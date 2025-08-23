@@ -1,3 +1,4 @@
+'use client';
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -6,7 +7,6 @@
  *
  */
 
-import './fontSize.css';
 
 import {LexicalEditor} from 'lexical';
 import * as React from 'react';
