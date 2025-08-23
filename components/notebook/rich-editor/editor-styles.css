@@ -1,0 +1,476 @@
+/* Rich Text Editor Styles */
+
+.editor-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-inner {
+  flex: 1;
+  position: relative;
+  resize: vertical;
+  overflow: auto;
+}
+
+.editor-placeholder {
+  color: #999;
+  overflow: hidden;
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.editor-text-bold {
+  font-weight: bold;
+}
+
+.editor-text-italic {
+  font-style: italic;
+}
+
+.editor-text-underline {
+  text-decoration: underline;
+}
+
+.editor-text-strikethrough {
+  text-decoration: line-through;
+}
+
+.editor-text-underlineStrikethrough {
+  text-decoration: underline line-through;
+}
+
+.editor-text-subscript {
+  font-size: 0.8em;
+  vertical-align: sub !important;
+}
+
+.editor-text-superscript {
+  font-size: 0.8em;
+  vertical-align: super;
+}
+
+.editor-text-code {
+  background-color: rgb(240, 242, 245);
+  padding: 1px 0.25rem;
+  font-family: Menlo, Consolas, Monaco, monospace;
+  font-size: 94%;
+}
+
+.editor-link {
+  color: rgb(33, 111, 219);
+  text-decoration: none;
+}
+
+.editor-link:hover {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.editor-list-ol {
+  padding: 0;
+  margin: 0;
+  list-style-position: inside;
+}
+
+.editor-list-ul {
+  padding: 0;
+  margin: 0;
+  list-style-position: inside;
+}
+
+.editor-listitem {
+  margin: 8px 32px;
+}
+
+.editor-nested-listitem {
+  list-style-type: none;
+}
+
+.editor-list-ol .editor-listitem:before {
+  content: counter(list-item) '. ';
+  counter-increment: list-item;
+}
+
+.editor-list-ul .editor-listitem:before {
+  content: '• ';
+}
+
+.editor-quote {
+  margin: 0;
+  margin-left: 20px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  color: rgb(101, 103, 107);
+  border-left-color: rgb(206, 208, 212);
+  border-left-width: 4px;
+  border-left-style: solid;
+  padding-left: 16px;
+}
+
+.editor-h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  margin-bottom: 12px;
+}
+
+.editor-h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.editor-h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.editor-h5 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.editor-h6 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.editor-paragraph {
+  margin: 0;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.editor-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.editor-code {
+  background-color: rgb(240, 242, 245);
+  font-family: Menlo, Consolas, Monaco, monospace;
+  display: block;
+  padding: 8px 8px 8px 52px;
+  line-height: 1.53;
+  font-size: 13px;
+  margin: 0;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  position: relative;
+  tab-size: 2;
+}
+
+.editor-code:before {
+  content: attr(data-gutter);
+  position: absolute;
+  background-color: #eee;
+  left: 0;
+  top: 0;
+  border-right: 1px solid #ccc;
+  padding: 8px;
+  color: #777;
+  white-space: pre-wrap;
+  text-align: right;
+  min-width: 25px;
+}
+
+.editor-tokenComment {
+  color: slategray;
+}
+
+.editor-tokenPunctuation {
+  color: #999;
+}
+
+.editor-tokenProperty {
+  color: #905;
+}
+
+.editor-tokenSelector {
+  color: #690;
+}
+
+.editor-tokenOperator {
+  color: #9a6e3a;
+}
+
+.editor-tokenAttr {
+  color: #07a;
+}
+
+.editor-tokenVariable {
+  color: #e90;
+}
+
+.editor-tokenFunction {
+  color: #dd4a68;
+}
+
+.editor-image {
+  cursor: default;
+  display: inline-block;
+  position: relative;
+  user-select: none;
+}
+
+.editor-image img {
+  max-width: 100%;
+  cursor: default;
+}
+
+.editor-inline-image {
+  display: inline-block;
+  position: relative;
+  z-index: 1;
+}
+
+.editor-inline-image img {
+  max-width: 100%;
+  cursor: default;
+}
+
+/* Table styles */
+.editor-table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  overflow-y: scroll;
+  overflow-x: scroll;
+  table-layout: fixed;
+  width: max-content;
+  margin: 0;
+}
+
+.editor-table-cell {
+  border: 1px solid #bbb;
+  padding: 8px;
+  min-width: 75px;
+  vertical-align: top;
+  text-align: start;
+}
+
+.editor-table-cell-header {
+  background-color: #f2f3f5;
+  text-align: start;
+}
+
+/* Sticky Note styles */
+.editor-sticky {
+  position: relative;
+  display: inline-block;
+  margin: 0 2px;
+  cursor: default;
+}
+
+/* Autocomplete */
+.editor-autocomplete {
+  display: inline-block;
+  background: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin: 0 2px;
+}
+
+/* Emoji */
+.editor-emoji {
+  display: inline-block;
+  margin: 0 2px;
+}
+
+/* Horizontal Rule */
+.editor-hr {
+  padding: 2px;
+  border: none;
+  margin: 1em 0;
+  cursor: pointer;
+}
+
+.editor-hr:after {
+  content: '';
+  display: block;
+  height: 2px;
+  background-color: #ccc;
+  line-height: 2px;
+}
+
+.editor-hr.selected {
+  outline: 2px solid rgb(60, 132, 244);
+  user-select: none;
+}
+
+/* Date/Time */
+.editor-date-time {
+  display: inline-block;
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin: 0 2px;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Poll */
+.editor-poll {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  background: #f9f9f9;
+}
+
+/* Layout Container */
+.editor-layout-container {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.editor-layout-item {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 8px;
+}
+
+/* Collapsible */
+.editor-collapsible {
+  border: 1px solid #ddd;
+  margin: 10px 0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.editor-collapsible-title {
+  padding: 10px;
+  background: #f5f5f5;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-collapsible-content {
+  padding: 10px;
+}
+
+/* Tweet embed */
+.editor-tweet {
+  margin: 10px 0;
+}
+
+/* YouTube embed */
+.editor-youtube {
+  margin: 10px 0;
+}
+
+/* Figma embed */
+.editor-figma {
+  margin: 10px 0;
+}
+
+/* Mark/Highlight */
+.editor-mark {
+  background: #ffeb3b;
+  padding: 0 2px;
+}
+
+.editor-mark-selected {
+  background: #ffc107;
+}
+
+/* Nested composer (for comments, etc) */
+.editor-nested-composer {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px 0;
+  background: #f9f9f9;
+}
+
+/* Focus and selection styles */
+.editor-focused {
+  outline: 2px solid rgb(60, 132, 244);
+  outline-offset: 1px;
+}
+
+/* Placeholder styles when empty */
+.editor-placeholder-empty {
+  color: #999;
+  overflow: hidden;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: 15px;
+  left: 15px;
+  font-size: 15px;
+  user-select: none;
+  display: inline-block;
+  pointer-events: none;
+}
+
+/* Code highlight styles */
+.editor-code-highlight {
+  background-color: rgba(240, 242, 245, 0.5);
+}
+
+/* Mentions */
+.mention {
+  background: #e1f5fe;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #0277bd;
+  cursor: pointer;
+}
+
+.mention:hover {
+  background: #b3e5fc;
+}
+
+/* Hashtags */
+.hashtag {
+  background: #f3e5f5;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #6a1b9a;
+  cursor: pointer;
+}
+
+.hashtag:hover {
+  background: #e1bee7;
+}
+
+/* Code language selector */
+.editor-code-select {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px;
+  background: white;
+  font-size: 12px;
+}

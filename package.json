@@ -105,6 +105,7 @@
     "swr": "^2.3.4",
     "tailwind-merge": "^3.3.0",
     "tiptap": "^1.32.2",
+    "use-debounce": "^10.0.5",
     "vaul": "^1.1.2",
     "y-websocket": "^3.0.0",
     "zod": "^4.0.14"

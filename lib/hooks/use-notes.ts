@@ -30,7 +30,7 @@ import {
 
 export const notesKeys = {
   all: ['notes'] as const,
-  folders: (params?: GetFoldersParams) => ['notes', 'folders', params] as const,
+  folders: (params?: GetFoldersParams) => ['notes', 'folders', params ? JSON.stringify(params) : null] as const,
   folderBySlug: (slug: string) => ['notes', 'folders', 'slug', slug] as const,
   notes: (params?: GetNotesParams) => ['notes', 'list', params] as const,
   note: (id: string) => ['notes', 'detail', id] as const,

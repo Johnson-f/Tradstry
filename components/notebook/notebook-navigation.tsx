@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { 
-  Home, Search, Calendar, FileText, Settings, Menu, Star, 
+  Home, Calendar, FileText, Settings, Menu, Star, 
   Trash2, Users, Tag, FolderOpen, BookTemplate, Upload 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,16 +39,26 @@ const getFolderIcon = (slug: string) => {
   }
 };
 
+const FOLDERS_QUERY_PARAMS = { is_system: true, sort_by: 'name', sort_order: 'ASC' } as const;
+
 export function NotebookNavigation() {
   const pathname = usePathname();
-  const { data: folders = [], isLoading } = useFolders({ is_system: true, sort_by: 'name', sort_order: 'ASC' });
-  
-  const isActive = (slug: string) => {
-    if (slug === 'home') {
-      return pathname === '/protected/notebook' || pathname === '/protected/notebook/folder/home';
-    }
-    return pathname === `/protected/notebook/folder/${slug}`;
-  };
+  const { data: folders = [], isLoading } = useFolders(FOLDERS_QUERY_PARAMS);
+
+  const folderItems = useMemo(() => {
+    return folders.map((folder: Folder) => {
+      const isActive = folder.slug === 'home' 
+        ? pathname === '/protected/notebook' || pathname === '/protected/notebook/folder/home'
+        : pathname === `/protected/notebook/folder/${folder.slug}`;
+        
+      return {
+        ...folder,
+        IconComponent: getFolderIcon(folder.slug),
+        href: folder.slug === 'home' ? '/protected/notebook' : `/protected/notebook/folder/${folder.slug}`,
+        active: isActive
+      };
+    });
+  }, [folders, pathname]);
 
   if (isLoading) {
     return (
@@ -72,41 +83,36 @@ export function NotebookNavigation() {
         </Button>
         
         <nav className="flex flex-1 flex-col items-center space-y-4">
-          {folders.map((folder: Folder) => {
-            const IconComponent = getFolderIcon(folder.slug);
-            const href = folder.slug === 'home' ? '/protected/notebook' : `/protected/notebook/folder/${folder.slug}`;
-            
-            return (
-              <Tooltip key={folder.id}>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-12 w-12 rounded-lg transition-colors",
-                      isActive(folder.slug)
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted/50"
-                    )}
-                  >
-                    <Link href={href}>
-                      <IconComponent className="h-5 w-5" />
-                      <span className="sr-only">{folder.name}</span>
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="font-medium">
-                  {folder.name}
-                  {folder.description && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {folder.description}
-                    </div>
+          {folderItems.map((item) => (
+            <Tooltip key={item.id}>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-12 w-12 rounded-lg transition-colors",
+                    item.active
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted/50"
                   )}
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
+                >
+                  <Link href={item.href}>
+                    <item.IconComponent className="h-5 w-5" />
+                    <span className="sr-only">{item.name}</span>
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="font-medium">
+                {item.name}
+                {item.description && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {item.description}
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          ))}
           
           {/* Settings at the bottom of navigation */}
           <div className="flex-1" />
