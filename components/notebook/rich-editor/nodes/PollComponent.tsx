@@ -1,15 +1,8 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+"use client";
 
 import type {Option, Options, PollNode} from './PollNode';
 import type {JSX} from 'react';
 
-import './PollNode.css';
 
 import {useCollaborationContext} from '@lexical/react/LexicalCollaborationContext';
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
@@ -62,15 +55,18 @@ function PollOptionComponent({
   const text = option.text;
 
   return (
-    <div className="PollNode__optionContainer">
+    <div className="flex flex-row mb-2.5 items-center">
       <div
         className={joinClasses(
-          'PollNode__optionCheckboxWrapper',
-          checked && 'PollNode__optionCheckboxChecked',
+          'relative flex w-5.5 h-5.5 border border-gray-400 mr-2.5 rounded',
+          checked && 'border-blue-500 bg-blue-500',
         )}>
+        {checked && (
+          <div className="absolute top-1 left-2 w-1.5 h-2.5 border-white border-r-2 border-b-2 rotate-45 pointer-events-none" />
+        )}
         <input
           ref={checkboxRef}
-          className="PollNode__optionCheckbox"
+          className="border-0 absolute block w-full h-full opacity-0 cursor-pointer"
           type="checkbox"
           onChange={(e) => {
             withPollNode((node) => {
@@ -80,16 +76,16 @@ function PollOptionComponent({
           checked={checked}
         />
       </div>
-      <div className="PollNode__optionInputWrapper">
+      <div className="flex flex-1 border border-blue-500 rounded relative overflow-hidden cursor-pointer">
         <div
-          className="PollNode__optionInputVotes"
+          className="bg-blue-50 h-full absolute top-0 left-0 transition-all duration-1000 ease-in-out z-0"
           style={{width: `${votes === 0 ? 0 : (votes / totalVotes) * 100}%`}}
         />
-        <span className="PollNode__optionInputVotesCount">
+        <span className="text-blue-500 absolute right-4 text-xs top-1.5">
           {votes > 0 && (votes === 1 ? '1 vote' : `${votes} votes`)}
         </span>
         <input
-          className="PollNode__optionInput"
+          className="flex flex-1 border-0 p-2 text-blue-500 bg-transparent font-bold outline-0 z-0 placeholder:font-normal placeholder:text-gray-400"
           type="text"
           value={text}
           onChange={(e) => {
@@ -113,16 +109,18 @@ function PollOptionComponent({
       <button
         disabled={options.length < 3}
         className={joinClasses(
-          'PollNode__optionDelete',
-          options.length < 3 && 'PollNode__optionDeleteDisabled',
+          'relative flex w-7 h-7 ml-1.5 border-0 bg-transparent bg-no-repeat z-0 cursor-pointer rounded opacity-30 hover:opacity-100 hover:bg-gray-100',
+          options.length < 3 && 'cursor-not-allowed hover:opacity-30 hover:bg-transparent',
         )}
         aria-label="Remove"
         onClick={() => {
           withPollNode((node) => {
             node.deleteOption(option);
           });
-        }}
-      />
+        }}>
+        <div className="absolute top-1.5 left-3 w-0.5 h-4 bg-gray-400 -rotate-45" />
+        <div className="absolute top-1.5 left-3 w-0.5 h-4 bg-gray-400 rotate-45" />
+      </button>
     </div>
   );
 }
@@ -193,10 +191,10 @@ export default function PollComponent({
 
   return (
     <div
-      className={`PollNode__container ${isFocused ? 'focused' : ''}`}
+      className={`border border-gray-200 bg-gray-50 rounded-lg max-w-[600px] min-w-[400px] cursor-pointer select-none ${isFocused ? 'outline outline-2 outline-blue-500' : ''}`}
       ref={ref}>
-      <div className="PollNode__inner">
-        <h2 className="PollNode__heading">{question}</h2>
+      <div className="m-4 cursor-default">
+        <h2 className="ml-0 mt-0 mr-0 mb-4 text-gray-700 text-center text-lg">{question}</h2>
         {options.map((option, index) => {
           const key = option.uid;
           return (
@@ -210,7 +208,7 @@ export default function PollComponent({
             />
           );
         })}
-        <div className="PollNode__footer">
+        <div className="flex justify-center">
           <Button onClick={addOption} small={true}>
             Add Option
           </Button>

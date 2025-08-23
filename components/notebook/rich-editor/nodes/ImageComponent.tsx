@@ -1,10 +1,4 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+"use client";
 
 import type {
   BaseSelection,
@@ -14,7 +8,6 @@ import type {
 } from 'lexical';
 import type {JSX} from 'react';
 
-import './ImageNode.css';
 
 import {AutoFocusPlugin} from '@lexical/react/LexicalAutoFocusPlugin';
 import {useCollaborationContext} from '@lexical/react/LexicalCollaborationContext';
@@ -489,8 +482,8 @@ export default function ImageComponent({
                 contentEditable={
                   <ContentEditable
                     placeholder="Enter a caption..."
-                    placeholderClassName="ImageNode__placeholder"
-                    className="ImageNode__contentEditable"
+                    placeholderClassName="text-xs text-gray-500 absolute top-2.5 left-2.5 pointer-events-none select-none whitespace-nowrap overflow-hidden text-ellipsis inline-block"
+                    className="min-h-5 border-0 resize-none cursor-text caret-gray-900 block relative outline-0 p-2.5 select-text text-xs w-[calc(100%-20px)] whitespace-pre-wrap break-words"
                   />
                 }
                 ErrorBoundary={LexicalErrorBoundary}
