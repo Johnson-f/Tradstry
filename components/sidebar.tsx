@@ -33,6 +33,7 @@ const navItems = [
   { label: "Journal", icon: NotebookPen, href: "/protected/journal" },
   { label: "Setups", icon: Library, href: "/protected/setups" },
   { label: "Notebook", icon: Notebook, href: "/protected/notebook" },
+  { label: "Notebook", icon: Notebook, href: "/protected/notepad" },
   { label: "Analytics", icon: PieChart, href: "/protected/analytics" },
   {
     label: "AI Reports",
