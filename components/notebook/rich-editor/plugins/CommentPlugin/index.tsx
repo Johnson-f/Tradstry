@@ -4,7 +4,9 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
+ *
  */
+'use client';
 
 import type {Provider} from '@lexical/yjs';
 import type {
@@ -17,7 +19,6 @@ import type {
 import type {JSX} from 'react';
 import type {Doc} from 'yjs';
 
-import './index.css';
 
 import {
   $createMarkNode,
@@ -442,7 +443,7 @@ function ShowDeleteCommentOrThreadDialog({
   return (
     <>
       Are you sure you want to delete this {commentOrThread.type}?
-      <div className="Modal__content">
+      <div className="p-4">
         <Button
           onClick={() => {
             deleteCommentOrThread(commentOrThread, thread);

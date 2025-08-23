@@ -1,4 +1,12 @@
-import type {LexicalEditor} from 'lexical';
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
+'use client';
+
 import type {JSX} from 'react';
 
 import {$createCodeNode, $isCodeNode} from '@lexical/code';
@@ -306,7 +314,7 @@ function ShowClearDialog({
   return (
     <>
       Are you sure you want to clear the editor?
-      <div className="Modal__content">
+      <div className="p-4">
         <Button
           onClick={() => {
             editor.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined);

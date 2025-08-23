@@ -5,9 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
+'use client';
+
 import type {JSX} from 'react';
 
-import './index.css';
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {DraggableBlockPlugin_EXPERIMENTAL} from '@lexical/react/LexicalDraggableBlockPlugin';
@@ -59,17 +60,17 @@ export default function DraggableBlockPlugin({
       menuRef={menuRef}
       targetLineRef={targetLineRef}
       menuComponent={
-        <div ref={menuRef} className="icon draggable-block-menu">
+        <div ref={menuRef} className="flex items-center justify-center w-6 h-6 bg-gray-100 border border-gray-300 rounded cursor-pointer hover:bg-gray-200">
           <button
             title="Click to add below"
-            className="icon icon-plus"
+            className="w-4 h-4 text-gray-600 hover:text-gray-800"
             onClick={insertBlock}
           />
           <div className="icon" />
         </div>
       }
       targetLineComponent={
-        <div ref={targetLineRef} className="draggable-block-target-line" />
+        <div ref={targetLineRef} className="h-1 bg-blue-500 opacity-50" />
       }
       isOnMenu={isOnMenu}
       onElementChanged={setDraggableElement}

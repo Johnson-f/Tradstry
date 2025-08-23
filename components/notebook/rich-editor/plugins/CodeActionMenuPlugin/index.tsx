@@ -1,14 +1,8 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+'use client';
+"use client";
 
 import type {JSX} from 'react';
 
-import './index.css';
 
 import {
   $isCodeNode,
@@ -143,8 +137,8 @@ function CodeActionMenuContainer({
   return (
     <>
       {isShown ? (
-        <div className="code-action-menu-container" style={{...position}}>
-          <div className="code-highlight-language">{codeFriendlyName}</div>
+        <div className="h-9 text-xs text-black/50 absolute flex items-center flex-row select-none" style={{...position}} data-code-action-menu>
+          <div className="mr-1">{codeFriendlyName}</div>
           <CopyButton editor={editor} getCodeDOMNode={getCodeDOMNode} />
           {canBePrettier(normalizedLang) ? (
             <PrettierButton
@@ -171,7 +165,7 @@ function getMouseInfo(event: MouseEvent): {
     );
     const isOutside = !(
       codeDOMNode ||
-      target.closest<HTMLElement>('div.code-action-menu-container')
+      target.closest<HTMLElement>('div[data-code-action-menu]')
     );
 
     return {codeDOMNode, isOutside};

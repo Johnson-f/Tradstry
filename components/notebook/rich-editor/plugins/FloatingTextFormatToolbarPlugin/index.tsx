@@ -5,10 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
+'use client';
 
 import type {JSX} from 'react';
 
-import './index.css';
 
 import {$isCodeHighlightNode} from '@lexical/code';
 import {$isLinkNode, TOGGLE_LINK_COMMAND} from '@lexical/link';

@@ -1,10 +1,5 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+
+'use client';
 
 import type {JSX} from 'react';
 
@@ -102,10 +97,7 @@ import {
   formatQuote,
 } from './utils';
 
-const rootTypeToRootName = {
-  root: 'Root',
-  table: 'Table',
-};
+// Removed unused rootTypeToRootName - was only used for typing
 
 const CODE_LANGUAGE_OPTIONS_PRISM: [string, string][] =
   getCodeLanguageOptionsPrism().filter((option) =>
@@ -252,11 +244,9 @@ function dropDownActiveClass(active: boolean) {
 function BlockFormatDropDown({
   editor,
   blockType,
-  rootType,
   disabled = false,
 }: {
   blockType: keyof typeof blockTypeToBlockName;
-  rootType: keyof typeof rootTypeToRootName;
   editor: LexicalEditor;
   disabled?: boolean;
 }): JSX.Element {
@@ -1282,7 +1272,7 @@ export default function ToolbarPlugin({
                   onClick={() =>
                     insertGifOnClick({
                       altText: 'Cat typing on a laptop',
-                      src: catTypingGif,
+                      src: catTypingGif.src || catTypingGif,
                     })
                   }
                   className="item">
