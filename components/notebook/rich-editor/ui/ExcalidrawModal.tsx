@@ -9,14 +9,19 @@ import type {
 
 import type {JSX} from 'react';
 
-import {Excalidraw} from '@excalidraw/excalidraw';
 import {isDOMNode} from 'lexical';
 import * as React from 'react';
 import {ReactPortal, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
+import dynamic from 'next/dynamic';
 
 import Button from './Button';
 import Modal from './Modal';
+
+const Excalidraw = dynamic(
+  () => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw),
+  { ssr: false }
+);
 
 export type ExcalidrawInitialElements = ExcalidrawInitialDataState['elements'];
 

@@ -271,8 +271,7 @@ export default function ImagesPlugin({
 
 const TRANSPARENT_IMAGE =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-const img = document.createElement('img');
-img.src = TRANSPARENT_IMAGE;
+let img: HTMLImageElement;
 
 function $onDragStart(event: DragEvent): boolean {
   const node = $getImageNodeInSelection();
@@ -282,6 +281,10 @@ function $onDragStart(event: DragEvent): boolean {
   const dataTransfer = event.dataTransfer;
   if (!dataTransfer) {
     return false;
+  }
+  if (!img) {
+    img = document.createElement('img');
+    img.src = TRANSPARENT_IMAGE;
   }
   dataTransfer.setData('text/plain', '_');
   dataTransfer.setDragImage(img, 0, 0);
