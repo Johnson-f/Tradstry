@@ -1,10 +1,4 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+"use client";
 
 import type {
   DOMConversionMap,
@@ -125,15 +119,15 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   }
 
   updateFromJSON(serializedNode: LexicalUpdateJSON<SerializedImageNode>): this {
-    const node = super.updateFromJSON(serializedNode);
+    super.updateFromJSON(serializedNode);
     const {caption} = serializedNode;
 
-    const nestedEditor = node.__caption;
+    const nestedEditor = this.__caption;
     const editorState = nestedEditor.parseEditorState(caption.editorState);
     if (!editorState.isEmpty()) {
       nestedEditor.setEditorState(editorState);
     }
-    return node;
+    return this;
   }
 
   exportDOM(): DOMExportOutput {

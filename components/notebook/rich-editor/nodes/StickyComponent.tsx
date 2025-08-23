@@ -1,15 +1,8 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- */
+"use client";
 
 import type {LexicalEditor, NodeKey} from 'lexical';
 import type {JSX} from 'react';
 
-import './StickyNode.css';
 
 import {useCollaborationContext} from '@lexical/react/LexicalCollaborationContext';
 import {CollaborationPlugin} from '@lexical/react/LexicalCollaborationPlugin';
@@ -160,7 +153,7 @@ export default function StickyComponent({
     }
   };
 
-  const handlePointerUp = (event: PointerEvent) => {
+  const handlePointerUp = () => {
     const stickyContainer = stickyContainerRef.current;
     const positioning = positioningRef.current;
     if (stickyContainer !== null) {
@@ -198,9 +191,9 @@ export default function StickyComponent({
   const {historyState} = useSharedHistoryContext();
 
   return (
-    <div ref={stickyContainerRef} className="sticky-note-container">
+    <div ref={stickyContainerRef} className="absolute">
       <div
-        className={`sticky-note ${color}`}
+        className={`relative w-60 h-60 p-4 shadow-lg rounded-lg ${color === 'yellow' ? 'bg-yellow-200' : 'bg-pink-200'}`}
         onPointerDown={(event) => {
           const stickyContainer = stickyContainerRef.current;
           if (
@@ -227,17 +220,17 @@ export default function StickyComponent({
         }}>
         <button
           onClick={handleDelete}
-          className="delete"
+          className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 flex items-center justify-center"
           aria-label="Delete sticky note"
           title="Delete">
-          X
+          ×
         </button>
         <button
           onClick={handleColorChange}
-          className="color"
+          className="absolute top-2 right-10 w-6 h-6 bg-gray-500 text-white rounded-full text-xs hover:bg-gray-600 flex items-center justify-center"
           aria-label="Change sticky note color"
           title="Color">
-          <i className="bucket" />
+          🎨
         </button>
         <LexicalNestedComposer
           initialEditor={caption}
@@ -255,8 +248,8 @@ export default function StickyComponent({
             contentEditable={
               <ContentEditable
                 placeholder="What's up?"
-                placeholderClassName="StickyNode__placeholder"
-                className="StickyNode__contentEditable"
+                placeholderClassName="text-2xl text-gray-400 overflow-hidden absolute text-ellipsis top-7 left-5 w-30 select-none whitespace-nowrap inline-block pointer-events-none"
+                className="min-h-5 border-0 resize-none cursor-text text-2xl caret-gray-900 block relative outline-0 p-2.5 select-text whitespace-pre-wrap break-words"
               />
             }
             ErrorBoundary={LexicalErrorBoundary}
