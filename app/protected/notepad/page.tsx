@@ -24,21 +24,13 @@ export default function NotepadPage() {
         />
         
         {/* Fixed Editor Container that responds to sidebar */}
-        <div 
-          className="fixed top-0 bottom-0 right-0 flex flex-col transition-all duration-300"
-          style={{
-            left: isCollapsed ? '130px' : '350px'
-          }}
-        >
-          {/* Fixed Editor Container that responds to sidebar */}
-<div className={`fixed top-0 bottom-0 right-0 flex flex-col transition-all duration-300 ${
-  isCollapsed ? 'left-[130px]' : 'left-[440px]'
-}`}>
-          <div className="flex-1 overflow-y-auto">
+        <div className={`fixed top-0 bottom-0 right-0 flex flex-col transition-all duration-300 ${
+          isCollapsed ? 'left-[130px]' : 'left-[400px]'
+        }`}>
+          <div className="flex-1 h-full">
             <PlaygroundApp />
           </div>
         </div>
-      </div>
       </SidebarProvider>
     </div>
   );

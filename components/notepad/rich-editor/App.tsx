@@ -14,25 +14,21 @@ import {
   TextNode,
 } from "lexical";
 
-import { isDevPlayground } from "./appSettings";
+
 import { FlashMessageContext } from "./context/FlashMessageContext";
 import { SettingsContext, useSettings } from "./context/SettingsContext";
 import { SharedHistoryContext } from "./context/SharedHistoryContext";
 import { ToolbarContext } from "./context/ToolbarContext";
 import Editor from "./Editor";
 import PlaygroundNodes from "./nodes/PlaygroundNodes";
-import DocsPlugin from "./plugins/DocsPlugin";
-import PasteLogPlugin from "./plugins/PasteLogPlugin";
 import { TableContext } from "./plugins/TablePlugin";
-import TestRecorderPlugin from "./plugins/TestRecorderPlugin";
 import { parseAllowedFontSize } from "./plugins/ToolbarPlugin/fontSize";
-import TypingPerfPlugin from "./plugins/TypingPerfPlugin";
 import Settings from "./Settings";
 import PlaygroundEditorTheme from "./themes/PlaygroundEditorTheme";
 import { parseAllowedColor } from "./ui/ColorPicker";
 
 // Import custom CSS overrides
-import "./custom-overrides.css";
+
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -184,15 +180,11 @@ function App(): JSX.Element {
       <SharedHistoryContext>
         <TableContext>
           <ToolbarContext>
-            <div className="editor-shell">
+            <div className="editor-shell h-full">
               <Editor />
             </div>
             <Settings />
-            {isDevPlayground ? <DocsPlugin /> : null}
-            {isDevPlayground ? <PasteLogPlugin /> : null}
-            {isDevPlayground ? <TestRecorderPlugin /> : null}
-
-            {measureTypingPerf ? <TypingPerfPlugin /> : null}
+           
           </ToolbarContext>
         </TableContext>
       </SharedHistoryContext>

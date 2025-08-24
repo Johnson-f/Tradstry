@@ -13,7 +13,6 @@ export default function Settings(): JSX.Element {
     settings: {
       isRichText,
       isAutocomplete,
-      showTreeView,
       isCodeHighlighted,
       isCodeShiki,
     },
@@ -40,11 +39,6 @@ export default function Settings(): JSX.Element {
       />
       {showSettings && (
         <div className="switches">
-          <Switch
-            onClick={() => handleOptionChange('showTreeView', !showTreeView)}
-            checked={showTreeView}
-            text="Debug View"
-          />
           <Switch
             onClick={() => handleOptionChange('isRichText', !isRichText)}
             checked={isRichText}
