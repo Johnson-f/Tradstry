@@ -1,26 +1,15 @@
 'use client';
 
 import type {JSX} from 'react';
-
-import {isDOMNode} from 'lexical';
 import * as React from 'react';
+import { ReactNode } from 'react';
 import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import {createPortal} from 'react-dom';
-
-type DropDownContextType = {
-  registerItem: (ref: React.RefObject<HTMLButtonElement>) => void;
-};
-
-const DropDownContext = React.createContext<DropDownContextType | null>(null);
-
-const dropDownPadding = 4;
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 export function DropDownItem({
   children,
@@ -30,111 +19,16 @@ export function DropDownItem({
 }: {
   children: React.ReactNode;
   className: string;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   title?: string;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
-
-  const dropDownContext = React.useContext(DropDownContext);
-
-  if (dropDownContext === null) {
-    throw new Error('DropDownItem must be used within a DropDown');
-  }
-
-  const {registerItem} = dropDownContext;
-
-  useEffect(() => {
-    if (ref && ref.current) {
-      registerItem(ref);
-    }
-  }, [ref, registerItem]);
-
   return (
-    <button
-      className={className}
+    <DropdownMenuItem
+      className={cn("cursor-pointer", className)}
       onClick={onClick}
-      ref={ref}
-      title={title}
-      type="button">
+      title={title}>
       {children}
-    </button>
-  );
-}
-
-function DropDownItems({
-  children,
-  dropDownRef,
-  onClose,
-}: {
-  children: React.ReactNode;
-  dropDownRef: React.Ref<HTMLDivElement>;
-  onClose: () => void;
-}) {
-  const [items, setItems] = useState<React.RefObject<HTMLButtonElement>[]>();
-  const [highlightedItem, setHighlightedItem] =
-    useState<React.RefObject<HTMLButtonElement>>();
-
-  const registerItem = useCallback(
-    (itemRef: React.RefObject<HTMLButtonElement>) => {
-      setItems((prev) => (prev ? [...prev, itemRef] : [itemRef]));
-    },
-    [setItems],
-  );
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!items) {
-      return;
-    }
-
-    const key = event.key;
-
-    if (['Escape', 'ArrowUp', 'ArrowDown', 'Tab'].includes(key)) {
-      event.preventDefault();
-    }
-
-    if (key === 'Escape' || key === 'Tab') {
-      onClose();
-    } else if (key === 'ArrowUp') {
-      setHighlightedItem((prev) => {
-        if (!prev) {
-          return items[0];
-        }
-        const index = items.indexOf(prev) - 1;
-        return items[index === -1 ? items.length - 1 : index];
-      });
-    } else if (key === 'ArrowDown') {
-      setHighlightedItem((prev) => {
-        if (!prev) {
-          return items[0];
-        }
-        return items[items.indexOf(prev) + 1];
-      });
-    }
-  };
-
-  const contextValue = useMemo(
-    () => ({
-      registerItem,
-    }),
-    [registerItem],
-  );
-
-  useEffect(() => {
-    if (items && !highlightedItem) {
-      setHighlightedItem(items[0]);
-    }
-
-    if (highlightedItem && highlightedItem.current) {
-      highlightedItem.current.focus();
-    }
-  }, [items, highlightedItem]);
-
-  return (
-    <DropDownContext.Provider value={contextValue}>
-      <div className="dropdown" ref={dropDownRef} onKeyDown={handleKeyDown}>
-        {children}
-      </div>
-    </DropDownContext.Provider>
+    </DropdownMenuItem>
   );
 }
 
@@ -145,7 +39,7 @@ export default function DropDown({
   buttonClassName,
   buttonIconClassName,
   children,
-  stopCloseOnClickSelf,
+
 }: {
   disabled?: boolean;
   buttonAriaLabel?: string;
@@ -155,102 +49,27 @@ export default function DropDown({
   children: ReactNode;
   stopCloseOnClickSelf?: boolean;
 }): JSX.Element {
-  const dropDownRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [showDropDown, setShowDropDown] = useState(false);
-
-  const handleClose = () => {
-    setShowDropDown(false);
-    if (buttonRef && buttonRef.current) {
-      buttonRef.current.focus();
-    }
-  };
-
-  useEffect(() => {
-    const button = buttonRef.current;
-    const dropDown = dropDownRef.current;
-
-    if (showDropDown && button !== null && dropDown !== null) {
-      const {top, left} = button.getBoundingClientRect();
-      dropDown.style.top = `${top + button.offsetHeight + dropDownPadding}px`;
-      dropDown.style.left = `${Math.min(
-        left,
-        window.innerWidth - dropDown.offsetWidth - 20,
-      )}px`;
-    }
-  }, [dropDownRef, buttonRef, showDropDown]);
-
-  useEffect(() => {
-    const button = buttonRef.current;
-
-    if (button !== null && showDropDown) {
-      const handle = (event: MouseEvent) => {
-        const target = event.target;
-        if (!isDOMNode(target)) {
-          return;
-        }
-        if (stopCloseOnClickSelf) {
-          if (dropDownRef.current && dropDownRef.current.contains(target)) {
-            return;
-          }
-        }
-        if (!button.contains(target)) {
-          setShowDropDown(false);
-        }
-      };
-      document.addEventListener('click', handle);
-
-      return () => {
-        document.removeEventListener('click', handle);
-      };
-    }
-  }, [dropDownRef, buttonRef, showDropDown, stopCloseOnClickSelf]);
-
-  useEffect(() => {
-    const handleButtonPositionUpdate = () => {
-      if (showDropDown) {
-        const button = buttonRef.current;
-        const dropDown = dropDownRef.current;
-        if (button !== null && dropDown !== null) {
-          const {top} = button.getBoundingClientRect();
-          const newPosition = top + button.offsetHeight + dropDownPadding;
-          if (newPosition !== dropDown.getBoundingClientRect().top) {
-            dropDown.style.top = `${newPosition}px`;
-          }
-        }
-      }
-    };
-
-    document.addEventListener('scroll', handleButtonPositionUpdate);
-
-    return () => {
-      document.removeEventListener('scroll', handleButtonPositionUpdate);
-    };
-  }, [buttonRef, dropDownRef, showDropDown]);
-
   return (
-    <>
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label={buttonAriaLabel || buttonLabel}
-        className={buttonClassName}
-        onClick={() => setShowDropDown(!showDropDown)}
-        ref={buttonRef}>
-        {buttonIconClassName && <span className={buttonIconClassName} />}
-        {buttonLabel && (
-          <span className="text dropdown-button-text">{buttonLabel}</span>
-        )}
-        <i className="chevron-down" />
-      </button>
-
-      {showDropDown &&
-        createPortal(
-          <DropDownItems dropDownRef={dropDownRef} onClose={handleClose}>
-            {children}
-          </DropDownItems>,
-          document.body,
-        )}
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={buttonAriaLabel || buttonLabel}
+          className={cn(
+            "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+            buttonClassName
+          )}>
+          {buttonIconClassName && <span className={buttonIconClassName} />}
+          {buttonLabel && (
+            <span className="text dropdown-button-text">{buttonLabel}</span>
+          )}
+          <i className="chevron-down ml-1" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

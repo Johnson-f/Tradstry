@@ -78,8 +78,8 @@ export default function Sidebar({
         className={cn(
           "fixed top-0 left-0 h-screen shadow-xl flex flex-col justify-between transition-all duration-300 z-50",
           collapsed ? "w-16" : "w-68", // Update the sidebar width here
-          "bg-[#23272f] bg-slate-900"
         )}
+        style={{ backgroundColor: "hsl(0 0% 10.5%)" }}
       >
         {/* Top Section */}
         <div>

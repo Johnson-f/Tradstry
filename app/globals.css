@@ -38,9 +38,9 @@
     --table-hover: 0 0% 96.1%;
   }
   .dark {
-    --background: 223 21% 8%;
+    --background:  0 0% 7%;
     --foreground:  0 0% 87.8%;
-    --card:  220 26% 14%;
+    --card:  0 0% 15%;
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 0%;
     --popover-foreground: 0 0% 98%;
@@ -63,7 +63,7 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
     --header-bg: 222 84% 5%;
-    --sidebar-bg: 223 25% 14%;
+    --sidebar-bg: 0 0% 14.5%;
     --table-bg: 220 26% 14%;
     --table-hover: 220 26% 20%;
   }

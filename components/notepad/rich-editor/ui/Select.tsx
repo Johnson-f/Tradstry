@@ -1,26 +1,49 @@
 'use client';
 
 import type {JSX} from 'react';
+import {
+  Select as ShadcnSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
-type SelectIntrinsicProps = JSX.IntrinsicElements['select'];
-interface SelectProps extends SelectIntrinsicProps {
+interface SelectProps {
+  children: React.ReactNode;
   label: string;
+  className?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  placeholder?: string;
 }
 
 export default function Select({
   children,
   label,
   className,
-  ...other
+  value,
+  onValueChange,
+  placeholder,
 }: SelectProps): JSX.Element {
   return (
-    <div className="flex flex-row items-center mb-2.5">
-      <label style={{marginTop: '-1em'}} className="flex flex-1 text-gray-600">
+    <div className="flex flex-row items-center mb-2.5 space-x-2">
+      <Label className="text-gray-600 whitespace-nowrap">
         {label}
-      </label>
-      <select {...other} className={className || 'min-w-[160px] max-w-[290px] border border-gray-600 rounded px-2 py-1 text-base cursor-pointer leading-relaxed bg-gradient-to-b from-white to-gray-200'}>
-        {children}
-      </select>
+      </Label>
+      <ShadcnSelect value={value} onValueChange={onValueChange}>
+        <SelectTrigger className={cn("min-w-[160px] max-w-[290px]", className)}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {children}
+        </SelectContent>
+      </ShadcnSelect>
     </div>
   );
 }
+
+// Export SelectItem for use in components that use this Select
+export { SelectItem };

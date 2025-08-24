@@ -2,8 +2,8 @@
 
 import type {JSX} from 'react';
 import {ReactNode} from 'react';
-
-import joinClasses from '../utils/joinClasses';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export default function Button({
   'data-test-id': dataTestId,
@@ -23,15 +23,12 @@ export default function Button({
   title?: string;
 }): JSX.Element {
   return (
-    <button
+    <ShadcnButton
+      variant="outline"
+      size={small ? "sm" : "default"}
       disabled={disabled}
-      className={joinClasses(
-        // Base button styles
-        'py-2.5 px-4 border-0 bg-gray-200 rounded cursor-pointer text-sm hover:bg-gray-300',
-        // Small variant
-        small && 'py-1.5 px-2.5 text-xs',
-        // Disabled state
-        disabled && 'cursor-not-allowed hover:bg-gray-200',
+      className={cn(
+        "border-0 bg-gray-100 hover:bg-gray-200 text-gray-700",
         className,
       )}
       onClick={onClick}
@@ -39,6 +36,6 @@ export default function Button({
       aria-label={title}
       {...(dataTestId && {'data-test-id': dataTestId})}>
       {children}
-    </button>
+    </ShadcnButton>
   );
 }
