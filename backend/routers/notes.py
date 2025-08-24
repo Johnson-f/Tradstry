@@ -388,7 +388,7 @@ async def get_or_create_tag(
 
 @router.get("/templates", response_model=List[TemplateInDB])
 async def get_templates(
-    current_user: dict = Depends(get_current_user_with_token)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get all templates (user's + system templates).
