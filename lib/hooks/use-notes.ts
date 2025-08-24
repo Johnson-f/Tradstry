@@ -7,21 +7,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notesService } from '@/lib/services/notes-service';
 import {
   // Folders
-  Folder,
   GetFoldersParams,
   // Notes
-  Note,
   NoteCreate,
   NoteUpdate,
   GetNotesParams,
-  RestoreNoteRequest,
   // Tags
-  Tag,
   TagNoteRequest,
   UntagNoteRequest,
   SearchTagsParams,
   // Templates
-  Template,
   TemplateCreate,
   TemplateUpdate,
 } from '@/lib/types/notes';

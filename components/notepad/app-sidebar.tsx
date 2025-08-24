@@ -1,7 +1,25 @@
 "use client"
 
 import * as React from "react"
-import { ArchiveX, Command, File, Inbox, Send, Trash2, PanelLeftClose, PanelLeft } from "lucide-react"
+import { useRouter, usePathname } from "next/navigation"
+import { 
+  ArchiveX, 
+  Command, 
+  File, 
+  Inbox, 
+  Send, 
+  Trash2, 
+  PanelLeftClose, 
+  PanelLeft,
+  Home,
+  Star,
+  FileText,
+  Calendar,
+  BookTemplate,
+  Tag,
+  Upload,
+  Users
+} from "lucide-react"
 
 import { Label } from "@/components/ui/label"
 import {
@@ -18,46 +36,31 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
+import { useFolders } from "@/lib/hooks/use-notes"
 
-// This is sample data
+// Folder icon mapping based on slug
+const getFolderIcon = (slug: string) => {
+  const iconMap: Record<string, React.ComponentType> = {
+    'home': Home,
+    'favorites': Star,
+    'notes': FileText,
+    'calendar': Calendar,
+    'templates': BookTemplate,
+    'tags': Tag,
+    'files': Upload,
+    'trash': Trash2,
+    'shared-with-me': Users,
+  };
+  return iconMap[slug] || File;
+};
+
+// This is sample data for mails/notes
 const data = {
   user: {
     name: "shadcn",
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-  navMain: [
-    {
-      title: "Inbox",
-      url: "#",
-      icon: Inbox,
-      isActive: true,
-    },
-    {
-      title: "Drafts",
-      url: "#",
-      icon: File,
-      isActive: false,
-    },
-    {
-      title: "Sent",
-      url: "#",
-      icon: Send,
-      isActive: false,
-    },
-    {
-      title: "Junk",
-      url: "#",
-      icon: ArchiveX,
-      isActive: false,
-    },
-    {
-      title: "Trash",
-      url: "#",
-      icon: Trash2,
-      isActive: false,
-    },
-  ],
   mails: [
     {
       name: "William Smith",
@@ -148,11 +151,23 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: AppSidebarProps) {
-  // Note: I'm using state to show active item.
-  // IRL you should use the url/router.
-  const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const [mails, setMails] = React.useState(data.mails)
+  const router = useRouter()
+  const pathname = usePathname()
   const { setOpen } = useSidebar()
+  
+  // Fetch folders from the backend
+  const { data: folders, isLoading: foldersLoading } = useFolders()
+  const [mails, setMails] = React.useState(data.mails)
+  
+  // Get current active folder from pathname
+  const getCurrentFolder = () => {
+    if (pathname === '/protected/notepad') return 'home'
+    const match = pathname.match(/\/protected\/notepad\/folder\/([^/]+)/)
+    return match ? match[1] : 'home'
+  }
+  
+  const activeSlug = getCurrentFolder()
+  const activeFolder = folders?.find(f => f.slug === activeSlug)
 
   return (
     <div className={`flex h-screen fixed top-0 left-68 z-40 transition-all duration-300 ${
@@ -180,31 +195,54 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
           <SidebarGroup>
             <SidebarGroupContent className="px-0">
               <SidebarMenu>
-                {data.navMain.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      tooltip={{
-                        children: item.title,
-                        hidden: false,
-                      }}
-                      onClick={() => {
-                        setActiveItem(item)
-                        const mail = data.mails.sort(() => Math.random() - 0.5)
-                        setMails(
-                          mail.slice(
-                            0,
-                            Math.max(5, Math.floor(Math.random() * 10) + 1)
-                          )
-                        )
-                        setOpen(true)
-                      }}
-                      isActive={activeItem?.title === item.title}
-                      className="justify-center px-2"
-                    >
-                      <item.icon />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {foldersLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
+                  </div>
+                ) : (
+                  folders?.map((folder) => {
+                    const IconComponent = getFolderIcon(folder.slug)
+                    const isActive = activeSlug === folder.slug
+                    const folderUrl = folder.slug === 'home' 
+                      ? '/protected/notepad' 
+                      : `/protected/notepad/folder/${folder.slug}`
+                    
+                    return (
+                      <SidebarMenuItem key={folder.slug}>
+                        <SidebarMenuButton
+                          tooltip={{
+                            children: (
+                              <div className="flex flex-col gap-1">
+                                <span className="font-medium">{folder.name}</span>
+                                {folder.description && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {folder.description}
+                                  </span>
+                                )}
+                              </div>
+                            ),
+                            hidden: false,
+                          }}
+                          onClick={() => {
+                            router.push(folderUrl)
+                            const mail = data.mails.sort(() => Math.random() - 0.5)
+                            setMails(
+                              mail.slice(
+                                0,
+                                Math.max(5, Math.floor(Math.random() * 10) + 1)
+                              )
+                            )
+                            setOpen(true)
+                          }}
+                          isActive={isActive}
+                          className="justify-center px-2"
+                        >
+                          <IconComponent className="h-4 w-4" />
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -232,7 +270,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
         <SidebarHeader className="gap-3.5 border-b p-4">
           <div className="flex w-full items-center justify-between">
             <div className="text-foreground text-base font-medium">
-              {activeItem?.title}
+              {activeFolder?.name || 'Home'}
             </div>
             <Label className="flex items-center gap-2 text-sm">
               <span>Unreads</span>
