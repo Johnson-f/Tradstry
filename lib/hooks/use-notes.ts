@@ -214,6 +214,20 @@ export function useToggleNoteFavorite() {
   });
 }
 
+/**
+ * Hook to permanently delete a note from trash
+ */
+export function usePermanentDeleteNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (noteId: string) => notesService.deleteNote(noteId, true),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notesKeys.all });
+    },
+  });
+}
+
 // ==================== TAG HOOKS ====================
 
 /**

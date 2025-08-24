@@ -5,20 +5,23 @@ import { useRouter, usePathname } from "next/navigation"
 import { 
   ArchiveX, 
   Command, 
-  File, 
-  Inbox, 
-  Send, 
   Trash2, 
-  PanelLeftClose, 
+  Upload, 
+  Users, 
+  Star, 
+  FileText, 
+  Calendar, 
+  Home, 
+  Tag, 
+  BookTemplate, 
+  Plus, 
+  MoreHorizontal, 
+  RotateCcw, 
+  X, 
   PanelLeft,
-  Home,
-  Star,
-  FileText,
-  Calendar,
-  BookTemplate,
-  Tag,
-  Upload,
-  Users
+  Inbox,
+  Send,
+  PanelLeftClose
 } from "lucide-react"
 
 import { Label } from "@/components/ui/label"
@@ -36,7 +39,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
-import { useFolders } from "@/lib/hooks/use-notes"
+import { useNotes, useNotesByFolder, useFolders, useTemplates, useTagsWithCounts, useNotesByTag, useTrash, useRestoreNoteFromTrash, usePermanentDeleteNote } from "@/lib/hooks/use-notes"
 
 // Folder icon mapping based on slug
 const getFolderIcon = (slug: string) => {
@@ -155,18 +158,58 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
   const pathname = usePathname()
   const { setOpen } = useSidebar()
   
-  // Fetch folders from the backend
-  const { data: folders, isLoading: foldersLoading } = useFolders()
-  const [mails, setMails] = React.useState(data.mails)
-  
-  // Get current active folder from pathname
+  // Get current active folder or tag from pathname
   const getCurrentFolder = () => {
     if (pathname === '/protected/notepad') return 'home'
-    const match = pathname.match(/\/protected\/notepad\/folder\/([^/]+)/)
-    return match ? match[1] : 'home'
+    const folderMatch = pathname.match(/\/protected\/notepad\/folder\/([^/]+)/)
+    if (folderMatch) return folderMatch[1]
+    const tagMatch = pathname.match(/\/protected\/notepad\/tag\/([^/]+)/)
+    if (tagMatch) return `tag:${tagMatch[1]}`
+    return 'home'
   }
   
   const activeSlug = getCurrentFolder()
+  
+  // Fetch folders from the backend
+  const { data: folders, isLoading: foldersLoading } = useFolders()
+  
+  // Fetch data based on active folder
+  const getNotesParams = () => {
+    if (activeSlug === 'templates') {
+      // Templates folder doesn't use notes
+      return undefined
+    } else if (activeSlug === 'home') {
+      // For home folder, get all notes (not deleted)
+      return { is_deleted: false }
+    } else if (activeSlug === 'notes') {
+      // For notes folder, get notes in the notes folder
+      const notesFolder = folders?.find(f => f.slug === 'notes')
+      return notesFolder ? { folder_id: notesFolder.id } : undefined
+    } else if (activeSlug === 'favorites') {
+      // For favorites, get favorite notes
+      return { is_favorite: true }
+    } else if (activeSlug === 'trash') {
+      // For trash folder, don't use regular notes hook - use trash hook instead
+      return undefined
+    }
+    // For other folders, get notes in that specific folder
+    const currentFolder = folders?.find(f => f.slug === activeSlug)
+    return currentFolder ? { folder_id: currentFolder.id } : undefined
+  }
+  
+  const { data: notes, isLoading: notesLoading } = useNotes(getNotesParams())
+  const { data: templates, isLoading: templatesLoading } = useTemplates()
+  const { data: tags, isLoading: tagsLoading } = useTagsWithCounts()
+  const { data: trashNotes, isLoading: trashLoading } = useTrash()
+  
+  // Get notes by tag if we're viewing a specific tag
+  const currentTagId = activeSlug.startsWith('tag:') ? activeSlug.replace('tag:', '') : null
+  const { data: tagNotes, isLoading: tagNotesLoading } = useNotesByTag(currentTagId || '')
+  
+  // Mutation hooks for trash operations
+  const restoreNoteMutation = useRestoreNoteFromTrash()
+  const permanentDeleteMutation = usePermanentDeleteNote()
+  const [mails, setMails] = React.useState(data.mails)
   const activeFolder = folders?.find(f => f.slug === activeSlug)
 
   return (
@@ -282,22 +325,336 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
         <SidebarContent>
           <SidebarGroup className="px-0">
             <SidebarGroupContent>
-              {mails.map((mail) => (
-                <a
-                  href="#"
-                  key={mail.email}
-                  className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight whitespace-nowrap last:border-b-0"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <span className="font-medium">{mail.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{mail.date}</span>
+              {activeSlug === 'tags' ? (
+                // Tags view
+                tagsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
                   </div>
-                  <span className="font-medium">{mail.subject}</span>
-                  <span className="line-clamp-2 w-[260px] text-xs text-muted-foreground whitespace-break-spaces">
-                    {mail.teaser}
-                  </span>
-                </a>
-              ))}
+                ) : tags && tags.length > 0 ? (
+                  tags.map((tag) => {
+                    const tagUrl = `/protected/notepad/tag/${tag.id}`
+                    const isActiveTag = pathname === tagUrl
+                    
+                    return (
+                      <button
+                        key={tag.id}
+                        onClick={() => router.push(tagUrl)}
+                        className={`w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight text-left last:border-b-0 transition-colors ${
+                          isActiveTag ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <div 
+                            className="w-3 h-3 rounded-full flex-shrink-0" 
+                            style={{ backgroundColor: tag.color }}
+                          ></div>
+                          <span className="font-medium truncate flex-1">{tag.name}</span>
+                          <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                            {tag.note_count}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(tag.updated_at).toLocaleDateString()}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Tag className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      No tags created yet
+                    </span>
+                  </div>
+                )
+              ) : activeSlug.startsWith('tag:') ? (
+                // Individual tag notes view
+                tagNotesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
+                  </div>
+                ) : tagNotes && tagNotes.length > 0 ? (
+                  tagNotes.map((note) => {
+                    const noteUrl = `/protected/notepad/note/${note.id}`
+                    const isActiveNote = pathname === noteUrl
+                    
+                    // Generate preview from content
+                    const getPreview = (content: any) => {
+                      if (!content || typeof content !== 'object') return 'No content'
+                      // Extract text from Lexical JSON structure
+                      const extractText = (node: any): string => {
+                        if (!node) return ''
+                        if (typeof node === 'string') return node
+                        if (node.text) return node.text
+                        if (node.children && Array.isArray(node.children)) {
+                          return node.children.map(extractText).join(' ')
+                        }
+                        return ''
+                      }
+                      const text = extractText(content)
+                      return text.length > 100 ? text.substring(0, 100) + '...' : text || 'No content'
+                    }
+                    
+                    return (
+                      <button
+                        key={note.id}
+                        onClick={() => router.push(noteUrl)}
+                        className={`w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight text-left last:border-b-0 transition-colors ${
+                          isActiveNote ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <span className="font-medium truncate flex-1">{note.title}</span>
+                          <div className="flex items-center gap-1">
+                            {note.is_favorite && (
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            )}
+                            {note.is_pinned && (
+                              <div className="h-2 w-2 bg-primary rounded-full" />
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(note.updated_at).toLocaleDateString()}
+                        </span>
+                        <span className="line-clamp-2 w-[260px] text-xs text-muted-foreground whitespace-break-spaces">
+                          {getPreview(note.content)}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      No notes with this tag
+                    </span>
+                  </div>
+                )
+              ) : activeSlug === 'templates' ? (
+                // Templates view
+                templatesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
+                  </div>
+                ) : templates && templates.length > 0 ? (
+                  templates.map((template) => {
+                    const templateUrl = `/protected/notepad/template/${template.id}`
+                    const isActiveTemplate = pathname === templateUrl
+                    
+                    // Generate preview from content
+                    const getPreview = (content: any) => {
+                      if (!content || typeof content !== 'object') return 'No content'
+                      // Extract text from Lexical JSON structure
+                      const extractText = (node: any): string => {
+                        if (!node) return ''
+                        if (typeof node === 'string') return node
+                        if (node.text) return node.text
+                        if (node.children && Array.isArray(node.children)) {
+                          return node.children.map(extractText).join(' ')
+                        }
+                        return ''
+                      }
+                      const text = extractText(content)
+                      return text.length > 100 ? text.substring(0, 100) + '...' : text || 'No content'
+                    }
+                    
+                    return (
+                      <button
+                        key={template.id}
+                        onClick={() => router.push(templateUrl)}
+                        className={`w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight text-left last:border-b-0 transition-colors ${
+                          isActiveTemplate ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <span className="font-medium truncate flex-1">{template.name}</span>
+                          <div className="flex items-center gap-1">
+                            {template.is_system && (
+                              <div className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">
+                                System
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(template.updated_at).toLocaleDateString()}
+                        </span>
+                        {template.description && (
+                          <span className="text-xs text-muted-foreground italic">
+                            {template.description}
+                          </span>
+                        )}
+                        <span className="line-clamp-2 w-[260px] text-xs text-muted-foreground whitespace-break-spaces">
+                          {getPreview(template.content)}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      No templates available
+                    </span>
+                  </div>
+                )
+              ) : activeSlug === 'trash' ? (
+                // Trash view
+                trashLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
+                  </div>
+                ) : trashNotes && trashNotes.length > 0 ? (
+                  trashNotes.map((note) => {
+                    const noteUrl = `/protected/notepad/note/${note.id}`
+                    const isActiveNote = pathname === noteUrl
+                    
+                    // Generate preview from content
+                    const getPreview = (content: any) => {
+                      if (!content || typeof content !== 'object') return 'No content'
+                      // Extract text from Lexical JSON structure
+                      const extractText = (node: any): string => {
+                        if (!node) return ''
+                        if (typeof node === 'string') return node
+                        if (node.text) return node.text
+                        if (node.children && Array.isArray(node.children)) {
+                          return node.children.map(extractText).join(' ')
+                        }
+                        return ''
+                      }
+                      const text = extractText(content)
+                      return text.length > 100 ? text.substring(0, 100) + '...' : text || 'No content'
+                    }
+                    
+                    const handleRestore = (e: React.MouseEvent) => {
+                      e.stopPropagation()
+                      restoreNoteMutation.mutate({ noteId: note.id })
+                    }
+                    
+                    const handlePermanentDelete = (e: React.MouseEvent) => {
+                      e.stopPropagation()
+                      if (confirm('Are you sure you want to permanently delete this note? This action cannot be undone.')) {
+                        permanentDeleteMutation.mutate(note.id)
+                      }
+                    }
+                    
+                    return (
+                      <div
+                        key={note.id}
+                        className={`w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0 transition-colors ${
+                          isActiveNote ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <button
+                            onClick={() => router.push(noteUrl)}
+                            className="font-medium truncate flex-1 text-left"
+                          >
+                            {note.title}
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={handleRestore}
+                              className="p-1 hover:bg-green-100 hover:text-green-700 rounded transition-colors"
+                              title="Restore note"
+                              disabled={restoreNoteMutation.isPending}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={handlePermanentDelete}
+                              className="p-1 hover:bg-red-100 hover:text-red-700 rounded transition-colors"
+                              title="Permanently delete"
+                              disabled={permanentDeleteMutation.isPending}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Deleted: {new Date(note.updated_at).toLocaleDateString()}
+                        </span>
+                        <span className="line-clamp-2 w-[260px] text-xs text-muted-foreground whitespace-break-spaces">
+                          {getPreview(note.content)}
+                        </span>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Trash2 className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      Trash is empty
+                    </span>
+                  </div>
+                )
+              ) : (
+                // Notes view
+                notesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
+                  </div>
+                ) : notes && notes.length > 0 ? (
+                  notes.map((note) => {
+                    const noteUrl = `/protected/notepad/note/${note.id}`
+                    const isActiveNote = pathname === noteUrl
+                    
+                    // Generate preview from content
+                    const getPreview = (content: any) => {
+                      if (!content || typeof content !== 'object') return 'No content'
+                      // Extract text from Lexical JSON structure
+                      const extractText = (node: any): string => {
+                        if (!node) return ''
+                        if (typeof node === 'string') return node
+                        if (node.text) return node.text
+                        if (node.children && Array.isArray(node.children)) {
+                          return node.children.map(extractText).join(' ')
+                        }
+                        return ''
+                      }
+                      const text = extractText(content)
+                      return text.length > 100 ? text.substring(0, 100) + '...' : text || 'No content'
+                    }
+                    
+                    return (
+                      <button
+                        key={note.id}
+                        onClick={() => router.push(noteUrl)}
+                        className={`w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight text-left last:border-b-0 transition-colors ${
+                          isActiveNote ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <span className="font-medium truncate flex-1">{note.title}</span>
+                          <div className="flex items-center gap-1">
+                            {note.is_favorite && (
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            )}
+                            {note.is_pinned && (
+                              <div className="h-2 w-2 bg-primary rounded-full" />
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(note.updated_at).toLocaleDateString()}
+                        </span>
+                        <span className="line-clamp-2 w-[260px] text-xs text-muted-foreground whitespace-break-spaces">
+                          {getPreview(note.content)}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      No notes in this folder
+                    </span>
+                  </div>
+                )
+              )}
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
