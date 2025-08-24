@@ -38,21 +38,18 @@ header h1 {
 }
 
 .editor-shell {
-  margin: 20px auto;
-  border-radius: 2px;
-  max-width: 1100px;
-  color: #000;
-  position: relative;
-  line-height: 1.7;
-  font-weight: 400;
+  height: 100vh;
+  overflow-y: auto;
+
+  margin: 0;
+  border-radius: 0;
+  max-width: none;
+  background: transparent;
 }
 
 .editor-shell .editor-container {
-  background: #fff;
-  position: relative;
-  display: block;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  background: transparent;
+  border-radius: 0;
 }
 
 .editor-shell .editor-container.tree-view {
@@ -65,7 +62,7 @@ header h1 {
 }
 
 .editor-scroller {
-  min-height: 150px;
+  min-height: calc(100vh - 50px);
   max-width: 100%;
   border: 0;
   display: flex;
@@ -73,6 +70,7 @@ header h1 {
   outline: 0;
   z-index: 0;
   resize: vertical;
+  overflow-y: auto;
 }
 
 .editor {
@@ -81,6 +79,7 @@ header h1 {
   position: relative;
   resize: vertical;
   z-index: -1;
+  min-height: 100%;
 }
 
 .test-recorder-output {
