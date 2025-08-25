@@ -29,6 +29,7 @@ import { useEffect, useState } from "react";
 import { createWebsocketProvider } from "./collaboration";
 import { useSettings } from "./context/SettingsContext";
 import { useSharedHistoryContext } from "./context/SharedHistoryContext";
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import ActionsPlugin from "./plugins/ActionsPlugin";
 import AutocompletePlugin from "./plugins/AutocompletePlugin";
 import AutoEmbedPlugin from "./plugins/AutoEmbedPlugin";
@@ -89,7 +90,11 @@ const skipCollaborationInit = (() => {
   }
 })();
 
-export default function Editor(): JSX.Element {
+interface EditorProps {
+  onContentChange?: (editorState: any) => void;
+}
+
+export default function Editor({ onContentChange }: EditorProps): JSX.Element {
   const { historyState } = useSharedHistoryContext();
   const {
     settings: {
@@ -245,10 +250,13 @@ export default function Editor(): JSX.Element {
             <TabFocusPlugin />
             <TabIndentationPlugin maxIndent={7} />
             <CollapsiblePlugin />
-            <PageBreakPlugin />
-            <LayoutPlugin />
+            {onContentChange && (
+              <OnChangePlugin onChange={onContentChange} />
+            )}
             {floatingAnchorElem && (
               <>
+                <DraggableBlockPlugin anchorElem={floatingAnchorElem} />
+                <CodeActionMenuPlugin anchorElem={floatingAnchorElem} />
                 <FloatingLinkEditorPlugin
                   anchorElem={floatingAnchorElem}
                   isLinkEditMode={isLinkEditMode}
@@ -258,17 +266,15 @@ export default function Editor(): JSX.Element {
                   anchorElem={floatingAnchorElem}
                   cellMerge={true}
                 />
-              </>
-            )}
-            {floatingAnchorElem && !isSmallWidthViewport && (
-              <>
-                <DraggableBlockPlugin anchorElem={floatingAnchorElem} />
-                <CodeActionMenuPlugin anchorElem={floatingAnchorElem} />
-                <TableHoverActionsPlugin anchorElem={floatingAnchorElem} />
                 <FloatingTextFormatToolbarPlugin
                   anchorElem={floatingAnchorElem}
                   setIsLinkEditMode={setIsLinkEditMode}
                 />
+              </>
+            )}
+            {floatingAnchorElem && !isSmallWidthViewport && (
+              <>
+                <TableHoverActionsPlugin anchorElem={floatingAnchorElem} />
               </>
             )}
           </>

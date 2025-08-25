@@ -228,6 +228,20 @@ export function usePermanentDeleteNote() {
   });
 }
 
+/**
+ * Hook to create a new tag
+ */
+export function useCreateTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) => notesService.getOrCreateTag(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notesKeys.tags() });
+    },
+  });
+}
+
 // ==================== TAG HOOKS ====================
 
 /**

@@ -1,6 +1,8 @@
 "use client";
 
 import type { JSX } from "react";
+import { useCallback } from "react";
+import { debounce } from "lodash";
 
 import { $createListItemNode, $createListNode } from "@lexical/list";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -12,8 +14,8 @@ import {
   $isTextNode,
   DOMConversionMap,
   TextNode,
+  EditorState,
 } from "lexical";
-
 
 import { FlashMessageContext } from "./context/FlashMessageContext";
 import { SettingsContext, useSettings } from "./context/SettingsContext";
@@ -27,8 +29,11 @@ import Settings from "./Settings";
 import PlaygroundEditorTheme from "./themes/PlaygroundEditorTheme";
 import { parseAllowedColor } from "./ui/ColorPicker";
 
+import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
+
 // Import custom CSS overrides
 
+// ... (rest of the code remains the same)
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -155,17 +160,53 @@ function buildImportMap(): DOMConversionMap {
   return importMap;
 }
 
-function App(): JSX.Element {
+interface AppProps {
+  noteId: string;
+}
+
+function App({ noteId }: AppProps): JSX.Element {
   const {
     settings: { isCollab, emptyEditor, measureTypingPerf },
   } = useSettings();
 
+  const { data: note, isLoading } = useNote(noteId || "");
+  const updateNoteMutation = useUpdateNote();
+
+  // Debounced save function to prevent excessive API calls
+  const debouncedSave = useCallback(
+    debounce((content: any) => {
+      if (noteId && note) {
+        updateNoteMutation.mutate({
+          noteId,
+          note: { content },
+        });
+      }
+    }, 300000),
+    [noteId, note, updateNoteMutation]
+  );
+
+  const handleContentChange = useCallback((editorState: EditorState) => {
+    const content = editorState.toJSON();
+    debouncedSave(content);
+  }, [debouncedSave]);
+
+  const getInitialEditorState = () => {
+    if (isCollab) return null;
+    if (emptyEditor) return undefined;
+    if (noteId && note?.content && typeof note.content === 'object') {
+      try {
+        // Return the content object directly, not as JSON string
+        return note.content;
+      } catch (error) {
+        console.warn('Failed to parse note content:', error);
+        return $prepopulatedRichText;
+      }
+    }
+    return $prepopulatedRichText;
+  };
+
   const initialConfig = {
-    editorState: isCollab
-      ? null
-      : emptyEditor
-        ? undefined
-        : $prepopulatedRichText,
+    editorState: getInitialEditorState(),
     html: { import: buildImportMap() },
     namespace: "Playground",
     nodes: [...PlaygroundNodes],
@@ -175,16 +216,24 @@ function App(): JSX.Element {
     theme: PlaygroundEditorTheme,
   };
 
+  // Show loading state while note is being fetched
+  if (noteId && isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-gray-500">Loading note...</div>
+      </div>
+    );
+  }
+
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <SharedHistoryContext>
         <TableContext>
           <ToolbarContext>
             <div className="editor-shell h-full">
-              <Editor />
+              <Editor onContentChange={handleContentChange} />
             </div>
             <Settings />
-           
           </ToolbarContext>
         </TableContext>
       </SharedHistoryContext>
@@ -192,11 +241,19 @@ function App(): JSX.Element {
   );
 }
 
-export default function PlaygroundApp(): JSX.Element {
+export default function PlaygroundApp({ noteId }: { noteId?: string }): JSX.Element {
+  if (!noteId) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-gray-500">Select a note to start editing</div>
+      </div>
+    );
+  }
+
   return (
     <SettingsContext>
       <FlashMessageContext>
-        <App />
+        <App noteId={noteId} />
       </FlashMessageContext>
     </SettingsContext>
   );
