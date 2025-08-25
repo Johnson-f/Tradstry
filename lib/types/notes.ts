@@ -112,26 +112,27 @@ export interface UntagNoteRequest {
 
 // ==================== TEMPLATES ====================
 
-export interface TemplateBase {
-  name: string;
-  description?: string | null;
-  content: Record<string, any>;
-}
-
-export interface TemplateCreate extends TemplateBase {}
-
-export interface TemplateUpdate {
-  name?: string;
-  description?: string | null;
-  content?: Record<string, any>;
-}
-
-export interface Template extends TemplateBase {
+export interface Template {
   id: string;
-  user_id?: string | null;
+  user_id?: string;
+  name: string;
+  description?: string;
+  content: any;
   is_system: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TemplateCreate {
+  name: string;
+  description?: string;
+  content?: any;
+}
+
+export interface TemplateUpdate {
+  name?: string;
+  description?: string;
+  content?: any;
 }
 
 // ==================== QUERY PARAMETERS ====================

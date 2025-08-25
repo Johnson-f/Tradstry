@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Query
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Query, Request
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from models.notes import (
@@ -15,27 +16,56 @@ from utils.auth import get_user_with_retry, get_user_with_token_retry
 notes_service = NotesService()
 user_service = UserService()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, Any]:
     """Dependency to get current user from Supabase JWT with token"""
+    logger.info(f"=== AUTH DEBUG (with_token) ===")
+    logger.info(f"Authorization received: {authorization[:20] if authorization else 'None'}...")
+    
     if not authorization.startswith("Bearer "):
+        logger.error(f"Invalid authorization format: {authorization[:20]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     token = authorization.split(" ")[1]
-    return get_user_with_token_retry(user_service.supabase, token)
+    logger.info(f"Token extracted: {token[:20]}...")
+    
+    try:
+        user = get_user_with_token_retry(user_service.supabase, token)
+        logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
+        return user
+    except Exception as e:
+        logger.error(f"Authentication failed: {str(e)}")
+        raise
 
 def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
     """Dependency to get current user from Supabase JWT"""
+    logger.info(f"=== AUTH DEBUG (standard) ===")
+    logger.info(f"Authorization received: {authorization[:20] if authorization else 'None'}...")
+    
     if not authorization.startswith("Bearer "):
+        logger.error(f"Invalid authorization format: {authorization[:20]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     token = authorization.split(" ")[1]
-    return get_user_with_retry(user_service.supabase, token)
+    logger.info(f"Token extracted: {token[:20]}...")
+    
+    try:
+        user = get_user_with_retry(user_service.supabase, token)
+        logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
+        return user
+    except Exception as e:
+        logger.error(f"Authentication failed: {str(e)}")
+        raise
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -71,7 +101,166 @@ async def get_folders(
         access_token=current_user.get("access_token")
     )
 
-# ==================== NOTES ====================
+@router.get("/folders/slug/{folder_slug}", response_model=FolderInDB)
+async def get_folder_by_slug(
+    folder_slug: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a folder by its slug.
+    """
+    folder = notes_service.get_folder_by_slug(
+        folder_slug=folder_slug,
+        access_token=current_user.get("access_token")
+    )
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return FolderInDB(**folder)
+
+# ==================== SPECIFIC ROUTES FIRST (BEFORE PARAMETERIZED ROUTES) ====================
+
+@router.get("/templates", response_model=List[TemplateInDB])
+async def get_templates(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all templates (user's + system templates).
+    """
+    try:
+        logger.info(f"=== GET /templates DEBUG ===")
+        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        logger.info(f"Authorization header: {request.headers.get('authorization', 'MISSING')}")
+        logger.info(f"Current user: {current_user}")
+        logger.info("===============================")
+        
+        templates = await notes_service.get_templates(
+            access_token=current_user.get("access_token")
+        )
+        return [TemplateInDB(**template) for template in templates]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_templates endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch templates")
+
+@router.get("/trash", response_model=List[NoteInDB])
+async def get_trash_notes(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all deleted notes (trash) for the current user.
+    """
+    try:
+        logger.info(f"=== GET /trash DEBUG ===")
+        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        logger.info(f"Authorization header: {request.headers.get('authorization', 'MISSING')}")
+        logger.info(f"Current user: {current_user}")
+        logger.info("==========================")
+        
+        return await notes_service.get_notes(
+            is_deleted=True,
+            sort_by='updated_at',
+            sort_order='DESC',
+            access_token=current_user.get("access_token")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_trash_notes endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch trash notes")
+
+@router.get("/favorites", response_model=List[NoteInDB])
+async def get_favorite_notes(
+    current_user: dict = Depends(get_current_user_with_token)
+):
+    """
+    Get all favorite notes for the current user.
+    """
+    return await notes_service.get_notes(
+        is_favorite=True,
+        include_deleted=False,
+        sort_by='updated_at',
+        sort_order='DESC',
+        access_token=current_user.get("access_token")
+    )
+
+@router.get("/tags/all", response_model=List[TagInDB])
+async def get_tags_with_counts(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all tags with note counts.
+    """
+    tags = notes_service.get_tags_with_counts(
+        access_token=current_user.get("access_token")
+    )
+    return [TagInDB(**tag) for tag in tags]
+
+@router.get("/tags/search", response_model=List[TagInDB])
+async def search_tags(
+    search_term: str = Query(..., description="Search term for tags"),
+    limit: int = Query(10, description="Maximum number of results"),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Search tags by name.
+    """
+    tags = notes_service.search_tags(
+        search_term=search_term,
+        limit=limit,
+        access_token=current_user.get("access_token")
+    )
+    return [TagInDB(**tag) for tag in tags]
+
+@router.get("/tags/{tag_id}/notes", response_model=List[NoteInDB])
+async def get_notes_by_tag(
+    tag_id: UUID,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all notes with a specific tag.
+    """
+    notes = notes_service.get_notes_by_tag(
+        tag_id=str(tag_id),
+        access_token=current_user.get("access_token")
+    )
+    return [NoteInDB(**note) for note in notes]
+
+@router.get("/templates/{template_id}", response_model=TemplateInDB)
+async def get_template(
+    template_id: UUID,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a single template by ID.
+    """
+    template = notes_service.get_template(
+        template_id=str(template_id),
+        access_token=current_user.get("access_token")
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return TemplateInDB(**template)
+
+@router.get("/notes/{note_id}/tags", response_model=List[TagInDB])
+async def get_note_tags(
+    note_id: UUID,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all tags for a specific note.
+    """
+    tags = notes_service.get_note_tags(
+        note_id=str(note_id),
+        access_token=current_user.get("access_token")
+    )
+    return [TagInDB(**tag) for tag in tags]
+
+# ==================== NOTES (PARAMETERIZED ROUTES LAST) ====================
 
 @router.post("/", response_model=NoteUpsertResponse, status_code=status.HTTP_201_CREATED)
 async def create_note(
@@ -91,6 +280,70 @@ async def create_note(
         metadata=note.metadata,
         access_token=current_user.get("access_token")
     )
+
+@router.get("/", response_model=List[NoteInDB])
+async def get_notes(
+    note_id: Optional[UUID] = Query(None),
+    folder_slug: Optional[str] = Query(None),
+    search_term: Optional[str] = Query(None),
+    is_favorite: Optional[bool] = Query(None),
+    is_pinned: Optional[bool] = Query(None),
+    is_archived: bool = Query(False),
+    include_deleted: bool = Query(False),
+    limit: int = Query(50, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    sort_by: str = Query('updated_at', regex='^(title|created_at|updated_at|is_pinned|is_favorite)$'),
+    sort_order: str = Query('DESC', regex='^(ASC|DESC)$'),
+    current_user: dict = Depends(get_current_user_with_token)
+):
+    """
+    Get notes with optional filtering and sorting.
+    
+    - **note_id**: Get a specific note by ID
+    - **folder_slug**: Filter by folder slug
+    - **search_term**: Search in note title and content
+    - **is_favorite**: Filter by favorite status
+    - **is_pinned**: Filter by pinned status
+    - **is_archived**: Filter by archived status (default: false)
+    - **include_deleted**: Include deleted notes (default: false)
+    - **limit**: Number of notes to return (max 1000)
+    - **offset**: Number of notes to skip
+    - **sort_by**: Field to sort by
+    - **sort_order**: Sort order (ASC or DESC)
+    """
+    return await notes_service.get_notes(
+        note_id=note_id,
+        folder_slug=folder_slug,
+        search_term=search_term,
+        is_favorite=is_favorite,
+        is_pinned=is_pinned,
+        is_archived=is_archived,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        access_token=current_user.get("access_token")
+    )
+
+# THIS MUST COME AFTER ALL SPECIFIC ROUTES
+@router.get("/{note_id}", response_model=NoteInDB)
+async def get_note(
+    note_id: UUID,
+    current_user: dict = Depends(get_current_user_with_token)
+):
+    """
+    Get a specific note by ID.
+    """
+    notes = await notes_service.get_notes(
+        note_id=note_id,
+        access_token=current_user.get("access_token")
+    )
+    
+    if not notes:
+        raise HTTPException(status_code=404, detail="Note not found")
+    
+    return notes[0]
 
 @router.put("/{note_id}", response_model=NoteUpsertResponse)
 async def update_note(
@@ -141,69 +394,6 @@ async def update_note(
         access_token=current_user.get("access_token")
     )
 
-@router.get("/", response_model=List[NoteInDB])
-async def get_notes(
-    note_id: Optional[UUID] = Query(None),
-    folder_slug: Optional[str] = Query(None),
-    search_term: Optional[str] = Query(None),
-    is_favorite: Optional[bool] = Query(None),
-    is_pinned: Optional[bool] = Query(None),
-    is_archived: bool = Query(False),
-    include_deleted: bool = Query(False),
-    limit: int = Query(50, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    sort_by: str = Query('updated_at', regex='^(title|created_at|updated_at|is_pinned|is_favorite)$'),
-    sort_order: str = Query('DESC', regex='^(ASC|DESC)$'),
-    current_user: dict = Depends(get_current_user_with_token)
-):
-    """
-    Get notes with optional filtering and sorting.
-    
-    - **note_id**: Get a specific note by ID
-    - **folder_slug**: Filter by folder slug
-    - **search_term**: Search in note title and content
-    - **is_favorite**: Filter by favorite status
-    - **is_pinned**: Filter by pinned status
-    - **is_archived**: Filter by archived status (default: false)
-    - **include_deleted**: Include deleted notes (default: false)
-    - **limit**: Number of notes to return (max 1000)
-    - **offset**: Number of notes to skip
-    - **sort_by**: Field to sort by
-    - **sort_order**: Sort order (ASC or DESC)
-    """
-    return await notes_service.get_notes(
-        note_id=note_id,
-        folder_slug=folder_slug,
-        search_term=search_term,
-        is_favorite=is_favorite,
-        is_pinned=is_pinned,
-        is_archived=is_archived,
-        include_deleted=include_deleted,
-        limit=limit,
-        offset=offset,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        access_token=current_user.get("access_token")
-    )
-
-@router.get("/{note_id}", response_model=NoteInDB)
-async def get_note(
-    note_id: UUID,
-    current_user: dict = Depends(get_current_user_with_token)
-):
-    """
-    Get a specific note by ID.
-    """
-    notes = await notes_service.get_notes(
-        note_id=note_id,
-        access_token=current_user.get("access_token")
-    )
-    
-    if not notes:
-        raise HTTPException(status_code=404, detail="Note not found")
-    
-    return notes[0]
-
 @router.delete("/{note_id}", response_model=DeleteResponse)
 async def delete_note(
     note_id: UUID,
@@ -227,6 +417,8 @@ async def delete_note(
             access_token=current_user.get("access_token")
         )
 
+# ==================== REST OF THE ROUTES ====================
+
 @router.post("/folders/{folder_id}/restore", response_model=DeleteResponse)
 async def restore_note(
     folder_id: UUID,
@@ -241,36 +433,6 @@ async def restore_note(
         target_folder_slug='notes',  # Default to 'notes' folder
         access_token=current_user.get("access_token")
     )
-
-# ==================== TAGS ====================
-
-@router.get("/tags/all", response_model=List[TagInDB])
-async def get_tags_with_counts(
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get all tags with note counts.
-    """
-    tags = notes_service.get_tags_with_counts(
-        access_token=current_user.get("access_token")
-    )
-    return [TagInDB(**tag) for tag in tags]
-
-@router.get("/tags/search", response_model=List[TagInDB])
-async def search_tags(
-    search_term: str = Query(..., description="Search term for tags"),
-    limit: int = Query(10, description="Maximum number of results"),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Search tags by name.
-    """
-    tags = notes_service.search_tags(
-        search_term=search_term,
-        limit=limit,
-        access_token=current_user.get("access_token")
-    )
-    return [TagInDB(**tag) for tag in tags]
 
 @router.post("/tags/{tag_id}/rename", response_model=Dict[str, Any])
 async def rename_tag(
@@ -339,34 +501,6 @@ async def untag_note(
         raise HTTPException(status_code=400, detail="Failed to untag note")
     return {"success": True}
 
-@router.get("/tags/{tag_id}/notes", response_model=List[NoteInDB])
-async def get_notes_by_tag(
-    tag_id: UUID,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get all notes with a specific tag.
-    """
-    notes = notes_service.get_notes_by_tag(
-        tag_id=str(tag_id),
-        access_token=current_user.get("access_token")
-    )
-    return [NoteInDB(**note) for note in notes]
-
-@router.get("/notes/{note_id}/tags", response_model=List[TagInDB])
-async def get_note_tags(
-    note_id: UUID,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get all tags for a specific note.
-    """
-    tags = notes_service.get_note_tags(
-        note_id=str(note_id),
-        access_token=current_user.get("access_token")
-    )
-    return [TagInDB(**tag) for tag in tags]
-
 @router.post("/tags/get-or-create", response_model=TagInDB)
 async def get_or_create_tag(
     name: str = Query(..., description="Tag name"),
@@ -383,36 +517,6 @@ async def get_or_create_tag(
     if not tag:
         raise HTTPException(status_code=400, detail="Failed to get or create tag")
     return TagInDB(**tag)
-
-# ==================== TEMPLATES ====================
-
-@router.get("/templates", response_model=List[TemplateInDB])
-async def get_templates(
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get all templates (user's + system templates).
-    """
-    templates = await notes_service.get_templates(
-        access_token=current_user.get("access_token")
-    )
-    return [TemplateInDB(**template) for template in templates]
-
-@router.get("/templates/{template_id}", response_model=TemplateInDB)
-async def get_template(
-    template_id: UUID,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get a single template by ID.
-    """
-    template = notes_service.get_template(
-        template_id=str(template_id),
-        access_token=current_user.get("access_token")
-    )
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-    return TemplateInDB(**template)
 
 @router.post("/templates", response_model=Dict[str, Any])
 async def create_template(
@@ -468,8 +572,6 @@ async def delete_template(
         raise HTTPException(status_code=400, detail="Failed to delete template")
     return {"success": True}
 
-# ==================== FAVORITES ====================
-
 @router.post("/notes/{note_id}/favorite", response_model=Dict[str, Any])
 async def toggle_note_favorite(
     note_id: UUID,
@@ -485,38 +587,6 @@ async def toggle_note_favorite(
     if new_status is None:
         raise HTTPException(status_code=400, detail="Failed to toggle favorite")
     return {"is_favorite": new_status}
-
-@router.get("/favorites", response_model=List[NoteInDB])
-async def get_favorite_notes(
-    current_user: dict = Depends(get_current_user_with_token)
-):
-    """
-    Get all favorite notes for the current user.
-    """
-    return await notes_service.get_notes(
-        is_favorite=True,
-        include_deleted=False,
-        sort_by='updated_at',
-        sort_order='DESC',
-        access_token=current_user.get("access_token")
-    )
-
-@router.get("/trash", response_model=List[NoteInDB])
-async def get_trash_notes(
-    current_user: dict = Depends(get_current_user_with_token)
-):
-    """
-    Get all deleted notes (trash) for the current user.
-    """
-    return await notes_service.get_notes(
-        is_archived=True,
-        include_deleted=True,
-        sort_by='updated_at',
-        sort_order='DESC',
-        access_token=current_user.get("access_token")
-    )
-
-# ==================== TRASH OPERATIONS ====================
 
 @router.post("/notes/{note_id}/trash", response_model=Dict[str, Any])
 async def move_note_to_trash(
@@ -552,24 +622,6 @@ async def restore_note_from_trash(
         raise HTTPException(status_code=400, detail="Failed to restore note from trash")
     return {"success": True}
 
-# ==================== FOLDER OPERATIONS ====================
-
-@router.get("/folders/slug/{folder_slug}", response_model=FolderInDB)
-async def get_folder_by_slug(
-    folder_slug: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get a folder by its slug.
-    """
-    folder = notes_service.get_folder_by_slug(
-        folder_slug=folder_slug,
-        access_token=current_user.get("access_token")
-    )
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    return FolderInDB(**folder)
-
 # ==================== ADMIN OPERATIONS ====================
 
 @router.post("/admin/folders/system", response_model=Dict[str, Any])
@@ -582,7 +634,6 @@ async def create_system_folder(
     """
     Create a system folder (admin only).
     """
-    # Check if user is admin (you may need to add this check based on your user model)
     folder_id = notes_service.create_system_folder(
         folder_name=folder_name,
         folder_slug=folder_slug,
@@ -603,7 +654,6 @@ async def create_system_template(
     """
     Create a system template (admin only).
     """
-    # Check if user is admin (you may need to add this check based on your user model)
     template_id = notes_service.create_system_template(
         name=name,
         description=description,
