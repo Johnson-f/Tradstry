@@ -139,3 +139,4 @@ class TemplateInDB(TemplateBase):
 
     class Config:
         from_attributes = True
+

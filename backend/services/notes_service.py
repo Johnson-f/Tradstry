@@ -370,8 +370,15 @@ class NotesService:
         """Get all templates (user's + system templates)"""
         try:
             client = self._get_client(access_token)
-            response = client.rpc('get_templates').execute()
-            return response.data if response.data else []
+            # First try the RPC function
+            try:
+                response = client.rpc('get_templates').execute()
+                return response.data if response.data else []
+            except Exception as rpc_error:
+                print(f"RPC get_templates failed: {str(rpc_error)}")
+                # Fallback to direct table query
+                response = client.table('templates').select('*').order('is_system', desc=True).order('updated_at', desc=True).execute()
+                return response.data if response.data else []
         except Exception as e:
             print(f"Error getting templates: {str(e)}")
             return []
@@ -380,12 +387,21 @@ class NotesService:
         """Get a single template by ID"""
         try:
             client = self._get_client(access_token)
-            response = client.rpc('get_template', {
-                'p_template_id': template_id
-            }).execute()
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return None
+            # First try the RPC function
+            try:
+                response = client.rpc('get_template', {
+                    'p_template_id': template_id
+                }).execute()
+                if response.data and len(response.data) > 0:
+                    return response.data[0]
+                return None
+            except Exception as rpc_error:
+                print(f"RPC get_template failed: {str(rpc_error)}")
+                # Fallback to direct table query
+                response = client.table('templates').select('*').eq('id', template_id).execute()
+                if response.data and len(response.data) > 0:
+                    return response.data[0]
+                return None
         except Exception as e:
             print(f"Error getting template: {str(e)}")
             return None

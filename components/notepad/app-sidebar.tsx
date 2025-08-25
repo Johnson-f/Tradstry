@@ -39,7 +39,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
-import { useNotes, useNotesByFolder, useFolders, useTemplates, useTagsWithCounts, useNotesByTag, useTrash, useRestoreNoteFromTrash, usePermanentDeleteNote } from "@/lib/hooks/use-notes"
+import { useNotes, useFolders, useTemplates, useTagsWithCounts, useNotesByTag, useTrash, useRestoreNoteFromTrash, usePermanentDeleteNote } from "@/lib/hooks/use-notes"
 
 // Folder icon mapping based on slug
 const getFolderIcon = (slug: string) => {
