@@ -1,7 +1,7 @@
 "use client";
 
 import type { JSX } from "react";
-import { useCallback } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { debounce } from "lodash";
 
 import { $createListItemNode, $createListNode } from "@lexical/list";
@@ -31,10 +31,6 @@ import { parseAllowedColor } from "./ui/ColorPicker";
 
 import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
 import { stripVersionsFromContent, addVersionsToContent } from "./utils/stripVersions";
-
-// Import custom CSS overrides
-
-// ... (rest of the code remains the same)
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -97,8 +93,6 @@ function $prepopulatedRichText() {
 }
 
 function getExtraStyles(element: HTMLElement): string {
-  // Parse styles from pasted input, but only if they match exactly the
-  // sort of styles that would be produced by exportDOM
   let extraStyles = "";
   const fontSize = parseAllowedFontSize(element.style.fontSize);
   const backgroundColor = parseAllowedColor(element.style.backgroundColor);
@@ -118,8 +112,6 @@ function getExtraStyles(element: HTMLElement): string {
 function buildImportMap(): DOMConversionMap {
   const importMap: DOMConversionMap = {};
 
-  // Wrap all TextNode importers with a function that also imports
-  // the custom styles implemented by the playground
   for (const [tag, fn] of Object.entries(TextNode.importDOM() || {})) {
     importMap[tag] = (importNode) => {
       const importer = fn(importNode);
@@ -167,40 +159,48 @@ interface AppProps {
 
 function App({ noteId }: AppProps): JSX.Element {
   const {
-    settings: { isCollab, emptyEditor, measureTypingPerf },
+    settings: { isCollab, measureTypingPerf },
   } = useSettings();
 
   const { data: note, isLoading } = useNote(noteId || "");
   const updateNoteMutation = useUpdateNote();
+  
+  // Track if content has been initialized to prevent re-initialization
+  const [contentInitialized, setContentInitialized] = useState(false);
 
+  // Reset content initialization when noteId changes
+  useEffect(() => {
+    setContentInitialized(false);
+  }, [noteId]);
 
-  // Debounced save function to prevent excessive API calls
+  // Longer debounce to prevent excessive saves
   const debouncedSave = useCallback(
     debounce((content: any) => {
-      if (noteId && note) {
+      if (noteId && note && contentInitialized) {
+        console.log('Saving content:', content);
         updateNoteMutation.mutate({
           noteId,
           note: { content },
         });
       }
-    }, 1),
-    [noteId, note, updateNoteMutation]
+    }, 500), // Increased from 1ms to 500ms
+    [noteId, note, updateNoteMutation, contentInitialized]
   );
 
   const handleContentChange = useCallback((editorState: EditorState) => {
-    const content = editorState.toJSON();
-    const cleanedContent = stripVersionsFromContent(content);
-    debouncedSave(cleanedContent);
-  }, [debouncedSave]);
+    // Only save if content has been initialized (prevents save on initial load)
+    if (contentInitialized) {
+      const content = editorState.toJSON();
+      const cleanedContent = stripVersionsFromContent(content);
+      debouncedSave(cleanedContent);
+    }
+  }, [debouncedSave, contentInitialized]);
 
   const getInitialEditorState = () => {
     console.log('=== EDITOR STATE DEBUG ===');
     console.log('noteId:', noteId);
     console.log('note:', note);
-    console.log('note?.content:', note?.content);
-    console.log('typeof note?.content:', typeof note?.content);
-    console.log('Object.keys(note?.content || {}):', Object.keys(note?.content || {}));
-    console.log('JSON.stringify(note?.content):', JSON.stringify(note?.content));
+    console.log('contentInitialized:', contentInitialized);
     
     if (isCollab) return null;
     
@@ -211,22 +211,27 @@ function App({ noteId }: AppProps): JSX.Element {
       // If content is completely empty or null, create empty editor state
       if (!note.content || Object.keys(note.content).length === 0) {
         console.log('Content is empty, returning undefined for empty editor');
+        // Mark as initialized after a short delay
+        setTimeout(() => setContentInitialized(true), 100);
         return undefined;
       }
       
       try {
         console.log('Using content from database:', JSON.stringify(note.content, null, 2));
-        // Add versions back to content for Lexical to parse properly
         const contentWithVersions = addVersionsToContent(note.content);
         console.log('Content with versions restored:', JSON.stringify(contentWithVersions, null, 2));
-        return contentWithVersions;
+        // Mark as initialized after a short delay
+        setTimeout(() => setContentInitialized(true), 100);
+        return JSON.stringify(contentWithVersions);
       } catch (error) {
         console.warn('Failed to parse note content:', error);
+        setTimeout(() => setContentInitialized(true), 100);
         return undefined;
       }
     }
     
     console.log('No noteId or note, using prepopulated text');
+    setTimeout(() => setContentInitialized(true), 100);
     return $prepopulatedRichText;
   };
 
@@ -250,8 +255,13 @@ function App({ noteId }: AppProps): JSX.Element {
     );
   }
 
+  // Stable editor key that only changes when noteId changes (not on every render)
+  const editorKey = `editor-${noteId}`;
+
+  console.log('Editor key:', editorKey);
+
   return (
-    <LexicalComposer initialConfig={initialConfig}>
+    <LexicalComposer initialConfig={initialConfig} key={editorKey}>
       <SharedHistoryContext>
         <TableContext>
           <ToolbarContext>
