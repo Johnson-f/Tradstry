@@ -48,7 +48,6 @@ BEGIN
                 is_favorite = p_is_favorite,
                 is_archived = p_is_archived,
                 updated_at = now(),
-                version = version + 1,
                 metadata = COALESCE(p_metadata, metadata)
             WHERE id = p_id 
             AND user_id = v_user_id

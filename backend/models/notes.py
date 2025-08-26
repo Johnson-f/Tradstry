@@ -54,7 +54,6 @@ class NoteInDB(NoteBase):
     deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    version: int = 1
     content_preview: Optional[str] = None
     total_count: Optional[int] = None
     

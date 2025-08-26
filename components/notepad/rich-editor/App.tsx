@@ -30,6 +30,7 @@ import PlaygroundEditorTheme from "./themes/PlaygroundEditorTheme";
 import { parseAllowedColor } from "./ui/ColorPicker";
 
 import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
+import { stripVersionsFromContent, addVersionsToContent } from "./utils/stripVersions";
 
 // Import custom CSS overrides
 
@@ -172,6 +173,7 @@ function App({ noteId }: AppProps): JSX.Element {
   const { data: note, isLoading } = useNote(noteId || "");
   const updateNoteMutation = useUpdateNote();
 
+
   // Debounced save function to prevent excessive API calls
   const debouncedSave = useCallback(
     debounce((content: any) => {
@@ -181,27 +183,50 @@ function App({ noteId }: AppProps): JSX.Element {
           note: { content },
         });
       }
-    }, 300000),
+    }, 1),
     [noteId, note, updateNoteMutation]
   );
 
   const handleContentChange = useCallback((editorState: EditorState) => {
     const content = editorState.toJSON();
-    debouncedSave(content);
+    const cleanedContent = stripVersionsFromContent(content);
+    debouncedSave(cleanedContent);
   }, [debouncedSave]);
 
   const getInitialEditorState = () => {
+    console.log('=== EDITOR STATE DEBUG ===');
+    console.log('noteId:', noteId);
+    console.log('note:', note);
+    console.log('note?.content:', note?.content);
+    console.log('typeof note?.content:', typeof note?.content);
+    console.log('Object.keys(note?.content || {}):', Object.keys(note?.content || {}));
+    console.log('JSON.stringify(note?.content):', JSON.stringify(note?.content));
+    
     if (isCollab) return null;
-    if (emptyEditor) return undefined;
-    if (noteId && note?.content && typeof note.content === 'object') {
+    
+    // Always prioritize note content if we have a noteId and note
+    if (noteId && note) {
+      console.log('We have noteId and note - processing content...');
+      
+      // If content is completely empty or null, create empty editor state
+      if (!note.content || Object.keys(note.content).length === 0) {
+        console.log('Content is empty, returning undefined for empty editor');
+        return undefined;
+      }
+      
       try {
-        // Return the content object directly, not as JSON string
-        return note.content;
+        console.log('Using content from database:', JSON.stringify(note.content, null, 2));
+        // Add versions back to content for Lexical to parse properly
+        const contentWithVersions = addVersionsToContent(note.content);
+        console.log('Content with versions restored:', JSON.stringify(contentWithVersions, null, 2));
+        return contentWithVersions;
       } catch (error) {
         console.warn('Failed to parse note content:', error);
-        return $prepopulatedRichText;
+        return undefined;
       }
     }
+    
+    console.log('No noteId or note, using prepopulated text');
     return $prepopulatedRichText;
   };
 

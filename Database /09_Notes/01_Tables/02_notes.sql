@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS public.notes (
     deleted_at TIMESTAMPTZ,
     metadata JSONB DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    version INTEGER NOT NULL DEFAULT 1
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Add comments
@@ -46,12 +45,11 @@ CREATE POLICY "Users can delete their own notes"
 ON public.notes FOR DELETE
 USING (auth.uid() = user_id);
 
--- Create trigger function to update timestamps
+-- Create trigger function to update timestamps (updated)
 CREATE OR REPLACE FUNCTION update_note_timestamps()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = now();
-    NEW.version = OLD.version + 1;
     RETURN NEW;   
 END;
 $$ language 'plpgsql';
@@ -81,7 +79,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION move_note_to_trash TO authenticated;
 
--- Function to restore a note from trash 
+-- Function to restore a note from trash (updated)
 CREATE OR REPLACE FUNCTION restore_note_from_trash(
     note_id UUID,
     target_folder_id UUID DEFAULT NULL
@@ -135,8 +133,7 @@ BEGIN
         folder_id = target_id,
         is_deleted = false,
         deleted_at = NULL,
-        updated_at = now(),
-        version = version + 1
+        updated_at = now()
     WHERE id = note_id
     RETURNING id INTO note_id;
     
@@ -150,7 +147,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION restore_note_from_trash TO authenticated;
 
--- Function to toggle favorite status of a note
+-- Function to toggle favorite status of a note (updated)
 CREATE OR REPLACE FUNCTION toggle_note_favorite(note_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -160,8 +157,7 @@ BEGIN
     UPDATE public.notes
     SET 
         is_favorite = NOT is_favorite,
-        updated_at = now(),
-        version = version + 1
+        updated_at = now()
     WHERE id = note_id 
     AND user_id = auth.uid()
     RETURNING is_favorite INTO new_favorite_status;

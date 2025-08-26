@@ -24,7 +24,6 @@ RETURNS TABLE (
     is_deleted BOOLEAN,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
-    version INTEGER,
     total_count BIGINT
 )
 SECURITY DEFINER
@@ -118,6 +117,7 @@ BEGIN
                 id,
                 folder_id,
                 title,
+                content,
                 CASE 
                     WHEN jsonb_typeof(content->''root''->''children'') = ''array'' 
                     THEN substr(
@@ -146,7 +146,6 @@ BEGIN
                 is_deleted,
                 created_at,
                 updated_at,
-                version,
                 COUNT(*) OVER() as total_count
 FROM public.notes n
             WHERE %s
@@ -157,6 +156,7 @@ FROM public.notes n
             id,
             folder_id,
             title,
+            content,
             content_preview,
             is_pinned,
             is_favorite,
@@ -164,7 +164,6 @@ FROM public.notes n
             is_deleted,
             created_at,
             updated_at,
-            version,
             (SELECT COUNT(*) FROM public.notes n WHERE %s) as total_count
         FROM filtered_notes
         %s',

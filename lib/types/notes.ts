@@ -58,7 +58,6 @@ export interface Note extends NoteBase {
   deleted_at?: string | null;
   created_at: string;
   updated_at: string;
-  version: number;
   content_preview?: string | null;
   total_count?: number | null;
 }

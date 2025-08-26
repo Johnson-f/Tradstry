@@ -186,7 +186,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
       await createNoteMutation.mutateAsync({
         folder_id: folderId,
         title: newNoteTitle,
-        content: { root: { children: [], direction: null, format: "", indent: 0, type: "root", version: 1 } }
+        content: { root: { children: [], direction: null, format: "", indent: 0, type: "root" } }
       })
       
       toast.success("Note created successfully!")
@@ -218,7 +218,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
       await updateTemplateMutation.mutateAsync({
         name: newTemplateName,
         description: "",
-        content: { root: { children: [], direction: null, format: "", indent: 0, type: "root", version: 1 } }
+        content: { root: { children: [], direction: null, format: "", indent: 0, type: "root" } }
       })
       toast.success("Template created successfully!")
       setNewTemplateName("")
