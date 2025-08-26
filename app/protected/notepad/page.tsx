@@ -14,7 +14,7 @@ export default function NotepadPage() {
       <SidebarProvider
         style={
           {
-            "--sidebar-width": "300px",
+            "--sidebar-width": "250px",
           } as React.CSSProperties
         }
       >
@@ -25,10 +25,10 @@ export default function NotepadPage() {
         
         {/* Fixed Editor Container that responds to sidebar */}
         <div className={`fixed top-0 bottom-0 right-0 flex flex-col transition-all duration-300 ${
-          isCollapsed ? 'left-[130px]' : 'left-[500px]'
+          isCollapsed ? 'left-[130px]' : 'left-[550px]'
         }`}>
           <div className="flex-1 h-full">
-            <PlaygroundApp />
+            <PlaygroundApp noteId="default" />
           </div>
         </div>
       </SidebarProvider>

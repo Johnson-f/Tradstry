@@ -62,6 +62,7 @@ import { useNotes, useFolders, useTemplates, useTagsWithCounts as useTags, useNo
 import { useRealtimeNotes } from "@/lib/hooks/useRealtimeUpdates"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { FolderNavigationSkeleton, NotesListSkeleton, TagsListSkeleton, TemplatesListSkeleton } from "./skeletons"
 
 // Folder icon mapping based on slug
 const getFolderIcon = (slug: string) => {
@@ -471,9 +472,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
             <SidebarGroupContent className="px-0">
               <SidebarMenu>
                 {foldersLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <FolderNavigationSkeleton />
                 ) : (
                   folders?.map((folder) => {
                     const IconComponent = getFolderIcon(folder.slug)
@@ -550,9 +549,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
               {activeSlug === 'tags' ? (
                 // Tags view
                 tagsLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <TagsListSkeleton />
                 ) : tags && tags.length > 0 ? (
                   tags.map((tag) => {
                     const tagUrl = `/protected/notepad/tag/${tag.id}`
@@ -638,9 +635,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
               ) : activeSlug.startsWith('tag:') ? (
                 // Individual tag notes view
                 tagNotesLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <NotesListSkeleton />
                 ) : tagNotes && tagNotes.length > 0 ? (
                   tagNotes.map((note) => {
                     const noteUrl = `/protected/notepad/note/${note.id}`
@@ -708,9 +703,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
               ) : activeSlug === 'templates' ? (
                 // Templates view
                 templatesLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <TemplatesListSkeleton />
                 ) : templates && templates.length > 0 ? (
                   templates.map((template) => {
                     const templateUrl = `/protected/notepad/template/${template.id}`
@@ -829,9 +822,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
               ) : activeSlug === 'trash' ? (
                 // Trash view
                 trashLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <NotesListSkeleton />
                 ) : trashNotes && trashNotes.length > 0 ? (
                   trashNotes.map((note) => {
                     const noteUrl = `/protected/notepad/note/${note.id}`
@@ -925,9 +916,7 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
               ) : (
                 // Notes view
                 notesLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sidebar-primary"></div>
-                  </div>
+                  <NotesListSkeleton />
                 ) : notes && notes.length > 0 ? (
                   notes.map((note) => {
                     const noteUrl = `/protected/notepad/note/${note.id}`

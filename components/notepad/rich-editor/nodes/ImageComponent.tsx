@@ -48,6 +48,7 @@ import LinkPlugin from '../plugins/LinkPlugin';
 import MentionsPlugin from '../plugins/MentionsPlugin';
 import ContentEditable from '../ui/ContentEditable';
 import ImageResizer from '../ui/ImageResizer';
+import ImageContextMenu from '../ui/ImageContextMenu';
 import {$isImageNode} from './ImageNode';
 
 const imageCache = new Map<string, Promise<boolean> | boolean>();
@@ -240,6 +241,7 @@ export default function ImageComponent({
   const [selection, setSelection] = useState<BaseSelection | null>(null);
   const activeEditorRef = useRef<LexicalEditor | null>(null);
   const [isLoadError, setIsLoadError] = useState<boolean>(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const isEditable = useLexicalEditable();
   
   // Determine the actual image source to use
@@ -337,6 +339,7 @@ export default function ImageComponent({
 
   const onRightClick = useCallback(
     (event: MouseEvent): void => {
+      event.preventDefault();
       editor.getEditorState().read(() => {
         const latestSelection = $getSelection();
         const domElement = event.target as HTMLElement;
@@ -345,12 +348,85 @@ export default function ImageComponent({
           $isRangeSelection(latestSelection) &&
           latestSelection.getNodes().length === 1
         ) {
-          editor.dispatchCommand(RIGHT_CLICK_IMAGE_COMMAND, event);
+          // Show context menu
+          setContextMenu({ x: event.clientX, y: event.clientY });
+          editor.dispatchCommand(
+            RIGHT_CLICK_IMAGE_COMMAND,
+            event as MouseEvent,
+          );
         }
       });
     },
     [editor],
   );
+
+  const handleCopyImage = useCallback(async () => {
+    try {
+      // Try to copy image to clipboard
+      if (actualSrc.startsWith('data:')) {
+        const response = await fetch(actualSrc);
+        const blob = await response.blob();
+        
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [blob.type]: blob,
+            }),
+          ]);
+        }
+      } else {
+        // For external URLs, try to fetch and copy
+        try {
+          const response = await fetch(actualSrc, { mode: 'cors' });
+          const blob = await response.blob();
+          
+          if (navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([
+              new ClipboardItem({
+                [blob.type]: blob,
+              }),
+            ]);
+          }
+        } catch (error) {
+          console.warn('Could not copy image to system clipboard:', error);
+          // Fallback: copy image URL as text
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(actualSrc);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to copy image to clipboard:', error);
+    }
+  }, [actualSrc]);
+
+  const handleDeleteImage = useCallback(() => {
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey);
+      if ($isImageNode(node)) {
+        node.remove();
+      }
+    });
+  }, [editor, nodeKey]);
+
+  const handleDownloadImage = useCallback(async () => {
+    try {
+      const response = await fetch(actualSrc);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = altText || 'image';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.warn('Failed to download image:', error);
+    }
+  }, [actualSrc, altText]);
 
   useEffect(() => {
     const rootElement = editor.getRootElement();
@@ -540,6 +616,17 @@ export default function ImageComponent({
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
             captionsEnabled={!isLoadError && captionsEnabled}
+          />
+        )}
+        
+        {contextMenu && (
+          <ImageContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            onCopy={handleCopyImage}
+            onDelete={handleDeleteImage}
+            onDownload={handleDownloadImage}
           />
         )}
       </>
