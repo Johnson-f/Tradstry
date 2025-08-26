@@ -152,7 +152,7 @@ function LazyImage({
     }
 
     // Scale down if height exceeds maxHeight while maintaining aspect ratio
-    const maxHeight = 500;
+    const maxHeight = 1000; // Increased from 500 to 800
     if (finalHeight > maxHeight) {
       const scale = maxHeight / finalHeight;
       finalHeight = maxHeight;
@@ -170,7 +170,7 @@ function LazyImage({
 
   return (
     <img
-      className={className || undefined}
+      className={`${className || ''} editor-image`}
       src={src}
       alt={altText}
       ref={imageRef}
@@ -451,6 +451,20 @@ export default function ImageComponent({
     setIsResizing(true);
   };
 
+  const resizer = isSelected && isEditable && !isLoadError ? (
+    <ImageResizer
+      showCaption={showCaption}
+      setShowCaption={setShowCaption}
+      editor={editor}
+      buttonRef={buttonRef}
+      imageRef={imageRef}
+      maxWidth={maxWidth}
+      onResizeStart={onResizeStart}
+      onResizeEnd={onResizeEnd}
+      captionsEnabled={captionsEnabled}
+    />
+  ) : null;
+
   const {historyState} = useSharedHistoryContext();
   const {
     settings: {showNestedEditorTreeView},
@@ -461,7 +475,7 @@ export default function ImageComponent({
   return (
     <Suspense fallback={null}>
       <>
-        <div draggable={draggable}>
+        <div draggable={draggable} className="relative flex justify-center">
           {isLoadError ? (
             <BrokenImage />
           ) : (
@@ -480,6 +494,7 @@ export default function ImageComponent({
               onError={() => setIsLoadError(true)}
             />
           )}
+          {resizer}
         </div>
 
         {showCaption && (

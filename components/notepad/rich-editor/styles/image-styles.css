@@ -1,0 +1,65 @@
+/* Image Editor Styles */
+.editor-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-in-out;
+  margin: 0 auto; /* Center the image */
+}
+
+.editor-image:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.editor-image.focused {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.editor-image.draggable {
+  cursor: grab;
+}
+
+.editor-image.draggable:active {
+  cursor: grabbing;
+}
+
+/* Image size variants */
+.editor-image.small {
+  max-width: 300px;
+}
+
+.editor-image.medium {
+  max-width: 500px;
+}
+
+.editor-image.large {
+  max-width: 800px;
+}
+
+.editor-image.full-width {
+  width: 100%;
+  max-width: none;
+}
+
+/* Image container styles */
+.image-caption-container {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border-left: 3px solid #e2e8f0;
+  font-size: 14px;
+  color: #64748b;
+  text-align: center; /* Center the caption text */
+}
+
+/* Responsive image styles */
+@media (max-width: 768px) {
+  .editor-image {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+}

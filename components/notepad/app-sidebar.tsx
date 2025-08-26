@@ -59,6 +59,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useNotes, useFolders, useTemplates, useTagsWithCounts as useTags, useNotesByTag as useTagNotes, useTrash, useRestoreNoteFromTrash, usePermanentDeleteNote, useCreateNote, useCreateTag, useDeleteNote, useUpdateNote, useDeleteTag, useRenameTag, useDeleteTemplate, useUpdateTemplate } from "@/lib/hooks/use-notes"
+import { useRealtimeNotes } from "@/lib/hooks/useRealtimeUpdates"
+import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 // Folder icon mapping based on slug
@@ -87,6 +89,10 @@ export function AppSidebar({ isCollapsed = false, onToggleCollapse, ...props }: 
   const router = useRouter()
   const pathname = usePathname()
   const { setOpen } = useSidebar()
+  
+  // Set up real-time updates for notes
+  const queryClient = useQueryClient()
+  useRealtimeNotes(queryClient)
   
   // Get current active folder or tag from pathname
   const getCurrentFolder = () => {

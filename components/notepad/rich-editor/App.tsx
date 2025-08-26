@@ -31,6 +31,8 @@ import { parseAllowedColor } from "./ui/ColorPicker";
 
 import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
 import { stripVersionsFromContent, addVersionsToContent } from "./utils/stripVersions";
+import { useRealtimeNotes } from "../../../lib/hooks/useRealtimeUpdates";
+import { useQueryClient } from "@tanstack/react-query";
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -164,6 +166,10 @@ function App({ noteId }: AppProps): JSX.Element {
 
   const { data: note, isLoading } = useNote(noteId || "");
   const updateNoteMutation = useUpdateNote();
+  
+  // Set up real-time updates for notes
+  const queryClient = useQueryClient();
+  useRealtimeNotes(queryClient);
   
   // Track if content has been initialized to prevent re-initialization
   const [contentInitialized, setContentInitialized] = useState(false);
