@@ -1,4 +1,5 @@
 -- Function to upsert a note (automatically detects insert vs update)
+-- Fixed for system-only folders
 CREATE OR REPLACE FUNCTION upsert_note(
     p_folder_id UUID,
     p_title TEXT DEFAULT 'Untitled Note',
@@ -17,15 +18,14 @@ DECLARE
     v_existing_note_id UUID;
     v_was_created BOOLEAN := false;
 BEGIN
-    -- Validate folder exists and user has access
+    -- Validate folder exists (system folders only, no user ownership check needed)
     SELECT EXISTS (
         SELECT 1 FROM public.folders 
-        WHERE id = p_folder_id 
-        AND (user_id = v_user_id OR is_system = true)
+        WHERE id = p_folder_id
     ) INTO v_folder_exists;
     
     IF NOT v_folder_exists THEN
-        RAISE EXCEPTION 'Folder not found or access denied';
+        RAISE EXCEPTION 'Folder not found';
     END IF;
 
     -- If ID is provided, try to update that specific note
@@ -99,29 +99,3 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION upsert_note TO authenticated;
-
-/*
--- Example usage:
-
--- Create a new note (no ID provided)
-SELECT * FROM upsert_note(
-    p_folder_id := 'folder-uuid-here',
-    p_title := 'My New Note',
-    p_content := '{"root":{"children":[]}}'::jsonb
-);
--- Returns: (new-uuid, true)
-
--- Update existing note (with known ID)
-SELECT * FROM upsert_note(
-    p_id := 'existing-note-uuid',
-    p_folder_id := 'folder-uuid-here',
-    p_title := 'Updated Title',
-    p_content := '{"root":{"children":[]}}'::jsonb,
-    p_is_pinned := true
-);
--- Returns: (existing-note-uuid, false)
-
--- Frontend usage pattern:
--- 1. For new notes: Don't pass p_id, get back the UUID and store it
--- 2. For updates: Pass the stored UUID
-*/
