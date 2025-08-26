@@ -45,3 +45,13 @@ export function useRealtimeStocks(queryClient: QueryClient) {
 export function useRealtimeOptions(queryClient: QueryClient) {
   return useRealtimeTable('options', queryClient, ['options'])
 }
+
+// Hook for notes
+export function useRealtimeNotes(queryClient: QueryClient) {
+  return useRealtimeTable('notes', queryClient, ['notes'])
+}
+
+// Hook for images
+export function useRealtimeImages(queryClient: QueryClient) {
+  return useRealtimeTable('images', queryClient, ['images'])
+}

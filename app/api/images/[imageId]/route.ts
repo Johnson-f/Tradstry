@@ -4,18 +4,18 @@ import { cookies } from 'next/headers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { imageId: string } }
+  { params }: { params: Promise<{ imageId: string }> }
 ) {
   try {
-    const { imageId } = params;
+    // Await the params object before accessing its properties
+    const { imageId } = await params;
     
     if (!imageId) {
       return NextResponse.json({ error: 'Image ID is required' }, { status: 400 });
     }
 
     // Get the authenticated user
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     

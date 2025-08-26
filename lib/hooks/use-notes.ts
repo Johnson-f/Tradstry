@@ -71,6 +71,10 @@ export function useNotes(params?: GetNotesParams) {
   return useQuery({
     queryKey: notesKeys.notes(params),
     queryFn: () => notesService.getNotes(params),
+    staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh
+    gcTime: 30 * 60 * 1000, // 30 minutes - cache retention
+    refetchOnWindowFocus: false, // Prevent unnecessary refetches
+    refetchOnMount: false, // Use cached data on mount if available
   });
 }
 
@@ -82,6 +86,10 @@ export function useNote(noteId: string) {
     queryKey: notesKeys.note(noteId),
     queryFn: () => notesService.getNote(noteId),
     enabled: !!noteId,
+    staleTime: 10 * 60 * 1000, // 10 minutes - individual notes stay fresh longer
+    gcTime: 60 * 60 * 1000, // 1 hour - keep individual notes cached longer
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
@@ -92,6 +100,9 @@ export function useFavorites() {
   return useQuery({
     queryKey: notesKeys.favoriteNotes(),
     queryFn: () => notesService.getFavoriteNotes(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -102,6 +113,9 @@ export function useTrash() {
   return useQuery({
     queryKey: notesKeys.trash(),
     queryFn: () => notesService.getTrash(),
+    staleTime: 2 * 60 * 1000, // 2 minutes - trash changes less frequently
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -113,8 +127,16 @@ export function useCreateNote() {
 
   return useMutation({
     mutationFn: (note: NoteCreate) => notesService.createNote(note),
-    onSuccess: () => {
-      // Invalidate notes list to refresh
+    onSuccess: (newNote) => {
+      // Optimistically update cache with new note
+      queryClient.setQueryData(notesKeys.note(newNote.id), newNote);
+      
+      // Invalidate and refetch notes lists
+      queryClient.invalidateQueries({ queryKey: notesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['notes', 'folders'] });
+    },
+    onError: () => {
+      // Remove optimistic update on error
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
     },
   });
@@ -129,10 +151,34 @@ export function useUpdateNote() {
   return useMutation({
     mutationFn: ({ noteId, note }: { noteId: string; note: NoteUpdate }) =>
       notesService.updateNote(noteId, note),
-    onSuccess: (_, { noteId }) => {
-      // Invalidate specific note and notes list
-      queryClient.invalidateQueries({ queryKey: notesKeys.note(noteId) });
+    onMutate: async ({ noteId, note }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: notesKeys.note(noteId) });
+      
+      // Snapshot previous value
+      const previousNote = queryClient.getQueryData(notesKeys.note(noteId));
+      
+      // Optimistically update cache
+      queryClient.setQueryData(notesKeys.note(noteId), (old: unknown) => ({
+        ...(old as Record<string, unknown>),
+        ...note,
+        updated_at: new Date().toISOString(),
+      }));
+      
+      return { previousNote };
+    },
+    onSuccess: (updatedNote, { noteId }) => {
+      // Update cache with server response
+      queryClient.setQueryData(notesKeys.note(noteId), updatedNote);
+      
+      // Invalidate notes lists to reflect changes
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
+    },
+    onError: (err, { noteId }, context) => {
+      // Rollback optimistic update on error
+      if (context?.previousNote) {
+        queryClient.setQueryData(notesKeys.note(noteId), context.previousNote);
+      }
     },
   });
 }
@@ -146,9 +192,17 @@ export function useDeleteNote() {
   return useMutation({
     mutationFn: ({ noteId, permanent = false }: { noteId: string; permanent?: boolean }) =>
       notesService.deleteNote(noteId, permanent),
+    onMutate: async ({ noteId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: notesKeys.note(noteId) });
+      
+      // Remove note from cache immediately
+      queryClient.removeQueries({ queryKey: notesKeys.note(noteId) });
+    },
     onSuccess: () => {
-      // Invalidate notes list
+      // Invalidate notes lists and trash
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
+      queryClient.invalidateQueries({ queryKey: notesKeys.trash() });
     },
   });
 }
