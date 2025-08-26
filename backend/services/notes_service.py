@@ -18,14 +18,25 @@ class NotesService:
         """Get Supabase client with access token if provided."""
         if access_token:
             client = get_supabase()
-            client.auth.set_session(access_token, refresh_token="")
+            # Set the access token directly in the headers for API calls
+            client.options.headers["Authorization"] = f"Bearer {access_token}"
             return client
         return self._supabase_client
     
     def _get_client(self, access_token: str = None) -> Client:
         """Get Supabase client - wrapper for _get_client_with_token for compatibility."""
         return self._get_client_with_token(access_token)
-    
+    async def test_auth(self, access_token: str = None):
+        """Test if authentication is working"""
+        client = self._get_client_with_token(access_token)
+        try:
+            # Test if we can get the current user ID
+            response = client.rpc('get_current_user_id').execute()
+            print(f"Auth test result: {response}")
+            return response
+        except Exception as e:
+            print(f"Auth test failed: {str(e)}")
+            return None
     # ==================== FOLDERS ====================
     
     async def get_folders(
@@ -197,7 +208,7 @@ class NotesService:
         except Exception as e:
             print(f"Error restoring note: {str(e)}")
             raise
-    
+
     # ==================== TAGS ====================
     
     def get_tags_with_counts(self, access_token: Optional[str] = None) -> List[Dict[str, Any]]:

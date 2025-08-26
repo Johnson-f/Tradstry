@@ -38,6 +38,8 @@ def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, A
     try:
         user = get_user_with_token_retry(user_service.supabase, token)
         logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
+        # Include the access token in the user object for service calls
+        user["access_token"] = token
         return user
     except Exception as e:
         logger.error(f"Authentication failed: {str(e)}")
@@ -62,6 +64,8 @@ def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
     try:
         user = get_user_with_retry(user_service.supabase, token)
         logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
+        # Include the access token in the user object for service calls
+        user["access_token"] = token
         return user
     except Exception as e:
         logger.error(f"Authentication failed: {str(e)}")
