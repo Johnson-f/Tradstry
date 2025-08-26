@@ -92,9 +92,10 @@ const skipCollaborationInit = (() => {
 
 interface EditorProps {
   onContentChange?: (editorState: any) => void;
+  noteId?: string;
 }
 
-export default function Editor({ onContentChange }: EditorProps): JSX.Element {
+export default function Editor({ onContentChange, noteId }: EditorProps): JSX.Element {
   const { historyState } = useSharedHistoryContext();
   const {
     settings: {
@@ -236,7 +237,7 @@ export default function Editor({ onContentChange }: EditorProps): JSX.Element {
               hasHorizontalScroll={tableHorizontalScroll}
             />
             <TableCellResizer />
-            <ImagesPlugin />
+            <ImagesPlugin noteId={noteId} />
             <InlineImagePlugin />
             <LinkPlugin hasLinkAttributes={hasLinkAttributes} />
             <PollPlugin />

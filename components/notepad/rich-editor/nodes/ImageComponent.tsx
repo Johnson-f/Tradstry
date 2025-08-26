@@ -216,6 +216,7 @@ export default function ImageComponent({
   showCaption,
   caption,
   captionsEnabled,
+  imageId,
 }: {
   altText: string;
   caption: LexicalEditor;
@@ -227,6 +228,7 @@ export default function ImageComponent({
   src: string;
   width: 'inherit' | number;
   captionsEnabled: boolean;
+  imageId?: string;
 }): JSX.Element {
   const imageRef = useRef<null | HTMLImageElement>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -239,6 +241,27 @@ export default function ImageComponent({
   const activeEditorRef = useRef<LexicalEditor | null>(null);
   const [isLoadError, setIsLoadError] = useState<boolean>(false);
   const isEditable = useLexicalEditable();
+  
+  // Determine the actual image source to use
+  const actualSrc = React.useMemo(() => {
+    // If we have an imageId, use the dynamic route
+    if (imageId) {
+      return `/api/images/${imageId}`;
+    }
+    // Default to src (for non-backend images or temporary blob URLs)
+    return src;
+  }, [imageId, src]);
+  
+  // Debug logging
+  React.useEffect(() => {
+    if (imageId) {
+      console.log('ImageComponent using dynamic route:', {
+        imageId,
+        dynamicRoute: `/api/images/${imageId}`,
+        fallbackSrc: src
+      });
+    }
+  }, [imageId, src]);
 
   const $onEnter = useCallback(
     (event: KeyboardEvent) => {
@@ -448,7 +471,7 @@ export default function ImageComponent({
                   ? `focused ${$isNodeSelection(selection) ? 'draggable' : ''}`
                   : null
               }
-              src={src}
+              src={actualSrc}
               altText={altText}
               imageRef={imageRef}
               width={width}

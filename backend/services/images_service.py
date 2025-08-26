@@ -45,22 +45,28 @@ class ImagesService:
         """Create or update an image using the upsert_image SQL function."""
         client = self._get_client_with_token(access_token)
         
+        # Build params dict with all required parameters
+        # Note: p_note_id is required by the function, so we pass it even if None
         params = {
             'p_note_id': str(note_id) if note_id else None,
             'p_filename': filename,
             'p_original_filename': original_filename,
             'p_file_path': file_path,
             'p_file_size': file_size,
-            'p_mime_type': mime_type,
-            'p_width': width,
-            'p_height': height,
-            'p_alt_text': alt_text,
-            'p_caption': caption,
-            'p_user_id': str(user_id) if user_id else None
+            'p_mime_type': mime_type
         }
         
-        # Remove None values
-        params = {k: v for k, v in params.items() if v is not None}
+        # Add optional parameters only if they have values
+        if width is not None:
+            params['p_width'] = width
+        if height is not None:
+            params['p_height'] = height
+        if alt_text is not None:
+            params['p_alt_text'] = alt_text
+        if caption is not None:
+            params['p_caption'] = caption
+        if user_id is not None:
+            params['p_user_id'] = str(user_id)
         
         try:
             response = client.rpc('upsert_image', params).execute()
@@ -271,7 +277,20 @@ class ImagesService:
                 path=file_path,
                 expires_in=expires_in
             )
-            return response.get('signedURL') if response else None
+            print(f"Supabase signed URL response: {response}")  # Debug log
+            
+            # Supabase Python client returns different key formats
+            if response:
+                # Try different possible response formats
+                signed_url = (
+                    response.get('signedURL') or 
+                    response.get('signed_url') or 
+                    response.get('url') or
+                    response
+                )
+                print(f"Extracted signed URL: {signed_url}")  # Debug log
+                return signed_url
+            return None
         except Exception as e:
             print(f"Error getting image URL: {str(e)}")
             return None
