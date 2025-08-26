@@ -30,7 +30,6 @@ import { createWebsocketProvider } from "./collaboration";
 import { useSettings } from "./context/SettingsContext";
 import { useSharedHistoryContext } from "./context/SharedHistoryContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
-import ActionsPlugin from "./plugins/ActionsPlugin";
 import AutocompletePlugin from "./plugins/AutocompletePlugin";
 import AutoEmbedPlugin from "./plugins/AutoEmbedPlugin";
 import AutoLinkPlugin from "./plugins/AutoLinkPlugin";
@@ -52,6 +51,7 @@ import FigmaPlugin from "./plugins/FigmaPlugin";
 import FloatingLinkEditorPlugin from "./plugins/FloatingLinkEditorPlugin";
 import FloatingTextFormatToolbarPlugin from "./plugins/FloatingTextFormatToolbarPlugin";
 import ImagesPlugin from "./plugins/ImagesPlugin";
+import ImageCopyPastePlugin from "./plugins/ImageCopyPastePlugin";
 import InlineImagePlugin from "./plugins/InlineImagePlugin";
 import KeywordsPlugin from "./plugins/KeywordsPlugin";
 import { LayoutPlugin } from "./plugins/LayoutPlugin/LayoutPlugin";
@@ -73,6 +73,8 @@ import ToolbarPlugin from "./plugins/ToolbarPlugin";
 import TwitterPlugin from "./plugins/TwitterPlugin";
 import YouTubePlugin from "./plugins/YouTubePlugin";
 import ContentEditable from "./ui/ContentEditable";
+import NoteHeader from "../note-header";
+import { useEditorActions } from "./hooks/useEditorActions";
 
 // Safe check for Next.js SSR compatibility
 const skipCollaborationInit = (() => {
@@ -93,9 +95,34 @@ const skipCollaborationInit = (() => {
 interface EditorProps {
   onContentChange?: (editorState: any) => void;
   noteId?: string;
+  noteTitle?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  onSpeechToText?: () => void;
+  onImport?: () => void;
+  onExport?: () => void;
+  onSend?: () => void;
+  onLock?: () => void;
+  onMarkdown?: () => void;
+  isLocked?: boolean;
+  isSpeechActive?: boolean;
 }
 
-export default function Editor({ onContentChange, noteId }: EditorProps): JSX.Element {
+export default function Editor({ 
+  onContentChange, 
+  noteId, 
+  noteTitle, 
+  createdAt, 
+  updatedAt,
+  onSpeechToText,
+  onImport,
+  onExport,
+  onSend,
+  onLock,
+  onMarkdown,
+  isLocked,
+  isSpeechActive
+}: EditorProps): JSX.Element {
   const { historyState } = useSharedHistoryContext();
   const {
     settings: {
@@ -110,15 +137,29 @@ export default function Editor({ onContentChange, noteId }: EditorProps): JSX.El
       isRichText,
       showTableOfContents,
       shouldUseLexicalContextMenu,
-      shouldPreserveNewLinesInMarkdown,
       tableCellMerge,
       tableCellBackgroundColor,
       tableHorizontalScroll,
       shouldAllowHighlightingWithBrackets,
       selectionAlwaysOnDisplay,
       listStrictIndent,
+      shouldPreserveNewLinesInMarkdown,
     },
   } = useSettings();
+  
+  // Use the editor actions hook
+  const {
+    handleSpeechToText,
+    handleImport,
+    handleExport,
+    handleSend,
+    handleLock,
+    handleMarkdownToggle,
+    handlePdfDownload,
+    handlePrint,
+    isLocked: editorIsLocked,
+    isSpeechActive: editorIsSpeechActive,
+  } = useEditorActions(shouldPreserveNewLinesInMarkdown);
   const isEditable = useLexicalEditable();
   const placeholder = isCollab
     ? "Enter some collaborative rich text..."
@@ -164,6 +205,25 @@ export default function Editor({ onContentChange, noteId }: EditorProps): JSX.El
 
   return (
     <>
+      <NoteHeader
+        noteTitle={noteTitle || "Untitled"}
+        createdAt={createdAt}
+        updatedAt={updatedAt}
+        onShare={() => console.log('Share clicked')}
+        onRename={() => console.log('Rename clicked')}
+        onDuplicate={() => console.log('Duplicate clicked')}
+        onExport={onExport || handleExport}
+        onDelete={() => console.log('Delete clicked')}
+        onSpeechToText={onSpeechToText || handleSpeechToText}
+        onImport={onImport || handleImport}
+        onSend={onSend || handleSend}
+        onLock={onLock || handleLock}
+        onMarkdown={onMarkdown || handleMarkdownToggle}
+        onPdfDownload={handlePdfDownload}
+        onPrint={handlePrint}
+        isLocked={isLocked ?? editorIsLocked}
+        isSpeechActive={isSpeechActive ?? editorIsSpeechActive}
+      />
       {isRichText && (
         <ToolbarPlugin
           editor={editor}
@@ -238,6 +298,7 @@ export default function Editor({ onContentChange, noteId }: EditorProps): JSX.El
             />
             <TableCellResizer />
             <ImagesPlugin noteId={noteId} />
+            <ImageCopyPastePlugin />
             <InlineImagePlugin />
             <LinkPlugin hasLinkAttributes={hasLinkAttributes} />
             <PollPlugin />
@@ -298,10 +359,6 @@ export default function Editor({ onContentChange, noteId }: EditorProps): JSX.El
         <div>{showTableOfContents && <TableOfContentsPlugin />}</div>
         {shouldUseLexicalContextMenu && <ContextMenuPlugin />}
         {shouldAllowHighlightingWithBrackets && <SpecialTextPlugin />}
-        <ActionsPlugin
-          isRichText={isRichText}
-          shouldPreserveNewLinesInMarkdown={shouldPreserveNewLinesInMarkdown}
-        />
       </div>
     </>
   );

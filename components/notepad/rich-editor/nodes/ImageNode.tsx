@@ -106,21 +106,27 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       node.__caption,
       node.__captionsEnabled,
       node.__imageId,
-      node.__key,
+      undefined, // Don't pass the key, let Lexical assign a new one
     );
   }
 
   static importJSON(serializedNode: SerializedImageNode): ImageNode {
     const {altText, height, width, maxWidth, src, showCaption, imageId} = serializedNode;
-    return $createImageNode({
-      altText,
-      height,
-      maxWidth,
-      showCaption,
+    // Create the node directly without $applyNodeReplacement since we're in importJSON
+    // Don't pass key parameter to avoid $setNodeKey call
+    const node = new ImageNode(
       src,
+      altText,
+      maxWidth,
       width,
+      height,
+      showCaption,
+      undefined, // caption will be set in updateFromJSON
+      true, // captionsEnabled default
       imageId,
-    }).updateFromJSON(serializedNode);
+      undefined, // key - let Lexical assign automatically
+    );
+    return node.updateFromJSON(serializedNode);
   }
 
   updateFromJSON(serializedNode: LexicalUpdateJSON<SerializedImageNode>): this {
@@ -278,20 +284,19 @@ export function $createImageNode({
   imageId,
   key,
 }: ImagePayload): ImageNode {
-  return $applyNodeReplacement(
-    new ImageNode(
-      src,
-      altText,
-      maxWidth,
-      width,
-      height,
-      showCaption,
-      caption,
-      captionsEnabled,
-      imageId,
-      key,
-    ),
+  const imageNode = new ImageNode(
+    src,
+    altText,
+    maxWidth,
+    width,
+    height,
+    showCaption,
+    caption,
+    captionsEnabled,
+    imageId,
+    key,
   );
+  return $applyNodeReplacement(imageNode);
 }
 
 export function $isImageNode(

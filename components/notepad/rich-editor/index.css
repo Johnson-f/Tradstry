@@ -44,7 +44,8 @@ header h1 {
 .editor-shell {
   height: 100vh;
   overflow-y: auto;
-
+  display: flex;
+  flex-direction: column;
   margin: 0;
   border-radius: 0;
   max-width: none;
@@ -62,7 +63,7 @@ header h1 {
 }
 
 .editor-scroller {
-  height: 100vh;
+  flex: 1;
   max-width: 100%;
   border: 0;
   display: flex;
@@ -570,6 +571,10 @@ i.gif {
 
 i.copy {
   background-image: url(images/icons/copy.svg);
+}
+
+i.ai-edit {
+  background-image: url(images/icons/diagram-2.svg);
 }
 
 i.paste {
@@ -1722,4 +1727,16 @@ button.item.dropdown-item-active i {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: inline-block;
+}
+
+.toolbar .ai-edit-button {
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  font-weight: 500;
+}
+
+.toolbar .ai-edit-button:hover:not([disabled]) {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
 }

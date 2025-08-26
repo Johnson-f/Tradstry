@@ -872,6 +872,20 @@ export default function ToolbarPlugin({
   return (
     <div className="toolbar">
       <button
+        disabled={!isEditable}
+        onClick={() => {
+          // TODO: Implement AI Edit functionality
+          console.log('AI Edit clicked');
+        }}
+        title="AI Edit"
+        type="button"
+        className="toolbar-item spaced ai-edit-button"
+        aria-label="AI Edit">
+        <i className="format ai-edit" />
+        <span className="text">AI Edit</span>
+      </button>
+      <Divider />
+      <button
         disabled={!toolbarState.canUndo || !isEditable}
         onClick={() => {
           activeEditor.dispatchCommand(UNDO_COMMAND, undefined);

@@ -189,7 +189,7 @@ function App({ noteId }: AppProps): JSX.Element {
           note: { content },
         });
       }
-    }, 500), // Increased from 1ms to 500ms
+    }, 100000), // Increased from 1ms to 500ms
     [noteId, note, updateNoteMutation, contentInitialized]
   );
 
@@ -272,7 +272,13 @@ function App({ noteId }: AppProps): JSX.Element {
         <TableContext>
           <ToolbarContext>
             <div className="editor-shell h-full">
-              <Editor onContentChange={handleContentChange} noteId={noteId} />
+              <Editor 
+                onContentChange={handleContentChange} 
+                noteId={noteId}
+                noteTitle={note?.title || "Untitled"}
+                createdAt={note?.created_at}
+                updatedAt={note?.updated_at}
+              />
             </div>
             <Settings />
           </ToolbarContext>
