@@ -1,3 +1,4 @@
+# TODO: extract the actual image dimensions
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Query, UploadFile, File, Form
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -52,7 +53,7 @@ async def upload_image(
 ):
     """
     Upload an image file to storage and create database record.
-    
+
     - **file**: Image file to upload
     - **note_id**: Optional UUID of the note to associate with
     - **alt_text**: Optional alt text for accessibility
@@ -61,18 +62,18 @@ async def upload_image(
     # Validate file type
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
-    
+
     # Generate unique filename
     file_extension = os.path.splitext(file.filename)[1] if file.filename else '.jpg'
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     user_id = current_user.get("id")
     file_path = f"{user_id}/{unique_filename}"
-    
+
     try:
         # Read file content
         file_content = await file.read()
         file_size = len(file_content)
-        
+
         # Upload to storage
         storage_result = await images_service.upload_image_to_storage(
             file_content=file_content,
@@ -80,10 +81,10 @@ async def upload_image(
             content_type=file.content_type,
             access_token=current_user.get("access_token")
         )
-        
+
         if not storage_result.get('success'):
             raise HTTPException(status_code=500, detail=f"Failed to upload to storage: {storage_result.get('error')}")
-        
+
         # Create database record
         return await images_service.upsert_image(
             note_id=UUID(note_id) if note_id else None,
@@ -92,11 +93,13 @@ async def upload_image(
             file_path=file_path,
             file_size=file_size,
             mime_type=file.content_type,
+            width=None,
+            height=None,
             alt_text=alt_text,
             caption=caption,
             access_token=current_user.get("access_token")
         )
-        
+
     except Exception as e:
         # Clean up storage if database operation fails
         await images_service.delete_image_from_storage(
@@ -130,10 +133,10 @@ async def get_image(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     return image
 
 @router.get("/note/{note_id}", response_model=List[ImageInDB])
@@ -157,7 +160,7 @@ async def get_images_paginated(
 ):
     """
     Get images with pagination.
-    
+
     - **limit**: Number of images to return (max 100)
     - **offset**: Number of images to skip
     """
@@ -196,10 +199,10 @@ async def update_image(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not current_image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     # Build update params from provided fields only
     return await images_service.upsert_image(
         note_id=image.note_id if image.note_id is not None else current_image.note_id,
@@ -225,7 +228,7 @@ async def delete_image(
 ):
     """
     Delete an image.
-    
+
     - **delete_from_storage**: If true, also delete the file from storage
     """
     # Get image info before deletion for storage cleanup
@@ -233,16 +236,16 @@ async def delete_image(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     # Delete from database
     result = await images_service.delete_image(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     # Delete from storage if requested and database deletion was successful
     if delete_from_storage and result.success:
         storage_result = await images_service.delete_image_from_storage(
@@ -251,7 +254,7 @@ async def delete_image(
         )
         if not storage_result.get('success'):
             print(f"Warning: Failed to delete image from storage: {storage_result.get('error')}")
-    
+
     return result
 
 @router.delete("/note/{note_id}/all", response_model=BulkImageDeleteResponse)
@@ -262,7 +265,7 @@ async def delete_images_by_note(
 ):
     """
     Delete all images for a specific note.
-    
+
     - **delete_from_storage**: If true, also delete files from storage
     """
     # Get images before deletion for storage cleanup
@@ -270,13 +273,13 @@ async def delete_images_by_note(
         note_id=note_id,
         access_token=current_user.get("access_token")
     )
-    
+
     # Delete from database
     result = await images_service.delete_images_by_note(
         note_id=note_id,
         access_token=current_user.get("access_token")
     )
-    
+
     # Delete from storage if requested and database deletion was successful
     if delete_from_storage and result.success and images:
         for image in images:
@@ -286,7 +289,7 @@ async def delete_images_by_note(
             )
             if not storage_result.get('success'):
                 print(f"Warning: Failed to delete image from storage: {storage_result.get('error')}")
-    
+
     return result
 
 # ==================== STORAGE OPERATIONS ====================
@@ -299,7 +302,7 @@ async def get_image_url(
 ):
     """
     Get a signed URL for accessing an image.
-    
+
     - **expires_in**: URL expiration time in seconds (default: 1 hour)
     """
     # Get image to verify ownership and get file path
@@ -307,20 +310,20 @@ async def get_image_url(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     # Get signed URL
     signed_url = await images_service.get_image_url(
         file_path=image.file_path,
         expires_in=expires_in,
         access_token=current_user.get("access_token")
     )
-    
+
     if not signed_url:
         raise HTTPException(status_code=500, detail="Failed to generate image URL")
-    
+
     return {"url": signed_url, "expires_in": expires_in}
 
 @router.post("/{image_id}/replace", response_model=ImageUpsertResponse)
@@ -335,21 +338,21 @@ async def replace_image_file(
     # Validate file type
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
-    
+
     # Get existing image
     existing_image = await images_service.get_image_by_id(
         image_id=image_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not existing_image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     try:
         # Read new file content
         file_content = await file.read()
         file_size = len(file_content)
-        
+
         # Upload new file (this will overwrite the existing file due to upsert: true)
         storage_result = await images_service.upload_image_to_storage(
             file_content=file_content,
@@ -357,10 +360,10 @@ async def replace_image_file(
             content_type=file.content_type,
             access_token=current_user.get("access_token")
         )
-        
+
         if not storage_result.get('success'):
             raise HTTPException(status_code=500, detail=f"Failed to upload to storage: {storage_result.get('error')}")
-        
+
         # Update database record with new file info
         return await images_service.upsert_image(
             note_id=existing_image.note_id,
@@ -375,6 +378,6 @@ async def replace_image_file(
             caption=existing_image.caption,
             access_token=current_user.get("access_token")
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to replace image: {str(e)}")

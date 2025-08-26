@@ -21,11 +21,7 @@ logger = logging.getLogger(__name__)
 
 def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, Any]:
     """Dependency to get current user from Supabase JWT with token"""
-    logger.info(f"=== AUTH DEBUG (with_token) ===")
-    logger.info(f"Authorization received: {authorization[:20] if authorization else 'None'}...")
-    
     if not authorization.startswith("Bearer "):
-        logger.error(f"Invalid authorization format: {authorization[:20]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -33,11 +29,9 @@ def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, A
         )
     
     token = authorization.split(" ")[1]
-    logger.info(f"Token extracted: {token[:20]}...")
     
     try:
         user = get_user_with_token_retry(user_service.supabase, token)
-        logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
         # Include the access token in the user object for service calls
         user["access_token"] = token
         return user
@@ -47,11 +41,7 @@ def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, A
 
 def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
     """Dependency to get current user from Supabase JWT"""
-    logger.info(f"=== AUTH DEBUG (standard) ===")
-    logger.info(f"Authorization received: {authorization[:20] if authorization else 'None'}...")
-    
     if not authorization.startswith("Bearer "):
-        logger.error(f"Invalid authorization format: {authorization[:20]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -59,11 +49,9 @@ def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
         )
     
     token = authorization.split(" ")[1]
-    logger.info(f"Token extracted: {token[:20]}...")
     
     try:
         user = get_user_with_retry(user_service.supabase, token)
-        logger.info(f"User authenticated successfully: {user.get('id', 'no_id')}")
         # Include the access token in the user object for service calls
         user["access_token"] = token
         return user
@@ -125,20 +113,12 @@ async def get_folder_by_slug(
 
 @router.get("/templates", response_model=List[TemplateInDB])
 async def get_templates(
-    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Get all templates (user's + system templates).
     """
     try:
-        logger.info(f"=== GET /templates DEBUG ===")
-        logger.info(f"Headers: {dict(request.headers)}")
-        logger.info(f"Query params: {dict(request.query_params)}")
-        logger.info(f"Authorization header: {request.headers.get('authorization', 'MISSING')}")
-        logger.info(f"Current user: {current_user}")
-        logger.info("===============================")
-        
         templates = await notes_service.get_templates(
             access_token=current_user.get("access_token")
         )
@@ -151,20 +131,12 @@ async def get_templates(
 
 @router.get("/trash", response_model=List[NoteInDB])
 async def get_trash_notes(
-    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Get all deleted notes (trash) for the current user.
     """
     try:
-        logger.info(f"=== GET /trash DEBUG ===")
-        logger.info(f"Headers: {dict(request.headers)}")
-        logger.info(f"Query params: {dict(request.query_params)}")
-        logger.info(f"Authorization header: {request.headers.get('authorization', 'MISSING')}")
-        logger.info(f"Current user: {current_user}")
-        logger.info("==========================")
-        
         return await notes_service.get_notes(
             is_deleted=True,
             sort_by='updated_at',

@@ -266,7 +266,7 @@ function App({ noteId }: AppProps): JSX.Element {
         <TableContext>
           <ToolbarContext>
             <div className="editor-shell h-full">
-              <Editor onContentChange={handleContentChange} />
+              <Editor onContentChange={handleContentChange} noteId={noteId} />
             </div>
             <Settings />
           </ToolbarContext>

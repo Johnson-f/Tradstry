@@ -56,6 +56,7 @@ import Button from '../../ui/Button';
 import {DialogActions, DialogButtonsList} from '../../ui/Dialog';
 import FileInput from '../../ui/FileInput';
 import TextInput from '../../ui/TextInput';
+import { useImageUpload, useImageUrl } from '../../../../../lib/hooks/use-images';
 
 export type InsertImagePayload = Readonly<ImagePayload>;
 
@@ -102,24 +103,51 @@ export function InsertImageUriDialogBody({
 
 export function InsertImageUploadedDialogBody({
   onClick,
+  noteId,
 }: {
   onClick: (payload: InsertImagePayload) => void;
+  noteId?: string;
 }) {
-  const [src, setSrc] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [altText, setAltText] = useState('');
+  const [caption, setCaption] = useState('');
+  const { uploadImage, isUploading, error } = useImageUpload();
 
-  const isDisabled = src === '';
+  const isDisabled = !selectedFile || isUploading;
 
   const loadImage = (files: FileList | null) => {
-    const reader = new FileReader();
-    reader.onload = function () {
-      if (typeof reader.result === 'string') {
-        setSrc(reader.result);
-      }
-      return '';
-    };
-    if (files !== null) {
-      reader.readAsDataURL(files[0]);
+    if (files && files[0]) {
+      setSelectedFile(files[0]);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    try {
+      // Upload image to backend
+      const uploadedImage = await uploadImage({
+        file: selectedFile,
+        note_id: noteId,
+        alt_text: altText || undefined,
+        caption: caption || undefined,
+      });
+
+      // Create a temporary URL for immediate display
+      const tempUrl = URL.createObjectURL(selectedFile);
+      
+      // Store the image ID for later URL resolution
+      onClick({
+        altText: altText || selectedFile.name,
+        src: tempUrl,
+        imageId: uploadedImage.id,
+        caption: caption || undefined,
+      });
+
+      console.log('Image uploaded successfully!');
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      alert('Failed to upload image. Please try again.');
     }
   };
 
@@ -131,6 +159,11 @@ export function InsertImageUploadedDialogBody({
         accept="image/*"
         data-test-id="image-modal-file-upload"
       />
+      {selectedFile && (
+        <div className="mt-2 text-sm text-gray-600">
+          Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+        </div>
+      )}
       <TextInput
         label="Alt Text"
         placeholder="Descriptive alternative text"
@@ -138,12 +171,24 @@ export function InsertImageUploadedDialogBody({
         value={altText}
         data-test-id="image-modal-alt-text-input"
       />
+      <TextInput
+        label="Caption (Optional)"
+        placeholder="Image caption"
+        onChange={setCaption}
+        value={caption}
+        data-test-id="image-modal-caption-input"
+      />
+      {error && (
+        <div className="mt-2 text-sm text-red-600">
+          Error: {error.message}
+        </div>
+      )}
       <DialogActions>
         <Button
           data-test-id="image-modal-file-upload-btn"
           disabled={isDisabled}
-          onClick={() => onClick({altText, src})}>
-          Confirm
+          onClick={handleUpload}>
+          {isUploading ? 'Uploading...' : 'Upload & Insert'}
         </Button>
       </DialogActions>
     </>
@@ -153,9 +198,11 @@ export function InsertImageUploadedDialogBody({
 export function InsertImageDialog({
   activeEditor,
   onClose,
+  noteId,
 }: {
   activeEditor: LexicalEditor;
   onClose: () => void;
+  noteId?: string;
 }): JSX.Element {
   const [mode, setMode] = useState<null | 'url' | 'file'>(null);
   const hasModifier = useRef(false);
@@ -206,20 +253,22 @@ export function InsertImageDialog({
           <Button
             data-test-id="image-modal-option-file"
             onClick={() => setMode('file')}>
-            File
+            Upload File
           </Button>
         </DialogButtonsList>
       )}
       {mode === 'url' && <InsertImageUriDialogBody onClick={onClick} />}
-      {mode === 'file' && <InsertImageUploadedDialogBody onClick={onClick} />}
+      {mode === 'file' && <InsertImageUploadedDialogBody onClick={onClick} noteId={noteId} />}
     </>
   );
 }
 
 export default function ImagesPlugin({
   captionsEnabled,
+  noteId,
 }: {
   captionsEnabled?: boolean;
+  noteId?: string;
 }): JSX.Element | null {
   const [editor] = useLexicalComposerContext();
 
@@ -264,7 +313,7 @@ export default function ImagesPlugin({
         COMMAND_PRIORITY_HIGH,
       ),
     );
-  }, [captionsEnabled, editor]);
+  }, [captionsEnabled, editor, noteId]);
 
   return null;
 }
