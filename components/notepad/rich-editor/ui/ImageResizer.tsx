@@ -7,6 +7,7 @@ import type {JSX} from 'react';
 import {calculateZoomLevel} from '@lexical/utils';
 import * as React from 'react';
 import {useRef} from 'react';
+import { Trash2 } from 'lucide-react';
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -29,6 +30,7 @@ export default function ImageResizer({
   showCaption,
   setShowCaption,
   captionsEnabled,
+  onDelete,
 }: {
   editor: LexicalEditor;
   buttonRef: {current: null | HTMLButtonElement};
@@ -39,6 +41,7 @@ export default function ImageResizer({
   setShowCaption: (show: boolean) => void;
   showCaption: boolean;
   captionsEnabled: boolean;
+  onDelete?: () => void;
 }): JSX.Element {
   const controlWrapperRef = useRef<HTMLDivElement>(null);
   const userSelect = useRef({
@@ -249,16 +252,28 @@ export default function ImageResizer({
   };
   return (
     <div ref={controlWrapperRef}>
-      {!showCaption && captionsEnabled && (
-        <button
-          className="image-caption-button"
-          ref={buttonRef}
-          onClick={() => {
-            setShowCaption(!showCaption);
-          }}>
-          Add Caption
-        </button>
-      )}
+      <div className="image-controls-toolbar">
+        {!showCaption && captionsEnabled && (
+          <button
+            className="image-caption-button"
+            ref={buttonRef}
+            onClick={() => {
+              setShowCaption(!showCaption);
+            }}>
+            Add Caption
+          </button>
+        )}
+        {onDelete && (
+          <button
+            className="image-delete-button"
+            onClick={onDelete}
+            title="Delete Image"
+            type="button"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
       <div
         className="image-resizer image-resizer-n"
         onPointerDown={(event) => {

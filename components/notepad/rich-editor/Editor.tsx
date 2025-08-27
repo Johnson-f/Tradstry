@@ -25,7 +25,7 @@ import { CAN_USE_DOM } from "@lexical/utils";
 import * as React from "react";
 import { useEffect, useState } from "react";
 
-// Import of Plugins which are used in the Ediotr
+// Import of Plugins which are used in the Editor
 import { createWebsocketProvider } from "./collaboration";
 import { useSettings } from "./context/SettingsContext";
 import { useSharedHistoryContext } from "./context/SharedHistoryContext";
@@ -205,6 +205,7 @@ export default function Editor({
 
   return (
     <>
+      {/* NoteHeader stays outside the scrollable container */}
       <NoteHeader
         noteTitle={noteTitle || "Untitled"}
         createdAt={createdAt}
@@ -224,6 +225,8 @@ export default function Editor({
         isLocked={isLocked ?? editorIsLocked}
         isSpeechActive={isSpeechActive ?? editorIsSpeechActive}
       />
+      
+      {/* Toolbar stays outside the scrollable container */}
       {isRichText && (
         <ToolbarPlugin
           editor={editor}
@@ -232,17 +235,17 @@ export default function Editor({
           setIsLinkEditMode={setIsLinkEditMode}
         />
       )}
+      
+      {/* Shortcuts plugin - keep this here as it doesn't affect positioning */}
       {isRichText && (
         <ShortcutsPlugin
           editor={activeEditor}
           setIsLinkEditMode={setIsLinkEditMode}
         />
       )}
-      <div
-        className={`editor-container ${
-          !isRichText ? "plain-text" : ""
-        }`}
-      >
+      
+      {/* This div now becomes the scrollable container */}
+      <div className={`editor-container ${!isRichText ? "plain-text" : ""}`}>
         {isMaxLength && <MaxLengthPlugin maxLength={30} />}
         <DragDropPaste />
         <AutoFocusPlugin />

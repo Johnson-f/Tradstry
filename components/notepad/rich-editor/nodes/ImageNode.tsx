@@ -106,7 +106,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       node.__caption,
       node.__captionsEnabled,
       node.__imageId,
-      undefined, // Don't pass the key, let Lexical assign a new one
+      node.getKey(), // Pass the original node's key
     );
   }
 

@@ -25,7 +25,7 @@ export default function NotepadPage() {
         
         {/* Fixed Editor Container that responds to sidebar */}
         <div className={`fixed top-0 bottom-0 right-0 flex flex-col transition-all duration-300 ${
-          isCollapsed ? 'left-[130px]' : 'left-[550px]'
+          isCollapsed ? 'left-[130px]' : 'left-[440px]'
         }`}>
           <div className="flex-1 h-full">
             <PlaygroundApp noteId="default" />
