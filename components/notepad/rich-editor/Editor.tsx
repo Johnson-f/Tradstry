@@ -301,7 +301,7 @@ export default function Editor({
             />
             <TableCellResizer />
             <ImagesPlugin noteId={noteId} />
-            <ImageCopyPastePlugin />
+            <ImageCopyPastePlugin noteId={noteId} />
             <InlineImagePlugin />
             <LinkPlugin hasLinkAttributes={hasLinkAttributes} />
             <PollPlugin />
