@@ -1743,3 +1743,53 @@ button.item.dropdown-item-active i {
   background-color: #e5e7eb;
   border-color: #9ca3af;
 }
+
+/* Add these CSS rules to remove the blue line */
+
+/* Remove any blue borders/outlines from the editor */
+.editor-shell .editor-container,
+.editor-scroller,
+.editor {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove focus outlines that might appear blue */
+.editor-shell .editor-container:focus,
+.editor-scroller:focus,
+.editor:focus,
+[contenteditable]:focus {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove any blue borders from content editable areas */
+[contenteditable] {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Specifically target Lexical content editable */
+.ContentEditable__root {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove any blue selection or focus indicators */
+.editor-shell *:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* If the blue line is from a pseudo-element, remove it */
+.editor-shell::after,
+.editor-container::after,
+.editor-scroller::after,
+.editor::after {
+  content: none !important;
+  border: none !important;
+  background: none !important;
+}
