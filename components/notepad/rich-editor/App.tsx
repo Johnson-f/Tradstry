@@ -29,7 +29,7 @@ import Settings from "./Settings";
 import PlaygroundEditorTheme from "./themes/PlaygroundEditorTheme";
 import { parseAllowedColor } from "./ui/ColorPicker";
 
-import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
+import { useNote, useUpdateNote, useDeleteNote } from "../../../lib/hooks/use-notes";
 import { stripVersionsFromContent, addVersionsToContent } from "./utils/stripVersions";
 import { useRealtimeNotes } from "../../../lib/hooks/useRealtimeUpdates";
 import { useQueryClient } from "@tanstack/react-query";
@@ -167,6 +167,7 @@ function App({ noteId }: AppProps): JSX.Element {
 
   const { data: note, isLoading } = useNote(noteId || "");
   const updateNoteMutation = useUpdateNote();
+  const deleteNoteMutation = useDeleteNote();
   
   // Set up real-time updates for notes
   const queryClient = useQueryClient();
@@ -210,6 +211,22 @@ function App({ noteId }: AppProps): JSX.Element {
       console.log(`Cleared localStorage draft for note ${noteId} after successful database save`);
     }
   }, [updateNoteMutation.isSuccess, noteId]);
+
+  // Handle note deletion
+  const handleDeleteNote = useCallback(async () => {
+    if (!noteId) return;
+    
+    if (window.confirm("Are you sure you want to delete this note?")) {
+      try {
+        await deleteNoteMutation.mutateAsync({ noteId });
+        // Clear localStorage draft after successful deletion
+        LocalStorageUtils.clearDraft(noteId);
+        console.log(`Note ${noteId} deleted successfully from App.tsx`);
+      } catch (error) {
+        console.error('Failed to delete note from App.tsx:', error);
+      }
+    }
+  }, [noteId, deleteNoteMutation]);
 
   const getInitialEditorState = () => {
     console.log('=== EDITOR STATE DEBUG ===');
@@ -306,6 +323,7 @@ function App({ noteId }: AppProps): JSX.Element {
                 noteTitle={note?.title || "Untitled"}
                 createdAt={note?.created_at}
                 updatedAt={note?.updated_at}
+                onDelete={handleDeleteNote}
               />
             </div>
             <Settings />
