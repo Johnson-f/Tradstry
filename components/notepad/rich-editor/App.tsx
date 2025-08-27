@@ -33,6 +33,7 @@ import { useNote, useUpdateNote } from "../../../lib/hooks/use-notes";
 import { stripVersionsFromContent, addVersionsToContent } from "./utils/stripVersions";
 import { useRealtimeNotes } from "../../../lib/hooks/useRealtimeUpdates";
 import { useQueryClient } from "@tanstack/react-query";
+import { LocalStorageUtils } from "./plugins/LocalStoragePlugin";
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -202,6 +203,14 @@ function App({ noteId }: AppProps): JSX.Element {
     }
   }, [debouncedSave, contentInitialized]);
 
+  // Clear localStorage draft when note is successfully saved to database
+  useEffect(() => {
+    if (updateNoteMutation.isSuccess && noteId) {
+      LocalStorageUtils.clearDraft(noteId);
+      console.log(`Cleared localStorage draft for note ${noteId} after successful database save`);
+    }
+  }, [updateNoteMutation.isSuccess, noteId]);
+
   const getInitialEditorState = () => {
     console.log('=== EDITOR STATE DEBUG ===');
     console.log('noteId:', noteId);
@@ -210,7 +219,26 @@ function App({ noteId }: AppProps): JSX.Element {
     
     if (isCollab) return null;
     
-    // Always prioritize note content if we have a noteId and note
+    // First, check for localStorage draft
+    if (noteId && typeof window !== 'undefined') {
+      const draftInfo = LocalStorageUtils.getDraftInfo(noteId);
+      console.log('Draft info:', draftInfo);
+      
+      if (draftInfo.exists) {
+        try {
+          const draftContent = LocalStorageUtils.getDraft(noteId);
+          if (draftContent) {
+            console.log('Using draft content from localStorage');
+            setTimeout(() => setContentInitialized(true), 100);
+            return JSON.stringify(draftContent);
+          }
+        } catch (error) {
+          console.warn('Failed to load draft from localStorage:', error);
+        }
+      }
+    }
+    
+    // Then prioritize note content if we have a noteId and note
     if (noteId && note) {
       console.log('We have noteId and note - processing content...');
       

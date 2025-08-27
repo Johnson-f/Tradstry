@@ -72,6 +72,7 @@ import TableOfContentsPlugin from "./plugins/TableOfContentsPlugin";
 import ToolbarPlugin from "./plugins/ToolbarPlugin";
 import TwitterPlugin from "./plugins/TwitterPlugin";
 import YouTubePlugin from "./plugins/YouTubePlugin";
+import LocalStoragePlugin from "./plugins/LocalStoragePlugin";
 import ContentEditable from "./ui/ContentEditable";
 import NoteHeader from "../note-header";
 import { useEditorActions } from "./hooks/useEditorActions";
@@ -318,6 +319,7 @@ export default function Editor({
             {onContentChange && (
               <OnChangePlugin onChange={onContentChange} />
             )}
+            <LocalStoragePlugin noteId={noteId} enabled={true} />
             {floatingAnchorElem && (
               <>
                 <DraggableBlockPlugin anchorElem={floatingAnchorElem} />
