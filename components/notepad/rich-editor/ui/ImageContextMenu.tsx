@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, Trash2, Download } from 'lucide-react';
+import { Copy, Trash2, Download, Loader2 } from 'lucide-react';
 
 interface ImageContextMenuProps {
   x: number;
@@ -10,6 +10,7 @@ interface ImageContextMenuProps {
   onCopy: () => void;
   onDelete: () => void;
   onDownload: () => void;
+  isDeleting?: boolean;
 }
 
 export default function ImageContextMenu({
@@ -19,6 +20,7 @@ export default function ImageContextMenu({
   onCopy,
   onDelete,
   onDownload,
+  isDeleting = false,
 }: ImageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
@@ -113,11 +115,16 @@ export default function ImageContextMenu({
       <hr className="my-1 border-gray-200" />
       
       <button
-        className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+        className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         onClick={handleDelete}
+        disabled={isDeleting}
       >
-        <Trash2 className="h-4 w-4" />
-        Delete Image
+        {isDeleting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+        {isDeleting ? 'Deleting...' : 'Delete Image'}
       </button>
     </div>
   );

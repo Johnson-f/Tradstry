@@ -47,3 +47,6 @@ venv/
 __pycache__/
 *.pyc
 
+# Local helper scripts (not needed in repo)
+start.sh
+*.local.sh

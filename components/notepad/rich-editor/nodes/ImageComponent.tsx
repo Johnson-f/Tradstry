@@ -50,6 +50,7 @@ import ContentEditable from '../ui/ContentEditable';
 import ImageResizer from '../ui/ImageResizer';
 import ImageContextMenu from '../ui/ImageContextMenu';
 import {$isImageNode} from './ImageNode';
+import { useImageDelete } from '../../../../lib/hooks/use-images';
 
 const imageCache = new Map<string, Promise<boolean> | boolean>();
 
@@ -243,6 +244,7 @@ export default function ImageComponent({
   const [isLoadError, setIsLoadError] = useState<boolean>(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const isEditable = useLexicalEditable();
+  const { deleteImage, isDeleting } = useImageDelete();
   
   // Determine the actual image source to use
   const actualSrc = React.useMemo(() => {
@@ -400,14 +402,43 @@ export default function ImageComponent({
     }
   }, [actualSrc]);
 
-  const handleDeleteImage = useCallback(() => {
-    editor.update(() => {
-      const node = $getNodeByKey(nodeKey);
-      if ($isImageNode(node)) {
-        node.remove();
+  const handleDeleteImage = useCallback(async () => {
+    try {
+      // If we have an imageId, delete from database/storage first
+      if (imageId) {
+        await deleteImage(imageId, true); // true = delete from storage bucket as well
+        console.log('Image deleted from database and storage:', imageId);
       }
-    });
-  }, [editor, nodeKey]);
+      
+      // Remove from editor regardless of database deletion success
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey);
+        if ($isImageNode(node)) {
+          node.remove();
+        }
+      });
+      
+      // Close context menu
+      setContextMenu(null);
+    } catch (error) {
+      console.error('Failed to delete image from database:', error);
+      
+      // Still remove from editor even if database deletion fails
+      // to prevent UI inconsistency
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey);
+        if ($isImageNode(node)) {
+          node.remove();
+        }
+      });
+      
+      // Close context menu
+      setContextMenu(null);
+      
+      // Optionally show user notification
+      alert('Image removed from editor, but may not have been deleted from storage. Please try again or contact support.');
+    }
+  }, [editor, nodeKey, imageId, deleteImage]);
 
   const handleDownloadImage = useCallback(async () => {
     try {
@@ -538,6 +569,7 @@ export default function ImageComponent({
       onResizeStart={onResizeStart}
       onResizeEnd={onResizeEnd}
       captionsEnabled={captionsEnabled}
+      onDelete={handleDeleteImage}
     />
   ) : null;
 
@@ -616,6 +648,7 @@ export default function ImageComponent({
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
             captionsEnabled={!isLoadError && captionsEnabled}
+            onDelete={handleDeleteImage}
           />
         )}
         
@@ -627,6 +660,7 @@ export default function ImageComponent({
             onCopy={handleCopyImage}
             onDelete={handleDeleteImage}
             onDownload={handleDownloadImage}
+            isDeleting={isDeleting}
           />
         )}
       </>

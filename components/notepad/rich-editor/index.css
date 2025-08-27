@@ -43,7 +43,6 @@ header h1 {
 
 .editor-shell {
   height: 100vh;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -53,8 +52,12 @@ header h1 {
 }
 
 .editor-shell .editor-container {
+  flex: 1; /* Take remaining space after toolbar */
+  overflow-y: auto; /* Move scrolling here */
   background: transparent;
   border-radius: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .editor-shell .editor-container.plain-text {
@@ -70,7 +73,6 @@ header h1 {
   position: relative;
   outline: 0;
   z-index: 0;
-  overflow-y: auto;
 }
 
 .editor {
@@ -1407,14 +1409,15 @@ button.action-button:disabled {
   margin-bottom: 1px;
   background: #fff;
   padding: 4px;
-
   vertical-align: middle;
   overflow: auto;
   height: 36px;
   position: sticky;
   top: 0;
-  z-index: 2;
-  overflow-y: hidden; /* disable vertical scroll*/
+  z-index: 1000; /* Increased z-index */
+  overflow-y: hidden;
+  flex-shrink: 0; /* Prevent toolbar from shrinking */
+  border-bottom: 1px solid #eee; /* Add subtle border for separation */
 }
 
 button.toolbar-item {
