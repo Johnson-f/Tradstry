@@ -103,26 +103,28 @@ interface EditorProps {
   onImport?: () => void;
   onExport?: () => void;
   onSend?: () => void;
+  onDelete?: () => void;
   onLock?: () => void;
   onMarkdown?: () => void;
   isLocked?: boolean;
   isSpeechActive?: boolean;
 }
 
-export default function Editor({ 
-  onContentChange, 
-  noteId, 
-  noteTitle, 
-  createdAt, 
+export default function Editor({
+  onContentChange,
+  noteId,
+  noteTitle,
+  createdAt,
   updatedAt,
   onSpeechToText,
   onImport,
   onExport,
   onSend,
+  onDelete,
   onLock,
   onMarkdown,
   isLocked,
-  isSpeechActive
+  isSpeechActive,
 }: EditorProps): JSX.Element {
   const { historyState } = useSharedHistoryContext();
   const {
@@ -147,7 +149,7 @@ export default function Editor({
       shouldPreserveNewLinesInMarkdown,
     },
   } = useSettings();
-  
+
   // Use the editor actions hook
   const {
     handleSpeechToText,
@@ -156,11 +158,12 @@ export default function Editor({
     handleSend,
     handleLock,
     handleMarkdownToggle,
+    handleDelete,
     handlePdfDownload,
     handlePrint,
     isLocked: editorIsLocked,
     isSpeechActive: editorIsSpeechActive,
-  } = useEditorActions(shouldPreserveNewLinesInMarkdown);
+  } = useEditorActions(noteId, shouldPreserveNewLinesInMarkdown);
   const isEditable = useLexicalEditable();
   const placeholder = isCollab
     ? "Enter some collaborative rich text..."
@@ -211,11 +214,11 @@ export default function Editor({
         noteTitle={noteTitle || "Untitled"}
         createdAt={createdAt}
         updatedAt={updatedAt}
-        onShare={() => console.log('Share clicked')}
-        onRename={() => console.log('Rename clicked')}
-        onDuplicate={() => console.log('Duplicate clicked')}
+        onShare={() => console.log("Share clicked")}
+        onRename={() => console.log("Rename clicked")}
+        onDuplicate={() => console.log("Duplicate clicked")}
         onExport={onExport || handleExport}
-        onDelete={() => console.log('Delete clicked')}
+        onDelete={onDelete || handleDelete}
         onSpeechToText={onSpeechToText || handleSpeechToText}
         onImport={onImport || handleImport}
         onSend={onSend || handleSend}
@@ -226,7 +229,7 @@ export default function Editor({
         isLocked={isLocked ?? editorIsLocked}
         isSpeechActive={isSpeechActive ?? editorIsSpeechActive}
       />
-      
+
       {/* Toolbar stays outside the scrollable container */}
       {isRichText && (
         <ToolbarPlugin
@@ -236,7 +239,7 @@ export default function Editor({
           setIsLinkEditMode={setIsLinkEditMode}
         />
       )}
-      
+
       {/* Shortcuts plugin - keep this here as it doesn't affect positioning */}
       {isRichText && (
         <ShortcutsPlugin
@@ -244,7 +247,7 @@ export default function Editor({
           setIsLinkEditMode={setIsLinkEditMode}
         />
       )}
-      
+
       {/* This div now becomes the scrollable container */}
       <div className={`editor-container ${!isRichText ? "plain-text" : ""}`}>
         {isMaxLength && <MaxLengthPlugin maxLength={30} />}
@@ -316,9 +319,7 @@ export default function Editor({
             <TabFocusPlugin />
             <TabIndentationPlugin maxIndent={7} />
             <CollapsiblePlugin />
-            {onContentChange && (
-              <OnChangePlugin onChange={onContentChange} />
-            )}
+            {onContentChange && <OnChangePlugin onChange={onContentChange} />}
             <LocalStoragePlugin noteId={noteId} enabled={true} />
             {floatingAnchorElem && (
               <>

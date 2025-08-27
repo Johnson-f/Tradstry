@@ -3,8 +3,8 @@
  * Provides data fetching, caching, and mutation hooks for all notes operations
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { notesService } from '@/lib/services/notes-service';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { notesService } from "@/lib/services/notes-service";
 import {
   // Folders
   GetFoldersParams,
@@ -19,24 +19,26 @@ import {
   // Templates
   TemplateCreate,
   TemplateUpdate,
-} from '@/lib/types/notes';
+} from "@/lib/types/notes";
 
 // ==================== QUERY KEYS ====================
 
 export const notesKeys = {
-  all: ['notes'] as const,
-  folders: (params?: GetFoldersParams) => ['notes', 'folders', params ? JSON.stringify(params) : null] as const,
-  folderBySlug: (slug: string) => ['notes', 'folders', 'slug', slug] as const,
-  notes: (params?: GetNotesParams) => ['notes', 'list', params] as const,
-  note: (id: string) => ['notes', 'detail', id] as const,
-  favoriteNotes: () => ['notes', 'favorites'] as const,
-  tags: () => ['notes', 'tags', 'all'] as const,
-  tagSearch: (params: SearchTagsParams) => ['notes', 'tags', 'search', params] as const,
-  notesByTag: (tagId: string) => ['notes', 'tags', tagId, 'notes'] as const,
-  noteTags: (noteId: string) => ['notes', 'notes', noteId, 'tags'] as const,
-  templates: () => ['notes', 'templates', 'all'] as const,
-  template: (id: string) => ['notes', 'templates', id] as const,
-  trash: () => ['notes', 'trash'] as const,
+  all: ["notes"] as const,
+  folders: (params?: GetFoldersParams) =>
+    ["notes", "folders", params ? JSON.stringify(params) : null] as const,
+  folderBySlug: (slug: string) => ["notes", "folders", "slug", slug] as const,
+  notes: (params?: GetNotesParams) => ["notes", "list", params] as const,
+  note: (id: string) => ["notes", "detail", id] as const,
+  favoriteNotes: () => ["notes", "favorites"] as const,
+  tags: () => ["notes", "tags", "all"] as const,
+  tagSearch: (params: SearchTagsParams) =>
+    ["notes", "tags", "search", params] as const,
+  notesByTag: (tagId: string) => ["notes", "tags", tagId, "notes"] as const,
+  noteTags: (noteId: string) => ["notes", "notes", noteId, "tags"] as const,
+  templates: () => ["notes", "templates", "all"] as const,
+  template: (id: string) => ["notes", "templates", id] as const,
+  trash: () => ["notes", "trash"] as const,
 };
 
 // ==================== FOLDER HOOKS ====================
@@ -130,10 +132,10 @@ export function useCreateNote() {
     onSuccess: (newNote) => {
       // Optimistically update cache with new note
       queryClient.setQueryData(notesKeys.note(newNote.id), newNote);
-      
+
       // Invalidate and refetch notes lists
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
-      queryClient.invalidateQueries({ queryKey: ['notes', 'folders'] });
+      queryClient.invalidateQueries({ queryKey: ["notes", "folders"] });
     },
     onError: () => {
       // Remove optimistic update on error
@@ -154,23 +156,23 @@ export function useUpdateNote() {
     onMutate: async ({ noteId, note }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: notesKeys.note(noteId) });
-      
+
       // Snapshot previous value
       const previousNote = queryClient.getQueryData(notesKeys.note(noteId));
-      
+
       // Optimistically update cache
       queryClient.setQueryData(notesKeys.note(noteId), (old: unknown) => ({
         ...(old as Record<string, unknown>),
         ...note,
         updated_at: new Date().toISOString(),
       }));
-      
+
       return { previousNote };
     },
     onSuccess: (updatedNote, { noteId }) => {
       // Update cache with server response
       queryClient.setQueryData(notesKeys.note(noteId), updatedNote);
-      
+
       // Invalidate notes lists to reflect changes
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
     },
@@ -190,19 +192,37 @@ export function useDeleteNote() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ noteId, permanent = false }: { noteId: string; permanent?: boolean }) =>
-      notesService.deleteNote(noteId, permanent),
+    mutationFn: ({
+      noteId,
+      permanent = false,
+    }: {
+      noteId: string;
+      permanent?: boolean;
+    }) => notesService.deleteNote(noteId, permanent),
     onMutate: async ({ noteId }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: notesKeys.note(noteId) });
+
+      // Snapshot previous value for rollback
+      const previousNote = queryClient.getQueryData(notesKeys.note(noteId));
       
-      // Remove note from cache immediately
+      // Remove note from cache immediately for optimistic update
       queryClient.removeQueries({ queryKey: notesKeys.note(noteId) });
+      
+      return { previousNote };
     },
-    onSuccess: () => {
+    onSuccess: (data, { noteId }) => {
+      console.log('Note deletion successful:', data);
       // Invalidate notes lists and trash
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
       queryClient.invalidateQueries({ queryKey: notesKeys.trash() });
+    },
+    onError: (error, { noteId }, context) => {
+      console.error('Note deletion failed:', error);
+      // Rollback optimistic update on error
+      if (context?.previousNote) {
+        queryClient.setQueryData(notesKeys.note(noteId), context.previousNote);
+      }
     },
   });
 }
@@ -244,8 +264,13 @@ export function useRestoreNoteFromTrash() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ noteId, targetFolderId }: { noteId: string; targetFolderId?: string }) =>
-      notesService.restoreNoteFromTrash(noteId, targetFolderId),
+    mutationFn: ({
+      noteId,
+      targetFolderId,
+    }: {
+      noteId: string;
+      targetFolderId?: string;
+    }) => notesService.restoreNoteFromTrash(noteId, targetFolderId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: notesKeys.all });
     },
@@ -449,7 +474,8 @@ export function useCreateTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (template: TemplateCreate) => notesService.createTemplate(template),
+    mutationFn: (template: TemplateCreate) =>
+      notesService.createTemplate(template),
     onSuccess: () => {
       // Invalidate templates list
       queryClient.invalidateQueries({ queryKey: notesKeys.templates() });
@@ -464,11 +490,18 @@ export function useUpdateTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ templateId, template }: { templateId: string; template: TemplateUpdate }) =>
-      notesService.updateTemplate(templateId, template),
+    mutationFn: ({
+      templateId,
+      template,
+    }: {
+      templateId: string;
+      template: TemplateUpdate;
+    }) => notesService.updateTemplate(templateId, template),
     onSuccess: (_, { templateId }) => {
       // Invalidate specific template and templates list
-      queryClient.invalidateQueries({ queryKey: notesKeys.template(templateId) });
+      queryClient.invalidateQueries({
+        queryKey: notesKeys.template(templateId),
+      });
       queryClient.invalidateQueries({ queryKey: notesKeys.templates() });
     },
   });
@@ -506,7 +539,12 @@ export function useCreateSystemFolder() {
       folderName: string;
       folderSlug: string;
       folderDescription?: string;
-    }) => notesService.createSystemFolder(folderName, folderSlug, folderDescription),
+    }) =>
+      notesService.createSystemFolder(
+        folderName,
+        folderSlug,
+        folderDescription,
+      ),
     onSuccess: () => {
       // Invalidate folders list
       queryClient.invalidateQueries({ queryKey: notesKeys.folders() });
