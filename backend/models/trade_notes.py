@@ -9,11 +9,9 @@ class TradeNoteType(str, Enum):
     OPTION = 'option'
 
 class TradePhase(str, Enum):
-    PRE_ENTRY = 'pre_entry'
-    ENTRY = 'entry'
-    MANAGEMENT = 'management'
-    EXIT = 'exit'
-    POST_ANALYSIS = 'post_analysis'
+    PLANNING = 'planning'
+    EXECUTION = 'execution'
+    REFLECTION = 'reflection'
 
 class TradeNoteBase(BaseModel):
     trade_id: int

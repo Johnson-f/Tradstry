@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION public.get_combined_risk_reward_ratio(
     p_custom_end_date DATE DEFAULT NULL
 )
 RETURNS NUMERIC
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
