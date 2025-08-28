@@ -9,9 +9,11 @@ class TradeNoteType(str, Enum):
     OPTION = 'option'
 
 class TradePhase(str, Enum):
-    PLANNING = 'planning'
-    EXECUTION = 'execution'
-    REFLECTION = 'reflection'
+    PRE_ENTRY = 'pre_entry'
+    ENTRY = 'entry'
+    MANAGEMENT = 'management'
+    EXIT = 'exit'
+    POST_ANALYSIS = 'post_analysis'
 
 class TradeNoteBase(BaseModel):
     trade_id: int
@@ -39,6 +41,7 @@ class TradeNoteInDB(TradeNoteBase):
     user_id: UUID
     created_at: datetime
     updated_at: datetime
+    trade_symbol: Optional[str] = None  # Symbol of the associated trade
 
     class Config:
         from_attributes = True
