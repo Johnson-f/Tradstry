@@ -20,31 +20,38 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'message', 'User is not authenticated', 'data', '[]'::jsonb);
   END IF;
 
-  -- Aggregate matching notes into a JSONB array
+  -- Aggregate matching notes into a JSONB array with trade symbols
   SELECT jsonb_agg(t)
   FROM (
     SELECT
-      id,
-      user_id,
-      trade_id,
-      trade_type,
-      title,
-      content,
-      created_at,
-      updated_at,
-      tags,
-      rating,
-      phase,
-      image_id
-    FROM public.trade_notes
-    WHERE user_id = v_user_id
-      AND (p_note_id IS NULL OR id = p_note_id)
-      AND (p_trade_id IS NULL OR trade_id = p_trade_id)
-      AND (p_trade_type IS NULL OR trade_type = p_trade_type)
-      AND (p_tags IS NULL OR tags && p_tags) -- Check for tag overlap
-      AND (p_phase IS NULL OR phase = p_phase)
-      AND (p_rating IS NULL OR rating = p_rating)
-    ORDER BY created_at DESC
+      tn.id,
+      tn.user_id,
+      tn.trade_id,
+      tn.trade_type,
+      tn.title,
+      tn.content,
+      tn.created_at,
+      tn.updated_at,
+      tn.tags,
+      tn.rating,
+      tn.phase,
+      tn.image_id,
+      CASE 
+        WHEN tn.trade_type = 'stock' THEN s.symbol
+        WHEN tn.trade_type = 'option' THEN o.symbol
+        ELSE NULL
+      END as trade_symbol
+    FROM public.trade_notes tn
+    LEFT JOIN public.stocks s ON tn.trade_type = 'stock' AND tn.trade_id = s.id AND s.user_id = v_user_id
+    LEFT JOIN public.options o ON tn.trade_type = 'option' AND tn.trade_id = o.id AND o.user_id = v_user_id
+    WHERE tn.user_id = v_user_id
+      AND (p_note_id IS NULL OR tn.id = p_note_id)
+      AND (p_trade_id IS NULL OR tn.trade_id = p_trade_id)
+      AND (p_trade_type IS NULL OR tn.trade_type = p_trade_type)
+      AND (p_tags IS NULL OR tn.tags && p_tags) -- Check for tag overlap
+      AND (p_phase IS NULL OR tn.phase = p_phase)
+      AND (p_rating IS NULL OR tn.rating = p_rating)
+    ORDER BY tn.created_at DESC
   ) t
   INTO v_result;
 

@@ -64,31 +64,36 @@ class TradeNotesService:
         try:
             response = client.rpc('select_trade_notes', params).execute()
 
-            # Add debugging to see what we're getting
-            print(f"Response data: {response.data}")
-            print(f"Response data type: {type(response.data)}")
-
-            # Handle different response formats
+            # The RPC function returns a JSONB object directly, not wrapped in an array
             if not response.data:
-                print("No data in response")
                 return []
 
-            if not isinstance(response.data, list) or len(response.data) == 0:
-                print(f"Unexpected response format: {response.data}")
+            # response.data should be the JSONB object returned by the SQL function
+            result = response.data
+            
+            if not isinstance(result, dict):
+                print(f"Unexpected response format - expected dict, got: {type(result)}")
                 return []
 
-            first_item = response.data[0]
-            if not isinstance(first_item, dict):
-                print(f"First item is not a dict: {first_item}")
-                return []
-
-            if first_item.get('success'):
-                notes_data = first_item.get('data', [])
-                return [TradeNoteInDB(**note) for note in notes_data]
-            else:
-                error_msg = first_item.get('error', 'Unknown error from RPC function')
+            if not result.get('success', False):
+                error_msg = result.get('message', 'Unknown error from RPC function')
                 print(f"RPC function returned error: {error_msg}")
                 return []
+
+            # Extract the notes data from the response
+            notes_data = result.get('data', [])
+            if not notes_data:
+                return []
+
+            # Convert each note dict to TradeNoteInDB model
+            notes = []
+            for note_dict in notes_data:
+                # Add trade_symbol field if it doesn't exist (for backward compatibility)
+                if 'trade_symbol' not in note_dict:
+                    note_dict['trade_symbol'] = None
+                notes.append(TradeNoteInDB(**note_dict))
+            
+            return notes
 
         except Exception as e:
             print(f"Error selecting trade notes: {str(e)}")
