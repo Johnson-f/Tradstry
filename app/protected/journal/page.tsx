@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { FileText } from "lucide-react";
 import { useStocks } from "@/lib/hooks/use-stocks";
 import { useOptions } from "@/lib/hooks/use-options";
 import { useAnalytics, type AnalyticsFilters } from "@/lib/hooks/use-analytics";
@@ -11,6 +13,7 @@ import { StocksTable } from "@/components/journal/stocks-table";
 import { OptionsTable } from "@/components/journal/options-table";
 import { AnalyticsSummary } from "@/components/analytics/analytics-summary";
 import { DateRangePicker } from "@/components/analytics/date-range-picker";
+import { TradeNotesHistoryModal } from "@/components/journal/trade-notes-history-modal";
 
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
@@ -19,6 +22,7 @@ export default function JournalPage() {
     customStartDate: null,
     customEndDate: null,
   });
+  const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
 
   const { stocks, error: stocksError, isLoading: stocksLoading } = useStocks();
   const {
@@ -85,15 +89,25 @@ export default function JournalPage() {
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
-          <DateRangePicker 
-            onDateChange={({ startDate, endDate, periodType }) => {
-              setFilters({
-                periodType,
-                customStartDate: startDate,
-                customEndDate: endDate,
-              });
-            }}
-          />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setNotesHistoryOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Manage Notes
+            </Button>
+            <DateRangePicker 
+              onDateChange={({ startDate, endDate, periodType }) => {
+                setFilters({
+                  periodType,
+                  customStartDate: startDate,
+                  customEndDate: endDate,
+                });
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -158,6 +172,11 @@ export default function JournalPage() {
           </div>
         </div>
       </div>
+
+      <TradeNotesHistoryModal
+        open={notesHistoryOpen}
+        onOpenChange={setNotesHistoryOpen}
+      />
     </div>
   );
 }

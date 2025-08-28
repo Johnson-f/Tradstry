@@ -10,9 +10,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("Note: .env file not found, relying on environment variables.")
+	}
+
 	// Load configuration
 	cfg := config.Load()
 
