@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from supabase import Client
+from postgrest.exceptions import APIError
 from database import get_supabase
 from models.trade_notes import TradeNoteCreate, TradeNoteUpdate, TradeNoteInDB, TradeNoteType, TradePhase
 from .base_database_service import BaseDatabaseService
@@ -102,13 +103,37 @@ class TradeNotesService:
     async def delete_trade_note(self, note_id: int, access_token: str = None) -> Dict[str, Any]:
         client = self._get_client_with_token(access_token)
         params = {'p_note_id': note_id}
+        
         try:
             response = client.rpc('delete_trade_note', params).execute()
-            if response.data:
-                if isinstance(response.data, list):
-                    return response.data[0] if len(response.data) > 0 else None
-                return response.data  # Assuming it's a dict
-            return None
+            
+            # Handle the response similar to select_trade_notes
+            if not response.data:
+                return {"success": False, "message": "No response from database"}
+            
+            result = response.data
+            
+            # If it's a list, get the first item
+            if isinstance(result, list):
+                result = result[0] if len(result) > 0 else {}
+            
+            # Check if the response indicates success
+            if not isinstance(result, dict):
+                return {"success": False, "message": "Unexpected response format"}
+            
+            # Return the result as-is since it already contains the proper structure
+            return result
+            
+        except APIError as e:
+            print(f"APIError deleting trade note: {str(e)}")
+            
+            # Check if this is the "fake error" from postgrest
+            if hasattr(e, 'args') and e.args:
+                error_data = e.args[0]
+                if isinstance(error_data, dict) and error_data.get('success'):
+                    # This is actually a successful response wrapped as an error
+                    return error_data
+            raise
         except Exception as e:
             print(f"Error deleting trade note: {str(e)}")
             raise
