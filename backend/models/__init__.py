@@ -19,6 +19,10 @@ from .setups import (
     TradeSetupBase, TradeSetupCreate, TradeSetupInDB, SetupWithTrades,
     SetupAnalytics, TradeBySetup, SetupSummary
 )
+from .trade_notes import (
+    TradeNoteBase, TradeNoteCreate, TradeNoteUpdate, TradeNoteInDB,
+    TradeNoteType, TradePhase
+)
 
 __all__ = [
     # Stock models
@@ -36,5 +40,9 @@ __all__ = [
     # Setup models
     'SetupCategory', 'SetupBase', 'SetupCreate', 'SetupUpdate', 'SetupInDB',
     'TradeSetupBase', 'TradeSetupCreate', 'TradeSetupInDB', 'SetupWithTrades',
-    'SetupAnalytics', 'TradeBySetup', 'SetupSummary'
+    'SetupAnalytics', 'TradeBySetup', 'SetupSummary',
+
+    # Trade Note models
+    'TradeNoteBase', 'TradeNoteCreate', 'TradeNoteUpdate', 'TradeNoteInDB',
+    'TradeNoteType', 'TradePhase'
 ]

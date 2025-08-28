@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { StockInDB, StockUpdate } from "@/lib/types/trading";
 import { useStockMutations } from "@/lib/hooks/use-stocks";
 import { Toaster } from "sonner";
 import { EditStockDialog } from "./edit-stock-dialog";
+import { TradeNotesModal } from "./trade-notes-modal";
 import {
   Table,
   TableBody,
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
@@ -41,6 +44,8 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
   const [editingStock, setEditingStock] = useState<StockInDB | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<StockInDB | null>(null);
   
   // Calculate pagination
   const totalPages = Math.ceil(stocks.length / ITEMS_PER_PAGE);
@@ -130,6 +135,11 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
     }
   };
 
+  const handleAddNote = (stock: StockInDB) => {
+    setSelectedTradeForNotes(stock);
+    setNotesModalOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -176,6 +186,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
               <TableHead>Status</TableHead>
               <TableHead className="text-right">P/L</TableHead>
               <TableHead>Setups</TableHead>
+              <TableHead>Notes</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -197,6 +208,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                   <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                   <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                 </TableRow>
               ))
@@ -272,6 +284,16 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                         toast.success("Setup added successfully");
                       }}
                     />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleAddNote(stock)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <ActionsDropdown
@@ -360,6 +382,16 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
           }}
           onSave={handleSave}
           isSaving={isUpdating}
+        />
+      )}
+
+      {selectedTradeForNotes && (
+        <TradeNotesModal
+          open={notesModalOpen}
+          onOpenChange={setNotesModalOpen}
+          tradeId={selectedTradeForNotes.id}
+          tradeType="stock"
+          tradeSymbol={selectedTradeForNotes.symbol}
         />
       )}
     </>
