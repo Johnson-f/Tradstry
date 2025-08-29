@@ -3,25 +3,46 @@ AI Summary Router - FastAPI endpoints for AI trading analysis
 Provides endpoints for generating AI-powered trading insights and reports
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
 
-from ..services.ai_summary_service_hosted import AITradingSummaryService
-from ..services.auth_service import get_current_user
-from ..models.user import User
-from ..models.ai_summary import (
-    AIReportResponse, AIReportStats, SimilarReportsRequest, 
+from services.ai_summary_service_hosted import AITradingSummaryService
+from services.user_service import UserService
+from utils.auth import get_user_with_retry
+from models.ai_summary import (
+    AIReportResponse, AIReportStats, SimilarReportsRequest,
     ReportSearchRequest
 )
+from gotrue.types import User
 
 router = APIRouter(prefix="/ai-summary", tags=["AI Summary"])
 
-# Global service instance
-ai_service = AITradingSummaryService()
+# Global service instances
+ai_service = None
+user_service = UserService()
+
+def get_ai_service():
+    """Lazy initialization of AI service to ensure env vars are loaded"""
+    global ai_service
+    if ai_service is None:
+        ai_service = AITradingSummaryService()
+    return ai_service
+
+def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
+    """Dependency to get current user from Supabase JWT"""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = authorization.split(" ")[1]
+    return get_user_with_retry(user_service.supabase, token)
 
 # Request/Response Models
 class AnalysisRequest(BaseModel):
@@ -58,7 +79,7 @@ async def generate_ai_analysis(
 ):
     """
     Generate complete AI trading analysis report
-    
+
     This endpoint processes the user's trading data through a 3-stage AI pipeline:
     1. Data Analyzer - Transforms raw data into structured insights
     2. Insight Generator - Generates psychological and strategic insights
@@ -72,7 +93,7 @@ async def generate_ai_analysis(
                 status_code=400,
                 detail=f"Invalid time_range. Must be one of: {', '.join(valid_ranges)}"
             )
-        
+
         # Validate custom date range
         if request.time_range == 'custom':
             if not request.custom_start_date or not request.custom_end_date:
@@ -85,21 +106,21 @@ async def generate_ai_analysis(
                     status_code=400,
                     detail="custom_start_date must be before custom_end_date"
                 )
-        
+
         # Generate analysis
-        analysis = await ai_service.generate_complete_analysis(
+        analysis = await get_ai_service().generate_complete_analysis(
             user_id=str(current_user.id),
             time_range=request.time_range,
             custom_start_date=request.custom_start_date,
             custom_end_date=request.custom_end_date
         )
-        
+
         if not analysis.get("success"):
             raise HTTPException(
                 status_code=500,
                 detail=analysis.get("error", "Analysis generation failed")
             )
-        
+
         return AnalysisResponse(
             success=True,
             timestamp=analysis["timestamp"],
@@ -107,7 +128,7 @@ async def generate_ai_analysis(
             report=analysis["report"],
             chat_enabled=analysis["chat_enabled"]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -124,7 +145,7 @@ async def chat_with_ai(
 ):
     """
     Chat with AI about your trading analysis
-    
+
     Ask follow-up questions about your trading data, performance, or get
     specific advice based on your generated analysis report.
     """
@@ -134,22 +155,22 @@ async def chat_with_ai(
                 status_code=400,
                 detail="Question cannot be empty"
             )
-        
+
         # Get chat response
-        answer = await ai_service.chat_about_analysis(request.question, str(current_user.id))
-        
+        answer = await get_ai_service().chat_about_analysis(request.question, str(current_user.id))
+
         if answer.startswith("Please generate"):
             raise HTTPException(
                 status_code=400,
                 detail="No analysis context available. Please generate an analysis report first."
             )
-        
+
         return ChatResponse(
             question=request.question,
             answer=answer,
             timestamp=datetime.now().isoformat()
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -166,28 +187,28 @@ async def get_quick_insights(
 ):
     """
     Get quick trading insights without full report generation
-    
+
     Returns key metrics and brief insights for dashboard display.
     Faster than full analysis - good for overview widgets.
     """
     try:
         # Get raw trading data
-        trading_data = await ai_service.get_trading_data(
+        trading_data = await get_ai_service().get_trading_data(
             user_id=str(current_user.id),
             time_range=time_range
         )
-        
+
         if "error" in trading_data:
             raise HTTPException(
                 status_code=404,
                 detail=trading_data["error"]
             )
-        
+
         # Extract key insights from raw data
         core_metrics = trading_data.get("core_performance_metrics", {})
         behavior_metrics = trading_data.get("trading_behavior_metrics", {})
         streak_analysis = trading_data.get("streak_analysis", {})
-        
+
         quick_insights = {
             "performance_summary": {
                 "win_rate": core_metrics.get("win_rate_percentage", 0),
@@ -206,15 +227,15 @@ async def get_quick_insights(
                 "directional_bias": _analyze_directional_bias(trading_data)
             },
             "top_symbols": _extract_top_symbols(trading_data),
-            "time_period": ai_service._format_time_period(time_range, None, None)
+            "time_period": get_ai_service()._format_time_period(time_range, None, None)
         }
-        
+
         return QuickInsightsResponse(
             success=True,
             insights=quick_insights,
             timestamp=datetime.now().isoformat()
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -228,28 +249,28 @@ async def get_quick_insights(
 async def get_ai_status(current_user: User = Depends(get_current_user)):
     """
     Get AI service status and model information
-    
+
     Returns information about loaded models and system status.
     """
     try:
         model_status = {}
-        
+
         # Check each model type
-        from ..services.ai_summary_service import ModelType
+        from services.ai_summary_service import ModelType
         for model_type in ModelType:
-            pipeline = ai_service.model_manager.get_pipeline(model_type)
+            pipeline = get_ai_service().model_manager.get_pipeline(model_type)
             model_status[model_type.value] = {
                 "loaded": pipeline is not None,
                 "ready": pipeline is not None
             }
-        
+
         return {
             "service_status": "operational",
             "models": model_status,
-            "chat_enabled": ai_service.chat_assistant.context_index is not None,
+            "chat_enabled": get_ai_service().chat_assistant.context_index is not None,
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {
             "service_status": "error",
@@ -262,20 +283,20 @@ async def get_ai_status(current_user: User = Depends(get_current_user)):
 async def reset_chat_context(current_user: User = Depends(get_current_user)):
     """
     Reset chat conversation context
-    
+
     Clears the chat history and context. User will need to generate
     a new analysis to re-enable chat functionality.
     """
     try:
-        ai_service.chat_assistant.conversation_history = []
-        ai_service.chat_assistant.context_index = None
-        
+        get_ai_service().chat_assistant.conversation_history = []
+        get_ai_service().chat_assistant.context_index = None
+
         return {
             "success": True,
             "message": "Chat context reset successfully",
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -291,13 +312,13 @@ async def get_user_reports(
 ):
     """Get user's AI reports with filtering and pagination"""
     try:
-        from ..config.database import get_database_connection
-        
+        from database import get_database_connection
+
         conn = await get_database_connection()
-        
+
         results = await conn.fetch("""
             SELECT * FROM get_ai_reports($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        """, 
+        """,
             current_user.id,
             request.time_period,
             request.start_date,
@@ -308,9 +329,9 @@ async def get_user_reports(
             request.order_by,
             request.order_direction
         )
-        
+
         await conn.close()
-        
+
         reports = []
         for row in results:
             reports.append(AIReportResponse(
@@ -329,9 +350,9 @@ async def get_user_reports(
                 tags=row['tags'],
                 processing_time_ms=row['processing_time_ms']
             ))
-        
+
         return reports
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving reports: {str(e)}")
 
@@ -343,19 +364,19 @@ async def get_report_by_id(
 ):
     """Get full AI report by ID"""
     try:
-        from ..config.database import get_database_connection
-        
+        from database import get_database_connection
+
         conn = await get_database_connection()
-        
+
         result = await conn.fetchrow("""
             SELECT * FROM get_ai_report_by_id($1, $2)
         """, current_user.id, report_id)
-        
+
         await conn.close()
-        
+
         if not result:
             raise HTTPException(status_code=404, detail="Report not found")
-        
+
         return AIReportResponse(
             id=result['id'],
             time_period=result['time_period'],
@@ -376,7 +397,7 @@ async def get_report_by_id(
             model_versions=result['model_versions'],
             processing_time_ms=result['processing_time_ms']
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -390,30 +411,30 @@ async def search_similar_reports(
 ):
     """Find similar reports using vector similarity search"""
     try:
-        from ..services.embedding_service import EmbeddingService
-        from ..config.database import get_database_connection
-        
+        from services.embedding_service import EmbeddingService
+        from database import get_database_connection
+
         # Generate embedding for query text
         async with EmbeddingService() as embedding_service:
             query_embedding = await embedding_service.generate_embedding(request.query_text)
-        
+
         if not query_embedding:
             raise HTTPException(status_code=400, detail="Could not generate embedding for query")
-        
+
         conn = await get_database_connection()
-        
+
         results = await conn.fetch("""
             SELECT * FROM search_similar_ai_reports($1, $2::vector, $3, $4, $5)
-        """, 
+        """,
             current_user.id,
             query_embedding,
             request.similarity_threshold,
             request.limit,
             request.search_type
         )
-        
+
         await conn.close()
-        
+
         reports = []
         for row in results:
             reports.append(AIReportResponse(
@@ -430,9 +451,9 @@ async def search_similar_reports(
                 tags=row['tags'],
                 similarity_score=row['similarity_score']
             ))
-        
+
         return reports
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -446,16 +467,16 @@ async def get_report_statistics(
 ):
     """Get AI report statistics for dashboard"""
     try:
-        from ..config.database import get_database_connection
-        
+        from database import get_database_connection
+
         conn = await get_database_connection()
-        
+
         result = await conn.fetchrow("""
             SELECT * FROM get_ai_report_stats($1, $2)
         """, current_user.id, days_back)
-        
+
         await conn.close()
-        
+
         if not result:
             # Return empty stats if no data
             return AIReportStats(
@@ -468,7 +489,7 @@ async def get_report_statistics(
                 reports_this_month=0,
                 improvement_trend="insufficient_data"
             )
-        
+
         return AIReportStats(
             total_reports=result['total_reports'],
             avg_win_rate=result['avg_win_rate'],
@@ -479,7 +500,7 @@ async def get_report_statistics(
             reports_this_month=result['reports_this_month'],
             improvement_trend=result['improvement_trend']
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving report statistics: {str(e)}")
 
@@ -493,7 +514,7 @@ async def get_chat_history(
 ):
     """Get user's chat Q&A history from vector database"""
     try:
-        from ..config.database import get_database_connection
+        from database import get_database_connection
 
         conn = await get_database_connection()
 
@@ -535,8 +556,8 @@ async def search_similar_chat_questions(
 ):
     """Search for similar chat questions using vector similarity"""
     try:
-        from ..services.embedding_service import EmbeddingService
-        from ..config.database import get_database_connection
+        from services.embedding_service import EmbeddingService
+        from database import get_database_connection
 
         # Generate embedding for query text
         async with EmbeddingService() as embedding_service:
@@ -590,7 +611,7 @@ async def get_chat_statistics(
 ):
     """Get chat Q&A statistics for learning insights"""
     try:
-        from ..config.database import get_database_connection
+        from database import get_database_connection
 
         conn = await get_database_connection()
 
@@ -641,7 +662,7 @@ async def delete_chat_qa_pair(
 ):
     """Delete a specific chat Q&A pair"""
     try:
-        from ..config.database import get_database_connection
+        from database import get_database_connection
 
         conn = await get_database_connection()
 
@@ -673,10 +694,10 @@ def _extract_total_trades(trading_data: Dict[str, Any]) -> int:
         directional_perf = trading_data.get("directional_performance", {})
         bullish_perf = directional_perf.get("bullish_performance", {})
         bearish_perf = directional_perf.get("bearish_performance", {})
-        
+
         bullish_trades = bullish_perf.get("total_trades", 0) if bullish_perf else 0
         bearish_trades = bearish_perf.get("total_trades", 0) if bearish_perf else 0
-        
+
         return bullish_trades + bearish_trades
     except:
         return 0
@@ -688,7 +709,7 @@ def _analyze_directional_bias(trading_data: Dict[str, Any]) -> str:
         directional_perf = trading_data.get("directional_performance", {})
         bullish_win_rate = directional_perf.get("bullish_win_rate", 0)
         bearish_win_rate = directional_perf.get("bearish_win_rate", 0)
-        
+
         if bullish_win_rate > bearish_win_rate + 10:
             return "bullish_bias"
         elif bearish_win_rate > bullish_win_rate + 10:
@@ -705,13 +726,13 @@ def _extract_top_symbols(trading_data: Dict[str, Any]) -> list:
         symbols_data = trading_data.get("top_symbols_performance", [])
         if not symbols_data:
             return []
-        
+
         # Filter for most profitable symbols
         profitable_symbols = [
-            s for s in symbols_data 
+            s for s in symbols_data
             if s.get("ranking_type") == "Most Profitable"
         ]
-        
+
         return profitable_symbols[:5]  # Top 5
     except:
         return []

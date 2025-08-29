@@ -7,16 +7,17 @@ import json
 import asyncio
 import aiohttp
 import os
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date
 from dataclasses import dataclass
 from enum import Enum
 import logging
 
-import asyncpg
-from ..config.database import get_database_connection
-from ..models.ai_summary import AIReportCreate
-from .embedding_service import EmbeddingService
+from database import get_database_connection
+from models.ai_summary import AIReportCreate
+from services.embedding_service import EmbeddingService
+from market_data.orchestrator import MarketDataOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,12 @@ class ModelConfig:
 
 class HuggingFaceInferenceClient:
     """Client for Hugging Face Inference API with fallback system"""
-    
+
     def __init__(self, api_token: str):
         self.api_token = api_token
         self.base_url = "https://api-inference.huggingface.co/models"
         self.session = None
-        
+
         # Model configurations with fallback priorities
         self.model_configs = {
             ModelType.DATA_ANALYZER: [
@@ -67,20 +68,20 @@ class HuggingFaceInferenceClient:
                 ModelConfig("DialoGPT-Large", "microsoft/DialoGPT-large", "Conversations", 3)
             ]
         }
-    
+
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
             await self.session.close()
-    
+
     async def generate_text(self, model_type: ModelType, prompt: str, max_tokens: int = 512) -> str:
         """Generate text with fallback system"""
-        
+
         models = sorted(self.model_configs[model_type], key=lambda x: x.priority)
-        
+
         for model_config in models:
             try:
                 result = await self._call_model(model_config.model_id, prompt, max_tokens)
@@ -90,18 +91,18 @@ class HuggingFaceInferenceClient:
             except Exception as e:
                 logger.warning(f"Failed to use {model_config.name}: {str(e)}")
                 continue
-        
+
         raise Exception(f"All models failed for {model_type.value}")
-    
+
     async def _call_model(self, model_id: str, prompt: str, max_tokens: int) -> str:
         """Call specific Hugging Face model"""
-        
+
         url = f"{self.base_url}/{model_id}"
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "inputs": prompt,
             "parameters": {
@@ -111,7 +112,7 @@ class HuggingFaceInferenceClient:
                 "return_full_text": False
             }
         }
-        
+
         async with self.session.post(url, headers=headers, json=payload) as response:
             if response.status == 200:
                 result = await response.json()
@@ -126,13 +127,13 @@ class HuggingFaceInferenceClient:
             else:
                 error_text = await response.text()
                 raise Exception(f"API error {response.status}: {error_text}")
-        
+
         return ""
 
 
 class DataAnalyzer:
     """Model 1: Transforms raw JSON trading data into structured insights"""
-    
+
     def __init__(self, hf_client: HuggingFaceInferenceClient):
         self.hf_client = hf_client
         self.prompt_template = """
@@ -143,7 +144,7 @@ TRADING DATA:
 
 ANALYSIS FRAMEWORK:
 1. Performance Metrics Analysis
-2. Risk Management Assessment  
+2. Risk Management Assessment
 3. Trading Behavior Patterns
 4. Asset Class Performance
 5. Timing and Frequency Analysis
@@ -152,7 +153,7 @@ Provide structured analysis in this format:
 
 PERFORMANCE ANALYSIS:
 - Win Rate: [percentage] ([interpretation])
-- Profit Factor: [value] ([interpretation]) 
+- Profit Factor: [value] ([interpretation])
 - Trade Expectancy: [value] ([interpretation])
 - Risk-Reward Ratio: [value] ([interpretation])
 
@@ -176,27 +177,27 @@ TIMING PATTERNS:
 
 Focus on numerical insights and statistical patterns. Be precise and analytical.
 """
-    
+
     async def analyze(self, trading_data: Dict[str, Any]) -> str:
         """Analyze raw trading data and return structured insights"""
         try:
             formatted_data = json.dumps(trading_data, indent=2, default=str)
             prompt = self.prompt_template.format(trading_data=formatted_data)
-            
+
             result = await self.hf_client.generate_text(
-                ModelType.DATA_ANALYZER, 
-                prompt, 
+                ModelType.DATA_ANALYZER,
+                prompt,
                 max_tokens=800
             )
             return result
-            
+
         except Exception as e:
             return f"Analysis Error: {str(e)}"
 
 
 class InsightGenerator:
     """Model 2: Generates psychological and strategic insights from data analysis"""
-    
+
     def __init__(self, hf_client: HuggingFaceInferenceClient):
         self.hf_client = hf_client
         self.prompt_template = """
@@ -240,26 +241,26 @@ OPTIMIZATION OPPORTUNITIES:
 
 Focus on actionable psychological and strategic insights. Connect data patterns to human behavior and trading psychology.
 """
-    
+
     async def generate_insights(self, data_analysis: str) -> str:
         """Generate psychological and strategic insights from data analysis"""
         try:
             prompt = self.prompt_template.format(data_analysis=data_analysis)
-            
+
             result = await self.hf_client.generate_text(
                 ModelType.INSIGHT_GENERATOR,
                 prompt,
                 max_tokens=800
             )
             return result
-            
+
         except Exception as e:
             return f"Insight Generation Error: {str(e)}"
 
 
 class ReportWriter:
     """Model 3: Creates user-friendly, actionable trading reports"""
-    
+
     def __init__(self, hf_client: HuggingFaceInferenceClient):
         self.hf_client = hf_client
         self.prompt_template = """
@@ -306,7 +307,7 @@ Create a comprehensive trading report with this structure:
 ## 🎯 Next Week's Focus
 [3 specific priorities for the coming week]
 - Priority 1: [clear objective with success metric]
-- Priority 2: [clear objective with success metric]  
+- Priority 2: [clear objective with success metric]
 - Priority 3: [clear objective with success metric]
 
 ## 📊 Key Metrics to Track
@@ -320,31 +321,31 @@ Create a comprehensive trading report with this structure:
 
 Write in a supportive, mentor-like tone. Be specific with numbers and actionable with recommendations. Focus on building confidence while addressing areas for improvement.
 """
-    
+
     async def write_report(self, insights: str, time_period: str) -> str:
         """Generate user-friendly trading report from insights"""
         try:
             prompt = self.prompt_template.format(insights=insights, time_period=time_period)
-            
+
             result = await self.hf_client.generate_text(
                 ModelType.REPORT_WRITER,
                 prompt,
                 max_tokens=1000
             )
             return result
-            
+
         except Exception as e:
             return f"Report Generation Error: {str(e)}"
 
 
 class ChatAssistant:
     """Conversational AI for follow-up questions about trading data"""
-    
+
     def __init__(self, hf_client: HuggingFaceInferenceClient):
         self.hf_client = hf_client
         self.conversation_history = []
         self.context_data = {}
-    
+
     def initialize_context(self, trading_data: Dict[str, Any], analysis: str, insights: str, report: str):
         """Initialize conversation context with trading analysis"""
         self.context_data = {
@@ -353,7 +354,13 @@ class ChatAssistant:
             "insights": insights,
             "report": report
         }
-    
+
+    async def chat(self, user_question: str, user_id: str) -> str:
+        """Handle chat questions about the analysis with vector-based learning"""
+        # This is a simplified chat method for personal context
+        # The full implementation would involve vector search, etc.
+        return await self._fallback_to_external_ai(user_question)
+
     async def _fallback_to_external_ai(self, user_question: str) -> str:
         """Fallback method to call external AI when no similar questions found"""
         context_summary = self._create_context_summary()
@@ -415,17 +422,22 @@ Provide an enhanced answer that addresses the current question while building on
             answer_embedding = await self.hf_client.embedding_service.generate_embedding(answer)
 
             if answer_embedding:
-                conn = await get_database_connection()
+                supabase = await get_database_connection()
 
                 # Get current model being used
                 current_model = self.hf_client.model_configs[ModelType.CHAT_ASSISTANT][0].model_name
 
-                # Save Q&A pair
-                await conn.execute("""
-                    SELECT upsert_chat_qa($1, $2, $3, $4::vector, $5::vector, NULL, 'external_ai', $6)
-                """, user_id, question, answer, question_embedding, answer_embedding, current_model)
+                # Save Q&A pair using Supabase RPC
+                result = supabase.rpc('upsert_chat_qa', {
+                    'p_user_id': user_id,
+                    'p_question': question,
+                    'p_answer': answer,
+                    'p_question_embedding': question_embedding,
+                    'p_answer_embedding': answer_embedding,
+                    'p_source_type': 'external_ai',
+                    'p_model_used': current_model
+                }).execute()
 
-                await conn.close()
                 logger.info(f"Saved Q&A pair for user {user_id}")
 
         except Exception as e:
@@ -434,60 +446,59 @@ Provide an enhanced answer that addresses the current question while building on
     async def _update_qa_usage(self, qa_id: str) -> None:
         """Update usage count for a Q&A pair"""
         try:
-            conn = await get_database_connection()
-            await conn.execute("""
-                UPDATE chat_qa SET usage_count = usage_count + 1, last_used_at = NOW()
-                WHERE id = $1
-            """, qa_id)
-            await conn.close()
+            supabase = await get_database_connection()
+            supabase.table('chat_qa').update({
+                'usage_count': 'usage_count + 1',
+                'last_used_at': 'NOW()'
+            }).eq('id', qa_id).execute()
         except Exception as e:
             logger.warning(f"Failed to update Q&A usage: {str(e)}")
-    
+
     def _create_context_summary(self) -> str:
         """Create a summary of the trading context"""
         if not self.context_data:
             return "No context available."
-        
+
         # Extract key metrics for context
         trading_data = self.context_data.get("trading_data", {})
         core_metrics = trading_data.get("core_performance_metrics", {})
-        
+
         summary = f"""
-Win Rate: {core_metrics.get('win_rate_percentage', 'N/A')}%
-Profit Factor: {core_metrics.get('profit_factor', 'N/A')}
+Win Rate: {core_metrics.get('win_rate_percentage', 'N/A')}%\nProfit Factor: {core_metrics.get('profit_factor', 'N/A')}
 Trade Expectancy: {core_metrics.get('trade_expectancy', 'N/A')}
 Analysis: {self.context_data.get('analysis', 'N/A')[:200]}...
 Key Insights: {self.context_data.get('insights', 'N/A')[:200]}...
 """
         return summary
-    
+
     def _format_history(self) -> str:
         """Format conversation history for context"""
         if not self.conversation_history:
             return "No previous conversation."
-        
+
         formatted = []
-        for exchange in self.conversation_history[-3:]:  # Last 3 exchanges
+        for exchange in self.conversation_history[-3:]:
             formatted.append(f"User: {exchange['user']}")
             formatted.append(f"Assistant: {exchange['assistant']}")
-        
+
         return "\n".join(formatted)
 
 
 class AITradingSummaryService:
     """Main service orchestrating the AI trading analysis pipeline"""
-    
+
     def __init__(self):
         self.api_token = os.getenv("HUGGINGFACE_API_TOKEN")
         if not self.api_token:
             raise ValueError("HUGGINGFACE_API_TOKEN environment variable is required")
-        
+
         self.hf_client = None
         self.data_analyzer = None
         self.insight_generator = None
         self.report_writer = None
         self.chat_assistant = None
-    
+        self.market_data_orchestrator = None
+
     async def _initialize_clients(self):
         """Initialize HF client and AI components"""
         if not self.hf_client:
@@ -496,72 +507,66 @@ class AITradingSummaryService:
             self.insight_generator = InsightGenerator(self.hf_client)
             self.report_writer = ReportWriter(self.hf_client)
             self.chat_assistant = ChatAssistant(self.hf_client)
-    
-    async def get_trading_data(self, user_id: str, time_range: str = 'all_time', 
+            self.market_data_orchestrator = MarketDataOrchestrator()
+
+    async def get_trading_data(self, user_id: str, time_range: str = 'all_time',
                               custom_start_date: Optional[date] = None,
                               custom_end_date: Optional[date] = None) -> Dict[str, Any]:
         """Fetch trading data from database using the daily AI summary function"""
-        
+
         try:
-            conn = await get_database_connection()
-            
-            query = """
-            SELECT get_daily_ai_summary($1, $2, $3) as summary_data
-            """
-            
-            result = await conn.fetchrow(
-                query, 
-                time_range, 
-                custom_start_date, 
-                custom_end_date
-            )
-            
-            await conn.close()
-            
-            if result and result['summary_data']:
-                return json.loads(result['summary_data'])
+            supabase = await get_database_connection()
+
+            result = supabase.rpc('get_daily_ai_summary', {
+                'p_time_range': time_range,
+                'p_custom_start_date': custom_start_date,
+                'p_custom_end_date': custom_end_date
+            }).execute()
+
+            if result.data:
+                return result.data
             else:
                 return {"error": "No trading data found"}
-                
+
         except Exception as e:
             return {"error": f"Database error: {str(e)}"}
-    
+
     async def generate_complete_analysis(self, user_id: str, time_range: str = '30d',
                                        custom_start_date: Optional[date] = None,
                                        custom_end_date: Optional[date] = None) -> Dict[str, Any]:
         """Generate complete AI analysis pipeline"""
-        
+
         try:
             await self._initialize_clients()
-            
+
             async with self.hf_client:
                 # Step 1: Get trading data
                 trading_data = await self.get_trading_data(
                     user_id, time_range, custom_start_date, custom_end_date
                 )
-                
+
                 if "error" in trading_data:
                     return {"error": trading_data["error"]}
-                
+
                 # Step 2: Data Analysis (Model 1)
                 data_analysis = await self.data_analyzer.analyze(trading_data)
-                
+
                 # Step 3: Insight Generation (Model 2)
                 insights = await self.insight_generator.generate_insights(data_analysis)
-                
+
                 # Step 4: Report Writing (Model 3)
                 time_period_display = self._format_time_period(time_range, custom_start_date, custom_end_date)
                 report = await self.report_writer.write_report(insights, time_period_display)
-                
+
                 # Step 5: Store report in vector database
                 report_id = await self._store_report_in_database(
                     user_id, time_range, custom_start_date, custom_end_date,
                     time_period_display, trading_data, data_analysis, insights, report
                 )
-                
+
                 # Step 6: Initialize chat context
                 self.chat_assistant.initialize_context(trading_data, data_analysis, insights, report)
-                
+
                 return {
                     "success": True,
                     "timestamp": datetime.now().isoformat(),
@@ -573,34 +578,91 @@ class AITradingSummaryService:
                     "chat_enabled": True,
                     "report_id": report_id
                 }
-            
+
         except Exception as e:
             return {"error": f"Analysis pipeline error: {str(e)}"}
-    
+
     async def chat_about_analysis(self, user_question: str, user_id: str = None) -> str:
-        """Handle chat questions about the analysis with vector-based learning"""
+        """
+        Handle chat questions intelligently.
+        Routes questions to personal analysis, market data, or provides guidance.
+        """
         await self._initialize_clients()
-        return await self.chat_assistant.chat(user_question, user_id)
-    
-    async def _store_report_in_database(self, user_id: str, time_range: str, 
+
+        # Intent 1: Market Data Question (looks for a ticker)
+        ticker_match = re.search(r'\$?([A-Z]{1,5})\b', user_question)
+        if ticker_match:
+            ticker = ticker_match.group(1)
+            try:
+                async with self.hf_client:
+                    # Fetch market data
+                    tasks = {
+                        "info": self.market_data_orchestrator.get_company_info(ticker),
+                        "quote": self.market_data_orchestrator.get_quote(ticker),
+                        "news": self.market_data_orchestrator.get_news(ticker, limit=5)
+                    }
+                    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+                    data_map = dict(zip(tasks.keys(), results))
+
+                    # Process results
+                    info_data = data_map['info'].data if hasattr(data_map['info'], 'data') else 'Not available'
+                    quote_data = data_map['quote'].data if hasattr(data_map['quote'], 'data') else 'Not available'
+                    news_data = data_map['news'].data if hasattr(data_map['news'], 'data') else 'Not available'
+
+                    # Build a comprehensive context string
+                    market_context = f"Here is the latest data for {ticker}:\n"
+                    market_context += f"Company Info: {info_data}\n"
+                    market_context += f"Latest Quote: {quote_data}\n"
+                    if news_data:
+                        news_str = '\n'.join([f"- {n.headline}" for n in news_data])
+                        market_context += f"Recent News:\n{news_str}"
+
+                    prompt = f"""
+You are a financial analyst AI. Based on the following real-time market data, answer the user's question.
+
+                    MARKET DATA:
+                    {market_context}
+
+                    USER QUESTION: {user_question}
+
+                    Provide a direct and informative answer.
+                    """
+
+                    answer = await self.hf_client.generate_text(ModelType.CHAT_ASSISTANT, prompt, max_tokens=500)
+                    return answer
+
+            except Exception as e:
+                logger.error(f"Error fetching market data for {ticker}: {str(e)}")
+                return "I had trouble fetching the latest market data for that ticker. Please try again later."
+
+        # Intent 2: Personal Trading Question (context exists)
+        if self.chat_assistant and self.chat_assistant.context_data:
+            return await self.chat_assistant.chat(user_question, user_id)
+
+        # Intent 3: No context, no ticker -> Guidance
+        else:
+            return "I can answer questions about your personal trading analysis or provide information on specific stock tickers (e.g., $AAPL). To ask about your trading, please generate a report first."
+
+    async def _store_report_in_database(self, user_id: str, time_range: str,
                                        custom_start_date: Optional[date], custom_end_date: Optional[date],
-                                       time_period_display: str, trading_data: Dict[str, Any], 
+                                       time_period_display: str, trading_data: Dict[str, Any],
                                        data_analysis: str, insights: str, report: str) -> Optional[str]:
         """Store AI report in vector database with embeddings"""
-        
+
         try:
             # Extract metrics from trading data
             core_metrics = trading_data.get("core_performance_metrics", {})
-            
+
             # Generate report title
             report_title = f"Trading Performance Report - {time_period_display}"
-            
+
             # Extract executive summary from report (first section after title)
             executive_summary = self._extract_executive_summary(report)
-            
+
             # Generate tags based on performance
             tags = self._generate_report_tags(core_metrics, time_range)
-            
+
             # Create report data for embedding
             report_data = {
                 "report_title": report_title,
@@ -614,47 +676,48 @@ class AITradingSummaryService:
                 "total_trades": core_metrics.get("total_trades"),
                 "net_pnl": core_metrics.get("net_pnl")
             }
-            
+
             # Generate embeddings
             async with EmbeddingService() as embedding_service:
                 embeddings = await embedding_service.generate_report_embeddings(report_data)
-            
+
             # Store in database
-            conn = await get_database_connection()
-            
-            result = await conn.fetchrow("""
-                SELECT * FROM upsert_ai_report(
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 
-                    $15::vector, $16::vector, $17, $18, $19
-                )
-            """, 
-                user_id, time_range, custom_start_date, custom_end_date,
-                report_title, executive_summary, report, data_analysis, insights,
-                core_metrics.get("win_rate_percentage"), 
-                core_metrics.get("profit_factor"),
-                core_metrics.get("trade_expectancy"),
-                core_metrics.get("total_trades"),
-                core_metrics.get("net_pnl"),
-                embeddings.get("report_embedding"),
-                embeddings.get("summary_embedding"),
-                tags,
-                {"data_analyzer": "fallback_used", "insight_generator": "fallback_used", "report_writer": "fallback_used"},
-                None  # processing_time_ms
-            )
-            
-            await conn.close()
-            
-            if result and result["report_id"]:
-                logger.info(f"Stored AI report with ID: {result['report_id']}")
-                return str(result["report_id"])
+            supabase = await get_database_connection()
+
+            result = supabase.rpc('upsert_ai_report', {
+                'p_user_id': user_id,
+                'p_time_range': time_range,
+                'p_custom_start_date': custom_start_date,
+                'p_custom_end_date': custom_end_date,
+                'p_report_title': report_title,
+                'p_executive_summary': executive_summary,
+                'p_report': report,
+                'p_data_analysis': data_analysis,
+                'p_insights': insights,
+                'p_win_rate': core_metrics.get("win_rate_percentage"),
+                'p_profit_factor': core_metrics.get("profit_factor"),
+                'p_trade_expectancy': core_metrics.get("trade_expectancy"),
+                'p_total_trades': core_metrics.get("total_trades"),
+                'p_net_pnl': core_metrics.get("net_pnl"),
+                'p_report_embedding': embeddings.get("report_embedding"),
+                'p_summary_embedding': embeddings.get("summary_embedding"),
+                'p_tags': tags,
+                'p_model_versions': {"data_analyzer": "fallback_used", "insight_generator": "fallback_used", "report_writer": "fallback_used"},
+                'p_processing_time_ms': None
+            }).execute()
+
+            if result.data and len(result.data) > 0 and result.data[0].get("report_id"):
+                report_id = result.data[0]["report_id"]
+                logger.info(f"Stored AI report with ID: {report_id}")
+                return str(report_id)
             else:
                 logger.error("Failed to store AI report")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error storing report in database: {str(e)}")
             return None
-    
+
     def _extract_executive_summary(self, report: str) -> str:
         """Extract executive summary from report"""
         try:
@@ -662,7 +725,7 @@ class AITradingSummaryService:
             lines = report.split('\n')
             summary_started = False
             summary_lines = []
-            
+
             for line in lines:
                 if '## 🎯 Executive Summary' in line or '## Executive Summary' in line:
                     summary_started = True
@@ -671,7 +734,7 @@ class AITradingSummaryService:
                     break
                 elif summary_started and line.strip():
                     summary_lines.append(line.strip())
-            
+
             if summary_lines:
                 return ' '.join(summary_lines)
             else:
@@ -679,21 +742,21 @@ class AITradingSummaryService:
                 for line in lines:
                     if line.strip() and not line.startswith('#') and len(line.strip()) > 50:
                         return line.strip()[:500]
-                        
+
             return "AI-generated trading performance analysis"
-            
+
         except Exception:
             return "AI-generated trading performance analysis"
-    
+
     def _generate_report_tags(self, metrics: Dict[str, Any], time_range: str) -> List[str]:
         """Generate tags based on performance metrics"""
         tags = [time_range]
-        
+
         try:
             win_rate = metrics.get("win_rate_percentage", 0)
             profit_factor = metrics.get("profit_factor", 0)
             net_pnl = metrics.get("net_pnl", 0)
-            
+
             # Performance tags
             if win_rate >= 70:
                 tags.append("high_win_rate")
@@ -701,7 +764,7 @@ class AITradingSummaryService:
                 tags.append("moderate_win_rate")
             else:
                 tags.append("low_win_rate")
-            
+
             if profit_factor >= 2.0:
                 tags.append("excellent_profit_factor")
             elif profit_factor >= 1.5:
@@ -710,12 +773,12 @@ class AITradingSummaryService:
                 tags.append("break_even")
             else:
                 tags.append("losing_period")
-            
+
             if net_pnl > 0:
                 tags.append("profitable")
             else:
                 tags.append("unprofitable")
-            
+
             # Volume tags
             total_trades = metrics.get("total_trades", 0)
             if total_trades >= 50:
@@ -724,12 +787,12 @@ class AITradingSummaryService:
                 tags.append("moderate_volume")
             else:
                 tags.append("low_volume")
-                
+
         except Exception:
             pass
-        
+
         return tags
-    
+
     def _format_time_period(self, time_range: str, start_date: Optional[date], end_date: Optional[date]) -> str:
         """Format time period for display"""
         if time_range == 'custom' and start_date and end_date:
@@ -751,14 +814,14 @@ class AITradingSummaryService:
 # Example usage
 async def main():
     """Example usage of the AI Trading Summary Service"""
-    
+
     service = AITradingSummaryService()
-    
+
     analysis = await service.generate_complete_analysis(
         user_id="test_user",
         time_range="30d"
     )
-    
+
     if analysis.get("success"):
         print("=== AI TRADING ANALYSIS COMPLETE ===")
         print(f"Time Period: {analysis['time_period']}")
@@ -766,7 +829,7 @@ async def main():
         print("\n" + "="*50)
         print(analysis['report'])
         print("="*50)
-        
+
         chat_response = await service.chat_about_analysis(
             "What's my biggest weakness as a trader?"
         )

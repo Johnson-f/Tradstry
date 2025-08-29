@@ -39,7 +39,7 @@ class GenerateAnalysisRequest(BaseModel):
     custom_start_date: Optional[date] = None
     custom_end_date: Optional[date] = None
     include_raw_data: bool = Field(default=False)
-    
+
     class Config:
         use_enum_values = True
 
@@ -51,7 +51,7 @@ class ChatRequest(BaseModel):
 
 class QuickInsightsRequest(BaseModel):
     time_range: TimeRange = Field(default=TimeRange.SEVEN_DAYS)
-    
+
     class Config:
         use_enum_values = True
 
@@ -75,7 +75,7 @@ class RiskAssessment(BaseModel):
 class BehavioralFlags(BaseModel):
     longest_winning_streak: int = Field(..., ge=0)
     longest_losing_streak: int = Field(..., ge=0)
-    directional_bias: str = Field(..., regex="^(bullish_bias|bearish_bias|balanced|unknown)$")
+    directional_bias: str = Field(..., pattern="^(bullish_bias|bearish_bias|balanced|unknown)$")
     emotional_trading_score: Optional[float] = Field(None, ge=0, le=1)
 
 
@@ -103,7 +103,7 @@ class ModelStatus(BaseModel):
 
 
 class AIServiceStatus(BaseModel):
-    service_status: str = Field(..., regex="^(operational|degraded|error|maintenance)$")
+    service_status: str = Field(..., pattern="^(operational|degraded|error|maintenance)$")
     models: Dict[str, ModelStatus]
     chat_enabled: bool
     timestamp: datetime
@@ -115,18 +115,18 @@ class AnalysisResult(BaseModel):
     timestamp: datetime
     time_period: str
     status: AnalysisStatus
-    
+
     # Analysis outputs
     report: Optional[str] = None
     data_analysis: Optional[str] = None
     insights: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
-    
+
     # Metadata
     processing_time_seconds: Optional[float] = None
     model_versions: Optional[Dict[str, str]] = None
     chat_enabled: bool = False
-    
+
     # Error handling
     error: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
@@ -185,7 +185,7 @@ class ModelConfig(BaseModel):
 
 
 class AISystemConfig(BaseModel):
-    model_size: str = Field(..., regex="^(small|medium|large)$")
+    model_size: str = Field(..., pattern="^(small|medium|large)$")
     use_gpu: bool = True
     gpu_memory_fraction: float = Field(0.8, ge=0.1, le=1.0)
     enable_model_cache: bool = True
@@ -299,7 +299,7 @@ class ReportSearchRequest(BaseModel):
 # Export all models
 __all__ = [
     "TimeRange",
-    "AnalysisStatus", 
+    "AnalysisStatus",
     "ModelType",
     "GenerateAnalysisRequest",
     "ChatRequest",
@@ -322,7 +322,7 @@ __all__ = [
     "UsageMetrics",
     "ModelPerformance",
     "AIReportCreate",
-    "AIReportResponse", 
+    "AIReportResponse",
     "AIReportStats",
     "SimilarReportsRequest",
     "ReportSearchRequest"
