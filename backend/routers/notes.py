@@ -27,9 +27,9 @@ def get_current_user_with_token(authorization: str = Header(...)) -> Dict[str, A
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = authorization.split(" ")[1]
-    
+
     try:
         user = get_user_with_token_retry(user_service.supabase, token)
         # Include the access token in the user object for service calls
@@ -47,9 +47,9 @@ def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = authorization.split(" ")[1]
-    
+
     try:
         user = get_user_with_retry(user_service.supabase, token)
         # Include the access token in the user object for service calls
@@ -69,13 +69,13 @@ async def get_folders(
     is_system: Optional[bool] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    sort_by: str = Query('name', regex='^(name|slug|created_at|updated_at)$'),
-    sort_order: str = Query('ASC', regex='^(ASC|DESC)$'),
+    sort_by: str = Query('name', pattern='^(name|slug|created_at|updated_at)$'),
+    sort_order: str = Query('ASC', pattern='^(ASC|DESC)$'),
     current_user: dict = Depends(get_current_user_with_token)
 ):
     """
     Get folders with optional filtering and sorting.
-    
+
     - **search_term**: Search in folder name and description
     - **is_system**: Filter by system folders (true) or user folders (false)
     - **limit**: Number of folders to return (max 1000)
@@ -268,13 +268,13 @@ async def get_notes(
     include_deleted: bool = Query(False),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    sort_by: str = Query('updated_at', regex='^(title|created_at|updated_at|is_pinned|is_favorite)$'),
-    sort_order: str = Query('DESC', regex='^(ASC|DESC)$'),
+    sort_by: str = Query('updated_at', pattern='^(title|created_at|updated_at|is_pinned|is_favorite)$'),
+    sort_order: str = Query('DESC', pattern='^(ASC|DESC)$'),
     current_user: dict = Depends(get_current_user_with_token)
 ):
     """
     Get notes with optional filtering and sorting.
-    
+
     - **note_id**: Get a specific note by ID
     - **folder_slug**: Filter by folder slug
     - **search_term**: Search in note title and content
@@ -315,10 +315,10 @@ async def get_note(
         note_id=note_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not notes:
         raise HTTPException(status_code=404, detail="Note not found")
-    
+
     return notes[0]
 
 @router.put("/{note_id}", response_model=NoteUpsertResponse)
@@ -346,18 +346,18 @@ async def update_note(
         update_params['is_archived'] = note.is_archived
     if note.metadata is not None:
         update_params['metadata'] = note.metadata
-    
+
     # Get current note to preserve existing values
     notes = await notes_service.get_notes(
         note_id=note_id,
         access_token=current_user.get("access_token")
     )
-    
+
     if not notes:
         raise HTTPException(status_code=404, detail="Note not found")
-    
+
     current_note = notes[0]
-    
+
     return await notes_service.upsert_note(
         folder_id=update_params.get('folder_id', current_note.folder_id),
         title=update_params.get('title', current_note.title),
@@ -378,7 +378,7 @@ async def delete_note(
 ):
     """
     Delete a note.
-    
+
     - **permanent**: If true, permanently delete the note (only works if note is in trash)
     - If false, move the note to trash (soft delete)
     """

@@ -121,8 +121,6 @@ export const apiConfig = {
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
     },
-    // Health check
-    health: "/health",
   },
   timeout: 30000, // 30 seconds
   retries: 3,

@@ -1,6 +1,8 @@
 from supabase import create_client, Client
 from config import get_settings
 from functools import lru_cache
+import asyncpg
+import os
 
 settings = get_settings()
 
@@ -30,3 +32,9 @@ def get_supabase_cached() -> Client:
         supabase_url=settings.SUPABASE_URL,
         supabase_key=settings.SUPABASE_KEY
     )
+
+async def get_database_connection():
+    """
+    Get Supabase client for database operations
+    """
+    return get_supabase()
