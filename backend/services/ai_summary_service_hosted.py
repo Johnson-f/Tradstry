@@ -132,13 +132,12 @@ class HuggingFaceInferenceClient:
 
 
 class DataAnalyzer:
-    """Model 1: Transforms raw JSON trading data into structured insights"""
+    """Model 1: Transforms raw JSON trading data into structured insights. TODO: Tweak the prompt template"""
 
     def __init__(self, hf_client: HuggingFaceInferenceClient):
         self.hf_client = hf_client
         self.prompt_template = """
 You are a quantitative trading analyst. Analyze the following trading data and extract key insights.
-
 TRADING DATA:
 {trading_data}
 
@@ -356,10 +355,95 @@ class ChatAssistant:
         }
 
     async def chat(self, user_question: str, user_id: str) -> str:
-        """Handle chat questions about the analysis with vector-based learning"""
-        # This is a simplified chat method for personal context
-        # The full implementation would involve vector search, etc.
-        return await self._fallback_to_external_ai(user_question)
+        """
+        Handle chat questions about the analysis using a RAG approach.
+        1. Generate an embedding for the user's question.
+        2. Search for similar reports and past Q&A from the database.
+        3. Construct a context-rich prompt with the retrieved information.
+        4. Call the LLM to generate a synthesized answer.
+        """
+        if not self.context_data:
+            return "Please generate a report first to enable chat about your personal trading analysis."
+
+        async with EmbeddingService() as embedding_service:
+            question_embedding = await embedding_service.generate_embedding(user_question)
+
+        if not question_embedding:
+            logger.warning("Could not generate embedding for the question. Using fallback.")
+            return await self._fallback_to_external_ai(user_question)
+
+        # Retrieve relevant context from the database
+        retrieved_context = await self._retrieve_rag_context(user_id, question_embedding)
+
+        # Fallback if no context is found
+        if not retrieved_context:
+            logger.info("No specific context found in DB. Using general context fallback.")
+            return await self._fallback_to_external_ai(user_question)
+
+        # Construct a RAG prompt
+        history = self._format_history()
+        prompt = f"""You are a helpful trading assistant. Answer the user's question based on the following retrieved context from their trading history and our previous conversation.
+
+RETRIEVED CONTEXT:
+{retrieved_context}
+
+CONVERSATION HISTORY:
+{history}
+
+USER QUESTION: {user_question}
+
+Synthesize an answer from the provided context. If the context does not contain the answer, state that you don't have enough information from the user's history to answer. Do not make up information.
+"""
+
+        response = await self.hf_client.generate_text(
+            ModelType.CHAT_ASSISTANT,
+            prompt,
+            max_tokens=400
+        )
+
+        # Update conversation history
+        self.conversation_history.append({"user": user_question, "assistant": response})
+
+        # Asynchronously save the new Q&A pair for future reference
+        # asyncio.create_task(self._save_qa_pair(user_id, user_question, response, question_embedding))
+
+        return response
+
+    async def _retrieve_rag_context(self, user_id: str, question_embedding: list) -> str:
+        """Retrieve context from reports and past Q&A using vector search."""
+        try:
+            supabase = await get_database_connection()
+
+            # Search for similar reports
+            reports_result = await supabase.rpc('search_similar_ai_reports', {
+                'p_user_id': user_id,
+                'p_query_embedding': question_embedding,
+                'p_similarity_threshold': 0.75,
+                'p_match_count': 2,
+                'p_search_type': 'summary'
+            }).execute()
+
+            # Search for similar past questions
+            qa_result = await supabase.rpc('search_similar_chat_qa', {
+                'p_user_id': user_id,
+                'p_query_embedding': question_embedding,
+                'p_similarity_threshold': 0.85,
+                'p_match_count': 2
+            }).execute()
+
+            context_parts = []
+            if reports_result.data:
+                for report in reports_result.data:
+                    context_parts.append(f"From a report titled '{report.get('report_title')}': {report.get('executive_summary')}")
+
+            if qa_result.data:
+                for qa in qa_result.data:
+                    context_parts.append(f"Previously, you asked '{qa.get('question')}' and the answer was: {qa.get('answer')}")
+
+            return "\n\n".join(context_parts) if context_parts else ""
+        except Exception as e:
+            logger.error(f"Failed to retrieve RAG context: {e}")
+            return ""
 
     async def _fallback_to_external_ai(self, user_question: str) -> str:
         """Fallback method to call external AI when no similar questions found"""

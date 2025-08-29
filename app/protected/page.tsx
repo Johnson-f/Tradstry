@@ -1,18 +1,26 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-import { ChatInterface } from "@/components/chat";
+export default async function HomePage() {
+  const supabase = await createClient();
 
-export default function DashboardPage() {
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data?.claims) {
+    redirect("/auth/login");
+  }
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header - Fixed */}
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold tracking-tight">AI Assistant</h1>
+        <h1 className="text-2xl font-bold tracking-tight">HOME</h1>
       </div>
 
-      {/* Main content - Full-bleed chat interface */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <ChatInterface />
+      {/* Main content - Scrollable area with native overflow */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full overflow-y-auto">
+          <div className="p-8">Welcome HOME</div>
+        </div>
       </div>
     </div>
   );

@@ -6,5 +6,6 @@ from .setups import router as setups_router
 from .notes import router as notes_router
 from .images import router as images_router
 from .trade_notes import router as trade_notes_router
+from .ai_dynamic_router import router as ai_dynamic_router
 
-__all__ = ['stocks_router', 'options_router', 'setups_router', 'notes_router', 'images_router', 'trade_notes_router']
+__all__ = ['stocks_router', 'options_router', 'setups_router', 'notes_router', 'images_router', 'trade_notes_router', 'ai_dynamic_router']
