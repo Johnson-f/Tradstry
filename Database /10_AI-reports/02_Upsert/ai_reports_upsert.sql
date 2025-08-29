@@ -3,13 +3,13 @@
 
 CREATE OR REPLACE FUNCTION upsert_ai_report(
     p_time_period VARCHAR(50),
-    p_start_date DATE DEFAULT NULL,
-    p_end_date DATE DEFAULT NULL,
     p_report_title VARCHAR(255),
     p_executive_summary TEXT,
     p_full_report TEXT,
     p_data_analysis TEXT,
     p_insights TEXT,
+    p_start_date DATE DEFAULT NULL,
+    p_end_date DATE DEFAULT NULL,
     p_win_rate DECIMAL(5,2) DEFAULT NULL,
     p_profit_factor DECIMAL(8,2) DEFAULT NULL,
     p_trade_expectancy DECIMAL(10,2) DEFAULT NULL,
@@ -166,4 +166,4 @@ GRANT EXECUTE ON FUNCTION upsert_ai_report TO authenticated;
 -- SELECT * FROM upsert_ai_report('weekly', '2024-01-01', '2024-01-07', 'Weekly Report', 'Executive summary...', 'Full report...', 'Data analysis...', 'Insights...');
 --
 -- For testing (manual user_id):
--- SELECT * FROM upsert_ai_report('weekly', '2024-01-01', '2024-01-07', 'Weekly Report', 'Executive summary...', 'Full report...', 'Data analysis...', 'Insights...', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '550e8400-e29b-41d4-a716-446655440000'::uuid);
+-- SELECT * FROM upsert_ai_report('weekly', '2024-01-01', '2024-01-07', 'Weekly Report', 'Executive summary...', 'Full report...', 'Data analysis...', 'Insights...', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '99369696-8c65-43bb-96bc-5999275e8be1'::uuid);

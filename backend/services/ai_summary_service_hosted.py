@@ -354,18 +354,12 @@ class ChatAssistant:
             "report": report
         }
     
-    async def chat(self, user_question: str) -> str:
-        """Handle conversational questions about trading data"""
-        
-        if not self.context_data:
-            return "Please generate a trading report first to enable chat functionality."
-        
-        try:
-            # Create chat prompt with context
-            context_summary = self._create_context_summary()
-            history = self._format_history()
-            
-            prompt = f"""
+    async def _fallback_to_external_ai(self, user_question: str) -> str:
+        """Fallback method to call external AI when no similar questions found"""
+        context_summary = self._create_context_summary()
+        history = self._format_history()
+
+        prompt = f"""
 You are a helpful trading assistant. Answer the user's question based on their trading data and analysis.
 
 TRADING CONTEXT:
@@ -378,20 +372,76 @@ USER QUESTION: {user_question}
 
 Provide a helpful, specific answer based on the trading data. Be conversational but informative. Keep responses concise and actionable.
 """
-            
-            response = await self.hf_client.generate_text(
-                ModelType.CHAT_ASSISTANT,
-                prompt,
-                max_tokens=400
-            )
-            
-            # Update conversation history
-            self.conversation_history.append({"user": user_question, "assistant": response})
-            
-            return response
-            
+
+        response = await self.hf_client.generate_text(
+            ModelType.CHAT_ASSISTANT,
+            prompt,
+            max_tokens=400
+        )
+
+        # Update conversation history
+        self.conversation_history.append({"user": user_question, "assistant": response})
+
+        return response
+
+    async def _enhance_with_context(self, user_question: str, cached_answer: str) -> str:
+        """Enhance a cached answer with current context for slightly different questions"""
+        context_summary = self._create_context_summary()
+
+        prompt = f"""
+You have a similar but not identical question. Enhance this cached answer with current context:
+
+CACHED ANSWER: {cached_answer}
+
+CURRENT QUESTION: {user_question}
+
+CURRENT CONTEXT: {context_summary}
+
+Provide an enhanced answer that addresses the current question while building on the cached answer.
+"""
+
+        enhanced_response = await self.hf_client.generate_text(
+            ModelType.CHAT_ASSISTANT,
+            prompt,
+            max_tokens=300
+        )
+
+        return enhanced_response
+
+    async def _save_qa_pair(self, user_id: str, question: str, answer: str, question_embedding: list) -> None:
+        """Save a new Q&A pair to the vector database"""
+        try:
+            # Generate embedding for the answer
+            answer_embedding = await self.hf_client.embedding_service.generate_embedding(answer)
+
+            if answer_embedding:
+                conn = await get_database_connection()
+
+                # Get current model being used
+                current_model = self.hf_client.model_configs[ModelType.CHAT_ASSISTANT][0].model_name
+
+                # Save Q&A pair
+                await conn.execute("""
+                    SELECT upsert_chat_qa($1, $2, $3, $4::vector, $5::vector, NULL, 'external_ai', $6)
+                """, user_id, question, answer, question_embedding, answer_embedding, current_model)
+
+                await conn.close()
+                logger.info(f"Saved Q&A pair for user {user_id}")
+
         except Exception as e:
-            return f"Chat Error: {str(e)}"
+            logger.error(f"Failed to save Q&A pair: {str(e)}")
+
+    async def _update_qa_usage(self, qa_id: str) -> None:
+        """Update usage count for a Q&A pair"""
+        try:
+            conn = await get_database_connection()
+            await conn.execute("""
+                UPDATE chat_qa SET usage_count = usage_count + 1, last_used_at = NOW()
+                WHERE id = $1
+            """, qa_id)
+            await conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to update Q&A usage: {str(e)}")
     
     def _create_context_summary(self) -> str:
         """Create a summary of the trading context"""
@@ -527,10 +577,10 @@ class AITradingSummaryService:
         except Exception as e:
             return {"error": f"Analysis pipeline error: {str(e)}"}
     
-    async def chat_about_analysis(self, user_question: str) -> str:
-        """Handle chat questions about the analysis"""
+    async def chat_about_analysis(self, user_question: str, user_id: str = None) -> str:
+        """Handle chat questions about the analysis with vector-based learning"""
         await self._initialize_clients()
-        return await self.chat_assistant.chat(user_question)
+        return await self.chat_assistant.chat(user_question, user_id)
     
     async def _store_report_in_database(self, user_id: str, time_range: str, 
                                        custom_start_date: Optional[date], custom_end_date: Optional[date],

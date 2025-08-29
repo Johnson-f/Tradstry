@@ -77,6 +77,99 @@ Choose based on your hardware:
 - RAM: ~32GB
 - GPU: 16GB+ VRAM recommended
 
+## Backend Files Explained (Like to an 18-Year-Old)
+
+Here's what each file in your backend does, explained in simple terms:
+
+### 🤖 AI Service Files (`backend/services/`)
+
+**`ai_summary_service_hosted.py`** - Your main AI coach!
+- This is the "smart trading teacher" that analyzes your trades
+- Takes your trading data and sends it through 3 AI specialists
+- Like a coach who gets input from a data analyst, psychologist, and writer
+- Uses hosted AI models (no expensive computer needed!)
+
+**`embedding_service.py`** - The "smart code" maker
+- Creates secret codes (vector embeddings) for each report
+- Like giving each report a unique "fingerprint" so you can find similar ones later
+- Makes your reports searchable by meaning, not just words
+
+### 🚪 API Router Files (`backend/routers/`)
+
+**`ai_summary.py`** - The doorbell for AI requests
+- Handles all the "knock knock" requests from your frontend
+- Routes requests like "analyze my trades" or "chat with AI"
+- Translates between what your app asks for and what the AI services provide
+- Like a friendly receptionist who knows everyone and connects people
+
+### 📋 Data Models (`backend/models/`)
+
+**`ai_summary.py`** - The form templates
+- Defines what data looks like (like forms you fill out)
+- Makes sure everyone speaks the same "language" for AI responses
+- Like having standard report cards that everyone understands
+
+### ⚙️ Configuration (`backend/config/`)
+
+**`ai_config.py`** - The AI settings manager
+- Decides which AI models to use and how to use them
+- Sets up fallback systems (if one AI is busy, try another)
+- Like your phone settings that decide which apps to use and how
+
+### 📊 Other Important Files
+
+**`main.py`** - The headquarters
+- The main entry point that connects everything together
+- Like the main office building where all departments connect
+
+**`requirements.txt`** - The shopping list
+- Lists all the software ingredients needed to run your AI system
+- Like a grocery list for your computer to download the right tools
+
+### 🗃️ Database Files (`Database /10_AI-reports/`)
+
+**`ai_reports_table.sql`** - The storage locker
+- Creates the "filing cabinet" where AI reports are stored
+- Sets up smart search with vector codes for finding similar reports
+- Like organizing your closet so you can find clothes easily
+
+**`ai_reports_upsert.sql`** - The librarian
+- Knows how to file new reports and update old ones
+- Prevents duplicate reports (like not buying the same book twice)
+- Like a smart librarian who organizes and prevents duplicates
+
+**`ai_reports_select.sql`** - The search assistant
+- Helps you find reports when you need them
+- Can find similar reports using "smart search" with vector codes
+- Like having a search engine for your personal reports
+
+## How They Work Together
+
+```
+User clicks "Analyze" 
+    ↓
+Frontend calls router (ai_summary.py)
+    ↓
+Router talks to AI service (ai_summary_service_hosted.py)
+    ↓
+AI service gets your data and analyzes it
+    ↓
+Embedding service creates smart codes
+    ↓
+Everything gets stored in database
+    ↓
+Response goes back to show your report!
+```
+
+Think of it like a restaurant:
+- **Router** = Host who seats you
+- **AI Service** = Chef who cooks your meal
+- **Models** = Recipe cards the chef uses
+- **Database** = Storage where ingredients are kept
+- **Embedding Service** = The smart menu that recommends similar dishes
+
+Easy peasy! 🎯
+
 ## API Endpoints
 
 ### Generate Complete Analysis
