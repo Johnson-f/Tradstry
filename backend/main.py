@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
-from routers import stocks_router, options_router, analytics, setups_router, notes_router, images, trade_notes_router, ai_summary
+from routers import stocks_router, options_router, analytics, setups_router, notes_router, images, trade_notes_router, ai_summary, ai_dynamic_router
 import logging
 
 # Configure logging
@@ -29,6 +29,7 @@ app.include_router(notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(images.router, prefix=get_settings().API_PREFIX)
 app.include_router(trade_notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(ai_summary.router, prefix=get_settings().API_PREFIX)
+app.include_router(ai_dynamic_router, prefix=f"{get_settings().API_PREFIX}/ai-dynamic", tags=["AI Dynamic"])
 
 # CORS middleware configuration
 app.add_middleware(
