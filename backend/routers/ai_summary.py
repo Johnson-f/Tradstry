@@ -6,7 +6,7 @@ Provides endpoints for generating AI-powered trading insights and reports
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
 
@@ -136,7 +136,7 @@ async def chat_with_ai(
             )
         
         # Get chat response
-        answer = await ai_service.chat_about_analysis(request.question)
+        answer = await ai_service.chat_about_analysis(request.question, str(current_user.id))
         
         if answer.startswith("Please generate"):
             raise HTTPException(
@@ -484,7 +484,189 @@ async def get_report_statistics(
         raise HTTPException(status_code=500, detail=f"Error retrieving report statistics: {str(e)}")
 
 
-# Helper functions
+# Chat Q&A Vector Database Endpoints
+@router.get("/chat/history", response_model=List[Dict[str, Any]])
+async def get_chat_history(
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user)
+):
+    """Get user's chat Q&A history from vector database"""
+    try:
+        from ..config.database import get_database_connection
+
+        conn = await get_database_connection()
+
+        results = await conn.fetch("""
+            SELECT id, question, answer, source_type, model_used, usage_count,
+                   similarity_score, created_at, last_used_at
+            FROM chat_qa
+            WHERE user_id = $1
+            ORDER BY last_used_at DESC, created_at DESC
+            LIMIT $2 OFFSET $3
+        """, current_user.id, limit, offset)
+
+        await conn.close()
+
+        history = []
+        for row in results:
+            history.append({
+                "id": str(row['id']),
+                "question": row['question'],
+                "answer": row['answer'],
+                "source_type": row['source_type'],
+                "model_used": row['model_used'],
+                "usage_count": row['usage_count'],
+                "similarity_score": float(row['similarity_score']) if row['similarity_score'] else None,
+                "created_at": row['created_at'].isoformat(),
+                "last_used_at": row['last_used_at'].isoformat()
+            })
+
+        return history
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving chat history: {str(e)}")
+
+
+@router.post("/chat/search-similar")
+async def search_similar_chat_questions(
+    request: SimilarReportsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Search for similar chat questions using vector similarity"""
+    try:
+        from ..services.embedding_service import EmbeddingService
+        from ..config.database import get_database_connection
+
+        # Generate embedding for query text
+        async with EmbeddingService() as embedding_service:
+            query_embedding = await embedding_service.generate_embedding(request.query_text)
+
+        if not query_embedding:
+            raise HTTPException(status_code=400, detail="Could not generate embedding for query")
+
+        conn = await get_database_connection()
+
+        results = await conn.fetch("""
+            SELECT * FROM search_similar_chat_qa($1, $2::vector, $3, $4)
+        """,
+            current_user.id,
+            query_embedding,
+            request.similarity_threshold,
+            request.limit
+        )
+
+        await conn.close()
+
+        similar_qa = []
+        for row in results:
+            similar_qa.append({
+                "id": str(row['id']),
+                "question": row['question'],
+                "answer": row['answer'],
+                "similarity_score": float(row['similarity_score']),
+                "source_type": row['source_type'],
+                "model_used": row['model_used'],
+                "usage_count": row['usage_count'],
+                "created_at": row['created_at'].isoformat()
+            })
+
+        return {
+            "query": request.query_text,
+            "similar_questions": similar_qa,
+            "total_found": len(similar_qa)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error searching similar questions: {str(e)}")
+
+
+@router.get("/chat/stats")
+async def get_chat_statistics(
+    days_back: int = 30,
+    current_user: User = Depends(get_current_user)
+):
+    """Get chat Q&A statistics for learning insights"""
+    try:
+        from ..config.database import get_database_connection
+
+        conn = await get_database_connection()
+
+        result = await conn.fetchrow("""
+            SELECT * FROM get_chat_qa_stats($1, $2)
+        """, current_user.id, days_back)
+
+        await conn.close()
+
+        if not result:
+            return {
+                "total_qa_pairs": 0,
+                "qa_pairs_this_period": 0,
+                "avg_similarity_score": None,
+                "most_used_model": None,
+                "total_usage_count": 0,
+                "source_distribution": {},
+                "learning_efficiency": "insufficient_data"
+            }
+
+        # Calculate learning efficiency
+        total_pairs = result['total_qa_pairs'] or 0
+        total_usage = result['total_usage_count'] or 0
+        learning_efficiency = "beginner"
+        if total_pairs > 10 and total_usage > 50:
+            learning_efficiency = "advanced"
+        elif total_pairs > 5 and total_usage > 20:
+            learning_efficiency = "intermediate"
+
+        return {
+            "total_qa_pairs": result['total_qa_pairs'],
+            "qa_pairs_this_period": result['qa_pairs_this_period'],
+            "avg_similarity_score": float(result['avg_similarity_score']) if result['avg_similarity_score'] else None,
+            "most_used_model": result['most_used_model'],
+            "total_usage_count": result['total_usage_count'],
+            "source_distribution": result['source_distribution'] or {},
+            "learning_efficiency": learning_efficiency
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving chat statistics: {str(e)}")
+
+
+@router.delete("/chat/history/{qa_id}")
+async def delete_chat_qa_pair(
+    qa_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a specific chat Q&A pair"""
+    try:
+        from ..config.database import get_database_connection
+
+        conn = await get_database_connection()
+
+        result = await conn.execute("""
+            DELETE FROM chat_qa
+            WHERE id = $1 AND user_id = $2
+        """, qa_id, current_user.id)
+
+        await conn.close()
+
+        if result == "DELETE 0":
+            raise HTTPException(status_code=404, detail="Chat Q&A pair not found")
+
+        return {
+            "success": True,
+            "message": "Chat Q&A pair deleted successfully",
+            "deleted_id": qa_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting chat Q&A pair: {str(e)}")
+
+
 def _extract_total_trades(trading_data: Dict[str, Any]) -> int:
     """Extract total number of trades from trading data"""
     try:
