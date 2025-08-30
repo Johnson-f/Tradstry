@@ -1,9 +1,17 @@
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 class AISettings(BaseSettings):
     """Configuration settings for AI services."""
+
+    # Use Pydantic v2 style configuration
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra='allow'  # This allows extra fields
+    )
 
     # Hugging Face API Configuration
     HUGGINGFACEHUB_API_TOKEN: Optional[str] = None
@@ -72,10 +80,6 @@ class AISettings(BaseSettings):
     # Cache settings
     ENABLE_MODEL_CACHING: bool = True
     CACHE_TTL_SECONDS: int = 3600
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 def get_ai_settings() -> AISettings:
     """Get AI configuration settings."""

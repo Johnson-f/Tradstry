@@ -166,7 +166,7 @@ async def generate_insights(
         ]
         
         result = await orchestrator.generate_insights(
-            access_token=current_user["access_token"],
+            user=current_user,
             insight_types=insight_types,
             time_range=request.time_range,
             min_confidence=request.min_confidence

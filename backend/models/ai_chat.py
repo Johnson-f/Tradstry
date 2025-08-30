@@ -81,6 +81,7 @@ class AIChatRequest(BaseModel):
     include_trading_context: bool = Field(default=True, description="Whether to include recent trading data")
     time_range: str = Field(default="30d", description="Time range for trading context")
     model_preference: Optional[str] = Field(default=None, description="Preferred AI model")
+    context_limit: Optional[int] = Field(default=10, ge=1, le=50, description="Maximum number of context messages to include")
 
 class AIChatResponse(BaseModel):
     """Response model for chat interactions."""
