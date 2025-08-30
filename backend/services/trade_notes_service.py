@@ -71,7 +71,7 @@ class TradeNotesService:
 
             # response.data should be the JSONB object returned by the SQL function
             result = response.data
-            
+
             if not isinstance(result, dict):
                 print(f"Unexpected response format - expected dict, got: {type(result)}")
                 return []
@@ -93,7 +93,7 @@ class TradeNotesService:
                 if 'trade_symbol' not in note_dict:
                     note_dict['trade_symbol'] = None
                 notes.append(TradeNoteInDB(**note_dict))
-            
+
             return notes
 
         except Exception as e:
@@ -103,30 +103,30 @@ class TradeNotesService:
     async def delete_trade_note(self, note_id: int, access_token: str = None) -> Dict[str, Any]:
         client = self._get_client_with_token(access_token)
         params = {'p_note_id': note_id}
-        
+
         try:
             response = client.rpc('delete_trade_note', params).execute()
-            
+
             # Handle the response similar to select_trade_notes
             if not response.data:
                 return {"success": False, "message": "No response from database"}
-            
+
             result = response.data
-            
+
             # If it's a list, get the first item
             if isinstance(result, list):
                 result = result[0] if len(result) > 0 else {}
-            
+
             # Check if the response indicates success
             if not isinstance(result, dict):
                 return {"success": False, "message": "Unexpected response format"}
-            
+
             # Return the result as-is since it already contains the proper structure
             return result
-            
+
         except APIError as e:
             print(f"APIError deleting trade note: {str(e)}")
-            
+
             # Check if this is the "fake error" from postgrest
             if hasattr(e, 'args') and e.args:
                 error_data = e.args[0]
@@ -137,3 +137,69 @@ class TradeNotesService:
         except Exception as e:
             print(f"Error deleting trade note: {str(e)}")
             raise
+
+    async def get_tracking_summary(self, access_token: str = None, time_range: str = "7d",
+                                 custom_start_date=None, custom_end_date=None) -> Dict[str, Any]:
+        """Get a summary of tracking data for trading context."""
+        client = self._get_client_with_token(access_token)
+
+        try:
+            # Get recent trade notes for context based on time range
+            recent_notes = await self.select_trade_notes(access_token=access_token)
+
+            # Filter notes by date range if custom dates are provided
+            if custom_start_date and custom_end_date:
+                filtered_notes = []
+                for note in recent_notes:
+                    # Assuming notes have created_at field - adjust field name as needed
+                    note_date = getattr(note, 'created_at', None) or getattr(note, 'updated_at', None)
+                    if note_date:
+                        if hasattr(note_date, 'date'):
+                            note_date = note_date.date()
+                        if custom_start_date <= note_date <= custom_end_date:
+                            filtered_notes.append(note)
+                recent_notes = filtered_notes
+
+            # Create a summary based on recent notes
+            summary = {
+                "total_notes": len(recent_notes),
+                "recent_notes": recent_notes[:5] if recent_notes else [],  # Last 5 notes
+                "note_types": {},
+                "phases": {},
+                "ratings": {},
+                "time_range": time_range,
+                "date_filter": {
+                    "start_date": custom_start_date.isoformat() if custom_start_date else None,
+                    "end_date": custom_end_date.isoformat() if custom_end_date else None
+                }
+            }
+
+            # Analyze note patterns
+            for note in recent_notes:
+                # Count note types
+                note_type = note.trade_type.value if note.trade_type else "unknown"
+                summary["note_types"][note_type] = summary["note_types"].get(note_type, 0) + 1
+
+                # Count phases
+                if note.phase:
+                    phase = note.phase.value
+                    summary["phases"][phase] = summary["phases"].get(phase, 0) + 1
+
+                # Count ratings
+                if note.rating:
+                    rating_key = f"rating_{note.rating}"
+                    summary["ratings"][rating_key] = summary["ratings"].get(rating_key, 0) + 1
+
+            return summary
+
+        except Exception as e:
+            print(f"Error getting tracking summary: {str(e)}")
+            return {
+                "total_notes": 0,
+                "recent_notes": [],
+                "note_types": {},
+                "phases": {},
+                "ratings": {},
+                "time_range": time_range,
+                "error": str(e)
+            }

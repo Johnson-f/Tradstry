@@ -99,6 +99,26 @@ The analytics system now provides comprehensive trading performance metrics with
 - `get_daily_pnl_trades` → `/api/analytics/daily-pnl-trades`
 - `get_ticker_profit_summary` → `/api/analytics/ticker-profit-summary`
 
+# New Combined Functions Integration
+- `get_daily_ai_summary()`              # ✅ Critical - AI service was looking for this
+- `get_win_rate_by_symbol()`
+- `get_win_rate_by_strategy()` 
+- `get_win_rate_by_trade_direction()`
+- `get_loss_rate_by_symbol()`
+- `get_loss_rate_by_strategy()`
+- `get_loss_rate_by_trade_direction()`
+- `get_streaks()`
+- `get_average_trade_duration()`
+- `get_performance_by_symbol()`
+- `get_symbol_profitability_ranking()`
+- `get_trading_frequency_by_symbol()`
+- `get_performance_by_trade_direction()`
+- `get_total_commissions()`
+- `get_trade_frequency_patterns()`
+- `get_average_commission_per_trade()`
+- `get_trade_size_consistency()`
+
+
 ## Query Parameters
 
 All endpoints support the following query parameters:

@@ -101,7 +101,7 @@ async def chat_with_ai(
     try:
         orchestrator = AIOrchestrator()
         result = await orchestrator.process_chat_message(
-            access_token=current_user["access_token"],
+            user=current_user,
             session_id=request.session_id,
             user_message=request.message,
             context_limit=request.context_limit or 10

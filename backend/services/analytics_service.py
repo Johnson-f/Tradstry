@@ -724,4 +724,176 @@ class AnalyticsService:
                 
             except Exception as e:
                 print(f"Error getting combined trade metrics: {str(e)}")
-                return []            
+                return []
+
+    # New Combined Functions Integration
+    async def get_daily_ai_summary(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get comprehensive daily AI summary from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_daily_ai_summary", params)
+            return result
+        except Exception as e:
+            print(f"Error getting daily AI summary: {str(e)}")
+            return {}
+
+    async def get_win_rate_by_symbol(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get win rate by symbol from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_win_rate_by_symbol", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting win rate by symbol: {str(e)}")
+            return []
+
+    async def get_win_rate_by_strategy(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get win rate by strategy from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_win_rate_by_strategy", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting win rate by strategy: {str(e)}")
+            return []
+
+    async def get_win_rate_by_trade_direction(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get win rate by trade direction from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_win_rate_by_trade_direction", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting win rate by trade direction: {str(e)}")
+            return []
+
+    async def get_loss_rate_by_symbol(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get loss rate by symbol from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_loss_rate_by_symbol", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting loss rate by symbol: {str(e)}")
+            return []
+
+    async def get_loss_rate_by_strategy(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get loss rate by strategy from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_loss_rate_by_strategy", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting loss rate by strategy: {str(e)}")
+            return []
+
+    async def get_loss_rate_by_trade_direction(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get loss rate by trade direction from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_loss_rate_by_trade_direction", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting loss rate by trade direction: {str(e)}")
+            return []
+
+    async def get_streaks(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get trading streaks from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_streaks", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting streaks: {str(e)}")
+            return []
+
+    async def get_average_trade_duration(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get average trade duration from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_average_trade_duration", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting average trade duration: {str(e)}")
+            return []
+
+    async def get_performance_by_symbol(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get performance by symbol from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_performance_by_symbol", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting performance by symbol: {str(e)}")
+            return []
+
+    async def get_symbol_profitability_ranking(self, limit: int = 10, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get symbol profitability ranking from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            params['p_limit'] = limit
+            result = await self._call_sql_function("get_symbol_profitability_ranking", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting symbol profitability ranking: {str(e)}")
+            return []
+
+    async def get_trading_frequency_by_symbol(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get trading frequency by symbol from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_trading_frequency_by_symbol", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting trading frequency by symbol: {str(e)}")
+            return []
+
+    async def get_performance_by_trade_direction(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get performance by trade direction from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_performance_by_trade_direction", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting performance by trade direction: {str(e)}")
+            return []
+
+    async def get_total_commissions(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get total commissions paid from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_total_commissions", params)
+            return result or 0
+        except Exception as e:
+            print(f"Error getting total commissions: {str(e)}")
+            return 0
+
+    async def get_trade_frequency_patterns(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get trade frequency patterns from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_trade_frequency_patterns", params)
+            return result or []
+        except Exception as e:
+            print(f"Error getting trade frequency patterns: {str(e)}")
+            return []
+
+    async def get_average_commission_per_trade(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get average commission per trade from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_average_commission_per_trade", params)
+            return result or 0
+        except Exception as e:
+            print(f"Error getting average commission per trade: {str(e)}")
+            return 0
+
+    async def get_trade_size_consistency(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+        """Get trade size consistency from database function."""
+        try:
+            params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
+            result = await self._call_sql_function("get_trade_size_consistency", params)
+            return result or {}
+        except Exception as e:
+            print(f"Error getting trade size consistency: {str(e)}")
+            return {}            

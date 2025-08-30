@@ -1,8 +1,18 @@
 # config/__init__.py
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
+    """Configuration settings for the application."""
+
+    # Use Pydantic v2 style configuration - EXPLICITLY allow extra fields
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra='allow'  # EXPLICITLY ALLOW extra fields to prevent validation errors
+    )
+    
     # Database settings
     DATABASE_URL: Optional[str] = None
     DB_HOST: str = "localhost"
@@ -53,12 +63,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Tradistry API"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
-# Move this OUTSIDE the class
 def get_settings() -> Settings:
     """Get application settings."""
     return Settings()

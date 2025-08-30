@@ -119,7 +119,7 @@ async def generate_report(
     try:
         orchestrator = AIOrchestrator()
         result = await orchestrator.generate_daily_report(
-            access_token=current_user["access_token"],
+            user=current_user,
             time_range=request.time_range,
             custom_start_date=request.custom_start_date,
             custom_end_date=request.custom_end_date
