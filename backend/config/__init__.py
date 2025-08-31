@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     TIINGO_API_KEY: Optional[str] = None
     
     # AI Configuration
-    HUGGINGFACEHUB_API_TOKEN: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
     AI_MODEL_SIZE: str = "medium"
     AI_USE_GPU: bool = True
     AI_GPU_MEMORY_FRACTION: float = 0.8
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     AI_ENABLE_QUANTIZATION: bool = True
     
     # Model defaults
-    DEFAULT_LLM_MODEL: str = "mistralai/Mistral-7B-Instruct-v0.1"
+    DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b"
     DEFAULT_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     LLM_MAX_LENGTH: int = 5000
     LLM_TEMPERATURE: float = 0.7
