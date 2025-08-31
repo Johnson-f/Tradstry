@@ -5,6 +5,7 @@ from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
 from routers import stocks_router, options_router, analytics, setups_router, notes_router, images
+from scheduler import setup_scheduler, start_scheduler, stop_scheduler
 import logging
 
 # Configure logging
@@ -27,6 +28,17 @@ app.include_router(analytics.router, prefix=get_settings().API_PREFIX)
 app.include_router(setups_router, prefix=get_settings().API_PREFIX)
 app.include_router(notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(images.router, prefix=get_settings().API_PREFIX)
+
+@app.on_event("startup")
+async def startup_event():
+    setup_scheduler()
+    start_scheduler()
+    logger.info("Scheduler started with FastAPI app")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
+    logger.info("Scheduler stopped")
 
 # CORS middleware configuration
 app.add_middleware(
