@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional, List
 from supabase import Client
 from database import get_supabase
 from datetime import datetime
+from auth_service import AuthService
 
 class AnalyticsService:
     """
@@ -10,6 +11,7 @@ class AnalyticsService:
     """
     def __init__(self, supabase: Optional[Client] = None):
         self.supabase = supabase or get_supabase()
+        self.auth_service = AuthService(self.supabase)
 
     async def _call_sql_function(self, function_name: str, params: Dict[str, Any]) -> Any:
         """Helper method to call a SQL function with the given parameters."""
@@ -683,13 +685,13 @@ class AnalyticsService:
             """
             Get combined trade metrics (stocks + options) with date range filtering.
             Note: user_id is accepted for consistency but SQL function uses auth.uid() internally.
-            
+
             Args:
                 user_id: The user ID (not used - SQL function uses auth.uid())
                 period_type: Time period type ('7d', '30d', '90d', '1y', 'ytd', 'all_time', 'custom')
                 custom_start_date: Start date for custom period
                 custom_end_date: End date for custom period
-                
+
             Returns:
                 List of dictionaries containing trade_date, total_trades, activity_level, and net_pnl
             """
@@ -698,16 +700,16 @@ class AnalyticsService:
                 params = {
                     'p_time_range': period_type,
                 }
-                
+
                 # Add custom dates if provided
                 if custom_start_date:
                     params['p_custom_start_date'] = custom_start_date.strftime('%Y-%m-%d')
                 if custom_end_date:
                     params['p_custom_end_date'] = custom_end_date.strftime('%Y-%m-%d')
-                
+
                 # Call the SQL function
                 result = self.supabase.rpc('get_combined_trade_metrics', params).execute()
-                
+
                 # Ensure dates are in ISO format for JSON serialization
                 if result.data:
                     for item in result.data:
@@ -719,20 +721,20 @@ class AnalyticsService:
                             else:
                                 # It's a datetime object, convert to ISO format
                                 item['trade_date'] = item['trade_date'].isoformat()
-                
+
                 return result.data or []
-                
+
             except Exception as e:
                 print(f"Error getting combined trade metrics: {str(e)}")
                 return []
 
     # New Combined Functions Integration
-    async def get_daily_ai_summary(self, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
+    async def get_daily_ai_summary(self, access_token: str, time_range: str = 'all_time', custom_start_date=None, custom_end_date=None):
         """Get comprehensive daily AI summary from database function."""
         try:
             params = self._build_combined_date_params(time_range, custom_start_date, custom_end_date)
-            result = await self._call_sql_function("get_daily_ai_summary", params)
-            return result
+            result = await self.auth_service.safe_rpc_call("get_daily_ai_summary", params, access_token)
+            return result.data if result else {}
         except Exception as e:
             print(f"Error getting daily AI summary: {str(e)}")
             return {}
@@ -896,4 +898,4 @@ class AnalyticsService:
             return result or {}
         except Exception as e:
             print(f"Error getting trade size consistency: {str(e)}")
-            return {}            
+            return {}

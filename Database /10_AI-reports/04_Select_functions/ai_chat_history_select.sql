@@ -197,8 +197,8 @@ BEGIN
     SELECT 
         ch.session_id,
         COUNT(*)::INTEGER as message_count,
-        (SELECT content FROM ai_chat_history WHERE session_id = ch.session_id AND user_id = p_user_id ORDER BY created_at ASC LIMIT 1) as first_message,
-        (SELECT content FROM ai_chat_history WHERE session_id = ch.session_id AND user_id = p_user_id ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT content FROM ai_chat_history ach WHERE ach.session_id = ch.session_id AND ach.user_id = p_user_id ORDER BY ach.created_at ASC LIMIT 1) as first_message,
+        (SELECT content FROM ai_chat_history ach WHERE ach.session_id = ch.session_id AND ach.user_id = p_user_id ORDER BY ach.created_at DESC LIMIT 1) as last_message,
         MIN(ch.created_at) as first_message_at,
         MAX(ch.created_at) as last_message_at,
         SUM(ch.usage_count)::INTEGER as total_usage_count

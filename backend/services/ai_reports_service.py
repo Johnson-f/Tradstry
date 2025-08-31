@@ -17,7 +17,7 @@ class AIReportsService:
     Service for handling AI reports operations.
     Integrates with existing analytics and follows established patterns.
     """
-    
+
     def __init__(self, supabase: Optional[Client] = None):
         self.supabase = supabase or get_supabase()
         self.auth_service = AuthService(self.supabase)
@@ -36,12 +36,12 @@ class AIReportsService:
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
-            
+
             # Get user from token
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
             # Prepare parameters for SQL function
@@ -62,7 +62,7 @@ class AIReportsService:
 
             # Call the upsert function
             result = await self._call_sql_function('upsert_ai_report', params, access_token)
-            
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIReportUpsertResponse(
@@ -98,7 +98,7 @@ class AIReportsService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
             # Prepare parameters for SQL function
@@ -120,7 +120,7 @@ class AIReportsService:
 
             # Call the upsert function with report_id
             result = await self._call_sql_function('upsert_ai_report', params, access_token)
-            
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIReportUpsertResponse(
@@ -169,7 +169,7 @@ class AIReportsService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
             # Prepare parameters for SQL function
@@ -189,7 +189,7 @@ class AIReportsService:
 
             # Call the get function
             result = await self._call_sql_function('get_ai_reports', params, access_token)
-            
+
             reports = []
             if result.data:
                 for data in result.data:
@@ -212,7 +212,7 @@ class AIReportsService:
                         created_at=datetime.fromisoformat(data['created_at']),
                         updated_at=datetime.fromisoformat(data['updated_at'])
                     ))
-            
+
             return reports
 
         except Exception as e:
@@ -226,7 +226,7 @@ class AIReportsService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
             # Prepare parameters for SQL function
@@ -238,7 +238,7 @@ class AIReportsService:
 
             # Call the delete function
             result = await self._call_sql_function('delete_ai_report', params, access_token)
-            
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return DeleteResponse(
@@ -254,18 +254,20 @@ class AIReportsService:
         except Exception as e:
             raise Exception(f"Error deleting AI report: {str(e)}")
 
-    async def get_trading_context(self, access_token: str, time_range: str = "30d", 
+    async def get_trading_context(self, access_token: str, time_range: str = "30d",
                                 custom_start_date: Optional[datetime] = None,
                                 custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Get comprehensive trading context for AI processing."""
         try:
             # Get analytics data using existing service
+            # Get analytics data using existing service
             analytics_data = await self.analytics_service.get_daily_ai_summary(
-                time_range, 
+                access_token,
+                time_range,
                 custom_start_date.date() if custom_start_date else None,
                 custom_end_date.date() if custom_end_date else None
             )
-            
+
             # Get tracking data using existing service
             tracking_data = await self.trade_notes_service.get_tracking_summary(
                 access_token,
@@ -273,7 +275,7 @@ class AIReportsService:
                 custom_start_date=custom_start_date.date() if custom_start_date else None,
                 custom_end_date=custom_end_date.date() if custom_end_date else None
             )
-            
+
             return {
                 "analytics": analytics_data,
                 "tracking": tracking_data,

@@ -6,7 +6,7 @@ from auth_service import AuthService
 from models.ai_chat import (
     AIChatMessageCreate, AIChatMessageUpdate, AIChatMessageResponse,
     AIChatSessionResponse, AIChatUpsertResponse, ChatDeleteResponse,
-    MessageType
+    MessageType, SourceType  # Added SourceType import
 )
 import json
 import uuid
@@ -16,7 +16,7 @@ class AIChatService:
     Service for handling AI chat operations.
     Manages chat sessions, messages, and AI interactions.
     """
-    
+
     def __init__(self, supabase: Optional[Client] = None):
         self.supabase = supabase or get_supabase()
         self.auth_service = AuthService(self.supabase)
@@ -36,25 +36,30 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
+            # Prepare parameters for SQL function - matching upsert_ai_chat_history
             params = {
                 'p_user_id': user_id,
                 'p_session_id': message_data.session_id,
                 'p_message_type': message_data.message_type.value,
                 'p_content': message_data.content,
-                'p_context_data': json.dumps(message_data.context_data) if message_data.context_data else None,
+                'p_question_embedding': None,  # Add embeddings if available
+                'p_answer_embedding': None,    # Add embeddings if available
+                'p_context_data': message_data.context_data,  # JSONB data
                 'p_model_used': message_data.model_used,
+                'p_processing_time_ms': None,  # Add if available in message_data
                 'p_confidence_score': message_data.confidence_score,
                 'p_similarity_score': message_data.similarity_score,
-                'p_source_type': message_data.source_type.value
+                'p_source_type': message_data.source_type.value,
+                'p_usage_count': 1,
+                'p_message_id': None  # None for new message
             }
 
-            # Call the upsert function
-            result = await self._call_sql_function('upsert_ai_chat_message', params, access_token)
-            
+            # Call the correct function name
+            result = await self._call_sql_function('upsert_ai_chat_history', params, access_token)
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIChatUpsertResponse(
@@ -63,13 +68,15 @@ class AIChatService:
                     session_id=data['session_id'],
                     message_type=MessageType(data['message_type']),
                     content=data['content'],
-                    metadata=json.loads(data['metadata']) if data['metadata'] else None,
+                    context_data=data['context_data'],  # Fixed: correct field name
                     model_used=data['model_used'],
                     processing_time_ms=data['processing_time_ms'],
                     confidence_score=data['confidence_score'],
-                    parent_message_id=data['parent_message_id'],
+                    similarity_score=data['similarity_score'],  # Fixed: added required field
+                    source_type=SourceType(data['source_type']),  # Fixed: added required field
+                    usage_count=data['usage_count'],  # Fixed: added required field
+                    last_used_at=datetime.fromisoformat(data['last_used_at']),  # Fixed: correct field name
                     created_at=datetime.fromisoformat(data['created_at']),
-                    updated_at=datetime.fromisoformat(data['updated_at']),
                     operation_type=data['operation_type']
                 )
             else:
@@ -86,27 +93,30 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
+            # Prepare parameters for SQL function - matching upsert_ai_chat_history
             params = {
                 'p_user_id': user_id,
-                'p_message_id': message_id,
-                'p_session_id': message_data.session_id,
+                'p_session_id': None,  # Will be updated from existing record
                 'p_message_type': message_data.message_type.value if message_data.message_type else None,
-                'p_role': message_data.role.value if message_data.role else None,
                 'p_content': message_data.content,
-                'p_metadata': json.dumps(message_data.metadata) if message_data.metadata else None,
+                'p_question_embedding': None,
+                'p_answer_embedding': None,
+                'p_context_data': message_data.context_data,  # Fixed: correct field name
                 'p_model_used': message_data.model_used,
-                'p_processing_time_ms': message_data.processing_time_ms,
+                'p_processing_time_ms': None,  # Add if available
                 'p_confidence_score': message_data.confidence_score,
-                'p_parent_message_id': message_data.parent_message_id
+                'p_similarity_score': message_data.similarity_score,  # Fixed: use correct field
+                'p_source_type': message_data.source_type.value if message_data.source_type else 'external_ai',
+                'p_usage_count': None,
+                'p_message_id': message_id  # Provided for update
             }
 
             # Call the upsert function with message_id
-            result = await self._call_sql_function('upsert_ai_chat_message', params, access_token)
-            
+            result = await self._call_sql_function('upsert_ai_chat_history', params, access_token)
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIChatUpsertResponse(
@@ -115,13 +125,15 @@ class AIChatService:
                     session_id=data['session_id'],
                     message_type=MessageType(data['message_type']),
                     content=data['content'],
-                    metadata=json.loads(data['metadata']) if data['metadata'] else None,
+                    context_data=data['context_data'],  # Fixed: correct field name
                     model_used=data['model_used'],
                     processing_time_ms=data['processing_time_ms'],
                     confidence_score=data['confidence_score'],
-                    parent_message_id=data['parent_message_id'],
+                    similarity_score=data['similarity_score'],  # Fixed: added required field
+                    source_type=SourceType(data['source_type']),  # Fixed: added required field
+                    usage_count=data['usage_count'],  # Fixed: added required field
+                    last_used_at=datetime.fromisoformat(data['last_used_at']),  # Fixed: correct field name
                     created_at=datetime.fromisoformat(data['created_at']),
-                    updated_at=datetime.fromisoformat(data['updated_at']),
                     operation_type=data['operation_type']
                 )
             else:
@@ -136,7 +148,6 @@ class AIChatService:
         session_id: Optional[str] = None,
         message_id: Optional[str] = None,
         message_type: Optional[str] = None,
-        role: Optional[str] = None,
         search_query: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -150,46 +161,51 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
-            params = {
-                'p_user_id': user_id,
-                'p_session_id': session_id,
-                'p_message_id': message_id,
-                'p_message_type': message_type,
-                'p_role': role,
-                'p_search_query': search_query,
-                'p_limit': limit,
-                'p_offset': offset,
-                'p_order_by': order_by,
-                'p_order_direction': order_direction
-            }
+            # Build query manually since we don't have a get_ai_chat_messages function
+            query = self.supabase.table('ai_chat_history').select('*').eq('user_id', user_id)
 
-            # Call the get function
-            result = await self._call_sql_function('get_ai_chat_messages', params, access_token)
-            
+            if session_id:
+                query = query.eq('session_id', session_id)
+            if message_id:
+                query = query.eq('id', message_id)
+            if message_type:
+                query = query.eq('message_type', message_type)
+
+            query = query.order(order_by, desc=(order_direction.upper() == 'DESC'))
+            query = query.limit(limit).offset(offset)
+
+            result = query.execute()
+
             messages = []
             if result.data:
                 for data in result.data:
+                    # Handle missing fields with defaults
+                    last_used_at = data.get('last_used_at') or data['created_at']
+                    similarity_score = data.get('similarity_score', 0.0)
+                    source_type = data.get('source_type', 'external_ai')
+                    usage_count = data.get('usage_count', 1)
+
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
-                            content=data['content'],
-                        content_preview=data.get('content_preview'),
-                        metadata=json.loads(data['metadata']) if data['metadata'] else None,
-                        model_used=data['model_used'],
-                        processing_time_ms=data['processing_time_ms'],
-                        confidence_score=data['confidence_score'],
-                        parent_message_id=data['parent_message_id'],
-                        created_at=datetime.fromisoformat(data['created_at']),
-                        updated_at=datetime.fromisoformat(data['updated_at']),
-                        usage_count=data.get('usage_count', 0)
+                        content=data['content'],
+                        content_preview=data['content'][:100] + '...' if len(data['content']) > 100 else data['content'],
+                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        model_used=data.get('model_used'),
+                        processing_time_ms=data.get('processing_time_ms'),
+                        confidence_score=data.get('confidence_score'),
+                        similarity_score=similarity_score,  # Fixed: added required field
+                        source_type=SourceType(source_type),  # Fixed: added required field
+                        usage_count=usage_count,  # Fixed: added required field
+                        last_used_at=datetime.fromisoformat(last_used_at),  # Fixed: correct field name
+                        created_at=datetime.fromisoformat(data['created_at'])
                     ))
-            
+
             return messages
 
         except Exception as e:
@@ -203,39 +219,45 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
+            # Call the existing SQL function
             params = {
                 'p_user_id': user_id,
                 'p_session_id': session_id,
                 'p_limit': limit
             }
 
-            # Call the get session function
             result = await self._call_sql_function('get_ai_chat_session_messages', params, access_token)
-            
+
             messages = []
             if result.data:
                 for data in result.data:
+                    # Handle missing fields with defaults
+                    last_used_at = data.get('last_used_at') or data['created_at']
+                    similarity_score = data.get('similarity_score', 0.0)
+                    source_type = data.get('source_type', 'external_ai')
+                    usage_count = data.get('usage_count', 1)
+
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
-                            content=data['content'],
+                        content=data['content'],
                         content_preview=data.get('content_preview'),
-                        metadata=json.loads(data['metadata']) if data['metadata'] else None,
-                        model_used=data['model_used'],
-                        processing_time_ms=data['processing_time_ms'],
-                        confidence_score=data['confidence_score'],
-                        parent_message_id=data['parent_message_id'],
-                        created_at=datetime.fromisoformat(data['created_at']),
-                        updated_at=datetime.fromisoformat(data['updated_at']),
-                        usage_count=data.get('usage_count', 0)
+                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        model_used=data.get('model_used'),
+                        processing_time_ms=data.get('processing_time_ms'),
+                        confidence_score=data.get('confidence_score'),
+                        similarity_score=similarity_score,  # Fixed: added required field
+                        source_type=SourceType(source_type),  # Fixed: added required field
+                        usage_count=usage_count,  # Fixed: added required field
+                        last_used_at=datetime.fromisoformat(last_used_at),  # Fixed: correct field name
+                        created_at=datetime.fromisoformat(data['created_at'])
                     ))
-            
+
             return messages
 
         except Exception as e:
@@ -249,30 +271,49 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
-            params = {
-                'p_user_id': user_id,
-                'p_limit': limit,
-                'p_offset': offset
-            }
+            # Build sessions query manually
+            result = self.supabase.table('ai_chat_history').select(
+                'session_id, message_type, content, created_at'
+            ).eq('user_id', user_id).order('created_at', desc=True).execute()
 
-            # Call the get sessions function
-            result = await self._call_sql_function('get_ai_chat_sessions', params, access_token)
-            
-            sessions = []
+            # Group by session_id and build session summaries
+            sessions_dict = {}
             if result.data:
-                for data in result.data:
-                    sessions.append(AIChatSessionResponse(
-                        session_id=data['session_id'],
-                        message_count=data['message_count'],
-                        first_message_preview=data.get('first_message_preview'),
-                        last_message_at=datetime.fromisoformat(data['last_message_at']) if data['last_message_at'] else None,
-                        created_at=datetime.fromisoformat(data['created_at'])
-                    ))
-            
+                for row in result.data:
+                    session_id = row['session_id']
+                    if session_id not in sessions_dict:
+                        sessions_dict[session_id] = {
+                            'session_id': session_id,
+                            'message_count': 0,
+                            'first_message': None,
+                            'last_message': None,
+                            'first_message_at': row['created_at'],
+                            'last_message_at': row['created_at'],
+                            'total_usage_count': 0
+                        }
+
+                    sessions_dict[session_id]['message_count'] += 1
+                    sessions_dict[session_id]['last_message_at'] = row['created_at']
+                    sessions_dict[session_id]['last_message'] = row['content'][:100]
+
+                    if not sessions_dict[session_id]['first_message']:
+                        sessions_dict[session_id]['first_message'] = row['content'][:100]
+
+            sessions = []
+            for session_data in list(sessions_dict.values())[:limit]:
+                sessions.append(AIChatSessionResponse(
+                    session_id=session_data['session_id'],
+                    message_count=session_data['message_count'],
+                    first_message=session_data['first_message'] or "No messages",
+                    last_message=session_data['last_message'] or "No messages",
+                    first_message_at=datetime.fromisoformat(session_data['first_message_at']),
+                    last_message_at=datetime.fromisoformat(session_data['last_message_at']),
+                    total_usage_count=session_data['total_usage_count']
+                ))
+
             return sessions
 
         except Exception as e:
@@ -286,27 +327,32 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
-            params = {
-                'p_user_id': user_id,
-                'p_message_id': message_id
-            }
+            # Get message details before deletion
+            message_result = self.supabase.table('ai_chat_history').select(
+                'id, session_id, message_type, content'
+            ).eq('id', message_id).eq('user_id', user_id).execute()
 
-            # Call the delete function
-            result = await self._call_sql_function('delete_ai_chat_message', params, access_token)
-            
-            if result.data and len(result.data) > 0:
-                data = result.data[0]
+            if not message_result.data:
+                raise Exception("Message not found or access denied")
+
+            message_data = message_result.data[0]
+
+            # Delete the message
+            delete_result = self.supabase.table('ai_chat_history').delete().eq(
+                'id', message_id
+            ).eq('user_id', user_id).execute()
+
+            if delete_result.data:
                 return ChatDeleteResponse(
-                    id=data['id'],
-                    session_id=data['session_id'],
-                    message_type=MessageType(data['message_type']),
-                    content_preview=data['content_preview'],
-                    deleted_at=datetime.fromisoformat(data['deleted_at']),
-                    operation_type=data['operation_type']
+                    id=message_data['id'],
+                    session_id=message_data['session_id'],
+                    message_type=MessageType(message_data['message_type']),
+                    content_preview=message_data['content'][:100],
+                    deleted_at=datetime.now(),
+                    operation_type='deleted'
                 )
             else:
                 raise Exception("Failed to delete message")
@@ -322,27 +368,26 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
-            params = {
-                'p_user_id': user_id,
-                'p_session_id': session_id
-            }
+            # Count messages before deletion
+            count_result = self.supabase.table('ai_chat_history').select(
+                'id', count='exact'
+            ).eq('session_id', session_id).eq('user_id', user_id).execute()
 
-            # Call the delete session function
-            result = await self._call_sql_function('delete_ai_chat_session', params, access_token)
-            
-            if result.data and len(result.data) > 0:
-                data = result.data[0]
-                return {
-                    "session_id": data['session_id'],
-                    "messages_deleted": data['messages_deleted'],
-                    "deleted_at": datetime.fromisoformat(data['deleted_at'])
-                }
-            else:
-                raise Exception("Failed to delete session")
+            messages_count = count_result.count or 0
+
+            # Delete all messages in the session
+            delete_result = self.supabase.table('ai_chat_history').delete().eq(
+                'session_id', session_id
+            ).eq('user_id', user_id).execute()
+
+            return {
+                "session_id": session_id,
+                "messages_deleted": messages_count,
+                "deleted_at": datetime.now()
+            }
 
         except Exception as e:
             raise Exception(f"Error deleting chat session: {str(e)}")
@@ -362,7 +407,7 @@ class AIChatService:
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
                 raise Exception("Invalid authentication token")
-            
+
             user_id = user_response.user.id
 
             # Prepare parameters for SQL function
@@ -374,31 +419,70 @@ class AIChatService:
                 'p_similarity_threshold': similarity_threshold
             }
 
-            # Call the search function
+            # Call the search function (assuming this exists and works)
             result = await self._call_sql_function('search_ai_chat_messages', params, access_token)
-            
+
             messages = []
             if result.data:
                 for data in result.data:
+                    # Handle missing fields with defensive defaults
+                    last_used_at = data.get('last_used_at') or data.get('created_at')
+                    similarity_score = data.get('similarity_score', 0.0)
+                    source_type = data.get('source_type', 'external_ai')
+                    usage_count = data.get('usage_count', 1)
+
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
-                            content=data['content'],
+                        content=data['content'],
                         content_preview=data.get('content_preview'),
-                        metadata=json.loads(data['metadata']) if data['metadata'] else None,
-                        model_used=data['model_used'],
-                        processing_time_ms=data['processing_time_ms'],
-                        confidence_score=data['confidence_score'],
-                        parent_message_id=data['parent_message_id'],
-                        created_at=datetime.fromisoformat(data['created_at']),
-                        updated_at=datetime.fromisoformat(data['updated_at']),
-                        usage_count=data.get('usage_count', 0),
-                        similarity_score=data.get('similarity_score')
+                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        model_used=data.get('model_used'),
+                        processing_time_ms=data.get('processing_time_ms'),
+                        confidence_score=data.get('confidence_score'),
+                        similarity_score=similarity_score,  # Fixed: always provide this
+                        source_type=SourceType(source_type),  # Fixed: always provide this
+                        usage_count=usage_count,  # Fixed: always provide this
+                        last_used_at=datetime.fromisoformat(last_used_at) if last_used_at else datetime.now(),  # Fixed: always provide this
+                        created_at=datetime.fromisoformat(data['created_at'])
                     ))
-            
+
             return messages
 
         except Exception as e:
             raise Exception(f"Error searching chat messages: {str(e)}")
+
+    async def increment_message_usage(self, message_id: str, access_token: str) -> Dict[str, Any]:
+        """Increment usage count for a reused message."""
+        try:
+            # Get authenticated client to extract user_id
+            client = await self.auth_service.get_authenticated_client(access_token)
+            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
+            if not user_response.user:
+                raise Exception("Invalid authentication token")
+
+            user_id = user_response.user.id
+
+            # Prepare parameters for SQL function
+            params = {
+                'p_user_id': user_id,
+                'p_message_id': message_id
+            }
+
+            # Call the increment function
+            result = await self._call_sql_function('increment_chat_usage', params, access_token)
+
+            if result.data and len(result.data) > 0:
+                data = result.data[0]
+                return {
+                    "id": data['id'],
+                    "usage_count": data['usage_count'],
+                    "last_used_at": data['last_used_at']
+                }
+            else:
+                raise Exception("Failed to increment usage")
+
+        except Exception as e:
+            raise Exception(f"Error incrementing message usage: {str(e)}")
