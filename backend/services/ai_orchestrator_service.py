@@ -6,11 +6,12 @@ from datetime import datetime, timedelta
 import json
 import uuid
 import time
+import os
 
-# LangChain imports - Updated to use non-deprecated classes
+# LangChain imports - Updated to use OpenRouter via OpenAI SDK
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_huggingface import HuggingFaceEndpoint
 
 # Local imports
 from services.ai_embedding_service import AIEmbeddingService
@@ -66,45 +67,49 @@ class AIOrchestrator:
         self.trading_prompts = self._initialize_trading_prompts()
 
     def _get_stable_models(self) -> List[Dict[str, str]]:
-        """Get list of models that work with Hugging Face FREE PLAN and text-generation task."""
+        """Get list of free models available on OpenRouter, organized by tier."""
         return [
-            # Tier 1: FREE PLAN COMPATIBLE - Basic text generation models
-            {"name": "GPT-2", "repo": "openai-community/gpt2", "tier": 1, "task": "text-generation"},
-            {"name": "GPT-2 Medium", "repo": "openai-community/gpt2-medium", "tier": 1, "task": "text-generation"},
-            {"name": "GPT-2 Large", "repo": "openai-community/gpt2-large", "tier": 1, "task": "text-generation"},
-            {"name": "DistilGPT-2", "repo": "distilbert/distilgpt2", "tier": 1, "task": "text-generation"},
-            {"name": "GPT-Neo 125M", "repo": "EleutherAI/gpt-neo-125m", "tier": 1, "task": "text-generation"},
-            
-            # Tier 2: FREE PLAN COMPATIBLE - Slightly larger models
-            {"name": "GPT-Neo 1.3B", "repo": "EleutherAI/gpt-neo-1.3B", "tier": 2, "task": "text-generation"},
-            {"name": "GPT-Neo 2.7B", "repo": "EleutherAI/gpt-neo-2.7B", "tier": 2, "task": "text-generation"},
-            {"name": "BLOOM 560M", "repo": "bigscience/bloom-560m", "tier": 2, "task": "text-generation"},
-            {"name": "BLOOM 1B1", "repo": "bigscience/bloom-1b1", "tier": 2, "task": "text-generation"},
-            {"name": "OPT 350M", "repo": "facebook/opt-350m", "tier": 2, "task": "text-generation"},
-            
-            # Tier 3: FREE PLAN COMPATIBLE - Experimental models
-            {"name": "OPT 1.3B", "repo": "facebook/opt-1.3b", "tier": 3, "task": "text-generation"},
-            {"name": "OPT 2.7B", "repo": "facebook/opt-2.7b", "tier": 3, "task": "text-generation"},
-            {"name": "CodeGen 350M", "repo": "Salesforce/codegen-350M-mono", "tier": 3, "task": "text-generation"},
-            {"name": "CodeGen 2B", "repo": "Salesforce/codegen-2B-mono", "tier": 3, "task": "text-generation"},
-            {"name": "GPT-J 6B", "repo": "EleutherAI/gpt-j-6b", "tier": 3, "task": "text-generation"},
-            
-            # Tier 4: FREE PLAN COMPATIBLE - Backup options (removed DistilBERT as it's not for text generation)
-            {"name": "TinyLlama 1.1B", "repo": "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T", "tier": 4, "task": "text-generation"},
-            {"name": "Pythia 410M", "repo": "EleutherAI/pythia-410m", "tier": 4, "task": "text-generation"},
-            {"name": "Pythia 1.4B", "repo": "EleutherAI/pythia-1.4b", "tier": 4, "task": "text-generation"},
-            {"name": "OPT 125M", "repo": "facebook/opt-125m", "tier": 4, "task": "text-generation"}
+            # Tier 1: HIGH PERFORMANCE - Latest and most capable free models
+            {"name": "GPT-OSS 120B", "model": "openai/gpt-oss-120b", "tier": 1, "provider": "OpenAI"},
+            {"name": "DeepSeek Coder", "model": "deepseek/deepseek-coder", "tier": 1, "provider": "DeepSeek"},
+            {"name": "DeepSeek Chat", "model": "deepseek/deepseek-chat", "tier": 1, "provider": "DeepSeek"},
+            {"name": "Kimi Dev 72B", "model": "moonshotai/kimi-dev-72b", "tier": 1, "provider": "MoonshotAI"},
+            {"name": "DeepSeek R1", "model": "deepseek/deepseek-r1", "tier": 1, "provider": "DeepSeek"},
+
+            # Tier 2: BALANCED PERFORMANCE - Good performance and reliability
+            {"name": "GPT-OSS 20B", "model": "openai/gpt-oss-20b", "tier": 2, "provider": "OpenAI"},
+            {"name": "GLM 4.5 Air", "model": "z-ai/glm-4.5-air", "tier": 2, "provider": "Z-AI"},
+            {"name": "Qwen3 Coder", "model": "qwen/qwen3-coder", "tier": 2, "provider": "Qwen"},
+            {"name": "Kimi K2", "model": "moonshotai/kimi-k2", "tier": 2, "provider": "MoonshotAI"},
+            {"name": "Hunyuan A13B", "model": "tencent/hunyuan-a13b-instruct", "tier": 2, "provider": "Tencent"},
+            {"name": "Mistral Small 3.2 24B", "model": "mistralai/mistral-small-3.2-24b-instruct", "tier": 2, "provider": "Mistral"},
+            {"name": "Devstral Small 2505", "model": "mistralai/devstral-small-2505", "tier": 2, "provider": "Mistral"},
+            {"name": "Llama 3.3 8B", "model": "meta-llama/llama-3.3-8b-instruct", "tier": 2, "provider": "Meta"},
+            {"name": "Sarvam M", "model": "sarvamai/sarvam-m", "tier": 2, "provider": "SarvamAI"},
+
+            # Tier 3: SPECIALIZED - Coder and reasoning models
+            {"name": "DeepSeek R1T2 Chimera", "model": "tngtech/deepseek-r1t2-chimera", "tier": 3, "provider": "TNG Tech"},
+            {"name": "DeepSeek R1 0528 Qwen3 8B", "model": "deepseek/deepseek-r1-0528-qwen3-8b", "tier": 3, "provider": "DeepSeek"},
+            {"name": "DeepSeek R1T Chimera", "model": "tngtech/deepseek-r1t-chimera", "tier": 3, "provider": "TNG Tech"},
+            {"name": "Dolphin Mistral 24B Venice", "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition", "tier": 3, "provider": "Cognitive Computations"},
+
+            # Tier 4: QWEN SERIES - Various sizes for different use cases
+            {"name": "Qwen3 235B A22B", "model": "qwen/qwen3-235b-a22b", "tier": 4, "provider": "Qwen"},
+            {"name": "Qwen3 30B A3B", "model": "qwen/qwen3-30b-a3b", "tier": 4, "provider": "Qwen"},
+            {"name": "Qwen3 14B", "model": "qwen/qwen3-14b", "tier": 4, "provider": "Qwen"},
+            {"name": "Qwen3 8B", "model": "qwen/qwen3-8b", "tier": 4, "provider": "Qwen"},
+            {"name": "Qwen3 4B", "model": "qwen/qwen3-4b", "tier": 4, "provider": "Qwen"}
         ]
 
     def _get_default_stable_model(self) -> str:
-        """Get the most stable default model for FREE PLAN."""
-        # Start with tier 1 models (most stable and free plan compatible)
+        """Get the most stable default model for OpenRouter."""
+        # Start with tier 1 models (most stable and reliable)
         tier_1_models = [model for model in self.stable_models if model["tier"] == 1]
         if tier_1_models:
-            return tier_1_models[0]["repo"]
+            return tier_1_models[0]["model"]
         
         # Fallback to any available model
-        return self.stable_models[0]["repo"] if self.stable_models else "openai-community/gpt2"
+        return self.stable_models[0]["model"] if self.stable_models else "openai/gpt-4o-mini"
 
     def _check_model_task_compatibility(self, repo_id: str, task: str = "text-generation") -> bool:
         """
@@ -150,7 +155,7 @@ class AIOrchestrator:
     def _load_available_models(self) -> Dict[str, Dict[str, str]]:
         """Load all available models from configuration."""
         try:
-            stable_llm_models = {model["name"]: model["repo"] for model in self.stable_models}
+            stable_llm_models = {model["name"]: model["model"] for model in self.stable_models}
             
             return {
                 'llm': {**get_available_llm_models(), **stable_llm_models},
@@ -221,55 +226,60 @@ class AIOrchestrator:
             logger.error(f"Unexpected error validating token: {str(e)}")
             return False
 
-    def _initialize_llm_with_fallback(self) -> Optional[HuggingFaceEndpoint]:
-        """Initialize LLM with automatic fallback to FREE PLAN compatible models."""
-        if not hasattr(self.ai_settings, 'HUGGINGFACEHUB_API_TOKEN') or not self.ai_settings.HUGGINGFACEHUB_API_TOKEN:
-            logger.error("HUGGINGFACEHUB_API_TOKEN is not set in environment variables")
+    def _initialize_llm_with_fallback(self) -> Optional[ChatOpenAI]:
+        """Initialize LLM with automatic fallback to OpenRouter compatible models."""
+        try:
+            # Get OpenRouter API key from environment
+            openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+            if not openrouter_api_key:
+                logger.error("OPENROUTER_API_KEY is not set in environment variables")
+                return None
+
+            # Try models in order of stability (tier 1 -> 4), optimized for OpenRouter
+            models_by_tier = {}
+            for model in self.stable_models:
+                tier = model["tier"]
+                if tier not in models_by_tier:
+                    models_by_tier[tier] = []
+                models_by_tier[tier].append(model)
+
+            # Try each tier in order
+            for tier in sorted(models_by_tier.keys()):
+                for model_config in models_by_tier[tier]:
+                    try:
+                        logger.info(f"Attempting to initialize model: {model_config['model']} (Tier {tier})")
+
+                        # OpenRouter optimized configuration
+                        llm = ChatOpenAI(
+                            model=model_config["model"],
+                            api_key=openrouter_api_key,
+                            base_url="https://openrouter.ai/api/v1",
+                            temperature=0.7,
+                            max_tokens=4096,
+                            streaming=False,  # Set to True if you want streaming
+                            default_headers={
+                                "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", ""),
+                                "X-Title": os.getenv("OPENROUTER_X_TITLE", ""),
+                            }
+                        )
+
+                        # Test the model with a very simple prompt
+                        test_response = llm.invoke("Hello, can you respond with 'Test successful'?")
+                        if test_response and len(str(test_response.content).strip()) > 0:
+                            self.current_llm_model = model_config["model"]
+                            logger.info(f"Successfully initialized OpenRouter LLM: {model_config['model']}")
+                            return llm
+
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize {model_config['model']}: {str(e)}")
+                        continue
+
+            logger.error("All OpenRouter compatible models failed to initialize")
             return None
 
-        # Try models in order of stability (tier 1 -> 4), optimized for FREE PLAN
-        models_by_tier = {}
-        for model in self.stable_models:
-            tier = model["tier"]
-            if tier not in models_by_tier:
-                models_by_tier[tier] = []
-            models_by_tier[tier].append(model)
-
-        # Try each tier in order
-        for tier in sorted(models_by_tier.keys()):
-            for model_config in models_by_tier[tier]:
-                try:
-                    logger.info(f"Attempting to initialize model: {model_config['repo']} (Tier {tier})")
-                    
-                    # FREE PLAN optimized configuration - REMOVED use_cache parameter
-                    llm = HuggingFaceEndpoint(
-                        repo_id=model_config["repo"],
-                        temperature=0.7,
-                        huggingfacehub_api_token=self.ai_settings.HUGGINGFACEHUB_API_TOKEN,
-                        task=model_config.get("task", "text-generation"),
-                        max_new_tokens=256,
-                        do_sample=True,
-                        return_full_text=False,
-                        repetition_penalty=1.1,
-                        timeout=45.0,
-                        top_k=50,
-                        top_p=0.9
-                        # Removed: use_cache=True  # This parameter was causing the error
-                    )
-
-                    # Test the model with a very simple prompt for free plan
-                    test_response = llm.invoke("Hello")
-                    if test_response and len(str(test_response).strip()) > 0:
-                        self.current_llm_model = model_config["repo"]
-                        logger.info(f"Successfully initialized FREE PLAN LLM: {model_config['repo']}")
-                        return llm
-                        
-                except Exception as e:
-                    logger.warning(f"Failed to initialize {model_config['repo']}: {str(e)}")
-                    continue
-
-        logger.error("All FREE PLAN compatible models failed to initialize")
-        return None
+        except Exception as e:
+            logger.error(f"Error in _initialize_llm_with_fallback: {str(e)}")
+            return None
 
     def select_model(self, model_type: str, model_key: str) -> bool:
         """
@@ -287,10 +297,10 @@ class AIOrchestrator:
                 # Handle stable model selection
                 stable_model = next((m for m in self.stable_models if m["name"] == model_key), None)
                 if stable_model:
-                    self.current_llm_model = stable_model["repo"]
+                    self.current_llm_model = stable_model["model"]
                     self._llm = None  # Reset to force reinitialization
                     self._llm_initialized = False
-                    logger.info(f"Switched to stable LLM model: {stable_model['repo']}")
+                    logger.info(f"Switched to stable LLM model: {stable_model['model']}")
                     return True
                 else:
                     logger.warning(f"Stable model '{model_key}' not found")
@@ -399,9 +409,9 @@ class AIOrchestrator:
         if model_type == 'llm':
             # Use stable models as fallbacks, prioritizing by tier
             for model in sorted(self.stable_models, key=lambda x: x["tier"]):
-                if model["repo"] != current_model:
-                    logger.info(f"Using fallback LLM model: {model['repo']} (Tier {model['tier']})")
-                    return model["repo"]
+                if model["model"] != current_model:
+                    logger.info(f"Using fallback LLM model: {model['model']} (Tier {model['tier']})")
+                    return model["model"]
         
         # Original fallback logic for other model types
         fallback_options = {
@@ -679,7 +689,7 @@ Provide:
 
             # Check if LLM is available before proceeding
             if self.llm is None:
-                raise Exception("LLM is not available. Please check your HUGGINGFACEHUB_API_TOKEN and try again.")
+                raise Exception("LLM is not available. Please check your OPENROUTER_API_KEY and try again.")
 
             # Get trading context data with error handling
             try:
@@ -774,7 +784,7 @@ Provide:
 
             # Check if LLM is available before proceeding
             if self.llm is None:
-                raise Exception("LLM is not available. Check your HUGGINGFACEHUB_API_TOKEN and model configuration.")
+                raise Exception("LLM is not available. Please check your OPENROUTER_API_KEY and try again.")
 
             # Handle session creation if session_id is None
             if not session_id:
@@ -850,7 +860,9 @@ Provide:
 
             # Generate embedding for AI response (with fallback)
             try:
-                ai_embedding = self.embedding_service.generate_embedding(ai_response)
+                # Extract content from AIMessage if needed
+                response_content = ai_response.content if hasattr(ai_response, 'content') else str(ai_response)
+                ai_embedding = self.embedding_service.generate_embedding(response_content)
             except Exception as e:
                 logger.error(f"Error generating AI embedding: {str(e)}")
                 ai_embedding = None
@@ -860,7 +872,7 @@ Provide:
                 ai_msg_data = AIChatMessageCreate(
                     session_id=session_id,
                     message_type=MessageType.AI_RESPONSE,
-                    content=ai_response,
+                    content=response_content,
                     context_data={
                         "embedding": ai_embedding if ai_embedding else [],
                         "context_used": trading_context,
@@ -875,7 +887,7 @@ Provide:
             except Exception as e:
                 logger.error(f"Error saving AI response: {str(e)}")
                 saved_response = {
-                    "content": ai_response,
+                    "content": response_content,
                     "processing_time_ms": processing_time,
                     "model_used": self.current_llm_model,
                     "session_id": session_id
@@ -916,7 +928,7 @@ Provide:
 
             # Check if LLM is available before proceeding
             if self.llm is None:
-                raise Exception("LLM is not available. Check your HUGGINGFACEHUB_API_TOKEN and model configuration.")
+                raise Exception("LLM is not available. Please check your OPENROUTER_API_KEY and try again.")
 
             # Get trading context for analysis
             try:
@@ -936,6 +948,10 @@ Provide:
 
                     chain = self.trading_prompts["insight"] | self.llm | StrOutputParser()
                     insight_content = self._safe_chain_invoke(chain, prompt_input)
+                    
+                    # Extract content from AIMessage if needed
+                    if hasattr(insight_content, 'content'):
+                        insight_content = insight_content.content
 
                     # Extract actionable items from insight
                     actions = self._extract_actions_from_insight(insight_content)
@@ -1183,17 +1199,17 @@ Provide:
             
             for model_config in tier_models:
                 try:
-                    self.current_llm_model = model_config["repo"]
+                    self.current_llm_model = model_config["model"]
                     self._llm = None  # Reset to force reinitialization
                     self._llm_initialized = False
                     
                     # Test the new model
                     if self.llm is not None:
-                        logger.info(f"Successfully switched to stable model: {model_config['repo']}")
+                        logger.info(f"Successfully switched to stable model: {model_config['model']}")
                         return True
                         
                 except Exception as e:
-                    logger.warning(f"Failed to switch to {model_config['repo']}: {str(e)}")
+                    logger.warning(f"Failed to switch to {model_config['model']}: {str(e)}")
                     continue
             
             logger.error(f"All tier {tier} models failed to initialize")
@@ -1231,8 +1247,8 @@ Provide:
                     models_by_tier[tier] = []
                 models_by_tier[tier].append({
                     "name": model["name"],
-                    "repo": model["repo"],
-                    "current": model["repo"] == self.current_llm_model
+                    "model": model["model"],
+                    "current": model["model"] == self.current_llm_model
                 })
             
             return {

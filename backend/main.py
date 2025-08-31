@@ -10,6 +10,10 @@ from routers.stocks import router as stocks_router
 from routers.options import router as options_router
 import logging
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

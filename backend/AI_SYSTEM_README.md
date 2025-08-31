@@ -37,16 +37,16 @@ Tradistry is a comprehensive trading journal and analytics platform that leverag
 **Purpose**: Central configuration for all AI models and settings
 
 **Key Features**:
-- **Hugging Face Integration**: API token management for hosted models
-- **Multiple Model Support**: 16+ pre-configured models including:
-  - **LLM Models**: Mistral, Llama2, Phi-3, Gemma, CodeLlama, Zephyr, OpenChat, NeuralChat, Starling
+- **OpenRouter Integration**: API token management for hosted models
+- **Multiple Model Support**: 12+ pre-configured models including:
+  - **LLM Models**: GPT-4o, Claude 3, Llama 3.1, Gemini, Mixtral, DeepSeek, Qwen
   - **Embedding Models**: Sentence Transformers (MiniLM, MPNet, E5, BGE variants)
   - **Financial Models**: FinBERT, SEC-BERT, ESG-BERT, CryptoBERT
 
 **Configuration Options**:
 ```python
 # Model Selection
-DEFAULT_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
+DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # Performance Settings
@@ -287,7 +287,7 @@ GET  /api/ai/insights/search - Search insights
 SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
 JWT_SECRET_KEY=your_jwt_secret
-HUGGINGFACEHUB_API_TOKEN=your_huggingface_token
+OPENROUTER_API_KEY=your_openrouter_token
 
 # Optional
 PROJECT_NAME=Tradistry Backend

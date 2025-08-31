@@ -13,30 +13,45 @@ class AISettings(BaseSettings):
         extra='allow'  # This allows extra fields
     )
 
-    # Hugging Face API Configuration
-    HUGGINGFACEHUB_API_TOKEN: Optional[str] = None
+    # OpenRouter API Configuration
+    OPENROUTER_API_KEY: Optional[str] = None
 
     # Default models
-    DEFAULT_LLM_MODEL: str = "mistralai/Mistral-7B-Instruct-v0.1"
+    DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b"
     DEFAULT_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     
-    # Available hosted models from Hugging Face
+    # Available hosted models from OpenRouter (Free Tier)
     AVAILABLE_LLM_MODELS: dict = {
-        "mistral_7b": "mistralai/Mistral-7B-Instruct-v0.1",
-        "mistral_7b_v0_2": "mistralai/Mistral-7B-Instruct-v0.2",
-        "mistral_7b_v0_3": "mistralai/Mistral-7B-Instruct-v0.3",
-        "llama2_7b": "meta-llama/Llama-2-7b-chat-hf",
-        "llama2_13b": "meta-llama/Llama-2-13b-chat-hf",
-        "code_llama_7b": "codellama/CodeLlama-7b-Instruct-hf",
-        "code_llama_13b": "codellama/CodeLlama-13b-Instruct-hf",
-        "phi3_mini": "microsoft/Phi-3-mini-4k-instruct",
-        "phi3_small": "microsoft/Phi-3-small-8k-instruct",
-        "gemma_2b": "google/gemma-2b-it",
-        "gemma_7b": "google/gemma-7b-it",
-        "zephyr_7b": "HuggingFaceH4/zephyr-7b-beta",
-        "openchat_7b": "openchat/openchat-3.5-0106",
-        "neural_chat_7b": "Intel/neural-chat-7b-v3-3",
-        "starling_7b": "Nexusflow/Starling-LM-7B-beta"
+        # High Performance Models
+        "gpt_oss_120b": "openai/gpt-oss-120b",
+        "deepseek_coder": "deepseek/deepseek-coder",
+        "deepseek_chat": "deepseek/deepseek-chat",
+        "kimi_dev_72b": "moonshotai/kimi-dev-72b",
+        "deepseek_r1": "deepseek/deepseek-r1",
+
+        # Balanced Performance Models
+        "gpt_oss_20b": "openai/gpt-oss-20b",
+        "glm_4_5_air": "z-ai/glm-4.5-air",
+        "qwen3_coder": "qwen/qwen3-coder",
+        "kimi_k2": "moonshotai/kimi-k2",
+        "hunyuan_a13b": "tencent/hunyuan-a13b-instruct",
+        "mistral_small_3_2_24b": "mistralai/mistral-small-3.2-24b-instruct",
+        "devstral_small_2505": "mistralai/devstral-small-2505",
+        "llama_3_3_8b": "meta-llama/llama-3.3-8b-instruct",
+        "sarvam_m": "sarvamai/sarvam-m",
+
+        # Specialized Models
+        "deepseek_r1t2_chimera": "tngtech/deepseek-r1t2-chimera",
+        "deepseek_r1_0528_qwen3_8b": "deepseek/deepseek-r1-0528-qwen3-8b",
+        "deepseek_r1t_chimera": "tngtech/deepseek-r1t-chimera",
+        "dolphin_mistral_24b_venice": "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+
+        # Qwen Series Models
+        "qwen3_235b_a22b": "qwen/qwen3-235b-a22b",
+        "qwen3_30b_a3b": "qwen/qwen3-30b-a3b",
+        "qwen3_14b": "qwen/qwen3-14b",
+        "qwen3_8b": "qwen/qwen3-8b",
+        "qwen3_4b": "qwen/qwen3-4b"
     }
     
     AVAILABLE_EMBEDDING_MODELS: dict = {
@@ -145,15 +160,15 @@ def validate_model_availability(model_path: str) -> bool:
     
     return model_path in all_models.values()
 
-# Validate Hugging Face API token on import
-def validate_huggingface_token() -> bool:
-    """Validate that Hugging Face API token is available."""
+# Validate OpenRouter API token on import
+def validate_openrouter_token() -> bool:
+    """Validate that OpenRouter API token is available."""
     settings = get_ai_settings()
-    token = settings.HUGGINGFACEHUB_API_TOKEN or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    token = settings.OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY")
 
     if not token:
-        print("Warning: HUGGINGFACEHUB_API_TOKEN not found in environment variables.")
-        print("Please set your Hugging Face API token to use hosted models.")
+        print("Warning: OPENROUTER_API_KEY not found in environment variables.")
+        print("Please set your OpenRouter API token to use hosted models.")
         return False
 
     return True
