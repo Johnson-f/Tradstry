@@ -93,7 +93,7 @@ BEGIN
         END IF;
 
         -- Update existing message
-        UPDATE ai_chat_history SET
+        UPDATE ai_chat_history AS ach SET
             session_id = p_session_id,
             message_type = p_message_type,
             content = p_content,
@@ -107,7 +107,7 @@ BEGIN
             source_type = p_source_type,
             usage_count = COALESCE(p_usage_count, usage_count),
             last_used_at = NOW()
-        WHERE id = p_message_id;
+        WHERE ach.id = p_message_id AND ach.user_id = p_user_id;
 
         v_operation_type := 'updated';
     ELSE
@@ -142,7 +142,7 @@ BEGIN
             p_source_type,
             p_usage_count,
             NOW()
-        ) RETURNING id INTO v_message_id;
+        ) RETURNING ai_chat_history.id INTO v_message_id;
 
         v_operation_type := 'created';
     END IF;

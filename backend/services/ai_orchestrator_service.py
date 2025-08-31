@@ -5,6 +5,7 @@ import traceback
 from datetime import datetime, timedelta
 import json
 import uuid
+import time
 
 # LangChain imports - Updated to use non-deprecated classes
 from langchain_core.prompts import PromptTemplate
@@ -17,7 +18,10 @@ from services.ai_reports_service import AIReportsService
 from services.ai_chat_service import AIChatService
 from services.ai_insights_service import AIInsightsService
 from models.ai_reports import ReportType, AIReportCreate
-from models.ai_chat import AIChatMessageCreate, AIChatSessionCreate, MessageType, SourceType
+from models.ai_chat import (
+    AIChatMessageCreate, AIChatSessionCreate, MessageType, SourceType,
+    AIChatMessageResponse  # Added missing import
+)
 from models.ai_insights import AIInsightCreate, InsightType, InsightPriority
 from config.ai_config import (
     get_ai_settings,
@@ -43,13 +47,15 @@ class AIOrchestrator:
         self.chat_service = AIChatService()
         self.insights_service = AIInsightsService()
 
-        # Model management
-        self.current_llm_model = self.ai_settings.DEFAULT_LLM_MODEL
+        # Model management with stable models
+        self.stable_models = self._get_stable_models()
+        self.current_llm_model = self._get_default_stable_model()
         self.current_embedding_model = self.ai_settings.DEFAULT_EMBEDDING_MODEL
         self.available_models = self._load_available_models()
 
         # LangChain setup - Updated to avoid deprecated classes
         self._llm = None
+        self._llm_initialized = False
         self._conversation_history = []  # Simple list to track conversation
 
         # LlamaIndex setup
@@ -59,17 +65,102 @@ class AIOrchestrator:
         # Trading-specific prompts
         self.trading_prompts = self._initialize_trading_prompts()
 
+    def _get_stable_models(self) -> List[Dict[str, str]]:
+        """Get list of models that work with Hugging Face FREE PLAN and text-generation task."""
+        return [
+            # Tier 1: FREE PLAN COMPATIBLE - Basic text generation models
+            {"name": "GPT-2", "repo": "openai-community/gpt2", "tier": 1, "task": "text-generation"},
+            {"name": "GPT-2 Medium", "repo": "openai-community/gpt2-medium", "tier": 1, "task": "text-generation"},
+            {"name": "GPT-2 Large", "repo": "openai-community/gpt2-large", "tier": 1, "task": "text-generation"},
+            {"name": "DistilGPT-2", "repo": "distilbert/distilgpt2", "tier": 1, "task": "text-generation"},
+            {"name": "GPT-Neo 125M", "repo": "EleutherAI/gpt-neo-125m", "tier": 1, "task": "text-generation"},
+            
+            # Tier 2: FREE PLAN COMPATIBLE - Slightly larger models
+            {"name": "GPT-Neo 1.3B", "repo": "EleutherAI/gpt-neo-1.3B", "tier": 2, "task": "text-generation"},
+            {"name": "GPT-Neo 2.7B", "repo": "EleutherAI/gpt-neo-2.7B", "tier": 2, "task": "text-generation"},
+            {"name": "BLOOM 560M", "repo": "bigscience/bloom-560m", "tier": 2, "task": "text-generation"},
+            {"name": "BLOOM 1B1", "repo": "bigscience/bloom-1b1", "tier": 2, "task": "text-generation"},
+            {"name": "OPT 350M", "repo": "facebook/opt-350m", "tier": 2, "task": "text-generation"},
+            
+            # Tier 3: FREE PLAN COMPATIBLE - Experimental models
+            {"name": "OPT 1.3B", "repo": "facebook/opt-1.3b", "tier": 3, "task": "text-generation"},
+            {"name": "OPT 2.7B", "repo": "facebook/opt-2.7b", "tier": 3, "task": "text-generation"},
+            {"name": "CodeGen 350M", "repo": "Salesforce/codegen-350M-mono", "tier": 3, "task": "text-generation"},
+            {"name": "CodeGen 2B", "repo": "Salesforce/codegen-2B-mono", "tier": 3, "task": "text-generation"},
+            {"name": "GPT-J 6B", "repo": "EleutherAI/gpt-j-6b", "tier": 3, "task": "text-generation"},
+            
+            # Tier 4: FREE PLAN COMPATIBLE - Backup options (removed DistilBERT as it's not for text generation)
+            {"name": "TinyLlama 1.1B", "repo": "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T", "tier": 4, "task": "text-generation"},
+            {"name": "Pythia 410M", "repo": "EleutherAI/pythia-410m", "tier": 4, "task": "text-generation"},
+            {"name": "Pythia 1.4B", "repo": "EleutherAI/pythia-1.4b", "tier": 4, "task": "text-generation"},
+            {"name": "OPT 125M", "repo": "facebook/opt-125m", "tier": 4, "task": "text-generation"}
+        ]
+
+    def _get_default_stable_model(self) -> str:
+        """Get the most stable default model for FREE PLAN."""
+        # Start with tier 1 models (most stable and free plan compatible)
+        tier_1_models = [model for model in self.stable_models if model["tier"] == 1]
+        if tier_1_models:
+            return tier_1_models[0]["repo"]
+        
+        # Fallback to any available model
+        return self.stable_models[0]["repo"] if self.stable_models else "openai-community/gpt2"
+
+    def _check_model_task_compatibility(self, repo_id: str, task: str = "text-generation") -> bool:
+        """
+        Check if a model supports the specified task on FREE PLAN.
+        
+        Args:
+            repo_id: Hugging Face model repository ID
+            task: Task type to check
+            
+        Returns:
+            True if compatible, False otherwise
+        """
+        try:
+            # Models known to work with text-generation on free plan
+            free_plan_compatible = {
+                "openai-community/gpt2",
+                "openai-community/gpt2-medium", 
+                "openai-community/gpt2-large",
+                "distilbert/distilgpt2",
+                "EleutherAI/gpt-neo-125m",
+                "EleutherAI/gpt-neo-1.3B",
+                "EleutherAI/gpt-neo-2.7B",
+                "bigscience/bloom-560m",
+                "bigscience/bloom-1b1",
+                "facebook/opt-350m",
+                "facebook/opt-1.3b",
+                "facebook/opt-2.7b",
+                "EleutherAI/pythia-410m",
+                "EleutherAI/pythia-1.4b",
+                "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T",
+                "Salesforce/codegen-350M-mono",
+                "Salesforce/codegen-2B-mono",
+                "EleutherAI/gpt-j-6b",
+                "facebook/opt-125m"
+            }
+            
+            return repo_id in free_plan_compatible
+            
+        except Exception as e:
+            logger.error(f"Error checking model compatibility: {str(e)}")
+            return False
+
     def _load_available_models(self) -> Dict[str, Dict[str, str]]:
         """Load all available models from configuration."""
         try:
+            stable_llm_models = {model["name"]: model["repo"] for model in self.stable_models}
+            
             return {
-                'llm': get_available_llm_models(),
+                'llm': {**get_available_llm_models(), **stable_llm_models},
                 'embedding': get_available_embedding_models(),
-                'financial': get_financial_models()
+                'financial': get_financial_models(),
+                'stable_llm': stable_llm_models
             }
         except Exception as e:
             logger.error(f"Error loading available models: {str(e)}")
-            return {'llm': {}, 'embedding': {}, 'financial': {}}
+            return {'llm': {}, 'embedding': {}, 'financial': {}, 'stable_llm': {}}
 
     def _validate_token(self, access_token: str) -> bool:
         """Validate access token format and structure."""
@@ -130,18 +221,81 @@ class AIOrchestrator:
             logger.error(f"Unexpected error validating token: {str(e)}")
             return False
 
+    def _initialize_llm_with_fallback(self) -> Optional[HuggingFaceEndpoint]:
+        """Initialize LLM with automatic fallback to FREE PLAN compatible models."""
+        if not hasattr(self.ai_settings, 'HUGGINGFACEHUB_API_TOKEN') or not self.ai_settings.HUGGINGFACEHUB_API_TOKEN:
+            logger.error("HUGGINGFACEHUB_API_TOKEN is not set in environment variables")
+            return None
+
+        # Try models in order of stability (tier 1 -> 4), optimized for FREE PLAN
+        models_by_tier = {}
+        for model in self.stable_models:
+            tier = model["tier"]
+            if tier not in models_by_tier:
+                models_by_tier[tier] = []
+            models_by_tier[tier].append(model)
+
+        # Try each tier in order
+        for tier in sorted(models_by_tier.keys()):
+            for model_config in models_by_tier[tier]:
+                try:
+                    logger.info(f"Attempting to initialize model: {model_config['repo']} (Tier {tier})")
+                    
+                    # FREE PLAN optimized configuration - REMOVED use_cache parameter
+                    llm = HuggingFaceEndpoint(
+                        repo_id=model_config["repo"],
+                        temperature=0.7,
+                        huggingfacehub_api_token=self.ai_settings.HUGGINGFACEHUB_API_TOKEN,
+                        task=model_config.get("task", "text-generation"),
+                        max_new_tokens=256,
+                        do_sample=True,
+                        return_full_text=False,
+                        repetition_penalty=1.1,
+                        timeout=45.0,
+                        top_k=50,
+                        top_p=0.9
+                        # Removed: use_cache=True  # This parameter was causing the error
+                    )
+
+                    # Test the model with a very simple prompt for free plan
+                    test_response = llm.invoke("Hello")
+                    if test_response and len(str(test_response).strip()) > 0:
+                        self.current_llm_model = model_config["repo"]
+                        logger.info(f"Successfully initialized FREE PLAN LLM: {model_config['repo']}")
+                        return llm
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to initialize {model_config['repo']}: {str(e)}")
+                    continue
+
+        logger.error("All FREE PLAN compatible models failed to initialize")
+        return None
+
     def select_model(self, model_type: str, model_key: str) -> bool:
         """
         Select a specific model for use.
 
         Args:
-            model_type: Type of model ('llm', 'embedding', 'financial')
+            model_type: Type of model ('llm', 'embedding', 'financial', 'stable_llm')
             model_key: Key identifier for the model
 
         Returns:
             True if model was successfully selected, False otherwise
         """
         try:
+            if model_type == 'stable_llm':
+                # Handle stable model selection
+                stable_model = next((m for m in self.stable_models if m["name"] == model_key), None)
+                if stable_model:
+                    self.current_llm_model = stable_model["repo"]
+                    self._llm = None  # Reset to force reinitialization
+                    self._llm_initialized = False
+                    logger.info(f"Switched to stable LLM model: {stable_model['repo']}")
+                    return True
+                else:
+                    logger.warning(f"Stable model '{model_key}' not found")
+                    return False
+
             model_path = get_model_by_key(model_type, model_key)
             if not model_path:
                 logger.warning(f"Model key '{model_key}' not found for type '{model_type}'")
@@ -155,6 +309,7 @@ class AIOrchestrator:
                 self.current_llm_model = model_path
                 # Reset LLM to force reinitialization with new model
                 self._llm = None
+                self._llm_initialized = False
                 logger.info(f"Switched to LLM model: {model_path}")
             elif model_type == 'embedding':
                 self.current_embedding_model = model_path
@@ -177,9 +332,14 @@ class AIOrchestrator:
             Dictionary containing model information
         """
         info = {
-            'current_llm': self.current_llm_model,
-            'current_embedding': self.current_embedding_model,
-            'available_models': self.available_models
+            "current_models": {
+                "llm": self.current_llm_model,
+                "embedding": self.current_embedding_model
+            },
+            "available_models": self.available_models,
+            "stable_models": self.stable_models,
+            "model_validation": self.validate_current_models(),
+            "llm_initialized": self._llm_initialized
         }
 
         if model_type:
@@ -210,10 +370,18 @@ class AIOrchestrator:
             logger.error(f"Error validating embedding model: {str(e)}")
             validation_status['embedding'] = False
 
+        # Test LLM initialization
+        try:
+            validation_status['llm_functional'] = self.llm is not None
+        except Exception as e:
+            logger.error(f"Error testing LLM functionality: {str(e)}")
+            validation_status['llm_functional'] = False
+
         # Log validation results
         for model_type, is_valid in validation_status.items():
             if not is_valid:
-                logger.warning(f"Current {model_type} model is not valid: {getattr(self, f'current_{model_type}_model')}")
+                current_model = getattr(self, f'current_{model_type}_model', 'unknown')
+                logger.warning(f"Current {model_type} model is not valid: {current_model}")
 
         return validation_status
 
@@ -228,16 +396,24 @@ class AIOrchestrator:
         Returns:
             Fallback model path or None if no fallback available
         """
+        if model_type == 'llm':
+            # Use stable models as fallbacks, prioritizing by tier
+            for model in sorted(self.stable_models, key=lambda x: x["tier"]):
+                if model["repo"] != current_model:
+                    logger.info(f"Using fallback LLM model: {model['repo']} (Tier {model['tier']})")
+                    return model["repo"]
+        
+        # Original fallback logic for other model types
         fallback_options = {
             'llm': [
-                'mistralai/Mistral-7B-Instruct-v0.1',  # Most stable
-                'microsoft/Phi-3-mini-4k-instruct',    # Fast and efficient
-                'google/gemma-2b-it'                   # Good performance
+                'microsoft/DialoGPT-medium',
+                'google/flan-t5-base', 
+                'microsoft/DialoGPT-small'
             ],
             'embedding': [
-                'sentence-transformers/all-MiniLM-L6-v2',  # Most stable
-                'BAAI/bge-small-en-v1.5',                  # Good performance
-                'intfloat/e5-small-v2'                      # Versatile
+                'sentence-transformers/all-MiniLM-L6-v2',
+                'BAAI/bge-small-en-v1.5',
+                'intfloat/e5-small-v2'
             ]
         }
 
@@ -320,43 +496,164 @@ class AIOrchestrator:
 
     @property
     def llm(self):
-        """Lazy load the LLM to avoid initialization overhead."""
-        if self._llm is None:
+        """Lazy load the LLM with enhanced error handling and fallback logic."""
+        if self._llm is None or not self._llm_initialized:
             try:
-                # Check if API token exists
-                if not hasattr(self.ai_settings, 'HUGGINGFACEHUB_API_TOKEN') or not self.ai_settings.HUGGINGFACEHUB_API_TOKEN:
-                    logger.error("HUGGINGFACEHUB_API_TOKEN is not set in environment variables")
+                self._llm = self._initialize_llm_with_fallback()
+                self._llm_initialized = self._llm is not None
+                
+                if self._llm is None:
+                    logger.error("Failed to initialize any LLM model")
                     return None
-
-                # Validate current model before initialization
-                if not validate_model_availability(self.current_llm_model):
-                    logger.warning(f"Current LLM model '{self.current_llm_model}' is not available, trying fallback")
-                    fallback_model = self.get_fallback_model('llm', self.current_llm_model)
-                    if fallback_model:
-                        self.current_llm_model = fallback_model
-                        logger.info(f"Using fallback LLM model: {fallback_model}")
-                    else:
-                        logger.error(f"No available LLM model found. Current: {self.current_llm_model}")
-                        return None
-
-                # Fixed initialization - parameters as explicit arguments
-                self._llm = HuggingFaceEndpoint(
-                    repo_id=self.current_llm_model,
-                    temperature=self.ai_settings.LLM_TEMPERATURE,
-                    huggingfacehub_api_token=self.ai_settings.HUGGINGFACEHUB_API_TOKEN,
-                    task="text-generation",
-                    max_new_tokens=self.ai_settings.LLM_MAX_LENGTH,
-                    do_sample=True,
-                    return_full_text=False
-                )
-                logger.info(f"Initialized Hugging Face hosted LLM: {self.current_llm_model}")
-
+                    
             except Exception as e:
-                logger.error(f"Failed to initialize LLM '{self.current_llm_model}': {str(e)}")
+                logger.error(f"Failed to initialize LLM: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
+                self._llm = None
+                self._llm_initialized = False
                 return None
 
         return self._llm
+
+    def _safe_chain_invoke(self, chain, input_data):
+        """Safely invoke a LangChain chain, handling StopIteration and other exceptions."""
+        try:
+            # Enhanced error handling for chain invocation
+            max_retries = 3
+            retry_delay = 1.0
+            
+            for attempt in range(max_retries):
+                try:
+                    # Try direct LLM invocation first to isolate the issue
+                    if hasattr(chain, 'steps') and len(chain.steps) >= 2:
+                        prompt_template = chain.steps[0]
+                        llm = chain.steps[1]
+                        
+                        # Format prompt manually
+                        formatted_prompt = prompt_template.format(**input_data)
+                        
+                        # Call LLM directly with timeout
+                        result = llm.invoke(formatted_prompt)
+                        
+                        # Parse output manually if needed
+                        if hasattr(chain, 'steps') and len(chain.steps) > 2:
+                            output_parser = chain.steps[2]
+                            if hasattr(output_parser, 'parse'):
+                                result = output_parser.parse(result)
+                        
+                        return result
+                    else:
+                        # Fallback to chain invoke
+                        result = chain.invoke(input_data)
+                        return result
+                        
+                except (StopIteration, RuntimeError, ConnectionError) as e:
+                    logger.warning(f"Chain invoke attempt {attempt + 1} failed: {str(e)}")
+                    
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        
+                        # Try to reinitialize LLM on StopIteration
+                        if isinstance(e, StopIteration):
+                            logger.info("Reinitializing LLM due to StopIteration")
+                            self._llm = None
+                            self._llm_initialized = False
+                            
+                            # Force reinitialization
+                            new_llm = self.llm
+                            if new_llm is None:
+                                continue
+                        continue
+                    else:
+                        raise e
+
+            # If all retries failed, try manual prompt formatting
+            logger.warning("All chain invocation attempts failed, trying manual approach")
+            return self._manual_llm_invoke(input_data)
+                        
+        except Exception as e:
+            logger.error(f"All LLM invocation methods failed: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return self._get_fallback_response(input_data)
+
+    def _manual_llm_invoke(self, input_data: Dict[str, Any]) -> str:
+        """Manual LLM invocation as last resort."""
+        try:
+            if not self.llm:
+                raise Exception("LLM not available")
+                
+            prompt_text = self._format_prompt_manually(input_data)
+            
+            # Try direct invoke with the current LLM
+            raw_result = self.llm.invoke(prompt_text)
+            
+            # Clean up the result
+            if isinstance(raw_result, str):
+                return raw_result.strip()
+            elif hasattr(raw_result, 'content'):
+                return raw_result.content.strip()
+            else:
+                return str(raw_result).strip()
+                
+        except Exception as e:
+            logger.error(f"Manual LLM invoke failed: {str(e)}")
+            raise
+
+    def _get_fallback_response(self, input_data: Dict[str, Any]) -> str:
+        """Generate a fallback response when all LLM methods fail."""
+        if 'question' in input_data:
+            return "I'm experiencing technical difficulties processing your question. Please try again in a moment, or rephrase your question for better results."
+        elif 'insight_type' in input_data:
+            return f"Unable to generate {input_data.get('insight_type', 'general')} insights at this time due to technical issues. Please try again later."
+        elif 'date_range' in input_data:
+            return "I'm unable to generate the trading report right now due to technical difficulties. Please try again later or contact support."
+        else:
+            return "I'm experiencing technical difficulties. Please try again or contact support if the issue persists."
+
+    def _format_prompt_manually(self, input_data: Dict[str, Any]) -> str:
+        """Manually format prompt as fallback when chain fails."""
+        try:
+            if 'question' in input_data:
+                # Chat prompt
+                return f"""You are a knowledgeable trading assistant.
+
+Context: {input_data.get('context', 'No context available')}
+
+Previous conversation: {input_data.get('chat_history', 'No previous conversation')}
+
+User question: {input_data['question']}
+
+Please provide a helpful response."""
+
+            elif 'trading_data' in input_data and 'insight_type' in input_data:
+                # Insight prompt
+                return f"""You are a trading pattern recognition expert. Analyze the trading data to identify {input_data['insight_type']} insights.
+
+Trading Data: {input_data['trading_data']}
+
+Provide specific, actionable insights with confidence scores."""
+
+            elif 'trading_data' in input_data and 'date_range' in input_data:
+                # Report prompt
+                return f"""You are an expert trading analyst. Generate a comprehensive trading report.
+
+Trading Data: {input_data['trading_data']}
+Date Range: {input_data['date_range']}
+
+Provide:
+1. Performance Summary
+2. Key Insights  
+3. Risk Analysis
+4. Recommendations
+5. Market Observations"""
+
+            else:
+                return f"Please analyze the following data: {json.dumps(input_data, indent=2)}"
+                
+        except Exception as e:
+            logger.error(f"Error formatting prompt manually: {str(e)}")
+            return "Please provide analysis on the given data."
 
     async def generate_daily_report(self, user: Dict[str, Any], time_range: str = "1d",
                                   custom_start_date: Optional[datetime] = None,
@@ -382,7 +679,7 @@ class AIOrchestrator:
 
             # Check if LLM is available before proceeding
             if self.llm is None:
-                raise Exception("LLM is not available. Check your HUGGINGFACEHUB_API_TOKEN and model configuration.")
+                raise Exception("LLM is not available. Please check your HUGGINGFACEHUB_API_TOKEN and try again.")
 
             # Get trading context data with error handling
             try:
@@ -393,21 +690,21 @@ class AIOrchestrator:
                 logger.warning(f"Error getting trading context, using fallback: {str(e)}")
                 trading_context = {"message": "No trading data available", "analytics": {}}
 
-            # Generate report using updated LangChain pattern
+            # Generate report using enhanced chain approach
             try:
-                # Create a simple chain using the new pattern
                 chain = self.trading_prompts["daily_report"] | self.llm | StrOutputParser()
 
-                report_content = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: chain.invoke({
-                        "trading_data": json.dumps(trading_context, indent=2),
-                        "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
-                    })
-                )
+                report_content = self._safe_chain_invoke(chain, {
+                    "trading_data": json.dumps(trading_context, indent=2),
+                    "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                })
+                    
             except Exception as llm_error:
                 logger.error(f"LLM generation failed: {str(llm_error)}")
-                raise Exception(f"Failed to generate report content: {str(llm_error)}")
+                report_content = self._get_fallback_response({
+                    "trading_data": trading_context,
+                    "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                })
 
             # Calculate processing time
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -483,12 +780,10 @@ class AIOrchestrator:
             if not session_id:
                 logger.info("Creating new chat session...")
                 try:
-                    # For now, we'll create a simple session ID
                     session_id = str(uuid.uuid4())
                     logger.info(f"Created new session with ID: {session_id}")
                 except Exception as e:
                     logger.error(f"Error creating new session: {str(e)}")
-                    # Fallback to a simple session ID
                     session_id = f"session_{int(datetime.now().timestamp())}"
                     logger.info(f"Using fallback session ID: {session_id}")
 
@@ -533,7 +828,6 @@ class AIOrchestrator:
                 await self.chat_service.create_message(user_msg_data, user["access_token"])
             except Exception as e:
                 logger.error(f"Error saving user message: {str(e)}")
-                # Continue processing even if saving fails
 
             # Prepare prompt for AI response
             prompt_input = {
@@ -542,17 +836,14 @@ class AIOrchestrator:
                 "chat_history": history_text
             }
 
-            # Generate AI response using updated LangChain pattern
+            # Generate AI response using enhanced chain approach
             try:
-                # Create a simple chain using the new pattern
                 chain = self.trading_prompts["chat"] | self.llm | StrOutputParser()
-
-                ai_response = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: chain.invoke(prompt_input)
-                )
+                ai_response = self._safe_chain_invoke(chain, prompt_input)
+                    
             except Exception as llm_error:
                 logger.error(f"LLM chat generation failed: {str(llm_error)}")
-                ai_response = "I'm sorry, I'm having trouble processing your request right now. Please try again later."
+                ai_response = self._get_fallback_response({"question": user_message})
 
             # Calculate processing time
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -583,7 +874,6 @@ class AIOrchestrator:
                 saved_response = await self.chat_service.create_message(ai_msg_data, user["access_token"])
             except Exception as e:
                 logger.error(f"Error saving AI response: {str(e)}")
-                # Create a simple response object if saving fails
                 saved_response = {
                     "content": ai_response,
                     "processing_time_ms": processing_time,
@@ -639,18 +929,13 @@ class AIOrchestrator:
 
             for insight_type in insight_types:
                 try:
-                    # Generate insight using AI with updated LangChain pattern
                     prompt_input = {
                         "trading_data": json.dumps(trading_context, indent=2),
                         "insight_type": insight_type.value
                     }
 
-                    # Create a simple chain using the new pattern
                     chain = self.trading_prompts["insight"] | self.llm | StrOutputParser()
-
-                    insight_content = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: chain.invoke(prompt_input)
-                    )
+                    insight_content = self._safe_chain_invoke(chain, prompt_input)
 
                     # Extract actionable items from insight
                     actions = self._extract_actions_from_insight(insight_content)
@@ -664,12 +949,12 @@ class AIOrchestrator:
                         title=f"{insight_type.value.title()} Analysis - {datetime.now().strftime('%Y-%m-%d')}",
                         description=insight_content,
                         data_source=trading_context,
-                        confidence_score=min_confidence + 0.1,  # Slightly above threshold
+                        confidence_score=min_confidence + 0.1,
                         priority=priority,
                         actionable=bool(actions),
                         actions=actions,
                         tags=[insight_type.value, "ai-generated", time_range],
-                        valid_until=datetime.now() + timedelta(days=7),  # Valid for a week
+                        valid_until=datetime.now() + timedelta(days=7),
                         model_used=self.current_llm_model
                     )
 
@@ -679,7 +964,6 @@ class AIOrchestrator:
                         generated_insights.append(saved_insight)
                     except Exception as e:
                         logger.error(f"Error saving insight: {str(e)}")
-                        # Add to results even if saving fails
                         generated_insights.append({
                             "type": insight_type.value,
                             "content": insight_content,
@@ -729,7 +1013,7 @@ class AIOrchestrator:
         except Exception as e:
             logger.error(f"Error extracting insights and recommendations: {str(e)}")
 
-        return insights[:5], recommendations[:5]  # Limit to top 5 each
+        return insights[:5], recommendations[:5]
 
     def _format_chat_history(self, chat_history: List) -> str:
         """Format chat history for context in prompts."""
@@ -739,24 +1023,27 @@ class AIOrchestrator:
         try:
             formatted = []
             for msg in chat_history[-5:]:  # Last 5 messages
-                # Handle both object and dict formats
-                if hasattr(msg, 'message_type') and hasattr(msg, 'content'):
-                    role = "User" if msg.message_type == MessageType.USER_QUESTION else "Assistant"
-                    content = msg.content
-                elif isinstance(msg, dict):
-                    msg_type = msg.get('message_type')
-                    if isinstance(msg_type, str):
-                        role = "User" if msg_type == "user_question" else "Assistant"
-                    elif msg_type and hasattr(msg_type, 'value'):
-                        role = "User" if msg_type.value == "user_question" else "Assistant"
+                try:
+                    if hasattr(msg, 'message_type') and hasattr(msg, 'content'):
+                        role = "User" if msg.message_type == MessageType.USER_QUESTION else "Assistant"
+                        content = msg.content
+                    elif isinstance(msg, dict):
+                        msg_type = msg.get('message_type')
+                        if isinstance(msg_type, str):
+                            role = "User" if msg_type == "user_question" else "Assistant"
+                        elif msg_type and hasattr(msg_type, 'value'):
+                            role = "User" if msg_type.value == "user_question" else "Assistant"
+                        else:
+                            role = "User" if msg_type == MessageType.USER_QUESTION else "Assistant"
+                        content = msg.get('content', '')
                     else:
-                        role = "User" if msg_type == MessageType.USER_QUESTION else "Assistant"
-                    content = msg.get('content', '')
-                else:
-                    continue  # Skip malformed messages
+                        continue
 
-                if content:
-                    formatted.append(f"{role}: {content[:200]}...")  # Truncate long messages
+                    if content:
+                        formatted.append(f"{role}: {content[:200]}...")
+                except Exception as msg_error:
+                    logger.warning(f"Error processing chat history message: {str(msg_error)}")
+                    continue
 
             return "\n".join(formatted) if formatted else "No previous conversation."
 
@@ -839,9 +1126,7 @@ class AIOrchestrator:
             if not insight_content or not isinstance(insight_content, str):
                 return None
 
-            # Simple action extraction - in production, use more sophisticated NLP
             actions = {}
-
             content_lower = insight_content.lower()
 
             if 'reduce risk' in content_lower:
@@ -867,7 +1152,6 @@ class AIOrchestrator:
     def _determine_insight_priority(self, insight_type: InsightType, trading_context: Dict[str, Any]) -> InsightPriority:
         """Determine insight priority based on type and trading context."""
         try:
-            # Simple priority logic - can be enhanced with more sophisticated rules
             if insight_type == InsightType.RISK:
                 return InsightPriority.HIGH
             elif insight_type == InsightType.OPPORTUNITY:
@@ -879,6 +1163,88 @@ class AIOrchestrator:
         except Exception as e:
             logger.error(f"Error determining insight priority: {str(e)}")
             return InsightPriority.MEDIUM
+
+    def switch_to_stable_model(self, tier: int = 1) -> bool:
+        """
+        Switch to a stable model from the specified tier.
+        
+        Args:
+            tier: Model tier (1-4, where 1 is most stable)
+            
+        Returns:
+            True if successfully switched, False otherwise
+        """
+        try:
+            tier_models = [model for model in self.stable_models if model["tier"] == tier]
+            
+            if not tier_models:
+                logger.warning(f"No models available in tier {tier}")
+                return False
+            
+            for model_config in tier_models:
+                try:
+                    self.current_llm_model = model_config["repo"]
+                    self._llm = None  # Reset to force reinitialization
+                    self._llm_initialized = False
+                    
+                    # Test the new model
+                    if self.llm is not None:
+                        logger.info(f"Successfully switched to stable model: {model_config['repo']}")
+                        return True
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to switch to {model_config['repo']}: {str(e)}")
+                    continue
+            
+            logger.error(f"All tier {tier} models failed to initialize")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error switching to stable model: {str(e)}")
+            return False
+
+    def auto_recover_model(self) -> bool:
+        """
+        Automatically recover by trying stable models in order.
+        
+        Returns:
+            True if recovery successful, False otherwise
+        """
+        logger.info("Attempting automatic model recovery...")
+        
+        # Try each tier in order
+        for tier in range(1, 5):
+            if self.switch_to_stable_model(tier):
+                logger.info(f"Recovery successful with tier {tier} model: {self.current_llm_model}")
+                return True
+                
+        logger.error("Auto-recovery failed - no stable models available")
+        return False
+
+    def get_stable_models_info(self) -> Dict[str, Any]:
+        """Get information about stable models organized by tier."""
+        try:
+            models_by_tier = {}
+            for model in self.stable_models:
+                tier = model["tier"]
+                if tier not in models_by_tier:
+                    models_by_tier[tier] = []
+                models_by_tier[tier].append({
+                    "name": model["name"],
+                    "repo": model["repo"],
+                    "current": model["repo"] == self.current_llm_model
+                })
+            
+            return {
+                "current_model": self.current_llm_model,
+                "models_by_tier": models_by_tier,
+                "total_stable_models": len(self.stable_models),
+                "llm_status": "initialized" if self._llm_initialized else "not_initialized"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting stable models info: {str(e)}")
+            return {"error": str(e)}
 
     def clear_conversation_history(self):
         """Clear the conversation history."""
@@ -907,6 +1273,7 @@ class AIOrchestrator:
             status = {
                 "timestamp": datetime.now().isoformat(),
                 "llm_available": self.llm is not None,
+                "llm_initialized": self._llm_initialized,
                 "current_models": {
                     "llm": self.current_llm_model,
                     "embedding": self.current_embedding_model
@@ -917,7 +1284,8 @@ class AIOrchestrator:
                     "reports_service": bool(self.reports_service),
                     "chat_service": bool(self.chat_service),
                     "insights_service": bool(self.insights_service)
-                }
+                },
+                "stable_models_info": self.get_stable_models_info()
             }
 
             return status
