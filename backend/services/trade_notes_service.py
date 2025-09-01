@@ -1,26 +1,26 @@
-from typing import List, Optional, Dict, Any
-from uuid import UUID
+from typing import Dict, Any, Optional, List
 from supabase import Client
-from postgrest.exceptions import APIError
 from database import get_supabase
+from datetime import datetime, date
 from models.trade_notes import TradeNoteCreate, TradeNoteUpdate, TradeNoteInDB, TradeNoteType, TradePhase
 from .base_database_service import BaseDatabaseService
+from auth_service import AuthService
 
 class TradeNotesService:
     """Service for handling trade notes operations using SQL functions."""
 
     def __init__(self, supabase: Client = None):
         self._supabase_client = supabase or get_supabase()
+        self.auth_service = AuthService(self._supabase_client)
 
-    def _get_client_with_token(self, access_token: str = None) -> Client:
+    async def _call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str = None):
+        """Helper method to call SQL functions with proper authentication."""
         if access_token:
-            client = get_supabase()
-            client.auth.set_session(access_token, "")
-            return client
-        return self._supabase_client
+            return await self.auth_service.safe_rpc_call(function_name, params, access_token)
+        else:
+            return self._supabase_client.rpc(function_name, params).execute()
 
     async def upsert_trade_note(self, note: TradeNoteCreate, note_id: Optional[int] = None, access_token: str = None) -> Dict[str, Any]:
-        client = self._get_client_with_token(access_token)
         params = {
             'p_trade_id': note.trade_id,
             'p_trade_type': note.trade_type.value,
@@ -33,7 +33,7 @@ class TradeNotesService:
             'p_image_id': note.image_id
         }
         try:
-            response = client.rpc('upsert_trade_note', params).execute()
+            response = await self._call_sql_function('upsert_trade_note', params, access_token)
             if response.data:
                 if isinstance(response.data, list):
                     return response.data[0] if len(response.data) > 0 else None
@@ -53,7 +53,6 @@ class TradeNotesService:
         rating: Optional[int] = None,
         access_token: str = None
     ) -> List[TradeNoteInDB]:
-        client = self._get_client_with_token(access_token)
         params = {
             'p_note_id': note_id,
             'p_trade_id': trade_id,
@@ -63,7 +62,7 @@ class TradeNotesService:
             'p_rating': rating
         }
         try:
-            response = client.rpc('select_trade_notes', params).execute()
+            response = await self._call_sql_function('select_trade_notes', params, access_token)
 
             # The RPC function returns a JSONB object directly, not wrapped in an array
             if not response.data:
@@ -101,11 +100,10 @@ class TradeNotesService:
             raise
 
     async def delete_trade_note(self, note_id: int, access_token: str = None) -> Dict[str, Any]:
-        client = self._get_client_with_token(access_token)
         params = {'p_note_id': note_id}
 
         try:
-            response = client.rpc('delete_trade_note', params).execute()
+            response = await self._call_sql_function('delete_trade_note', params, access_token)
 
             # Handle the response similar to select_trade_notes
             if not response.data:
@@ -141,7 +139,6 @@ class TradeNotesService:
     async def get_tracking_summary(self, access_token: str = None, time_range: str = "7d",
                                  custom_start_date=None, custom_end_date=None) -> Dict[str, Any]:
         """Get a summary of tracking data for trading context."""
-        client = self._get_client_with_token(access_token)
 
         try:
             # Get recent trade notes for context based on time range

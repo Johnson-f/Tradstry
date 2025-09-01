@@ -644,6 +644,19 @@ class AnalyticsService:
                 weekly_metrics = result.data[0]
                 weekly_metrics["week_start_date"] = self._safe_isoformat(weekly_metrics.get("week_start_date"))
                 weekly_metrics["week_end_date"] = self._safe_isoformat(weekly_metrics.get("week_end_date"))
+                
+                # Ensure integer fields are not None to prevent validation errors
+                weekly_metrics["total_trades"] = weekly_metrics.get("total_trades") or 0
+                weekly_metrics["profitable_trades"] = weekly_metrics.get("profitable_trades") or 0
+                weekly_metrics["unprofitable_trades"] = weekly_metrics.get("unprofitable_trades") or 0
+                
+                # Ensure float fields have default values
+                weekly_metrics["win_rate"] = float(weekly_metrics.get("win_rate") or 0.0)
+                weekly_metrics["net_pnl"] = float(weekly_metrics.get("net_pnl") or 0.0)
+                weekly_metrics["profit_factor"] = float(weekly_metrics.get("profit_factor") or 0.0)
+                weekly_metrics["max_drawdown"] = float(weekly_metrics.get("max_drawdown") or 0.0)
+                weekly_metrics["expectancy_per_trade"] = float(weekly_metrics.get("expectancy_per_trade") or 0.0)
+                
                 return weekly_metrics
             return {}
 
@@ -666,6 +679,19 @@ class AnalyticsService:
                 monthly_metrics = result.data[0]
                 monthly_metrics["month_start_date"] = self._safe_isoformat(monthly_metrics.get("month_start_date"))
                 monthly_metrics["month_end_date"] = self._safe_isoformat(monthly_metrics.get("month_end_date"))
+                
+                # Ensure integer fields are not None to prevent validation errors
+                monthly_metrics["total_trades"] = monthly_metrics.get("total_trades") or 0
+                monthly_metrics["profitable_trades"] = monthly_metrics.get("profitable_trades") or 0
+                monthly_metrics["unprofitable_trades"] = monthly_metrics.get("unprofitable_trades") or 0
+                
+                # Ensure float fields have default values
+                monthly_metrics["win_rate"] = float(monthly_metrics.get("win_rate") or 0.0)
+                monthly_metrics["net_pnl"] = float(monthly_metrics.get("net_pnl") or 0.0)
+                monthly_metrics["profit_factor"] = float(monthly_metrics.get("profit_factor") or 0.0)
+                monthly_metrics["max_drawdown"] = float(monthly_metrics.get("max_drawdown") or 0.0)
+                monthly_metrics["expectancy_per_trade"] = float(monthly_metrics.get("expectancy_per_trade") or 0.0)
+                
                 return monthly_metrics
             return {}
 
