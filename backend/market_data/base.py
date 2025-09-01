@@ -238,6 +238,519 @@ class EarningsCallTranscript(BaseModel):
         }
 
 
+class MotivationalQuote(BaseModel):
+    """Motivational quote data model"""
+    quote: str
+    author: str
+    category: str
+    timestamp: datetime
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class CompanySearchResult(BaseModel):
+    """Company search result data model"""
+    symbol: str
+    name: str
+    exchange: Optional[str] = None
+    type: Optional[str] = None  # e.g., 'stock', 'etf', 'crypto'
+    score: Optional[float] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class FundamentalData(BaseModel):
+    """Fundamental financial data model"""
+    symbol: str
+    income_statement: List[Dict[str, Any]] = []
+    balance_sheet: List[Dict[str, Any]] = []
+    cash_flow: List[Dict[str, Any]] = []
+    ratios: List[Dict[str, Any]] = []
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class EarningsTranscript(BaseModel):
+    """Earnings call transcript data model"""
+    symbol: str
+    date: date
+    quarter: str
+    year: int
+    transcript: str
+    participants: List[Dict[str, str]] = []
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat()
+        }
+
+
+class SECFiling(BaseModel):
+    """SEC filing data model"""
+    symbol: str
+    filing_type: str  # e.g., '10-K', '10-Q'
+    filing_date: date
+    accepted_date: Optional[datetime] = None
+    document_url: str
+    description: Optional[str] = None
+    size: Optional[int] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class CorporateAction(BaseModel):
+    """Corporate action data model"""
+    symbol: str
+    action_type: str  # 'dividend', 'split', 'merger', etc.
+    date: date
+    description: str
+    value: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class AIQueryResult(BaseModel):
+    """AI query response data model"""
+    symbol: str
+    question: str
+    answer: str
+    confidence: Optional[float] = None
+    sources: List[str] = []
+    timestamp: datetime
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class MarketStatus(BaseModel):
+    """Market status data model"""
+    market: str  # e.g., 'US', 'EU'
+    status: str  # 'open', 'closed', 'pre_market', 'after_hours'
+    timestamp: datetime
+    next_open: Optional[datetime] = None
+    next_close: Optional[datetime] = None
+    timezone: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class DividendRecord(BaseModel):
+    """Dividend record data model"""
+    symbol: str
+    date: Optional[date] = None
+    declaration_date: Optional[date] = None
+    record_date: Optional[date] = None
+    payment_date: Optional[date] = None
+    amount: Optional[Decimal] = None
+    adjusted_amount: Optional[Decimal] = None
+    label: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class NewsArticle(BaseModel):
+    """News article data model"""
+    title: str
+    content: Optional[str] = None
+    url: Optional[str] = None
+    source: Optional[str] = None
+    published_date: Optional[datetime] = None
+    image_url: Optional[str] = None
+    related_symbols: List[str] = []
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class EarningsSurprise(BaseModel):
+    """Earnings surprise data model"""
+    symbol: str
+    date: Optional[date] = None
+    actual_earnings_per_share: Optional[Decimal] = None
+    estimated_earnings_per_share: Optional[Decimal] = None
+    earnings_surprise: Optional[Decimal] = None
+    earnings_surprise_percentage: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class StockSplit(BaseModel):
+    """Stock split data model"""
+    symbol: str
+    date: Optional[date] = None
+    label: Optional[str] = None
+    numerator: Optional[Decimal] = None
+    denominator: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class IPOCalendar(BaseModel):
+    """IPO calendar data model"""
+    date: Optional[date] = None
+    company: str
+    symbol: str
+    exchange: Optional[str] = None
+    actions: Optional[str] = None
+    shares: Optional[int] = None
+    price_range_low: Optional[Decimal] = None
+    price_range_high: Optional[Decimal] = None
+    market_cap: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class AnalystEstimates(BaseModel):
+    """Analyst estimates data model"""
+    symbol: str
+    date: Optional[date] = None
+    estimated_revenue_low: Optional[Decimal] = None
+    estimated_revenue_high: Optional[Decimal] = None
+    estimated_revenue_avg: Optional[Decimal] = None
+    estimated_ebitda_low: Optional[Decimal] = None
+    estimated_ebitda_high: Optional[Decimal] = None
+    estimated_ebitda_avg: Optional[Decimal] = None
+    estimated_ebit_low: Optional[Decimal] = None
+    estimated_ebit_high: Optional[Decimal] = None
+    estimated_ebit_avg: Optional[Decimal] = None
+    estimated_net_income_low: Optional[Decimal] = None
+    estimated_net_income_high: Optional[Decimal] = None
+    estimated_net_income_avg: Optional[Decimal] = None
+    estimated_sga_expense_low: Optional[Decimal] = None
+    estimated_sga_expense_high: Optional[Decimal] = None
+    estimated_sga_expense_avg: Optional[Decimal] = None
+    estimated_eps_avg: Optional[Decimal] = None
+    estimated_eps_high: Optional[Decimal] = None
+    estimated_eps_low: Optional[Decimal] = None
+    number_analyst_estimated_revenue: Optional[int] = None
+    number_analysts_estimated_eps: Optional[int] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class MarketHoliday(BaseModel):
+    """Market holiday data model"""
+    exchange: str
+    name: Optional[str] = None
+    date: date
+    status: Optional[str] = None
+    open: Optional[str] = None
+    close: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat()
+        }
+
+
+class TechnicalIndicator(BaseModel):
+    """Technical indicator data model"""
+    indicator: str
+    symbol: str
+    values: List[Dict[str, Any]] = []
+    timestamp: datetime
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class ForexQuote(BaseModel):
+    """Forex quote data model"""
+    from_currency: str
+    to_currency: str
+    symbol: str
+    price: Decimal
+    timestamp: datetime
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class CryptoQuote(BaseModel):
+    """Cryptocurrency quote data model"""
+    symbol: str
+    price: Decimal
+    size: Optional[Decimal] = None
+    timestamp: datetime
+    exchange: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class MarketIndex(BaseModel):
+    """Market index data model"""
+    symbol: str
+    name: str
+    data: Dict[str, Any]
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class ExchangeInfo(BaseModel):
+    """Exchange information data model"""
+    id: Optional[int] = None
+    type: Optional[str] = None
+    market: Optional[str] = None
+    name: Optional[str] = None
+    code: Optional[str] = None
+    country: Optional[str] = None
+    timezone: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class MarketConditions(BaseModel):
+    """Market conditions data model"""
+    market_status: Dict[str, Any]
+    major_indices: List[Dict[str, Any]] = []
+    volatility_index: Optional[Dict[str, Any]] = None
+    timestamp: datetime
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class TiingoFundamentalData(BaseModel):
+    """Tiingo fundamental financial data model"""
+    symbol: str
+    pe_ratio: Optional[Decimal] = None
+    market_cap: Optional[Decimal] = None
+    enterprise_value: Optional[Decimal] = None
+    revenue: Optional[Decimal] = None
+    gross_profit: Optional[Decimal] = None
+    operating_income: Optional[Decimal] = None
+    net_income: Optional[Decimal] = None
+    eps: Optional[Decimal] = None
+    total_assets: Optional[Decimal] = None
+    total_liabilities: Optional[Decimal] = None
+    shareholders_equity: Optional[Decimal] = None
+    operating_cash_flow: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class Logo(BaseModel):
+    """Company logo data model"""
+    symbol: str
+    url: Optional[str] = None
+    logo_base: Optional[str] = None
+    logo_quote: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class ExchangeRate(BaseModel):
+    """Exchange rate data model"""
+    symbol: str
+    rate: Decimal
+    timestamp: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class CurrencyConversion(BaseModel):
+    """Currency conversion data model"""
+    symbol: str
+    rate: Decimal
+    amount: Decimal
+    timestamp: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class MarketMover(BaseModel):
+    """Market mover data model"""
+    symbol: str
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    change_percent: Optional[Decimal] = None
+    volume: Optional[int] = None
+    market_cap: Optional[Decimal] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class SimplePrice(BaseModel):
+    """Simple price data model"""
+    symbol: str
+    price: Decimal
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class EodPrice(BaseModel):
+    """End of day price data model"""
+    symbol: str
+    exchange: Optional[str] = None
+    currency: Optional[str] = None
+    datetime: Optional[str] = None
+    close: Decimal
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v)
+        }
+
+
+class SupportedSymbol(BaseModel):
+    """Supported symbol data model"""
+    symbol: str
+    name: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
+    country: Optional[str] = None
+    type: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class ForexPair(BaseModel):
+    """Forex pair data model"""
+    symbol: str
+    currency_base: Optional[str] = None
+    currency_quote: Optional[str] = None
+    description: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class Cryptocurrency(BaseModel):
+    """Cryptocurrency data model"""
+    symbol: str
+    name: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
+    type: Optional[str] = None
+    provider: str
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
 class MarketDataProvider(ABC):
     """Abstract base class for market data providers"""
 
