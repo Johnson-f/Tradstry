@@ -51,6 +51,15 @@ class StockQuote(BaseModel):
     previous_close: Optional[Decimal] = None
     timestamp: datetime
     provider: str
+    # Extended fields from providers
+    avg_volume: Optional[int] = None
+    market_cap: Optional[Decimal] = None
+    pe_ratio: Optional[Decimal] = None
+    week_52_high: Optional[Decimal] = None
+    week_52_low: Optional[Decimal] = None
+    day_high: Optional[Decimal] = None
+    day_low: Optional[Decimal] = None
+    source: Optional[str] = None  # Alternative to provider for some APIs
 
     class Config:
         json_encoders = {
@@ -62,21 +71,24 @@ class StockQuote(BaseModel):
 class HistoricalPrice(BaseModel):
     """Historical price data model"""
     symbol: str
-    date: date
+    date: Union[date, datetime]  # Some providers return datetime
     open: Decimal
     high: Decimal
     low: Decimal
     close: Decimal
     volume: int
     adjusted_close: Optional[Decimal] = None
+    adj_close: Optional[Decimal] = None  # Alternative field name used by some providers
     dividend: Optional[Decimal] = None
     split: Optional[Decimal] = None
     provider: str
+    source: Optional[str] = None  # Alternative to provider for some APIs
 
     class Config:
         json_encoders = {
             Decimal: lambda v: float(v),
-            date: lambda v: v.isoformat()
+            date: lambda v: v.isoformat(),
+            datetime: lambda v: v.isoformat()
         }
 
 
@@ -84,8 +96,10 @@ class OptionQuote(BaseModel):
     """Option quote data model"""
     symbol: str
     underlying_symbol: str
-    strike: Decimal
-    expiration: date
+    strike: Optional[Decimal] = None  # Some providers may not have strike initially
+    strike_price: Optional[Decimal] = None  # Alternative field name
+    expiration: Optional[date] = None
+    expiration_date: Optional[date] = None  # Alternative field name
     option_type: str  # 'call' or 'put'
     bid: Optional[Decimal] = None
     ask: Optional[Decimal] = None
@@ -97,6 +111,7 @@ class OptionQuote(BaseModel):
     gamma: Optional[Decimal] = None
     theta: Optional[Decimal] = None
     vega: Optional[Decimal] = None
+    rho: Optional[Decimal] = None  # Additional Greek
     timestamp: datetime
     provider: str
 
@@ -112,11 +127,11 @@ class CompanyInfo(BaseModel):
     """Company information data model"""
     symbol: str
     name: str
-    company_name: str
+    company_name: Optional[str] = None  # Some providers use 'name' only
     exchange: Optional[str] = None
     sector: Optional[str] = None
     industry: Optional[str] = None
-    market_cap: Optional[int] = None
+    market_cap: Optional[Union[int, Decimal]] = None
     employees: Optional[int] = None
     description: Optional[str] = None
     website: Optional[str] = None
@@ -124,10 +139,40 @@ class CompanyInfo(BaseModel):
     headquarters: Optional[str] = None
     founded: Optional[str] = None
     provider: str
+    # Extended fields from providers
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    zip_code: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    pe_ratio: Optional[Decimal] = None
+    peg_ratio: Optional[Decimal] = None
+    eps: Optional[Decimal] = None
+    beta: Optional[Decimal] = None
+    dividend_yield: Optional[Decimal] = None
+    dividend_per_share: Optional[Decimal] = None
+    payout_ratio: Optional[Decimal] = None
+    revenue_per_share_ttm: Optional[Decimal] = None
+    profit_margin: Optional[Decimal] = None
+    roe: Optional[Decimal] = None
+    roa: Optional[Decimal] = None
+    recommendation_mean: Optional[Decimal] = None
+    recommendation_key: Optional[str] = None
+    tags: Optional[List[str]] = None
+    logo_url: Optional[str] = None
+    ipo_date: Optional[Union[date, str]] = None
+    currency: Optional[str] = None
+    is_etf: Optional[bool] = None
+    is_adr: Optional[bool] = None
+    is_fund: Optional[bool] = None
+    updated_at: Optional[Union[datetime, str]] = None
 
     class Config:
         json_encoders = {
-            Decimal: lambda v: float(v)
+            Decimal: lambda v: float(v),
+            datetime: lambda v: v.isoformat(),
+            date: lambda v: v.isoformat()
         }
 
 
@@ -208,14 +253,19 @@ class MarketDataProvider(ABC):
         """Get current quote for a symbol"""
         pass
 
+    async def get_current_quote(self, symbol: str) -> Optional[StockQuote]:
+        """Alias for get_quote to maintain compatibility"""
+        return await self.get_quote(symbol)
+
     @abstractmethod
     async def get_historical(
         self,
         symbol: str,
-        start_date: date,
-        end_date: date,
-        interval: str = "1d"
-    ) -> Optional[List[HistoricalPrice]]:
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        interval: str = "1d",
+        **kwargs
+    ) -> List[HistoricalPrice]:  # Changed return type to List (not Optional[List])
         """Get historical prices for a symbol"""
         pass
 
@@ -223,8 +273,9 @@ class MarketDataProvider(ABC):
     async def get_options_chain(
         self,
         symbol: str,
-        expiration: Optional[date] = None
-    ) -> Optional[List[OptionQuote]]:
+        expiration: Optional[Union[date, str]] = None,
+        **kwargs
+    ) -> List[OptionQuote]:  # Changed return type to List (not Optional[List])
         """Get options chain for a symbol"""
         pass
 
@@ -236,21 +287,26 @@ class MarketDataProvider(ABC):
     async def get_intraday(
         self,
         symbol: str,
-        interval: str = "5min"
+        interval: str = "5min",
+        **kwargs
     ) -> Optional[List[HistoricalPrice]]:
         """Get intraday prices for a symbol"""
         return None
 
-    async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_fundamentals(self, symbol: str, **kwargs) -> Optional[Dict[str, Any]]:
         """Get fundamental data for a symbol"""
         return None
 
-    async def get_earnings(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+    async def get_earnings(self, symbol: str, **kwargs) -> Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]:
         """Get earnings data for a symbol"""
         return None
 
-    async def get_dividends(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+    async def get_dividends(self, symbol: str, **kwargs) -> Optional[List[Dict[str, Any]]]:
         """Get dividend data for a symbol"""
+        return None
+
+    async def get_splits(self, symbol: str, **kwargs) -> Optional[List[Dict[str, Any]]]:
+        """Get stock splits for a symbol"""
         return None
 
     @abstractmethod
@@ -277,14 +333,14 @@ class MarketDataProvider(ABC):
         """
         pass
 
-    @abstractmethod
     async def get_news(
         self,
         symbol: Optional[str] = None,
-        limit: int = 10
-    ) -> Optional[List[Dict[str, Any]]]:
+        limit: int = 10,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
         """Get news for a symbol or general market"""
-        pass
+        return []
 
     async def get_technical_indicators(
         self,
@@ -295,13 +351,17 @@ class MarketDataProvider(ABC):
         """Get technical indicators for a symbol"""
         return None
 
-    @abstractmethod
     async def get_economic_data(
         self,
-        indicator: str
+        indicator: str,
+        **kwargs
     ) -> Any:
         """Get economic data"""
-        pass
+        return None
+
+    async def get_market_status(self, **kwargs) -> Optional[Dict[str, Any]]:
+        """Get current market status"""
+        return None
 
     @abstractmethod
     async def get_earnings_calendar(

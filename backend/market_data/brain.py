@@ -1,9 +1,9 @@
-"""Market Data Orchestrator with automatic provider fallback"""
+"""Market Data Brain - Central Orchestrator with automatic provider fallback"""
 
 import asyncio
 import logging
 from typing import Dict, List, Optional, Any, Union, Type
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from enum import Enum
 
@@ -24,7 +24,8 @@ from .providers import (
     TwelveDataProvider,
     FMPProvider,
     TiingoProvider,
-    APINinjasProvider
+    APINinjasProvider,
+    FiscalAIProvider
 )
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,45 @@ class FetchResult:
         self.timestamp = datetime.now()
 
 
-class MarketDataOrchestrator:
+class MarketDataBrain:
     """
-    Orchestrates data fetching across multiple providers with automatic fallback.
-    
+    The Brain of the market data system - orchestrates data fetching across multiple providers with automatic fallback.
+
     This class manages multiple market data providers and automatically falls back
     to alternative providers when one fails or doesn't have the requested data.
     """
-    
+
     def __init__(self, config: Optional[MarketDataConfig] = None):
         """
-        Initialize the orchestrator with configuration.
-        
+        Initialize the Brain with configuration.
+
         Args:
             config: MarketDataConfig object or None (will use env vars)
         """
         self.config = config or MarketDataConfig.from_env()
         self.providers: Dict[str, MarketDataProvider] = {}
+        self.rate_limited_providers: Dict[str, datetime] = {}  # Track rate-limited providers
         self._initialize_providers()
         self.cache: Dict[str, FetchResult] = {}
         self.cache_ttl = self.config.cache_ttl_seconds
-        
+
+    def _is_provider_rate_limited(self, provider_name: str) -> bool:
+        """Check if a provider is currently rate limited"""
+        if provider_name in self.rate_limited_providers:
+            rate_limit_time = self.rate_limited_providers[provider_name]
+            # Re-enable provider after 1 hour
+            if (datetime.now() - rate_limit_time).total_seconds() > 3600:
+                del self.rate_limited_providers[provider_name]
+                logger.info(f"Brain re-enabled rate-limited provider: {provider_name}")
+                return False
+            return True
+        return False
+
+    def _mark_provider_rate_limited(self, provider_name: str):
+        """Mark a provider as rate limited"""
+        self.rate_limited_providers[provider_name] = datetime.now()
+        logger.warning(f"Brain marked provider as rate limited: {provider_name}")
+
     def _initialize_providers(self):
         """Initialize all enabled providers"""
         provider_classes = {
@@ -70,31 +89,32 @@ class MarketDataOrchestrator:
             'twelve_data': TwelveDataProvider,
             'fmp': FMPProvider,
             'tiingo': TiingoProvider,
-            'api_ninjas': APINinjasProvider
+            'api_ninjas': APINinjasProvider,
+            'fiscal': FiscalAIProvider
         }
-        
+
         for provider_name, provider_class in provider_classes.items():
             provider_config = getattr(self.config, provider_name)
             if provider_config.enabled and provider_config.api_key:
                 try:
                     self.providers[provider_name] = provider_class(provider_config.api_key)
-                    logger.info(f"Initialized {provider_name} provider")
+                    logger.info(f"Brain initialized {provider_name} provider")
                 except Exception as e:
-                    logger.error(f"Failed to initialize {provider_name}: {e}")
-    
+                    logger.error(f"Brain failed to initialize {provider_name}: {e}")
+
     def _get_cache_key(self, data_type: str, **kwargs) -> str:
         """Generate cache key for a request"""
         params = "_".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
         return f"{data_type}_{params}"
-    
+
     def _is_cache_valid(self, result: FetchResult) -> bool:
         """Check if cached result is still valid"""
         if not self.config.enable_caching:
             return False
-        
+
         age = (datetime.now() - result.timestamp).total_seconds()
         return age < self.cache_ttl
-    
+
     async def _try_provider(
         self,
         provider: MarketDataProvider,
@@ -106,12 +126,22 @@ class MarketDataOrchestrator:
             method = getattr(provider, method_name)
             result = await method(**kwargs)
             if result is not None:
-                logger.info(f"Successfully fetched {method_name} from {provider.name}")
+                logger.info(f"Brain successfully fetched {method_name} from {provider.name}")
             return result
         except Exception as e:
-            logger.error(f"Error fetching {method_name} from {provider.name}: {e}")
+            error_msg = str(e).lower()
+
+            # Check for rate limit indicators
+            if any(indicator in error_msg for indicator in [
+                'rate limit', 'too many requests', '429', 'quota exceeded',
+                'api key limit', 'daily limit exceeded', '25 requests per day'
+            ]):
+                self._mark_provider_rate_limited(provider.name.lower())
+                logger.warning(f"Brain detected rate limit from {provider.name}: {e}")
+
+            logger.error(f"Brain error fetching {method_name} from {provider.name}: {e}")
             return None
-    
+
     async def _fetch_with_fallback(
         self,
         method_name: str,
@@ -120,12 +150,12 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Fetch data with automatic provider fallback.
-        
+
         Args:
             method_name: Name of the method to call on providers
             data_type: Type of data being fetched (for caching)
             **kwargs: Arguments to pass to the method
-            
+
         Returns:
             FetchResult with data or error information
         """
@@ -134,58 +164,72 @@ class MarketDataOrchestrator:
         if cache_key in self.cache:
             cached_result = self.cache[cache_key]
             if self._is_cache_valid(cached_result):
-                logger.info(f"Returning cached {data_type} data")
+                logger.info(f"Brain returning cached {data_type} data")
                 return cached_result
-        
-        # Get enabled providers sorted by priority
+
+        # Get enabled providers sorted by priority, excluding rate-limited ones
         enabled_providers = self.config.get_enabled_providers()
-        
-        if not enabled_providers:
-            return FetchResult(
-                data=None,
-                provider="none",
-                success=False,
-                error="No providers configured"
-            )
-        
-        # Try each provider in priority order
-        for provider_name in enabled_providers:
-            if provider_name not in self.providers:
-                continue
-            
+        available_providers = [
+            provider for provider in enabled_providers
+            if provider in self.providers and not self._is_provider_rate_limited(provider)
+        ]
+
+        if not available_providers:
+            # If no providers available, try rate-limited ones as last resort
+            rate_limited_available = [
+                provider for provider in enabled_providers
+                if provider in self.providers and self._is_provider_rate_limited(provider)
+            ]
+
+            if rate_limited_available:
+                logger.warning("Brain using rate-limited providers as last resort")
+                available_providers = rate_limited_available
+            else:
+                return FetchResult(
+                    data=None,
+                    provider="none",
+                    success=False,
+                    error="No providers available (all rate limited or disabled)"
+                )
+
+        logger.info(f"Brain trying providers in order: {available_providers}")
+
+        # Try each available provider in priority order
+        for provider_name in available_providers:
             provider = self.providers[provider_name]
             result = await self._try_provider(provider, method_name, **kwargs)
-            
+
             if result is not None:
                 fetch_result = FetchResult(
                     data=result,
                     provider=provider_name,
                     success=True
                 )
-                
+
                 # Cache successful result
                 if self.config.enable_caching:
                     self.cache[cache_key] = fetch_result
-                
+
                 return fetch_result
-        
+
         # All providers failed
+        rate_limited_count = len([p for p in enabled_providers if self._is_provider_rate_limited(p)])
         return FetchResult(
             data=None,
             provider="none",
             success=False,
-            error=f"All providers failed to fetch {data_type}"
+            error=f"All providers failed to fetch {data_type}. {rate_limited_count} providers rate limited."
         )
-    
+
     # Main public methods for each data type
-    
+
     async def get_quote(self, symbol: str) -> FetchResult:
         """
         Get current quote for a symbol with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
-            
+
         Returns:
             FetchResult containing StockQuote or error
         """
@@ -194,7 +238,7 @@ class MarketDataOrchestrator:
             data_type="quote",
             symbol=symbol
         )
-    
+
     async def get_historical(
         self,
         symbol: str,
@@ -204,13 +248,13 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Get historical prices with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
             start_date: Start date for historical data
             end_date: End date for historical data
             interval: Time interval (1min, 5min, 1d, etc.)
-            
+
         Returns:
             FetchResult containing List[HistoricalPrice] or error
         """
@@ -222,7 +266,7 @@ class MarketDataOrchestrator:
             end_date=end_date,
             interval=interval
         )
-    
+
     async def get_options_chain(
         self,
         symbol: str,
@@ -230,11 +274,11 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Get options chain with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
             expiration: Optional expiration date filter
-            
+
         Returns:
             FetchResult containing List[OptionQuote] or error
         """
@@ -244,14 +288,14 @@ class MarketDataOrchestrator:
             symbol=symbol,
             expiration=expiration
         )
-    
+
     async def get_company_info(self, symbol: str) -> FetchResult:
         """
         Get company information with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
-            
+
         Returns:
             FetchResult containing CompanyInfo or error
         """
@@ -260,14 +304,14 @@ class MarketDataOrchestrator:
             data_type="company_info",
             symbol=symbol
         )
-    
+
     async def get_fundamentals(self, symbol: str) -> FetchResult:
         """
         Get fundamental data with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
-            
+
         Returns:
             FetchResult containing fundamental metrics dict or error
         """
@@ -276,14 +320,14 @@ class MarketDataOrchestrator:
             data_type="fundamentals",
             symbol=symbol
         )
-    
+
     async def get_earnings(self, symbol: str) -> FetchResult:
         """
         Get earnings data with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
-            
+
         Returns:
             FetchResult containing earnings data list or error
         """
@@ -292,14 +336,14 @@ class MarketDataOrchestrator:
             data_type="earnings",
             symbol=symbol
         )
-    
+
     async def get_dividends(self, symbol: str) -> FetchResult:
         """
         Get dividend data with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
-            
+
         Returns:
             FetchResult containing dividend data list or error
         """
@@ -308,21 +352,21 @@ class MarketDataOrchestrator:
             data_type="dividends",
             symbol=symbol
         )
-    
+
     async def get_news(
-        self, 
-        symbol: Optional[str] = None, 
+        self,
+        symbol: Optional[str] = None,
         limit: int = 10,
         **kwargs
     ) -> FetchResult:
         """
         Get news for a symbol or general market
-        
+
         Args:
             symbol: Optional stock symbol to filter news
             limit: Maximum number of news items to return
             **kwargs: Additional provider-specific arguments
-            
+
         Returns:
             FetchResult containing list of news items
         """
@@ -333,7 +377,7 @@ class MarketDataOrchestrator:
             limit=limit,
             **kwargs
         )
-        
+
     async def get_economic_events(
         self,
         countries: Optional[List[str]] = None,
@@ -345,7 +389,7 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Get economic calendar events
-        
+
         Args:
             countries: List of country codes (e.g., ['US', 'EU', 'GB'])
             importance: Filter by importance (1=Low, 2=Medium, 3=High)
@@ -353,7 +397,7 @@ class MarketDataOrchestrator:
             end_date: End date for events
             limit: Maximum number of events to return
             **kwargs: Additional provider-specific arguments
-            
+
         Returns:
             FetchResult containing list of EconomicEvent objects
         """
@@ -363,7 +407,7 @@ class MarketDataOrchestrator:
             start_date = today
         if not end_date:
             end_date = today + timedelta(days=30)  # Default to next 30 days
-            
+
         return await self._fetch_with_fallback(
             method_name="get_economic_events",
             data_type="economic_events",
@@ -374,7 +418,7 @@ class MarketDataOrchestrator:
             limit=limit,
             **kwargs
         )
-    
+
     async def get_intraday(
         self,
         symbol: str,
@@ -382,11 +426,11 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Get intraday prices with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
             interval: Time interval (1min, 5min, 15min, etc.)
-            
+
         Returns:
             FetchResult containing List[HistoricalPrice] or error
         """
@@ -396,7 +440,7 @@ class MarketDataOrchestrator:
             symbol=symbol,
             interval=interval
         )
-    
+
     async def get_technical_indicators(
         self,
         symbol: str,
@@ -405,12 +449,12 @@ class MarketDataOrchestrator:
     ) -> FetchResult:
         """
         Get technical indicators with automatic fallback.
-        
+
         Args:
             symbol: Stock symbol
             indicator: Indicator name (sma, ema, macd, rsi, etc.)
             interval: Time interval
-            
+
         Returns:
             FetchResult containing indicator data or error
         """
@@ -421,14 +465,14 @@ class MarketDataOrchestrator:
             indicator=indicator,
             interval=interval
         )
-    
+
     async def get_economic_data(self, indicator: str) -> FetchResult:
         """
         Get economic data with automatic fallback.
-        
+
         Args:
             indicator: Economic indicator name
-            
+
         Returns:
             FetchResult containing economic data or error
         """
@@ -437,23 +481,23 @@ class MarketDataOrchestrator:
             data_type="economic_data",
             indicator=indicator
         )
-    
+
     # Batch operations
-    
+
     async def get_multiple_quotes(self, symbols: List[str]) -> Dict[str, FetchResult]:
         """
         Get quotes for multiple symbols concurrently.
-        
+
         Args:
             symbols: List of stock symbols
-            
+
         Returns:
             Dictionary mapping symbols to FetchResults
         """
         tasks = {symbol: self.get_quote(symbol) for symbol in symbols}
         results = await asyncio.gather(*tasks.values())
         return dict(zip(tasks.keys(), results))
-    
+
     async def get_multiple_historical(
         self,
         symbols: List[str],
@@ -463,13 +507,13 @@ class MarketDataOrchestrator:
     ) -> Dict[str, FetchResult]:
         """
         Get historical data for multiple symbols concurrently.
-        
+
         Args:
             symbols: List of stock symbols
             start_date: Start date for historical data
             end_date: End date for historical data
             interval: Time interval
-            
+
         Returns:
             Dictionary mapping symbols to FetchResults
         """
@@ -479,22 +523,22 @@ class MarketDataOrchestrator:
         }
         results = await asyncio.gather(*tasks.values())
         return dict(zip(tasks.keys(), results))
-    
+
     # Utility methods
-    
+
     def clear_cache(self):
         """Clear all cached data"""
         self.cache.clear()
-        logger.info("Cache cleared")
-    
+        logger.info("Brain cache cleared")
+
     def get_available_providers(self) -> List[str]:
         """Get list of currently available providers"""
         return list(self.providers.keys())
-    
+
     def get_provider_status(self) -> Dict[str, bool]:
         """Get status of all configured providers"""
         status = {}
-        for name in ['alpha_vantage', 'finnhub', 'polygon', 'twelve_data', 'fmp', 'tiingo']:
+        for name in ['alpha_vantage', 'finnhub', 'polygon', 'twelve_data', 'fmp', 'tiingo', 'api_ninjas', 'fiscal']:
             config = getattr(self.config, name)
             status[name] = config.enabled and config.api_key is not None
         return status

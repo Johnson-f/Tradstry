@@ -31,7 +31,7 @@ class FMPProvider(MarketDataProvider):
     def __init__(self, api_key: str):
         super().__init__(api_key, "FMP")
         self.base_url = "https://financialmodelingprep.com/api/v3"
-        self.rate_limit_per_minute = 300  # FMP free tier limit
+        self.rate_limit_per_day = 250  # FMP free tier limit: 250 calls/day
     
     def _safe_decimal(self, value: Any, default: Decimal = Decimal('0')) -> Decimal:
         """Safely convert value to Decimal"""
@@ -101,7 +101,7 @@ class FMPProvider(MarketDataProvider):
         # Implement rate limiting
         if self.last_request_time is not None:
             elapsed = (datetime.now() - self.last_request_time).total_seconds()
-            min_interval = 60.0 / (self.rate_limit_per_minute or 1)
+            min_interval = 86400.0 / (self.rate_limit_per_day or 1)
             if elapsed < min_interval:
                 await asyncio.sleep(min_interval - elapsed)
         
@@ -455,26 +455,34 @@ class FMPProvider(MarketDataProvider):
             return {'historical': [], 'upcoming': []}
             
         try:
-            # Fetch historical earnings
+            # Fetch historical earnings - Fixed endpoint
             historical = await self._make_request(
-                f"income-statement/{symbol.upper()}?limit={limit}&period=quarter"
+                f"historical/earning_calendar/{symbol.upper()}?limit={limit}"
             )
             
-            # Fetch upcoming earnings if requested
+            # Fetch upcoming earnings if requested - Fixed endpoint
             upcoming = []
             if include_upcoming:
-                upcoming_data = await self._make_request(f"earning_calendar/?symbol={symbol.upper()}&horizon=3month")
-                upcoming = [
-                    {
-                        'date': datetime.strptime(er['date'], '%Y-%m-%d').date() if 'date' in er else None,
-                        'fiscal_quarter': f"Q{er.get('quarter')} {er.get('year')}" if all(k in er for k in ['quarter', 'year']) else None,
-                        'eps_estimate': self._safe_decimal(er.get('epsEstimated')),
-                        'revenue_estimate': self._safe_decimal(er.get('revenueEstimated')),
-                        'time': er.get('time')
-                    }
-                    for er in (upcoming_data if isinstance(upcoming_data, list) else [])
-                    if er.get('date')
-                ]
+                # Get upcoming earnings for next 3 months
+                end_date = date.today() + timedelta(days=90)
+                start_date = date.today()
+                upcoming_data = await self._make_request(
+                    f"earning_calendar?from={start_date.strftime('%Y-%m-%d')}&to={end_date.strftime('%Y-%m-%d')}"
+                )
+                
+                # Filter for the specific symbol
+                if isinstance(upcoming_data, list):
+                    upcoming = [
+                        {
+                            'date': datetime.strptime(er['date'], '%Y-%m-%d').date() if 'date' in er else None,
+                            'fiscal_quarter': f"Q{er.get('quarter')} {er.get('year')}" if all(k in er for k in ['quarter', 'year']) else None,
+                            'eps_estimate': self._safe_decimal(er.get('epsEstimated')),
+                            'revenue_estimate': self._safe_decimal(er.get('revenueEstimated')),
+                            'time': er.get('time')
+                        }
+                        for er in upcoming_data
+                        if er.get('symbol', '').upper() == symbol.upper() and er.get('date')
+                    ]
             
             # Process historical earnings
             processed_historical = []
@@ -485,8 +493,8 @@ class FMPProvider(MarketDataProvider):
                     
                     processed_historical.append({
                         'date': datetime.strptime(er['date'], '%Y-%m-%d').date() if 'date' in er else None,
-                        'fiscal_quarter': f"Q{er.get('period')[-1]} {er.get('calendarYear')}" 
-                                        if all(k in er for k in ['period', 'calendarYear']) else None,
+                        'fiscal_quarter': f"Q{er.get('quarter')} {er.get('year')}" 
+                                        if all(k in er for k in ['quarter', 'year']) else None,
                         'eps': self._safe_decimal(er.get('eps')),
                         'eps_estimated': self._safe_decimal(er.get('epsEstimated')),
                         'eps_surprise': self._safe_decimal(er.get('epsSurprise')),
@@ -495,9 +503,8 @@ class FMPProvider(MarketDataProvider):
                         'revenue_estimated': self._safe_decimal(er.get('revenueEstimated')),
                         'revenue_surprise': self._safe_decimal(er.get('revenueSurprise')),
                         'revenue_surprise_percentage': self._safe_decimal(er.get('revenueSurprisePercentage')),
-                        'filing_date': datetime.strptime(er['fillingDate'], '%Y-%m-%d').date() 
-                                      if 'fillingDate' in er and er['fillingDate'] else None,
-                        'period': er.get('period')
+                        'filing_date': datetime.strptime(er['fiscalDateEnding'], '%Y-%m-%d').date() 
+                                      if 'fiscalDateEnding' in er and er['fiscalDateEnding'] else None
                     })
             
             return {
@@ -603,75 +610,6 @@ class FMPProvider(MarketDataProvider):
             self._log_error("Intraday Error", f"Failed to fetch intraday data for {symbol}: {str(e)}")
             return None
     
-    async def get_options_chain(
-        self, 
-        symbol: str, 
-        expiration_date: Optional[date] = None
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Get options chain for a symbol
-        
-        Args:
-            symbol: Stock symbol
-            expiration_date: Optional expiration date to filter by
-            
-        Returns:
-            Dictionary with 'calls' and 'puts' lists
-        """
-        if not symbol or not isinstance(symbol, str):
-            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
-            return {'calls': [], 'puts': []}
-            
-        try:
-            # Get all optionable symbols
-            options_data = await self._make_request(f"v3/quote/{symbol.upper()}?apikey={self.api_key}")
-            
-            if not options_data or not isinstance(options_data, list):
-                return {'calls': [], 'puts': []}
-                
-            # Get option expiration dates
-            expirations_data = await self._make_request(f"v3/option/expiration/{symbol.upper()}")
-            if not expirations_data or not isinstance(expirations_data, list):
-                return {'calls': [], 'puts': []}
-                
-            # Filter by expiration date if provided
-            if expiration_date:
-                expirations_data = [
-                    exp for exp in expirations_data 
-                    if datetime.strptime(exp['date'], '%Y-%m-%d').date() == expiration_date
-                ]
-                
-            if not expirations_data:
-                return {'calls': [], 'puts': []}
-                
-            # Get options chain for each expiration
-            calls = []
-            puts = []
-            
-            for exp in expirations_data:
-                exp_date = exp['date']
-                chain_data = await self._make_request(
-                    f"v3/option-chain/{symbol.upper()}?expiration={exp_date}"
-                )
-                
-                if not chain_data or not isinstance(chain_data, dict):
-                    continue
-                    
-                if 'call' in chain_data and isinstance(chain_data['call'], list):
-                    calls.extend(chain_data['call'])
-                    
-                if 'put' in chain_data and isinstance(chain_data['put'], list):
-                    puts.extend(chain_data['put'])
-            
-            return {
-                'calls': calls,
-                'puts': puts
-            }
-            
-        except Exception as e:
-            self._log_error("Options Chain Error", f"Failed to fetch options chain for {symbol}: {str(e)}")
-            return {'calls': [], 'puts': []}
-    
     async def get_economic_events(
         self,
         countries: Optional[List[str]] = None,
@@ -713,7 +651,7 @@ class FMPProvider(MarketDataProvider):
                 params['importance'] = importance
             
             # Fetch economic calendar data
-            data = await self._make_request("economic_calendar", params=params, version="v4")
+            data = await self._make_request("economic_calendar", params=params, version="v3")
             
             if not data or not isinstance(data, list):
                 return []
@@ -772,200 +710,6 @@ class FMPProvider(MarketDataProvider):
             return []
         # End of FMPProvider class
     
-    async def get_options_chain(
-        self, 
-        symbol: str, 
-        expiration_date: Optional[date] = None
-    ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
-        """
-        Get options chain for a symbol
-        
-        Args:
-            symbol: Stock symbol
-            expiration_date: Optional expiration date to filter by
-            
-        Returns:
-            Dictionary with 'calls' and 'puts' lists
-        """
-        if not symbol or not isinstance(symbol, str):
-            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
-            return {'calls': [], 'puts': []}
-            
-        try:
-            # Get all optionable symbols
-            options_data = await self._make_request(f"v3/quote/{symbol.upper()}")
-            
-            if not options_data or not isinstance(options_data, list):
-                return {'calls': [], 'puts': []}
-                
-            # Get option expiration dates
-            expirations_data = await self._make_request(f"v3/option/expiration/{symbol.upper()}")
-            if not expirations_data or not isinstance(expirations_data, list):
-                return {'calls': [], 'puts': []}
-                
-            # Filter by expiration date if provided
-            if expiration_date:
-                expirations_data = [
-                    exp for exp in expirations_data 
-                    if datetime.strptime(exp['date'], '%Y-%m-%d').date() == expiration_date
-                ]
-                
-            if not expirations_data:
-                return {'calls': [], 'puts': []}
-                
-            # Get options chain for each expiration
-            calls = []
-            puts = []
-            
-            for exp in expirations_data:
-                exp_date = exp['date']
-                chain_data = await self._make_request(
-                    f"v3/option-chain/{symbol.upper()}?expiration={exp_date}"
-                )
-                
-                if not chain_data or not isinstance(chain_data, dict):
-                    continue
-                    
-                if 'call' in chain_data and isinstance(chain_data['call'], list):
-                    calls.extend(chain_data['call'])
-                    
-                if 'put' in chain_data and isinstance(chain_data['put'], list):
-                    puts.extend(chain_data['put'])
-            
-            return {
-                'calls': calls,
-                'puts': puts
-            }
-            
-        except Exception as e:
-            self._log_error("Options Chain Error", f"Failed to fetch options chain for {symbol}: {str(e)}")
-            return {'calls': [], 'puts': []}
-    
-    async def get_fundamentals(
-        self, 
-        symbol: str, 
-        period: str = "annual", 
-        limit: int = 4
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Get fundamental data (income statements, balance sheets, cash flow)
-        
-        Args:
-            symbol: Stock symbol
-            period: 'annual' or 'quarterly'
-            limit: Number of periods to return
-            
-        Returns:
-            Dictionary containing 'income', 'balance_sheet', 'cash_flow', and 'metrics' data
-        """
-        if not symbol or not isinstance(symbol, str):
-            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
-            return {}
-            
-        if period not in ["annual", "quarterly"]:
-            period = "annual"
-            
-        try:
-            # Fetch all fundamental data in parallel
-            income_stmt, balance_sheet, cash_flow, metrics = await asyncio.gather(
-                self._make_request(f"income-statement/{symbol.upper()}?period={period}&limit={limit}"),
-                self._make_request(f"balance-sheet-statement/{symbol.upper()}?period={period}&limit={limit}"),
-                self._make_request(f"cash-flow-statement/{symbol.upper()}?period={period}&limit={limit}"),
-                self._make_request(f"key-metrics/{symbol.upper()}?period={period}&limit={limit}")
-            )
-            
-            # Process and validate data
-            return {
-                'income': income_stmt if isinstance(income_stmt, list) else [],
-                'balance_sheet': balance_sheet if isinstance(balance_sheet, list) else [],
-                'cash_flow': cash_flow if isinstance(cash_flow, list) else [],
-                'metrics': metrics if isinstance(metrics, list) else []
-            }
-            
-        except Exception as e:
-            self._log_error("Fundamentals Error", f"Failed to fetch fundamentals for {symbol}: {str(e)}")
-            return {
-                'income': [],
-                'balance_sheet': [],
-                'cash_flow': [],
-                'metrics': []
-            }
-    
-    async def get_earnings(
-        self, 
-        symbol: str,
-        limit: int = 4,
-        include_upcoming: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Get historical and upcoming earnings data
-        
-        Args:
-            symbol: Stock symbol
-            limit: Number of historical earnings to return
-            include_upcoming: Whether to include upcoming earnings
-            
-        Returns:
-            Dictionary with 'historical' and 'upcoming' earnings data
-        """
-        if not symbol or not isinstance(symbol, str):
-            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
-            return {'historical': [], 'upcoming': []}
-            
-        try:
-            # Fetch historical earnings
-            historical = await self._make_request(
-                f"income-statement/{symbol.upper()}?limit={limit}&period=quarter"
-            )
-            
-            # Fetch upcoming earnings if requested
-            upcoming = []
-            if include_upcoming:
-                upcoming_data = await self._make_request(f"earning_calendar/?symbol={symbol.upper()}&horizon=3month")
-                upcoming = [
-                    {
-                        'date': datetime.strptime(er['date'], '%Y-%m-%d').date() if 'date' in er else None,
-                        'fiscal_quarter': f"Q{er.get('quarter')} {er.get('year')}" if all(k in er for k in ['quarter', 'year']) else None,
-                        'eps_estimate': self._safe_decimal(er.get('epsEstimated')),
-                        'revenue_estimate': self._safe_decimal(er.get('revenueEstimated')),
-                        'time': er.get('time')
-                    }
-                    for er in (upcoming_data if isinstance(upcoming_data, list) else [])
-                    if er.get('date')
-                ]
-            
-            # Process historical earnings
-            processed_historical = []
-            if isinstance(historical, list):
-                for er in historical:
-                    if not isinstance(er, dict):
-                        continue
-                    
-                    processed_historical.append({
-                        'date': datetime.strptime(er['date'], '%Y-%m-%d').date() if 'date' in er else None,
-                        'fiscal_quarter': f"Q{er.get('period')[-1]} {er.get('calendarYear')}" 
-                                        if all(k in er for k in ['period', 'calendarYear']) else None,
-                        'eps': self._safe_decimal(er.get('eps')),
-                        'eps_estimated': self._safe_decimal(er.get('epsEstimated')),
-                        'eps_surprise': self._safe_decimal(er.get('epsSurprise')),
-                        'eps_surprise_percentage': self._safe_decimal(er.get('epsSurprisePercentage')),
-                        'revenue': self._safe_decimal(er.get('revenue')),
-                        'revenue_estimated': self._safe_decimal(er.get('revenueEstimated')),
-                        'revenue_surprise': self._safe_decimal(er.get('revenueSurprise')),
-                        'revenue_surprise_percentage': self._safe_decimal(er.get('revenueSurprisePercentage')),
-                        'filing_date': datetime.strptime(er['fillingDate'], '%Y-%m-%d').date() 
-                                      if 'fillingDate' in er and er['fillingDate'] else None,
-                        'period': er.get('period')
-                    })
-            
-            return {
-                'historical': processed_historical,
-                'upcoming': upcoming
-            }
-            
-        except Exception as e:
-            self._log_error("Earnings Error", f"Failed to fetch earnings for {symbol}: {str(e)}")
-            return {'historical': [], 'upcoming': []}
     
     async def get_dividends(
         self, 
@@ -1103,22 +847,20 @@ class FMPProvider(MarketDataProvider):
     async def get_earnings_calendar(self, from_date: str = None, to_date: str = None) -> Dict[str, Any]:
         """Get earnings calendar for specified date range
     
-    Args:
-        from_date: Start date in YYYY-MM-DD format (optional)
-        to_date: End date in YYYY-MM-DD format (optional)
+        Args:
+            from_date: Start date in YYYY-MM-DD format (optional)
+            to_date: End date in YYYY-MM-DD format (optional)
     
-    Returns:
-        Dict containing earnings calendar data
-    """
-        url = f"{self.base_url}/v3/earning_calendar"
-        params = {"apikey": self.api_key}
-    
+        Returns:
+            Dict containing earnings calendar data
+        """
+        params = {}
         if from_date:
             params["from"] = from_date
         if to_date:
             params["to"] = to_date
     
-        return await self._make_request(url, params)
+        return await self._make_request("earning_calendar", params)
 
     async def get_earnings_transcript(self, symbol: str, year: int, quarter: int) -> Dict[str, Any]:
         """Get earnings call transcript for a specific company and quarter
@@ -1154,9 +896,7 @@ class FMPProvider(MarketDataProvider):
         Note:
             Maximum time interval between from_date and to_date is 3 months
         """
-        url = f"{self.base_url}/v3/economic_calendar"
-        params = {"apikey": self.api_key}
-    
+        params = {}
         if from_date:
             params["from"] = from_date
         if to_date:
@@ -1164,7 +904,255 @@ class FMPProvider(MarketDataProvider):
         if indicator:
             params["name"] = indicator
     
-        return await self._make_request(url, params)
+        return await self._make_request("economic_calendar", params)
+    
+    async def get_earnings_surprises(
+        self, 
+        symbol: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get earnings surprises for a symbol
+        
+        Args:
+            symbol: Stock symbol
+            limit: Number of earnings surprises to return
+            
+        Returns:
+            List of earnings surprise records
+        """
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return []
+            
+        try:
+            data = await self._make_request(f"earnings-surprises/{symbol.upper()}?limit={limit}")
+            
+            if not data or not isinstance(data, list):
+                return []
+                
+            # Process and validate earnings surprises
+            surprises = []
+            for item in data:
+                try:
+                    if not isinstance(item, dict):
+                        continue
+                        
+                    surprises.append({
+                        'date': datetime.strptime(item['date'], '%Y-%m-%d').date() if 'date' in item else None,
+                        'symbol': item.get('symbol', symbol.upper()),
+                        'actual_earnings_per_share': self._safe_decimal(item.get('actualEarningsPerShare')),
+                        'estimated_earnings_per_share': self._safe_decimal(item.get('estimatedEarningsPerShare')),
+                        'earnings_surprise': self._safe_decimal(item.get('earningsSurprise')),
+                        'earnings_surprise_percentage': self._safe_decimal(item.get('earningsSurprisePercentage')),
+                    })
+                    
+                except Exception as e:
+                    self._log_error("Earnings Surprise Processing", f"Error processing earnings surprise: {e}")
+                    continue
+            
+            if surprises:
+                logger.info(f"Retrieved {len(surprises)} earnings surprises for {symbol}")
+                
+            return surprises
+            
+        except Exception as e:
+            self._log_error("Earnings Surprises Error", f"Failed to fetch earnings surprises for {symbol}: {str(e)}")
+            return []
+
+    async def get_stock_splits(
+        self, 
+        symbol: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical stock splits for a symbol
+        
+        Args:
+            symbol: Stock symbol
+            limit: Maximum number of splits to return
+            
+        Returns:
+            List of stock split records
+        """
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return []
+            
+        try:
+            data = await self._make_request(f"historical-price-full/stock_split/{symbol.upper()}")
+            
+            if not data or not isinstance(data, dict) or 'historical' not in data:
+                return []
+                
+            splits = data['historical']
+            
+            # Process and validate split records
+            processed_splits = []
+            for split in splits[:limit]:
+                try:
+                    if not isinstance(split, dict):
+                        continue
+                        
+                    processed_splits.append({
+                        'date': datetime.strptime(split['date'], '%Y-%m-%d').date() if 'date' in split else None,
+                        'label': split.get('label', ''),
+                        'symbol': symbol.upper(),
+                        'numerator': self._safe_decimal(split.get('numerator')),
+                        'denominator': self._safe_decimal(split.get('denominator')),
+                    })
+                    
+                except Exception as e:
+                    self._log_error("Stock Split Processing", f"Error processing stock split record: {e}")
+                    continue
+            
+            # Sort by date descending (newest first)
+            processed_splits.sort(key=lambda x: x['date'] if x['date'] else date.min, reverse=True)
+            
+            if processed_splits:
+                logger.info(f"Retrieved {len(processed_splits)} stock split records for {symbol}")
+                
+            return processed_splits
+            
+        except Exception as e:
+            self._log_error("Stock Splits Error", f"Failed to fetch stock splits for {symbol}: {str(e)}")
+            return []
+
+    async def get_ipo_calendar(
+        self, 
+        from_date: Optional[str] = None, 
+        to_date: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get IPO calendar for specified date range
+        
+        Args:
+            from_date: Start date in YYYY-MM-DD format (optional)
+            to_date: End date in YYYY-MM-DD format (optional)
+            limit: Maximum number of IPOs to return
+            
+        Returns:
+            List of IPO records
+        """
+        try:
+            params = {}
+            if from_date:
+                params["from"] = from_date
+            if to_date:
+                params["to"] = to_date
+                
+            data = await self._make_request("ipo_calendar", params)
+            
+            if not data or not isinstance(data, list):
+                return []
+                
+            # Process and validate IPO records
+            ipos = []
+            for item in data[:limit]:
+                try:
+                    if not isinstance(item, dict):
+                        continue
+                        
+                    ipos.append({
+                        'date': datetime.strptime(item['date'], '%Y-%m-%d').date() if 'date' in item else None,
+                        'company': item.get('company', ''),
+                        'symbol': item.get('symbol', ''),
+                        'exchange': item.get('exchange', ''),
+                        'actions': item.get('actions', ''),
+                        'shares': self._safe_int(item.get('shares')),
+                        'price_range_low': self._safe_decimal(item.get('priceRangeLow')),
+                        'price_range_high': self._safe_decimal(item.get('priceRangeHigh')),
+                        'market_cap': self._safe_decimal(item.get('marketCap')),
+                    })
+                    
+                except Exception as e:
+                    self._log_error("IPO Processing", f"Error processing IPO record: {e}")
+                    continue
+            
+            if ipos:
+                logger.info(f"Retrieved {len(ipos)} IPO records")
+                
+            return ipos
+            
+        except Exception as e:
+            self._log_error("IPO Calendar Error", f"Failed to fetch IPO calendar: {str(e)}")
+            return []
+
+    async def get_analyst_estimates(
+        self, 
+        symbol: str,
+        period: str = "annual",
+        limit: int = 4
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get analyst estimates for a symbol
+        
+        Args:
+            symbol: Stock symbol
+            period: 'annual' or 'quarterly'
+            limit: Number of periods to return
+            
+        Returns:
+            Dictionary containing analyst estimates data
+        """
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return {'estimates': []}
+            
+        if period not in ["annual", "quarterly"]:
+            period = "annual"
+            
+        try:
+            data = await self._make_request(f"analyst-estimates/{symbol.upper()}?period={period}&limit={limit}")
+            
+            if not data or not isinstance(data, list):
+                return {'estimates': []}
+                
+            # Process and validate analyst estimates
+            estimates = []
+            for item in data:
+                try:
+                    if not isinstance(item, dict):
+                        continue
+                        
+                    estimates.append({
+                        'date': datetime.strptime(item['date'], '%Y-%m-%d').date() if 'date' in item else None,
+                        'symbol': item.get('symbol', symbol.upper()),
+                        'estimated_revenue_low': self._safe_decimal(item.get('estimatedRevenueLow')),
+                        'estimated_revenue_high': self._safe_decimal(item.get('estimatedRevenueHigh')),
+                        'estimated_revenue_avg': self._safe_decimal(item.get('estimatedRevenueAvg')),
+                        'estimated_ebitda_low': self._safe_decimal(item.get('estimatedEbitdaLow')),
+                        'estimated_ebitda_high': self._safe_decimal(item.get('estimatedEbitdaHigh')),
+                        'estimated_ebitda_avg': self._safe_decimal(item.get('estimatedEbitdaAvg')),
+                        'estimated_ebit_low': self._safe_decimal(item.get('estimatedEbitLow')),
+                        'estimated_ebit_high': self._safe_decimal(item.get('estimatedEbitHigh')),
+                        'estimated_ebit_avg': self._safe_decimal(item.get('estimatedEbitAvg')),
+                        'estimated_net_income_low': self._safe_decimal(item.get('estimatedNetIncomeLow')),
+                        'estimated_net_income_high': self._safe_decimal(item.get('estimatedNetIncomeHigh')),
+                        'estimated_net_income_avg': self._safe_decimal(item.get('estimatedNetIncomeAvg')),
+                        'estimated_sga_expense_low': self._safe_decimal(item.get('estimatedSgaExpenseLow')),
+                        'estimated_sga_expense_high': self._safe_decimal(item.get('estimatedSgaExpenseHigh')),
+                        'estimated_sga_expense_avg': self._safe_decimal(item.get('estimatedSgaExpenseAvg')),
+                        'estimated_eps_avg': self._safe_decimal(item.get('estimatedEpsAvg')),
+                        'estimated_eps_high': self._safe_decimal(item.get('estimatedEpsHigh')),
+                        'estimated_eps_low': self._safe_decimal(item.get('estimatedEpsLow')),
+                        'number_analyst_estimated_revenue': self._safe_int(item.get('numberAnalystEstimatedRevenue')),
+                        'number_analysts_estimated_eps': self._safe_int(item.get('numberAnalystsEstimatedEps')),
+                    })
+                    
+                except Exception as e:
+                    self._log_error("Analyst Estimates Processing", f"Error processing analyst estimate: {e}")
+                    continue
+            
+            if estimates:
+                logger.info(f"Retrieved {len(estimates)} analyst estimates for {symbol}")
+                
+            return {'estimates': estimates}
+            
+        except Exception as e:
+            self._log_error("Analyst Estimates Error", f"Failed to fetch analyst estimates for {symbol}: {str(e)}")
+            return {'estimates': []}
     
     
     async def get_economic_events(
@@ -1208,7 +1196,7 @@ class FMPProvider(MarketDataProvider):
                 params['importance'] = importance
             
             # Fetch economic calendar data
-            data = await self._make_request("economic_calendar", params=params, version="v4")
+            data = await self._make_request("economic_calendar", params=params, version="v3")
             
             if not data or not isinstance(data, list):
                 return []

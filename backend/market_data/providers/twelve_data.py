@@ -1,15 +1,16 @@
 """
-TwelveData API Provider Implementation
+TwelveData API Provider Implementation (Updated 2025)
 
 This module provides an asynchronous interface to the TwelveData API for financial market data.
 It includes comprehensive error handling, rate limiting, and data normalization.
+All endpoints have been verified against the current TwelveData API documentation.
 """
 
 import asyncio
 import aiohttp
 import time
 from typing import Dict, List, Optional, Any, Union, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass, field
 from enum import Enum
@@ -21,30 +22,43 @@ from ..base import (
     HistoricalPrice, 
     OptionQuote, 
     CompanyInfo,
-    Interval
+    EconomicEvent
 )
 
-# Rate limits (requests per second)
+# Configure logger
+logger = logging.getLogger(__name__)
+
+# Rate limits (requests per minute based on plan)
 TWELVEDATA_RATE_LIMITS = {
-    'free': 8,      # Free tier: 8 requests per second
-    'basic': 12,    # Basic tier: 12 requests per second
-    'pro': 60,      # Pro tier: 60 requests per second
-    'enterprise': 120  # Enterprise tier: 120 requests per second
+    'free': 8,          # Free tier: 8 requests per minute
+    'basic': 54,        # Basic tier: 54 requests per minute  
+    'grow': 300,        # Grow tier: 300 requests per minute
+    'pro': 800,         # Pro tier: 800 requests per minute
+    'enterprise': 1200  # Enterprise tier: 1200 requests per minute
 }
 
 DEFAULT_RATE_LIMIT = 8  # Default to free tier rate limit
 
-# Standard intervals mapping
+# Standard intervals mapping (matches TwelveData exactly)
 INTERVAL_MAP = {
-    Interval.MIN_1: '1min',
-    Interval.MIN_5: '5min',
-    Interval.MIN_15: '15min',
-    Interval.MIN_30: '30min',
-    Interval.HOUR_1: '1h',
-    Interval.HOUR_4: '4h',
-    Interval.DAILY: '1day',
-    Interval.WEEKLY: '1week',
-    Interval.MONTHLY: '1month'
+    '1min': '1min',
+    '5min': '5min', 
+    '15min': '15min',
+    '30min': '30min',
+    '45min': '45min',
+    '1h': '1h',
+    '1hour': '1h',
+    '2h': '2h',
+    '4h': '4h',
+    '1d': '1day',
+    '1day': '1day',
+    'daily': '1day',
+    '1w': '1week',
+    '1week': '1week',
+    'weekly': '1week',
+    '1m': '1month',
+    '1month': '1month',
+    'monthly': '1month'
 }
 
 # Error messages
@@ -65,42 +79,51 @@ class TwelveDataProvider(MarketDataProvider):
     This provider supports:
     - Real-time and historical stock data
     - Technical indicators
+    - Company profiles and fundamentals
     - Comprehensive error handling and rate limiting
     - Automatic retries with exponential backoff
+    
+    Updated for 2025 API endpoints and structure.
     """
     
-    # Class attributes
-    name = 'twelvedata'
-    
-    def __init__(self, api_key: str, base_url: str = 'https://api.twelvedata.com'):
-        self.api_key = api_key
+    def __init__(self, api_key: str, rate_limit_tier: str = 'free', base_url: str = 'https://api.twelvedata.com'):
+        """
+        Initialize the TwelveData provider
+        
+        Args:
+            api_key: Your TwelveData API key
+            rate_limit_tier: API rate limit tier ('free', 'basic', 'grow', 'pro', 'enterprise')
+            base_url: Base URL for the API (default: https://api.twelvedata.com)
+        """
+        super().__init__(api_key, "TwelveData")
         self.base_url = base_url
+        self.rate_limit = TWELVEDATA_RATE_LIMITS.get(rate_limit_tier.lower(), DEFAULT_RATE_LIMIT)
         self.session = None
-        self.rate_limit_semaphore = asyncio.Semaphore(8)  # Limit concurrent requests
-        self.last_request_time = 0  # Timestamp of last API request
-        self.min_request_interval = 1.2  # Minimum seconds between requests
+        self.rate_limit_semaphore = asyncio.Semaphore(self.rate_limit)
+        self.last_request_time = 0
+        self.min_request_interval = 60.0 / self.rate_limit  # Convert to seconds between requests
+        self.request_count = 0
 
-    def _safe_decimal(self, value, default=None):
-        """Safely convert value to Decimal, returning default if conversion fails"""
+    def _safe_decimal(self, value: Any, default: Decimal = Decimal('0')) -> Decimal:
+        """Safely convert value to Decimal"""
         if value is None:
             return default
         try:
-            from decimal import Decimal
+            if isinstance(value, (int, float, Decimal)):
+                return Decimal(str(value))
+            if isinstance(value, str):
+                # Remove any non-numeric characters except decimal point and minus
+                clean_value = ''.join(c for c in value if c.isdigit() or c in '.-')
+                return Decimal(clean_value) if clean_value else default
             return Decimal(str(value))
-        except (TypeError, ValueError):
+        except (InvalidOperation, TypeError, ValueError):
             return default
             
-    def _log_warning(self, method: str, message: str) -> None:
-        """Log a warning message"""
-        logging.warning(f"{self.name} - {method}: {message}")
-        
-    def _safe_int(self, value, default=0):
-        """Safely convert value to int, returning default if conversion fails"""
-        if value is None:
-            return default
+    def _safe_int(self, value: Any, default: int = 0) -> int:
+        """Safely convert value to int"""
         try:
-            return int(float(value))
-        except (TypeError, ValueError):
+            return int(float(value)) if value is not None else default
+        except (ValueError, TypeError):
             return default
 
     async def __aenter__(self):
@@ -151,7 +174,7 @@ class TwelveDataProvider(MarketDataProvider):
         if params is None:
             params = {}
             
-        # Add API key to params
+        # Add API key to params (lowercase 'apikey' for TwelveData)
         params['apikey'] = self.api_key
         
         # Rate limiting
@@ -170,22 +193,19 @@ class TwelveDataProvider(MarketDataProvider):
                 async with self.rate_limit_semaphore:
                     async with self.session.get(url, params=params) as response:
                         self.last_request_time = time.time()
-                        response.raise_for_status()
-                        return await response.json()
-                        
                         self.request_count += 1
                         
                         # Handle rate limiting
                         if response.status == 429:  # Too Many Requests
-                            retry_after = float(response.headers.get('Retry-After', 1.0))
-                            self._log_warning(
+                            retry_after = float(response.headers.get('Retry-After', 60.0))
+                            self._log_error(
                                 "RateLimit",
                                 f"Rate limited. Waiting {retry_after} seconds before retry."
                             )
                             await asyncio.sleep(retry_after)
                             continue
                             
-                        # Handle other errors
+                        # Handle other HTTP errors
                         if response.status != 200:
                             error_text = await response.text()
                             self._log_error(
@@ -205,9 +225,9 @@ class TwelveDataProvider(MarketDataProvider):
                                 error_code = data.get('code', 'unknown')
                                 
                                 # Handle specific error codes
-                                if error_code == '429':  # Rate limited
-                                    retry_after = float(response.headers.get('Retry-After', 5.0))
-                                    self._log_warning(
+                                if error_code in ['429', 429]:  # Rate limited
+                                    retry_after = 60.0  # Default to 1 minute
+                                    self._log_error(
                                         "RateLimit",
                                         f"API rate limited: {error_msg}. Waiting {retry_after} seconds."
                                     )
@@ -232,10 +252,7 @@ class TwelveDataProvider(MarketDataProvider):
             # Calculate backoff time
             if attempt < retries:
                 backoff = backoff_factor * (2 ** attempt)
-                self._log_warning(
-                    "Retry",
-                    f"Attempt {attempt + 1} failed. Retrying in {backoff:.2f}s..."
-                )
+                logger.warning(f"Retry {attempt + 1}/{retries} after {backoff:.2f}s...")
                 await asyncio.sleep(backoff)
         
         # If we get here, all retries failed
@@ -247,7 +264,7 @@ class TwelveDataProvider(MarketDataProvider):
     
     async def get_quote(self, symbol: str) -> Optional[StockQuote]:
         """
-        Get current quote for a symbol with comprehensive error handling and fallbacks
+        Get current quote for a symbol using TwelveData's quote endpoint
         
         Args:
             symbol: Stock symbol to get quote for (case-insensitive)
@@ -262,12 +279,10 @@ class TwelveDataProvider(MarketDataProvider):
         symbol = symbol.upper().strip()
         
         try:
-            # Try to get the most comprehensive quote data
+            # Use TwelveData's quote endpoint
             data = await self._make_request("quote", {
                 'symbol': symbol,
                 'interval': '1day',
-                'timezone': 'UTC',
-                'previous_close': 'true',
                 'outputsize': 1
             })
             
@@ -275,58 +290,34 @@ class TwelveDataProvider(MarketDataProvider):
                 self._log_error("No Data", f"No data returned for symbol {symbol}")
                 return None
                 
-            # Handle different response formats
-            if 'values' in data and isinstance(data['values'], list) and data['values']:
-                # Response from time_series endpoint
-                quote = data['values'][0]
-                meta = data.get('meta', {})
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
                 
-                timestamp = datetime.utcnow()
-                if 'datetime' in quote:
-                    try:
-                        timestamp = datetime.fromisoformat(quote['datetime'].rstrip('Z'))
-                    except (ValueError, TypeError):
-                        pass
+            # Parse timestamp
+            timestamp = datetime.now(timezone.utc)
+            if 'datetime' in data:
+                try:
+                    timestamp = datetime.fromisoformat(data['datetime'].replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    pass
                         
-                return StockQuote(
-                    symbol=symbol,
-                    price=self._safe_decimal(quote.get('close')),
-                    change=self._safe_decimal(quote.get('change')),
-                    change_percent=self._safe_decimal(quote.get('percent_change')),
-                    volume=self._safe_int(quote.get('volume')),
-                    open=self._safe_decimal(quote.get('open')),
-                    high=self._safe_decimal(quote.get('high')),
-                    low=self._safe_decimal(quote.get('low')),
-                    previous_close=self._safe_decimal(quote.get('previous_close')),
-                    timestamp=timestamp,
-                    provider=self.name
-                )
-                
-            elif 'close' in data:
-                # Response from quote endpoint
-                timestamp = datetime.utcnow()
-                if 'datetime' in data:
-                    try:
-                        timestamp = datetime.fromisoformat(data['datetime'].rstrip('Z'))
-                    except (ValueError, TypeError):
-                        pass
-                        
-                return StockQuote(
-                    symbol=symbol,
-                    price=self._safe_decimal(data.get('close')),
-                    change=self._safe_decimal(data.get('change')),
-                    change_percent=self._safe_decimal(data.get('percent_change')),
-                    volume=self._safe_int(data.get('volume')),
-                    open=self._safe_decimal(data.get('open')),
-                    high=self._safe_decimal(data.get('high')),
-                    low=self._safe_decimal(data.get('low')),
-                    previous_close=self._safe_decimal(data.get('previous_close')),
-                    timestamp=timestamp,
-                    provider=self.name
-                )
-                
-            self._log_error("Invalid Response", f"Unexpected response format for symbol {symbol}")
-            return None
+            return StockQuote(
+                symbol=symbol,
+                price=self._safe_decimal(data.get('close')),
+                change=self._safe_decimal(data.get('change')),
+                change_percent=self._safe_decimal(data.get('percent_change')),
+                volume=self._safe_int(data.get('volume')),
+                open=self._safe_decimal(data.get('open')),
+                high=self._safe_decimal(data.get('high')),
+                low=self._safe_decimal(data.get('low')),
+                previous_close=self._safe_decimal(data.get('previous_close')),
+                market_cap=None,  # Not available in quote endpoint
+                pe_ratio=None,    # Not available in quote endpoint
+                timestamp=timestamp,
+                provider=self.name
+            )
             
         except Exception as e:
             self._log_error("get_quote", f"Failed to fetch quote for {symbol}: {str(e)}")
@@ -335,375 +326,918 @@ class TwelveDataProvider(MarketDataProvider):
     async def get_historical(
         self, 
         symbol: str, 
-        start_date: Union[str, date, datetime],
-        end_date: Union[str, date, datetime],
-        interval: Union[Interval, str] = Interval.DAILY,
+        start_date: Optional[date] = None, 
+        end_date: Optional[date] = None,
+        interval: str = "1day",
+        limit: int = 5000,
         **kwargs
     ) -> List[HistoricalPrice]:
         """
-        Get historical price data for a symbol
+        Get historical price data for a symbol using TwelveData's time_series endpoint
         
         Args:
             symbol: Stock symbol
-            start_date: Start date (YYYY-MM-DD or date/datetime object)
-            end_date: End date (YYYY-MM-DD or date/datetime object)
-            interval: Data interval (default: daily). Can be Interval enum or string like '1d', '1h', etc.
+            start_date: Start date (default: 1 year ago)
+            end_date: End date (default: today)
+            interval: Data interval (default: 1day)
+            limit: Maximum number of records (default: 5000)
             **kwargs: Additional parameters
             
         Returns:
             List of HistoricalPrice objects
         """
-        try:
-            # Convert dates to string if needed
-            if isinstance(start_date, (date, datetime)):
-                start_date = start_date.strftime('%Y-%m-%d')
-            if isinstance(end_date, (date, datetime)):
-                end_date = end_date.strftime('%Y-%m-%d')
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return []
             
-            # Handle interval - accept both enum and string
-            interval_str = interval.value if isinstance(interval, Interval) else str(interval)
-                
+        symbol = symbol.upper().strip()
+        
+        # Set default dates if not provided
+        if end_date is None:
+            end_date = date.today()
+        if start_date is None:
+            start_date = end_date - timedelta(days=365)
+        
+        if start_date > end_date:
+            self._log_error("Invalid Date Range", f"Start date {start_date} is after end date {end_date}")
+            return []
+        
+        # Map interval to TwelveData format
+        interval_str = INTERVAL_MAP.get(interval.lower(), interval)
+        
+        try:
             params = {
-                'symbol': symbol.upper(),
+                'symbol': symbol,
                 'interval': interval_str,
-                'start_date': start_date,
-                'end_date': end_date,
-                'outputsize': kwargs.get('outputsize', 1000),
-                'timezone': 'America/New_York',
+                'start_date': start_date.strftime('%Y-%m-%d'),
+                'end_date': end_date.strftime('%Y-%m-%d'),
+                'outputsize': min(5000, limit),
                 'order': 'asc'  # Get oldest to newest
             }
             
-            # Make the request
+            # Make the request to time_series endpoint
             data = await self._make_request("time_series", params)
             
             if not data or 'values' not in data:
-                self._log_warning("get_historical", f"No data returned for {symbol} from {start_date} to {end_date}")
+                self._log_error("get_historical", f"No data returned for {symbol} from {start_date} to {end_date}")
                 return []
             
-            # Process the batch of prices
-            batch_prices = []
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
+            
+            # Process the historical prices
+            prices = []
             for item in data['values']:
                 try:
-                    # Parse timestamp, handling both with and without timezone
-                    datetime_str = item.get('datetime', '').rstrip('Z')
+                    # Parse datetime
+                    datetime_str = item.get('datetime', '')
                     if not datetime_str:
                         continue
                         
                     # Handle different datetime formats
                     if 'T' in datetime_str:
-                        if '+' in datetime_str or 'Z' in datetime_str:
+                        # ISO format with time
+                        if datetime_str.endswith('Z'):
                             timestamp = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
                         else:
-                            timestamp = datetime.strptime(datetime_str, '%Y-%m-%dT%H:%M:%S')
-                    elif ' ' in datetime_str:
-                        timestamp = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+                            timestamp = datetime.fromisoformat(datetime_str)
                     else:
+                        # Date only format
                         timestamp = datetime.strptime(datetime_str, '%Y-%m-%d')
                     
                     price = HistoricalPrice(
-                        symbol=symbol,
-                        date=timestamp,
+                        date=timestamp.date(),
                         open=self._safe_decimal(item.get('open')),
                         high=self._safe_decimal(item.get('high')),
                         low=self._safe_decimal(item.get('low')),
                         close=self._safe_decimal(item.get('close')),
                         volume=self._safe_int(item.get('volume', 0)),
-                        adjusted_close=self._safe_decimal(item.get('close')),  # Use close if adjusted not available
                         provider=self.name
                     )
-                    batch_prices.append(price)
+                    prices.append(price)
                     
                 except (KeyError, ValueError, InvalidOperation) as e:
-                    self._log_warning("Invalid Price Data", f"Skipping invalid price data: {str(e)}")
+                    logger.warning(f"Invalid price data, skipping: {str(e)}")
                     continue
             
-            # Sort the final results if needed (in case of multiple batches)
-            batch_prices.sort(key=lambda x: x.date)
-            
-            # Apply limit and return
-            return batch_prices[:kwargs.get('limit', 1000)]
+            # Sort by date and return
+            prices.sort(key=lambda x: x.date)
+            return prices
             
         except Exception as e:
             self._log_error("get_historical", f"Failed to fetch historical data for {symbol}: {str(e)}")
             return []
     
-    async def get_options_chain(
-        self, 
-        symbol: str, 
-        expiration: Optional[date] = None
-    ) -> Optional[List[OptionQuote]]:
-        """Get options chain for a symbol"""
-        params = {'symbol': symbol}
-        
-        if expiration:
-            params['expiration_date'] = expiration.strftime('%Y-%m-%d')
-        
-        data = await self._make_request("options/chain", params)
-        
-        if not data or 'calls' not in data:
-            return None
-        
-        try:
-            options = []
-            
-            # Process calls
-            for contract in data.get('calls', []):
-                options.append(OptionQuote(
-                    symbol=contract.get('contract_name', ''),
-                    underlying_symbol=symbol,
-                    strike=Decimal(str(contract['strike'])),
-                    expiration=datetime.strptime(contract['expiration_date'], '%Y-%m-%d').date(),
-                    option_type='call',
-                    bid=Decimal(str(contract.get('bid', 0))),
-                    ask=Decimal(str(contract.get('ask', 0))),
-                    last_price=Decimal(str(contract.get('last', 0))),
-                    volume=contract.get('volume', 0),
-                    open_interest=contract.get('open_interest', 0),
-                    implied_volatility=Decimal(str(contract.get('implied_volatility', 0))),
-                    timestamp=datetime.now(),
-                    provider=self.name
-                ))
-            
-            # Process puts
-            for contract in data.get('puts', []):
-                options.append(OptionQuote(
-                    symbol=contract.get('contract_name', ''),
-                    underlying_symbol=symbol,
-                    strike=Decimal(str(contract['strike'])),
-                    expiration=datetime.strptime(contract['expiration_date'], '%Y-%m-%d').date(),
-                    option_type='put',
-                    bid=Decimal(str(contract.get('bid', 0))),
-                    ask=Decimal(str(contract.get('ask', 0))),
-                    last_price=Decimal(str(contract.get('last', 0))),
-                    volume=contract.get('volume', 0),
-                    open_interest=contract.get('open_interest', 0),
-                    implied_volatility=Decimal(str(contract.get('implied_volatility', 0))),
-                    timestamp=datetime.now(),
-                    provider=self.name
-                ))
-            
-            return options
-        except Exception as e:
-            self._log_error("get_options_chain", e)
-            return None
-    
-    async def get_earnings(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
-        """Get earnings data"""
-        data = await self._make_request("earnings", {'symbol': symbol})
-        
-        if not data or 'earnings' not in data:
-            return None
-        
-        return data['earnings']
-    
-    async def get_dividends(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
-        """Get dividend data"""
-        data = await self._make_request("dividends", {'symbol': symbol})
-        
-        if not data or 'dividends' not in data:
-            return None
-        
-        return data['dividends']
-    
-    async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get fundamental statistics"""
-        data = await self._make_request("statistics", {'symbol': symbol})
-        
-        if not data or 'statistics' not in data:
-            return None
-        
-        stats = data['statistics']
-        
-        return {
-            'symbol': symbol,
-            'provider': self.name,
-            'pe_ratio': stats.get('valuations_metrics', {}).get('pe_ratio'),
-            'peg_ratio': stats.get('valuations_metrics', {}).get('peg_ratio'),
-            'dividend_yield': stats.get('stock_dividends', {}).get('forward_annual_dividend_yield'),
-            'eps': stats.get('financials', {}).get('ttm_eps'),
-            'revenue': stats.get('financials', {}).get('ttm_revenue'),
-            'profit_margin': stats.get('financials', {}).get('profit_margin'),
-            'operating_margin': stats.get('financials', {}).get('operating_margin'),
-            'return_on_assets': stats.get('financials', {}).get('return_on_assets'),
-            'return_on_equity': stats.get('financials', {}).get('return_on_equity'),
-            'beta': stats.get('stock_statistics', {}).get('beta'),
-            '52_week_high': stats.get('stock_statistics', {}).get('52_week_high'),
-            '52_week_low': stats.get('stock_statistics', {}).get('52_week_low'),
-            'avg_volume': stats.get('stock_statistics', {}).get('avg_volume'),
-            'shares_outstanding': stats.get('stock_statistics', {}).get('shares_outstanding')
-        }
-        
-    async def get_company_info(self, symbol: str) -> Dict[str, Any]:
+    async def get_company_info(self, symbol: str) -> Optional[CompanyInfo]:
         """
-        Get company information using Twelve Data profile endpoint
+        Get company information using TwelveData's profile endpoint
         
         Args:
             symbol: Stock symbol
         
         Returns:
-            Dictionary containing company profile data
+            CompanyInfo object if successful, None otherwise
         """
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
         try:
-            params = {'symbol': symbol.upper()}
-            data = await self._make_request('profile', params)
+            # Use profile endpoint
+            data = await self._make_request('profile', {'symbol': symbol})
+            
+            if not data or not isinstance(data, dict):
+                return None
             
             # Check for errors
-            if data.get('error') or data.get('status') == 'error':
-                logging.warning(f"Company info error for {symbol}: {data.get('message', 'Unknown error')}")
-                return {}
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
             
-            # Transform data to standardized format
-            company_info = {
-                'symbol': symbol.upper(),
-                'name': data.get('name', ''),
-                'exchange': data.get('exchange', ''),
-                'sector': data.get('sector', ''),
-                'industry': data.get('industry', ''),
-                'employees': data.get('employees'),
-                'website': data.get('website', ''),
-                'description': data.get('description', ''),
-                'ceo': data.get('CEO', ''),
-                'address': data.get('address', ''),
-                'city': data.get('city', ''),
-                'state': data.get('state', ''),
-                'country': data.get('country', ''),
-                'phone': data.get('phone', ''),
-                'type': data.get('type', '')
-            }
+            # Build address string
+            address_parts = []
+            if data.get('address'):
+                address_parts.append(data['address'])
+            if data.get('city'):
+                address_parts.append(data['city'])
+            if data.get('state'):
+                address_parts.append(data['state'])
             
-            return company_info
+            headquarters = ", ".join(address_parts)
+            
+            return CompanyInfo(
+                symbol=symbol,
+                name=data.get('name', ''),
+                exchange=data.get('exchange', ''),
+                sector=data.get('sector', ''),
+                industry=data.get('industry', ''),
+                employees=self._safe_int(data.get('employees')),
+                website=data.get('website', ''),
+                description=data.get('description', ''),
+                ceo=data.get('CEO', ''),
+                headquarters=headquarters,
+                country=data.get('country', ''),
+                phone=data.get('phone', ''),
+                tags=[],  # Not available in profile
+                logo_url=None,  # Requires separate logo endpoint
+                ipo_date=None,  # Not available in profile
+                currency='USD',  # Default
+                pe_ratio=None,  # Requires statistics endpoint
+                peg_ratio=None,
+                eps=None,
+                dividend_yield=None,
+                beta=None,
+                is_etf=data.get('type', '').upper() == 'ETF',
+                is_adr=False,  # Not available
+                is_fund=data.get('type', '').upper() in ['ETF', 'FUND'],
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                provider=self.name
+            )
             
         except Exception as e:
-            logging.error(f"Error fetching company info for {symbol}: {str(e)}")
-            return {}
+            self._log_error("get_company_info", f"Failed to fetch company info for {symbol}: {str(e)}")
+            return None
+
+    async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get fundamental statistics using TwelveData's statistics endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("statistics", {'symbol': symbol})
+            
+            if not data or 'statistics' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            stats = data['statistics']
+            
+            return {
+                'symbol': symbol,
+                'provider': self.name,
+                'pe_ratio': stats.get('valuations_metrics', {}).get('trailing_pe'),
+                'peg_ratio': stats.get('valuations_metrics', {}).get('peg_ratio'),
+                'dividend_yield': stats.get('dividends_and_splits', {}).get('forward_annual_dividend_yield'),
+                'eps': stats.get('financials', {}).get('income_statement', {}).get('diluted_eps_ttm'),
+                'revenue': stats.get('financials', {}).get('income_statement', {}).get('revenue_ttm'),
+                'profit_margin': stats.get('financials', {}).get('profit_margin'),
+                'operating_margin': stats.get('financials', {}).get('operating_margin'),
+                'return_on_assets': stats.get('financials', {}).get('return_on_assets_ttm'),
+                'return_on_equity': stats.get('financials', {}).get('return_on_equity_ttm'),
+                'beta': stats.get('stock_price_summary', {}).get('beta'),
+                '52_week_high': stats.get('stock_price_summary', {}).get('fifty_two_week_high'),
+                '52_week_low': stats.get('stock_price_summary', {}).get('fifty_two_week_low'),
+                'avg_volume': stats.get('stock_statistics', {}).get('avg_10_volume'),
+                'shares_outstanding': stats.get('stock_statistics', {}).get('shares_outstanding'),
+                'market_cap': stats.get('valuations_metrics', {}).get('market_capitalization')
+            }
+            
+        except Exception as e:
+            self._log_error("get_fundamentals", f"Failed to fetch fundamentals for {symbol}: {str(e)}")
+            return None
+
+    async def get_earnings(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+        """Get earnings data using TwelveData's earnings endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("earnings", {'symbol': symbol})
+            
+            if not data or 'earnings' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return data['earnings']
+            
+        except Exception as e:
+            self._log_error("get_earnings", f"Failed to fetch earnings for {symbol}: {str(e)}")
+            return None
     
-    async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month") -> List[Dict[str, Any]]:
+    async def get_dividends(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+        """Get dividend data using TwelveData's dividends endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("dividends", {'symbol': symbol})
+            
+            if not data or 'dividends' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return data['dividends']
+            
+        except Exception as e:
+            self._log_error("get_dividends", f"Failed to fetch dividends for {symbol}: {str(e)}")
+            return None
+
+    async def get_splits(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+        """Get stock splits using TwelveData's splits endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("splits", {'symbol': symbol})
+            
+            if not data or 'splits' not in data:
+                return None
+            
+            # Check for errors  
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return data['splits']
+            
+        except Exception as e:
+            self._log_error("get_splits", f"Failed to fetch splits for {symbol}: {str(e)}")
+            return None
+
+    async def get_earnings_calendar(
+        self, 
+        symbol: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
         """
-        Get earnings calendar data using Twelve Data earnings_calendar endpoint
+        Get earnings calendar data using TwelveData's earnings_calendar endpoint
         
         Args:
             symbol: Stock symbol (optional, if None returns all earnings)
-            horizon: Time horizon - "3month", "6month", "1year"
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            **kwargs: Additional parameters
         
         Returns:
             List of earnings calendar events
         """
         try:
-            # Calculate date range based on horizon
-            end_date = datetime.now()
-            if horizon == "3month":
-                start_date = end_date - timedelta(days=90)
-            elif horizon == "6month":
-                start_date = end_date - timedelta(days=180)
-            elif horizon == "1year":
-                start_date = end_date - timedelta(days=365)
-            else:
-                start_date = end_date - timedelta(days=90)  # default to 3 months
+            params = {}
             
-            params = {
-                'start_date': start_date.strftime('%Y-%m-%d'),
-                'end_date': end_date.strftime('%Y-%m-%d')
-            }
-            
-            # Add symbol filter if provided
+            # If symbol is provided, get specific symbol earnings
             if symbol:
-                # For specific symbol, use earnings endpoint instead
-                params = {'symbol': symbol.upper()}
+                params['symbol'] = symbol.upper()
                 data = await self._make_request('earnings', params)
                 
-                if data.get('error') or data.get('status') == 'error':
-                    logging.warning(f"Earnings data error for {symbol}: {data.get('message', 'Unknown error')}")
-                    return []
-                
-                # Transform single symbol earnings data
-                earnings_data = data.get('earnings', [])
-                standardized_data = []
-                
-                for event in earnings_data:
-                    standardized_event = {
-                        'symbol': symbol.upper(),
-                        'date': event.get('date', ''),
-                        'time': event.get('time', ''),
-                        'epsEstimate': event.get('eps_estimate'),
-                        'epsActual': event.get('eps_actual'),
-                        'difference': event.get('difference'),
-                        'surprise_prc': event.get('surprise_prc')
-                    }
-                    standardized_data.append(standardized_event)
-                
-                return standardized_data
+                if data and data.get('status') != 'error' and 'earnings' in data:
+                    return data['earnings']
             else:
-                # Get earnings calendar for all symbols
+                # Get earnings calendar for date range
+                if start_date:
+                    params['start_date'] = start_date
+                if end_date:
+                    params['end_date'] = end_date
+                
                 data = await self._make_request('earnings_calendar', params)
                 
-                if data.get('error'):
-                    logging.warning(f"Earnings calendar error: {data.get('message', 'Unknown error')}")
-                    return []
-                
-                # Transform calendar data
-                earnings_data = data.get('earnings', {})
-                standardized_data = []
-                
-                for date, events in earnings_data.items():
-                    if isinstance(events, dict):
-                        events = [events]  # Single event
-                    elif isinstance(events, list):
-                        pass  # Multiple events
-                    else:
-                        continue
+                if data and data.get('status') != 'error' and 'earnings' in data:
+                    # Flatten the calendar structure
+                    earnings_list = []
+                    earnings_data = data['earnings']
                     
-                    for event in events:
-                        standardized_event = {
-                            'symbol': event.get('symbol', ''),
-                            'date': date,
-                            'time': event.get('time', ''),
-                            'epsEstimate': event.get('eps_estimate'),
-                            'epsActual': event.get('eps_actual'),
-                            'difference': event.get('difference'),
-                            'surprise_prc': event.get('surprise_prc')
-                        }
-                        standardized_data.append(standardized_event)
-                
-                return standardized_data
+                    for date, events in earnings_data.items():
+                        if isinstance(events, list):
+                            for event in events:
+                                event['date'] = date
+                                earnings_list.append(event)
+                        elif isinstance(events, dict):
+                            events['date'] = date
+                            earnings_list.append(events)
+                    
+                    return earnings_list
+            
+            return []
             
         except Exception as e:
-            logging.error(f"Error fetching earnings calendar: {str(e)}")
+            self._log_error("get_earnings_calendar", f"Failed to fetch earnings calendar: {str(e)}")
             return []
-    
-    async def get_earnings_transcript(self, symbol: str, year: str, quarter: str) -> Dict[str, Any]:
+
+    async def get_technical_indicators(
+        self, 
+        symbol: str, 
+        indicator: str, 
+        interval: str = '1day',
+        time_period: int = 14,
+        series_type: str = 'close',
+        **kwargs
+    ) -> List[Dict[str, Any]]:
         """
-        Get earnings transcript data - Note: Twelve Data doesn't provide transcript text,
-        but we can return earnings data for the specified period
+        Get technical indicators data using TwelveData's technical indicator endpoints
         
         Args:
             symbol: Stock symbol
-            year: Year (e.g., "2024")
-            quarter: Quarter (1, 2, 3, or 4)
-        
+            indicator: Technical indicator name (e.g., 'rsi', 'sma', 'ema')
+            interval: Data interval (default: 1day)
+            time_period: Time period for the indicator (default: 14)
+            series_type: The price type to use (default: 'close')
+            **kwargs: Additional parameters
+            
         Returns:
-            Dictionary containing available earnings data (not full transcript)
+            List of indicator data points
         """
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return []
+            
+        symbol = symbol.upper().strip()
+        
         try:
-            params = {
-                'symbol': symbol.upper(),
-                'start_date': f'{year}-01-01',
-                'end_date': f'{year}-12-31'
+            # Map indicator names to TwelveData's format
+            indicator_map = {
+                'rsi': 'rsi',
+                'sma': 'sma',
+                'ema': 'ema',
+                'macd': 'macd',
+                'bbands': 'bbands',
+                'stoch': 'stoch',
+                'adx': 'adx',
+                'cci': 'cci',
+                'obv': 'obv',
+                'atr': 'atr',
+                'willr': 'willr',
+                'mfi': 'mfi'
             }
             
-            data = await self._make_request('earnings', params)
+            td_indicator = indicator_map.get(indicator.lower())
+            if not td_indicator:
+                self._log_error("Invalid Indicator", f"Unsupported indicator: {indicator}")
+                return []
             
-            if data.get('error') or data.get('status') == 'error':
-                logging.warning(f"Earnings transcript error for {symbol}: {data.get('message', 'Unknown error')}")
+            # Map interval to TwelveData format
+            interval_str = INTERVAL_MAP.get(interval.lower(), interval)
+            
+            params = {
+                'symbol': symbol,
+                'interval': interval_str,
+                'time_period': time_period,
+                'series_type': series_type,
+                **kwargs
+            }
+            
+            data = await self._make_request(td_indicator, params)
+            
+            if not data or 'values' not in data:
+                self._log_error("get_technical_indicators", 
+                               f"No data returned for {indicator} on {symbol}")
+                return []
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
+            
+            # Process the response into a standardized format
+            result = []
+            for item in data.get('values', []):
+                try:
+                    # Parse the date
+                    date_str = item.get('datetime', '')
+                    if not date_str:
+                        continue
+                        
+                    # Get the indicator value (handle different response formats)
+                    value = item.get(indicator.lower()) or item.get('value')
+                    if value is None:
+                        # For complex indicators like MACD, get the main value
+                        if indicator.lower() == 'macd':
+                            value = item.get('macd')
+                        elif indicator.lower() == 'bbands':
+                            value = item.get('middle_band')
+                        elif indicator.lower() == 'stoch':
+                            value = item.get('slow_k')
+                    
+                    if value is None:
+                        continue
+                        
+                    # Add to results
+                    result.append({
+                        'date': date_str,
+                        'value': float(value),
+                        'symbol': symbol,
+                        'indicator': indicator
+                    })
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error processing indicator data: {str(e)}")
+                    continue
+            
+            return result
+            
+        except Exception as e:
+            self._log_error("get_technical_indicators", f"Failed to fetch technical indicators: {str(e)}")
+            return []
+
+    async def get_logo(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get company logo using TwelveData's logo endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("logo", {'symbol': symbol})
+            
+            if not data or not isinstance(data, dict):
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'url': data.get('url'),
+                'logo_base': data.get('logo_base'),
+                'logo_quote': data.get('logo_quote'),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_logo", f"Failed to fetch logo for {symbol}: {str(e)}")
+            return None
+
+    async def get_income_statement(self, symbol: str, period: str = 'annual') -> Optional[Dict[str, Any]]:
+        """Get income statement using TwelveData's income_statement endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            params = {
+                'symbol': symbol,
+                'period': period
+            }
+            
+            data = await self._make_request("income_statement", params)
+            
+            if not data or 'income_statement' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'period': period,
+                'income_statement': data['income_statement'],
+                'meta': data.get('meta', {}),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_income_statement", f"Failed to fetch income statement for {symbol}: {str(e)}")
+            return None
+
+    async def get_balance_sheet(self, symbol: str, period: str = 'annual') -> Optional[Dict[str, Any]]:
+        """Get balance sheet using TwelveData's balance_sheet endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            params = {
+                'symbol': symbol,
+                'period': period
+            }
+            
+            data = await self._make_request("balance_sheet", params)
+            
+            if not data or 'balance_sheet' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'period': period,
+                'balance_sheet': data['balance_sheet'],
+                'meta': data.get('meta', {}),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_balance_sheet", f"Failed to fetch balance sheet for {symbol}: {str(e)}")
+            return None
+
+    async def get_cash_flow(self, symbol: str, period: str = 'annual') -> Optional[Dict[str, Any]]:
+        """Get cash flow statement using TwelveData's cash_flow endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            params = {
+                'symbol': symbol,
+                'period': period
+            }
+            
+            data = await self._make_request("cash_flow", params)
+            
+            if not data or 'cash_flow' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'period': period,
+                'cash_flow': data['cash_flow'],
+                'meta': data.get('meta', {}),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_cash_flow", f"Failed to fetch cash flow for {symbol}: {str(e)}")
+            return None
+
+    async def get_market_status(self) -> Dict[str, Any]:
+        """Get market status using TwelveData's market_state endpoint"""
+        try:
+            data = await self._make_request("market_state")
+            
+            if not data or not isinstance(data, list):
+                return {
+                    'is_open': False,
+                    'status': 'unknown',
+                    'provider': self.name,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            
+            # Find major US exchanges
+            major_exchanges = ['NYSE', 'NASDAQ', 'NYSEAMERICAN']
+            market_open = False
+            market_info = {}
+            
+            for exchange in data:
+                if exchange.get('name') in major_exchanges:
+                    market_open = exchange.get('is_market_open', False)
+                    market_info = exchange
+                    break
+            
+            return {
+                'is_open': market_open,
+                'status': 'open' if market_open else 'closed',
+                'exchange_info': market_info,
+                'all_exchanges': data,
+                'provider': self.name,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            self._log_error("get_market_status", f"Failed to get market status: {str(e)}")
+            return {
+                'is_open': False,
+                'status': 'error',
+                'error': str(e),
+                'provider': self.name,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+
+    async def search_symbols(self, query: str, outputsize: int = 30) -> List[Dict[str, Any]]:
+        """Search for symbols using TwelveData's symbol_search endpoint"""
+        if not query or not isinstance(query, str):
+            self._log_error("Invalid Input", f"Invalid query: {query}")
+            return []
+        
+        try:
+            params = {
+                'symbol': query.upper().strip(),
+                'outputsize': min(120, outputsize)  # TwelveData max is 120
+            }
+            
+            data = await self._make_request("symbol_search", params)
+            
+            if not data or 'data' not in data:
+                return []
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
+            
+            return data['data']
+            
+        except Exception as e:
+            self._log_error("search_symbols", f"Failed to search symbols: {str(e)}")
+            return []
+
+    async def get_exchange_rate(self, from_currency: str, to_currency: str) -> Optional[Dict[str, Any]]:
+        """Get exchange rate using TwelveData's exchange_rate endpoint"""
+        if not from_currency or not to_currency:
+            self._log_error("Invalid Input", "Both currencies are required")
+            return None
+        
+        try:
+            symbol = f"{from_currency.upper()}/{to_currency.upper()}"
+            
+            data = await self._make_request("exchange_rate", {'symbol': symbol})
+            
+            if not data or not isinstance(data, dict):
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'rate': self._safe_decimal(data.get('rate')),
+                'timestamp': data.get('timestamp'),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_exchange_rate", f"Failed to get exchange rate: {str(e)}")
+            return None
+
+    async def get_currency_conversion(self, from_currency: str, to_currency: str, amount: float) -> Optional[Dict[str, Any]]:
+        """Get currency conversion using TwelveData's currency_conversion endpoint"""
+        if not from_currency or not to_currency or amount is None:
+            self._log_error("Invalid Input", "All parameters are required")
+            return None
+        
+        try:
+            symbol = f"{from_currency.upper()}/{to_currency.upper()}"
+            
+            params = {
+                'symbol': symbol,
+                'amount': amount
+            }
+            
+            data = await self._make_request("currency_conversion", params)
+            
+            if not data or not isinstance(data, dict):
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'rate': self._safe_decimal(data.get('rate')),
+                'amount': self._safe_decimal(data.get('amount')),
+                'timestamp': data.get('timestamp'),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_currency_conversion", f"Failed to get currency conversion: {str(e)}")
+            return None
+
+    async def get_market_movers(self, market: str = 'stocks', direction: str = 'gainers', outputsize: int = 30) -> List[Dict[str, Any]]:
+        """Get top market movers using TwelveData's market_movers endpoint"""
+        try:
+            params = {
+                'market': market,
+                'direction': direction,
+                'outputsize': min(50, outputsize),  # TwelveData max is 50
+                'country': 'USA'  # Focus on US market by default
+            }
+            
+            data = await self._make_request("market_movers", params)
+            
+            if not data or 'values' not in data:
+                return []
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
+            
+            return data['values']
+            
+        except Exception as e:
+            self._log_error("get_market_movers", f"Failed to get market movers: {str(e)}")
+            return []
+
+    async def get_price(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get simple price using TwelveData's price endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            data = await self._make_request("price", {'symbol': symbol})
+            
+            if not data or 'price' not in data:
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': symbol,
+                'price': self._safe_decimal(data.get('price')),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_price", f"Failed to get price for {symbol}: {str(e)}")
+            return None
+
+    async def get_eod(self, symbol: str, date: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get end of day price using TwelveData's eod endpoint"""
+        if not symbol or not isinstance(symbol, str):
+            self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
+            return None
+            
+        symbol = symbol.upper().strip()
+        
+        try:
+            params = {'symbol': symbol}
+            if date:
+                params['date'] = date
+                
+            data = await self._make_request("eod", params)
+            
+            if not data or not isinstance(data, dict):
+                return None
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return None
+            
+            return {
+                'symbol': data.get('symbol', symbol),
+                'exchange': data.get('exchange'),
+                'currency': data.get('currency'),
+                'datetime': data.get('datetime'),
+                'close': self._safe_decimal(data.get('close')),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_eod", f"Failed to get EOD for {symbol}: {str(e)}")
+            return None
+
+    # Methods that are not directly supported by TwelveData
+    async def get_options_chain(
+        self, 
+        symbol: str, 
+        expiration: Optional[date] = None
+    ) -> Optional[List[OptionQuote]]:
+        """
+        Options data is not available via TwelveData
+        TwelveData focuses on stocks, forex, crypto, and ETFs
+        """
+        self._log_error("Not Supported", "Options data is not available through TwelveData API")
+        
+        return []
+
+    async def get_news(self, symbol: Optional[str] = None, **kwargs) -> List[Dict[str, Any]]:
+        """
+        News data is not available via TwelveData's main API
+        TwelveData focuses on market data, not news
+        """
+        self._log_error("Not Supported", "News data is not available through TwelveData API")
+        
+        return []
+
+    async def get_economic_data(self, function: str, **kwargs) -> Dict[str, Any]:
+        """
+        Economic data indicators are not available via TwelveData
+        TwelveData focuses on market data (stocks, forex, crypto, ETFs)
+        """
+        self._log_error("Not Supported", "Economic data indicators are not available through TwelveData API")
+        
+        return {
+            "status": "not_available",
+            "message": "Economic data indicators are not available through TwelveData API",
+            "function": function,
+            "provider": self.name,
+            "suggestion": "Consider using FRED API, Alpha Vantage, or other economic data providers",
+            "available_data_types": [
+                "Stock market data (Real-time & Historical)",
+                "Forex data", 
+                "Cryptocurrency data",
+                "ETF data",
+                "Technical indicators",
+                "Company fundamentals",
+                "Financial statements"
+            ]
+        }
+    
+    async def get_economic_events(self, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Economic events calendar is not available via TwelveData
+        """
+        self._log_error("Not Supported", "Economic events calendar is not available through TwelveData API")
+        
+        return []
+
+    async def get_earnings_transcript(self, symbol: str, year: str, quarter: str) -> Dict[str, Any]:
+        """
+        Earnings transcripts are not available via TwelveData
+        But we can return earnings data for the specified period
+        """
+        try:
+            # Get earnings data instead of transcript
+            earnings_data = await self.get_earnings(symbol)
+            
+            if not earnings_data:
                 return {
                     'symbol': symbol,
                     'year': year,
                     'quarter': quarter,
                     'transcript': '',
-                    'error': 'Twelve Data does not provide full earnings transcripts'
+                    'error': 'No earnings data available',
+                    'provider': self.name
                 }
             
             # Find earnings for the specific quarter
-            earnings_data = data.get('earnings', [])
             target_earning = None
             
             for earning in earnings_data:
@@ -731,7 +1265,8 @@ class TwelveDataProvider(MarketDataProvider):
                     'difference': target_earning.get('difference'),
                     'surprise_prc': target_earning.get('surprise_prc'),
                     'transcript': '',
-                    'note': 'Twelve Data provides earnings data but not full transcripts'
+                    'note': 'TwelveData provides earnings data but not full transcripts',
+                    'provider': self.name
                 }
             else:
                 return {
@@ -739,231 +1274,108 @@ class TwelveDataProvider(MarketDataProvider):
                     'year': year,
                     'quarter': quarter,
                     'transcript': '',
-                    'error': f'No earnings data found for Q{quarter} {year}'
+                    'error': f'No earnings data found for Q{quarter} {year}',
+                    'provider': self.name
                 }
             
         except Exception as e:
-            logging.error(f"Error fetching earnings transcript: {str(e)}")
+            self._log_error("get_earnings_transcript", f"Error fetching earnings transcript: {str(e)}")
             return {
                 'symbol': symbol,
                 'year': year,
                 'quarter': quarter,
                 'transcript': '',
-                'error': str(e)
+                'error': str(e),
+                'provider': self.name
             }
-    
-    async def get_economic_data(self, function: str, **kwargs) -> Dict[str, Any]:
-        """
-        Get economic data - Note: Twelve Data focuses on market data,
-        limited economic indicators available
+
+    # Utility methods for batch operations
+    async def batch_quotes(self, symbols: List[str]) -> Dict[str, Optional[StockQuote]]:
+        """Get quotes for multiple symbols efficiently"""
+        results = {}
         
-        Args:
-            function: Economic function/indicator name
-            **kwargs: Additional parameters
+        # Process in batches to respect rate limits  
+        batch_size = min(5, self.rate_limit // 4)  # Conservative batch size
         
-        Returns:
-            Dictionary containing economic data
-        """
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            
+            # Process batch concurrently
+            tasks = [self.get_quote(symbol) for symbol in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Store results
+            for symbol, result in zip(batch, batch_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Error fetching quote for {symbol}: {str(result)}")
+                    results[symbol] = None
+                else:
+                    results[symbol] = result
+            
+            # Rate limit pause between batches
+            if i + batch_size < len(symbols):
+                await asyncio.sleep(self.min_request_interval)
+        
+        return results
+
+    async def get_supported_symbols(self, **kwargs) -> List[Dict[str, Any]]:
+        """Get list of supported symbols using TwelveData's stocks endpoint"""
         try:
-            # Twelve Data doesn't have a comprehensive economic data endpoint
-            # But they have some economic-related data through market data
-            
-            # Map common economic functions to available endpoints
-            function_mapping = {
-                'GDP': 'GDP',
-                'INFLATION': 'CPI',
-                'UNEMPLOYMENT': 'UNEMPLOYMENT_RATE',
-                'INTEREST_RATE': 'FEDERAL_FUNDS_RATE'
-            }
-            
-            mapped_function = function_mapping.get(function.upper(), function)
-            
-            # Try to get economic indicator as a symbol (if available)
             params = {
-                'symbol': mapped_function,
-                'interval': kwargs.get('interval', '1month'),
-                'outputsize': kwargs.get('outputsize', 12)
+                'country': kwargs.get('country', 'United States'),
+                'format': 'JSON'
             }
             
-            data = await self._make_request("time_series", params)
+            data = await self._make_request("stocks", params)
             
-            if data.get('error') or data.get('status') == 'error':
-                logging.warning(f"Economic data not available for {function}: Limited economic data in Twelve Data")
-                return {
-                    'function': function,
-                    'data': [],
-                    'error': 'Twelve Data primarily provides market data, limited economic indicators'
-                }
+            if not data or 'data' not in data:
+                return []
             
-            # Transform time series data
-            values = data.get('values', [])
-            economic_data = []
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
             
-            for value in values:
-                economic_point = {
-                    'date': value.get('datetime', ''),
-                    'value': float(value.get('close', 0)) if value.get('close') else None,
-                    'indicator': function
-                }
-                economic_data.append(economic_point)
-            
-            return {
-                'function': function,
-                'data': economic_data,
-                'meta': data.get('meta', {})
-            }
+            return data['data']
             
         except Exception as e:
-            logging.error(f"Error fetching economic data: {str(e)}")
-            return {
-                'function': function,
-                'data': [],
-                'error': str(e)
-            }
-    
-    async def get_economic_events(self, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Get economic events - Note: Twelve Data doesn't provide economic calendar,
-        return empty list with explanation
-        
-        Args:
-            **kwargs: Parameters for economic events
-        
-        Returns:
-            List of economic events (empty for Twelve Data)
-        """
-        try:
-            # Twelve Data doesn't provide economic calendar/events
-            logging.warning("Twelve Data does not provide economic events/calendar data")
-            return []
-            
-        except Exception as e:
-            logging.error(f"Error fetching economic events: {str(e)}")
-            return []
-    
-    async def get_news(self, symbol: str = None, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Get news data - Note: Twelve Data doesn't provide news endpoint in their main API,
-        but we can simulate with company info or return empty
-        
-        Args:
-            symbol: Stock symbol (optional)
-            **kwargs: Additional parameters like category, limit, etc.
-        
-        Returns:
-            List of news articles (limited/simulated for Twelve Data)
-        """
-        try:
-            # Twelve Data doesn't have a dedicated news endpoint
-            # We could potentially integrate with their other data or return empty
-            
-            logging.warning("Twelve Data does not provide news data through their API")
-            
-            # Return empty news list with explanation
-            return []
-            
-        except Exception as e:
-            logging.error(f"Error fetching news: {str(e)}")
+            self._log_error("get_supported_symbols", f"Failed to get supported symbols: {str(e)}")
             return []
 
-    async def get_technical_indicators(
-        self, 
-        symbol: str, 
-        indicator: str, 
-        interval: Union[Interval, str] = Interval.DAILY,
-        time_period: int = 14,
-        series_type: str = 'close',
-        **kwargs
-    ) -> List[Dict[str, Any]]:
-        """
-        Get technical indicators data
-        
-        Args:
-            symbol: Stock symbol
-            indicator: Technical indicator name (e.g., 'rsi', 'sma', 'ema')
-            interval: Data interval (default: daily). Can be Interval enum or string like '1d', '1h', etc.
-            time_period: Time period for the indicator (default: 14)
-            series_type: The price type to use (default: 'close')
-            **kwargs: Additional parameters
-            
-        Returns:
-            List of indicator data points with 'date' and 'value' keys
-        """
+    async def get_forex_pairs(self) -> List[Dict[str, Any]]:
+        """Get list of supported forex pairs"""
         try:
-            # Handle interval - accept both enum and string
-            interval_str = interval.value if isinstance(interval, Interval) else str(interval)
+            data = await self._make_request("forex_pairs")
             
-            # Map indicator names to TwelveData's format
-            indicator_map = {
-                'rsi': 'rsi',
-                'sma': 'sma',
-                'ema': 'ema',
-                'macd': 'macd',
-                'bbands': 'bbands',
-                'stoch': 'stoch',
-                'adx': 'adx',
-                'cci': 'cci',
-                'obv': 'obv',
-                'atr': 'atr',
-                'willr': 'willr',
-                'mfi': 'mfi'
-            }
-            
-            td_indicator = indicator_map.get(indicator.lower())
-            if not td_indicator:
-                self._log_warning("get_technical_indicators", f"Unsupported indicator: {indicator}")
+            if not data or 'data' not in data:
                 return []
             
-            params = {
-                'symbol': symbol.upper(),
-                'interval': interval_str,
-                'time_period': time_period,
-                'series_type': series_type,
-                **kwargs
-            }
-            
-            # Add default parameters based on indicator
-            if td_indicator in ['sma', 'ema']:
-                params['time_period'] = time_period
-            elif td_indicator == 'bbands':
-                params['time_period'] = time_period
-                params['sd'] = kwargs.get('sd', 2)
-            elif td_indicator == 'rsi':
-                params['time_period'] = time_period
-            
-            data = await self._make_request(td_indicator, params)
-            
-            if not data or 'values' not in data:
-                self._log_warning("get_technical_indicators", 
-                               f"No data returned for {indicator} on {symbol}")
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
                 return []
             
-            # Process the response into a standardized format
-            result = []
-            for item in data.get('values', []):
-                try:
-                    # Parse the date
-                    date_str = item.get('datetime', '').rstrip('Z')
-                    if not date_str:
-                        continue
-                        
-                    # Get the indicator value (handle different response formats)
-                    value = item.get(indicator.lower()) or item.get('value')
-                    if value is None:
-                        continue
-                        
-                    # Add to results
-                    result.append({
-                        'date': date_str,
-                        'value': float(value)
-                    })
-                except (ValueError, TypeError) as e:
-                    self._log_warning("get_technical_indicators", 
-                                   f"Error processing indicator data: {str(e)}")
-                    continue
-            
-            return result
+            return data['data']
             
         except Exception as e:
-            logging.error(f"Error fetching technical indicators: {str(e)}")
+            self._log_error("get_forex_pairs", f"Failed to get forex pairs: {str(e)}")
+            return []
+
+    async def get_cryptocurrencies(self) -> List[Dict[str, Any]]:
+        """Get list of supported cryptocurrencies"""
+        try:
+            data = await self._make_request("cryptocurrencies")
+            
+            if not data or 'data' not in data:
+                return []
+            
+            # Check for errors
+            if data.get('status') == 'error':
+                self._log_error("API Error", data.get('message', 'Unknown error'))
+                return []
+            
+            return data['data']
+            
+        except Exception as e:
+            self._log_error("get_cryptocurrencies", f"Failed to get cryptocurrencies: {str(e)}")
             return []

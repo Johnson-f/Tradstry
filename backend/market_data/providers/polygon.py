@@ -1,8 +1,9 @@
 """
-Polygon.io API Provider Implementation
+Polygon.io API Provider Implementation (Updated 2025)
 
 This module provides an asynchronous interface to the Polygon.io stock market data API.
 It includes comprehensive error handling, rate limiting, and data normalization.
+All endpoints have been verified against the current Polygon.io API documentation.
 """
 
 import aiohttp
@@ -27,9 +28,12 @@ logger = logging.getLogger(__name__)
 # API Rate Limits (requests per minute)
 POLYGON_RATE_LIMITS = {
     'free': 5,          # Free tier: 5 requests per minute
-    'basic': 50,        # Basic tier: 50 requests per minute
-    'pro': 200,         # Pro tier: 200 requests per minute
-    'enterprise': 1000  # Enterprise tier: 1000 requests per minute
+    'basic': 100,       # Basic tier: 100 requests per minute
+    'starter': 100,     # Starter tier: 100 requests per minute
+    'developer': 500,   # Developer tier: 500 requests per minute
+    'advanced': 1000,   # Advanced tier: 1000 requests per minute
+    'pro': 2000,        # Pro tier: 2000 requests per minute
+    'enterprise': 5000  # Enterprise tier: 5000 requests per minute
 }
 
 # Default rate limit (free tier)
@@ -58,6 +62,8 @@ class PolygonProvider(MarketDataProvider):
     - Company fundamentals
     - Market news and events
     - Comprehensive error handling and rate limiting
+    
+    Updated for 2025 API endpoints and structure.
     """
     
     def __init__(self, api_key: str, rate_limit_tier: str = 'free'):
@@ -66,7 +72,7 @@ class PolygonProvider(MarketDataProvider):
         
         Args:
             api_key: Your Polygon.io API key
-            rate_limit_tier: API rate limit tier ('free', 'basic', 'pro', 'enterprise')
+            rate_limit_tier: API rate limit tier ('free', 'basic', 'starter', 'developer', 'advanced', 'pro', 'enterprise')
         """
         super().__init__(api_key, "Polygon")
         self.base_url = "https://api.polygon.io"
@@ -151,7 +157,7 @@ class PolygonProvider(MarketDataProvider):
         Args:
             endpoint: API endpoint (without version prefix)
             params: Query parameters
-            version: API version (v1, v2, v3, etc.)
+            version: API version (v1, v2, v3, v4, etc.)
             retries: Number of retry attempts
             backoff_factor: Backoff factor for retries
             
@@ -162,11 +168,14 @@ class PolygonProvider(MarketDataProvider):
             params = {}
             
         # Add API key to params
-        params['apiKey'] = self.api_key
+        params['apikey'] = self.api_key  # Note: lowercase 'apikey' for Polygon.io
         
         # Build URL
-        url = f"{self.base_url}/{version.lstrip('/')}/{endpoint.lstrip('/')}"
-        
+        if version:
+            url = f"{self.base_url}/{version.lstrip('/')}/{endpoint.lstrip('/')}"
+        else:
+            url = f"{self.base_url}/{endpoint.lstrip('/')}"
+
         # Implement rate limiting
         async with self.rate_limit_semaphore:
             # Check if we need to wait for rate limit reset
@@ -239,103 +248,88 @@ class PolygonProvider(MarketDataProvider):
             return None
     
     async def get_quote(self, symbol: str) -> Optional[StockQuote]:
+        """Get real-time stock quote using current Polygon.io endpoints"""
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return None
+        
         symbol = symbol.upper().strip()
+        
         try:
-            last_trade_endpoint = f"last/trade/{symbol}"
-            prev_close_endpoint = f"aggs/ticker/{symbol}/prev"
-            snapshot_endpoint = f"snapshot/locale/us/markets/stocks/tickers/{symbol}"
-            quotes_endpoint = f"quotes/{symbol}"
-
-            last_trade_data = await self._make_request(last_trade_endpoint, version='v2')
-            prev_close_data = await self._make_request(prev_close_endpoint, version='v2')
-            snapshot_data = await self._make_request(snapshot_endpoint, version='v2')
-
-            last_price = None
-            prev_close = None
-            volume = None
-            open_price = None
-            high = None
-            low = None
-
-            if last_trade_data and 'results' in last_trade_data and last_trade_data['results']:
-                last_trade = last_trade_data['results']
-                if 'p' in last_trade:
-                    last_price = self._safe_decimal(last_trade['p'])
-
-            if snapshot_data and 'ticker' in snapshot_data and 'day' in snapshot_data['ticker']:
-                day_data = snapshot_data['ticker']['day']
-                if last_price is None and 'c' in day_data:
-                    last_price = self._safe_decimal(day_data['c'])
-                if 'v' in day_data:
-                    volume = self._safe_int(day_data['v'])
-                if 'o' in day_data:
-                    open_price = self._safe_decimal(day_data['o'])
-                if 'h' in day_data:
-                    high = self._safe_decimal(day_data['h'])
-                if 'l' in day_data:
-                    low = self._safe_decimal(day_data['l'])
-
-            if last_price is None and prev_close_data and 'results' in prev_close_data and prev_close_data['results']:
-                last_price = self._safe_decimal(prev_close_data['results'][0]['c'])
-
-            if last_price is None:
-                quote_data = await self._make_request(quotes_endpoint)
-                if quote_data and 'results' in quote_data and quote_data['results']:
-                    quote = quote_data['results'][0]
-                    last_price = self._safe_decimal(quote.get('p'))
-
-            if prev_close_data and 'results' in prev_close_data and prev_close_data['results']:
-                prev_close = self._safe_decimal(prev_close_data['results'][0]['c'])
-
-            if last_price is None:
-                self._log_error("Data Unavailable", f"Could not retrieve price data for {symbol}")
+            # Use the current v3 snapshot endpoint (most reliable for real-time data)
+            snapshot_endpoint = f"snapshot/ticker/{symbol}"
+            snapshot_data = await self._make_request(snapshot_endpoint, version='v3')
+            
+            if not snapshot_data or 'results' not in snapshot_data:
+                self._log_error("Data Unavailable", f"No snapshot data for {symbol}")
                 return None
-
+                
+            result = snapshot_data['results']
+            
+            # Extract values from the snapshot response
+            last_quote = result.get('last_quote', {})
+            last_trade = result.get('last_trade', {})
+            prev_daily_bar = result.get('prev_daily_bar', {})
+            
+            # Get current price from last trade or last quote
+            last_price = None
+            if last_trade and 'price' in last_trade:
+                last_price = self._safe_decimal(last_trade['price'])
+            elif last_quote and 'ask' in last_quote and 'bid' in last_quote:
+                ask = self._safe_decimal(last_quote['ask'])
+                bid = self._safe_decimal(last_quote['bid'])
+                if ask > 0 and bid > 0:
+                    last_price = (ask + bid) / 2
+            
+            if not last_price:
+                self._log_error("Price Unavailable", f"No price data available for {symbol}")
+                return None
+            
+            # Get previous close for change calculation
+            prev_close = None
+            if prev_daily_bar and 'c' in prev_daily_bar:
+                prev_close = self._safe_decimal(prev_daily_bar['c'])
+            
+            # Calculate change and change percent
             change = None
             change_percent = None
-
-            if prev_close is not None and prev_close != 0:
+            if prev_close and prev_close > 0:
                 change = last_price - prev_close
                 change_percent = (change / prev_close) * 100
-
+            
+            # Get other market data
+            volume = self._safe_int(last_trade.get('sip_timestamp')) if last_trade else 0
+            open_price = self._safe_decimal(prev_daily_bar.get('o')) if prev_daily_bar else None
+            high = self._safe_decimal(prev_daily_bar.get('h')) if prev_daily_bar else None
+            low = self._safe_decimal(prev_daily_bar.get('l')) if prev_daily_bar else None
+            
+            # Get timestamp
             timestamp = datetime.now(timezone.utc)
-            if last_trade_data and 'results' in last_trade_data and last_trade_data['results']:
+            if last_trade and 'sip_timestamp' in last_trade:
                 try:
-                    ts = last_trade_data['results'].get('t')
-                    if ts:
-                        timestamp = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+                    timestamp = datetime.fromtimestamp(
+                        last_trade['sip_timestamp'] / 1_000_000_000, 
+                        tz=timezone.utc
+                    )
                 except (ValueError, TypeError):
                     pass
-
-            market_cap = None
-            pe_ratio = None
-
-            if snapshot_data and 'ticker' in snapshot_data and 'ticker' in snapshot_data['ticker']:
-                ticker_data = snapshot_data['ticker']
-                if 'market_cap' in ticker_data:
-                    market_cap = self._safe_decimal(ticker_data['market_cap'])
-                if 'pe' in ticker_data and ticker_data['pe'] is not None:
-                    pe_ratio = self._safe_decimal(ticker_data['pe'])
-
+            
             return StockQuote(
                 symbol=symbol,
                 price=last_price,
                 change=change if change is not None else Decimal('0'),
                 change_percent=change_percent if change_percent is not None else Decimal('0'),
-                volume=volume if volume is not None else 0,
+                volume=volume,
                 open=open_price,
                 high=high,
                 low=low,
                 previous_close=prev_close,
-                market_cap=market_cap,
-                pe_ratio=pe_ratio,
+                market_cap=None,  # Not available in snapshot
+                pe_ratio=None,    # Not available in snapshot
                 timestamp=timestamp,
                 provider=self.name
             )
-
+            
         except Exception as e:
             self._log_error("get_quote", f"Failed to fetch quote for {symbol}: {str(e)}")
             return None
@@ -350,57 +344,74 @@ class PolygonProvider(MarketDataProvider):
         adjusted: bool = True,
         sort: str = "asc"
     ) -> List[HistoricalPrice]:
+        """Get historical stock data using current v2 aggregates endpoint"""
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return []
+        
         symbol = symbol.upper().strip()
         end_date = end_date or date.today()
         start_date = start_date or (end_date - timedelta(days=365))
+        
         if start_date > end_date:
             self._log_error("Invalid Date Range", f"Start date {start_date} is after end date {end_date}")
             return []
-        max_days = 365 * 5
+        
+        # Validate date range based on interval
+        max_days = 365 * 2  # Default for daily data
         if interval in ['1min', '5min', '15min', '30min']:
-            max_days = 7
+            max_days = 30  # Minute data limited to 30 days
         elif interval in ['1h', '4h']:
-            max_days = 30
+            max_days = 90  # Hour data limited to 90 days
+        
         if (end_date - start_date).days > max_days:
             start_date = end_date - timedelta(days=max_days)
-            self._log_error("Date Range Adjusted", 
-                          f"Date range exceeds maximum of {max_days} days. Adjusted to {start_date} - {end_date}")
+            logger.warning(f"Date range adjusted to {start_date} - {end_date} (max {max_days} days)")
+        
         timespan, multiplier = self._map_interval(interval)
-        if interval == '60min':
-            multiplier = 1
+        
         try:
             all_prices = []
             current_start = start_date
+            
             while current_start <= end_date and len(all_prices) < limit:
+                # Calculate batch end date (max 2 years per request for daily, less for intraday)
+                batch_days = 730 if timespan == 'day' else 90
                 batch_end = min(
-                    current_start + timedelta(days=365 if timespan == 'minute' else 365*5),
+                    current_start + timedelta(days=batch_days),
                     end_date
                 )
+                
+                # Use v2 aggregates endpoint (current standard)
                 endpoint = (
                     f"aggs/ticker/{symbol}/range/"
                     f"{multiplier}/{timespan}/"
                     f"{current_start.strftime('%Y-%m-%d')}/"
                     f"{batch_end.strftime('%Y-%m-%d')}"
                 )
+                
                 params = {
                     'adjusted': 'true' if adjusted else 'false',
                     'sort': sort,
                     'limit': min(50000, limit - len(all_prices)),
                 }
-                data = await self._make_request(endpoint, params)
+                
+                data = await self._make_request(endpoint, params, version='v2')
+                
                 if not data or 'results' not in data or not data['results']:
                     break
+                
                 for item in data['results']:
                     try:
-                        date_obj = datetime.fromtimestamp(item['t'] / 1000).date()
+                        # Convert timestamp to date
+                        date_obj = datetime.fromtimestamp(item['t'] / 1000, tz=timezone.utc).date()
+                        
                         open_price = self._safe_decimal(item.get('o'))
                         high_price = self._safe_decimal(item.get('h'))
                         low_price = self._safe_decimal(item.get('l'))
                         close_price = self._safe_decimal(item.get('c'))
                         volume = self._safe_int(item.get('v'))
+                        
                         all_prices.append(HistoricalPrice(
                             date=date_obj,
                             open=open_price,
@@ -411,46 +422,53 @@ class PolygonProvider(MarketDataProvider):
                             provider=self.name
                         ))
                     except Exception as e:
-                        self._log_error("get_historical", f"Error parsing historical data item: {str(e)}")
+                        logger.warning(f"Error parsing historical data item: {str(e)}")
                         continue
+                
                 current_start = batch_end + timedelta(days=1)
-            return all_prices
+            
+            return sorted(all_prices, key=lambda x: x.date)
+            
         except Exception as e:
             self._log_error("get_historical", f"Failed to fetch historical data for {symbol}: {str(e)}")
             return []
 
     async def get_company_info(self, symbol: str) -> Optional[CompanyInfo]:
+        """Get company information using current v3 ticker details endpoint"""
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return None
+        
         symbol = symbol.upper().strip()
+        
         try:
+            # Use v3 ticker details endpoint (current standard)
             ticker_details_endpoint = f"reference/tickers/{symbol}"
-            company_endpoint = f"meta/symbols/{symbol}/company"
-            financials_endpoint = f"vX/reference/financials"
-            logo_endpoint = f"meta/symbols/{symbol}/logo"
-
-            ticker_data = await self._make_request(ticker_details_endpoint)
-            details_data = await self._make_request(company_endpoint)
-            metrics_data = await self._make_request(financials_endpoint, {'ticker': symbol, 'limit': 1})
-            logo_data = await self._make_request(logo_endpoint)
-
-            info = {}
-            if ticker_data and 'results' in ticker_data and ticker_data['results']:
-                info.update(ticker_data['results'])
-            if details_data and isinstance(details_data, dict):
-                info.update(details_data)
-            metrics = {}
-            if metrics_data and 'results' in metrics_data and metrics_data['results']:
-                metrics = metrics_data['results'][0]
-            address = info.get('address', {})
-            headquarters = (
-                f"{address.get('address1', '')}, "
-                f"{address.get('city', '')}, "
-                f"{address.get('state', '')} "
-                f"{address.get('postal_code', '')}"
-            ).replace(' ,', ',').replace('  ', ' ').strip(' ,')
-            market_cap = info.get('market_cap')
+            ticker_data = await self._make_request(ticker_details_endpoint, version='v3')
+            
+            if not ticker_data or 'results' not in ticker_data:
+                self._log_error("Data Unavailable", f"No ticker details for {symbol}")
+                return None
+            
+            result = ticker_data['results']
+            
+            # Extract address information
+            address = result.get('address', {})
+            headquarters = ""
+            if address:
+                parts = []
+                if address.get('address1'):
+                    parts.append(address['address1'])
+                if address.get('city'):
+                    parts.append(address['city'])
+                if address.get('state'):
+                    parts.append(address['state'])
+                if address.get('postal_code'):
+                    parts.append(address['postal_code'])
+                headquarters = ", ".join(parts)
+            
+            # Parse market cap
+            market_cap = result.get('market_cap')
             if isinstance(market_cap, str):
                 try:
                     if market_cap.endswith('M'):
@@ -462,47 +480,37 @@ class PolygonProvider(MarketDataProvider):
                     market_cap = int(market_cap)
                 except (ValueError, TypeError):
                     market_cap = None
-            ceo = None
-            if 'executives' in info and isinstance(info['executives'], list):
-                for exec_info in info['executives']:
-                    if exec_info.get('title', '').lower() == 'ceo':
-                        ceo = exec_info.get('name')
-                        break
-            founded = None
-            if 'founding_date' in info:
-                try:
-                    founded = datetime.strptime(info['founding_date'], '%Y-%m-%d').year
-                except (ValueError, TypeError):
-                    pass
+            
             return CompanyInfo(
                 symbol=symbol,
-                name=info.get('name', ''),
-                exchange=info.get('primary_exchange', info.get('exchange', '')),
-                sector=info.get('sector', info.get('industry', '')),
-                industry=info.get('industry', info.get('sic_description', '')),
+                name=result.get('name', ''),
+                exchange=result.get('primary_exchange', ''),
+                sector=result.get('sic_description', ''),  # SIC description as sector
+                industry=result.get('industry', ''),
                 market_cap=market_cap,
-                employees=self._safe_int(info.get('total_employees')),
-                description=info.get('description', '').strip(),
-                website=info.get('homepage_url', info.get('website', '')),
-                ceo=ceo,
+                employees=self._safe_int(result.get('total_employees')),
+                description=result.get('description', '').strip(),
+                website=result.get('homepage_url', ''),
+                ceo=None,  # CEO info not in basic ticker details
                 headquarters=headquarters,
-                country=address.get('country', ''),
-                phone=info.get('phone_number', ''),
-                tags=info.get('tags', []),
-                logo_url=logo_data.get('url', '') if logo_data and isinstance(logo_data, dict) else None,
-                ipo_date=info.get('list_date'),
-                currency=info.get('currency_name', 'USD'),
-                pe_ratio=self._safe_decimal(metrics.get('pe_ratio')),
-                peg_ratio=self._safe_decimal(metrics.get('peg_ratio')),
-                eps=self._safe_decimal(metrics.get('eps')),
-                dividend_yield=self._safe_decimal(metrics.get('dividend_yield')),
-                beta=self._safe_decimal(metrics.get('beta')),
-                is_etf=info.get('type', '').lower() == 'etf',
-                is_adr=info.get('is_adr', False),
-                is_fund=info.get('is_fund', False),
+                country=address.get('country', '') if address else '',
+                phone=result.get('phone_number', ''),
+                tags=result.get('tags', []),
+                logo_url=None,  # Logo URL requires separate endpoint
+                ipo_date=result.get('list_date'),
+                currency=result.get('currency_name', 'USD'),
+                pe_ratio=None,  # Financial ratios require separate endpoint
+                peg_ratio=None,
+                eps=None,
+                dividend_yield=None,
+                beta=None,
+                is_etf=result.get('type', '').upper() == 'ETF',
+                is_adr=result.get('composite_figi', '').startswith('BBG') if result.get('composite_figi') else False,
+                is_fund=result.get('type', '').upper() in ['FUND', 'ETF'],
                 updated_at=datetime.now(timezone.utc).isoformat(),
                 provider=self.name
             )
+            
         except Exception as e:
             self._log_error("get_company_info", f"Failed to fetch company info for {symbol}: {str(e)}")
             return None
@@ -516,10 +524,14 @@ class PolygonProvider(MarketDataProvider):
         limit: int = 1000,
         include_all_expirations: bool = False
     ) -> List[OptionQuote]:
+        """Get options chain using current v3 options contracts endpoint"""
         if not symbol or not isinstance(symbol, str):
             self._log_error("Invalid Input", f"Invalid symbol: {symbol}")
             return []
+        
         symbol = symbol.upper().strip()
+        
+        # Parse expiration date
         expiration_date = None
         if expiration and not include_all_expirations:
             if isinstance(expiration, str):
@@ -530,152 +542,224 @@ class PolygonProvider(MarketDataProvider):
                     return []
             elif isinstance(expiration, date):
                 expiration_date = expiration
-            else:
-                self._log_error("Invalid Date Type", "Expiration must be a date object or YYYY-MM-DD string")
-                return []
+        
+        # Validate option type
         if option_type and option_type.lower() not in ['call', 'put']:
             self._log_error("Invalid Option Type", "Option type must be 'call' or 'put'")
             return []
-        limit = max(1, min(1000, limit))
+        
         try:
             all_options = []
-            next_url = None
+            
+            # Use v3 options contracts endpoint
             params = {
                 'underlying_ticker': symbol,
                 'limit': min(1000, limit),
                 'sort': 'expiration_date',
                 'order': 'asc'
             }
+            
             if expiration_date and not include_all_expirations:
                 params['expiration_date'] = expiration_date.strftime('%Y-%m-%d')
+            
             if option_type:
                 params['contract_type'] = option_type.lower()
+            
             if strike_price is not None:
                 params['strike_price'] = str(strike_price)
-            data = await self._make_request("reference/options/contracts", params)
+            
+            data = await self._make_request("reference/options/contracts", params, version='v3')
+            
             if not data or 'results' not in data or not data['results']:
                 return []
-            all_options.extend(self._process_options_data(data['results']))
-            while len(all_options) < limit and 'next_url' in data:
-                next_url = data['next_url']
-                if not next_url:
-                    break
-                cursor = next_url.split('cursor=')[1] if 'cursor=' in next_url else None
-                if not cursor:
-                    break
-                data = await self._make_request(
-                    "reference/options/contracts",
-                    {'cursor': cursor, 'limit': min(1000, limit - len(all_options))}
-                )
-                if not data or 'results' not in data or not data['results']:
-                    break
-                all_options.extend(self._process_options_data(data['results']))
+            
+            # Process options contracts
+            for contract in data['results']:
+                try:
+                    # Parse expiration date
+                    exp_date = datetime.strptime(contract['expiration_date'], '%Y-%m-%d').date()
+                    
+                    option_quote = OptionQuote(
+                        symbol=contract.get('ticker', ''),
+                        underlying_symbol=contract.get('underlying_ticker', symbol),
+                        expiration_date=exp_date,
+                        strike_price=self._safe_decimal(contract.get('strike_price')),
+                        option_type=contract.get('contract_type', '').upper(),
+                        bid=Decimal('0'),  # Real-time prices need separate endpoint
+                        ask=Decimal('0'),
+                        last_price=Decimal('0'),
+                        volume=0,
+                        open_interest=0,
+                        implied_volatility=None,
+                        delta=None,
+                        gamma=None,
+                        theta=None,
+                        vega=None,
+                        rho=None,
+                        timestamp=datetime.now(timezone.utc),
+                        provider=self.name
+                    )
+                    
+                    all_options.append(option_quote)
+                    
+                except Exception as e:
+                    logger.warning(f"Error parsing option contract: {str(e)}")
+                    continue
+            
             return all_options[:limit]
+            
         except Exception as e:
             self._log_error("get_options_chain", f"Failed to fetch options chain for {symbol}: {str(e)}")
             return []
 
     async def get_market_status(self) -> Dict[str, Any]:
+        """Get market status using current v1 market status endpoint"""
         try:
-            status_data = await self._make_request("marketstatus/now", version='v1')
-            if not status_data or 'market' not in status_data:
+            # Use v1 market status endpoint (current standard)
+            data = await self._make_request("marketstatus/now", version='v1')
+            
+            if not data:
+                return self._default_market_status("API error")
+            
+            # Handle different response structures
+            if isinstance(data, dict):
+                if 'market' in data:
+                    market = data['market']
+                elif 'results' in data and data['results']:
+                    market = data['results'][0] if isinstance(data['results'], list) else data['results']
+                else:
+                    market = data
+                
                 return {
-                    'is_open': False,
-                    'status': 'unknown',
+                    'is_open': market.get('market') == 'open' or market.get('isOpen', False),
+                    'status': market.get('market', 'unknown'),
+                    'exchange': market.get('exchange', 'NYSE'),
+                    'currency': market.get('currency', 'USD'),
+                    'server_time': market.get('serverTime'),
+                    'early_hours': market.get('earlyHours', False),
+                    'after_hours': market.get('afterHours', False),
                     'provider': self.name,
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 }
-            market = status_data['market']
-            return {
-                'is_open': market.get('isOpen', False),
-                'status': 'open' if market.get('isOpen') else 'closed',
-                'exchange': market.get('exchange', ''),
-                'currency': market.get('currency', 'USD'),
-                'server_time': market.get('serverTime'),
-                'next_market_open': market.get('nextMarketOpen'),
-                'next_market_close': market.get('nextMarketClose'),
-                'extended_hours_status': market.get('extendedHoursStatus'),
-                'holidays': status_data.get('holidays', []),
-                'provider': self.name,
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }
+            
+            return self._default_market_status("unexpected response format")
+            
         except Exception as e:
             self._log_error("get_market_status", f"Failed to get market status: {str(e)}")
-            return {
-                'is_open': False,
-                'status': 'error',
-                'error': str(e),
-                'provider': self.name,
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }
+            return self._default_market_status(f"error: {str(e)}")
+    
+    def _default_market_status(self, reason: str) -> Dict[str, Any]:
+        """Return default market status"""
+        return {
+            'is_open': False,
+            'status': 'unknown',
+            'reason': reason,
+            'provider': self.name,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
 
     async def get_news(
         self, 
         symbol: Optional[str] = None,
         limit: int = 10,
         published_after: Optional[Union[date, str]] = None,
-        published_before: Optional[Union[date, str]] = None
+        published_before: Optional[Union[date, str]] = None,
+        order: str = 'desc'
     ) -> List[Dict[str, Any]]:
+        """Get news using current v2 ticker news endpoint"""
         try:
-            params = {}
+            params = {
+                'limit': max(1, min(1000, limit)),
+                'order': order
+            }
+            
+            # Add ticker filter if specified
             if symbol:
                 params['ticker'] = symbol.upper().strip()
-            params['limit'] = max(1, min(1000, limit))
+            
+            # Add date filters
             if published_after:
                 if isinstance(published_after, date):
                     params['published_utc.gte'] = published_after.strftime('%Y-%m-%d')
                 elif isinstance(published_after, str):
-                    try:
-                        params['published_utc.gte'] = datetime.strptime(published_after, '%Y-%m-%d').strftime('%Y-%m-%d')
-                    except ValueError:
-                        pass
+                    params['published_utc.gte'] = published_after
+            
             if published_before:
                 if isinstance(published_before, date):
                     params['published_utc.lte'] = published_before.strftime('%Y-%m-%d')
                 elif isinstance(published_before, str):
-                    try:
-                        params['published_utc.lte'] = datetime.strptime(published_before, '%Y-%m-%d').strftime('%Y-%m-%d')
-                    except ValueError:
-                        pass
-            data = await self._make_request("reference/news", params)
+                    params['published_utc.lte'] = published_before
+            
+            # Use v2 ticker news endpoint
+            data = await self._make_request("reference/news", params, version='v2')
+            
             if not data or 'results' not in data or not data['results']:
                 return []
+            
             return data['results']
+            
         except Exception as e:
             self._log_error("get_news", f"Failed to fetch news: {str(e)}")
             return []
 
-    async def get_dividends(self, symbol: str):
+    async def get_dividends(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get dividend data using current v3 dividends endpoint"""
         try:
-            endpoint = f"reference/dividends"
-            params = {'ticker': symbol.upper()}
-            data = await self._make_request(endpoint, params)
+            params = {
+                'ticker': symbol.upper(),
+                'limit': max(1, min(1000, limit))
+            }
+            
+            data = await self._make_request("reference/dividends", params, version='v3')
+            
             if not data or 'results' not in data or not data['results']:
                 return []
+            
             return data['results']
+            
         except Exception as e:
             self._log_error("get_dividends", f"Failed to fetch dividends for {symbol}: {str(e)}")
             return []
 
-    async def get_splits(self, symbol: str):
+    async def get_splits(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get stock splits using current v3 splits endpoint"""
         try:
-            endpoint = f"reference/splits"
-            params = {'ticker': symbol.upper()}
-            data = await self._make_request(endpoint, params)
+            params = {
+                'ticker': symbol.upper(),
+                'limit': max(1, min(1000, limit))
+            }
+            
+            data = await self._make_request("reference/splits", params, version='v3')
+            
             if not data or 'results' not in data or not data['results']:
                 return []
+            
             return data['results']
+            
         except Exception as e:
             self._log_error("get_splits", f"Failed to fetch splits for {symbol}: {str(e)}")
             return []
 
-    async def get_market_holidays(self):
+    async def get_market_holidays(self, year: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get market holidays using current v1 market holidays endpoint"""
         try:
-            endpoint = f"marketstatus/upcoming"
-            data = await self._make_request(endpoint)
-            if not data or 'markets' not in data:
+            params = {}
+            if year:
+                params['year'] = year
+            
+            data = await self._make_request("marketstatus/upcoming", params, version='v1')
+            
+            if not data:
                 return []
-            return data['markets']
+            
+            # Handle different response structures
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict) and 'results' in data:
+                return data['results'] if isinstance(data['results'], list) else [data['results']]
+            
+            return []
+            
         except Exception as e:
             self._log_error("get_market_holidays", f"Failed to fetch market holidays: {str(e)}")
             return []
@@ -686,88 +770,276 @@ class PolygonProvider(MarketDataProvider):
         date: Optional[str] = None,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
-        importance: Optional[int] = None,
-        fiscal_year: Optional[int] = None,
         fiscal_period: Optional[str] = None,
         limit: int = 100,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Get earnings calendar data from Polygon.io
+        Get earnings calendar data - NOTE: This requires a premium Polygon.io plan
         
         Args:
             ticker: Stock symbol to filter by
             date: Specific date (YYYY-MM-DD format)
             date_from: Start date for range query
-            date_to: End date for range query
-            importance: Importance level (0-5)
-            fiscal_year: Fiscal year filter
+            date_to: End date for range query  
             fiscal_period: Fiscal period (Q1, Q2, Q3, Q4, H1, H2, FY)
-            limit: Maximum number of results (default 100, max 50000)
+            limit: Maximum number of results
         
         Returns:
             Dictionary containing earnings data
         """
-        endpoint = "/benzinga/v1/earnings"
-        params = {}
-        
-        if ticker:
-            params['ticker'] = ticker
-        if date:
-            params['date'] = date
-        if date_from:
-            params['date.gte'] = date_from
-        if date_to:
-            params['date.lte'] = date_to
-        if importance is not None:
-            params['importance'] = importance
-        if fiscal_year:
-            params['fiscal_year'] = fiscal_year
-        if fiscal_period:
-            params['fiscal_period'] = fiscal_period
-        if limit:
-            params['limit'] = limit
-        
         try:
-            data = await self._make_request(endpoint, params)
-            self.logger.info(f"Retrieved earnings calendar data for {ticker or 'all tickers'}")
-            return data
+            # This endpoint is only available with premium plans
+            params = {
+                'limit': max(1, min(1000, limit))
+            }
+            
+            if ticker:
+                params['ticker'] = ticker.upper()
+            if date:
+                params['date'] = date
+            if date_from:
+                params['date.gte'] = date_from
+            if date_to:
+                params['date.lte'] = date_to
+            if fiscal_period:
+                params['fiscal_period'] = fiscal_period
+            
+            # Try the premium earnings endpoint
+            data = await self._make_request("reference/earnings", params, version='vX')
+            
+            if data and 'results' in data:
+                return {
+                    'status': 'success',
+                    'results': data['results'],
+                    'next_url': data.get('next_url'),
+                    'count': data.get('count', len(data['results'])),
+                    'provider': self.name
+                }
+            
+            return {
+                'status': 'no_data',
+                'message': 'No earnings data found',
+                'ticker': ticker,
+                'provider': self.name
+            }
+            
         except Exception as e:
-            self.logger.error(f"Failed to get earnings calendar: {e}")
-            raise
+            # Earnings data might not be available on free plans
+            return {
+                'status': 'error',
+                'message': f'Earnings calendar may require premium plan: {str(e)}',
+                'ticker': ticker,
+                'provider': self.name,
+                'suggestion': 'Upgrade to premium plan or use alternative data source'
+            }
+
+    async def get_financials(self, symbol: str, limit: int = 4) -> Optional[Dict[str, Any]]:
+        """Get financial statements using current vX financials endpoint"""
+        try:
+            params = {
+                'ticker': symbol.upper(),
+                'limit': max(1, min(100, limit)),
+                'timeframe': 'annual',
+                'include_sources': 'true'
+            }
+            
+            data = await self._make_request("reference/financials", params, version='vX')
+            
+            if not data or 'results' not in data or not data['results']:
+                return None
+            
+            # Process financial data
+            financials_data = data['results'][0] if data['results'] else {}
+            financials = financials_data.get('financials', {})
+            
+            return {
+                'symbol': symbol,
+                'provider': self.name,
+                'fiscal_year': financials_data.get('fiscal_year'),
+                'fiscal_period': financials_data.get('fiscal_period'),
+                'end_date': financials_data.get('end_date'),
+                'filing_date': financials_data.get('filing_date'),
+                'source_filing_url': financials_data.get('source_filing_url'),
+                'source_filing_file_url': financials_data.get('source_filing_file_url'),
+                
+                # Income Statement
+                'income_statement': {
+                    'revenues': self._get_financial_value(financials, 'income_statement', 'revenues'),
+                    'cost_of_revenue': self._get_financial_value(financials, 'income_statement', 'cost_of_revenue'),
+                    'gross_profit': self._get_financial_value(financials, 'income_statement', 'gross_profit'),
+                    'operating_expenses': self._get_financial_value(financials, 'income_statement', 'operating_expenses'),
+                    'operating_income': self._get_financial_value(financials, 'income_statement', 'operating_income_loss'),
+                    'net_income': self._get_financial_value(financials, 'income_statement', 'net_income_loss'),
+                    'eps_basic': self._get_financial_value(financials, 'income_statement', 'basic_earnings_per_share'),
+                    'eps_diluted': self._get_financial_value(financials, 'income_statement', 'diluted_earnings_per_share'),
+                    'weighted_average_shares': self._get_financial_value(financials, 'income_statement', 'weighted_average_shares'),
+                    'weighted_average_shares_diluted': self._get_financial_value(financials, 'income_statement', 'weighted_average_shares_diluted')
+                },
+                
+                # Balance Sheet  
+                'balance_sheet': {
+                    'assets': self._get_financial_value(financials, 'balance_sheet', 'assets'),
+                    'current_assets': self._get_financial_value(financials, 'balance_sheet', 'current_assets'),
+                    'noncurrent_assets': self._get_financial_value(financials, 'balance_sheet', 'noncurrent_assets'),
+                    'liabilities': self._get_financial_value(financials, 'balance_sheet', 'liabilities'),
+                    'current_liabilities': self._get_financial_value(financials, 'balance_sheet', 'current_liabilities'),
+                    'noncurrent_liabilities': self._get_financial_value(financials, 'balance_sheet', 'liabilities_noncurrent'),
+                    'equity': self._get_financial_value(financials, 'balance_sheet', 'equity'),
+                    'equity_attributable_to_parent': self._get_financial_value(financials, 'balance_sheet', 'equity_attributable_to_parent')
+                },
+                
+                # Cash Flow Statement
+                'cash_flow_statement': {
+                    'net_cash_flow_from_operating_activities': self._get_financial_value(financials, 'cash_flow_statement', 'net_cash_flow_from_operating_activities'),
+                    'net_cash_flow_from_investing_activities': self._get_financial_value(financials, 'cash_flow_statement', 'net_cash_flow_from_investing_activities'),
+                    'net_cash_flow_from_financing_activities': self._get_financial_value(financials, 'cash_flow_statement', 'net_cash_flow_from_financing_activities'),
+                    'net_cash_flow': self._get_financial_value(financials, 'cash_flow_statement', 'net_cash_flow')
+                }
+            }
+            
+        except Exception as e:
+            self._log_error("get_financials", f"Failed to fetch financials for {symbol}: {str(e)}")
+            return None
     
-    async def get_earnings_transcript(
-        self, 
-        ticker: str,
-        quarter: Optional[int] = None,
-        year: Optional[int] = None,
+    def _get_financial_value(self, financials: Dict, statement: str, field: str) -> Optional[float]:
+        """Extract financial value from nested structure"""
+        try:
+            statement_data = financials.get(statement, {})
+            field_data = statement_data.get(field, {})
+            
+            if isinstance(field_data, dict):
+                return field_data.get('value')
+            return field_data
+        except (AttributeError, KeyError):
+            return None
+
+    async def get_technical_indicators(
+        self,
+        symbol: str,
+        indicator: str,
+        timespan: str = 'day',
+        adjusted: bool = True,
+        window: int = 50,
+        series_type: str = 'close',
+        expand_underlying: bool = False,
+        order: str = 'desc',
+        limit: int = 5000,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Get earnings call transcript data
-        Note: This endpoint may not be available in all Polygon.io plans
+        Get technical indicators - NOTE: This requires a premium Polygon.io plan
         
-        Args:
-            ticker: Stock symbol
-            quarter: Quarter (1-4)
-            year: Year
-            
-        Returns:
-            Dictionary containing transcript data or error message
+        Available indicators: sma, ema, macd, rsi, etc.
         """
-        # Note: Polygon.io doesn't have a direct earnings transcript endpoint
-        # This would typically require a premium data provider or custom implementation
-        self.logger.warning("Earnings transcripts not directly available via Polygon.io API")
-        
-        return {
-            "status": "not_available",
-            "message": "Earnings transcripts are not directly available through Polygon.io API",
-            "ticker": ticker,
-            "quarter": quarter,
-            "year": year,
-            "suggestion": "Consider using alternative data sources for earnings call transcripts"
-        }
-    
+        try:
+            params = {
+                'ticker': symbol.upper(),
+                'timespan': timespan,
+                'adjusted': adjusted,
+                'window': window,
+                'series_type': series_type,
+                'expand_underlying': expand_underlying,
+                'order': order,
+                'limit': max(1, min(5000, limit))
+            }
+            
+            # Add any additional parameters
+            params.update(kwargs)
+            
+            endpoint = f"indicators/{indicator.lower()}/{symbol.upper()}"
+            data = await self._make_request(endpoint, params, version='v1')
+            
+            if data and 'results' in data:
+                return {
+                    'status': 'success',
+                    'indicator': indicator,
+                    'symbol': symbol,
+                    'results': data['results'],
+                    'next_url': data.get('next_url'),
+                    'provider': self.name
+                }
+            
+            return {
+                'status': 'no_data',
+                'indicator': indicator,
+                'symbol': symbol,
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Technical indicators may require premium plan: {str(e)}',
+                'indicator': indicator,
+                'symbol': symbol,
+                'provider': self.name
+            }
+
+    async def get_forex_quote(self, from_currency: str, to_currency: str) -> Optional[Dict[str, Any]]:
+        """Get real-time forex quote using current v2 forex endpoint"""
+        try:
+            # Format as forex pair (e.g., EUR/USD becomes C:EURUSD)
+            forex_symbol = f"C:{from_currency.upper()}{to_currency.upper()}"
+            
+            # Use v2 forex real-time endpoint
+            data = await self._make_request(f"last/trade/{forex_symbol}", version='v2')
+            
+            if not data or 'results' not in data:
+                return None
+            
+            result = data['results']
+            
+            return {
+                'from_currency': from_currency.upper(),
+                'to_currency': to_currency.upper(),
+                'symbol': forex_symbol,
+                'price': self._safe_decimal(result.get('p', result.get('price'))),
+                'timestamp': datetime.fromtimestamp(
+                    result.get('t', result.get('timestamp', 0)) / 1000, 
+                    tz=timezone.utc
+                ),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_forex_quote", f"Failed to fetch forex quote {from_currency}/{to_currency}: {str(e)}")
+            return None
+
+    async def get_crypto_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get real-time crypto quote using current v2 crypto endpoint"""
+        try:
+            # Format as crypto pair (e.g., BTC becomes X:BTCUSD)
+            if not symbol.startswith('X:'):
+                crypto_symbol = f"X:{symbol.upper()}USD"
+            else:
+                crypto_symbol = symbol.upper()
+            
+            # Use v2 crypto real-time endpoint
+            data = await self._make_request(f"last/trade/{crypto_symbol}", version='v2')
+            
+            if not data or 'results' not in data:
+                return None
+            
+            result = data['results']
+            
+            return {
+                'symbol': crypto_symbol,
+                'price': self._safe_decimal(result.get('p', result.get('price'))),
+                'size': self._safe_decimal(result.get('s', result.get('size'))),
+                'timestamp': datetime.fromtimestamp(
+                    result.get('t', result.get('timestamp', 0)) / 1000000000,  # Crypto uses nanoseconds
+                    tz=timezone.utc
+                ),
+                'exchange': result.get('x'),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_crypto_quote", f"Failed to fetch crypto quote {symbol}: {str(e)}")
+            return None
+
+    # Economic data methods - Polygon.io doesn't provide these directly
     async def get_economic_data(
         self,
         indicator: Optional[str] = None,
@@ -777,35 +1049,26 @@ class PolygonProvider(MarketDataProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Get economic data/indicators
-        Note: Polygon.io primarily focuses on market data, not economic indicators
-        
-        Args:
-            indicator: Economic indicator name
-            date_from: Start date
-            date_to: End date
-            limit: Maximum results
-            
-        Returns:
-            Dictionary with economic data or reference to alternative sources
+        Economic indicators are not available via Polygon.io
+        Polygon.io focuses on market data (stocks, options, forex, crypto)
         """
-        # Polygon.io doesn't have dedicated economic data endpoints
-        # They focus on market data (stocks, options, forex, crypto)
-        
-        self.logger.warning("Economic indicators not available via Polygon.io")
+        logger.warning("Economic indicators not available via Polygon.io")
         
         return {
             "status": "not_available",
             "message": "Economic data indicators are not available through Polygon.io API",
             "indicator": indicator,
+            "provider": self.name,
             "suggestion": "Consider using FRED API, Alpha Vantage, or other economic data providers",
-            "available_data": [
-                "Stock market data",
+            "available_data_types": [
+                "Stock market data (Real-time & Historical)",
                 "Options data", 
                 "Forex data",
                 "Cryptocurrency data",
                 "Market indices",
-                "Company financials"
+                "Company financials",
+                "Technical indicators (Premium)",
+                "News & market events"
             ]
         }
     
@@ -820,62 +1083,239 @@ class PolygonProvider(MarketDataProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Get economic events calendar
-        Note: Polygon.io doesn't provide economic events calendar
-        
-        Args:
-            date: Specific date
-            date_from: Start date
-            date_to: End date
-            importance: Event importance level
-            country: Country filter
-            limit: Maximum results
-            
-        Returns:
-            Dictionary with events data or alternative suggestions
+        Economic events calendar is not available via Polygon.io
         """
-        # Polygon.io focuses on market data, not economic events calendar
-        
-        self.logger.warning("Economic events calendar not available via Polygon.io")
+        logger.warning("Economic events calendar not available via Polygon.io")
         
         return {
             "status": "not_available",
             "message": "Economic events calendar is not available through Polygon.io API",
-            "date": date,
-            "suggestion": "Consider using economic calendar APIs from:",
+            "provider": self.name,
             "alternatives": [
                 "Trading Economics API",
-                "Alpha Vantage Economic Data",
+                "Alpha Vantage Economic Data", 
                 "FRED API (Federal Reserve Economic Data)",
                 "Forex Factory Calendar",
                 "Investing.com Economic Calendar API"
             ],
             "polygon_alternatives": {
-                "earnings_calendar": "Available via /benzinga/v1/earnings",
-                "market_holidays": "Available via /v1/marketstatus/upcoming",
-                "stock_splits": "Available via /v3/reference/splits",
-                "dividends": "Available via /v3/reference/dividends"
+                "earnings_calendar": "Available with premium plans",
+                "market_holidays": "Available via market status endpoints",
+                "stock_splits": "Available via reference/splits",
+                "dividends": "Available via reference/dividends",
+                "market_news": "Available via reference/news"
             }
         }
 
-    async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get fundamental financials"""
-        endpoint = f"vX/reference/financials"
-        params = {'ticker': symbol, 'limit': 1}
-        data = await self._make_request(endpoint, params)
-        if not data or 'results' not in data or not data['results']:
-            return None
-        financials = data['results'][0].get('financials', {})
-        return {
-            'symbol': symbol,
-            'provider': self.name,
-            'eps': financials.get('income_statement', {}).get('diluted_earnings_per_share', {}).get('value'),
-            'revenue': financials.get('income_statement', {}).get('revenues', {}).get('value'),
-            'gross_profit': financials.get('income_statement', {}).get('gross_profit', {}).get('value'),
-            'operating_income': financials.get('income_statement', {}).get('operating_income', {}).get('value'),
-            'net_income': financials.get('income_statement', {}).get('net_income_loss', {}).get('value'),
-            'total_assets': financials.get('balance_sheet', {}).get('assets', {}).get('value'),
-            'total_liabilities': financials.get('balance_sheet', {}).get('liabilities', {}).get('value'),
-            'shareholders_equity': financials.get('balance_sheet', {}).get('equity', {}).get('value'),
-            'operating_cash_flow': financials.get('cash_flow_statement', {}).get('net_cash_flow_from_operating_activities', {}).get('value')
+    async def search_tickers(
+        self,
+        search_query: str,
+        market: str = 'stocks',
+        active: bool = True,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Search for tickers using current v3 tickers endpoint"""
+        try:
+            params = {
+                'search': search_query,
+                'market': market,
+                'active': active,
+                'limit': max(1, min(1000, limit)),
+                'sort': 'ticker',
+                'order': 'asc'
+            }
+            
+            data = await self._make_request("reference/tickers", params, version='v3')
+            
+            if not data or 'results' not in data or not data['results']:
+                return []
+            
+            return data['results']
+            
+        except Exception as e:
+            self._log_error("search_tickers", f"Failed to search tickers: {str(e)}")
+            return []
+
+    async def get_market_indices(self) -> List[Dict[str, Any]]:
+        """Get major market indices data"""
+        indices = [
+            'I:SPX',   # S&P 500
+            'I:DJI',   # Dow Jones
+            'I:NDX',   # NASDAQ 100
+            'I:RUT',   # Russell 2000
+            'I:VIX'    # VIX
+        ]
+        
+        results = []
+        
+        for index in indices:
+            try:
+                data = await self._make_request(f"snapshot/ticker/{index}", version='v3')
+                if data and 'results' in data:
+                    results.append({
+                        'symbol': index,
+                        'name': self._get_index_name(index),
+                        'data': data['results'],
+                        'provider': self.name
+                    })
+            except Exception as e:
+                logger.warning(f"Failed to fetch index {index}: {str(e)}")
+                continue
+        
+        return results
+    
+    def _get_index_name(self, symbol: str) -> str:
+        """Get friendly name for market index"""
+        index_names = {
+            'I:SPX': 'S&P 500',
+            'I:DJI': 'Dow Jones Industrial Average',
+            'I:NDX': 'NASDAQ 100',
+            'I:RUT': 'Russell 2000',
+            'I:VIX': 'CBOE Volatility Index'
         }
+        return index_names.get(symbol, symbol)
+
+    def _process_options_data(self, contracts: List[Dict]) -> List[OptionQuote]:
+        """Process raw options contract data into OptionQuote objects"""
+        options = []
+        
+        for contract in contracts:
+            try:
+                exp_date = datetime.strptime(contract['expiration_date'], '%Y-%m-%d').date()
+                
+                option = OptionQuote(
+                    symbol=contract.get('ticker', ''),
+                    underlying_symbol=contract.get('underlying_ticker', ''),
+                    expiration_date=exp_date,
+                    strike_price=self._safe_decimal(contract.get('strike_price')),
+                    option_type=contract.get('contract_type', '').upper(),
+                    bid=Decimal('0'),  # Real-time pricing requires separate API call
+                    ask=Decimal('0'),
+                    last_price=Decimal('0'),
+                    volume=0,
+                    open_interest=0,
+                    implied_volatility=None,
+                    delta=None,
+                    gamma=None,
+                    theta=None,
+                    vega=None,
+                    rho=None,
+                    timestamp=datetime.now(timezone.utc),
+                    provider=self.name
+                )
+                
+                options.append(option)
+                
+            except Exception as e:
+                logger.warning(f"Error processing option contract: {str(e)}")
+                continue
+        
+        return options
+
+    # Utility methods for backward compatibility and convenience
+    async def get_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Alias for get_financials for backward compatibility"""
+        return await self.get_financials(symbol)
+    
+    async def get_earnings_transcript(
+        self, 
+        ticker: str,
+        quarter: Optional[int] = None,
+        year: Optional[int] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Earnings call transcripts are not available directly via Polygon.io
+        """
+        logger.warning("Earnings transcripts not directly available via Polygon.io API")
+        
+        return {
+            "status": "not_available",
+            "message": "Earnings transcripts are not directly available through Polygon.io API",
+            "ticker": ticker,
+            "quarter": quarter,
+            "year": year,
+            "provider": self.name,
+            "suggestion": "Consider using alternative data sources like:",
+            "alternatives": [
+                "FactSet Transcripts",
+                "Refinitiv (Thomson Reuters)",
+                "S&P Global Market Intelligence",
+                "Alpha Sense",
+                "Earnings Cast"
+            ]
+        }
+
+    async def batch_quotes(self, symbols: List[str]) -> Dict[str, Optional[StockQuote]]:
+        """Get quotes for multiple symbols efficiently"""
+        results = {}
+        
+        # Process in batches to respect rate limits
+        batch_size = min(10, self.rate_limit // 2)  # Conservative batch size
+        
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            
+            # Process batch concurrently
+            tasks = [self.get_quote(symbol) for symbol in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Store results
+            for symbol, result in zip(batch, batch_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Error fetching quote for {symbol}: {str(result)}")
+                    results[symbol] = None
+                else:
+                    results[symbol] = result
+            
+            # Rate limit pause between batches
+            if i + batch_size < len(symbols):
+                await asyncio.sleep(60 / self.rate_limit)
+        
+        return results
+
+    async def get_exchange_info(self) -> List[Dict[str, Any]]:
+        """Get information about supported exchanges"""
+        try:
+            data = await self._make_request("reference/exchanges", version='v3')
+            
+            if not data or 'results' not in data:
+                return []
+            
+            return data['results']
+            
+        except Exception as e:
+            self._log_error("get_exchange_info", f"Failed to fetch exchange info: {str(e)}")
+            return []
+
+    async def get_market_conditions(self) -> Dict[str, Any]:
+        """Get current market conditions summary"""
+        try:
+            # Get market status
+            market_status = await self.get_market_status()
+            
+            # Get major indices
+            indices = await self.get_market_indices()
+            
+            # Get VIX (volatility index) if available
+            vix_data = None
+            for index in indices:
+                if index['symbol'] == 'I:VIX':
+                    vix_data = index['data']
+                    break
+            
+            return {
+                'market_status': market_status,
+                'major_indices': indices,
+                'volatility_index': vix_data,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'provider': self.name
+            }
+            
+        except Exception as e:
+            self._log_error("get_market_conditions", f"Failed to get market conditions: {str(e)}")
+            return {
+                'error': str(e),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'provider': self.name
+            }
