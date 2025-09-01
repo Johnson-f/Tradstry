@@ -154,7 +154,7 @@ class AIChatService:
         order_by: str = "created_at",
         order_direction: str = "ASC"
     ) -> List[AIChatMessageResponse]:
-        """Get chat messages with filtering and pagination."""
+        """Get chat messages with filtering and pagination using SQL function."""
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -164,45 +164,47 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Build query manually since we don't have a get_ai_chat_messages function
-            query = self.supabase.table('ai_chat_history').select('*').eq('user_id', user_id)
+            # Prepare parameters for get_ai_chat_history function
+            params = {
+                'p_user_id': user_id,
+                'p_message_id': message_id,
+                'p_session_id': session_id,
+                'p_message_type': message_type,
+                'p_source_type': None,
+                'p_search_query': search_query,
+                'p_similarity_threshold': 0.8,
+                'p_limit': limit,
+                'p_offset': offset,
+                'p_order_by': order_by,
+                'p_order_direction': order_direction
+            }
 
-            if session_id:
-                query = query.eq('session_id', session_id)
-            if message_id:
-                query = query.eq('id', message_id)
-            if message_type:
-                query = query.eq('message_type', message_type)
-
-            query = query.order(order_by, desc=(order_direction.upper() == 'DESC'))
-            query = query.limit(limit).offset(offset)
-
-            result = query.execute()
+            # Call the select function
+            result = await self._call_sql_function('get_ai_chat_history', params, access_token)
 
             messages = []
             if result.data:
                 for data in result.data:
-                    # Handle missing fields with defaults
-                    last_used_at = data.get('last_used_at') or data['created_at']
-                    similarity_score = data.get('similarity_score', 0.0)
-                    source_type = data.get('source_type', 'external_ai')
-                    usage_count = data.get('usage_count', 1)
-
+                    # Use function's content_preview (up to 200 chars)
+                    content_preview = data.get('content_preview')
+                    if not content_preview:
+                        content_preview = data['content'][:100] + '...' if len(data['content']) > 100 else data['content']
+                    
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
                         content=data['content'],
-                        content_preview=data['content'][:100] + '...' if len(data['content']) > 100 else data['content'],
-                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        content_preview=content_preview,
+                        context_data=data.get('context_data'),
                         model_used=data.get('model_used'),
                         processing_time_ms=data.get('processing_time_ms'),
                         confidence_score=data.get('confidence_score'),
-                        similarity_score=similarity_score,  # Fixed: added required field
-                        source_type=SourceType(source_type),  # Fixed: added required field
-                        usage_count=usage_count,  # Fixed: added required field
-                        last_used_at=datetime.fromisoformat(last_used_at),  # Fixed: correct field name
+                        similarity_score=data.get('similarity_score', 0.0),
+                        source_type=SourceType(data.get('source_type', 'external_ai')),
+                        usage_count=data.get('usage_count', 1),
+                        last_used_at=datetime.fromisoformat(data['last_used_at']) if data.get('last_used_at') else datetime.fromisoformat(data['created_at']),
                         created_at=datetime.fromisoformat(data['created_at'])
                     ))
 
@@ -212,8 +214,18 @@ class AIChatService:
             raise Exception(f"Error retrieving chat messages: {str(e)}")
 
     async def get_session_messages(self, session_id: str, access_token: str, limit: int = 100) -> List[AIChatMessageResponse]:
-        """Get all messages for a specific session."""
+        """Get all messages for a specific session using SQL function."""
         try:
+            # Validate session_id
+            if not session_id or session_id == "undefined" or session_id == "null":
+                raise Exception("Invalid session_id provided")
+
+            # Validate that session_id looks like a UUID
+            try:
+                uuid.UUID(session_id)
+            except ValueError:
+                raise Exception(f"Invalid session_id format: {session_id}")
+
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
@@ -222,39 +234,47 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Call the existing SQL function
+            # Prepare parameters for get_ai_chat_history function
             params = {
                 'p_user_id': user_id,
+                'p_message_id': None,
                 'p_session_id': session_id,
-                'p_limit': limit
+                'p_message_type': None,
+                'p_source_type': None,
+                'p_search_query': None,
+                'p_similarity_threshold': 0.8,
+                'p_limit': limit,
+                'p_offset': 0,
+                'p_order_by': 'created_at',
+                'p_order_direction': 'ASC'
             }
 
-            result = await self._call_sql_function('get_ai_chat_session_messages', params, access_token)
+            # Call the select function
+            result = await self._call_sql_function('get_ai_chat_history', params, access_token)
 
             messages = []
             if result.data:
                 for data in result.data:
-                    # Handle missing fields with defaults
-                    last_used_at = data.get('last_used_at') or data['created_at']
-                    similarity_score = data.get('similarity_score', 0.0)
-                    source_type = data.get('source_type', 'external_ai')
-                    usage_count = data.get('usage_count', 1)
-
+                    # Use function's content_preview (up to 200 chars)
+                    content_preview = data.get('content_preview')
+                    if not content_preview:
+                        content_preview = data['content'][:100] + '...' if len(data['content']) > 100 else data['content']
+                    
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
                         content=data['content'],
-                        content_preview=data.get('content_preview'),
-                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        content_preview=content_preview,
+                        context_data=data.get('context_data'),
                         model_used=data.get('model_used'),
                         processing_time_ms=data.get('processing_time_ms'),
                         confidence_score=data.get('confidence_score'),
-                        similarity_score=similarity_score,  # Fixed: added required field
-                        source_type=SourceType(source_type),  # Fixed: added required field
-                        usage_count=usage_count,  # Fixed: added required field
-                        last_used_at=datetime.fromisoformat(last_used_at),  # Fixed: correct field name
+                        similarity_score=data.get('similarity_score', 0.0),
+                        source_type=SourceType(data.get('source_type', 'external_ai')),
+                        usage_count=data.get('usage_count', 1),
+                        last_used_at=datetime.fromisoformat(data['last_used_at']) if data.get('last_used_at') else datetime.fromisoformat(data['created_at']),
                         created_at=datetime.fromisoformat(data['created_at'])
                     ))
 
@@ -264,7 +284,7 @@ class AIChatService:
             raise Exception(f"Error retrieving session messages: {str(e)}")
 
     async def get_sessions(self, access_token: str, limit: int = 50, offset: int = 0) -> List[AIChatSessionResponse]:
-        """Get chat sessions for the user."""
+        """Get chat sessions for the user using SQL function."""
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -274,45 +294,28 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Build sessions query manually
-            result = self.supabase.table('ai_chat_history').select(
-                'session_id, message_type, content, created_at'
-            ).eq('user_id', user_id).order('created_at', desc=True).execute()
+            # Prepare parameters for get_chat_sessions function
+            params = {
+                'p_user_id': user_id,
+                'p_limit': limit,
+                'p_offset': offset
+            }
 
-            # Group by session_id and build session summaries
-            sessions_dict = {}
-            if result.data:
-                for row in result.data:
-                    session_id = row['session_id']
-                    if session_id not in sessions_dict:
-                        sessions_dict[session_id] = {
-                            'session_id': session_id,
-                            'message_count': 0,
-                            'first_message': None,
-                            'last_message': None,
-                            'first_message_at': row['created_at'],
-                            'last_message_at': row['created_at'],
-                            'total_usage_count': 0
-                        }
-
-                    sessions_dict[session_id]['message_count'] += 1
-                    sessions_dict[session_id]['last_message_at'] = row['created_at']
-                    sessions_dict[session_id]['last_message'] = row['content'][:100]
-
-                    if not sessions_dict[session_id]['first_message']:
-                        sessions_dict[session_id]['first_message'] = row['content'][:100]
+            # Call the select function
+            result = await self._call_sql_function('get_chat_sessions', params, access_token)
 
             sessions = []
-            for session_data in list(sessions_dict.values())[:limit]:
-                sessions.append(AIChatSessionResponse(
-                    session_id=session_data['session_id'],
-                    message_count=session_data['message_count'],
-                    first_message=session_data['first_message'] or "No messages",
-                    last_message=session_data['last_message'] or "No messages",
-                    first_message_at=datetime.fromisoformat(session_data['first_message_at']),
-                    last_message_at=datetime.fromisoformat(session_data['last_message_at']),
-                    total_usage_count=session_data['total_usage_count']
-                ))
+            if result.data:
+                for data in result.data:
+                    sessions.append(AIChatSessionResponse(
+                        session_id=data['session_id'],
+                        message_count=data['message_count'],
+                        first_message=data['first_message'][:100] if data['first_message'] else "No messages",
+                        last_message=data['last_message'][:100] if data['last_message'] else "No messages",
+                        first_message_at=datetime.fromisoformat(data['first_message_at']),
+                        last_message_at=datetime.fromisoformat(data['last_message_at']),
+                        total_usage_count=data['total_usage_count']
+                    ))
 
             return sessions
 
@@ -320,7 +323,7 @@ class AIChatService:
             raise Exception(f"Error retrieving chat sessions: {str(e)}")
 
     async def delete_message(self, message_id: str, access_token: str) -> ChatDeleteResponse:
-        """Delete a chat message."""
+        """Delete a chat message using SQL function."""
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -330,29 +333,24 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Get message details before deletion
-            message_result = self.supabase.table('ai_chat_history').select(
-                'id, session_id, message_type, content'
-            ).eq('id', message_id).eq('user_id', user_id).execute()
+            # Prepare parameters for delete_ai_chat_message function
+            params = {
+                'p_user_id': user_id,
+                'p_message_id': message_id
+            }
 
-            if not message_result.data:
-                raise Exception("Message not found or access denied")
+            # Call the delete function
+            result = await self._call_sql_function('delete_ai_chat_message', params, access_token)
 
-            message_data = message_result.data[0]
-
-            # Delete the message
-            delete_result = self.supabase.table('ai_chat_history').delete().eq(
-                'id', message_id
-            ).eq('user_id', user_id).execute()
-
-            if delete_result.data:
+            if result.data and len(result.data) > 0:
+                data = result.data[0]
                 return ChatDeleteResponse(
-                    id=message_data['id'],
-                    session_id=message_data['session_id'],
-                    message_type=MessageType(message_data['message_type']),
-                    content_preview=message_data['content'][:100],
-                    deleted_at=datetime.now(),
-                    operation_type='deleted'
+                    id=data['id'],
+                    session_id=data['session_id'],
+                    message_type=MessageType(data['message_type']),
+                    content_preview=data['content_preview'],
+                    deleted_at=datetime.fromisoformat(data['deleted_at']),
+                    operation_type=data['operation_type']
                 )
             else:
                 raise Exception("Failed to delete message")
@@ -361,7 +359,7 @@ class AIChatService:
             raise Exception(f"Error deleting chat message: {str(e)}")
 
     async def delete_session(self, session_id: str, access_token: str) -> Dict[str, Any]:
-        """Delete an entire chat session."""
+        """Delete an entire chat session using SQL function."""
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -371,23 +369,24 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Count messages before deletion
-            count_result = self.supabase.table('ai_chat_history').select(
-                'id', count='exact'
-            ).eq('session_id', session_id).eq('user_id', user_id).execute()
-
-            messages_count = count_result.count or 0
-
-            # Delete all messages in the session
-            delete_result = self.supabase.table('ai_chat_history').delete().eq(
-                'session_id', session_id
-            ).eq('user_id', user_id).execute()
-
-            return {
-                "session_id": session_id,
-                "messages_deleted": messages_count,
-                "deleted_at": datetime.now()
+            # Prepare parameters for delete_chat_session function
+            params = {
+                'p_user_id': user_id,
+                'p_session_id': session_id
             }
+
+            # Call the delete function
+            result = await self._call_sql_function('delete_chat_session', params, access_token)
+
+            if result.data and len(result.data) > 0:
+                data = result.data[0]
+                return {
+                    "session_id": data['session_id'],
+                    "messages_deleted": data['messages_deleted'],
+                    "deleted_at": datetime.fromisoformat(data['deleted_at'])
+                }
+            else:
+                raise Exception("Failed to delete session")
 
         except Exception as e:
             raise Exception(f"Error deleting chat session: {str(e)}")
@@ -400,7 +399,7 @@ class AIChatService:
         limit: int = 20,
         similarity_threshold: float = 0.7
     ) -> List[AIChatMessageResponse]:
-        """Search chat messages using vector similarity."""
+        """Search chat messages using text search via SQL function."""
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -410,42 +409,47 @@ class AIChatService:
 
             user_id = user_response.user.id
 
-            # Prepare parameters for SQL function
+            # Prepare parameters for get_ai_chat_history function
             params = {
                 'p_user_id': user_id,
-                'p_query': query,
+                'p_message_id': None,
                 'p_session_id': session_id,
+                'p_message_type': None,
+                'p_source_type': None,
+                'p_search_query': query,
+                'p_similarity_threshold': 0.8,
                 'p_limit': limit,
-                'p_similarity_threshold': similarity_threshold
+                'p_offset': 0,
+                'p_order_by': 'created_at',
+                'p_order_direction': 'DESC'
             }
 
-            # Call the search function (assuming this exists and works)
-            result = await self._call_sql_function('search_ai_chat_messages', params, access_token)
+            # Call the select function
+            result = await self._call_sql_function('get_ai_chat_history', params, access_token)
 
             messages = []
             if result.data:
                 for data in result.data:
-                    # Handle missing fields with defensive defaults
-                    last_used_at = data.get('last_used_at') or data.get('created_at')
-                    similarity_score = data.get('similarity_score', 0.0)
-                    source_type = data.get('source_type', 'external_ai')
-                    usage_count = data.get('usage_count', 1)
-
+                    # Use function's content_preview (up to 200 chars)
+                    content_preview = data.get('content_preview')
+                    if not content_preview:
+                        content_preview = data['content'][:100] + '...' if len(data['content']) > 100 else data['content']
+                    
                     messages.append(AIChatMessageResponse(
                         id=data['id'],
                         user_id=data['user_id'],
                         session_id=data['session_id'],
                         message_type=MessageType(data['message_type']),
                         content=data['content'],
-                        content_preview=data.get('content_preview'),
-                        context_data=data.get('context_data'),  # Fixed: correct field name
+                        content_preview=content_preview,
+                        context_data=data.get('context_data'),
                         model_used=data.get('model_used'),
                         processing_time_ms=data.get('processing_time_ms'),
                         confidence_score=data.get('confidence_score'),
-                        similarity_score=similarity_score,  # Fixed: always provide this
-                        source_type=SourceType(source_type),  # Fixed: always provide this
-                        usage_count=usage_count,  # Fixed: always provide this
-                        last_used_at=datetime.fromisoformat(last_used_at) if last_used_at else datetime.now(),  # Fixed: always provide this
+                        similarity_score=data.get('similarity_score', 0.0),
+                        source_type=SourceType(data.get('source_type', 'external_ai')),
+                        usage_count=data.get('usage_count', 1),
+                        last_used_at=datetime.fromisoformat(data['last_used_at']) if data.get('last_used_at') else datetime.fromisoformat(data['created_at']),
                         created_at=datetime.fromisoformat(data['created_at'])
                     ))
 

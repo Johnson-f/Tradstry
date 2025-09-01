@@ -28,7 +28,7 @@ export default function ChatPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (chatId && chatId !== "new") {
+    if (chatId && chatId !== "new" && chatId !== "undefined") {
       getSessionMessages(chatId);
     }
   }, [chatId, getSessionMessages]);
@@ -37,11 +37,15 @@ export default function ChatPage() {
     if (!message.trim()) return;
 
     try {
-      const request = {
-        session_id: chatId === "new" ? undefined : chatId,
+      const request: { message: string; context_limit: number; session_id?: string } = {
         message: message.trim(),
         context_limit: 10,
       };
+
+      // Only include session_id for existing chats, not new ones
+      if (chatId !== "new" && chatId !== "undefined") {
+        request.session_id = chatId;
+      }
 
       await chatWithAI(request);
       setMessage("");
