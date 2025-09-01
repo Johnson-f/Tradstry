@@ -5,7 +5,10 @@ from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
 from routers import stocks_router, options_router, analytics, setups_router, notes_router, images
-from scheduler import setup_scheduler, start_scheduler, stop_scheduler
+from scheduler.market_data_scheduler import MarketDataSchedulerService, set_scheduler_service
+from scheduler.scheduler_router import router as scheduler_router
+from scheduler.database_service import SchedulerDatabaseService
+from market_data.brain import MarketDataBrain
 import logging
 
 # Configure logging
@@ -28,17 +31,38 @@ app.include_router(analytics.router, prefix=get_settings().API_PREFIX)
 app.include_router(setups_router, prefix=get_settings().API_PREFIX)
 app.include_router(notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(images.router, prefix=get_settings().API_PREFIX)
+app.include_router(scheduler_router, prefix=get_settings().API_PREFIX)
 
 @app.on_event("startup")
 async def startup_event():
-    setup_scheduler()
-    start_scheduler()
-    logger.info("Scheduler started with FastAPI app")
+    """Initialize and start the market data scheduler on app startup."""
+    try:
+        # Initialize database service and market data orchestrator
+        supabase = get_supabase()
+        db_service = SchedulerDatabaseService(supabase)
+        orchestrator = MarketDataBrain()
+        
+        # Create and configure scheduler service
+        scheduler_service = MarketDataSchedulerService(db_service, orchestrator)
+        set_scheduler_service(scheduler_service)
+        
+        # Start all scheduled jobs
+        await scheduler_service.start_all_jobs()
+        
+        logger.info("Market data scheduler started successfully with FastAPI app")
+    except Exception as e:
+        logger.error(f"Failed to start scheduler: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    stop_scheduler()
-    logger.info("Scheduler stopped")
+    """Stop the market data scheduler on app shutdown."""
+    try:
+        scheduler_service = get_scheduler_service()
+        if scheduler_service:
+            await scheduler_service.stop_all_jobs()
+        logger.info("Market data scheduler stopped")
+    except Exception as e:
+        logger.error(f"Error stopping scheduler: {e}")
 
 # CORS middleware configuration
 app.add_middleware(
