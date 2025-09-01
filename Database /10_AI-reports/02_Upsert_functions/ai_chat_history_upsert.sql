@@ -47,9 +47,14 @@ BEGIN
         RAISE EXCEPTION 'Access denied. User can only upsert their own chat history.';
     END IF;
 
-    -- Validate required fields
-    IF p_session_id IS NULL OR p_message_type IS NULL OR p_content IS NULL THEN
-        RAISE EXCEPTION 'session_id, message_type, and content are required fields.';
+    -- Validate required fields (different rules for new vs update operations)
+    IF p_message_type IS NULL OR p_content IS NULL THEN
+        RAISE EXCEPTION 'message_type and content are required fields.';
+    END IF;
+
+    -- For updates, session_id is required; for new messages, it can be generated
+    IF p_message_id IS NOT NULL AND p_session_id IS NULL THEN
+        RAISE EXCEPTION 'session_id is required when updating an existing message.';
     END IF;
 
     -- Validate message_type
@@ -111,6 +116,11 @@ BEGIN
 
         v_operation_type := 'updated';
     ELSE
+        -- Generate new session_id if not provided
+        IF p_session_id IS NULL THEN
+            p_session_id := gen_random_uuid();
+        END IF;
+
         -- Insert new message
         INSERT INTO ai_chat_history (
             user_id,

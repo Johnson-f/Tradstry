@@ -13,11 +13,16 @@ export interface AIChatMessage {
 
 export interface AIChatSession {
   id: string;
-  user_id: string;
+  user_id?: string;
   title?: string;
   created_at: string;
   updated_at?: string;
   message_count?: number;
+  first_message?: string;
+  last_message?: string;
+  first_message_at?: string;
+  last_message_at?: string;
+  total_usage_count?: number;
 }
 
 export interface AIChatMessageCreate {
@@ -96,7 +101,29 @@ export class AIChatService {
     }
     const queryString = queryParams.toString();
     const url = queryString ? `${this.baseUrl}/sessions?${queryString}` : `${this.baseUrl}/sessions`;
-    return apiClient.get(url);
+    const response = await apiClient.get(url);
+    
+    // Transform backend response to match frontend interface
+    return response.map((session: {
+      session_id: string;
+      message_count: number;
+      first_message: string;
+      last_message: string;
+      first_message_at: string;
+      last_message_at: string;
+      total_usage_count: number;
+    }) => ({
+      id: session.session_id,
+      title: session.first_message ? session.first_message.substring(0, 50) + '...' : 'Untitled Chat',
+      created_at: session.first_message_at,
+      updated_at: session.last_message_at,
+      message_count: session.message_count,
+      first_message: session.first_message,
+      last_message: session.last_message,
+      first_message_at: session.first_message_at,
+      last_message_at: session.last_message_at,
+      total_usage_count: session.total_usage_count
+    }));
   }
 
   // Get all messages for a specific session
@@ -107,7 +134,25 @@ export class AIChatService {
     }
     const queryString = queryParams.toString();
     const url = queryString ? `${this.baseUrl}/sessions/${sessionId}/messages?${queryString}` : `${this.baseUrl}/sessions/${sessionId}/messages`;
-    return apiClient.get(url);
+    const response = await apiClient.get(url);
+    
+    // Transform backend response to match frontend interface
+    return response.map((message: {
+      id: string;
+      session_id: string;
+      content: string;
+      message_type: string;
+      created_at: string;
+      updated_at?: string;
+    }) => ({
+      id: message.id,
+      session_id: message.session_id,
+      content: message.content,
+      message_type: message.message_type,
+      role: message.message_type === 'user_question' ? 'user' : 'assistant',
+      created_at: message.created_at,
+      updated_at: message.updated_at
+    }));
   }
 
   // Send a message to AI and get a response
