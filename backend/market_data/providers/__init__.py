@@ -7,6 +7,7 @@ from .twelve_data import TwelveDataProvider
 from .fmp import FMPProvider
 from .tiingo import TiingoProvider
 from .api_ninjas import APINinjasProvider 
+from .fiscal import FiscalAIProvider
 
 __all__ = [
     'AlphaVantageProvider',
@@ -15,5 +16,6 @@ __all__ = [
     'TwelveDataProvider',
     'FMPProvider',
     'TiingoProvider',
-    'APINinjasProvider'
+    'APINinjasProvider',
+    'FiscalAIProvider'
 ]

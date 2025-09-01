@@ -73,6 +73,12 @@ class MarketDataConfig(BaseModel):
         rate_limit_per_minute=200  # Free tier: 200 requests per minute
     ))
     
+    fiscal: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("FISCAL_API_KEY"),
+        priority=ProviderPriority.MEDIUM,
+        rate_limit_per_minute=50  # Fiscal.AI rate limits (estimated)
+    ))
+    
     # Global settings
     enable_caching: bool = True
     cache_ttl_seconds: int = 300  # 5 minutes

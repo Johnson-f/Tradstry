@@ -157,28 +157,11 @@ class FinnhubProvider(MarketDataProvider):
             return None
             
         try:
-            # First try the quote endpoint
+            # Use the quote endpoint (removed invalid quote/last fallback)
             data = await self._make_request("quote", {'symbol': symbol.upper()})
             
             if not data or 'c' not in data:  # 'c' is current price
-                # Fallback to last price if full quote fails
-                last_price_data = await self._make_request("quote/last", {'symbol': symbol.upper()})
-                if not last_price_data or 'last' not in last_price_data:
-                    return None
-                    
-                return StockQuote(
-                    symbol=symbol.upper(),
-                    price=self._safe_decimal(last_price_data.get('last')),
-                    change=Decimal('0'),
-                    change_percent=Decimal('0'),
-                    volume=0,
-                    open_price=Decimal('0'),
-                    high_price=Decimal('0'),
-                    low_price=Decimal('0'),
-                    previous_close=Decimal('0'),
-                    timestamp=datetime.now(timezone.utc),
-                    provider=self.name
-                )
+                return None
             
             # Parse the full quote
             return StockQuote(
@@ -481,10 +464,11 @@ class FinnhubProvider(MarketDataProvider):
             if symbol:
                 params['symbol'] = symbol.upper()
             
-            data = await self._make_request('calendar/earnings', params)
+            # CORRECTED: Use earnings_calendar instead of calendar/earnings
+            data = await self._make_request('earnings_calendar', params)
             
             # Finnhub returns earnings calendar in 'earningsCalendar' key
-            earnings_data = data.get('earningsCalendar', [])
+            earnings_data = data.get('earningsCalendar', []) if data else []
             
             # Transform data to standardized format
             standardized_data = []
@@ -505,7 +489,7 @@ class FinnhubProvider(MarketDataProvider):
             return standardized_data
             
         except Exception as e:
-            logging.error(f"Error fetching earnings calendar: {str(e)}")
+            self._log_error("get_earnings_calendar", f"Error fetching earnings calendar: {str(e)}")
             return []
     
     async def get_earnings_transcript(self, symbol: str, year: str, quarter: str) -> Dict[str, Any]:
@@ -521,12 +505,12 @@ class FinnhubProvider(MarketDataProvider):
             Dictionary containing transcript data
         """
         try:
-            # First, get the list of available transcripts for the symbol
+            # CORRECTED: Use transcripts_list instead of stock/transcripts/list
             params = {'symbol': symbol.upper()}
-            transcript_list = await self._make_request('stock/transcripts/list', params)
+            transcript_list = await self._make_request('transcripts_list', params)
             
             # Find the specific transcript for the given year and quarter
-            transcripts = transcript_list.get('transcripts', [])
+            transcripts = transcript_list.get('transcripts', []) if transcript_list else []
             target_transcript_id = None
             
             for transcript in transcripts:
@@ -539,7 +523,7 @@ class FinnhubProvider(MarketDataProvider):
                     break
             
             if not target_transcript_id:
-                logging.warning(f"No transcript found for {symbol} Q{quarter} {year}")
+                self._log_error("Transcript Not Found", f"No transcript found for {symbol} Q{quarter} {year}")
                 return {
                     'symbol': symbol,
                     'year': year,
@@ -548,20 +532,20 @@ class FinnhubProvider(MarketDataProvider):
                     'error': 'Transcript not found'
                 }
             
-            # Get the actual transcript content
+            # CORRECTED: Use transcripts instead of stock/transcripts
             transcript_params = {'id': target_transcript_id}
-            transcript_data = await self._make_request('stock/transcripts', transcript_params)
+            transcript_data = await self._make_request('transcripts', transcript_params)
             
             return {
                 'symbol': symbol,
                 'year': year,
                 'quarter': quarter,
-                'transcript': transcript_data.get('transcript', ''),
+                'transcript': transcript_data.get('transcript', '') if transcript_data else '',
                 'transcript_id': target_transcript_id
             }
             
         except Exception as e:
-            logging.error(f"Error fetching earnings transcript: {str(e)}")
+            self._log_error("get_earnings_transcript", f"Error fetching earnings transcript: {str(e)}")
             return {
                 'symbol': symbol,
                 'year': year,
@@ -574,54 +558,74 @@ class FinnhubProvider(MarketDataProvider):
         """
         Get economic calendar events from Finnhub
         
+        Note: Finnhub doesn't have a generic economic calendar endpoint.
+        This method returns an empty list and logs a warning.
+        Use specific economic data endpoints instead.
+        
         Args:
-            **kwargs: Additional parameters like date range, impact level, etc.
+            **kwargs: Additional parameters (ignored)
         
         Returns:
-            List of economic events
+            Empty list (Finnhub doesn't support generic economic calendar)
+        """
+        self._log_info("Finnhub doesn't provide a generic economic calendar endpoint. Use specific economic data indicators instead.")
+        return []
+    
+    async def get_economic_data(
+        self, 
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get economic data from Finnhub
+        
+        Note: Finnhub requires specific economic indicator codes.
+        This is a placeholder implementation that returns empty data.
+        To use economic data, you need to specify individual indicators.
+        
+        Args:
+            countries: List of country codes (not directly supported)
+            importance: Importance level (not directly supported)
+            start_date: Start date (not directly supported)
+            end_date: End date (not directly supported)
+            limit: Maximum number of events (not directly supported)
+            
+        Returns:
+            Empty list (requires specific economic indicator implementation)
+        """
+        self._log_info("Finnhub economic data requires specific indicator codes. Use get_economic_indicator() method instead.")
+        return []
+    
+    async def get_economic_indicator(self, indicator_code: str) -> Dict[str, Any]:
+        """
+        Get specific economic indicator data from Finnhub
+        
+        Args:
+            indicator_code: Finnhub economic indicator code (e.g., 'MA-USA-656880' for US GDP)
+            
+        Returns:
+            Dictionary containing economic indicator data
         """
         try:
-            # Set default date range if not provided
-            end_date = kwargs.get('to', datetime.now().strftime('%Y-%m-%d'))
-            start_date = kwargs.get('from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+            params = {'symbol': indicator_code}
+            data = await self._make_request('economic', params)
             
-            params = {
-                'from': start_date,
-                'to': end_date
+            if not data:
+                return {}
+                
+            return {
+                'indicator_code': indicator_code,
+                'data': data,
+                'provider': self.name,
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
-            # Add additional filters if provided
-            if 'country' in kwargs:
-                params['country'] = kwargs['country']
-            if 'impact' in kwargs:
-                params['impact'] = kwargs['impact']
-            
-            data = await self._make_request('calendar/economic', params)
-            
-            # Finnhub returns economic events in 'economicCalendar' key
-            economic_events = data.get('economicCalendar', [])
-            
-            # Transform data to standardized format
-            standardized_events = []
-            for event in economic_events:
-                standardized_event = {
-                    'date': event.get('time', ''),
-                    'country': event.get('country', ''),
-                    'event': event.get('event', ''),
-                    'impact': event.get('impact', ''),
-                    'estimate': event.get('estimate'),
-                    'actual': event.get('actual'),
-                    'previous': event.get('prev'),
-                    'unit': event.get('unit', ''),
-                    'currency': event.get('currency', '')
-                }
-                standardized_events.append(standardized_event)
-            
-            return standardized_events
-            
         except Exception as e:
-            logging.error(f"Error fetching economic events: {str(e)}")
-            return []
+            self._log_error("get_economic_indicator", f"Failed to fetch economic indicator {indicator_code}: {str(e)}")
+            return {}
             
     async def get_earnings(
         self, 
@@ -813,109 +817,165 @@ class FinnhubProvider(MarketDataProvider):
             self._log_error("get_fundamentals", f"Failed to fetch fundamentals for {symbol}: {str(e)}")
             return {}
     
-    async def get_economic_data(
-        self, 
-        countries: Optional[List[str]] = None,
-        importance: Optional[int] = None,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    async def search_symbols(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Get economic calendar data with filtering options
+        Search for symbols using Finnhub's symbol lookup
         
         Args:
-            countries: List of country codes to filter by (e.g., ['US', 'EU', 'CN'])
-            importance: Filter by importance level (1-3, where 3 is most important)
-            start_date: Start date for filtering (default: 30 days ago)
-            end_date: End date for filtering (default: today)
-            limit: Maximum number of events to return (1-1000)
+            query: Search query (company name, symbol, etc.)
+            limit: Maximum number of results to return
             
         Returns:
-            List of economic events with details like date, country, event, etc.
+            List of matching symbols with details
         """
         try:
-            # Set default date range if not provided
-            end_date = end_date or date.today()
-            start_date = start_date or (end_date - timedelta(days=30))
+            if not query or not isinstance(query, str):
+                return []
+                
+            params = {'q': query.strip()}
+            data = await self._make_request('search', params)
             
-            # Prepare parameters
-            params = {
-                'from': start_date.strftime('%Y-%m-%d'),
-                'to': end_date.strftime('%Y-%m-%d')
+            if not data or 'result' not in data:
+                return []
+                
+            results = data.get('result', [])
+            standardized_results = []
+            
+            for item in results[:limit]:
+                try:
+                    standardized_results.append({
+                        'symbol': item.get('symbol', ''),
+                        'description': item.get('description', ''),
+                        'displaySymbol': item.get('displaySymbol', ''),
+                        'type': item.get('type', ''),
+                        'provider': self.name
+                    })
+                except Exception as e:
+                    self._log_error("Symbol Search Processing", f"Error processing search result: {str(e)}")
+                    continue
+            
+            return standardized_results
+            
+        except Exception as e:
+            self._log_error("search_symbols", f"Failed to search symbols for query '{query}': {str(e)}")
+            return []
+    
+    async def get_market_status(self, exchange: str = 'US') -> Dict[str, Any]:
+        """
+        Get market status for a specific exchange
+        
+        Args:
+            exchange: Exchange code (e.g., 'US', 'LSE', 'TSE')
+            
+        Returns:
+            Dictionary containing market status information
+        """
+        try:
+            params = {'exchange': exchange.upper()}
+            data = await self._make_request('stock/market-status', params)
+            
+            if not data:
+                return {}
+                
+            return {
+                'exchange': exchange.upper(),
+                'status': data.get('isOpen', False),
+                'session': data.get('session', ''),
+                'timezone': data.get('timezone', ''),
+                'provider': self.name,
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
-            # Add optional filters
-            if countries and isinstance(countries, list):
-                params['country'] = ','.join([c.upper() for c in countries if isinstance(c, str)])
-                
-            if importance is not None and 1 <= importance <= 3:
-                params['importance'] = importance
-                
-            # Get economic calendar data
-            data = await self._make_request("calendar/economic", params)
+        except Exception as e:
+            self._log_error("get_market_status", f"Failed to fetch market status for {exchange}: {str(e)}")
+            return {}
+    
+    async def get_company_peers(self, symbol: str) -> List[str]:
+        """
+        Get company peers/competitors
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            
+        Returns:
+            List of peer company symbols
+        """
+        try:
+            params = {'symbol': symbol.upper()}
+            data = await self._make_request('stock/peers', params)
             
             if not data or not isinstance(data, list):
                 return []
                 
-            # Process and standardize the economic events
-            events = []
-            for event in data[:limit]:
-                try:
-                    # Skip invalid events
-                    if not isinstance(event, dict):
-                        continue
-                        
-                    # Parse date if available
-                    event_date = None
-                    if 'date' in event and event['date']:
-                        try:
-                            # Handle both timestamp and date string formats
-                            if isinstance(event['date'], (int, float)):
-                                event_date = datetime.fromtimestamp(event['date'], tz=timezone.utc)
-                            elif isinstance(event['date'], str):
-                                # Try parsing ISO format
-                                try:
-                                    event_date = datetime.fromisoformat(event['date'].replace('Z', '+00:00'))
-                                except ValueError:
-                                    # Fallback to custom format if ISO parsing fails
-                                    event_date = datetime.strptime(event['date'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-                        except (ValueError, TypeError) as e:
-                            self._log_error("Date Parsing", f"Failed to parse date: {event.get('date')}")
-                            continue
-                    
-                    # Standardize the event data
-                    standardized = {
-                        'event': event.get('event', ''),
-                        'country': event.get('country', ''),
-                        'date': event_date.isoformat() if event_date else None,
-                        'importance': event.get('importance', 0),
-                        'actual': self._safe_decimal(event.get('actual')),
-                        'previous': self._safe_decimal(event.get('previous')),
-                        'forecast': self._safe_decimal(event.get('forecast')),
-                        'unit': event.get('unit', ''),
-                        'currency': event.get('currency', ''),
-                        'impact': event.get('impact', ''),
-                        'provider': self.name
-                    }
-                    
-                    # Add additional fields if available
-                    for field in ['time', 'comment', 'figure', 'revised', 'change', 'change_percent']:
-                        if field in event:
-                            standardized[field] = event[field]
-                    
-                    events.append(standardized)
-                    
-                except Exception as e:
-                    self._log_error("Event Processing", f"Error processing economic event: {str(e)}")
-                    continue
+            # Filter out any invalid symbols
+            peers = [peer for peer in data if isinstance(peer, str) and peer.strip()]
             
-            # Sort by date (newest first)
-            events.sort(key=lambda x: x.get('date') or '', reverse=True)
-            
-            # Apply limit
-            return events[:limit]
+            return peers
             
         except Exception as e:
-            self._log_error("get_economic_data", f"Failed to fetch economic data: {str(e)}")
+            self._log_error("get_company_peers", f"Failed to fetch peers for {symbol}: {str(e)}")
             return []
+    
+    async def get_insider_transactions(
+        self, 
+        symbol: str, 
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get insider transactions for a symbol
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            start_date: Start date (default: 90 days ago)
+            end_date: End date (default: today)
+            
+        Returns:
+            List of insider transaction data
+        """
+        try:
+            # Set default date range if not provided
+            end_date = end_date or date.today()
+            start_date = start_date or (end_date - timedelta(days=90))
+            
+            params = {
+                'symbol': symbol.upper(),
+                'from': start_date.strftime('%Y-%m-%d'),
+                'to': end_date.strftime('%Y-%m-%d')
+            }
+            
+            data = await self._make_request('stock/insider-transactions', params)
+            
+            if not data or 'data' not in data:
+                return []
+                
+            transactions = data.get('data', [])
+            standardized_transactions = []
+            
+            for transaction in transactions:
+                try:
+                    standardized_transactions.append({
+                        'symbol': symbol.upper(),
+                        'name': transaction.get('name', ''),
+                        'share': self._safe_int(transaction.get('share')),
+                        'change': self._safe_int(transaction.get('change')),
+                        'filingDate': transaction.get('filingDate', ''),
+                        'transactionDate': transaction.get('transactionDate', ''),
+                        'transactionCode': transaction.get('transactionCode', ''),
+                        'transactionPrice': self._safe_decimal(transaction.get('transactionPrice')),
+                        'provider': self.name
+                    })
+                except Exception as e:
+                    self._log_error("Insider Transaction Processing", f"Error processing transaction: {str(e)}")
+                    continue
+            
+            return standardized_transactions
+            
+        except Exception as e:
+            self._log_error("get_insider_transactions", f"Failed to fetch insider transactions for {symbol}: {str(e)}")
+            return []
+    
+    async def close(self):
+        """Clean up resources"""
+        # Close any open sessions if needed
+        pass

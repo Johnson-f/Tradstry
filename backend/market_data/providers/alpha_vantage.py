@@ -227,8 +227,9 @@ class AlphaVantageProvider(MarketDataProvider):
         symbol: str, 
         expiration: Optional[date] = None
     ) -> Optional[List[OptionQuote]]:
-        """Alpha Vantage doesn't provide options data in free tier"""
-        self._log_info(f"Options chain not available for {symbol} on Alpha Vantage free tier")
+        """Get options chain data - Premium feature"""
+        # For premium users, you can implement REALTIME_OPTIONS or HISTORICAL_OPTIONS
+        self._log_info(f"Options chain requires Alpha Vantage premium plan for {symbol}")
         return None
     
     async def get_company_info(self, symbol: str) -> Optional[CompanyInfo]:
@@ -317,88 +318,45 @@ class AlphaVantageProvider(MarketDataProvider):
         limit: int = 50
     ) -> List[EconomicEvent]:
         """
-        Get economic calendar events from Alpha Vantage
-        Note: This functionality may not be available in all Alpha Vantage plans
+        Get economic data using individual economic indicators
+        Note: Alpha Vantage doesn't have an ECONOMIC_CALENDAR endpoint
         """
+        self._log_info("Alpha Vantage does not provide an economic calendar endpoint")
+        self._log_info("Use individual economic indicators like REAL_GDP, INFLATION, UNEMPLOYMENT, etc.")
+        return []
+    
+    async def get_economic_indicator(
+        self, 
+        indicator: str,
+        interval: str = "monthly"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get individual economic indicators
+        Available indicators: REAL_GDP, REAL_GDP_PER_CAPITA, TREASURY_YIELD, 
+        FEDERAL_FUNDS_RATE, CPI, INFLATION, RETAIL_SALES, DURABLES, 
+        UNEMPLOYMENT, NONFARM_PAYROLL, etc.
+        """
+        # Map common indicator names to Alpha Vantage functions
+        indicator_map = {
+            'gdp': 'REAL_GDP',
+            'inflation': 'INFLATION',
+            'unemployment': 'UNEMPLOYMENT',
+            'fed_funds_rate': 'FEDERAL_FUNDS_RATE',
+            'cpi': 'CPI',
+            'treasury_yield': 'TREASURY_YIELD',
+            'retail_sales': 'RETAIL_SALES',
+            'nonfarm_payroll': 'NONFARM_PAYROLL'
+        }
+        
+        function = indicator_map.get(indicator.lower(), indicator.upper())
+        
         params = {
-            'function': 'ECONOMIC_CALENDAR'
+            'function': function,
+            'interval': interval
         }
         
         data = await self._make_request(params)
-        if not data or 'economic_calendar' not in data:
-            self._log_info("Economic calendar not available or no data returned")
-            return []
-            
-        events = data['economic_calendar']
-        results = []
-        
-        for event in events:
-            try:
-                # Skip if no timestamp
-                if 'time' not in event or not event['time']:
-                    continue
-                
-                # Try multiple timestamp formats
-                event_time = None
-                for fmt in ['%Y-%m-%dT%H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%d %H:%M:%S']:
-                    try:
-                        event_time = datetime.strptime(event['time'], fmt)
-                        break
-                    except ValueError:
-                        continue
-                
-                if not event_time:
-                    continue
-                
-                # Apply date filters
-                if start_date and event_time.date() < start_date:
-                    continue
-                if end_date and event_time.date() > end_date:
-                    continue
-                    
-                # Map importance
-                importance_map = {
-                    'low': 1, 'Low': 1,
-                    'medium': 2, 'Medium': 2, 'med': 2,
-                    'high': 3, 'High': 3
-                }
-                
-                event_importance = importance_map.get(event.get('importance', 'low'), 1)
-                
-                # Apply importance filter
-                if importance and event_importance != importance:
-                    continue
-                    
-                # Apply country filter
-                if countries and event.get('country') not in countries:
-                    continue
-                    
-                economic_event = EconomicEvent(
-                    event_id=event.get('event_id', f"{event.get('event', 'unknown')}_{event_time.isoformat()}"),
-                    country=event.get('country', 'Unknown'),
-                    event_name=event.get('event', 'Unknown Event'),
-                    event_period=event.get('period', ''),
-                    actual=event.get('actual'),
-                    previous=event.get('previous'),
-                    forecast=event.get('estimate'),
-                    unit=event.get('unit', ''),
-                    importance=event_importance,
-                    timestamp=event_time,
-                    last_update=datetime.now(),
-                    description=event.get('comment', ''),
-                    provider=self.name
-                )
-                
-                results.append(economic_event)
-                
-                if len(results) >= limit:
-                    break
-                    
-            except Exception as e:
-                self._log_error("process_economic_event", e)
-                continue
-                
-        return results
+        return data
         
     async def get_news(
         self, 
@@ -419,14 +377,32 @@ class AlphaVantageProvider(MarketDataProvider):
             return None
             
         return data['feed'][:limit]
+    
     async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month"):
+        """Earnings calendar not available in Alpha Vantage"""
+        self._log_info("Earnings calendar not available in Alpha Vantage API")
         return []
 
     async def get_earnings_transcript(self, symbol: str, year: str, quarter: str):
-        return {}
+        """Get earnings call transcript"""
+        params = {
+            'function': 'EARNINGS_CALL_TRANSCRIPT',
+            'symbol': symbol,
+            'quarter': f"{year}Q{quarter}"
+        }
+        
+        data = await self._make_request(params)
+        return data if data else {}
 
     async def get_economic_data(self, function: str, **kwargs):
-        return {}
+        """Generic method for economic data"""
+        params = {
+            'function': function.upper(),
+            **kwargs
+        }
+        
+        data = await self._make_request(params)
+        return data if data else {}
     
     async def get_earnings(
         self, 
@@ -435,61 +411,31 @@ class AlphaVantageProvider(MarketDataProvider):
         include_upcoming: bool = True
     ) -> Dict[str, Any]:
         """
-        Get earnings data including historical and upcoming earnings
-        
-        Args:
-            symbol: Stock symbol
-            horizon: 'quarterly' or 'annual' earnings
-            include_upcoming: Whether to include upcoming earnings if available
-            
-        Returns:
-            Dictionary with 'historical' and 'upcoming' earnings data
+        Get basic earnings data from OVERVIEW function
+        Note: Alpha Vantage doesn't have a dedicated EARNINGS endpoint
         """
-        params = {
-            'function': 'EARNINGS',
-            'symbol': symbol
-        }
-        
-        data = await self._make_request(params)
-        if not data:
+        # Get basic earnings info from OVERVIEW
+        overview_data = await self.get_fundamentals(symbol)
+        if not overview_data:
             return {'historical': [], 'upcoming': []}
         
         result = {'historical': [], 'upcoming': []}
         
-        # Process historical earnings
-        historical_key = 'quarterlyEarnings' if horizon == 'quarterly' else 'annualEarnings'
-        if historical_key in data:
-            for earnings in data[historical_key]:
-                try:
-                    result['historical'].append({
-                        'date': earnings.get('reportedDate'),
-                        'fiscal_date_ending': earnings.get('fiscalDateEnding'),
-                        'reported_eps': self._safe_decimal(earnings.get('reportedEPS')),
-                        'estimated_eps': self._safe_decimal(earnings.get('estimatedEPS')),
-                        'surprise': self._safe_decimal(earnings.get('surprise')),
-                        'surprise_percentage': self._safe_decimal(earnings.get('surprisePercentage')),
-                        'period': 'Q' + earnings.get('fiscalDateEnding', '')[-2:] if horizon == 'quarterly' else 'FY',
-                        'year': int(earnings.get('fiscalDateEnding', '')[:4]) if earnings.get('fiscalDateEnding') else None
-                    })
-                except Exception as e:
-                    self._log_error(f"process_historical_earnings_{symbol}", e)
-                    continue
+        # Create a basic earnings entry from overview data
+        if overview_data.get('eps'):
+            basic_earnings = {
+                'date': None,  # OVERVIEW doesn't provide reporting dates
+                'fiscal_date_ending': None,
+                'reported_eps': overview_data.get('eps'),
+                'estimated_eps': None,
+                'surprise': None,
+                'surprise_percentage': None,
+                'period': 'TTM',  # Trailing twelve months
+                'year': None
+            }
+            result['historical'].append(basic_earnings)
         
-        # Process upcoming earnings if available and requested
-        if include_upcoming and 'earnings' in data and 'earningsDate' in data['earnings']:
-            try:
-                upcoming_dates = data['earnings']['earningsDate']
-                if isinstance(upcoming_dates, list):
-                    for date_str in upcoming_dates:
-                        result['upcoming'].append({
-                            'date': date_str,
-                            'fiscal_period': data['earnings'].get('fiscalPeriod'),
-                            'fiscal_end_date': data['earnings'].get('fiscalEndDate'),
-                            'estimate': self._safe_decimal(data['earnings'].get('estimate'))
-                        })
-            except Exception as e:
-                self._log_error(f"process_upcoming_earnings_{symbol}", e)
-        
+        self._log_info(f"Limited earnings data available for {symbol}. Consider using EARNINGS_CALL_TRANSCRIPT for detailed data.")
         return result
     
     async def get_technical_indicators(
@@ -505,14 +451,50 @@ class AlphaVantageProvider(MarketDataProvider):
         indicator_map = {
             'sma': 'SMA',
             'ema': 'EMA',
+            'wma': 'WMA',
+            'dema': 'DEMA',
+            'tema': 'TEMA',
+            'trima': 'TRIMA',
+            'kama': 'KAMA',
+            'mama': 'MAMA',
+            'vwap': 'VWAP',
             'macd': 'MACD',
-            'rsi': 'RSI',
-            'bbands': 'BBANDS',
+            'macdext': 'MACDEXT',
             'stoch': 'STOCH',
+            'stochf': 'STOCHF',
+            'rsi': 'RSI',
+            'stochrsi': 'STOCHRSI',
+            'willr': 'WILLR',
             'adx': 'ADX',
+            'adxr': 'ADXR',
+            'apo': 'APO',
+            'ppo': 'PPO',
+            'mom': 'MOM',
+            'bop': 'BOP',
             'cci': 'CCI',
-            'obv': 'OBV',
-            'ad': 'AD'
+            'cmo': 'CMO',
+            'roc': 'ROC',
+            'rocr': 'ROCR',
+            'aroon': 'AROON',
+            'aroonosc': 'AROONOSC',
+            'mfi': 'MFI',
+            'trix': 'TRIX',
+            'ultosc': 'ULTOSC',
+            'dx': 'DX',
+            'minus_di': 'MINUS_DI',
+            'plus_di': 'PLUS_DI',
+            'minus_dm': 'MINUS_DM',
+            'plus_dm': 'PLUS_DM',
+            'bbands': 'BBANDS',
+            'midpoint': 'MIDPOINT',
+            'midprice': 'MIDPRICE',
+            'sar': 'SAR',
+            'trange': 'TRANGE',
+            'atr': 'ATR',
+            'natr': 'NATR',
+            'ad': 'AD',
+            'adosc': 'ADOSC',
+            'obv': 'OBV'
         }
         
         av_function = indicator_map.get(indicator.lower())
@@ -541,6 +523,33 @@ class AlphaVantageProvider(MarketDataProvider):
                 'nbdevdn': kwargs.get('nbdevdn', 2),
                 'matype': kwargs.get('matype', 0)
             })
+        elif indicator.lower() == 'stoch':
+            params.update({
+                'fastkperiod': kwargs.get('fastkperiod', 5),
+                'slowkperiod': kwargs.get('slowkperiod', 3),
+                'slowdperiod': kwargs.get('slowdperiod', 3),
+                'slowkmatype': kwargs.get('slowkmatype', 0),
+                'slowdmatype': kwargs.get('slowdmatype', 0)
+            })
+        
+        data = await self._make_request(params)
+        return data
+    
+    async def get_top_gainers_losers(self) -> Optional[Dict[str, Any]]:
+        """Get top gainers, losers, and most active tickers"""
+        params = {
+            'function': 'TOP_GAINERS_LOSERS'
+        }
+        
+        data = await self._make_request(params)
+        return data
+    
+    async def get_insider_transactions(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get insider transactions for a symbol"""
+        params = {
+            'function': 'INSIDER_TRANSACTIONS',
+            'symbol': symbol
+        }
         
         data = await self._make_request(params)
         return data
