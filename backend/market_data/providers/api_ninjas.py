@@ -7,34 +7,18 @@ from typing import Dict, List, Optional, Any, Union
 from decimal import Decimal
 import logging
 from ..base import (
-    MarketDataProvider,
-    StockQuote,
-    HistoricalPrice,
+    MarketDataProvider, 
+    StockQuote, 
+    HistoricalPrice, 
     OptionQuote, 
     CompanyInfo,
     EconomicEvent, 
     EarningsCalendar,
-    EarningsCallTranscript
+    EarningsCallTranscript,
+    MotivationalQuote
 )
 
 logger = logging.getLogger(__name__)
-
-class MotivationalQuote:
-    """Data class for motivational quotes"""
-    def __init__(self, quote: str, author: str, category: str, timestamp: datetime = None):
-        self.quote = quote
-        self.author = author
-        self.category = category
-        self.timestamp = timestamp or datetime.utcnow()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'quote': self.quote,
-            'author': self.author,
-            'category': self.category,
-            'timestamp': self.timestamp.isoformat(),
-            'provider': 'api-ninjas'
-        }
 
 class APINinjasProvider(MarketDataProvider):
     """
@@ -54,7 +38,7 @@ class APINinjasProvider(MarketDataProvider):
         'god', 'good', 'government', 'graduation', 'great', 'happiness', 'health', 'history',
         'home', 'hope', 'humor', 'imagination', 'inspirational', 'intelligence', 'jealousy',
         'knowledge', 'leadership', 'learning', 'legal', 'life', 'love', 'marriage', 'medical',
-        'men', 'mom', 'money', 'morning', 'movies', 'success'
+        'men', 'mom', 'money', 'morning', 'movies', 'success', 'travel'
     ]
     
     def __init__(self, api_key: str):

@@ -4,12 +4,22 @@ This service formats raw market data from the Brain into database-ready dictiona
 for use with your PostgreSQL upsert functions.
 """
 
+import asyncio
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 from .brain import MarketDataBrain, FetchResult
-from .base import StockQuote, HistoricalPrice, OptionQuote, CompanyInfo
+from .base import (
+    StockQuote, 
+    HistoricalPrice, 
+    OptionQuote, 
+    CompanyInfo,
+    EarningsCalendar,
+    EarningsCallTranscript,
+    MarketStatus,
+    EconomicEvent
+)
 
 logger = logging.getLogger(__name__)
 
@@ -404,3 +414,210 @@ class DataFormattingService:
 
         summary['providers_used'] = list(summary['providers_used'])
         return summary
+
+    async def format_earnings_calendar(
+        self,
+        symbol: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Fetch and format earnings calendar data for database storage.
+
+        Args:
+            symbol: Optional stock symbol to filter by
+            start_date: Start date for the calendar
+            end_date: End date for the calendar
+            limit: Maximum number of results to return
+
+        Returns:
+            Dictionary with formatted earnings calendar data
+        """
+        result = await self.brain.get_earnings_calendar(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+
+        if not result.success:
+            return {
+                'success': False,
+                'error': result.error,
+                'provider': result.provider,
+                'symbol': symbol
+            }
+
+        earnings_data: List[EarningsCalendar] = result.data
+
+        return {
+            'success': True,
+            'provider': result.provider,
+            'count': len(earnings_data),
+            'data': [
+                {
+                    'symbol': earning.symbol,
+                    'date': earning.date.isoformat(),
+                    'time': earning.time,
+                    'eps': float(earning.eps) if earning.eps else None,
+                    'eps_estimated': float(earning.eps_estimated) if earning.eps_estimated else None,
+                    'revenue': float(earning.revenue) if earning.revenue else None,
+                    'revenue_estimated': float(earning.revenue_estimated) if earning.revenue_estimated else None,
+                    'fiscal_date_ending': earning.fiscal_date_ending.isoformat() if earning.fiscal_date_ending else None,
+                    'fiscal_year': earning.fiscal_year,
+                    'fiscal_quarter': earning.fiscal_quarter,
+                    'provider': earning.provider,
+                    'created_at': datetime.now().isoformat()
+                }
+                for earning in earnings_data
+            ]
+        }
+
+    async def format_earnings_transcript(
+        self,
+        symbol: str,
+        year: int,
+        quarter: int
+    ) -> Dict[str, Any]:
+        """
+        Fetch and format earnings call transcript for database storage.
+
+        Args:
+            symbol: Stock symbol
+            year: Fiscal year
+            quarter: Fiscal quarter (1-4)
+
+        Returns:
+            Dictionary with formatted earnings transcript data
+        """
+        result = await self.brain.get_earnings_transcript(
+            symbol=symbol,
+            year=year,
+            quarter=quarter
+        )
+
+        if not result.success:
+            return {
+                'success': False,
+                'error': result.error,
+                'provider': result.provider,
+                'symbol': symbol
+            }
+
+        transcript: EarningsCallTranscript = result.data
+
+        return {
+            'success': True,
+            'provider': result.provider,
+            'data': {
+                'symbol': transcript.symbol,
+                'date': transcript.date.isoformat(),
+                'quarter': transcript.quarter,
+                'year': transcript.year,
+                'transcript': transcript.transcript,
+                'participants': transcript.participants,
+                'provider': transcript.provider,
+                'created_at': datetime.now().isoformat()
+            }
+        }
+
+    async def format_market_status(self, **kwargs) -> Dict[str, Any]:
+        """
+        Fetch and format market status data.
+
+        Args:
+            **kwargs: Additional provider-specific arguments
+
+        Returns:
+            Dictionary with formatted market status data
+        """
+        result = await self.brain.get_market_status(**kwargs)
+
+        if not result.success:
+            return {
+                'success': False,
+                'error': result.error,
+                'provider': result.provider
+            }
+
+        market_status: MarketStatus = result.data
+
+        return {
+            'success': True,
+            'provider': result.provider,
+            'data': {
+                'market': market_status.market,
+                'status': market_status.status,
+                'timestamp': market_status.timestamp.isoformat(),
+                'next_open': market_status.next_open.isoformat() if market_status.next_open else None,
+                'next_close': market_status.next_close.isoformat() if market_status.next_close else None,
+                'timezone': market_status.timezone,
+                'provider': market_status.provider,
+                'created_at': datetime.now().isoformat()
+            }
+        }
+
+    async def format_economic_events(
+        self,
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Fetch and format economic events data.
+
+        Args:
+            countries: List of country codes (e.g., ['US', 'EU', 'GB'])
+            importance: Filter by importance (1=Low, 2=Medium, 3=High)
+            start_date: Start date for events
+            end_date: End date for events
+            limit: Maximum number of events to return
+
+        Returns:
+            Dictionary with formatted economic events data
+        """
+        result = await self.brain.get_economic_events(
+            countries=countries,
+            importance=importance,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+
+        if not result.success:
+            return {
+                'success': False,
+                'error': result.error,
+                'provider': result.provider
+            }
+
+        events_data: List[EconomicEvent] = result.data
+
+        return {
+            'success': True,
+            'provider': result.provider,
+            'count': len(events_data),
+            'data': [
+                {
+                    'event_id': event.event_id,
+                    'country': event.country,
+                    'event_name': event.event_name,
+                    'event_period': event.event_period,
+                    'actual': float(event.actual) if isinstance(event.actual, (int, float)) else event.actual,
+                    'previous': float(event.previous) if isinstance(event.previous, (int, float)) else event.previous,
+                    'forecast': float(event.forecast) if isinstance(event.forecast, (int, float)) else event.forecast,
+                    'unit': event.unit,
+                    'importance': event.importance,
+                    'timestamp': event.timestamp.isoformat(),
+                    'last_update': event.last_update.isoformat() if event.last_update else None,
+                    'description': event.description,
+                    'url': event.url,
+                    'provider': event.provider,
+                    'created_at': datetime.now().isoformat()
+                }
+                for event in events_data
+            ]
+        }

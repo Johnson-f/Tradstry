@@ -14,7 +14,33 @@ from .base import (
     HistoricalPrice,
     OptionQuote,
     CompanyInfo,
-    EconomicEvent
+    EconomicEvent,
+    EarningsCalendar,
+    EarningsCallTranscript,
+    DividendRecord,
+    NewsArticle,
+    EarningsSurprise,
+    StockSplit,
+    IPOCalendar,
+    AnalystEstimates,
+    MarketHoliday,
+    TechnicalIndicator,
+    ForexQuote,
+    CryptoQuote,
+    MarketIndex,
+    ExchangeInfo,
+    MarketConditions,
+    TiingoFundamentalData,
+    Logo,
+    ExchangeRate,
+    CurrencyConversion,
+    MarketMover,
+    SimplePrice,
+    EodPrice,
+    SupportedSymbol,
+    ForexPair,
+    Cryptocurrency,
+    MarketStatus
 )
 from .config import MarketDataConfig
 from .providers import (
@@ -480,6 +506,82 @@ class MarketDataBrain:
             method_name="get_economic_data",
             data_type="economic_data",
             indicator=indicator
+        )
+
+    async def get_earnings_calendar(
+        self,
+        symbol: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 10
+    ) -> FetchResult:
+        """
+        Get earnings calendar data with automatic fallback.
+
+        Args:
+            symbol: Optional stock symbol to filter by
+            start_date: Start date for the calendar
+            end_date: End date for the calendar
+            limit: Maximum number of results to return
+
+        Returns:
+            FetchResult containing List[EarningsCalendar] or error
+        """
+        # Set default date range if not provided
+        today = date.today()
+        if not start_date:
+            start_date = today
+        if not end_date:
+            end_date = today + timedelta(days=30)  # Default to next 30 days
+
+        return await self._fetch_with_fallback(
+            method_name="get_earnings_calendar",
+            data_type="earnings_calendar",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+
+    async def get_earnings_transcript(
+        self,
+        symbol: str,
+        year: int,
+        quarter: int
+    ) -> FetchResult:
+        """
+        Get earnings call transcript with automatic fallback.
+
+        Args:
+            symbol: Stock symbol
+            year: Fiscal year
+            quarter: Fiscal quarter (1-4)
+
+        Returns:
+            FetchResult containing EarningsCallTranscript or error
+        """
+        return await self._fetch_with_fallback(
+            method_name="get_earnings_transcript",
+            data_type="earnings_transcript",
+            symbol=symbol,
+            year=year,
+            quarter=quarter
+        )
+
+    async def get_market_status(self, **kwargs) -> FetchResult:
+        """
+        Get current market status with automatic fallback.
+
+        Args:
+            **kwargs: Additional provider-specific arguments
+
+        Returns:
+            FetchResult containing MarketStatus or error
+        """
+        return await self._fetch_with_fallback(
+            method_name="get_market_status",
+            data_type="market_status",
+            **kwargs
         )
 
     # Batch operations
