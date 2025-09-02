@@ -30,10 +30,3 @@ BEGIN
     RETURN v_id;
 END;
 $$ LANGUAGE plpgsql;
-
--- ----------------------------------------------------------------------------
--- Permissions
--- ----------------------------------------------------------------------------
-
-ALTER FUNCTION upsert_exchange(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) OWNER TO api_user;
-GRANT EXECUTE ON FUNCTION upsert_exchange(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO api_user;

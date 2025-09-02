@@ -43,7 +43,8 @@ class NewsDataJob(BaseMarketDataJob):
             try:
                 general_news = await self.orchestrator.get_general_news()
                 if general_news:
-                    news_data["MARKET"] = general_news
+                    # Use a dynamic key based on news type or category
+                    news_data["general_market_news"] = general_news
             except Exception as e:
                 logger.error(f"Failed to fetch general news: {e}")
             
@@ -68,15 +69,29 @@ class NewsDataJob(BaseMarketDataJob):
                 for article in news_list:
                     try:
                         await self.db_service.execute_function(
-                            "upsert_news_data",
-                            p_symbol=symbol if symbol != "MARKET" else None,
-                            p_headline=article.get('headline'),
+                            "upsert_news_article",
+                            p_title=article.get('title') or article.get('headline'),
+                            p_published_at=article.get('published_at') or article.get('published_date'),
+                            p_data_provider=article.get('provider', 'unknown'),
+                            
+                            # Content parameters matching SQL function signature
                             p_summary=article.get('summary'),
-                            p_source=article.get('source'),
-                            p_published_date=article.get('published_date'),
+                            p_content=article.get('content'),
                             p_url=article.get('url'),
-                            p_sentiment_score=article.get('sentiment_score'),
-                            p_data_provider=article.get('provider', 'unknown')
+                            p_source=article.get('source'),
+                            p_author=article.get('author'),
+                            p_category=article.get('category'),
+                            
+                            # Sentiment and analysis parameters
+                            p_sentiment=article.get('sentiment') or article.get('sentiment_score'),
+                            p_relevance_score=article.get('relevance_score'),
+                            p_sentiment_confidence=article.get('sentiment_confidence'),
+                            
+                            # Content metadata parameters
+                            p_language=article.get('language', 'en'),
+                            p_word_count=article.get('word_count'),
+                            p_image_url=article.get('image_url'),
+                            p_tags=article.get('tags')
                         )
                         success_count += 1
                     except Exception as e:

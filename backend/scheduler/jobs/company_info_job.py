@@ -56,21 +56,52 @@ class CompanyInfoJob(BaseMarketDataJob):
         try:
             success_count = 0
             
-            for symbol, info in data.items():
+            for symbol, fetch_result in data.items():
                 try:
+                    # Extract company info data from FetchResult
+                    if not fetch_result.success or not fetch_result.data:
+                        logger.warning(f"No valid data for {symbol}")
+                        continue
+                    
+                    info = fetch_result.data
+                    
+                    # Extract exchange information if available
+                    exchange_info = getattr(info, 'exchange', None) or {}
+                    
                     await self.db_service.execute_function(
                         "upsert_company_info",
                         p_symbol=symbol,
-                        p_company_name=info.get('name'),
-                        p_description=info.get('description'),
-                        p_sector=info.get('sector'),
-                        p_industry=info.get('industry'),
-                        p_market_cap=info.get('market_cap'),
-                        p_employees=info.get('employees'),
-                        p_headquarters=info.get('headquarters'),
-                        p_founded_year=info.get('founded'),
-                        p_website=info.get('website'),
-                        p_data_provider=info.get('provider', 'unknown')
+                        p_data_provider=fetch_result.provider,
+                        
+                        # Exchange parameters for automatic exchange handling
+                        p_exchange_code=exchange_info.get('code') if exchange_info else None,
+                        p_exchange_name=exchange_info.get('name') if exchange_info else None,
+                        p_exchange_country=exchange_info.get('country') if exchange_info else info.country,
+                        p_exchange_timezone=exchange_info.get('timezone') if exchange_info else None,
+                        
+                        # Company parameters matching SQL function signature
+                        p_name=info.name,
+                        p_company_name=info.company_name or info.name,
+                        p_exchange=info.exchange,
+                        p_sector=info.sector,
+                        p_industry=info.industry,
+                        p_market_cap=int(float(info.market_cap)) if info.market_cap else None,
+                        p_employees=info.employees,
+                        p_revenue=None,  # Not in base CompanyInfo model
+                        p_net_income=None,  # Not in base CompanyInfo model
+                        p_pe_ratio=float(info.pe_ratio) if info.pe_ratio else None,
+                        p_pb_ratio=None,  # Not in base CompanyInfo model
+                        p_dividend_yield=float(info.dividend_yield) if info.dividend_yield else None,
+                        p_description=info.description,
+                        p_website=info.website,
+                        p_ceo=info.ceo,
+                        p_headquarters=info.headquarters,
+                        p_founded=info.founded,
+                        p_phone=info.phone,
+                        p_email=None,  # Not in base CompanyInfo model
+                        p_ipo_date=None,  # Not in base CompanyInfo model
+                        p_currency=None,  # Not in base CompanyInfo model
+                        p_fiscal_year_end=None  # Not in base CompanyInfo model
                     )
                     success_count += 1
                     

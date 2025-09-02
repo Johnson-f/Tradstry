@@ -89,20 +89,30 @@ class HistoricalPricesJob(BaseMarketDataJob):
                 
                 for price_record in price_history:
                     try:
+                        # Extract exchange information if available
+                        exchange_info = price_record.get('exchange', {})
+                        
                         await self.db_service.execute_function(
                             "upsert_historical_price",
                             p_symbol=symbol,
-                            p_exchange_id=price_record.get('exchange_id'),
                             p_date=price_record.get('date'),
-                            p_open_price=price_record.get('open'),
-                            p_high_price=price_record.get('high'),
-                            p_low_price=price_record.get('low'),
-                            p_close_price=price_record.get('close'),
+                            p_data_provider=price_record.get('provider', 'unknown'),
+                            
+                            # Exchange parameters for automatic exchange handling
+                            p_exchange_code=exchange_info.get('code') or price_record.get('exchange_code'),
+                            p_exchange_name=exchange_info.get('name') or price_record.get('exchange_name'),
+                            p_exchange_country=exchange_info.get('country') or price_record.get('country'),
+                            p_exchange_timezone=exchange_info.get('timezone') or price_record.get('timezone'),
+                            
+                            # Price parameters matching SQL function signature
+                            p_open=price_record.get('open'),
+                            p_high=price_record.get('high'),
+                            p_low=price_record.get('low'),
+                            p_close=price_record.get('close'),
                             p_adjusted_close=price_record.get('adjusted_close'),
                             p_volume=price_record.get('volume'),
-                            p_dividend_amount=price_record.get('dividend'),
-                            p_split_coefficient=price_record.get('split_coefficient'),
-                            p_data_provider=price_record.get('provider', 'unknown')
+                            p_dividend=price_record.get('dividend'),
+                            p_split_ratio=price_record.get('split_ratio') or price_record.get('split_coefficient')
                         )
                         success_count += 1
                         
