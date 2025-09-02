@@ -58,17 +58,17 @@ CREATE TABLE IF NOT EXISTS earnings_data (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per fiscal period per provider
-    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider),
-
-    -- Indexes for earnings analysis queries
-    INDEX idx_earnings_data_symbol (symbol),
-    INDEX idx_earnings_data_reported_date (reported_date DESC),
-    INDEX idx_earnings_data_fiscal_period (fiscal_year, fiscal_quarter),
-    INDEX idx_earnings_data_eps_surprise (eps_surprise_percent DESC),
-    INDEX idx_earnings_data_provider (data_provider),
-    INDEX idx_earnings_data_symbol_date (symbol, reported_date DESC),
-    INDEX idx_earnings_data_beat_miss (eps_beat_miss_met)
+    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider)
 );
+
+-- Indexes for earnings analysis queries
+CREATE INDEX IF NOT EXISTS idx_earnings_data_symbol ON earnings_data (symbol);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_reported_date ON earnings_data (reported_date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_fiscal_period ON earnings_data (fiscal_year, fiscal_quarter);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_eps_surprise ON earnings_data (eps_surprise_percent DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_provider ON earnings_data (data_provider);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_symbol_date ON earnings_data (symbol, reported_date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_data_beat_miss ON earnings_data (eps_beat_miss_met);
 
 -- Add table comment
 COMMENT ON TABLE earnings_data IS 'Earnings reports, estimates, and guidance from multiple market data providers';

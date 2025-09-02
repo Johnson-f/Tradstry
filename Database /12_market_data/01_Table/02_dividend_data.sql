@@ -42,18 +42,18 @@ CREATE TABLE IF NOT EXISTS dividend_data (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per ex-dividend date per provider
-    UNIQUE(symbol, ex_dividend_date, data_provider),
-
-    -- Indexes for dividend analysis queries
-    INDEX idx_dividend_data_symbol (symbol),
-    INDEX idx_dividend_data_ex_dividend_date (ex_dividend_date DESC),
-    INDEX idx_dividend_data_payment_date (payment_date DESC),
-    INDEX idx_dividend_data_amount (dividend_amount DESC),
-    INDEX idx_dividend_data_yield (dividend_yield DESC),
-    INDEX idx_dividend_data_provider (data_provider),
-    INDEX idx_dividend_data_symbol_date (symbol, ex_dividend_date DESC),
-    INDEX idx_dividend_data_frequency (frequency)
+    UNIQUE(symbol, ex_dividend_date, data_provider)
 );
+
+-- Create indexes for dividend analysis queries (after table creation)
+CREATE INDEX IF NOT EXISTS idx_dividend_data_symbol ON dividend_data (symbol);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_ex_dividend_date ON dividend_data (ex_dividend_date DESC);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_payment_date ON dividend_data (payment_date DESC);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_amount ON dividend_data (dividend_amount DESC);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_yield ON dividend_data (dividend_yield DESC);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_provider ON dividend_data (data_provider);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_symbol_date ON dividend_data (symbol, ex_dividend_date DESC);
+CREATE INDEX IF NOT EXISTS idx_dividend_data_frequency ON dividend_data (frequency);
 
 -- Add table comment
 COMMENT ON TABLE dividend_data IS 'Dividend payments, schedules, and history from multiple market data providers';

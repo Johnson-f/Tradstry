@@ -44,17 +44,17 @@ CREATE TABLE IF NOT EXISTS earnings_transcripts (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one transcript per symbol per quarter per year per provider
-    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider),
-
-    -- Indexes for transcript analysis queries
-    INDEX idx_earnings_transcripts_symbol (symbol),
-    INDEX idx_earnings_transcripts_earnings_date (earnings_date DESC),
-    INDEX idx_earnings_transcripts_fiscal_period (fiscal_year, fiscal_quarter),
-    INDEX idx_earnings_transcripts_provider (data_provider),
-    INDEX idx_earnings_transcripts_sentiment (overall_sentiment),
-    INDEX idx_earnings_transcripts_symbol_date (symbol, earnings_date DESC),
-    INDEX idx_earnings_transcripts_quality (transcript_quality)
+    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider)
 );
+
+ -- Indexes for transcript analysis queries
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_symbol ON earnings_transcripts (symbol);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_earnings_date ON earnings_transcripts (earnings_date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_fiscal_period ON earnings_transcripts (fiscal_year, fiscal_quarter);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_provider ON earnings_transcripts (data_provider);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_sentiment ON earnings_transcripts (overall_sentiment);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_symbol_date ON earnings_transcripts (symbol, earnings_date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_quality ON earnings_transcripts (transcript_quality);
 
 -- Participants table for earnings calls
 CREATE TABLE IF NOT EXISTS transcript_participants (
@@ -65,13 +65,13 @@ CREATE TABLE IF NOT EXISTS transcript_participants (
     participant_company VARCHAR(255),  -- Company they represent
     participant_type VARCHAR(20),      -- 'executive', 'analyst', 'other'
     speaking_time INTERVAL,            -- Total time this participant spoke
-    question_count INTEGER DEFAULT 0, -- Number of questions asked (for analysts)
-
-    -- Indexes for participant queries
-    INDEX idx_transcript_participants_transcript_id (transcript_id),
-    INDEX idx_transcript_participants_participant_type (participant_type),
-    INDEX idx_transcript_participants_name (participant_name)
+    question_count INTEGER DEFAULT 0 -- Number of questions asked (for analysts)
 );
+
+ -- Indexes for participant queries
+CREATE INDEX IF NOT EXISTS idx_transcript_participants_transcript_id ON transcript_participants (transcript_id);
+CREATE INDEX IF NOT EXISTS idx_transcript_participants_participant_type ON transcript_participants (participant_type);
+CREATE INDEX IF NOT EXISTS idx_transcript_participants_name ON transcript_participants (participant_name);
 
 -- Add table comments
 COMMENT ON TABLE earnings_transcripts IS 'Earnings call transcripts and analysis from multiple market data providers';

@@ -49,18 +49,18 @@ CREATE TABLE IF NOT EXISTS economic_indicators (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per indicator per period per provider
-    UNIQUE(indicator_code, country, period_date, data_provider),
-
-    -- Indexes for economic analysis queries
-    INDEX idx_economic_indicators_indicator_code (indicator_code),
-    INDEX idx_economic_indicators_country (country),
-    INDEX idx_economic_indicators_period_date (period_date DESC),
-    INDEX idx_economic_indicators_importance (importance_level DESC),
-    INDEX idx_economic_indicators_provider (data_provider),
-    INDEX idx_economic_indicators_release_date (release_date DESC),
-    INDEX idx_economic_indicators_country_date (country, period_date DESC),
-    INDEX idx_economic_indicators_code_date (indicator_code, period_date DESC)
+    UNIQUE(indicator_code, country, period_date, data_provider)
 );
+
+-- Indexes for economic analysis queries
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_indicator_code ON economic_indicators (indicator_code);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_country ON economic_indicators (country);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_period_date ON economic_indicators (period_date DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_importance ON economic_indicators (importance_level DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_provider ON economic_indicators (data_provider);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_release_date ON economic_indicators (release_date DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_country_date ON economic_indicators (country, period_date DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_indicators_code_date ON economic_indicators (indicator_code, period_date DESC);
 
 -- Add table comment
 COMMENT ON TABLE economic_indicators IS 'Economic indicators and metrics from multiple market data providers';

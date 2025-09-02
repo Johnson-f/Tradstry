@@ -41,16 +41,16 @@ CREATE TABLE IF NOT EXISTS options_chain (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per option symbol per timestamp per provider
-    UNIQUE(symbol, quote_timestamp, data_provider),
-
-    -- Indexes for options analysis queries
-    INDEX idx_options_chain_underlying_strike (underlying_symbol, strike),
-    INDEX idx_options_chain_expiration (expiration),
-    INDEX idx_options_chain_type_expiration (option_type, expiration),
-    INDEX idx_options_chain_timestamp (quote_timestamp DESC),
-    INDEX idx_options_chain_provider (data_provider),
-    INDEX idx_options_chain_underlying_expiration (underlying_symbol, expiration)
+    UNIQUE(symbol, quote_timestamp, data_provider)
 );
+
+ -- Indexes for options analysis queries
+CREATE INDEX IF NOT EXISTS idx_options_chain_underlying_strike ON options_chain (underlying_symbol, strike);
+CREATE INDEX IF NOT EXISTS idx_options_chain_expiration ON options_chain (expiration);
+CREATE INDEX IF NOT EXISTS idx_options_chain_type_expiration ON options_chain (option_type, expiration);
+CREATE INDEX IF NOT EXISTS idx_options_chain_timestamp ON options_chain (quote_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_options_chain_provider ON options_chain (data_provider);
+CREATE INDEX IF NOT EXISTS idx_options_chain_underlying_expiration ON options_chain (underlying_symbol, expiration);
 
 -- Add table comment
 COMMENT ON TABLE options_chain IS 'Options chain data with Greeks and market data from multiple providers';

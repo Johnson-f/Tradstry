@@ -30,17 +30,17 @@ CREATE TABLE IF NOT EXISTS news_articles (
     -- Provider and audit info
     data_provider VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    -- Indexes for news analysis queries
-    INDEX idx_news_articles_published_at (published_at DESC),
-    INDEX idx_news_articles_source (source),
-    INDEX idx_news_articles_sentiment (sentiment),
-    INDEX idx_news_articles_relevance (relevance_score DESC),
-    INDEX idx_news_articles_category (category),
-    INDEX idx_news_articles_provider (data_provider),
-    INDEX idx_news_articles_published_at_source (published_at DESC, source)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Indexes for news analysis queries
+CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles (published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_articles_source ON news_articles (source);
+CREATE INDEX IF NOT EXISTS idx_news_articles_sentiment ON news_articles (sentiment);
+CREATE INDEX IF NOT EXISTS idx_news_articles_relevance ON news_articles (relevance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_news_articles_category ON news_articles (category);
+CREATE INDEX IF NOT EXISTS idx_news_articles_provider ON news_articles (data_provider);
+CREATE INDEX IF NOT EXISTS idx_news_articles_published_at_source ON news_articles (published_at DESC, source);
 
 -- Many-to-many relationship table for news mentioning multiple stocks
 CREATE TABLE IF NOT EXISTS news_stocks (
@@ -49,14 +49,14 @@ CREATE TABLE IF NOT EXISTS news_stocks (
     mention_type VARCHAR(20) DEFAULT 'mentioned',  -- 'primary', 'mentioned', 'sector'
     sentiment_impact DECIMAL(3,2),  -- -1.0 to 1.0 impact on stock
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (news_id, stock_id),
-
-    -- Indexes for news-stock relationship queries
-    INDEX idx_news_stocks_stock_id (stock_id),
-    INDEX idx_news_stocks_news_id (news_id),
-    INDEX idx_news_stocks_mention_type (mention_type),
-    INDEX idx_news_stocks_sentiment_impact (sentiment_impact DESC)
+    PRIMARY KEY (news_id, stock_id)
 );
+
+-- Indexes for news-stock relationship queries
+CREATE INDEX IF NOT EXISTS idx_news_stocks_stock_id ON news_stocks (stock_id);
+CREATE INDEX IF NOT EXISTS idx_news_stocks_news_id ON news_stocks (news_id);
+CREATE INDEX IF NOT EXISTS idx_news_stocks_mention_type ON news_stocks (mention_type);
+CREATE INDEX IF NOT EXISTS idx_news_stocks_sentiment_impact ON news_stocks (sentiment_impact DESC);
 
 -- Add table comments
 COMMENT ON TABLE news_articles IS 'News articles and content from multiple market data providers';
