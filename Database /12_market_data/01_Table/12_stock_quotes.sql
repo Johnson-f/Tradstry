@@ -25,13 +25,13 @@ CREATE TABLE IF NOT EXISTS stock_quotes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one quote per symbol per timestamp per provider
-    UNIQUE(symbol, quote_timestamp, data_provider),
-
-    -- Global indexes for cross-user queries
-    INDEX idx_stock_quotes_symbol_timestamp (symbol, quote_timestamp DESC),
-    INDEX idx_stock_quotes_provider (data_provider),
-    INDEX idx_stock_quotes_timestamp (quote_timestamp DESC)
+    UNIQUE(symbol, quote_timestamp, data_provider)
 );
+
+ -- Global indexes for cross-user queries
+CREATE INDEX IF NOT EXISTS idx_stock_quotes_symbol_timestamp ON stock_quotes (symbol, quote_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_quotes_provider ON stock_quotes (data_provider);
+CREATE INDEX IF NOT EXISTS idx_stock_quotes_timestamp ON stock_quotes (quote_timestamp DESC);
 
 -- Add table comment
 COMMENT ON TABLE stock_quotes IS 'Real-time and historical stock quote data from multiple market data providers';

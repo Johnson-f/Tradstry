@@ -51,18 +51,18 @@ CREATE TABLE IF NOT EXISTS earnings_calendar (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per fiscal period per provider
-    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider),
-
-    -- Indexes for earnings calendar queries
-    INDEX idx_earnings_calendar_symbol (symbol),
-    INDEX idx_earnings_calendar_earnings_date (earnings_date),
-    INDEX idx_earnings_calendar_fiscal_period (fiscal_year, fiscal_quarter),
-    INDEX idx_earnings_calendar_status (status),
-    INDEX idx_earnings_calendar_provider (data_provider),
-    INDEX idx_earnings_calendar_symbol_date (symbol, earnings_date),
-    INDEX idx_earnings_calendar_date_status (earnings_date, status),
-    INDEX idx_earnings_calendar_sector_date (sector, earnings_date)
+    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider)
 );
+
+-- Indexes for earnings calendar queries
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_symbol ON earnings_calendar (symbol);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_earnings_date ON earnings_calendar (earnings_date);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_fiscal_period ON earnings_calendar (fiscal_year, fiscal_quarter);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_status ON earnings_calendar (status);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_provider ON earnings_calendar (data_provider);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_symbol_date ON earnings_calendar (symbol, earnings_date);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_date_status ON earnings_calendar (earnings_date, status);
+CREATE INDEX IF NOT EXISTS idx_earnings_calendar_sector_date ON earnings_calendar (sector, earnings_date);
 
 -- Add table comment
 COMMENT ON TABLE earnings_calendar IS 'Earnings calendar with dates, estimates, and reporting schedule from multiple market data providers';

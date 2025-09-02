@@ -27,14 +27,14 @@ CREATE TABLE IF NOT EXISTS historical_prices (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per date per provider
-    UNIQUE(symbol, date, data_provider),
-
-    -- Time series indexes for fast historical queries
-    INDEX idx_historical_prices_symbol_date (symbol, date DESC),
-    INDEX idx_historical_prices_date (date DESC),
-    INDEX idx_historical_prices_provider (data_provider),
-    INDEX idx_historical_prices_symbol_provider (symbol, data_provider)
+    UNIQUE(symbol, date, data_provider)
 );
+
+ -- Time series indexes for fast historical queries
+CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_date ON historical_prices (symbol, date DESC);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_date ON historical_prices (date DESC);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_provider ON historical_prices (data_provider);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_provider ON historical_prices (symbol, data_provider);
 
 -- Add table comment
 COMMENT ON TABLE historical_prices IS 'Historical OHLCV price data from multiple market data providers';

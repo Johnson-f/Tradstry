@@ -40,18 +40,18 @@ CREATE TABLE IF NOT EXISTS economic_events (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per event per provider (most current data)
-    UNIQUE(event_id, data_provider),
-
-    -- Indexes for economic analysis queries
-    INDEX idx_economic_events_event_timestamp (event_timestamp DESC),
-    INDEX idx_economic_events_country (country),
-    INDEX idx_economic_events_importance (importance DESC),
-    INDEX idx_economic_events_category (category),
-    INDEX idx_economic_events_status (status),
-    INDEX idx_economic_events_provider (data_provider),
-    INDEX idx_economic_events_country_timestamp (country, event_timestamp DESC),
-    INDEX idx_economic_events_importance_timestamp (importance DESC, event_timestamp DESC)
+    UNIQUE(event_id, data_provider)
 );
+
+ -- Indexes for economic analysis queries
+CREATE INDEX IF NOT EXISTS idx_economic_events_event_timestamp ON economic_events (event_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_events_country ON economic_events (country);
+CREATE INDEX IF NOT EXISTS idx_economic_events_importance ON economic_events (importance DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_events_category ON economic_events (category);
+CREATE INDEX IF NOT EXISTS idx_economic_events_status ON economic_events (status);
+CREATE INDEX IF NOT EXISTS idx_economic_events_provider ON economic_events (data_provider);
+CREATE INDEX IF NOT EXISTS idx_economic_events_country_timestamp ON economic_events (country, event_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_economic_events_importance_timestamp ON economic_events (importance DESC, event_timestamp DESC);
 
 -- Add table comment
 COMMENT ON TABLE economic_events IS 'Economic calendar events, forecasts, and actuals from multiple market data providers';

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
     symbol VARCHAR(20) NOT NULL,
     exchange_id INTEGER REFERENCES exchanges(id),
 
+    sector VARCHAR(100),
     -- Valuation Ratios (shared globally)
     pe_ratio DECIMAL(10,2),  -- Price-to-Earnings
     pb_ratio DECIMAL(10,2),  -- Price-to-Book
@@ -68,17 +69,17 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per period per provider
-    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider),
-
-    -- Indexes for fundamental analysis queries
-    INDEX idx_fundamental_data_symbol (symbol),
-    INDEX idx_fundamental_data_pe_ratio (pe_ratio),
-    INDEX idx_fundamental_data_roe (roe DESC),
-    INDEX idx_fundamental_data_sector_symbol (sector, symbol),  -- If joined with company_info
-    INDEX idx_fundamental_data_provider (data_provider),
-    INDEX idx_fundamental_data_period (fiscal_year, fiscal_quarter),
-    INDEX idx_fundamental_data_market_cap (market_cap DESC)
+    UNIQUE(symbol, fiscal_year, fiscal_quarter, data_provider)
 );
+
+-- Indexes for fundamental analysis queries
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_symbol ON fundamental_data (symbol);
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_pe_ratio ON fundamental_data (pe_ratio);
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_roe ON fundamental_data (roe DESC);
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_sector_symbol ON fundamental_data (sector, symbol);  -- If joined with company_info
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_provider ON fundamental_data (data_provider);
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_period ON fundamental_data (fiscal_year, fiscal_quarter);
+CREATE INDEX IF NOT EXISTS idx_fundamental_data_market_cap ON fundamental_data (market_cap DESC);
 
 -- Add table comment
 COMMENT ON TABLE fundamental_data IS 'Fundamental financial ratios and metrics from multiple market data providers';

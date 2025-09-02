@@ -44,16 +44,16 @@ CREATE TABLE IF NOT EXISTS company_info (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure one record per symbol per provider (most current data)
-    UNIQUE(symbol, data_provider),
-
-    -- Indexes for company analysis queries
-    INDEX idx_company_info_symbol (symbol),
-    INDEX idx_company_info_sector (sector),
-    INDEX idx_company_info_industry (industry),
-    INDEX idx_company_info_market_cap (market_cap DESC),
-    INDEX idx_company_info_provider (data_provider),
-    INDEX idx_company_info_sector_industry (sector, industry)
+    UNIQUE(symbol, data_provider)
 );
+
+-- Create indexes separately (PostgreSQL style)
+CREATE INDEX IF NOT EXISTS idx_company_info_symbol ON company_info (symbol);
+CREATE INDEX IF NOT EXISTS idx_company_info_sector ON company_info (sector);
+CREATE INDEX IF NOT EXISTS idx_company_info_industry ON company_info (industry);
+CREATE INDEX IF NOT EXISTS idx_company_info_market_cap ON company_info (market_cap DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_provider ON company_info (data_provider);
+CREATE INDEX IF NOT EXISTS idx_company_info_sector_industry ON company_info (sector, industry);
 
 -- Add table comment
 COMMENT ON TABLE company_info IS 'Fundamental company information and metrics from multiple market data providers';
