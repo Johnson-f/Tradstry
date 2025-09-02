@@ -86,14 +86,27 @@ class OptionsChainJob(BaseMarketDataJob):
                     
                     for option in options_list:
                         try:
+                            # Extract exchange information if available
+                            exchange_info = option.get('exchange', {})
+                            
                             await self.db_service.execute_function(
                                 "upsert_options_chain",
-                                p_symbol=symbol,
-                                p_option_type=option_type.upper(),
-                                p_strike_price=option.get('strike'),
-                                p_expiration_date=option.get('expiration'),
-                                p_bid_price=option.get('bid'),
-                                p_ask_price=option.get('ask'),
+                                p_symbol=option.get('symbol') or f"{symbol}{option.get('expiration', '').replace('-', '')}{option_type[0].upper()}{int(option.get('strike', 0) * 1000):08d}",
+                                p_underlying_symbol=symbol,
+                                p_expiration=option.get('expiration'),
+                                p_strike=option.get('strike'),
+                                p_option_type=option_type,
+                                p_data_provider=option.get('provider', 'unknown'),
+                                
+                                # Exchange parameters for automatic exchange handling
+                                p_exchange_code=exchange_info.get('code') or option.get('exchange_code'),
+                                p_exchange_name=exchange_info.get('name') or option.get('exchange_name'),
+                                p_exchange_country=exchange_info.get('country') or option.get('country'),
+                                p_exchange_timezone=exchange_info.get('timezone') or option.get('timezone'),
+                                
+                                # Options parameters matching SQL function signature
+                                p_bid=option.get('bid'),
+                                p_ask=option.get('ask'),
                                 p_last_price=option.get('last_price'),
                                 p_volume=option.get('volume'),
                                 p_open_interest=option.get('open_interest'),
@@ -103,8 +116,10 @@ class OptionsChainJob(BaseMarketDataJob):
                                 p_theta=option.get('theta'),
                                 p_vega=option.get('vega'),
                                 p_rho=option.get('rho'),
-                                p_quote_timestamp=option.get('timestamp', datetime.now()),
-                                p_data_provider=option.get('provider', 'unknown')
+                                p_intrinsic_value=option.get('intrinsic_value'),
+                                p_extrinsic_value=option.get('extrinsic_value'),
+                                p_time_value=option.get('time_value'),
+                                p_quote_timestamp=option.get('timestamp', datetime.now())
                             )
                             success_count += 1
                             

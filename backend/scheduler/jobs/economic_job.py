@@ -51,17 +51,30 @@ class EconomicEventsJob(BaseMarketDataJob):
             for event in events_data:
                 try:
                     await self.db_service.execute_function(
-                        "upsert_economic_event",
-                        p_event_name=event.get('name'),
+                        "upsert_economic_events",
+                        p_event_id=event.get('event_id') or f"{event.get('name')}_{event.get('date')}",
                         p_country=event.get('country'),
-                        p_currency=event.get('currency'),
+                        p_event_name=event.get('event_name') or event.get('name'),
+                        p_data_provider=event.get('provider', 'unknown'),
+                        p_event_timestamp=event.get('event_timestamp') or event.get('datetime'),
+                        
+                        # Event parameters matching SQL function signature
+                        p_event_period=event.get('event_period'),
+                        p_actual=event.get('actual'),
+                        p_previous=event.get('previous'),
+                        p_forecast=event.get('forecast'),
+                        p_unit=event.get('unit'),
                         p_importance=event.get('importance'),
-                        p_actual_value=event.get('actual'),
-                        p_forecast_value=event.get('forecast'),
-                        p_previous_value=event.get('previous'),
-                        p_event_date=event.get('date'),
-                        p_event_time=event.get('time'),
-                        p_data_provider=event.get('provider', 'unknown')
+                        p_last_update=event.get('last_update'),
+                        p_description=event.get('description'),
+                        p_url=event.get('url'),
+                        p_category=event.get('category'),
+                        p_frequency=event.get('frequency'),
+                        p_source=event.get('source'),
+                        p_currency=event.get('currency', 'USD'),
+                        p_market_impact=event.get('market_impact'),
+                        p_status=event.get('status', 'scheduled'),
+                        p_revised=event.get('revised', False)
                     )
                     success_count += 1
                 except Exception as e:
@@ -103,14 +116,35 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
             for indicator in indicators_data:
                 try:
                     await self.db_service.execute_function(
-                        "upsert_economic_indicator",
-                        p_indicator_name=indicator.get('name'),
+                        "upsert_economic_indicators",
+                        p_indicator_code=indicator.get('indicator_code') or indicator.get('code'),
+                        p_indicator_name=indicator.get('indicator_name') or indicator.get('name'),
                         p_country=indicator.get('country'),
+                        p_period_date=indicator.get('period_date') or indicator.get('date'),
+                        p_data_provider=indicator.get('provider', 'unknown'),
+                        
+                        # Indicator parameters matching SQL function signature
+                        p_value=indicator.get('value'),
+                        p_previous_value=indicator.get('previous_value'),
+                        p_change_value=indicator.get('change_value'),
+                        p_change_percent=indicator.get('change_percent'),
+                        p_year_over_year_change=indicator.get('year_over_year_change'),
+                        p_period_type=indicator.get('period_type'),
                         p_frequency=indicator.get('frequency'),
                         p_unit=indicator.get('unit'),
-                        p_value=indicator.get('value'),
-                        p_date=indicator.get('date'),
-                        p_data_provider=indicator.get('provider', 'unknown')
+                        p_currency=indicator.get('currency', 'USD'),
+                        p_seasonal_adjustment=indicator.get('seasonal_adjustment', True),
+                        p_preliminary=indicator.get('preliminary', False),
+                        p_importance_level=indicator.get('importance_level'),
+                        p_market_impact=indicator.get('market_impact'),
+                        p_consensus_estimate=indicator.get('consensus_estimate'),
+                        p_surprise=indicator.get('surprise'),
+                        p_release_date=indicator.get('release_date'),
+                        p_next_release_date=indicator.get('next_release_date'),
+                        p_source_agency=indicator.get('source_agency'),
+                        p_status=indicator.get('status', 'final'),
+                        p_last_revised=indicator.get('last_revised'),
+                        p_revision_count=indicator.get('revision_count', 0)
                     )
                     success_count += 1
                 except Exception as e:

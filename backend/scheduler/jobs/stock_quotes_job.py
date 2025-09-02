@@ -38,21 +38,9 @@ class StockQuotesJob(BaseMarketDataJob):
             
             quotes_data = {}
             
-            # Process symbols in batches to respect API rate limits
-            symbol_batches = self._batch_symbols(symbols, batch_size=10)
-            
-            for batch in symbol_batches:
-                try:
-                    # Use the market data orchestrator to fetch quotes
-                    batch_data = await self.orchestrator.get_stock_quotes(batch)
-                    quotes_data.update(batch_data)
-                    
-                    # Small delay between batches to avoid rate limiting
-                    await asyncio.sleep(1)
-                    
-                except Exception as e:
-                    logger.error(f"Failed to fetch quotes for batch {batch}: {e}")
-                    continue
+            # Fetch quotes using the orchestrator
+            quotes = await self.orchestrator.get_multiple_quotes(symbols)
+            quotes_data.update(quotes)
             
             logger.info(f"Successfully fetched quotes for {len(quotes_data)} symbols")
             return quotes_data
@@ -78,23 +66,38 @@ class StockQuotesJob(BaseMarketDataJob):
             success_count = 0
             total_count = len(data)
             
-            for symbol, quote_data in data.items():
+            for symbol, fetch_result in data.items():
                 try:
+                    # Extract quote data from FetchResult
+                    if not fetch_result.success or not fetch_result.data:
+                        logger.warning(f"No valid data for {symbol}")
+                        continue
+                    
+                    quote_data = fetch_result.data
+                    
+                    # StockQuote is a Pydantic model, access attributes directly
                     # Call the PostgreSQL upsert function
                     await self.db_service.execute_function(
                         "upsert_stock_quote",
                         p_symbol=symbol,
-                        p_exchange_id=quote_data.get('exchange_id'),
-                        p_price=quote_data.get('price'),
-                        p_change_amount=quote_data.get('change_amount'),
-                        p_change_percent=quote_data.get('change_percent'),
-                        p_volume=quote_data.get('volume'),
-                        p_open_price=quote_data.get('open_price'),
-                        p_high_price=quote_data.get('high_price'),
-                        p_low_price=quote_data.get('low_price'),
-                        p_previous_close=quote_data.get('previous_close'),
-                        p_quote_timestamp=quote_data.get('timestamp', datetime.now()),
-                        p_data_provider=quote_data.get('provider', 'unknown')
+                        p_quote_timestamp=quote_data.timestamp,
+                        p_data_provider=fetch_result.provider,
+                        
+                        # Exchange parameters (may be None)
+                        p_exchange_code=None,
+                        p_exchange_name=None,
+                        p_exchange_country=None,
+                        p_exchange_timezone=None,
+                        
+                        # Quote parameters matching SQL function signature
+                        p_price=float(quote_data.price),
+                        p_change_amount=float(quote_data.change),
+                        p_change_percent=float(quote_data.change_percent),
+                        p_volume=quote_data.volume,
+                        p_open_price=float(quote_data.open) if quote_data.open else None,
+                        p_high_price=float(quote_data.high) if quote_data.high else None,
+                        p_low_price=float(quote_data.low) if quote_data.low else None,
+                        p_previous_close=float(quote_data.previous_close) if quote_data.previous_close else None
                     )
                     success_count += 1
                     

@@ -89,6 +89,20 @@ class MarketDataBrain:
         self.cache: Dict[str, FetchResult] = {}
         self.cache_ttl = self.config.cache_ttl_seconds
 
+    async def initialize(self):
+        """Initialize the brain (for compatibility with test scripts)"""
+        # Brain is already initialized in __init__, this is just for compatibility
+        pass
+
+    async def close(self):
+        """Close all provider connections"""
+        for provider in self.providers.values():
+            if hasattr(provider, 'close'):
+                try:
+                    await provider.close()
+                except Exception as e:
+                    logger.warning(f"Error closing provider {provider.name}: {e}")
+
     def _is_provider_rate_limited(self, provider_name: str) -> bool:
         """Check if a provider is currently rate limited"""
         if provider_name in self.rate_limited_providers:

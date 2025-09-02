@@ -518,6 +518,134 @@ class FiscalAIProvider(MarketDataProvider):
             self._log_error("Market Status Error", f"Failed to fetch market status: {str(e)}")
             return None
 
+    async def get_quote(self, symbol: str) -> Optional[StockQuote]:
+        """Get current stock quote"""
+        return await self.get_current_quote(symbol)
+    
+    async def get_earnings_calendar(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Get earnings calendar events"""
+        try:
+            end_date = end_date or date.today() + timedelta(days=30)
+            start_date = start_date or date.today()
+            
+            params = {
+                "from": start_date.strftime('%Y-%m-%d'),
+                "to": end_date.strftime('%Y-%m-%d'),
+                "limit": limit
+            }
+            
+            data = await self._make_request("earnings/calendar", params=params)
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            self._log_error("Earnings Calendar Error", f"Failed to fetch earnings calendar: {str(e)}")
+            return []
+    
+    async def get_earnings_transcript(
+        self,
+        symbol: str,
+        year: Optional[int] = None,
+        quarter: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get earnings call transcript"""
+        if not symbol:
+            return None
+            
+        try:
+            params = {}
+            if year:
+                params['year'] = year
+            if quarter:
+                params['quarter'] = quarter
+                
+            data = await self._make_request(f"companies/{symbol.upper()}/earnings/transcripts", params=params)
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            self._log_error("Earnings Transcript Error", f"Failed to fetch transcript for {symbol}: {str(e)}")
+            return None
+    
+    async def get_economic_events(
+        self,
+        countries: Optional[List[str]] = None,
+        importance: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 50
+    ) -> List[EconomicEvent]:
+        """Get economic calendar events"""
+        try:
+            end_date = end_date or date.today() + timedelta(days=30)
+            start_date = start_date or date.today() - timedelta(days=30)
+            
+            params = {
+                "from": start_date.strftime('%Y-%m-%d'),
+                "to": end_date.strftime('%Y-%m-%d'),
+                "limit": limit
+            }
+            
+            if countries:
+                params['countries'] = ','.join(countries)
+            if importance:
+                params['importance'] = importance
+                
+            data = await self._make_request("economic/events", params=params)
+            
+            if not data or not isinstance(data, list):
+                return []
+                
+            events = []
+            for item in data:
+                try:
+                    event_date = datetime.strptime(item['date'], '%Y-%m-%d %H:%M:%S') if 'date' in item else datetime.now(timezone.utc)
+                    if event_date.tzinfo is None:
+                        event_date = event_date.replace(tzinfo=timezone.utc)
+                        
+                    events.append(EconomicEvent(
+                        event=item.get('event', ''),
+                        country=item.get('country', ''),
+                        currency=item.get('currency', ''),
+                        date=event_date,
+                        importance=item.get('importance', 0),
+                        actual=self._safe_decimal(item.get('actual')),
+                        previous=self._safe_decimal(item.get('previous')),
+                        forecast=self._safe_decimal(item.get('forecast')),
+                        unit=item.get('unit', ''),
+                        source="FiscalAI"
+                    ))
+                except Exception as e:
+                    self._log_error("Event Processing", f"Error processing economic event: {e}")
+                    continue
+                    
+            return events
+            
+        except Exception as e:
+            self._log_error("Economic Events Error", f"Failed to fetch economic events: {str(e)}")
+            return []
+    
+    async def get_options_chain(
+        self, 
+        symbol: str, 
+        expiration: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
+        """Get options chain data"""
+        if not symbol:
+            return []
+            
+        try:
+            params = {}
+            if expiration:
+                params['expiration'] = expiration.strftime('%Y-%m-%d')
+                
+            data = await self._make_request(f"companies/{symbol.upper()}/options", params=params)
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            self._log_error("Options Chain Error", f"Failed to fetch options for {symbol}: {str(e)}")
+            return []
+
     async def close(self):
         """Clean up resources"""
         if self.session:

@@ -113,10 +113,8 @@ class SchedulerConfig:
         )
     }
     
-    # Symbols to track (can be loaded from database or config)
-    DEFAULT_SYMBOLS: List[str] = [
-        "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META", "NFLX", "BABA", "CRM"
-    ]
+    # Note: Symbols are now dynamically fetched from database
+    # via DatabaseService.get_tracked_symbols() method
     
     # Timezone for market hours
     MARKET_TIMEZONE = "America/New_York"
