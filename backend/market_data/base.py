@@ -450,15 +450,25 @@ class NewsArticle(BaseModel):
     
     title: str
     content: Optional[str] = None
+    summary: Optional[str] = None
     url: Optional[str] = None
     source: Optional[str] = None
+    author: Optional[str] = None
     published_date: Optional[datetime] = None
+    published_at: Optional[datetime] = None  # Alternative field name used by some providers
     image_url: Optional[str] = None
     related_symbols: List[str] = []
     provider: str
+    language: Optional[str] = 'en'
+    category: Optional[str] = None
+    sentiment: Optional[float] = None
+    sentiment_confidence: Optional[float] = None
+    relevance_score: Optional[float] = None
+    word_count: Optional[int] = None
+    tags: Optional[str] = None
 
-    @field_serializer('published_date')
-    def serialize_published_date(self, value: Optional[datetime]) -> Optional[str]:
+    @field_serializer('published_date', 'published_at')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
         return value.isoformat() if value else None
 
 

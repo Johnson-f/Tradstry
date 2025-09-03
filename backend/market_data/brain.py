@@ -52,7 +52,12 @@ from .providers import (
     TiingoProvider,
     APINinjasProvider,
     FiscalAIProvider,
-    FREDProvider
+    FREDProvider,
+    NewsAPIProvider,
+    NewsAPIAIProvider,
+    CurrentsAPIProvider,
+    MediaStackProvider,
+    GNewsProvider
 )
 
 logger = logging.getLogger(__name__)
@@ -132,7 +137,12 @@ class MarketDataBrain:
             'tiingo': TiingoProvider,
             'api_ninjas': APINinjasProvider,
             'fiscal': FiscalAIProvider,
-            'fred': FREDProvider
+            'fred': FREDProvider,
+            'newsapi': NewsAPIProvider,
+            'newsapi_ai': NewsAPIAIProvider,
+            'currents_api': CurrentsAPIProvider,
+            'mediastack': MediaStackProvider,
+            'gnews': GNewsProvider
         }
 
         for provider_name, provider_class in provider_classes.items():

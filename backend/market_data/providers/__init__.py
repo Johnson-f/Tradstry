@@ -9,6 +9,11 @@ from .tiingo import TiingoProvider
 from .api_ninjas import APINinjasProvider 
 from .fiscal import FiscalAIProvider
 from .fred import FREDProvider
+from .newsapi import NewsAPIProvider
+from .newsapi_ai import NewsAPIAIProvider
+from .currents_api import CurrentsAPIProvider
+from .mediastack import MediaStackProvider
+from .gnews import GNewsProvider
 
 __all__ = [
     'AlphaVantageProvider',
@@ -19,5 +24,10 @@ __all__ = [
     'TiingoProvider',
     'APINinjasProvider',
     'FiscalAIProvider',
-    'FREDProvider'
+    'FREDProvider',
+    'NewsAPIProvider',
+    'NewsAPIAIProvider',
+    'CurrentsAPIProvider',
+    'MediaStackProvider',
+    'GNewsProvider'
 ]
