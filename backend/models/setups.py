@@ -41,8 +41,7 @@ class SetupInDB(SetupBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TradeSetupBase(BaseModel):
     """Base model for trade-setup associations."""
@@ -77,8 +76,7 @@ class TradeSetupInDB(TradeSetupBase):
     user_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SetupWithTrades(SetupInDB):
     """Model for setup with associated trades."""

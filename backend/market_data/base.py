@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 from datetime import datetime, date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ class Interval(Enum):
 
 class StockQuote(BaseModel):
     """Standard stock quote data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     price: Decimal
     change: Decimal
@@ -61,15 +63,21 @@ class StockQuote(BaseModel):
     day_low: Optional[Decimal] = None
     source: Optional[str] = None  # Alternative to provider for some APIs
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v),
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('price', 'change', 'change_percent', 'open', 'high', 'low', 
+                     'previous_close', 'market_cap', 'pe_ratio', 'week_52_high', 
+                     'week_52_low', 'day_high', 'day_low')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class HistoricalPrice(BaseModel):
     """Historical price data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: Union[date, datetime]  # Some providers return datetime
     open: Decimal
@@ -84,16 +92,19 @@ class HistoricalPrice(BaseModel):
     provider: str
     source: Optional[str] = None  # Alternative to provider for some APIs
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v),
-            date: lambda v: v.isoformat(),
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('open', 'high', 'low', 'close', 'adjusted_close', 'adj_close', 'dividend', 'split')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('date')
+    def serialize_date(self, value: Union[date, datetime]) -> str:
+        return value.isoformat()
 
 
 class OptionQuote(BaseModel):
     """Option quote data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     underlying_symbol: str
     strike: Optional[Decimal] = None  # Some providers may not have strike initially
@@ -115,16 +126,24 @@ class OptionQuote(BaseModel):
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v),
-            date: lambda v: v.isoformat(),
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('strike', 'strike_price', 'bid', 'ask', 'last_price', 
+                     'implied_volatility', 'delta', 'gamma', 'theta', 'vega', 'rho')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('expiration', 'expiration_date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class CompanyInfo(BaseModel):
     """Company information data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: str
     company_name: Optional[str] = None  # Some providers use 'name' only
@@ -147,8 +166,11 @@ class CompanyInfo(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     pe_ratio: Optional[Decimal] = None
+    pb_ratio: Optional[Decimal] = None
     peg_ratio: Optional[Decimal] = None
     eps: Optional[Decimal] = None
+    revenue: Optional[Decimal] = None
+    net_income: Optional[Decimal] = None
     beta: Optional[Decimal] = None
     dividend_yield: Optional[Decimal] = None
     dividend_per_share: Optional[Decimal] = None
@@ -168,16 +190,29 @@ class CompanyInfo(BaseModel):
     is_fund: Optional[bool] = None
     updated_at: Optional[Union[datetime, str]] = None
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v),
-            datetime: lambda v: v.isoformat(),
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('market_cap', 'pe_ratio', 'pb_ratio', 'peg_ratio', 'eps', 'revenue', 'net_income', 'beta', 
+                     'dividend_yield', 'dividend_per_share', 'payout_ratio', 
+                     'revenue_per_share_ttm', 'profit_margin', 'roe', 'roa', 'recommendation_mean')
+    def serialize_decimal(self, value: Optional[Union[Decimal, int]]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('ipo_date')
+    def serialize_ipo_date(self, value: Optional[Union[date, str]]) -> Optional[str]:
+        if isinstance(value, date):
+            return value.isoformat()
+        return value
+
+    @field_serializer('updated_at')
+    def serialize_updated_at(self, value: Optional[Union[datetime, str]]) -> Optional[str]:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
 
 
 class EconomicEvent(BaseModel):
     """Economic event data model"""
+    model_config = ConfigDict()
+    
     event_id: str
     country: str
     event_name: str
@@ -193,16 +228,21 @@ class EconomicEvent(BaseModel):
     url: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v) if v is not None else None,
-            datetime: lambda v: v.isoformat(),
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('actual', 'previous', 'forecast')
+    def serialize_decimal_or_str(self, value: Optional[Union[Decimal, str]]) -> Optional[Union[float, str]]:
+        if isinstance(value, Decimal):
+            return float(value)
+        return value
+
+    @field_serializer('timestamp', 'last_update')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
 
 
 class EarningsCalendar(BaseModel):
     """Earnings calendar data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: date
     time: Optional[str] = None  # 'amc' (after market close), 'bmo' (before market open), 'dmh' (during market hours)
@@ -215,15 +255,19 @@ class EarningsCalendar(BaseModel):
     fiscal_quarter: Optional[int] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v) if v is not None else None,
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('eps', 'eps_estimated', 'revenue', 'revenue_estimated')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('date', 'fiscal_date_ending')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
 
 
 class EarningsCallTranscript(BaseModel):
     """Earnings call transcript data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: date
     quarter: str  # e.g., "Q1 2023"
@@ -232,28 +276,30 @@ class EarningsCallTranscript(BaseModel):
     participants: List[Dict[str, str]] = []  # List of participants with name and role
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: date) -> str:
+        return value.isoformat()
 
 
 class MotivationalQuote(BaseModel):
     """Motivational quote data model"""
+    model_config = ConfigDict()
+    
     quote: str
     author: str
     category: str
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class CompanySearchResult(BaseModel):
     """Company search result data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: str
     exchange: Optional[str] = None
@@ -261,14 +307,11 @@ class CompanySearchResult(BaseModel):
     score: Optional[float] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class FundamentalData(BaseModel):
     """Fundamental financial data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     income_statement: List[Dict[str, Any]] = []
     balance_sheet: List[Dict[str, Any]] = []
@@ -276,14 +319,11 @@ class FundamentalData(BaseModel):
     ratios: List[Dict[str, Any]] = []
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class EarningsTranscript(BaseModel):
     """Earnings call transcript data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: date
     quarter: str
@@ -292,14 +332,15 @@ class EarningsTranscript(BaseModel):
     participants: List[Dict[str, str]] = []
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: date) -> str:
+        return value.isoformat()
 
 
 class SECFiling(BaseModel):
     """SEC filing data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     filing_type: str  # e.g., '10-K', '10-Q'
     filing_date: date
@@ -309,15 +350,19 @@ class SECFiling(BaseModel):
     size: Optional[int] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('filing_date')
+    def serialize_filing_date(self, value: date) -> str:
+        return value.isoformat()
+
+    @field_serializer('accepted_date')
+    def serialize_accepted_date(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
 
 
 class CorporateAction(BaseModel):
     """Corporate action data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     action_type: str  # 'dividend', 'split', 'merger', etc.
     date: date
@@ -325,15 +370,19 @@ class CorporateAction(BaseModel):
     value: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: date) -> str:
+        return value.isoformat()
+
+    @field_serializer('value')
+    def serialize_value(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class AIQueryResult(BaseModel):
     """AI query response data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     question: str
     answer: str
@@ -342,14 +391,15 @@ class AIQueryResult(BaseModel):
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class MarketStatus(BaseModel):
     """Market status data model"""
+    model_config = ConfigDict()
+    
     market: str  # e.g., 'US', 'EU'
     status: str  # 'open', 'closed', 'pre_market', 'after_hours'
     timestamp: datetime
@@ -358,14 +408,15 @@ class MarketStatus(BaseModel):
     timezone: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('timestamp', 'next_open', 'next_close')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
 
 
 class DividendRecord(BaseModel):
     """Dividend record data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: Optional[date] = None
     declaration_date: Optional[date] = None
@@ -376,15 +427,19 @@ class DividendRecord(BaseModel):
     label: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date', 'declaration_date', 'record_date', 'payment_date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('amount', 'adjusted_amount')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class NewsArticle(BaseModel):
     """News article data model"""
+    model_config = ConfigDict()
+    
     title: str
     content: Optional[str] = None
     url: Optional[str] = None
@@ -394,14 +449,15 @@ class NewsArticle(BaseModel):
     related_symbols: List[str] = []
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('published_date')
+    def serialize_published_date(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
 
 
 class EarningsSurprise(BaseModel):
     """Earnings surprise data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: Optional[date] = None
     actual_earnings_per_share: Optional[Decimal] = None
@@ -410,15 +466,20 @@ class EarningsSurprise(BaseModel):
     earnings_surprise_percentage: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('actual_earnings_per_share', 'estimated_earnings_per_share', 
+                     'earnings_surprise', 'earnings_surprise_percentage')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class StockSplit(BaseModel):
     """Stock split data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: Optional[date] = None
     label: Optional[str] = None
@@ -426,15 +487,19 @@ class StockSplit(BaseModel):
     denominator: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('numerator', 'denominator')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class IPOCalendar(BaseModel):
     """IPO calendar data model"""
+    model_config = ConfigDict()
+    
     date: Optional[date] = None
     company: str
     symbol: str
@@ -446,15 +511,19 @@ class IPOCalendar(BaseModel):
     market_cap: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('price_range_low', 'price_range_high', 'market_cap')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class AnalystEstimates(BaseModel):
     """Analyst estimates data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     date: Optional[date] = None
     estimated_revenue_low: Optional[Decimal] = None
@@ -479,15 +548,24 @@ class AnalystEstimates(BaseModel):
     number_analysts_estimated_eps: Optional[int] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: Optional[date]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('estimated_revenue_low', 'estimated_revenue_high', 'estimated_revenue_avg',
+                     'estimated_ebitda_low', 'estimated_ebitda_high', 'estimated_ebitda_avg',
+                     'estimated_ebit_low', 'estimated_ebit_high', 'estimated_ebit_avg',
+                     'estimated_net_income_low', 'estimated_net_income_high', 'estimated_net_income_avg',
+                     'estimated_sga_expense_low', 'estimated_sga_expense_high', 'estimated_sga_expense_avg',
+                     'estimated_eps_avg', 'estimated_eps_high', 'estimated_eps_low')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class MarketHoliday(BaseModel):
     """Market holiday data model"""
+    model_config = ConfigDict()
+    
     exchange: str
     name: Optional[str] = None
     date: date
@@ -496,28 +574,30 @@ class MarketHoliday(BaseModel):
     close: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            date: lambda v: v.isoformat()
-        }
+    @field_serializer('date')
+    def serialize_date(self, value: date) -> str:
+        return value.isoformat()
 
 
 class TechnicalIndicator(BaseModel):
     """Technical indicator data model"""
+    model_config = ConfigDict()
+    
     indicator: str
     symbol: str
     values: List[Dict[str, Any]] = []
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class ForexQuote(BaseModel):
     """Forex quote data model"""
+    model_config = ConfigDict()
+    
     from_currency: str
     to_currency: str
     symbol: str
@@ -525,15 +605,19 @@ class ForexQuote(BaseModel):
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('price')
+    def serialize_price(self, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class CryptoQuote(BaseModel):
     """Cryptocurrency quote data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     price: Decimal
     size: Optional[Decimal] = None
@@ -541,28 +625,29 @@ class CryptoQuote(BaseModel):
     exchange: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('price', 'size')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
+
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class MarketIndex(BaseModel):
     """Market index data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: str
     data: Dict[str, Any]
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class ExchangeInfo(BaseModel):
     """Exchange information data model"""
+    model_config = ConfigDict()
+    
     id: Optional[int] = None
     type: Optional[str] = None
     market: Optional[str] = None
@@ -572,28 +657,26 @@ class ExchangeInfo(BaseModel):
     timezone: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class MarketConditions(BaseModel):
     """Market conditions data model"""
+    model_config = ConfigDict()
+    
     market_status: Dict[str, Any]
     major_indices: List[Dict[str, Any]] = []
     volatility_index: Optional[Dict[str, Any]] = None
     timestamp: datetime
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class TiingoFundamentalData(BaseModel):
     """Tiingo fundamental financial data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     pe_ratio: Optional[Decimal] = None
     market_cap: Optional[Decimal] = None
@@ -609,58 +692,57 @@ class TiingoFundamentalData(BaseModel):
     operating_cash_flow: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('pe_ratio', 'market_cap', 'enterprise_value', 'revenue', 'gross_profit',
+                     'operating_income', 'net_income', 'eps', 'total_assets', 'total_liabilities',
+                     'shareholders_equity', 'operating_cash_flow')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class Logo(BaseModel):
     """Company logo data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     url: Optional[str] = None
     logo_base: Optional[str] = None
     logo_quote: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class ExchangeRate(BaseModel):
     """Exchange rate data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     rate: Decimal
     timestamp: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('rate')
+    def serialize_rate(self, value: Decimal) -> float:
+        return float(value)
 
 
 class CurrencyConversion(BaseModel):
     """Currency conversion data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     rate: Decimal
     amount: Decimal
     timestamp: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('rate', 'amount')
+    def serialize_decimal(self, value: Decimal) -> float:
+        return float(value)
 
 
 class MarketMover(BaseModel):
     """Market mover data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: Optional[str] = None
     price: Optional[Decimal] = None
@@ -670,28 +752,28 @@ class MarketMover(BaseModel):
     market_cap: Optional[Decimal] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('price', 'change', 'change_percent', 'market_cap')
+    def serialize_decimal(self, value: Optional[Decimal]) -> Optional[float]:
+        return float(value) if value is not None else None
 
 
 class SimplePrice(BaseModel):
     """Simple price data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     price: Decimal
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('price')
+    def serialize_price(self, value: Decimal) -> float:
+        return float(value)
 
 
 class EodPrice(BaseModel):
     """End of day price data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     exchange: Optional[str] = None
     currency: Optional[str] = None
@@ -699,15 +781,15 @@ class EodPrice(BaseModel):
     close: Decimal
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v)
-        }
+    @field_serializer('close')
+    def serialize_close(self, value: Decimal) -> float:
+        return float(value)
 
 
 class SupportedSymbol(BaseModel):
     """Supported symbol data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: Optional[str] = None
     currency: Optional[str] = None
@@ -716,39 +798,28 @@ class SupportedSymbol(BaseModel):
     type: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class ForexPair(BaseModel):
     """Forex pair data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     currency_base: Optional[str] = None
     currency_quote: Optional[str] = None
     description: Optional[str] = None
     provider: str
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class Cryptocurrency(BaseModel):
     """Cryptocurrency data model"""
+    model_config = ConfigDict()
+    
     symbol: str
     name: Optional[str] = None
     currency: Optional[str] = None
     exchange: Optional[str] = None
     type: Optional[str] = None
     provider: str
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
 
 
 class MarketDataProvider(ABC):

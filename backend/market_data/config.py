@@ -1,7 +1,7 @@
 """Configuration management for market data providers"""
 
 from typing import Dict, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 import os
 from dotenv import load_dotenv
@@ -18,19 +18,20 @@ class ProviderPriority(Enum):
 
 class ProviderConfig(BaseModel):
     """Configuration for a single provider"""
+    model_config = ConfigDict(use_enum_values=True)
+    
     enabled: bool = True
     api_key: Optional[str] = None
     priority: ProviderPriority = ProviderPriority.MEDIUM
     rate_limit_per_minute: int = 60
     timeout_seconds: int = 30
     max_retries: int = 3
-    
-    class Config:
-        use_enum_values = True
 
 
 class MarketDataConfig(BaseModel):
     """Configuration for all market data providers"""
+    model_config = ConfigDict()
+    
     alpha_vantage: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
         api_key=os.getenv("ALPHA_VANTAGE_API_KEY"),
         priority=ProviderPriority.HIGH,
@@ -94,7 +95,8 @@ class MarketDataConfig(BaseModel):
     def get_enabled_providers(self) -> List[str]:
         """Get list of enabled providers sorted by priority"""
         providers = []
-        for name, config in self.dict().items():
+        # CHANGED: Replace .dict() with .model_dump()
+        for name, config in self.model_dump().items():
             if isinstance(config, dict) and config.get('enabled') and config.get('api_key'):
                 providers.append((name, config['priority']))
         

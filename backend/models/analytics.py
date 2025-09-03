@@ -151,8 +151,9 @@ class AnalyticsQuery(BaseModel):
     custom_start_date: Optional[datetime] = Field(default=None, description="Start date for custom period")
     custom_end_date: Optional[datetime] = Field(default=None, description="End date for custom period")
 
-    class Config:
-        use_enum_values = True
-        json_encoders = {
+    model_config = ConfigDict(
+        use_enum_values=True,
+        json_encoders={
             datetime: lambda v: v.isoformat()
         }
+    )
