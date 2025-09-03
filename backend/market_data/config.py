@@ -86,6 +86,36 @@ class MarketDataConfig(BaseModel):
         rate_limit_per_minute=120  # FRED allows 120 requests per minute
     ))
     
+    newsapi: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("NEWSAPI_KEY"),
+        priority=ProviderPriority.HIGH,
+        rate_limit_per_minute=500  # NewsAPI allows 500 requests per day (free tier)
+    ))
+    
+    newsapi_ai: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("NEWSAPI_AI_KEY"),
+        priority=ProviderPriority.HIGH,
+        rate_limit_per_minute=100  # NewsAPI.ai rate limits
+    ))
+    
+    currents_api: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("CURRENTS_API_KEY"),
+        priority=ProviderPriority.MEDIUM,
+        rate_limit_per_minute=600  # CurrentsAPI allows 600 requests per hour (free tier)
+    ))
+    
+    mediastack: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("MEDIASTACK_API_KEY"),
+        priority=ProviderPriority.MEDIUM,
+        rate_limit_per_minute=500  # MediaStack allows 500 requests per month (free tier)
+    ))
+    
+    gnews: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key=os.getenv("GNEWS_API_KEY"),
+        priority=ProviderPriority.HIGH,
+        rate_limit_per_minute=100  # GNews allows 100 requests per day (free tier)
+    ))
+    
     # Global settings
     enable_caching: bool = True
     cache_ttl_seconds: int = 300  # 5 minutes
