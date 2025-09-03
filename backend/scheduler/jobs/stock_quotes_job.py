@@ -5,7 +5,7 @@ Fetches real-time stock price data and stores using upsert functions.
 
 import logging
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from scheduler.jobs.base_job import BaseMarketDataJob

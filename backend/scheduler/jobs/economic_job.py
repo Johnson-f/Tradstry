@@ -63,7 +63,7 @@ class EconomicEventsJob(BaseMarketDataJob):
                 end_date=end_date
             )
             
-            return {"events": events_data}
+            return {"events": events_data if events_data is not None else []}
         except Exception as e:
             logger.error(f"Error fetching economic events: {e}")
             return {}
@@ -92,7 +92,7 @@ class EconomicEventsJob(BaseMarketDataJob):
                     # This is direct event data
                     valid_data_count += 1
                     event_data = event
-                    provider = event.get('provider', 'unknown')
+                    provider = getattr(event, 'provider', 'unknown')
                     
                 try:
                     # Helper function to safely convert values
@@ -104,21 +104,43 @@ class EconomicEventsJob(BaseMarketDataJob):
                         except (ValueError, TypeError):
                             return default
                     
-                    await self.db_service.execute_function(
+                    # Helper function to convert importance string to integer
+                    def convert_importance(importance_value):
+                        if importance_value is None:
+                            return None
+                        if isinstance(importance_value, int):
+                            return importance_value
+                        if isinstance(importance_value, str):
+                            importance_map = {
+                                'low': 1, 'medium': 2, 'high': 3,
+                                'Low': 1, 'Medium': 2, 'High': 3,
+                                'LOW': 1, 'MEDIUM': 2, 'HIGH': 3
+                            }
+                            return importance_map.get(importance_value, None)
+                        return None
+                    
+                    # Generate unique event ID if not present
+                    event_name = getattr(event_data, 'event_name', None) or getattr(event_data, 'name', None)
+                    # Use 'timestamp' field from EconomicEvent model, not 'event_timestamp'
+                    event_timestamp = getattr(event_data, 'timestamp', None) or getattr(event_data, 'event_timestamp', None) or getattr(event_data, 'datetime', None)
+                    event_id = getattr(event_data, 'event_id', None) or f"{event_name}_{event_timestamp}"
+                    
+                    # Call database function matching exact signature from 06_economic_events_upsert.sql
+                    result = await self.db_service.execute_function(
                         "upsert_economic_events",
-                        p_event_id=getattr(event_data, 'event_id', None) or f"{getattr(event_data, 'name', 'unknown')}_{getattr(event_data, 'date', 'unknown')}",
-                        p_country=getattr(event_data, 'country', None),
-                        p_event_name=getattr(event_data, 'event_name', None) or getattr(event_data, 'name', None),
+                        # Required parameters (lines 5-9 in SQL function)
+                        p_event_id=event_id,
+                        p_country=getattr(event_data, 'country', 'US'),
+                        p_event_name=event_name,
                         p_data_provider=provider,
-                        p_event_timestamp=getattr(event_data, 'event_timestamp', None) or getattr(event_data, 'datetime', None),
-                        
-                        # Event parameters matching SQL function signature
+                        p_event_timestamp=event_timestamp,
+                        # Optional parameters with defaults (lines 10-25 in SQL function)
                         p_event_period=getattr(event_data, 'event_period', None),
                         p_actual=safe_convert(getattr(event_data, 'actual', None), float),
                         p_previous=safe_convert(getattr(event_data, 'previous', None), float),
                         p_forecast=safe_convert(getattr(event_data, 'forecast', None), float),
                         p_unit=getattr(event_data, 'unit', None),
-                        p_importance=getattr(event_data, 'importance', None),
+                        p_importance=convert_importance(getattr(event_data, 'importance', None)),
                         p_last_update=getattr(event_data, 'last_update', None),
                         p_description=getattr(event_data, 'description', None),
                         p_url=getattr(event_data, 'url', None),
@@ -130,9 +152,14 @@ class EconomicEventsJob(BaseMarketDataJob):
                         p_status=getattr(event_data, 'status', 'scheduled'),
                         p_revised=getattr(event_data, 'revised', False)
                     )
-                    success_count += 1
-                    logger.info(f"✅ Successfully stored economic event: {getattr(event_data, 'event_name', 'unknown') or getattr(event_data, 'name', 'unknown')}")
-                    logger.info(f"   Provider: {provider}")
+                    
+                    if result is not None:
+                        success_count += 1
+                        logger.info(f"✅ Successfully stored economic event: {event_name} (ID: {result})")
+                        logger.info(f"   Provider: {provider}")
+                        logger.info(f"   Date: {event_timestamp}")
+                    else:
+                        logger.error(f"❌ Failed to store economic event: {event_name} - function returned None")
                     
                 except Exception as e:
                     logger.error(f"Failed to store economic event: {e}")
@@ -167,7 +194,21 @@ class EconomicEventsJob(BaseMarketDataJob):
                         provider = self.orchestrator.providers[provider_name]
                         
                         logger.info(f"Querying {provider_name} for economic events")
-                        events_data = await provider.get_economic_events(start_date, end_date)
+                        
+                        # Handle different provider method signatures
+                        try:
+                            # Try with date parameters first (FMP, Fiscal, etc.)
+                            events_data = await provider.get_economic_events(
+                                from_date=start_date, 
+                                to_date=end_date
+                            )
+                        except TypeError:
+                            try:
+                                # Try with no parameters (Finnhub, TwelveData, etc.)
+                                events_data = await provider.get_economic_events()
+                            except Exception as fallback_e:
+                                logger.warning(f"Provider {provider_name} failed with both signatures: {fallback_e}")
+                                continue
                         
                         if events_data and len(events_data) > 0:
                             provider_contributions[provider_name] = len(events_data)
@@ -193,7 +234,7 @@ class EconomicEventsJob(BaseMarketDataJob):
             
             if not all_events:
                 logger.warning("No providers returned valid economic events data")
-                return None
+                return []
             
             # Remove duplicates based on event name and date
             unique_events = {}
@@ -254,7 +295,7 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
             logger.info("Using basic fetch with provider fallback")
             indicators_data = await self._fetch_indicators_with_fallback()
             
-            return {"indicators": indicators_data}
+            return {"indicators": indicators_data if indicators_data is not None else []}
         except Exception as e:
             logger.error(f"Error fetching economic indicators: {e}")
             return {}
@@ -283,7 +324,7 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
                     # This is direct indicator data
                     valid_data_count += 1
                     indicator_data = indicator
-                    provider = indicator.get('provider', 'unknown')
+                    provider = getattr(indicator, 'provider', 'unknown')
                     
                 try:
                     # Helper function to safely convert values
@@ -295,12 +336,32 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
                         except (ValueError, TypeError):
                             return default
                     
-                    await self.db_service.execute_function(
+                    # Helper function to convert importance string to integer
+                    def convert_importance(importance_value):
+                        if importance_value is None:
+                            return None
+                        if isinstance(importance_value, int):
+                            return importance_value
+                        if isinstance(importance_value, str):
+                            importance_map = {
+                                'low': 1, 'medium': 2, 'high': 3,
+                                'Low': 1, 'Medium': 2, 'High': 3,
+                                'LOW': 1, 'MEDIUM': 2, 'HIGH': 3
+                            }
+                            return importance_map.get(importance_value, None)
+                        return None
+                    
+                    # Extract indicator details
+                    indicator_code = getattr(indicator_data, 'indicator_code', None) or getattr(indicator_data, 'code', None)
+                    indicator_name = getattr(indicator_data, 'indicator_name', None) or getattr(indicator_data, 'name', None)
+                    period_date = getattr(indicator_data, 'period_date', None) or getattr(indicator_data, 'date', None)
+                    
+                    result = await self.db_service.execute_function(
                         "upsert_economic_indicators",
-                        p_indicator_code=getattr(indicator_data, 'indicator_code', None) or getattr(indicator_data, 'code', None),
-                        p_indicator_name=getattr(indicator_data, 'indicator_name', None) or getattr(indicator_data, 'name', None),
+                        p_indicator_code=indicator_code,
+                        p_indicator_name=indicator_name,
                         p_country=getattr(indicator_data, 'country', None),
-                        p_period_date=getattr(indicator_data, 'period_date', None) or getattr(indicator_data, 'date', None),
+                        p_period_date=period_date,
                         p_data_provider=provider,
                         
                         # Indicator parameters matching SQL function signature
@@ -315,7 +376,7 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
                         p_currency=getattr(indicator_data, 'currency', 'USD'),
                         p_seasonal_adjustment=getattr(indicator_data, 'seasonal_adjustment', True),
                         p_preliminary=getattr(indicator_data, 'preliminary', False),
-                        p_importance_level=getattr(indicator_data, 'importance_level', None),
+                        p_importance_level=convert_importance(getattr(indicator_data, 'importance_level', None)),
                         p_market_impact=getattr(indicator_data, 'market_impact', None),
                         p_consensus_estimate=safe_convert(getattr(indicator_data, 'consensus_estimate', None), float),
                         p_surprise=safe_convert(getattr(indicator_data, 'surprise', None), float),
@@ -326,9 +387,14 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
                         p_last_revised=getattr(indicator_data, 'last_revised', None),
                         p_revision_count=safe_convert(getattr(indicator_data, 'revision_count', None), int, 0)
                     )
-                    success_count += 1
-                    logger.info(f"✅ Successfully stored economic indicator: {getattr(indicator_data, 'indicator_name', 'unknown') or getattr(indicator_data, 'name', 'unknown')}")
-                    logger.info(f"   Provider: {provider}")
+                    
+                    if result is not None:
+                        success_count += 1
+                        logger.info(f"✅ Successfully stored economic indicator: {indicator_name} (ID: {result})")
+                        logger.info(f"   Provider: {provider}")
+                        logger.info(f"   Code: {indicator_code}, Date: {period_date}")
+                    else:
+                        logger.error(f"❌ Failed to store economic indicator: {indicator_name} - function returned None")
                     
                 except Exception as e:
                     logger.error(f"Failed to store economic indicator: {e}")
@@ -363,6 +429,12 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
                         provider = self.orchestrator.providers[provider_name]
                         
                         logger.info(f"Querying {provider_name} for economic indicators")
+                        
+                        # Check if provider has the method
+                        if not hasattr(provider, 'get_economic_indicators'):
+                            logger.debug(f"Provider {provider_name} does not have get_economic_indicators method")
+                            continue
+                            
                         indicators_data = await provider.get_economic_indicators()
                         
                         if indicators_data and len(indicators_data) > 0:
@@ -389,7 +461,7 @@ class EconomicIndicatorsJob(BaseMarketDataJob):
             
             if not all_indicators:
                 logger.warning("No providers returned valid economic indicators data")
-                return None
+                return []
             
             # Remove duplicates based on indicator code and period date
             unique_indicators = {}

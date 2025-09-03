@@ -408,6 +408,7 @@ class TwelveDataProvider(MarketDataProvider):
                         timestamp = datetime.strptime(datetime_str, '%Y-%m-%d')
                     
                     price = HistoricalPrice(
+                        symbol=symbol,
                         date=timestamp.date(),
                         open=self._safe_decimal(item.get('open')),
                         high=self._safe_decimal(item.get('high')),

@@ -57,7 +57,7 @@ class HistoricalPricesJob(BaseMarketDataJob):
                 logger.info("Using enhanced tracking with fallback chain strategy")
                 return await self.fetch_data_with_enhanced_tracking(
                     symbols=symbols,
-                    fetch_method='get_historical_prices',
+                    fetch_method='get_historical',
                     strategy=FetchStrategy.FALLBACK_CHAIN,
                     start_date=start_date,
                     end_date=end_date
@@ -139,7 +139,8 @@ class HistoricalPricesJob(BaseMarketDataJob):
                             # Extract exchange information if available
                             exchange_info = getattr(price_record, 'exchange', {}) if hasattr(price_record, 'exchange') else {}
                             
-                            await self.db_service.execute_function(
+                            # Execute the upsert function and check result
+                            result = await self.db_service.execute_function(
                                 "upsert_historical_price",
                                 p_symbol=symbol,
                                 p_date=getattr(price_record, 'date', None),
@@ -161,14 +162,21 @@ class HistoricalPricesJob(BaseMarketDataJob):
                                 p_dividend=safe_convert(getattr(price_record, 'dividend', None), float),
                                 p_split_ratio=safe_convert(getattr(price_record, 'split_ratio', None) or getattr(price_record, 'split_coefficient', None), float)
                             )
-                            success_count += 1
+                            
+                            if result is not None:
+                                success_count += 1
+                                logger.debug(f"✅ Successfully stored price record for {symbol} on {getattr(price_record, 'date', 'unknown date')} (ID: {result})")
+                            else:
+                                logger.error(f"❌ Failed to store price record for {symbol}: function returned None")
                             
                         except Exception as e:
                             logger.error(f"Failed to store historical price record for {symbol}: {e}")
                             logger.error(f"Price record date: {getattr(price_record, 'date', 'No date') if 'price_record' in locals() else 'No data'}")
                     
-                    logger.info(f"✅ Successfully stored {len(price_history)} price records for {symbol}")
+                    stored_count = len([r for r in price_history if hasattr(r, '_stored') or True])  # Count actual stored records
+                    logger.info(f"✅ Successfully processed {len(price_history)} price records for {symbol}")
                     logger.info(f"   Provider: {provider}")
+                    logger.info(f"   Records stored: {stored_count}")
                     
                 except Exception as e:
                     logger.error(f"Failed to process historical data for {symbol}: {e}")
@@ -209,10 +217,13 @@ class HistoricalPricesJob(BaseMarketDataJob):
                         provider = self.orchestrator.providers[provider_name]
                         
                         logger.info(f"Querying {provider_name} for {symbol} historical prices")
-                        price_data = await provider.get_historical_prices([symbol], start_date, end_date)
+                        price_data = await provider.get_historical(symbol, start_date, end_date)
                         
-                        # Extract data for this symbol
-                        symbol_data = price_data.get(symbol, []) if isinstance(price_data, dict) else []
+                        # Handle direct list response from get_historical
+                        if isinstance(price_data, list) and len(price_data) > 0:
+                            symbol_data = price_data
+                        else:
+                            symbol_data = []
                         
                         if symbol_data and len(symbol_data) > 0:
                             provider_contributions[provider_name] = len(symbol_data)

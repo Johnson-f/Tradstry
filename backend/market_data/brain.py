@@ -51,7 +51,8 @@ from .providers import (
     FMPProvider,
     TiingoProvider,
     APINinjasProvider,
-    FiscalAIProvider
+    FiscalAIProvider,
+    FREDProvider
 )
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,8 @@ class MarketDataBrain:
             'fmp': FMPProvider,
             'tiingo': TiingoProvider,
             'api_ninjas': APINinjasProvider,
-            'fiscal': FiscalAIProvider
+            'fiscal': FiscalAIProvider,
+            'fred': FREDProvider
         }
 
         for provider_name, provider_class in provider_classes.items():
