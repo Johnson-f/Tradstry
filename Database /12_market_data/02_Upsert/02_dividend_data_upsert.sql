@@ -38,12 +38,14 @@ DECLARE
 BEGIN
     -- Step 1: Handle exchange upsert if exchange data is provided
     IF p_exchange_code IS NOT NULL THEN
-        -- Call the exchange upsert function
+        -- Call the exchange upsert function with all required parameters
         SELECT upsert_exchange(
             p_exchange_code,
             p_exchange_name,
             p_exchange_country,
-            p_exchange_timezone
+            p_exchange_timezone,
+            p_currency,
+            p_data_provider
         ) INTO v_exchange_id;
     END IF;
 
