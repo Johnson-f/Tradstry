@@ -96,7 +96,8 @@ class FMPProvider(MarketDataProvider):
             params = {}
             
         params['apikey'] = self.api_key
-        url = f"{self.base_url}/{version}/{endpoint.lstrip('/')}"
+        # Remove version from URL construction since base_url already includes v3
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         # Implement rate limiting
         if self.last_request_time is not None:
@@ -337,23 +338,24 @@ class FMPProvider(MarketDataProvider):
             return None
             
         try:
-            # Get company profile
+            # Get company profile using current API endpoint
             profile_data = await self._make_request(f"profile/{symbol.upper()}")
             if not profile_data or not isinstance(profile_data, list) or not profile_data[0]:
                 return None
                 
             profile = profile_data[0]
             
-            # Get additional company metrics
+            # Get additional company metrics using current API endpoint
             metrics_data = await self._make_request(f"key-metrics-ttm/{symbol.upper()}?limit=1")
             metrics = metrics_data[0] if metrics_data and isinstance(metrics_data, list) else {}
             
-            # Get company ratings
+            # Get company ratings using current API endpoint
             rating_data = await self._make_request(f"rating/{symbol.upper()}")
             rating = rating_data[0] if rating_data and isinstance(rating_data, list) else {}
             
             return CompanyInfo(
                 symbol=symbol.upper(),
+                name=profile.get('companyName', ''),
                 company_name=profile.get('companyName', ''),
                 description=profile.get('description', ''),
                 sector=profile.get('sector', ''),
@@ -370,14 +372,18 @@ class FMPProvider(MarketDataProvider):
                 address=profile.get('address', ''),
                 market_cap=self._safe_decimal(profile.get('mktCap')),
                 pe_ratio=self._safe_decimal(profile.get('pe')),
+                pb_ratio=self._safe_decimal(metrics.get('pbRatioTTM')),
                 beta=self._safe_decimal(profile.get('beta')),
                 dividend_yield=self._safe_decimal(profile.get('lastDiv')),
                 dividend_per_share=self._safe_decimal(metrics.get('dividendYieldTTM')),
                 payout_ratio=self._safe_decimal(metrics.get('payoutRatioTTM')),
                 revenue_per_share_ttm=self._safe_decimal(metrics.get('revenuePerShareTTM')),
+                revenue=self._safe_decimal(metrics.get('revenueTTM')),
+                net_income=self._safe_decimal(metrics.get('netIncomeTTM')),
                 profit_margin=self._safe_decimal(metrics.get('netProfitMarginTTM')),
                 roe=self._safe_decimal(metrics.get('roeTTM')),
                 roa=self._safe_decimal(metrics.get('roaTTM')),
+                ipo_date=profile.get('ipoDate'),
                 recommendation_mean=self._safe_decimal(rating.get('ratingRecommendationMean')),
                 recommendation_key=rating.get('ratingRecommendation', ''),
                 updated_at=datetime.now(timezone.utc),

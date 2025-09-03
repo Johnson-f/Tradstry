@@ -1,6 +1,6 @@
 """
 Base job class for market data fetching operations.
-Provides common functionality for all data fetching jobs.
+Provides common functionality for all data fetching jobs with enhanced tracking and fallback.
 """
 
 import logging
@@ -10,6 +10,8 @@ from datetime import datetime
 import asyncio
 
 from scheduler.database_service import SchedulerDatabaseService
+from scheduler.data_fetch_tracker import DataFetchTracker, DataType
+from scheduler.enhanced_provider_manager import EnhancedProviderManager, FetchStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -18,13 +20,21 @@ logger = logging.getLogger(__name__)
 class BaseMarketDataJob(ABC):
     """
     Abstract base class for market data fetching jobs.
-    Provides common functionality and interface for all data types.
+    Provides common functionality and interface for all data types with enhanced tracking.
     """
     
-    def __init__(self, database_service: SchedulerDatabaseService):
-        """Initialize the job with database service."""
+    def __init__(
+        self, 
+        database_service: SchedulerDatabaseService,
+        data_tracker: Optional[DataFetchTracker] = None,
+        provider_manager: Optional[EnhancedProviderManager] = None
+    ):
+        """Initialize the job with database service and optional tracking components."""
         self.db_service = database_service
         self.job_name = self.__class__.__name__
+        self.data_tracker = data_tracker
+        self.provider_manager = provider_manager
+        self.enable_enhanced_tracking = data_tracker is not None and provider_manager is not None
         
     @abstractmethod
     async def fetch_data(self, symbols: List[str]) -> Dict[str, Any]:
@@ -54,7 +64,7 @@ class BaseMarketDataJob(ABC):
     
     async def execute(self, symbols: Optional[List[str]] = None) -> bool:
         """
-        Execute the complete job: fetch and store data.
+        Execute the complete job: fetch and store data with enhanced tracking.
         
         Args:
             symbols: Optional list of symbols. If None, uses default symbols.
@@ -63,6 +73,7 @@ class BaseMarketDataJob(ABC):
             True if job completed successfully, False otherwise
         """
         start_time = datetime.now()
+        job_id = f"{self.job_name}_{int(start_time.timestamp())}"
         
         try:
             # Use default symbols if none provided
@@ -74,6 +85,15 @@ class BaseMarketDataJob(ABC):
                 return True
             
             logger.info(f"{self.job_name}: Starting job for {len(symbols)} symbols")
+            
+            # Check for retry candidates if enhanced tracking is enabled
+            if self.enable_enhanced_tracking:
+                data_type = self._get_data_type()
+                retry_symbols = self.data_tracker.get_retry_candidates(data_type)
+                if retry_symbols:
+                    logger.info(f"{self.job_name}: Found {len(retry_symbols)} symbols ready for retry")
+                    # Add retry symbols to the processing list
+                    symbols = list(set(symbols + retry_symbols))
             
             # Fetch data from external API
             data = await self.fetch_data(symbols)
@@ -98,6 +118,54 @@ class BaseMarketDataJob(ABC):
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"{self.job_name}: Failed after {duration:.2f}s - {str(e)}")
             return False
+    
+    @abstractmethod
+    def _get_data_type(self) -> DataType:
+        """
+        Get the data type for this job (used for tracking).
+        Must be implemented by subclasses.
+        
+        Returns:
+            DataType enum value for this job
+        """
+        pass
+    
+    async def fetch_data_with_enhanced_tracking(
+        self,
+        symbols: List[str],
+        fetch_method: str,
+        strategy: FetchStrategy = FetchStrategy.MOST_RELIABLE,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Enhanced fetch method that uses the provider manager and tracking system.
+        
+        Args:
+            symbols: List of symbols to fetch
+            fetch_method: Method name to call on MarketDataBrain
+            strategy: Fetch strategy to use
+            **kwargs: Additional arguments for the fetch method
+            
+        Returns:
+            Dictionary containing fetched data
+        """
+        if not self.enable_enhanced_tracking:
+            # Fall back to regular fetch_data method
+            return await self.fetch_data(symbols)
+        
+        data_type = self._get_data_type()
+        job_id = f"{self.job_name}_{int(datetime.now().timestamp())}"
+        
+        results = await self.provider_manager.fetch_with_enhanced_fallback(
+            symbols=symbols,
+            data_type=data_type,
+            fetch_method=fetch_method,
+            strategy=strategy,
+            job_id=job_id,
+            **kwargs
+        )
+        
+        return results
     
     async def _get_default_symbols(self) -> List[str]:
         """

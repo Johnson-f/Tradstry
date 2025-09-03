@@ -247,122 +247,130 @@ class TiingoProvider(MarketDataProvider):
                     
                     # Make the request
                     start_time = time.monotonic()
-                    async with self.session.request(
-                        method=method,
-                        url=url,
-                        params=params,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=30)
-                    ) as response:
-                        self.last_request_time = asyncio.get_event_loop().time()
-                        
-                        # Log response
-                        response_time = (time.monotonic() - start_time) * 1000  # ms
-                        response_ctx = {
-                            **request_ctx,
-                            'status': response.status,
-                            'elapsed_ms': response_time,
-                            'retry_after': None
-                        }
-                        
-                        # Handle rate limiting
-                        if response.status == 429:  # Too Many Requests
-                            retry_after = float(response.headers.get('Retry-After', 60))
-                            response_ctx['retry_after'] = retry_after
+                    try:
+                        async with self.session.request(
+                            method=method,
+                            url=url,
+                            params=params,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            self.last_request_time = asyncio.get_event_loop().time()
                             
-                            if self.log_requests:
-                                self.logger.warning(
-                                    f"Rate limited - retrying after {retry_after}s",
-                                    extra=response_ctx
-                                )
+                            # Log response
+                            response_time = (time.monotonic() - start_time) * 1000  # ms
+                            response_ctx = {
+                                **request_ctx,
+                                'status': response.status,
+                                'elapsed_ms': response_time,
+                                'retry_after': None
+                            }
+                            
+                            # Handle rate limiting
+                            if response.status == 429:  # Too Many Requests
+                                retry_after = float(response.headers.get('Retry-After', 60))
+                                response_ctx['retry_after'] = retry_after
                                 
-                            await asyncio.sleep(retry_after)
-                            continue
-                            
-                        # Handle successful response
-                        if 200 <= response.status < 300:
-                            data = await response.json()
-                            
-                            if self.log_requests:
-                                response_ctx['success'] = True
-                                self.logger.debug(
-                                    f"Request successful in {response_time:.2f}ms",
-                                    extra=response_ctx
-                                )
+                                if self.log_requests:
+                                    self.logger.warning(
+                                        f"Rate limited - retrying after {retry_after}s",
+                                        extra=response_ctx
+                                    )
+                                    
+                                await asyncio.sleep(retry_after)
+                                continue
                                 
-                            return data
-                            
-                        # Handle error responses
-                        error_text = await response.text()
-                        error_ctx = {
-                            **response_ctx,
-                            'error': error_text,
-                            'success': False
-                        }
-                        
-                        self._log_error(
-                            f"API Request Failed ({response.status})",
-                            Exception(error_text)
-                        )
-                        
-                        # If server error, retry with backoff
-                        if response.status >= 500 and attempt < retries:
-                            backoff = backoff_factor * (2 ** attempt)
-                            error_ctx['backoff'] = backoff
-                            
-                            if self.log_requests:
-                                self.logger.warning(
-                                    f"Server error - retrying in {backoff:.2f}s",
-                                    extra=error_ctx
-                                )
+                            # Handle successful response
+                            if 200 <= response.status < 300:
+                                data = await response.json()
                                 
-                            await asyncio.sleep(backoff)
-                            continue
+                                if self.log_requests:
+                                    response_ctx['success'] = True
+                                    self.logger.debug(
+                                        f"Request successful in {response_time:.2f}ms",
+                                        extra=response_ctx
+                                    )
+                                    
+                                return data
+                                
+                            # Handle error responses
+                            error_text = await response.text()
+                            error_ctx = {
+                                **response_ctx,
+                                'error': error_text,
+                                'success': False
+                            }
                             
-                        return None
-                        
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    error_ctx = {
-                        **request_ctx,
-                        'error': str(e),
-                        'success': False,
-                        'exception_type': type(e).__name__
-                    }
-                    
-                    self._log_error("Network Error", e)
-                    
-                    if attempt == retries:
-                        if self.log_requests:
-                            self.logger.error(
-                                f"Max retries ({retries}) exceeded",
-                                extra=error_ctx,
-                                exc_info=True
+                            self._log_error(
+                                f"API Request Failed ({response.status})",
+                                Exception(error_text)
                             )
-                        return None
-                    
-                    # Exponential backoff
-                    backoff = backoff_factor * (2 ** attempt)
-                    error_ctx['backoff'] = backoff
-                    
-                    if self.log_requests:
-                        self.logger.warning(
-                            f"Network error - retrying in {backoff:.2f}s",
-                            extra=error_ctx
-                        )
+                            
+                            # If server error, retry with backoff
+                            if response.status >= 500 and attempt < retries:
+                                backoff = backoff_factor * (2 ** attempt)
+                                error_ctx['backoff'] = backoff
+                                
+                                if self.log_requests:
+                                    self.logger.warning(
+                                        f"Server error - retrying in {backoff:.2f}s",
+                                        extra=error_ctx
+                                    )
+                                    
+                                await asyncio.sleep(backoff)
+                                continue
+                                
+                            return None
+                            
+                    except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as e:
+                        error_ctx = {
+                            'request_id': request_ctx.get('request_id', 'unknown'),
+                            'error': str(e),
+                            'success': False,
+                            'exception_type': type(e).__name__,
+                            'elapsed_ms': 0.0
+                        }
+                        error_ctx.update(request_ctx)
                         
-                    await asyncio.sleep(backoff)
+                        self._log_error("Network Error", e)
+                        
+                        if attempt == retries:
+                            if self.log_requests:
+                                self.logger.error(
+                                    f"Max retries ({retries}) exceeded",
+                                    extra=error_ctx,
+                                    exc_info=True
+                                )
+                            return None
+                        
+                        # Exponential backoff
+                        backoff = backoff_factor * (2 ** attempt)
+                        error_ctx['backoff'] = backoff
+                        
+                        if self.log_requests:
+                            self.logger.warning(
+                                f"Network error - retrying in {backoff:.2f}s",
+                                extra=error_ctx
+                            )
+                            
+                        await asyncio.sleep(backoff)
                     
                 except Exception as e:
                     self._log_error("Unexpected Error", e)
                     if self.log_requests:
+                        # Ensure request_id is in context
+                        error_context = {
+                            'request_id': request_ctx.get('request_id', 'unknown'),
+                            'error': str(e),
+                            'success': False,
+                            'exception_type': type(e).__name__,
+                            'elapsed_ms': 0.0
+                        }
+                        error_context.update(request_ctx)
+                        
                         self.logger.error(
                             "Unexpected error in _make_request",
-                            extra={
-                                **request_ctx,
-                                'error': str(e),
-                                'success': False,
-                                'exception_type': type(e).__name__
-                            },
+                            extra=error_context,
                             exc_info=True
                         )
                     return None

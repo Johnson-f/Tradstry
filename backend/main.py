@@ -37,9 +37,8 @@ app.include_router(scheduler_router, prefix=get_settings().API_PREFIX)
 async def startup_event():
     """Initialize and start the market data scheduler on app startup."""
     try:
-        # Initialize database service and market data orchestrator
-        supabase = get_supabase()
-        db_service = SchedulerDatabaseService(supabase)
+        # Initialize database service with admin client for data operations
+        db_service = SchedulerDatabaseService()  # Uses admin client by default
         orchestrator = MarketDataBrain()
         
         # Create and configure scheduler service

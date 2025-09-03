@@ -30,3 +30,14 @@ def get_supabase_cached() -> Client:
         supabase_url=settings.SUPABASE_URL,
         supabase_key=settings.SUPABASE_KEY
     )
+
+@lru_cache()
+def get_supabase_admin_client():
+    """
+    Get Supabase client with admin privileges for backend operations.
+    Uses service role key for administrative operations.
+    """
+    return create_client(
+        supabase_url=settings.SUPABASE_URL,
+        supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY
+    )

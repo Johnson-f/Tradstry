@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, Optional, List
 from supabase import Client
 from datetime import datetime
+from database import get_supabase_admin_client
 
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,9 @@ logger = logging.getLogger(__name__)
 class SchedulerDatabaseService:
     """Simplified database service for scheduler operations."""
     
-    def __init__(self, supabase_client: Client):
-        """Initialize with Supabase client."""
-        self.supabase = supabase_client
+    def __init__(self, supabase_client: Client = None):
+        """Initialize with Supabase client. Uses admin client if none provided."""
+        self.supabase = supabase_client or get_supabase_admin_client()
     
     async def execute_function(self, function_name: str, **kwargs) -> Optional[int]:
         """
@@ -40,17 +41,27 @@ class SchedulerDatabaseService:
                     else:
                         params[k] = v
             
+            logger.info(f"Executing function {function_name} with params: {list(params.keys())}")
+            
             # Execute the function
             response = self.supabase.rpc(function_name, params).execute()
             
-            if response.data:
-                return response.data
+            # Check for errors in the response
+            if hasattr(response, 'error') and response.error:
+                logger.error(f"Database function error: {response.error}")
+                raise Exception(f"Database function error: {response.error}")
             
-            return None
+            if response.data is not None:
+                logger.info(f"Function {function_name} executed successfully, returned: {response.data}")
+                return response.data
+            else:
+                logger.warning(f"Function {function_name} returned None/empty data")
+                return None
             
         except Exception as e:
-            logger.error(f"Error executing function {function_name}: {e}")
-            return None
+            logger.error(f"Error executing function {function_name} with params {params}: {e}")
+            # Re-raise the exception so the caller knows it failed
+            raise e
     
     async def execute_query(self, query: str) -> Optional[List]:
         """

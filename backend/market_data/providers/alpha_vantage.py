@@ -266,6 +266,12 @@ class AlphaVantageProvider(MarketDataProvider):
                     data.get('Country', '')
                 ),
                 founded=data.get('FiscalYearEnd'),
+                # Add missing fields from Alpha Vantage OVERVIEW
+                pe_ratio=self._safe_decimal(data.get('PERatio', '0')) or None,
+                pb_ratio=self._safe_decimal(data.get('PriceToBookRatio', '0')) or None,
+                dividend_yield=self._safe_decimal(data.get('DividendYield', '0')) or None,
+                revenue=self._safe_int(data.get('RevenueTTM', '0')) or None,
+                net_income=self._safe_int(data.get('NetIncomeTTM', '0')) or None,
                 provider=self.name
             )
         except Exception as e:

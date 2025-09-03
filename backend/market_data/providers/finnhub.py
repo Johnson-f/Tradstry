@@ -316,7 +316,7 @@ class FinnhubProvider(MarketDataProvider):
             # Extract metrics if available
             metrics = metrics_data.get('metric', {}) if metrics_data else {}
             
-            # Build company info
+            # Build company info with enhanced field mappings
             return CompanyInfo(
                 symbol=symbol.upper(),
                 name=profile_data.get('name', ''),
@@ -329,7 +329,11 @@ class FinnhubProvider(MarketDataProvider):
                 logo=profile_data.get('logo', ''),
                 market_cap=self._safe_decimal(metrics.get('marketCapitalization')),
                 pe_ratio=self._safe_decimal(metrics.get('peNormalizedAnnual')),
+                pb_ratio=self._safe_decimal(metrics.get('pbAnnual')),
                 dividend_yield=self._safe_decimal(metrics.get('dividendYieldIndicatedAnnual')),
+                revenue=self._safe_decimal(metrics.get('revenueTTM')),
+                net_income=self._safe_decimal(metrics.get('netIncomeTTM')),
+                ipo_date=profile_data.get('ipo'),
                 beta=self._safe_decimal(metrics.get('beta')),
                 year_high=self._safe_decimal(metrics.get('52WeekHigh')),
                 year_low=self._safe_decimal(metrics.get('52WeekLow')),

@@ -10,6 +10,8 @@ from datetime import datetime
 
 from scheduler.jobs.base_job import BaseMarketDataJob
 from market_data.brain import MarketDataBrain
+from scheduler.data_fetch_tracker import DataType, DataFetchTracker
+from scheduler.enhanced_provider_manager import EnhancedProviderManager, FetchStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -18,10 +20,20 @@ logger = logging.getLogger(__name__)
 class StockQuotesJob(BaseMarketDataJob):
     """Job for fetching and storing real-time stock quotes."""
     
-    def __init__(self, database_service, market_data_orchestrator: MarketDataBrain):
+    def __init__(
+        self, 
+        database_service, 
+        market_data_orchestrator: MarketDataBrain,
+        data_tracker: DataFetchTracker = None,
+        provider_manager: EnhancedProviderManager = None
+    ):
         """Initialize with database service and market data orchestrator."""
-        super().__init__(database_service)
+        super().__init__(database_service, data_tracker, provider_manager)
         self.orchestrator = market_data_orchestrator
+    
+    def _get_data_type(self) -> DataType:
+        """Get the data type for this job."""
+        return DataType.STOCK_QUOTES
     
     async def fetch_data(self, symbols: List[str]) -> Dict[str, Any]:
         """
@@ -36,6 +48,15 @@ class StockQuotesJob(BaseMarketDataJob):
         try:
             logger.info(f"Fetching stock quotes for {len(symbols)} symbols")
             
+            # Use enhanced tracking if available
+            if self.enable_enhanced_tracking:
+                return await self.fetch_data_with_enhanced_tracking(
+                    symbols=symbols,
+                    fetch_method='get_multiple_quotes',
+                    strategy=FetchStrategy.FASTEST_FIRST  # Quotes benefit from speed
+                )
+            
+            # Fallback to original implementation
             quotes_data = {}
             
             # Fetch quotes using the orchestrator

@@ -23,8 +23,7 @@ class FolderInDB(FolderBase):
     updated_at: datetime
     total_count: Optional[int] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NoteBase(BaseModel):
     folder_id: UUID
@@ -57,8 +56,7 @@ class NoteInDB(NoteBase):
     content_preview: Optional[str] = None
     total_count: Optional[int] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NoteUpsertResponse(BaseModel):
     note_id: UUID
@@ -96,8 +94,7 @@ class TagInDB(TagBase):
     updated_at: datetime
     note_count: Optional[int] = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TagNoteRequest(BaseModel):
     """Request to tag/untag a note"""
@@ -136,6 +133,5 @@ class TemplateInDB(TemplateBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
