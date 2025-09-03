@@ -227,6 +227,14 @@ class EconomicEvent(BaseModel):
     description: Optional[str] = None
     url: Optional[str] = None
     provider: str
+    # Additional fields to match database function signature
+    category: Optional[str] = None
+    frequency: Optional[str] = None
+    source: Optional[str] = None
+    currency: Optional[str] = 'USD'
+    market_impact: Optional[str] = None
+    status: Optional[str] = 'scheduled'
+    revised: Optional[bool] = False
 
     @field_serializer('actual', 'previous', 'forecast')
     def serialize_decimal_or_str(self, value: Optional[Union[Decimal, str]]) -> Optional[Union[float, str]]:

@@ -32,14 +32,54 @@ class SchedulerDatabaseService:
             Function result or None if failed
         """
         try:
-            # Filter out None values and serialize datetime objects
-            params = {}
-            for k, v in kwargs.items():
-                if v is not None:
-                    if hasattr(v, 'isoformat'):  # datetime objects
-                        params[k] = v.isoformat()
+            # For economic events, ensure all parameters are provided to match function signature
+            if function_name == "upsert_economic_events":
+                # Define all parameters with defaults to match SQL function signature
+                # Order matches the expected alphabetical order from error message
+                all_params = {
+                    'p_actual': kwargs.get('p_actual'),
+                    'p_category': kwargs.get('p_category'),
+                    'p_country': kwargs.get('p_country', 'US'),
+                    'p_currency': kwargs.get('p_currency', 'USD'),
+                    'p_data_provider': kwargs.get('p_data_provider'),
+                    'p_description': kwargs.get('p_description'),
+                    'p_event_id': kwargs.get('p_event_id'),
+                    'p_event_name': kwargs.get('p_event_name'),
+                    'p_event_period': kwargs.get('p_event_period'),
+                    'p_event_timestamp': kwargs.get('p_event_timestamp'),
+                    'p_forecast': kwargs.get('p_forecast'),
+                    'p_frequency': kwargs.get('p_frequency'),
+                    'p_importance': kwargs.get('p_importance'),
+                    'p_last_update': kwargs.get('p_last_update'),
+                    'p_market_impact': kwargs.get('p_market_impact'),
+                    'p_previous': kwargs.get('p_previous'),
+                    'p_revised': kwargs.get('p_revised', False),
+                    'p_source': kwargs.get('p_source'),
+                    'p_status': kwargs.get('p_status', 'scheduled'),
+                    'p_unit': kwargs.get('p_unit'),
+                    'p_url': kwargs.get('p_url')
+                }
+                
+                # Serialize datetime objects and include all params (even None values)
+                params = {}
+                for k, v in all_params.items():
+                    if v is not None:
+                        if hasattr(v, 'isoformat'):  # datetime objects
+                            params[k] = v.isoformat()
+                        else:
+                            params[k] = v
                     else:
-                        params[k] = v
+                        # Include None values as null for database function
+                        params[k] = None
+            else:
+                # Filter out None values and serialize datetime objects for other functions
+                params = {}
+                for k, v in kwargs.items():
+                    if v is not None:
+                        if hasattr(v, 'isoformat'):  # datetime objects
+                            params[k] = v.isoformat()
+                        else:
+                            params[k] = v
             
             logger.info(f"Executing function {function_name} with params: {list(params.keys())}")
             

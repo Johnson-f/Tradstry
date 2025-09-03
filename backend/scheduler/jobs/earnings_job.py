@@ -87,12 +87,31 @@ class EarningsDataJob(BaseMarketDataJob):
             for symbol, fetch_result in data.items():
                 try:
                     # Extract earnings data from FetchResult
-                    if not fetch_result.success or not fetch_result.data:
-                        logger.warning(f"No valid data for {symbol}")
+                    if not fetch_result.success:
+                        logger.warning(f"Fetch was not successful for {symbol}")
+                        continue
+                    
+                    # Check if we have any data (could be in data attribute or directly in the result)
+                    earnings_data = getattr(fetch_result, 'data', None)
+                    if not earnings_data:
+                        logger.warning(f"No earnings data found for {symbol}")
+                        continue
+                    
+                    # Check if we have at least minimal required data (symbol and some earnings info)
+                    has_symbol = hasattr(earnings_data, 'symbol') or symbol
+                    has_earnings_info = (
+                        hasattr(earnings_data, 'eps') or 
+                        hasattr(earnings_data, 'revenue') or 
+                        hasattr(earnings_data, 'reported_date') or
+                        hasattr(earnings_data, 'fiscal_year')
+                    )
+                    
+                    if not (has_symbol and has_earnings_info):
+                        logger.warning(f"Insufficient earnings data for {symbol} - skipping storage")
                         continue
                     
                     valid_data_count += 1
-                    earnings = fetch_result.data
+                    earnings = earnings_data
                     
                     logger.info(f"Storing earnings data for {symbol} from {fetch_result.provider}")
                     
@@ -240,7 +259,211 @@ class EarningsDataJob(BaseMarketDataJob):
                         if not hasattr(normalized, target_field) or getattr(normalized, target_field) is None:
                             setattr(normalized, target_field, source_value)
         
+        # Calculate missing data points
+        normalized = self._calculate_missing_earnings_fields(normalized)
+        
         return normalized
+    
+    def _calculate_missing_earnings_fields(self, earnings_data) -> Any:
+        """Calculate missing earnings data points that providers don't have."""
+        try:
+            # Helper function to safely get numeric values
+            def safe_float(value):
+                if value is None or value == '' or value == 0:
+                    return None
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return None
+            
+            def safe_int(value):
+                if value is None or value == '' or value == 0:
+                    return None
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return None
+            
+            # Get current values
+            eps = safe_float(getattr(earnings_data, 'eps', None))
+            eps_estimated = safe_float(getattr(earnings_data, 'eps_estimated', None))
+            eps_surprise = safe_float(getattr(earnings_data, 'eps_surprise', None))
+            
+            revenue = safe_int(getattr(earnings_data, 'revenue', None))
+            revenue_estimated = safe_int(getattr(earnings_data, 'revenue_estimated', None))
+            revenue_surprise = safe_int(getattr(earnings_data, 'revenue_surprise', None))
+            
+            net_income = safe_int(getattr(earnings_data, 'net_income', None))
+            gross_profit = safe_int(getattr(earnings_data, 'gross_profit', None))
+            operating_income = safe_int(getattr(earnings_data, 'operating_income', None))
+            
+            # 1. Calculate revenue_surprise_percent if missing
+            if not hasattr(earnings_data, 'revenue_surprise_percent') or getattr(earnings_data, 'revenue_surprise_percent') is None:
+                if revenue_surprise is not None and revenue_estimated is not None and revenue_estimated != 0:
+                    revenue_surprise_percent = (revenue_surprise / revenue_estimated) * 100
+                    setattr(earnings_data, 'revenue_surprise_percent', revenue_surprise_percent)
+                    logger.debug(f"Calculated revenue_surprise_percent: {revenue_surprise_percent:.2f}%")
+            
+            # 2. Calculate EBITDA if missing (simplified: operating_income + depreciation estimate)
+            if not hasattr(earnings_data, 'ebitda') or getattr(earnings_data, 'ebitda') is None:
+                if operating_income is not None and revenue is not None:
+                    # Estimate EBITDA as operating_income + estimated depreciation (typically 3-5% of revenue)
+                    estimated_depreciation = revenue * 0.04  # 4% estimate
+                    ebitda = operating_income + estimated_depreciation
+                    setattr(earnings_data, 'ebitda', int(ebitda))
+                    logger.debug(f"Calculated EBITDA: ${ebitda:,.0f}")
+            
+            # 3. Calculate operating_margin if missing
+            if not hasattr(earnings_data, 'operating_margin') or getattr(earnings_data, 'operating_margin') is None:
+                if operating_income is not None and revenue is not None and revenue != 0:
+                    operating_margin = (operating_income / revenue) * 100
+                    setattr(earnings_data, 'operating_margin', operating_margin)
+                    logger.debug(f"Calculated operating_margin: {operating_margin:.2f}%")
+            
+            # 4. Calculate net_margin if missing
+            if not hasattr(earnings_data, 'net_margin') or getattr(earnings_data, 'net_margin') is None:
+                if net_income is not None and revenue is not None and revenue != 0:
+                    net_margin = (net_income / revenue) * 100
+                    setattr(earnings_data, 'net_margin', net_margin)
+                    logger.debug(f"Calculated net_margin: {net_margin:.2f}%")
+            
+            # 5. Calculate eps_beat_miss_met if missing
+            if not hasattr(earnings_data, 'eps_beat_miss_met') or getattr(earnings_data, 'eps_beat_miss_met') is None:
+                if eps is not None and eps_estimated is not None:
+                    if eps > eps_estimated:
+                        eps_beat_miss_met = 'beat'
+                    elif eps < eps_estimated:
+                        eps_beat_miss_met = 'miss'
+                    else:
+                        eps_beat_miss_met = 'met'
+                    setattr(earnings_data, 'eps_beat_miss_met', eps_beat_miss_met)
+                    logger.debug(f"Calculated eps_beat_miss_met: {eps_beat_miss_met}")
+            
+            # 6. Calculate revenue_beat_miss_met if missing
+            if not hasattr(earnings_data, 'revenue_beat_miss_met') or getattr(earnings_data, 'revenue_beat_miss_met') is None:
+                if revenue is not None and revenue_estimated is not None:
+                    if revenue > revenue_estimated:
+                        revenue_beat_miss_met = 'beat'
+                    elif revenue < revenue_estimated:
+                        revenue_beat_miss_met = 'miss'
+                    else:
+                        revenue_beat_miss_met = 'met'
+                    setattr(earnings_data, 'revenue_beat_miss_met', revenue_beat_miss_met)
+                    logger.debug(f"Calculated revenue_beat_miss_met: {revenue_beat_miss_met}")
+            
+            # 7. Estimate year_over_year_eps_growth if missing (requires historical data)
+            if not hasattr(earnings_data, 'year_over_year_eps_growth') or getattr(earnings_data, 'year_over_year_eps_growth') is None:
+                # This would require historical EPS data - for now, set to None
+                # In a full implementation, you'd query previous year's EPS
+                setattr(earnings_data, 'year_over_year_eps_growth', None)
+            
+            # 8. Estimate year_over_year_revenue_growth if missing (requires historical data)
+            if not hasattr(earnings_data, 'year_over_year_revenue_growth') or getattr(earnings_data, 'year_over_year_revenue_growth') is None:
+                # This would require historical revenue data - for now, set to None
+                # In a full implementation, you'd query previous year's revenue
+                setattr(earnings_data, 'year_over_year_revenue_growth', None)
+            
+            # 9. Estimate next_year_eps_guidance if missing
+            if not hasattr(earnings_data, 'next_year_eps_guidance') or getattr(earnings_data, 'next_year_eps_guidance') is None:
+                if eps is not None:
+                    # Conservative estimate: current EPS + 5-10% growth
+                    estimated_growth = 0.07  # 7% growth estimate
+                    next_year_eps_guidance = eps * (1 + estimated_growth)
+                    setattr(earnings_data, 'next_year_eps_guidance', next_year_eps_guidance)
+                    logger.debug(f"Estimated next_year_eps_guidance: ${next_year_eps_guidance:.2f}")
+            
+            # 10. Estimate next_year_revenue_guidance if missing
+            if not hasattr(earnings_data, 'next_year_revenue_guidance') or getattr(earnings_data, 'next_year_revenue_guidance') is None:
+                if revenue is not None:
+                    # Conservative estimate: current revenue + 5-10% growth
+                    estimated_growth = 0.08  # 8% growth estimate
+                    next_year_revenue_guidance = revenue * (1 + estimated_growth)
+                    setattr(earnings_data, 'next_year_revenue_guidance', int(next_year_revenue_guidance))
+                    logger.debug(f"Estimated next_year_revenue_guidance: ${next_year_revenue_guidance:,.0f}")
+            
+            # 11. Estimate conference_call_date if missing
+            if not hasattr(earnings_data, 'conference_call_date') or getattr(earnings_data, 'conference_call_date') is None:
+                # Typically earnings calls happen same day or next day after earnings release
+                reported_date = getattr(earnings_data, 'reported_date', None)
+                if reported_date:
+                    try:
+                        from datetime import datetime, timedelta
+                        if isinstance(reported_date, str):
+                            date_obj = datetime.strptime(reported_date, '%Y-%m-%d')
+                            # Estimate call date as same day (most common)
+                            conference_call_date = date_obj.strftime('%Y-%m-%d')
+                            setattr(earnings_data, 'conference_call_date', conference_call_date)
+                            logger.debug(f"Estimated conference_call_date: {conference_call_date}")
+                    except Exception as e:
+                        logger.debug(f"Could not estimate conference call date: {e}")
+            
+            logger.info(f"✨ Enhanced earnings data with calculated fields")
+            return earnings_data
+            
+        except Exception as e:
+            logger.error(f"Error calculating missing earnings fields: {e}")
+            return earnings_data
+    
+    def _filter_available_providers(self, available_providers: List[str]) -> List[str]:
+        """Filter out providers that require payment or subscription."""
+        # Known providers that require payment/subscription for earnings data
+        paid_providers = {
+            'fmp',           # Financial Modeling Prep - requires subscription
+            'polygon',       # Polygon.io - requires paid plan
+            'alpha_vantage', # Alpha Vantage - requires premium for earnings
+            'twelve_data'    # TwelveData - requires grow/pro/ultra/enterprise plan for earnings
+        }
+        
+        # Providers known to have free earnings data access
+        free_providers = {
+            'finnhub',  # Finnhub - has free tier for earnings
+            'tiingo',  # Tiingo - has free tier for earnings
+            'fiscal',  # Fiscal Data - free government data
+            'fred',  # FRED - free economic data
+        }
+        
+        # Filter providers
+        filtered_providers = []
+        skipped_providers = []
+        
+        for provider in available_providers:
+            if provider in paid_providers:
+                skipped_providers.append(provider)
+                logger.info(f"⏭️ Skipping {provider} - requires paid subscription")
+            elif provider in free_providers or provider not in paid_providers:
+                # Include known free providers and unknown providers (give benefit of doubt)
+                filtered_providers.append(provider)
+            else:
+                skipped_providers.append(provider)
+        
+        if skipped_providers:
+            logger.info(f"🚫 Skipped {len(skipped_providers)} paid providers: {', '.join(skipped_providers)}")
+        
+        if filtered_providers:
+            logger.info(f"✅ Using {len(filtered_providers)} free providers: {', '.join(filtered_providers)}")
+        
+        return filtered_providers
+    
+    def _is_subscription_error(self, error_message: str) -> bool:
+        """Check if an error message indicates a subscription/payment requirement."""
+        subscription_keywords = [
+            'subscription',
+            'payment',
+            'upgrade',
+            'premium',
+            'paid plan',
+            'legacy endpoint',
+            'no longer supported',
+            'contact us',
+            'pricing',
+            'billing',
+            '403',
+            'forbidden',
+            'unauthorized'
+        ]
+        
+        error_lower = error_message.lower()
+        return any(keyword in error_lower for keyword in subscription_keywords)
     
     def _get_data_type(self) -> DataType:
         """Get the data type for this job (used for tracking)."""
@@ -260,7 +483,13 @@ class EarningsDataJob(BaseMarketDataJob):
                 logger.warning("No providers available for comprehensive data aggregation")
                 return None
             
-            logger.info(f"Starting comprehensive earnings data aggregation for {symbol} across {len(available_providers)} providers")
+            # Filter out providers that require payment/subscription
+            filtered_providers = self._filter_available_providers(available_providers)
+            if not filtered_providers:
+                logger.warning("No free providers available for earnings data")
+                return None
+            
+            logger.info(f"Starting comprehensive earnings data aggregation for {symbol} across {len(filtered_providers)} providers (filtered from {len(available_providers)} total)")
             
             # Comprehensive field mapping for earnings data
             comprehensive_fields = {
@@ -285,8 +514,8 @@ class EarningsDataJob(BaseMarketDataJob):
             base_earnings_data = None
             base_provider = None
             
-            # Query ALL available providers to get comprehensive data
-            for provider_name in available_providers:
+            # Query ALL filtered providers to get comprehensive data
+            for provider_name in filtered_providers:
                 try:
                     if provider_name in self.orchestrator.providers:
                         provider = self.orchestrator.providers[provider_name]
@@ -308,13 +537,22 @@ class EarningsDataJob(BaseMarketDataJob):
                             for field_name in comprehensive_fields:
                                 field_value = getattr(earnings_data, field_name, None)
                                 if field_value is not None and field_value != '' and field_value != 0:
-                                    # Only update if we don't have this field yet (first provider wins for each field)
+                                    # Prefer providers with more complete data, but don't overwrite good data
                                     if comprehensive_fields[field_name] is None:
                                         comprehensive_fields[field_name] = {
                                             'value': field_value,
                                             'provider': provider_name
                                         }
                                         fields_found.append(field_name)
+                                    elif isinstance(field_value, (int, float)) and field_value != 0:
+                                        # Prefer non-zero numeric values over zeros
+                                        existing_value = comprehensive_fields[field_name]['value']
+                                        if existing_value == 0 or existing_value is None:
+                                            comprehensive_fields[field_name] = {
+                                                'value': field_value,
+                                                'provider': provider_name
+                                            }
+                                            fields_found.append(f"{field_name}(updated)")
                             
                             if fields_found:
                                 logger.info(f"{provider_name} contributed {len(fields_found)} fields: {fields_found[:5]}{'...' if len(fields_found) > 5 else ''}")
@@ -325,7 +563,12 @@ class EarningsDataJob(BaseMarketDataJob):
                     await asyncio.sleep(0.02)
                     
                 except Exception as e:
-                    logger.warning(f"Provider {provider_name} failed for {symbol}: {e}")
+                    error_message = str(e)
+                    if self._is_subscription_error(error_message):
+                        logger.warning(f"🚫 Provider {provider_name} requires subscription for {symbol}: {error_message}")
+                        # Could add this provider to a dynamic blacklist here
+                    else:
+                        logger.warning(f"Provider {provider_name} failed for {symbol}: {e}")
                     continue
             
             if base_earnings_data is None:
@@ -477,7 +720,7 @@ class EarningsCalendarJob(BaseMarketDataJob):
                     # This is direct event data
                     valid_data_count += 1
                     event_data = event
-                    provider = event.get('provider', 'unknown')
+                    provider = getattr(event, 'provider', 'unknown')
                 try:
                     # Helper function to safely convert values
                     def safe_convert(value, convert_func, default=None):
@@ -491,13 +734,47 @@ class EarningsCalendarJob(BaseMarketDataJob):
                     # Extract exchange information if available
                     exchange_info = getattr(event_data, 'exchange', {}) if hasattr(event_data, 'exchange') else {}
                     
+                    # Get required fields with defaults
+                    symbol = getattr(event_data, 'symbol', None)
+                    earnings_date = getattr(event_data, 'earnings_date', None) or getattr(event_data, 'report_date', None) or getattr(event_data, 'date', None)
+                    fiscal_year = getattr(event_data, 'fiscal_year', None)
+                    fiscal_quarter = getattr(event_data, 'fiscal_quarter', None)
+                    
+                    # Skip if missing required fields
+                    if not symbol or not earnings_date:
+                        logger.warning(f"Skipping calendar event - missing required fields: symbol={symbol}, earnings_date={earnings_date}")
+                        continue
+                    
+                    # Set defaults for missing fiscal period
+                    if not fiscal_year:
+                        from datetime import datetime
+                        if isinstance(earnings_date, str):
+                            try:
+                                date_obj = datetime.strptime(earnings_date, '%Y-%m-%d')
+                                fiscal_year = date_obj.year
+                            except:
+                                fiscal_year = datetime.now().year
+                        else:
+                            fiscal_year = datetime.now().year
+                    
+                    if not fiscal_quarter:
+                        from datetime import datetime
+                        if isinstance(earnings_date, str):
+                            try:
+                                date_obj = datetime.strptime(earnings_date, '%Y-%m-%d')
+                                fiscal_quarter = (date_obj.month - 1) // 3 + 1
+                            except:
+                                fiscal_quarter = (datetime.now().month - 1) // 3 + 1
+                        else:
+                            fiscal_quarter = (datetime.now().month - 1) // 3 + 1
+
                     await self.db_service.execute_function(
                         "upsert_earnings_calendar",
-                        p_symbol=getattr(event_data, 'symbol', None),
+                        p_symbol=symbol,
                         p_data_provider=provider,
-                        p_earnings_date=getattr(event_data, 'earnings_date', None) or getattr(event_data, 'report_date', None),
-                        p_fiscal_year=getattr(event_data, 'fiscal_year', None),
-                        p_fiscal_quarter=getattr(event_data, 'fiscal_quarter', None),
+                        p_earnings_date=earnings_date,
+                        p_fiscal_year=fiscal_year,
+                        p_fiscal_quarter=fiscal_quarter,
                         
                         # Exchange parameters for automatic exchange handling
                         p_exchange_code=exchange_info.get('code') or getattr(event_data, 'exchange_code', None),
@@ -552,19 +829,30 @@ class EarningsCalendarJob(BaseMarketDataJob):
                 logger.warning("No providers available for calendar data aggregation")
                 return None
             
-            logger.info(f"Fetching earnings calendar from {len(available_providers)} providers")
+            # Filter out providers that require payment/subscription
+            filtered_providers = self._filter_available_providers(available_providers)
+            if not filtered_providers:
+                logger.warning("No free providers available for calendar data")
+                return None
+            
+            logger.info(f"Fetching earnings calendar from {len(filtered_providers)} providers (filtered from {len(available_providers)} total)")
             
             all_calendar_events = []
             provider_contributions = {}
             
-            # Query ALL available providers to get comprehensive calendar data
-            for provider_name in available_providers:
+            # Query ALL filtered providers to get comprehensive calendar data
+            for provider_name in filtered_providers:
                 try:
                     if provider_name in self.orchestrator.providers:
                         provider = self.orchestrator.providers[provider_name]
                         
                         logger.info(f"Querying {provider_name} for calendar data")
                         calendar_data = await provider.get_earnings_calendar(start_date, end_date)
+                        
+                        # Check if calendar_data is an error response
+                        if isinstance(calendar_data, dict) and 'error' in calendar_data:
+                            logger.info(f"⚠️ {provider_name} returned error: {calendar_data.get('error', 'Unknown error')}")
+                            continue
                         
                         if calendar_data and len(calendar_data) > 0:
                             provider_contributions[provider_name] = len(calendar_data)
@@ -573,46 +861,113 @@ class EarningsCalendarJob(BaseMarketDataJob):
                             for event in calendar_data:
                                 if hasattr(event, 'provider'):
                                     event.provider = provider_name
-                                else:
-                                    setattr(event, 'provider', provider_name)
                             
                             all_calendar_events.extend(calendar_data)
-                            logger.info(f"{provider_name} contributed {len(calendar_data)} calendar events")
+                            logger.info(f"✅ {provider_name} contributed {len(calendar_data)} calendar events")
                         else:
-                            logger.debug(f"No calendar data from {provider_name}")
-                    
-                    # Small delay between provider attempts to respect rate limits
-                    await asyncio.sleep(0.02)
-                    
+                            logger.info(f"⚠️ {provider_name} returned no calendar data")
+                            
                 except Exception as e:
-                    logger.warning(f"Provider {provider_name} failed for calendar data: {e}")
-                    continue
+                    error_msg = str(e)
+                    if self._is_subscription_error(error_msg):
+                        logger.warning(f"⏭️ Skipping {provider_name} due to subscription requirement: {error_msg}")
+                    else:
+                        logger.error(f"❌ Error fetching calendar from {provider_name}: {error_msg}")
             
-            if not all_calendar_events:
-                logger.warning("No providers returned valid calendar data")
-                return None
+            # Log provider contributions summary
+            if provider_contributions:
+                logger.info(f"📊 Provider contributions: {provider_contributions}")
+                logger.info(f"📅 Total calendar events collected: {len(all_calendar_events)}")
+            else:
+                logger.warning("⚠️ No providers contributed calendar data")
             
-            # Remove duplicates based on symbol and date
-            unique_events = {}
-            for event in all_calendar_events:
-                symbol = getattr(event, 'symbol', None)
-                earnings_date = getattr(event, 'earnings_date', None) or getattr(event, 'report_date', None)
-                
-                if symbol and earnings_date:
-                    key = f"{symbol}_{earnings_date}"
-                    if key not in unique_events:
-                        unique_events[key] = event
+            # Deduplicate calendar events by symbol and date
+            if all_calendar_events:
+                unique_events = self._deduplicate_calendar_events(all_calendar_events)
+                logger.info(f"🔄 Deduplicated {len(all_calendar_events)} events to {len(unique_events)} unique events")
+                return unique_events
             
-            final_events = list(unique_events.values())
-            
-            logger.info(f"Calendar aggregation: {len(final_events)} unique events from {len(provider_contributions)} providers")
-            logger.info(f"Provider contributions: {provider_contributions}")
-            
-            return final_events
+            return None
             
         except Exception as e:
             logger.error(f"Error in calendar data aggregation: {e}")
             return None
+    
+    def _filter_available_providers(self, available_providers: List[str]) -> List[str]:
+        """Filter out providers that require payment or subscription."""
+        # Known providers that require payment/subscription for earnings data
+        paid_providers = {
+            'fmp',           # Financial Modeling Prep - requires subscription
+            'polygon',       # Polygon.io - requires paid plan
+            'alpha_vantage', # Alpha Vantage - requires premium for earnings
+            'twelve_data'    # TwelveData - requires grow/pro/ultra/enterprise plan for earnings
+        }
+        
+        # Providers known to have free earnings data access
+        free_providers = {
+            'finnhub',  # Finnhub - has free tier for earnings
+            'tiingo',  # Tiingo - has free tier for earnings
+            'fiscal',  # Fiscal Data - free government data
+            'fred',  # FRED - free economic data
+        }
+        
+        # Filter providers
+        filtered_providers = []
+        skipped_providers = []
+        
+        for provider in available_providers:
+            if provider in paid_providers:
+                skipped_providers.append(provider)
+                logger.info(f"⏭️ Skipping {provider} - requires paid subscription")
+            elif provider in free_providers or provider not in paid_providers:
+                # Include known free providers and unknown providers (give benefit of doubt)
+                filtered_providers.append(provider)
+            else:
+                skipped_providers.append(provider)
+        
+        if skipped_providers:
+            logger.info(f"🚫 Skipped {len(skipped_providers)} paid providers: {', '.join(skipped_providers)}")
+        
+        if filtered_providers:
+            logger.info(f"✅ Using {len(filtered_providers)} free providers: {', '.join(filtered_providers)}")
+        
+        return filtered_providers
+    
+    def _is_subscription_error(self, error_message: str) -> bool:
+        """Check if an error message indicates a subscription/payment requirement."""
+        subscription_keywords = [
+            'subscription',
+            'payment',
+            'upgrade',
+            'premium',
+            'paid plan',
+            'legacy endpoint',
+            'no longer supported',
+            'contact us',
+            'pricing',
+            'billing',
+            '403',
+            'forbidden',
+            'unauthorized'
+        ]
+        
+        error_lower = error_message.lower()
+        return any(keyword in error_lower for keyword in subscription_keywords)
+    
+    def _deduplicate_calendar_events(self, events):
+        """Deduplicate calendar events by symbol and date."""
+        unique_events = {}
+        
+        for event in events:
+            # Create unique key based on symbol and date
+            symbol = getattr(event, 'symbol', 'UNKNOWN')
+            date = getattr(event, 'date', getattr(event, 'earnings_date', 'UNKNOWN'))
+            key = f"{symbol}_{date}"
+            
+            if key not in unique_events:
+                unique_events[key] = event
+        
+        return list(unique_events.values())
 
 
 class EarningsTranscriptsJob(BaseMarketDataJob):

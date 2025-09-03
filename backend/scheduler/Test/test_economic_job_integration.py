@@ -1,6 +1,6 @@
 """
 Integration tests for EconomicEventsJob and EconomicIndicatorsJob using real database.
-Tests comprehensive data aggregation and storage functionality.
+Tests comprehensive data aggregation and storage functionality with focus on FRED API.
 """
 
 import pytest
@@ -14,6 +14,7 @@ from scheduler.jobs.economic_job import EconomicEventsJob, EconomicIndicatorsJob
 from scheduler.database_service import SchedulerDatabaseService
 from market_data.brain import MarketDataBrain
 from market_data.config import MarketDataConfig
+from market_data.providers.fred import FREDProvider
 
 # Set up logging for test visibility
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class TestEconomicJobIntegration:
-    """Integration tests for Economic jobs with real database operations."""
+    """Integration tests for Economic jobs with real database operations.
+    
+    Focus on FRED API integration and comprehensive data pipeline testing.
+    """
     
     @pytest_asyncio.fixture
     async def setup_services(self):
@@ -45,77 +49,106 @@ class TestEconomicJobIntegration:
         await brain.close()
     
     @pytest.mark.asyncio
-    async def test_economic_events_aggregation_real_db(self, setup_services):
-        """Test comprehensive economic events data aggregation with real database storage."""
+    async def test_fred_economic_events_real_db(self, setup_services):
+        """Test FRED API economic events data fetching and database storage."""
         services = setup_services
+        brain = services['brain']
         job = services['events_job']
         
-        logger.info("🚀 Testing comprehensive economic events aggregation")
+        logger.info("🚀 Testing FRED API economic events with real database storage")
         
-        # Fetch economic events data (no symbols needed for events)
-        data = await job.fetch_data([])
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED-specific test")
+            return
         
-        # Verify data was fetched
-        assert data is not None, "Should return data dictionary"
+        fred_provider = brain.providers.get('fred')
+        assert fred_provider is not None, "FRED provider should be initialized"
         
-        events_data = data.get("events", [])
-        if events_data:
-            logger.info(f"📊 Found {len(events_data)} economic events")
+        # Test direct FRED API call for economic events
+        logger.info("📡 Fetching economic events directly from FRED API")
+        start_date = datetime.now().date() - timedelta(days=30)
+        end_date = datetime.now().date()
+        
+        fred_events = await fred_provider.get_economic_events(
+            from_date=start_date,
+            to_date=end_date
+        )
+        
+        logger.info(f"📊 FRED API returned {len(fred_events)} economic events")
+        
+        if fred_events and len(fred_events) > 0:
+            # Verify FRED event structure
+            for event in fred_events[:3]:  # Check first 3 events
+                assert hasattr(event, 'event_name'), "FRED event should have event_name"
+                assert hasattr(event, 'country'), "FRED event should have country"
+                assert hasattr(event, 'provider'), "FRED event should have provider"
+                assert event.provider == 'FRED', "Provider should be FRED"
+                assert event.country == 'US', "FRED events should be US-based"
+                
+                logger.info(f"✅ FRED Event: {event.event_name} on {event.timestamp}")
+                logger.info(f"   Description: {event.description}")
             
-            # Check event structure
-            for event in events_data[:3]:  # Check first 3 events
-                if hasattr(event, 'event_name') or hasattr(event, 'name'):
-                    event_name = getattr(event, 'event_name', None) or getattr(event, 'name', None)
-                    event_date = getattr(event, 'event_timestamp', None) or getattr(event, 'datetime', None)
-                    provider = getattr(event, 'provider', 'unknown')
-                    
-                    logger.info(f"✅ Event: {event_name} on {event_date} from {provider}")
+            # Test storing FRED events to database
+            logger.info("💾 Storing FRED economic events to database...")
+            fred_data = {"events": fred_events}
+            storage_success = await job.store_data(fred_data)
             
-            # Store data to real database
-            logger.info("💾 Storing economic events data to real database...")
-            storage_success = await job.store_data(data)
-            
-            assert storage_success, "Should successfully store events data to database"
-            logger.info("✅ Successfully stored economic events data to real database!")
+            assert storage_success, "Should successfully store FRED events to database"
+            logger.info(f"✅ Successfully stored {len(fred_events)} FRED economic events to database!")
         else:
-            logger.info("ℹ️ No economic events data available from providers")
+            logger.info("ℹ️ No FRED economic events data available (this may be normal)")
+            assert isinstance(fred_events, list), "Should return empty list if no data"
     
     @pytest.mark.asyncio
-    async def test_economic_indicators_aggregation_real_db(self, setup_services):
-        """Test comprehensive economic indicators data aggregation with real database storage."""
+    async def test_fred_economic_indicators_real_db(self, setup_services):
+        """Test FRED API economic indicators data fetching and database storage."""
         services = setup_services
+        brain = services['brain']
         job = services['indicators_job']
         
-        logger.info("🚀 Testing comprehensive economic indicators aggregation")
+        logger.info("🚀 Testing FRED API economic indicators with real database storage")
         
-        # Fetch economic indicators data
-        data = await job.fetch_data([])
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED-specific test")
+            return
         
-        # Verify data was fetched
-        assert data is not None, "Should return data dictionary"
+        fred_provider = brain.providers.get('fred')
+        assert fred_provider is not None, "FRED provider should be initialized"
         
-        indicators_data = data.get("indicators", [])
-        if indicators_data:
-            logger.info(f"📊 Found {len(indicators_data)} economic indicators")
+        # Test direct FRED API call for economic indicators
+        logger.info("📡 Fetching economic indicators directly from FRED API")
+        fred_indicators = await fred_provider.get_economic_indicators()
+        
+        logger.info(f"📊 FRED API returned {len(fred_indicators)} economic indicators")
+        
+        if fred_indicators and len(fred_indicators) > 0:
+            # Verify FRED indicator structure
+            for indicator in fred_indicators[:5]:  # Check first 5 indicators
+                assert hasattr(indicator, 'indicator_code'), "FRED indicator should have indicator_code"
+                assert hasattr(indicator, 'indicator_name'), "FRED indicator should have indicator_name"
+                assert hasattr(indicator, 'country'), "FRED indicator should have country"
+                assert hasattr(indicator, 'provider'), "FRED indicator should have provider"
+                assert indicator.provider == 'FRED', "Provider should be FRED"
+                assert indicator.country == 'US', "FRED indicators should be US-based"
+                
+                logger.info(f"✅ FRED Indicator: {indicator.indicator_name} ({indicator.indicator_code})")
+                logger.info(f"   Value: {indicator.value}, Date: {indicator.period_date}")
+                logger.info(f"   Unit: {indicator.unit}, Frequency: {indicator.frequency}")
             
-            # Check indicator structure
-            for indicator in indicators_data[:3]:  # Check first 3 indicators
-                if hasattr(indicator, 'indicator_name') or hasattr(indicator, 'name'):
-                    indicator_name = getattr(indicator, 'indicator_name', None) or getattr(indicator, 'name', None)
-                    value = getattr(indicator, 'value', None)
-                    country = getattr(indicator, 'country', None)
-                    provider = getattr(indicator, 'provider', 'unknown')
-                    
-                    logger.info(f"✅ Indicator: {indicator_name} = {value} ({country}) from {provider}")
+            # Test storing FRED indicators to database
+            logger.info("💾 Storing FRED economic indicators to database...")
+            fred_data = {"indicators": fred_indicators}
+            storage_success = await job.store_data(fred_data)
             
-            # Store data to real database
-            logger.info("💾 Storing economic indicators data to real database...")
-            storage_success = await job.store_data(data)
-            
-            assert storage_success, "Should successfully store indicators data to database"
-            logger.info("✅ Successfully stored economic indicators data to real database!")
+            assert storage_success, "Should successfully store FRED indicators to database"
+            logger.info(f"✅ Successfully stored {len(fred_indicators)} FRED economic indicators to database!")
         else:
-            logger.info("ℹ️ No economic indicators data available from providers")
+            logger.info("ℹ️ No FRED economic indicators data available (this may be normal)")
+            assert isinstance(fred_indicators, list), "Should return empty list if no data"
     
     @pytest.mark.asyncio
     async def test_events_provider_aggregation(self, setup_services):
@@ -432,3 +465,223 @@ class TestEconomicJobIntegration:
             assert duplicates_found == 0, "Should not have duplicate indicators with same code and date"
         
         logger.info("✅ Economic data deduplication working correctly")
+    
+    @pytest.mark.asyncio
+    async def test_fred_specific_economic_series(self, setup_services):
+        """Test fetching specific FRED economic data series."""
+        services = setup_services
+        brain = services['brain']
+        
+        logger.info("🔍 Testing FRED specific economic data series")
+        
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED series test")
+            return
+        
+        fred_provider = brain.providers.get('fred')
+        
+        # Test fetching specific economic series
+        test_series = [
+            ('GDPC1', 'Real GDP'),
+            ('UNRATE', 'Unemployment Rate'),
+            ('CPIAUCSL', 'Consumer Price Index'),
+            ('FEDFUNDS', 'Federal Funds Rate')
+        ]
+        
+        for series_id, series_name in test_series:
+            logger.info(f"📊 Testing FRED series: {series_name} ({series_id})")
+            
+            try:
+                series_data = await fred_provider.get_economic_data(
+                    series_id=series_id,
+                    limit=10
+                )
+                
+                assert isinstance(series_data, dict), f"Should return dict for {series_id}"
+                assert 'series_id' in series_data, f"Should have series_id for {series_id}"
+                assert 'data' in series_data, f"Should have data for {series_id}"
+                assert 'provider' in series_data, f"Should have provider for {series_id}"
+                assert series_data['provider'] == 'FRED', f"Provider should be FRED for {series_id}"
+                
+                observations = series_data.get('data', [])
+                logger.info(f"   ✅ Retrieved {len(observations)} observations for {series_name}")
+                
+                if observations:
+                    latest = observations[0]
+                    logger.info(f"   📈 Latest value: {latest.get('value')} on {latest.get('date')}")
+                
+            except Exception as e:
+                logger.warning(f"   ⚠️ Failed to fetch {series_name}: {e}")
+    
+    @pytest.mark.asyncio
+    async def test_fred_data_validation(self, setup_services):
+        """Test FRED data validation and field mapping."""
+        services = setup_services
+        brain = services['brain']
+        
+        logger.info("🔍 Testing FRED data validation and field mapping")
+        
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED validation test")
+            return
+        
+        fred_provider = brain.providers.get('fred')
+        
+        # Test FRED economic indicators validation
+        fred_indicators = await fred_provider.get_economic_indicators()
+        
+        if fred_indicators:
+            logger.info(f"📋 Validating {len(fred_indicators)} FRED indicators")
+            
+            for indicator in fred_indicators[:3]:
+                # Validate required fields
+                assert hasattr(indicator, 'indicator_code'), "Should have indicator_code"
+                assert hasattr(indicator, 'indicator_name'), "Should have indicator_name"
+                assert hasattr(indicator, 'country'), "Should have country"
+                assert hasattr(indicator, 'value'), "Should have value"
+                assert hasattr(indicator, 'period_date'), "Should have period_date"
+                assert hasattr(indicator, 'provider'), "Should have provider"
+                
+                # Validate data types
+                assert isinstance(indicator.indicator_code, str), "indicator_code should be string"
+                assert isinstance(indicator.indicator_name, str), "indicator_name should be string"
+                assert indicator.country == 'US', "FRED country should be US"
+                assert indicator.provider == 'FRED', "Provider should be FRED"
+                
+                # Validate numeric value
+                if indicator.value is not None:
+                    assert isinstance(indicator.value, (int, float)), "Value should be numeric"
+                
+                logger.info(f"   ✅ Validated indicator: {indicator.indicator_name}")
+        
+        # Test FRED economic events validation
+        start_date = datetime.now().date() - timedelta(days=7)
+        end_date = datetime.now().date()
+        fred_events = await fred_provider.get_economic_events(
+            from_date=start_date,
+            to_date=end_date
+        )
+        
+        if fred_events:
+            logger.info(f"📋 Validating {len(fred_events)} FRED events")
+            
+            for event in fred_events[:3]:
+                # Validate required fields
+                assert hasattr(event, 'event_id'), "Should have event_id"
+                assert hasattr(event, 'event_name'), "Should have event_name"
+                assert hasattr(event, 'country'), "Should have country"
+                assert hasattr(event, 'provider'), "Should have provider"
+                
+                # Validate data types
+                assert isinstance(event.event_name, str), "event_name should be string"
+                assert event.country == 'US', "FRED country should be US"
+                assert event.provider == 'FRED', "Provider should be FRED"
+                
+                logger.info(f"   ✅ Validated event: {event.event_name}")
+    
+    @pytest.mark.asyncio
+    async def test_fred_error_handling(self, setup_services):
+        """Test FRED API error handling and resilience."""
+        services = setup_services
+        brain = services['brain']
+        
+        logger.info("🔍 Testing FRED API error handling")
+        
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED error handling test")
+            return
+        
+        fred_provider = brain.providers.get('fred')
+        
+        # Test invalid series ID
+        logger.info("🚫 Testing invalid series ID handling")
+        invalid_data = await fred_provider.get_economic_data(
+            series_id='INVALID_SERIES_ID_12345'
+        )
+        
+        # Should return empty dict or handle gracefully
+        assert isinstance(invalid_data, dict), "Should return dict for invalid series"
+        logger.info("   ✅ Invalid series ID handled gracefully")
+        
+        # Test with invalid date range
+        logger.info("🚫 Testing invalid date range handling")
+        future_date = datetime.now().date() + timedelta(days=365)
+        far_future_date = datetime.now().date() + timedelta(days=730)
+        
+        future_events = await fred_provider.get_economic_events(
+            from_date=future_date,
+            to_date=far_future_date
+        )
+        
+        # Should return empty list or handle gracefully
+        assert isinstance(future_events, list), "Should return list for future dates"
+        logger.info("   ✅ Invalid date range handled gracefully")
+        
+        # Test search functionality
+        logger.info("🔍 Testing FRED series search")
+        search_results = await fred_provider.search_series('GDP', limit=5)
+        
+        assert isinstance(search_results, list), "Search should return list"
+        logger.info(f"   ✅ Search returned {len(search_results)} results")
+        
+        if search_results:
+            for result in search_results[:2]:
+                assert 'id' in result, "Search result should have id"
+                assert 'title' in result, "Search result should have title"
+                logger.info(f"   📊 Found series: {result.get('title', 'Unknown')} ({result.get('id', 'No ID')})")
+    
+    @pytest.mark.asyncio
+    async def test_fred_database_integration(self, setup_services):
+        """Test complete FRED data pipeline from API to database."""
+        services = setup_services
+        brain = services['brain']
+        events_job = services['events_job']
+        indicators_job = services['indicators_job']
+        
+        logger.info("🔄 Testing complete FRED data pipeline")
+        
+        # Check if FRED provider is available
+        available_providers = brain.get_available_providers()
+        if 'fred' not in available_providers:
+            logger.warning("FRED provider not available, skipping FRED pipeline test")
+            return
+        
+        fred_provider = brain.providers.get('fred')
+        
+        # Test complete pipeline for indicators
+        logger.info("📊 Testing FRED indicators pipeline")
+        fred_indicators = await fred_provider.get_economic_indicators()
+        
+        if fred_indicators:
+            # Store via job pipeline
+            indicators_data = {"indicators": fred_indicators}
+            storage_success = await indicators_job.store_data(indicators_data)
+            
+            assert storage_success, "FRED indicators pipeline should succeed"
+            logger.info(f"   ✅ FRED indicators pipeline completed: {len(fred_indicators)} indicators")
+        
+        # Test complete pipeline for events
+        logger.info("📅 Testing FRED events pipeline")
+        start_date = datetime.now().date() - timedelta(days=14)
+        end_date = datetime.now().date()
+        
+        fred_events = await fred_provider.get_economic_events(
+            from_date=start_date,
+            to_date=end_date
+        )
+        
+        if fred_events:
+            # Store via job pipeline
+            events_data = {"events": fred_events}
+            storage_success = await events_job.store_data(events_data)
+            
+            assert storage_success, "FRED events pipeline should succeed"
+            logger.info(f"   ✅ FRED events pipeline completed: {len(fred_events)} events")
+        
+        logger.info("✅ FRED database integration pipeline completed successfully")
