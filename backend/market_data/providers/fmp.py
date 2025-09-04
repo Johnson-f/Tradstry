@@ -127,10 +127,9 @@ class FMPProvider(MarketDataProvider):
                     
                     # Handle rate limiting
                     elif response.status == 429:
-                        retry_after = int(response.headers.get('Retry-After', '60'))
-                        logger.warning(f"Rate limited. Waiting {retry_after} seconds...")
-                        await asyncio.sleep(retry_after)
-                        return await self._make_request(endpoint, params, version)
+                        retry_after = int(response.headers.get('X-RateLimit-Reset', 60))
+                        logger.warning(f"Rate limited. Retry after {retry_after} seconds")
+                        raise Exception(f"Rate limit exceeded. Retry after {retry_after} seconds")
                     
                     else:
                         error_text = await response.text()

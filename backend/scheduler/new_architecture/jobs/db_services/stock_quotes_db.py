@@ -64,6 +64,52 @@ class StockQuotesDB:
             logger.error(f"Error fetching latest quotes: {e}")
             return []
     
+    async def get_all_symbols(self) -> List[str]:
+        """Get all distinct symbols currently in the database."""
+        try:
+            response = self.supabase.table('stock_quotes')\
+                .select('symbol')\
+                .execute()
+            
+            if response.data:
+                # Extract unique symbols
+                symbols = list(set(row['symbol'] for row in response.data))
+                logger.info(f"Found {len(symbols)} distinct symbols in database")
+                return symbols
+            else:
+                logger.warning("No symbols found in database")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error fetching symbols from database: {e}")
+            return []
+    
+    async def get_symbols_needing_update(self, max_age_minutes: int = 15) -> List[str]:
+        """Get symbols that haven't been updated recently."""
+        try:
+            # Calculate timestamp for max age
+            from datetime import datetime, timedelta
+            cutoff_time = datetime.now() - timedelta(minutes=max_age_minutes)
+            cutoff_iso = cutoff_time.isoformat()
+            
+            # Get latest quote timestamp for each symbol
+            response = self.supabase.rpc('get_symbols_needing_update', {
+                'cutoff_timestamp': cutoff_iso
+            }).execute()
+            
+            if response.data:
+                symbols = [row['symbol'] for row in response.data]
+                logger.info(f"Found {len(symbols)} symbols needing update (older than {max_age_minutes} minutes)")
+                return symbols
+            else:
+                # Fallback: get all symbols if stored procedure doesn't exist
+                logger.info("Using fallback method to get all symbols")
+                return await self.get_all_symbols()
+                
+        except Exception as e:
+            logger.warning(f"Error getting symbols needing update: {e}, falling back to all symbols")
+            return await self.get_all_symbols()
+    
     async def close(self):
         """Close database connections."""
         try:
