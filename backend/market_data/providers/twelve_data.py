@@ -196,14 +196,10 @@ class TwelveDataProvider(MarketDataProvider):
                         self.request_count += 1
                         
                         # Handle rate limiting
-                        if response.status == 429:  # Too Many Requests
-                            retry_after = float(response.headers.get('Retry-After', 60.0))
-                            self._log_error(
-                                "RateLimit",
-                                f"Rate limited. Waiting {retry_after} seconds before retry."
-                            )
-                            await asyncio.sleep(retry_after)
-                            continue
+                        if response.status == 429:
+                            retry_after = int(response.headers.get('X-RateLimit-Reset', 60))
+                            logger.warning(f"Rate limited. Retry after {retry_after} seconds")
+                            raise Exception(f"Rate limit exceeded. Retry after {retry_after} seconds")
                             
                         # Handle other HTTP errors
                         if response.status != 200:

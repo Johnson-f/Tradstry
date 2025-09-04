@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Stop Celery services for Tradistry scheduler
 
 set -e
@@ -7,59 +8,58 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}🛑 Stopping Tradistry Celery Services${NC}"
+# Configuration
+BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="$BACKEND_DIR/logs"
 
-# Function to stop service by PID file
+echo -e "${BLUE}🛑 Stopping Tradistry Celery Services${NC}"
+
+# Change to backend directory
+cd "$BACKEND_DIR"
+
+# Function to stop a service by PID file
 stop_service() {
     local service_name=$1
-    local pid_file="logs/celery_${service_name}.pid"
+    local pid_file="$LOG_DIR/${service_name}.pid"
     
     if [ -f "$pid_file" ]; then
-        local pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
+        local pid=$(cat "$pid_file" 2>/dev/null)
+        if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
             echo -e "${YELLOW}🔄 Stopping $service_name (PID: $pid)...${NC}"
             kill "$pid"
             sleep 2
             
             # Force kill if still running
-            if kill -0 "$pid" 2>/dev/null; then
-                echo -e "${YELLOW}⚡ Force killing $service_name...${NC}"
-                kill -9 "$pid"
+            if ps -p "$pid" > /dev/null 2>&1; then
+                echo -e "${YELLOW}⚡ Force stopping $service_name...${NC}"
+                kill -9 "$pid" 2>/dev/null || true
             fi
             
+            rm -f "$pid_file"
             echo -e "${GREEN}✅ $service_name stopped${NC}"
         else
-            echo -e "${YELLOW}⚠️  $service_name was not running${NC}"
+            echo -e "${YELLOW}⚠️  $service_name not running${NC}"
+            rm -f "$pid_file"
         fi
-        rm -f "$pid_file"
     else
         echo -e "${YELLOW}⚠️  No PID file found for $service_name${NC}"
     fi
 }
 
-# Load environment variables to get NUM_WORKERS
-if [ -f ".env" ]; then
-    set -a
-    source .env
-    set +a
+# Stop services
+stop_service "celery_worker"
+stop_service "celery_beat"
+stop_service "celery_flower"
+
+# Also try to kill any remaining celery processes
+echo -e "${YELLOW}🔍 Checking for remaining Celery processes...${NC}"
+celery_pids=$(pgrep -f "celery.*scheduler.celery_app" 2>/dev/null || true)
+if [ -n "$celery_pids" ]; then
+    echo -e "${YELLOW}⚡ Killing remaining Celery processes: $celery_pids${NC}"
+    echo "$celery_pids" | xargs kill -9 2>/dev/null || true
 fi
 
-NUM_WORKERS=${CELERY_NUM_WORKERS:-2}
-
-# Stop multiple workers
-echo -e "${YELLOW}🔄 Stopping $NUM_WORKERS workers...${NC}"
-for i in $(seq 1 $NUM_WORKERS); do
-    stop_service "worker_$i"
-done
-
-# Stop other services
-stop_service "beat"
-stop_service "flower"
-
-# Clean up any remaining Celery processes
-echo -e "${YELLOW}🧹 Cleaning up remaining processes...${NC}"
-pkill -f "celery.*scheduler.celery_app" || true
-
-echo -e "${GREEN}🎉 All Celery services stopped successfully!${NC}"
+echo -e "${GREEN}🎉 All Celery services stopped${NC}"

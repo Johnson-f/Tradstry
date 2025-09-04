@@ -218,10 +218,10 @@ class PolygonProvider(MarketDataProvider):
                             
                             # Handle rate limiting (429)
                             elif response.status == 429:
-                                retry_after = int(response.headers.get('Retry-After', '60'))
-                                logger.warning(f"Rate limited. Waiting {retry_after} seconds...")
-                                await asyncio.sleep(retry_after)
-                                continue
+                                retry_after = int(response.headers.get('X-RateLimit-Reset', 60))
+                                logger.warning(f"Rate limited. Retry after {retry_after} seconds")
+                                # Don't wait - let the Brain try another provider
+                                raise Exception(f"Rate limit exceeded. Retry after {retry_after} seconds")
                             
                             # Handle other errors
                             else:

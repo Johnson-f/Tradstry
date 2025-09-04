@@ -119,9 +119,9 @@ class FinnhubProvider(MarketDataProvider):
                             return await response.json()
                         elif response.status == 429:
                             retry_after = int(response.headers.get('X-RateLimit-Reset', 60))
-                            logger.warning(f"Rate limited. Waiting {retry_after} seconds...")
-                            await asyncio.sleep(retry_after)
-                            return await self._make_request(endpoint, params, version)
+                            logger.warning(f"Rate limited. Retry after {retry_after} seconds")
+                            # Don't wait - let the Brain try another provider
+                            raise Exception(f"Rate limit exceeded. Retry after {retry_after} seconds")
                         else:
                             error_text = await response.text()
                             self._log_error(
