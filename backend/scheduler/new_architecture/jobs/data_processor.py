@@ -9,9 +9,15 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import asyncio
 
-from ...database_service import SchedulerDatabaseService
 from .data_aggregator import DataAggregator
 from .data_validator import DataValidator
+from .db_services import (
+    StockQuotesDB,
+    CompanyInfoDB,
+    FundamentalDataDB,
+    DividendDataDB,
+    EarningsDataDB
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +33,16 @@ class DataProcessor:
     4. Handles errors and logging
     """
     
-    def __init__(self, db_service: SchedulerDatabaseService, market_data_brain=None):
-        """Initialize the data processor."""
-        self.db_service = db_service
+    def __init__(self, supabase_client=None, market_data_brain=None):
+        """Initialize the data processor with modular database services."""
+        # Initialize individual database services
+        self.stock_quotes_db = StockQuotesDB(supabase_client)
+        self.company_info_db = CompanyInfoDB(supabase_client)
+        self.fundamental_data_db = FundamentalDataDB(supabase_client)
+        self.dividend_data_db = DividendDataDB(supabase_client)
+        self.earnings_data_db = EarningsDataDB(supabase_client)
+        
+        # Initialize aggregator
         self.aggregator = DataAggregator(market_data_brain) if market_data_brain else None
     
     async def process_stock_quotes(self, quotes_data: Dict[str, Any]) -> bool:
@@ -51,9 +64,12 @@ class DataProcessor:
                 if hasattr(quote_data, 'model_dump'):
                     # Pydantic model
                     quote_dict = quote_data.model_dump()
+                elif isinstance(quote_data, dict):
+                    # Already a dictionary - make a copy to avoid modifying original
+                    quote_dict = quote_data.copy()
                 else:
-                    # Already a dictionary
-                    quote_dict = quote_data
+                    # Convert to dict if it's another type
+                    quote_dict = {'symbol': symbol, 'data': str(quote_data)}
                 
                 # Ensure required fields are present
                 quote_dict['symbol'] = symbol
@@ -61,8 +77,8 @@ class DataProcessor:
                 
                 processed_quotes.append(quote_dict)
             
-            # Store in database using upsert function
-            success = await self.db_service.upsert_stock_quotes(processed_quotes)
+            # Store in database using modular stock quotes service
+            success = await self.stock_quotes_db.upsert_stock_quotes(processed_quotes)
             
             if success:
                 logger.info(f"Successfully stored {len(processed_quotes)} stock quotes")
@@ -176,8 +192,12 @@ class DataProcessor:
             for symbol, info_data in company_data.items():
                 if hasattr(info_data, 'model_dump'):
                     info_dict = info_data.model_dump()
+                elif isinstance(info_data, dict):
+                    # Already a dictionary - make a copy to avoid modifying original
+                    info_dict = info_data.copy()
                 else:
-                    info_dict = info_data
+                    # Convert to dict if it's another type
+                    info_dict = {'symbol': symbol, 'data': str(info_data)}
                 
                 # Ensure required fields
                 info_dict['symbol'] = symbol
@@ -185,8 +205,8 @@ class DataProcessor:
                 
                 processed_companies.append(info_dict)
             
-            # Store in database
-            success = await self.db_service.upsert_company_info(processed_companies)
+            # Store in database using modular company info service
+            success = await self.company_info_db.upsert_company_info(processed_companies)
             
             if success:
                 logger.info(f"Successfully stored company info for {len(processed_companies)} symbols")
@@ -258,8 +278,8 @@ class DataProcessor:
                 logger.error("No valid fundamental data to store")
                 return False
             
-            # Store in database
-            success = await self.db_service.upsert_fundamental_data(processed_fundamentals)
+            # Store in database using modular fundamental data service
+            success = await self.fundamental_data_db.upsert_fundamental_data(processed_fundamentals)
             
             if success:
                 logger.info(f"Successfully stored fundamental data for {len(processed_fundamentals)} symbols")

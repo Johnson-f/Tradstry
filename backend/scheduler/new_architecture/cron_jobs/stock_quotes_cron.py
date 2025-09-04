@@ -16,7 +16,7 @@ class StockQuotesCron:
     """Cron job for fetching stock quotes data."""
     
     def __init__(self, market_data_brain: MarketDataBrain, data_processor: DataProcessor):
-        """Initialize stock quotes cron job."""
+        # Initialize components
         self.market_data_brain = market_data_brain
         self.data_processor = data_processor
         self.job_name = "stock_quotes"
@@ -41,8 +41,19 @@ class StockQuotesCron:
             
             logger.info(f"Fetching stock quotes for {len(symbols)} symbols: {symbols[:5]}{'...' if len(symbols) > 5 else ''}")
             
-            # Fetch data from market_data providers
-            fetch_result = await self.market_data_brain.get_stock_quotes(symbols)
+            # Fetch data from market_data providers (get_quote expects single symbol)
+            quotes_data = {}
+            for symbol in symbols:
+                result = await self.market_data_brain.get_quote(symbol)
+                if result.success:
+                    quotes_data[symbol] = result.data
+            
+            # Create fetch result
+            fetch_result = type('FetchResult', (), {
+                'success': len(quotes_data) > 0,
+                'data': quotes_data,
+                'provider': 'multi_provider'
+            })()
             
             if not fetch_result.success:
                 logger.error(f"❌ Failed to fetch stock quotes: {fetch_result.error}")

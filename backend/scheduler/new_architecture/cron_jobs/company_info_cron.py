@@ -41,8 +41,19 @@ class CompanyInfoCron:
             
             logger.info(f"Fetching company info for {len(symbols)} symbols")
             
-            # Fetch data from market_data providers
-            fetch_result = await self.market_data_brain.get_company_info(symbols)
+            # Fetch data from market_data providers (get_company_info expects single symbol)
+            company_data = {}
+            for symbol in symbols:
+                result = await self.market_data_brain.get_company_info(symbol)
+                if result.success:
+                    company_data[symbol] = result.data
+            
+            # Create fetch result
+            fetch_result = type('FetchResult', (), {
+                'success': len(company_data) > 0,
+                'data': company_data,
+                'provider': 'multi_provider'
+            })()
             
             if not fetch_result.success:
                 logger.error(f"❌ Failed to fetch company info: {fetch_result.error}")

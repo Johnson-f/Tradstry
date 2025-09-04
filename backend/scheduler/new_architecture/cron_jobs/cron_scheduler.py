@@ -18,7 +18,7 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 from market_data.brain import MarketDataBrain, FetchResult
 from ..jobs.data_processor import DataProcessor
 from ...database_service import SchedulerDatabaseService
-from ...config import SchedulerConfig, JOBS
+from ...config import SchedulerConfig, JobConfig
 
 logger = logging.getLogger(__name__)
 
