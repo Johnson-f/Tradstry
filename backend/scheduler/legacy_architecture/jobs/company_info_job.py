@@ -1,6 +1,7 @@
 """
-Company information data fetching job.
-Fetches company profile and basic information data.
+Company information data processing job.
+Processes and stores company profile and basic information data.
+Note: In the new architecture, data fetching is handled by CronDataScheduler.
 """
 
 import logging
@@ -18,110 +19,61 @@ logger = logging.getLogger(__name__)
 
 
 class CompanyInfoJob(BaseMarketDataJob):
-    """Job for fetching and storing company information."""
+    """Job for processing and storing company information."""
     
     def __init__(
         self, 
-        database_service, 
-        market_data_orchestrator: MarketDataBrain,
+        database_service,
         data_tracker: DataFetchTracker = None,
         provider_manager: EnhancedProviderManager = None
     ):
-        """Initialize with database service and market data orchestrator."""
+        """Initialize with database service."""
         super().__init__(database_service, data_tracker, provider_manager)
-        self.orchestrator = market_data_orchestrator
     
     def _get_data_type(self) -> DataType:
         """Get the data type for this job."""
         return DataType.COMPANY_INFO
     
-    async def fetch_data(self, symbols: List[str]) -> Dict[str, Any]:
-        """Fetch company information for given symbols with provider fallback."""
+    async def process_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process raw company information data for storage."""
         try:
-            logger.info(f"Fetching company info for {len(symbols)} symbols")
+            logger.info(f"Processing company info for {len(raw_data)} symbols")
             
-            # Use enhanced tracking with fallback chain if available
-            if self.enable_enhanced_tracking:
-                logger.info("Using enhanced tracking with fallback chain strategy")
-                return await self.fetch_data_with_enhanced_tracking(
-                    symbols=symbols,
-                    fetch_method='get_company_info',
-                    strategy=FetchStrategy.FALLBACK_CHAIN  # Changed to use fallback chain
-                )
+            processed_data = {}
             
-            # Fallback to original implementation with enhanced field-level fallback
-            logger.info("Using basic fetch with field-level provider fallback")
-            company_data = {}
+            for symbol, company_info in raw_data.items():
+                # Transform the data for storage
+                processed_info = await self._transform_for_storage(company_info)
+                
+                # Add metadata
+                processed_info['symbol'] = symbol
+                processed_info['updated_at'] = datetime.now().isoformat()
+                processed_info['data_source'] = 'market_data_brain'
+                
+                # Validate required fields
+                if self._validate_company_info(processed_info):
+                    processed_data[symbol] = processed_info
+                else:
+                    logger.warning(f"Invalid company info for {symbol}, skipping")
             
-            for symbol in symbols:
-                try:
-                    # Get company info with field-level fallback
-                    merged_info = await self._fetch_with_field_fallback(symbol)
-                    if merged_info:
-                        company_data[symbol] = merged_info
-                        logger.info(f"Successfully fetched {symbol} with field-level fallback")
-                    else:
-                        logger.warning(f"No valid data returned for {symbol}")
-                    
-                    await asyncio.sleep(0.1)  # Reduced for faster tests
-                    
-                except Exception as e:
-                    logger.error(f"Failed to fetch company info for {symbol}: {e}")
-                    continue
-            
-            return company_data
+            logger.info(f"Successfully processed {len(processed_data)} company records")
+            return processed_data
             
         except Exception as e:
-            logger.error(f"Error fetching company info: {e}")
+            logger.error(f"Error processing company info data: {e}")
             return {}
     
     async def store_data(self, data: Dict[str, Any]) -> bool:
-        """Store comprehensive company information using database upsert function."""
+        """Store processed company information data using database upsert function."""
         if not data:
+            logger.warning("No company info data to store")
             return True
         
         try:
-            success_count = 0
-            valid_data_count = 0
+            logger.info(f"Storing company info for {len(data)} symbols")
             
-            for symbol, fetch_result in data.items():
-                try:
-                    # Extract company info data from FetchResult
-                    if not fetch_result.success or not fetch_result.data:
-                        logger.warning(f"No valid data for {symbol}")
-                        continue
-                    
-                    valid_data_count += 1
-                    info = fetch_result.data
-                    
-                    logger.info(f"Storing comprehensive company info for {symbol} from {fetch_result.provider}")
-                    
-                    # Helper function to safely convert values
-                    def safe_convert(value, convert_func, default=None):
-                        if value is None or value == '' or value == 0:
-                            return default
-                        try:
-                            return convert_func(value)
-                        except (ValueError, TypeError):
-                            return default
-                    
-                    # Extract exchange information - handle both string and dict formats
-                    exchange_value = getattr(info, 'exchange', None)
-                    if isinstance(exchange_value, dict):
-                        exchange_code = exchange_value.get('code')
-                        exchange_name = exchange_value.get('name')
-                        exchange_country = exchange_value.get('country')
-                        exchange_timezone = exchange_value.get('timezone')
-                    else:
-                        # Simple string exchange, try to map to common exchanges
-                        exchange_code = exchange_value
-                        exchange_name = exchange_value
-                        exchange_country = getattr(info, 'country', None)
-                        exchange_timezone = None
-                    
-                    # Prepare comprehensive parameters matching your upsert function exactly
-                    params = {
-                        # Required parameters
+            # Convert to list format for database upsert
+            company_records = list(data.values())
                         "p_symbol": symbol,
                         "p_data_provider": fetch_result.provider,
                         
