@@ -50,3 +50,11 @@ __pycache__/
 # Local helper scripts (not needed in repo)
 start.sh
 *.local.sh
+
+# Celery runtime files
+backend/logs/
+backend/*.pid
+backend/celerybeat-schedule
+backend/celerybeat.pid
+backend/test.py
+backend/test_connection.py

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 class SetupCategory(str, Enum):
