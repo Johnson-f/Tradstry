@@ -1,6 +1,7 @@
 """
-Base job class for market data fetching operations.
-Provides common functionality for all data fetching jobs with enhanced tracking and fallback.
+Base job class for market data processing operations.
+Provides common functionality for data transformation and storage jobs.
+Note: In the new architecture, data fetching is handled by CronDataScheduler.
 """
 
 import logging
@@ -9,9 +10,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import asyncio
 
-from scheduler.database_service import SchedulerDatabaseService
-from scheduler.data_fetch_tracker import DataFetchTracker, DataType
-from scheduler.enhanced_provider_manager import EnhancedProviderManager, FetchStrategy
+from ...database_service import SchedulerDatabaseService
+# Legacy imports removed - these are now handled by CronDataScheduler and DataProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 class BaseMarketDataJob(ABC):
     """
-    Abstract base class for market data fetching jobs.
-    Provides common functionality and interface for all data types with enhanced tracking.
+    Abstract base class for market data processing jobs.
+    In the new architecture, this handles data transformation and storage only.
+    Data fetching is handled by CronDataScheduler.
     """
     
     def __init__(
@@ -37,15 +38,15 @@ class BaseMarketDataJob(ABC):
         self.enable_enhanced_tracking = data_tracker is not None and provider_manager is not None
         
     @abstractmethod
-    async def fetch_data(self, symbols: List[str]) -> Dict[str, Any]:
+    async def process_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Fetch data from external API for given symbols.
+        Process raw data received from cron scheduler.
         
         Args:
-            symbols: List of stock symbols to fetch data for
+            raw_data: Raw data from market_data providers
             
         Returns:
-            Dictionary containing fetched data
+            Dictionary containing processed data ready for storage
         """
         pass
     
@@ -62,12 +63,12 @@ class BaseMarketDataJob(ABC):
         """
         pass
     
-    async def execute(self, symbols: Optional[List[str]] = None) -> bool:
+    async def execute(self, raw_data: Dict[str, Any]) -> bool:
         """
-        Execute the complete job: fetch and store data with enhanced tracking.
+        Execute the complete job: process and store data.
         
         Args:
-            symbols: Optional list of symbols. If None, uses default symbols.
+            raw_data: Raw data received from cron scheduler
             
         Returns:
             True if job completed successfully, False otherwise
@@ -76,34 +77,21 @@ class BaseMarketDataJob(ABC):
         job_id = f"{self.job_name}_{int(start_time.timestamp())}"
         
         try:
-            # Use default symbols if none provided
-            if symbols is None:
-                symbols = await self._get_default_symbols()
-            
-            if not symbols:
-                logger.warning(f"{self.job_name}: No symbols to process")
+            if not raw_data:
+                logger.warning(f"{self.job_name}: No data to process")
                 return True
             
-            logger.info(f"{self.job_name}: Starting job for {len(symbols)} symbols")
+            logger.info(f"{self.job_name}: Starting data processing")
             
-            # Check for retry candidates if enhanced tracking is enabled
-            if self.enable_enhanced_tracking:
-                data_type = self._get_data_type()
-                retry_symbols = self.data_tracker.get_retry_candidates(data_type)
-                if retry_symbols:
-                    logger.info(f"{self.job_name}: Found {len(retry_symbols)} symbols ready for retry")
-                    # Add retry symbols to the processing list
-                    symbols = list(set(symbols + retry_symbols))
+            # Process raw data
+            processed_data = await self.process_data(raw_data)
             
-            # Fetch data from external API
-            data = await self.fetch_data(symbols)
-            
-            if not data:
-                logger.warning(f"{self.job_name}: No data fetched")
+            if not processed_data:
+                logger.warning(f"{self.job_name}: No data after processing")
                 return False
             
-            # Store data in database
-            success = await self.store_data(data)
+            # Store processed data in database
+            success = await self.store_data(processed_data)
             
             duration = (datetime.now() - start_time).total_seconds()
             
@@ -130,49 +118,30 @@ class BaseMarketDataJob(ABC):
         """
         pass
     
-    async def fetch_data_with_enhanced_tracking(
-        self,
-        symbols: List[str],
-        fetch_method: str,
-        strategy: FetchStrategy = FetchStrategy.MOST_RELIABLE,
-        **kwargs
-    ) -> Dict[str, Any]:
+    async def validate_data(self, data: Dict[str, Any]) -> bool:
         """
-        Enhanced fetch method that uses the provider manager and tracking system.
+        Validate processed data before storage.
         
         Args:
-            symbols: List of symbols to fetch
-            fetch_method: Method name to call on MarketDataBrain
-            strategy: Fetch strategy to use
-            **kwargs: Additional arguments for the fetch method
+            data: Processed data to validate
             
         Returns:
-            Dictionary containing fetched data
+            True if data is valid, False otherwise
         """
-        if not self.enable_enhanced_tracking:
-            # Fall back to regular fetch_data method
-            return await self.fetch_data(symbols)
-        
-        data_type = self._get_data_type()
-        job_id = f"{self.job_name}_{int(datetime.now().timestamp())}"
-        
-        results = await self.provider_manager.fetch_with_enhanced_fallback(
-            symbols=symbols,
-            data_type=data_type,
-            fetch_method=fetch_method,
-            strategy=strategy,
-            job_id=job_id,
-            **kwargs
-        )
-        
-        return results
+        # Basic validation - can be overridden by subclasses
+        return data is not None and len(data) > 0
     
-    async def _get_default_symbols(self) -> List[str]:
+    async def _transform_for_storage(self, data: Any) -> Dict[str, Any]:
         """
-        Get default symbols to process.
-        Can be overridden by subclasses for specific symbol requirements.
+        Transform data for database storage.
+        Can be overridden by subclasses for specific transformation requirements.
         """
-        return await self.db_service.get_tracked_symbols()
+        if hasattr(data, 'model_dump'):
+            return data.model_dump()
+        elif isinstance(data, dict):
+            return data
+        else:
+            return {'data': data}
     
     def _batch_symbols(self, symbols: List[str], batch_size: int = 10) -> List[List[str]]:
         """
