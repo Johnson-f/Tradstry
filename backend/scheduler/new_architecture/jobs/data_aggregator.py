@@ -45,8 +45,18 @@ class DataAggregator:
         try:
             logger.info(f"Aggregating stock quotes for {len(symbols)} symbols from multiple providers")
             
-            # Fetch from primary provider first
-            primary_result = await self.market_data_brain.get_stock_quotes(symbols)
+            # Fetch quotes for each symbol (MarketDataBrain uses get_quote for single symbols)
+            primary_data = {}
+            for symbol in symbols:
+                result = await self.market_data_brain.get_quote(symbol)
+                if result.success:
+                    primary_data[symbol] = result.data
+            
+            primary_result = type('FetchResult', (), {
+                'success': len(primary_data) > 0,
+                'data': primary_data,
+                'provider': 'aggregated'
+            })()
             
             if not primary_result.success:
                 logger.warning(f"Primary provider failed for stock quotes: {primary_result.error}")
@@ -95,10 +105,20 @@ class DataAggregator:
             logger.info(f"Aggregating company info for {len(symbols)} symbols")
             
             # Fetch from multiple providers concurrently for company info
-            providers = await self.market_data_brain.get_available_providers()
+            providers = self.market_data_brain.get_available_providers()
             
-            # Start with primary provider
-            primary_result = await self.market_data_brain.get_company_info(symbols)
+            # Fetch company info for each symbol
+            primary_data = {}
+            for symbol in symbols:
+                result = await self.market_data_brain.get_company_info(symbol)
+                if result.success:
+                    primary_data[symbol] = result.data
+            
+            primary_result = type('FetchResult', (), {
+                'success': len(primary_data) > 0,
+                'data': primary_data,
+                'provider': 'aggregated'
+            })()
             
             if not primary_result.success:
                 logger.warning(f"Primary provider failed for company info: {primary_result.error}")
@@ -147,8 +167,18 @@ class DataAggregator:
         try:
             logger.info(f"Aggregating fundamental data for {len(symbols)} symbols")
             
-            # Fundamental data benefits greatly from multiple sources
-            primary_result = await self.market_data_brain.get_fundamentals(symbols)
+            # Fetch fundamental data for each symbol
+            primary_data = {}
+            for symbol in symbols:
+                result = await self.market_data_brain.get_fundamentals(symbol)
+                if result.success:
+                    primary_data[symbol] = result.data
+            
+            primary_result = type('FetchResult', (), {
+                'success': len(primary_data) > 0,
+                'data': primary_data,
+                'provider': 'aggregated'
+            })()
             
             if not primary_result.success:
                 logger.warning(f"Primary provider failed for fundamentals: {primary_result.error}")

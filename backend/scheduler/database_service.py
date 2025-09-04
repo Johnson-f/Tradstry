@@ -20,6 +20,95 @@ class SchedulerDatabaseService:
         """Initialize with Supabase client. Uses admin client if none provided."""
         self.supabase = supabase_client or get_supabase_admin_client()
     
+    async def upsert_stock_quotes(self, quotes_data: List[Dict]) -> bool:
+        """Store stock quotes in database using upsert function."""
+        try:
+            for quote in quotes_data:
+                params = {
+                    'p_symbol': quote.get('symbol'),
+                    'p_quote_timestamp': quote.get('timestamp', datetime.now().isoformat()),
+                    'p_data_provider': quote.get('provider', 'market_data_brain'),
+                    'p_price': quote.get('price'),
+                    'p_change_amount': quote.get('change'),
+                    'p_change_percent': quote.get('change_percent'),
+                    'p_volume': quote.get('volume'),
+                    'p_open_price': quote.get('open'),
+                    'p_high_price': quote.get('high'),
+                    'p_low_price': quote.get('low'),
+                    'p_previous_close': quote.get('previous_close')
+                }
+                
+                response = self.supabase.rpc('upsert_stock_quote', params).execute()
+                if hasattr(response, 'error') and response.error:
+                    logger.error(f"Error upserting stock quote for {quote.get('symbol')}: {response.error}")
+                    return False
+            
+            logger.info(f"Successfully stored {len(quotes_data)} stock quotes")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error storing stock quotes: {e}")
+            return False
+    
+    async def upsert_company_info(self, companies_data: List[Dict]) -> bool:
+        """Store company info in database using upsert function."""
+        try:
+            for company in companies_data:
+                params = {
+                    'p_symbol': company.get('symbol'),
+                    'p_data_provider': company.get('provider', 'market_data_brain'),
+                    'p_name': company.get('name'),
+                    'p_company_name': company.get('name'),  # Some providers use different field names
+                    'p_sector': company.get('sector'),
+                    'p_industry': company.get('industry'),
+                    'p_market_cap': company.get('market_cap'),
+                    'p_employees': company.get('employees'),
+                    'p_description': company.get('description'),
+                    'p_website': company.get('website'),
+                    'p_ceo': company.get('ceo')
+                }
+                
+                response = self.supabase.rpc('upsert_company_info', params).execute()
+                if hasattr(response, 'error') and response.error:
+                    logger.error(f"Error upserting company info for {company.get('symbol')}: {response.error}")
+                    return False
+            
+            logger.info(f"Successfully stored {len(companies_data)} company info records")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error storing company info: {e}")
+            return False
+    
+    async def upsert_fundamental_data(self, fundamentals_data: List[Dict]) -> bool:
+        """Store fundamental data in database using upsert function."""
+        try:
+            for fundamental in fundamentals_data:
+                params = {
+                    'p_symbol': fundamental.get('symbol'),
+                    'p_revenue': fundamental.get('revenue'),
+                    'p_net_income': fundamental.get('net_income'),
+                    'p_total_assets': fundamental.get('total_assets'),
+                    'p_pe_ratio': fundamental.get('pe_ratio'),
+                    'p_pb_ratio': fundamental.get('pb_ratio'),
+                    'p_roe': fundamental.get('roe'),
+                    'p_roa': fundamental.get('roa'),
+                    'p_debt_to_equity': fundamental.get('debt_to_equity'),
+                    'p_data_provider': fundamental.get('provider', 'market_data_brain')
+                }
+                
+                response = self.supabase.rpc('upsert_fundamental_data', params).execute()
+                if hasattr(response, 'error') and response.error:
+                    logger.error(f"Error upserting fundamental data for {fundamental.get('symbol')}: {response.error}")
+                    return False
+            
+            logger.info(f"Successfully stored {len(fundamentals_data)} fundamental data records")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error storing fundamental data: {e}")
+            return False
+
     async def execute_function(self, function_name: str, **kwargs) -> Optional[int]:
         """
         Execute a PostgreSQL function with given parameters.
@@ -102,6 +191,14 @@ class SchedulerDatabaseService:
             logger.error(f"Error executing function {function_name} with params {params}: {e}")
             # Re-raise the exception so the caller knows it failed
             raise e
+    
+    async def close(self):
+        """Close database connections and cleanup."""
+        try:
+            # Close any open connections if needed
+            logger.info("Database service closed")
+        except Exception as e:
+            logger.error(f"Error closing database service: {e}")
     
     async def execute_query(self, query: str) -> Optional[List]:
         """

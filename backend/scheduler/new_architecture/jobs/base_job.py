@@ -25,17 +25,12 @@ class BaseMarketDataJob(ABC):
     """
     
     def __init__(
-        self, 
-        database_service: SchedulerDatabaseService,
-        data_tracker: Optional[DataFetchTracker] = None,
-        provider_manager: Optional[EnhancedProviderManager] = None
+        self,
+        db_service: SchedulerDatabaseService
     ):
-        """Initialize the job with database service and optional tracking components."""
-        self.db_service = database_service
+        """Initialize the job with database service."""
+        self.db_service = db_service
         self.job_name = self.__class__.__name__
-        self.data_tracker = data_tracker
-        self.provider_manager = provider_manager
-        self.enable_enhanced_tracking = data_tracker is not None and provider_manager is not None
         
     @abstractmethod
     async def process_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -107,8 +102,7 @@ class BaseMarketDataJob(ABC):
             logger.error(f"{self.job_name}: Failed after {duration:.2f}s - {str(e)}")
             return False
     
-    @abstractmethod
-    def _get_data_type(self) -> DataType:
+    def _get_data_type(self) -> str:
         """
         Get the data type for this job (used for tracking).
         Must be implemented by subclasses.
