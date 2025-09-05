@@ -5,11 +5,6 @@ from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
 from routers import stocks_router, options_router, analytics, setups_router, notes_router, images
-from scheduler.market_data_scheduler import MarketDataSchedulerService, set_scheduler_service
-from scheduler.scheduler_router import router as scheduler_router
-from scheduler.celery_router import router as celery_router
-from scheduler.database_service import SchedulerDatabaseService
-from market_data.brain import MarketDataBrain
 import logging
 
 # Configure logging
@@ -32,26 +27,12 @@ app.include_router(analytics.router, prefix=get_settings().API_PREFIX)
 app.include_router(setups_router, prefix=get_settings().API_PREFIX)
 app.include_router(notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(images.router, prefix=get_settings().API_PREFIX)
-app.include_router(scheduler_router, prefix=get_settings().API_PREFIX)
-app.include_router(celery_router, prefix=get_settings().API_PREFIX)
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on app startup."""
     try:
-        # APScheduler disabled - now using Celery + Redis for scheduling
-        # Initialize database service for API endpoints only
-        db_service = SchedulerDatabaseService()  # Uses admin client by default
-        orchestrator = MarketDataBrain()
-        
-        # Create scheduler service for API endpoints (without starting jobs)
-        scheduler_service = MarketDataSchedulerService(db_service, orchestrator)
-        set_scheduler_service(scheduler_service)
-        
-        # Note: Jobs are now handled by Celery workers
-        # Start Celery services with: ./scripts/start_celery.sh
-        
-        logger.info("FastAPI app started successfully (APScheduler disabled, using Celery)")
+        logger.info("FastAPI app started successfully")
     except Exception as e:
         logger.error(f"Failed to start app services: {e}")
 
@@ -59,7 +40,6 @@ async def startup_event():
 async def shutdown_event():
     """Clean up services on app shutdown."""
     try:
-        # No scheduler to stop - Celery runs independently
         logger.info("FastAPI app shutdown complete")
     except Exception as e:
         logger.error(f"Error during app shutdown: {e}")
