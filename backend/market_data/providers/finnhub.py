@@ -116,7 +116,18 @@ class FinnhubProvider(MarketDataProvider):
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, params=params, timeout=30) as response:
                         if response.status == 200:
-                            return await response.json()
+                            # Check content type before trying to parse JSON
+                            content_type = response.headers.get('content-type', '').lower()
+                            if 'application/json' in content_type:
+                                return await response.json()
+                            else:
+                                # Handle non-JSON responses (like HTML error pages)
+                                error_text = await response.text()
+                                self._log_error(
+                                    "Unexpected Response Type", 
+                                    f"Expected JSON but got {content_type}: {error_text[:200]}..."
+                                )
+                                return None
                         elif response.status == 429:
                             retry_after = int(response.headers.get('X-RateLimit-Reset', 60))
                             logger.warning(f"Rate limited. Retry after {retry_after} seconds")
@@ -436,7 +447,7 @@ class FinnhubProvider(MarketDataProvider):
             self._log_error("get_news", f"Failed to fetch news for {symbol or 'market'}: {str(e)}")
             return []
 
-    async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month") -> List[Dict[str, Any]]:
+    async def get_earnings_calendar(self, symbol: str = None, horizon: str = "3month", **kwargs) -> List[Dict[str, Any]]:
         """
         Get earnings calendar data from Finnhub
         

@@ -133,6 +133,14 @@ class FMPProvider(MarketDataProvider):
                     
                     else:
                         error_text = await response.text()
+                        
+                        # Check for subscription/legacy endpoint errors - fail immediately
+                        if any(keyword in error_text.lower() for keyword in [
+                            'legacy endpoint', 'subscription', 'upgrade', 'premium', 
+                            'no longer supported', 'contact us', 'pricing'
+                        ]):
+                            raise Exception(f"Subscription required: {error_text}")
+                        
                         self._log_error("API Request Failed", 
                                       f"Status: {response.status}, URL: {url}, Response: {error_text}")
                         return None

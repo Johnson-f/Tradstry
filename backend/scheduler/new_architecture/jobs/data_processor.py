@@ -338,17 +338,47 @@ class DataProcessor:
         Process and store earnings data.
         
         Args:
-            earnings_data: Dictionary mapping symbols to earnings data
+            earnings_data: Dictionary containing earnings data with 'data' key
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            logger.info(f"Processing earnings data for {len(earnings_data)} symbols")
+            # Extract the actual data from the wrapper
+            data = earnings_data.get('data', {})
+            logger.info(f"Processing earnings data for {len(data)} symbols")
+            
+            # Check if we have any actual earnings data
+            has_actual_data = False
+            total_records = 0
+            
+            for symbol, earn_data in data.items():
+                if isinstance(earn_data, list):
+                    # Filter out status messages
+                    actual_earnings = []
+                    for earning in earn_data:
+                        if isinstance(earning, dict) and not earning.get('status'):
+                            actual_earnings.append(earning)
+                            has_actual_data = True
+                    
+                    total_records += len(actual_earnings)
+                    data[symbol] = actual_earnings
+                elif isinstance(earn_data, dict) and not earn_data.get('status'):
+                    # Single earnings record that's not a status message
+                    has_actual_data = True
+                    total_records += 1
+                else:
+                    # Status message or empty data
+                    data[symbol] = []
+            
+            # If no actual earnings data found, return success (this is normal)
+            if not has_actual_data:
+                logger.info("No actual earnings data found - all providers returned status messages or no data")
+                return True
             
             # Transform data for database storage
             processed_earnings = []
-            for symbol, earn_data in earnings_data.items():
+            for symbol, earn_data in data.items():
                 if isinstance(earn_data, list):
                     # Multiple earnings records
                     for earning in earn_data:
@@ -369,8 +399,8 @@ class DataProcessor:
                     earn_dict['symbol'] = symbol
                     processed_earnings.append(earn_dict)
             
-            # Store in database
-            success = await self.db_service.upsert_earnings_data(processed_earnings)
+            # Store in database using the correct service
+            success = await self.earnings_data_db.upsert_earnings_data(processed_earnings)
             
             if success:
                 logger.info(f"Successfully stored {len(processed_earnings)} earnings records")

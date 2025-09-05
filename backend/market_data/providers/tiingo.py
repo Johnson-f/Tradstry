@@ -272,6 +272,9 @@ class TiingoProvider(MarketDataProvider):
                                 response_ctx['retry_after'] = retry_after
                                 
                                 if self.log_requests:
+                                    # Add request_id to response_ctx if missing
+                                    if 'request_id' not in response_ctx:
+                                        response_ctx['request_id'] = f"tiingo_{int(time.time())}"
                                     self.logger.warning(
                                         f"Rate limited - retrying after {retry_after}s",
                                         extra=response_ctx

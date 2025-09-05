@@ -222,17 +222,18 @@ class TwelveDataProvider(MarketDataProvider):
                                 
                                 # Handle specific error codes
                                 if error_code in ['429', 429]:  # Rate limited
-                                    retry_after = 60.0  # Default to 1 minute
-                                    self._log_error(
-                                        "RateLimit",
-                                        f"API rate limited: {error_msg}. Waiting {retry_after} seconds."
-                                    )
-                                    await asyncio.sleep(retry_after)
-                                    continue
+                                    raise Exception(f"Rate limit exceeded: {error_msg}")
+                                
+                                # Handle subscription/access errors - fail immediately
+                                if any(keyword in error_msg.lower() for keyword in [
+                                    'pro plan', 'ultra plan', 'enterprise plan', 'upgrade', 
+                                    'subscription', 'premium', 'exclusively', 'pricing'
+                                ]):
+                                    raise Exception(f"Subscription required: {error_msg}")
                                 
                                 last_error = Exception(f"API Error {error_code}: {error_msg}")
                                 self._log_error("API Error", str(last_error))
-                                continue
+                                raise last_error
                                 
                             return data
                             

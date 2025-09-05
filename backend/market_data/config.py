@@ -116,6 +116,12 @@ class MarketDataConfig(BaseModel):
         rate_limit_per_minute=100  # GNews allows 100 requests per day (free tier)
     ))
     
+    yahoo_finance: ProviderConfig = Field(default_factory=lambda: ProviderConfig(
+        api_key="yahoo_finance",  # Yahoo Finance doesn't require an API key
+        priority=ProviderPriority.HIGH,
+        rate_limit_per_minute=2000  # Yahoo Finance is quite generous with rate limits
+    ))
+    
     # Global settings
     enable_caching: bool = True
     cache_ttl_seconds: int = 300  # 5 minutes
