@@ -788,51 +788,17 @@ class PolygonProvider(MarketDataProvider):
         Returns:
             Dictionary containing earnings data
         """
-        try:
-            # This endpoint is only available with premium plans
-            params = {
-                'limit': max(1, min(1000, limit))
-            }
-            
-            if ticker:
-                params['ticker'] = ticker.upper()
-            if date:
-                params['date'] = date
-            if date_from:
-                params['date.gte'] = date_from
-            if date_to:
-                params['date.lte'] = date_to
-            if fiscal_period:
-                params['fiscal_period'] = fiscal_period
-            
-            # Try the premium earnings endpoint
-            data = await self._make_request("reference/earnings", params, version='vX')
-            
-            if data and 'results' in data:
-                return {
-                    'status': 'success',
-                    'results': data['results'],
-                    'next_url': data.get('next_url'),
-                    'count': data.get('count', len(data['results'])),
-                    'provider': self.name
-                }
-            
-            return {
-                'status': 'no_data',
-                'message': 'No earnings data found',
-                'ticker': ticker,
-                'provider': self.name
-            }
-            
-        except Exception as e:
-            # Earnings data might not be available on free plans
-            return {
-                'status': 'error',
-                'message': f'Earnings calendar may require premium plan: {str(e)}',
-                'ticker': ticker,
-                'provider': self.name,
-                'suggestion': 'Upgrade to premium plan or use alternative data source'
-            }
+        # Polygon.io doesn't provide earnings calendar data in free tier
+        # This endpoint doesn't exist in their API
+        logger.info("Polygon.io earnings calendar requires premium plan and is not available in free tier")
+        
+        return {
+            'status': 'not_available',
+            'message': 'Earnings calendar data is not available through Polygon.io free tier',
+            'ticker': ticker,
+            'provider': self.name,
+            'suggestion': 'Upgrade to premium plan or use alternative data source like Yahoo Finance, Alpha Vantage, or Finnhub'
+        }
 
     async def get_financials(self, symbol: str, limit: int = 4) -> Optional[Dict[str, Any]]:
         """Get financial statements using current vX financials endpoint"""

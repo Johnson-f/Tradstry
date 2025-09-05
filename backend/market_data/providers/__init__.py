@@ -14,6 +14,7 @@ from .newsapi_ai import NewsAPIAIProvider
 from .currents_api import CurrentsAPIProvider
 from .mediastack import MediaStackProvider
 from .gnews import GNewsProvider
+from .yahoo_finance import YahooFinanceProvider
 
 __all__ = [
     'AlphaVantageProvider',
@@ -29,5 +30,6 @@ __all__ = [
     'NewsAPIAIProvider',
     'CurrentsAPIProvider',
     'MediaStackProvider',
-    'GNewsProvider'
+    'GNewsProvider',
+    'YahooFinanceProvider'
 ]
