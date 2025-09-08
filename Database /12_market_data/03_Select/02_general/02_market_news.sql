@@ -1,6 +1,3 @@
--- =====================================================
--- LATEST MARKET NEWS FUNCTION
--- =====================================================
 -- This function fetches the latest news articles from the news_articles table
 -- Prioritizes by updated_at and published_at for the most recent content
 -- Returns maximum 7 articles at once for optimal performance
@@ -75,9 +72,7 @@ BEGIN
 END;
 $$;
 
--- =====================================================
 -- FILTERED MARKET NEWS FUNCTION
--- =====================================================
 -- Enhanced function with filtering options for more targeted news retrieval
 
 CREATE OR REPLACE FUNCTION get_filtered_market_news(
@@ -162,10 +157,34 @@ BEGIN
 END;
 $$;
 
--- =====================================================
--- USAGE EXAMPLES
--- =====================================================
+-- These indexes support the functions above (if not already created)
 
+-- Index for ordering by updated_at and published_at
+CREATE INDEX IF NOT EXISTS idx_news_articles_latest_ordering 
+ON news_articles (updated_at DESC, published_at DESC, id DESC);
+
+-- Index for source filtering
+CREATE INDEX IF NOT EXISTS idx_news_articles_source_latest 
+ON news_articles (source, updated_at DESC);
+
+-- Index for category filtering
+CREATE INDEX IF NOT EXISTS idx_news_articles_category_latest 
+ON news_articles (category, updated_at DESC);
+
+-- Index for relevance score filtering
+CREATE INDEX IF NOT EXISTS idx_news_articles_relevance_latest 
+ON news_articles (relevance_score DESC, updated_at DESC);
+
+-- Index for date range queries
+CREATE INDEX IF NOT EXISTS idx_news_articles_published_range 
+ON news_articles (published_at DESC, updated_at DESC);
+
+-- Grant permissions for the functions
+GRANT EXECUTE ON FUNCTION get_latest_market_news(INTEGER) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION get_filtered_market_news(INTEGER, VARCHAR(100), VARCHAR(50), DECIMAL(3,2), INTEGER) TO PUBLIC;
+
+
+-- USAGE EXAMPLES
 /*
 -- Get the latest 7 news articles (default)
 SELECT * FROM get_latest_market_news();
@@ -193,32 +212,3 @@ SELECT * FROM get_filtered_market_news(
     days_back := 7
 );
 */
-
--- =====================================================
--- PERFORMANCE INDEXES
--- =====================================================
--- These indexes support the functions above (if not already created)
-
--- Index for ordering by updated_at and published_at
-CREATE INDEX IF NOT EXISTS idx_news_articles_latest_ordering 
-ON news_articles (updated_at DESC, published_at DESC, id DESC);
-
--- Index for source filtering
-CREATE INDEX IF NOT EXISTS idx_news_articles_source_latest 
-ON news_articles (source, updated_at DESC);
-
--- Index for category filtering
-CREATE INDEX IF NOT EXISTS idx_news_articles_category_latest 
-ON news_articles (category, updated_at DESC);
-
--- Index for relevance score filtering
-CREATE INDEX IF NOT EXISTS idx_news_articles_relevance_latest 
-ON news_articles (relevance_score DESC, updated_at DESC);
-
--- Index for date range queries
-CREATE INDEX IF NOT EXISTS idx_news_articles_published_range 
-ON news_articles (published_at DESC, updated_at DESC);
-
--- Grant permissions for the functions
-GRANT EXECUTE ON FUNCTION get_latest_market_news(INTEGER) TO PUBLIC;
-GRANT EXECUTE ON FUNCTION get_filtered_market_news(INTEGER, VARCHAR(100), VARCHAR(50), DECIMAL(3,2), INTEGER) TO PUBLIC;

@@ -1,6 +1,4 @@
--- =====================================================
 -- DAILY EARNINGS SUMMARY FUNCTION
--- =====================================================
 -- This function fetches daily earnings data by combining:
 -- 1. earnings_calendar - for scheduled/upcoming earnings
 -- 2. earnings_data - for actual reported earnings
@@ -114,6 +112,18 @@ BEGIN
         WHERE fn.published_at >= (target_date - INTERVAL '7 days')  -- Get news from past week
             AND fn.published_at <= (target_date + INTERVAL '1 day')  -- Include day after earnings
         GROUP BY cd.symbol
+    ),
+    quarterly_stats AS (
+        -- Pre-calculate quarterly breakdown to avoid nested aggregates
+        SELECT 
+            CONCAT('Q', cd.fiscal_quarter, '_', cd.fiscal_year) as quarter_key,
+            cd.fiscal_quarter,
+            cd.fiscal_year,
+            COUNT(*) as company_count,
+            jsonb_agg(cd.symbol) as companies
+        FROM combined_data cd
+        WHERE cd.fiscal_quarter IS NOT NULL
+        GROUP BY cd.fiscal_quarter, cd.fiscal_year
     )
     SELECT 
         target_date as earnings_date,
@@ -163,15 +173,18 @@ BEGIN
             END
         ) FILTER (WHERE cd.report_status = 'reported') as companies_reported,
         
-        -- Quarterly breakdown
-        jsonb_object_agg(
-            CONCAT('Q', cd.fiscal_quarter, '_', cd.fiscal_year),
-            jsonb_build_object(
-                'quarter', cd.fiscal_quarter,
-                'year', cd.fiscal_year,
-                'company_count', COUNT(*) FILTER (WHERE cd.fiscal_quarter IS NOT NULL),
-                'companies', jsonb_agg(cd.symbol) FILTER (WHERE cd.fiscal_quarter IS NOT NULL)
+        -- Quarterly breakdown (fixed - no nested aggregates)
+        (
+            SELECT jsonb_object_agg(
+                qs.quarter_key,
+                jsonb_build_object(
+                    'quarter', qs.fiscal_quarter,
+                    'year', qs.fiscal_year,
+                    'company_count', qs.company_count,
+                    'companies', qs.companies
+                )
             )
+            FROM quarterly_stats qs
         ) as quarterly_breakdown,
         
         -- Summary statistics
@@ -234,22 +247,7 @@ BEGIN
 END;
 $$;
 
-
-
--- USAGE EXAMPLES
-
-/*
--- Get comprehensive daily earnings summary for today
-SELECT * FROM get_daily_earnings_summary();
-
--- Get daily earnings summary for a specific date
-SELECT * FROM get_daily_earnings_summary('2024-01-15');
-*/
-
-
 -- INDEXES FOR PERFORMANCE
-
--- Additional indexes to optimize the functions (if not already exists)
 CREATE INDEX IF NOT EXISTS idx_earnings_calendar_date_symbol ON earnings_calendar (earnings_date, symbol);
 CREATE INDEX IF NOT EXISTS idx_earnings_data_date_symbol ON earnings_data (reported_date, symbol);
 CREATE INDEX IF NOT EXISTS idx_earnings_calendar_fiscal ON earnings_calendar (fiscal_year, fiscal_quarter, symbol);
@@ -257,3 +255,13 @@ CREATE INDEX IF NOT EXISTS idx_earnings_data_fiscal ON earnings_data (fiscal_yea
 
 -- Grant permissions for the functions
 GRANT EXECUTE ON FUNCTION get_daily_earnings_summary(DATE) TO PUBLIC;
+
+
+-- USAGE EXAMPLES
+/*
+-- Get comprehensive daily earnings summary for today
+SELECT * FROM get_daily_earnings_summary();
+
+-- Get daily earnings summary for a specific date
+SELECT * FROM get_daily_earnings_summary('2024-01-15');
+*/

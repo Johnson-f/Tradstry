@@ -1,7 +1,5 @@
--- =====================================================
 -- COMPANY_INFO SELECT FUNCTIONS
 -- Functions to retrieve company information data
--- =====================================================
 
 -- 1. GET COMPANY INFO BY SYMBOL
 CREATE OR REPLACE FUNCTION get_company_info_by_symbol(
@@ -148,9 +146,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- USAGE EXAMPLES
-
 /*
-
 -- Get specific company by symbol
 SELECT * FROM get_company_info_by_symbol('AAPL');
 
