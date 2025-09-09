@@ -4,10 +4,12 @@ import { useOptions, useOptionMutations } from "@/lib/hooks/use-options";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Plus } from "lucide-react";
 
 import { OptionInDB, OptionUpdate } from "@/lib/types/trading";
 
 import { AddTradeDialog } from "./add-trade-dialog";
+import { TradeNotesModal } from "./trade-notes-modal";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
 import { useState } from "react";
@@ -243,6 +245,8 @@ export function OptionsTable({ className }: OptionsTableProps) {
   const [editingOption, setEditingOption] = useState<OptionInDB | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<OptionInDB | null>(null);
 
   // Calculate pagination
   const totalPages = Math.ceil(options.length / ITEMS_PER_PAGE);
@@ -286,20 +290,20 @@ export function OptionsTable({ className }: OptionsTableProps) {
     }
 
     toast.dismiss(); // Dismiss any existing toasts
-    
+
     const confirmed = await new Promise<boolean>((resolve) => {
       toast(
         <div className="flex flex-col space-y-2">
           <p className="font-medium">Delete Option Trade</p>
           <p>Are you sure you want to delete this option trade?</p>
           <div className="flex justify-end space-x-2 mt-2">
-            <button 
+            <button
               onClick={() => resolve(false)}
               className="px-3 py-1 text-sm rounded-md border hover:bg-muted"
             >
               Cancel
             </button>
-            <button 
+            <button
               onClick={() => resolve(true)}
               className="px-3 py-1 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
@@ -325,6 +329,11 @@ export function OptionsTable({ className }: OptionsTableProps) {
         toast.error("Failed to delete option trade. Please try again.", { id: toastId });
       }
     }
+  };
+
+  const handleAddNote = (option: OptionInDB) => {
+    setSelectedTradeForNotes(option);
+    setNotesModalOpen(true);
   };
 
   if (error) {
@@ -355,7 +364,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
         )}
         <Table id="options-table">
           <TableHeader>
-          <TableRow>
+            <TableRow>
             <TableHead>Symbol</TableHead>
             <TableHead>Strategy</TableHead>
             <TableHead>Direction</TableHead>
@@ -368,6 +377,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
             <TableHead>Exit Date</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Setups</TableHead>
+            <TableHead>Notes</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
@@ -411,6 +421,9 @@ export function OptionsTable({ className }: OptionsTableProps) {
                 </TableCell>
                 <TableCell>
                   <Skeleton className="h-4 w-20" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-8 w-8" />
                 </TableCell>
                 <TableCell>
                   <Skeleton className="h-8 w-8" />
@@ -501,14 +514,24 @@ export function OptionsTable({ className }: OptionsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <SetupTradeAssociationCompact 
-                      tradeId={option.id} 
-                      tradeType="option" 
+                    <SetupTradeAssociationCompact
+                      tradeId={option.id}
+                      tradeType="option"
                       onSetupAdded={() => {
                         // Optionally refresh data or show success message
                         toast.success("Setup added successfully");
                       }}
                     />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleAddNote(option)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <ActionsDropdown
@@ -523,7 +546,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
           ) : (
             <TableRow>
               <TableCell
-                colSpan={12}
+                colSpan={13}
                 className="h-24 text-center text-muted-foreground"
               >
                 No options trades found. Add your first option trade to get
@@ -585,6 +608,16 @@ export function OptionsTable({ className }: OptionsTableProps) {
             {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, options.length)} of {options.length} trades
           </div>
         </div>
+      )}
+
+      {selectedTradeForNotes && (
+        <TradeNotesModal
+          open={notesModalOpen}
+          onOpenChange={setNotesModalOpen}
+          tradeId={selectedTradeForNotes.id}
+          tradeType="option"
+          tradeSymbol={selectedTradeForNotes.symbol}
+        />
       )}
     </div>
     </div>

@@ -13,6 +13,38 @@ class AuthService:
     def is_token_expired(self, token: str) -> bool:
         """Check if JWT token is expired or will expire soon"""
         try:
+            # Handle None or empty token
+            if not token:
+                return True
+
+            # Ensure token is a string, not bytes
+            if isinstance(token, bytes):
+                try:
+                    token = token.decode('utf-8')
+                except UnicodeDecodeError:
+                    print(f"Error decoding token: Invalid UTF-8 bytes")
+                    return True
+
+            # Remove Bearer prefix if present
+            token = token.replace("Bearer ", "").strip()
+
+            # Validate JWT structure before decoding
+            parts = token.split('.')
+            if len(parts) != 3:
+                print(f"Error decoding token: Invalid JWT structure - expected 3 parts, got {len(parts)}")
+                return True
+
+            # Validate each part can be base64 decoded
+            import base64
+            for i, part in enumerate(parts[:2]):  # Only check header and payload, not signature
+                try:
+                    # Add proper padding
+                    padded_part = part + '=' * (4 - len(part) % 4)
+                    base64.urlsafe_b64decode(padded_part)
+                except Exception as e:
+                    print(f"Error decoding token: Invalid base64 in part {i}: {e}")
+                    return True
+
             # Decode without verification to check expiry
             decoded = jwt.decode(token, options={"verify_signature": False})
             exp = decoded.get('exp', 0)

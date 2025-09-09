@@ -1,6 +1,8 @@
 from supabase import create_client, Client
 from config import get_settings
 from functools import lru_cache
+import asyncpg
+import os
 
 settings = get_settings()
 
