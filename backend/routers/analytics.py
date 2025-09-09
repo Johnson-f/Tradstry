@@ -698,3 +698,227 @@ async def get_monthly_metrics(
             detail="No trading data available for the current month"
         )
     return metrics
+
+# New Combined Functions Endpoints
+@router.get("/daily-ai-summary", response_model=dict)
+async def get_daily_ai_summary(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get comprehensive daily AI summary from database function.
+    Returns a structured JSON with all trading metrics for AI consumption.
+    """
+    return await analytics_service.get_daily_ai_summary(
+        **date_params
+    )
+
+@router.get("/win-rate-by-symbol")
+async def get_win_rate_by_symbol(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get win rate statistics broken down by symbol.
+    Returns win rate, total trades, and winning trades for each symbol.
+    """
+    return await analytics_service.get_win_rate_by_symbol(
+        **date_params
+    )
+
+@router.get("/win-rate-by-strategy")
+async def get_win_rate_by_strategy(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get win rate statistics broken down by trading strategy.
+    Returns win rate analysis for different trading strategies.
+    """
+    return await analytics_service.get_win_rate_by_strategy(
+        **date_params
+    )
+
+@router.get("/win-rate-by-trade-direction")
+async def get_win_rate_by_trade_direction(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get win rate statistics broken down by trade direction.
+    Returns win rate for bullish vs bearish trades.
+    """
+    return await analytics_service.get_win_rate_by_trade_direction(
+        **date_params
+    )
+
+@router.get("/loss-rate-by-symbol")
+async def get_loss_rate_by_symbol(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get loss rate statistics broken down by symbol.
+    Returns loss rate analysis for each traded symbol.
+    """
+    return await analytics_service.get_loss_rate_by_symbol(
+        **date_params
+    )
+
+@router.get("/loss-rate-by-strategy")
+async def get_loss_rate_by_strategy(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get loss rate statistics broken down by trading strategy.
+    Returns loss rate analysis for different strategies.
+    """
+    return await analytics_service.get_loss_rate_by_strategy(
+        **date_params
+    )
+
+@router.get("/loss-rate-by-trade-direction")
+async def get_loss_rate_by_trade_direction(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get loss rate statistics broken down by trade direction.
+    Returns loss rate for bullish vs bearish trades.
+    """
+    return await analytics_service.get_loss_rate_by_trade_direction(
+        **date_params
+    )
+
+@router.get("/streaks")
+async def get_streaks(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get trading streak analysis.
+    Returns longest winning and losing streaks.
+    """
+    return await analytics_service.get_streaks(
+        **date_params
+    )
+
+@router.get("/average-trade-duration")
+async def get_average_trade_duration(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get average trade duration analysis.
+    Returns average time trades are held.
+    """
+    return await analytics_service.get_average_trade_duration(
+        **date_params
+    )
+
+@router.get("/performance-by-symbol")
+async def get_performance_by_symbol(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get comprehensive performance analysis by symbol.
+    Returns detailed metrics for each traded symbol.
+    """
+    return await analytics_service.get_performance_by_symbol(
+        **date_params
+    )
+
+@router.get("/symbol-profitability-ranking")
+async def get_symbol_profitability_ranking(
+    limit: int = Query(default=10, ge=1, le=50, description="Number of top symbols to return"),
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get symbol profitability ranking.
+    Returns top performing symbols by profitability with specified limit.
+    """
+    return await analytics_service.get_symbol_profitability_ranking(
+        limit=limit,
+        **date_params
+    )
+
+@router.get("/trading-frequency-by-symbol")
+async def get_trading_frequency_by_symbol(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get trading frequency analysis by symbol.
+    Returns how often each symbol is traded.
+    """
+    return await analytics_service.get_trading_frequency_by_symbol(
+        **date_params
+    )
+
+@router.get("/performance-by-trade-direction")
+async def get_performance_by_trade_direction(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get comprehensive performance analysis by trade direction.
+    Returns detailed metrics for bullish vs bearish trades.
+    """
+    return await analytics_service.get_performance_by_trade_direction(
+        **date_params
+    )
+
+@router.get("/total-commissions", response_model=float)
+async def get_total_commissions(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get total commissions paid.
+    Returns the sum of all trading commissions.
+    """
+    return await analytics_service.get_total_commissions(
+        **date_params
+    )
+
+@router.get("/trade-frequency-patterns")
+async def get_trade_frequency_patterns(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get trade frequency pattern analysis.
+    Returns patterns in trading frequency over time.
+    """
+    return await analytics_service.get_trade_frequency_patterns(
+        **date_params
+    )
+
+@router.get("/average-commission-per-trade", response_model=float)
+async def get_average_commission_per_trade(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get average commission per trade.
+    Returns the average cost of commissions per trade.
+    """
+    return await analytics_service.get_average_commission_per_trade(
+        **date_params
+    )
+
+@router.get("/trade-size-consistency")
+async def get_trade_size_consistency(
+    date_params: Dict[str, Any] = Depends(get_date_range_params),
+    current_user: dict = Depends(user_service.get_current_user)
+):
+    """
+    Get trade size consistency analysis.
+    Returns analysis of position sizing consistency.
+    """
+    return await analytics_service.get_trade_size_consistency(
+        **date_params
+    )

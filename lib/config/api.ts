@@ -121,8 +121,48 @@ export const apiConfig = {
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
     },
-    // Health check
-    health: "/health",
+    // AI Summary endpoints (Static - Production)
+    aiSummary: {
+      generate: "/ai-summary/generate",
+      chat: "/ai-summary/chat",
+      quickInsights: "/ai-summary/quick-insights",
+      status: "/ai-summary/status",
+      resetChat: "/ai-summary/chat/reset",
+      // Reports
+      reports: {
+        base: "/ai-summary/reports",
+        byId: (id: string) => `/ai-summary/reports/${id}`,
+        searchSimilar: "/ai-summary/reports/search-similar",
+        stats: "/ai-summary/reports/stats",
+      },
+      // Chat history
+      chat: {
+        history: "/ai-summary/chat/history",
+        searchSimilar: "/ai-summary/chat/search-similar",
+        stats: "/ai-summary/chat/stats",
+        deleteQA: (qaId: string) => `/ai-summary/chat/history/${qaId}`,
+      },
+      health: "/ai-summary/health",
+    },
+    // AI Dynamic endpoints (Dynamic - Experimental)
+    aiDynamic: {
+      // Versioned routes
+      versioned: {
+        generate: (version: string) => `/ai-dynamic/${version}/generate`,
+        chat: (version: string) => `/ai-dynamic/${version}/chat`,
+      },
+      // Service-based routes
+      service: {
+        base: (serviceType: string) => `/ai-dynamic/service/${serviceType}`,
+        action: (serviceType: string, action: string) => `/ai-dynamic/service/${serviceType}/${action}`,
+      },
+      // Feature flag routes
+      features: {
+        base: (featureName: string) => `/ai-dynamic/features/${featureName}`,
+      },
+      // Wildcard routes
+      dynamic: (path: string) => `/ai-dynamic/dynamic/${path}`,
+    },
   },
   timeout: 30000, // 30 seconds
   retries: 3,

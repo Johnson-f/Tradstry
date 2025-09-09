@@ -94,6 +94,7 @@
     "tailwind-merge": "^3.3.0",
     "tiptap": "^1.32.2",
     "use-debounce": "^10.0.5",
+    "uuid": "^11.1.0",
     "vaul": "^1.1.2",
     "y-websocket": "^3.0.0",
     "yahoo-finance2": "^2.13.3",
