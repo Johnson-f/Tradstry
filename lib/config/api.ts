@@ -155,6 +155,11 @@ export const apiConfig = {
       },
       // Overview endpoint
       overview: (symbol: string) => `/market-data/overview/${symbol}`,
+      // Symbol management endpoints
+      symbols: {
+        check: (symbol: string) => `/market-data/symbols/check/${symbol}`,
+        save: "/market-data/symbols/save",
+      },
       // Health check
       health: "/market-data/health",
     },

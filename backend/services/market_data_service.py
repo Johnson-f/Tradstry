@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from decimal import Decimal
 from supabase import Client
-from database import get_supabase
+from database import get_supabase, get_supabase_admin_client
 from auth_service import AuthService
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
@@ -10,7 +10,7 @@ from models.market_data import (
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
-    TopMoversRequest
+    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse
 )
 
 
@@ -450,3 +450,91 @@ class MarketDataService:
             'news_stats': news_stats.dict() if news_stats else None,
             'recent_movements': [movement.dict() for movement in movements]
         }
+
+    # =====================================================
+    # SYMBOL MANAGEMENT FUNCTIONS
+    # =====================================================
+
+    async def check_symbol_exists(self, symbol: str, access_token: str = None) -> SymbolCheckResponse:
+        """Check if a symbol exists in the stock_quotes table."""
+        async def operation(client=None):
+            supabase = client or await self.get_authenticated_client(access_token)
+            
+            # Query stock_quotes table for the symbol
+            response = supabase.table('stock_quotes').select('symbol').eq('symbol', symbol).limit(1).execute()
+            
+            exists = len(response.data) > 0
+            
+            return SymbolCheckResponse(
+                exists=exists,
+                symbol=symbol,
+                message=f"Symbol {symbol} {'found' if exists else 'not found'} in database"
+            )
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def save_symbol_to_database(self, symbol: str, access_token: str = None) -> SymbolSaveResponse:
+        """Save a symbol to the stock_quotes table with initial market data."""
+        async def operation(client=None):
+            supabase = client or await self.get_authenticated_client(access_token)
+            
+            # First, check if symbol already exists
+            existing_check = supabase.table('stock_quotes').select('symbol').eq('symbol', symbol).limit(1).execute()
+            
+            if len(existing_check.data) > 0:
+                return SymbolSaveResponse(
+                    success=True,
+                    symbol=symbol,
+                    message='Symbol already exists in database'
+                )
+            
+            # Fetch initial data for the symbol from external API
+            initial_quote_data = None
+            try:
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    quote_response = await client.get(
+                        f"https://finance-query.onrender.com/v1/quotes?symbols={symbol}"
+                    )
+                    
+                    if quote_response.status_code == 200:
+                        quote_data = quote_response.json()
+                        # Handle case where API returns a list instead of dict
+                        if isinstance(quote_data, list) and len(quote_data) > 0:
+                            initial_quote_data = quote_data[0]
+                        elif isinstance(quote_data, dict):
+                            initial_quote_data = quote_data.get(symbol)
+            except Exception as api_error:
+                print(f"Failed to fetch initial quote data for symbol: {symbol}, {api_error}")
+            
+            # Insert symbol into stock_quotes table with initial data (if available)
+            # Use admin client with service role key to bypass RLS policies
+            admin_client = get_supabase_admin_client()
+            
+            insert_data = {
+                'symbol': symbol,
+                'price': initial_quote_data.get('price') if initial_quote_data else None,
+                'change_amount': initial_quote_data.get('change') if initial_quote_data else None,
+                'change_percent': initial_quote_data.get('changePercent') if initial_quote_data else None,
+                'volume': initial_quote_data.get('volume') if initial_quote_data else None,
+                'open_price': initial_quote_data.get('open') if initial_quote_data else None,
+                'high_price': initial_quote_data.get('dayHigh') if initial_quote_data else None,
+                'low_price': initial_quote_data.get('dayLow') if initial_quote_data else None,
+                'previous_close': initial_quote_data.get('previousClose') if initial_quote_data else None,
+                'quote_timestamp': datetime.now().isoformat(),
+                'data_provider': 'yahoo_finance',
+            }
+            
+            response = admin_client.table('stock_quotes').insert(insert_data).execute()
+            
+            if response.data:
+                message = 'Symbol saved with initial data' if initial_quote_data else 'Symbol saved without initial data'
+                return SymbolSaveResponse(
+                    success=True,
+                    symbol=symbol,
+                    message=message
+                )
+            else:
+                raise Exception("Failed to save symbol to database")
+        
+        return await self._execute_with_retry(operation, access_token)

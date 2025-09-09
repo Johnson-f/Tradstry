@@ -17,6 +17,16 @@ interface StockData {
   fundamentals: FundamentalData | null;
 }
 
+// Validate if a string is a valid stock symbol
+const isValidSymbol = (symbol: string): boolean => {
+  if (!symbol || symbol.length === 0) return false;
+  // Check if symbol is a number (like "0", "123", etc.)
+  if (!isNaN(Number(symbol))) return false;
+  // Check if symbol contains only letters, numbers, and common separators
+  const symbolRegex = /^[A-Z0-9.-]{1,10}$/;
+  return symbolRegex.test(symbol.toUpperCase());
+};
+
 export default function StockSymbolPage() {
   const params = useParams();
   const router = useRouter();
@@ -27,6 +37,13 @@ export default function StockSymbolPage() {
 
   useEffect(() => {
     if (!symbol) return;
+    
+    // Validate symbol before making API calls
+    if (!isValidSymbol(symbol)) {
+      setError(`Invalid stock symbol: ${symbol}. Please use a valid symbol like AAPL, TSLA, or MSFT.`);
+      setIsLoading(false);
+      return;
+    }
 
     const fetchStockData = async () => {
       try {

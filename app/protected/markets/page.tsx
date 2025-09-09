@@ -11,6 +11,13 @@ export default function MarketPage() {
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Market</h1>
+          <div className="flex-1 flex justify-center px-8">
+            <SymbolSearch 
+              placeholder="Search for stocks, ETFs, indices (e.g., AAPL, TSLA, SPY)..."
+              className="max-w-md w-full"
+            />
+          </div>
+          <div className="w-20"></div> {/* Spacer to balance the layout */}
         </div>
       </div>
       
@@ -18,25 +25,6 @@ export default function MarketPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8 space-y-8">
-            {/* Search Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Search className="w-5 h-5" />
-                  Search Stocks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SymbolSearch 
-                  placeholder="Search for stocks, ETFs, indices (e.g., AAPL, TSLA, SPY)..."
-                  className="max-w-md"
-                />
-                <p className="text-sm text-muted-foreground mt-2">
-                  Search and select a symbol to view detailed market data and analytics.
-                </p>
-              </CardContent>
-            </Card>
-
             {/* Quick Access Cards */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               <Card className="hover:shadow-md transition-shadow cursor-pointer">

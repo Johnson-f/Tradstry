@@ -313,3 +313,23 @@ class PriceMovementRequest(BaseModel):
 class TopMoversRequest(BaseModel):
     limit: Optional[int] = 20
     min_change_percent: Optional[Decimal] = 3.0
+
+
+# =====================================================
+# SYMBOL MANAGEMENT MODELS
+# =====================================================
+
+class SymbolCheckResponse(BaseModel):
+    exists: bool
+    symbol: str
+    message: Optional[str] = None
+
+
+class SymbolSaveRequest(BaseModel):
+    symbol: str
+
+
+class SymbolSaveResponse(BaseModel):
+    success: bool
+    symbol: str
+    message: str
