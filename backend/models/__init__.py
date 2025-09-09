@@ -19,6 +19,14 @@ from .setups import (
     TradeSetupBase, TradeSetupCreate, TradeSetupInDB, SetupWithTrades,
     SetupAnalytics, TradeBySetup, SetupSummary
 )
+from .market_data import (
+    DailyEarningsSummary, EarningsCompany, CompanyInfo, CompanyBasic,
+    MarketNews, FinanceNews, NewsStats, NewsSearch, StockQuote, FundamentalData,
+    PriceMovement, TopMover, EarningsRequest, CompanySearchRequest,
+    CompanySectorRequest, CompanySearchTermRequest, MarketNewsRequest,
+    FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest, NewsSearchRequest,
+    StockQuoteRequest, FundamentalRequest, PriceMovementRequest, TopMoversRequest
+)
 
 __all__ = [
     # Stock models
@@ -36,5 +44,14 @@ __all__ = [
     # Setup models
     'SetupCategory', 'SetupBase', 'SetupCreate', 'SetupUpdate', 'SetupInDB',
     'TradeSetupBase', 'TradeSetupCreate', 'TradeSetupInDB', 'SetupWithTrades',
-    'SetupAnalytics', 'TradeBySetup', 'SetupSummary'
+    'SetupAnalytics', 'TradeBySetup', 'SetupSummary',
+
+    # Market data models
+    'DailyEarningsSummary', 'EarningsCompany', 'CompanyInfo', 'CompanyBasic',
+    'MarketNews', 'FinanceNews', 'NewsStats', 'NewsSearch', 'StockQuote', 
+    'FundamentalData', 'PriceMovement', 'TopMover', 'EarningsRequest', 
+    'CompanySearchRequest', 'CompanySectorRequest', 'CompanySearchTermRequest',
+    'MarketNewsRequest', 'FilteredNewsRequest', 'SymbolNewsRequest', 
+    'NewsStatsRequest', 'NewsSearchRequest', 'StockQuoteRequest', 
+    'FundamentalRequest', 'PriceMovementRequest', 'TopMoversRequest'
 ]

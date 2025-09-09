@@ -5,6 +5,6 @@ from .options import router as options_router
 from .setups import router as setups_router
 from .notes import router as notes_router
 from .images import router as images_router
-from . import market_data_sync
+from .market_data import router as market_data_router
 
-__all__ = ['stocks_router', 'options_router', 'setups_router', 'notes_router', 'images_router', 'market_data_sync']
+__all__ = ['stocks_router', 'options_router', 'setups_router', 'notes_router', 'images_router', 'market_data_router']

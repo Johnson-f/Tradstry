@@ -121,6 +121,43 @@ export const apiConfig = {
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
     },
+    // Market Data endpoints
+    marketData: {
+      // Earnings endpoints
+      earnings: {
+        dailySummary: "/market-data/earnings/daily-summary",
+      },
+      // Company endpoints
+      companies: {
+        info: (symbol: string) => `/market-data/company/${symbol}`,
+        bySector: "/market-data/companies/by-sector",
+        search: "/market-data/companies/search",
+      },
+      // News endpoints
+      news: {
+        latest: "/market-data/news/latest",
+        filtered: "/market-data/news/filtered",
+        symbol: (symbol: string) => `/market-data/news/symbol/${symbol}`,
+        symbolLatest: (symbol: string) => `/market-data/news/symbol/${symbol}/latest`,
+        symbolStats: (symbol: string) => `/market-data/news/symbol/${symbol}/stats`,
+        symbolSearch: (symbol: string) => `/market-data/news/symbol/${symbol}/search`,
+      },
+      // Stock metrics endpoints
+      stocks: {
+        quotes: (symbol: string) => `/market-data/quotes/${symbol}`,
+        fundamentals: (symbol: string) => `/market-data/fundamentals/${symbol}`,
+        combined: (symbol: string) => `/market-data/stock/${symbol}/combined`,
+      },
+      // Price movements endpoints
+      movements: {
+        significant: "/market-data/movements/significant",
+        topMoversToday: "/market-data/movements/top-movers-today",
+      },
+      // Overview endpoint
+      overview: (symbol: string) => `/market-data/overview/${symbol}`,
+      // Health check
+      health: "/market-data/health",
+    },
     // Health check
     health: "/health",
   },
