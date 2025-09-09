@@ -310,6 +310,77 @@ export interface TopMoversRequest {
 }
 
 // =====================================================
+// INDICES DATA TYPES
+// =====================================================
+
+export interface HistoricalDataPoint {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  adjClose: number | null;
+  volume: number;
+}
+
+export interface HistoricalData {
+  [timestamp: string]: HistoricalDataPoint;
+}
+
+export interface QuoteData {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  dayHigh: number;
+  dayLow: number;
+  volume: number;
+  marketCap?: number;
+  logo?: string;
+}
+
+export interface IndexData {
+  symbol: string;
+  historical: HistoricalDataPoint[];
+  quote: QuoteData | null;
+  lastUpdated: number;
+}
+
+// =====================================================
+// MARKET MOVERS TYPES
+// =====================================================
+
+export interface MarketMover {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  marketCap?: number;
+  logo?: string;
+}
+
+// =====================================================
+// SYMBOL MANAGEMENT TYPES
+// =====================================================
+
+export interface SymbolCheckResponse {
+  exists: boolean;
+  symbol: string;
+}
+
+export interface SymbolSaveRequest {
+  symbol: string;
+}
+
+export interface SymbolSaveResponse {
+  success: boolean;
+  symbol: string;
+  message?: string;
+}
+
+// =====================================================
 // HEALTH CHECK TYPE
 // =====================================================
 

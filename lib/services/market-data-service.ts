@@ -25,6 +25,12 @@ import type {
   PriceMovementRequest,
   TopMoversRequest,
   MarketDataHealth,
+  HistoricalData,
+  QuoteData,
+  MarketMover,
+  SymbolCheckResponse,
+  SymbolSaveRequest,
+  SymbolSaveResponse,
 } from "@/lib/types/market-data";
 
 class MarketDataService {
@@ -158,6 +164,23 @@ class MarketDataService {
   }
 
   // =====================================================
+  // SYMBOL MANAGEMENT ENDPOINTS
+  // =====================================================
+
+  async checkSymbolExists(symbol: string): Promise<SymbolCheckResponse> {
+    return apiClient.get<SymbolCheckResponse>(
+      `/api/market-data/symbols/check/${symbol.toUpperCase()}`
+    );
+  }
+
+  async saveSymbolToDatabase(params: SymbolSaveRequest): Promise<SymbolSaveResponse> {
+    return apiClient.post<SymbolSaveResponse>(
+      '/api/market-data/symbols/save',
+      { symbol: params.symbol.toUpperCase() }
+    );
+  }
+
+  // =====================================================
   // COMPREHENSIVE OVERVIEW ENDPOINT
   // =====================================================
 
@@ -165,6 +188,141 @@ class MarketDataService {
     return apiClient.get<Record<string, unknown>>(
       apiConfig.endpoints.marketData.overview(symbol)
     );
+  }
+
+  // =====================================================
+  // INDICES DATA ENDPOINTS
+  // =====================================================
+
+  async getHistoricalData(symbol: string, range: string = '1d', interval: string = '1m'): Promise<HistoricalData> {
+    const response = await fetch(
+      `https://finance-query.onrender.com/v1/historical?symbol=${symbol}&range=${range}&interval=${interval}&epoch=true`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch historical data for ${symbol}`);
+    }
+    
+    return response.json();
+  }
+
+  async getQuoteData(symbols: string[]): Promise<QuoteData[]> {
+    const symbolsParam = symbols.join(',');
+    const response = await fetch(
+      `https://finance-query.onrender.com/v1/quotes?symbols=${symbolsParam}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch quote data for symbols: ${symbolsParam}`);
+    }
+    
+    const data = await response.json();
+    
+    // Transform the response to match our QuoteData interface
+    return symbols.map(symbol => {
+      const quote = data[symbol];
+      if (!quote) {
+        return {
+          symbol,
+          name: symbol,
+          price: 0,
+          change: 0,
+          changePercent: 0,
+          dayHigh: 0,
+          dayLow: 0,
+          volume: 0,
+        };
+      }
+      
+      return {
+        symbol,
+        name: quote.name || symbol,
+        price: quote.price || 0,
+        change: quote.change || 0,
+        changePercent: quote.changePercent || 0,
+        dayHigh: quote.dayHigh || 0,
+        dayLow: quote.dayLow || 0,
+        volume: quote.volume || 0,
+        marketCap: quote.marketCap,
+        logo: quote.logo,
+      };
+    });
+  }
+
+  // =====================================================
+  // MARKET MOVERS ENDPOINTS
+  // =====================================================
+
+  async getGainers(count: number = 25): Promise<MarketMover[]> {
+    const response = await fetch(
+      `https://finance-query.onrender.com/v1/gainers?count=${count}`
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch gainers data');
+    }
+    
+    const data = await response.json();
+    
+    // Transform the response to match our MarketMover interface
+    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+      symbol,
+      name: moverData.name || symbol,
+      price: moverData.price || 0,
+      change: moverData.change || 0,
+      changePercent: moverData.changePercent || 0,
+      volume: moverData.volume || 0,
+      marketCap: moverData.marketCap,
+      logo: moverData.logo,
+    }));
+  }
+
+  async getLosers(count: number = 25): Promise<MarketMover[]> {
+    const response = await fetch(
+      `https://finance-query.onrender.com/v1/losers?count=${count}`
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch losers data');
+    }
+    
+    const data = await response.json();
+    
+    // Transform the response to match our MarketMover interface
+    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+      symbol,
+      name: moverData.name || symbol,
+      price: moverData.price || 0,
+      change: moverData.change || 0,
+      changePercent: moverData.changePercent || 0,
+      volume: moverData.volume || 0,
+      marketCap: moverData.marketCap,
+      logo: moverData.logo,
+    }));
+  }
+
+  async getActives(count: number = 25): Promise<MarketMover[]> {
+    const response = await fetch(
+      `https://finance-query.onrender.com/v1/actives?count=${count}`
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch actives data');
+    }
+    
+    const data = await response.json();
+    
+    // Transform the response to match our MarketMover interface
+    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+      symbol,
+      name: moverData.name || symbol,
+      price: moverData.price || 0,
+      change: moverData.change || 0,
+      changePercent: moverData.changePercent || 0,
+      volume: moverData.volume || 0,
+      marketCap: moverData.marketCap,
+      logo: moverData.logo,
+    }));
   }
 
   // =====================================================
