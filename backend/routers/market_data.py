@@ -11,10 +11,10 @@ from models.market_data import (
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
-    TopMoversRequest
+    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse
 )
 
-router = APIRouter(prefix="/api/market-data", tags=["Market Data"])
+router = APIRouter(prefix="/market-data", tags=["Market Data"])
 security = HTTPBearer()
 
 def get_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -45,6 +45,25 @@ async def get_daily_earnings_summary(
 # COMPANY INFO ENDPOINTS
 # =====================================================
 
+def validate_symbol(symbol: str) -> str:
+    """Validate and normalize stock symbol."""
+    if not symbol or len(symbol.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Symbol cannot be empty")
+    
+    symbol = symbol.upper().strip()
+    
+    # Check if symbol is just a number (like "0", "123")
+    if symbol.isdigit():
+        raise HTTPException(status_code=400, detail=f"Invalid symbol '{symbol}'. Please use a valid stock symbol like AAPL, TSLA, or MSFT")
+    
+    # Basic symbol format validation
+    import re
+    if not re.match(r'^[A-Z0-9.-]{1,10}$', symbol):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol format '{symbol}'. Symbol should contain only letters, numbers, dots, and dashes")
+    
+    return symbol
+
+
 @router.get("/company/{symbol}", response_model=Optional[CompanyInfo])
 async def get_company_info(
     symbol: str,
@@ -53,10 +72,13 @@ async def get_company_info(
 ):
     """Get detailed company information by symbol."""
     try:
+        validated_symbol = validate_symbol(symbol)
         service = MarketDataService()
-        request = CompanySearchRequest(symbol=symbol, data_provider=data_provider)
+        request = CompanySearchRequest(symbol=validated_symbol, data_provider=data_provider)
         result = await service.get_company_info_by_symbol(request, token)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get company info: {str(e)}")
 
@@ -256,10 +278,13 @@ async def get_fundamental_data(
 ):
     """Get fundamental data for a stock."""
     try:
+        validated_symbol = validate_symbol(symbol)
         service = MarketDataService()
-        request = FundamentalRequest(symbol=symbol, data_provider=data_provider)
+        request = FundamentalRequest(symbol=validated_symbol, data_provider=data_provider)
         result = await service.get_fundamental_data(request, token)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get fundamental data: {str(e)}")
 
@@ -342,6 +367,45 @@ async def get_symbol_overview(
         raise HTTPException(status_code=500, detail=f"Failed to get symbol overview: {str(e)}")
 
 
+
+# =====================================================
+# SYMBOL MANAGEMENT ENDPOINTS
+# =====================================================
+
+@router.get("/symbols/check/{symbol}", response_model=SymbolCheckResponse)
+async def check_symbol_exists(
+    symbol: str,
+    token: str = Depends(get_token)
+):
+    """Check if a symbol exists in the stock_quotes table."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.check_symbol_exists(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check symbol: {str(e)}")
+
+
+@router.post("/symbols/save", response_model=SymbolSaveResponse)
+async def save_symbol_to_database(
+    request: SymbolSaveRequest,
+    token: str = Depends(get_token)
+):
+    """Save a symbol to the stock_quotes table with initial market data."""
+    try:
+        validated_symbol = validate_symbol(request.symbol)
+        service = MarketDataService()
+        result = await service.save_symbol_to_database(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save symbol: {str(e)}")
+
+
 # =====================================================
 # HEALTH CHECK ENDPOINT
 # =====================================================
@@ -369,6 +433,8 @@ async def health_check():
             "stock/{symbol}/combined",
             "movements/significant",
             "movements/top-movers-today",
-            "overview/{symbol}"
+            "overview/{symbol}",
+            "symbols/check/{symbol}",
+            "symbols/save"
         ]
     }

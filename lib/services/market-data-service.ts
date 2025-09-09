@@ -169,13 +169,13 @@ class MarketDataService {
 
   async checkSymbolExists(symbol: string): Promise<SymbolCheckResponse> {
     return apiClient.get<SymbolCheckResponse>(
-      `/api/market-data/symbols/check/${symbol.toUpperCase()}`
+      apiConfig.endpoints.marketData.symbols.check(symbol.toUpperCase())
     );
   }
 
   async saveSymbolToDatabase(params: SymbolSaveRequest): Promise<SymbolSaveResponse> {
     return apiClient.post<SymbolSaveResponse>(
-      '/api/market-data/symbols/save',
+      apiConfig.endpoints.marketData.symbols.save,
       { symbol: params.symbol.toUpperCase() }
     );
   }

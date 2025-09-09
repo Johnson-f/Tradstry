@@ -82,16 +82,16 @@ export function SymbolSearch({
       const data = await response.json();
       
       // Transform the response to match our SearchResult interface
-      const transformedResults: SearchResult[] = Object.entries(data).map(([symbol, info]: [string, any]) => ({
-        symbol,
-        name: info.name || info.longName || symbol,
+      // API returns an array, not an object
+      const transformedResults: SearchResult[] = (Array.isArray(data) ? data : []).map((info: any) => ({
+        symbol: info.symbol,
+        name: info.name || info.longName || info.symbol,
         exchange: info.exchange || 'Unknown',
-        type: info.quoteType || info.typeDisp || 'Stock',
+        type: info.quoteType || info.typeDisp || info.type || 'Stock',
         currency: info.currency,
         marketCap: info.marketCap,
         sector: info.sector,
       }));
-
       setResults(transformedResults.slice(0, 10)); // Limit to 10 results
       setIsOpen(true);
     } catch (err) {
