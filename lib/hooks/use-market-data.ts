@@ -583,9 +583,49 @@ export function useMarketIndices() {
   };
 }
 
-// =====================================================
-// MARKET MOVERS HOOKS
-// =====================================================
+export function useCachedSymbolData(symbol: string, limit: number = 100) {
+  const {
+    data: cachedSymbolData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['cache', 'symbol', symbol, limit],
+    queryFn: () => marketDataService.getCachedSymbolData(symbol, limit),
+    staleTime: 1 * 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    cachedSymbolData: cachedSymbolData ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useMajorIndicesData(limit: number = 100) {
+  const {
+    data: majorIndicesData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['cache', 'major-indices', limit],
+    queryFn: () => marketDataService.getMajorIndicesData(limit),
+    staleTime: 1 * 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 1 * 60 * 1000, // Auto-refresh every minute
+  });
+
+  return {
+    majorIndicesData: majorIndicesData ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
 
 export function useGainers(count: number = 25) {
   const {

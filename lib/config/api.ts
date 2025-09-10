@@ -123,6 +123,7 @@ export const apiConfig = {
     },
     // Market Data endpoints
     marketData: {
+      base: "/market-data",
       // Earnings endpoints
       earnings: {
         dailySummary: "/market-data/earnings/daily-summary",

@@ -31,6 +31,8 @@ import type {
   SymbolCheckResponse,
   SymbolSaveRequest,
   SymbolSaveResponse,
+  CachedSymbolData,
+  MajorIndicesResponse,
 } from "@/lib/types/market-data";
 
 class MarketDataService {
@@ -323,6 +325,24 @@ class MarketDataService {
       marketCap: moverData.marketCap,
       logo: moverData.logo,
     }));
+  }
+
+  // =====================================================
+  // CACHING ENDPOINTS
+  // =====================================================
+
+  async getCachedSymbolData(symbol: string, limit: number = 100): Promise<CachedSymbolData | null> {
+    return apiClient.get<CachedSymbolData | null>(
+      `${apiConfig.endpoints.marketData.base}/cache/symbol/${symbol}`,
+      { params: { limit } }
+    );
+  }
+
+  async getMajorIndicesData(limit: number = 100): Promise<MajorIndicesResponse | null> {
+    return apiClient.get<MajorIndicesResponse | null>(
+      `${apiConfig.endpoints.marketData.base}/cache/major-indices`,
+      { params: { limit } }
+    );
   }
 
   // =====================================================

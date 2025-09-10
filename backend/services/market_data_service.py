@@ -10,7 +10,8 @@ from models.market_data import (
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
-    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse
+    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
+    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest
 )
 
 
@@ -537,4 +538,115 @@ class MarketDataService:
             else:
                 raise Exception("Failed to save symbol to database")
         
+        return await self._execute_with_retry(operation, access_token)
+
+
+    # =====================================================
+    # CACHING FUNCTIONS
+    # =====================================================
+
+    async def get_cached_symbol_data(
+        self,
+        request: CacheDataRequest,
+        access_token: str = None
+    ) -> Optional[CachedSymbolData]:
+        """Get cached data for a specific symbol."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+
+            # Query the caching table directly
+            query = client.table('caching').select('*').eq('symbol', request.symbol.upper())
+
+            if request.period_type:
+                query = query.eq('period_type', request.period_type)
+
+            if request.data_provider:
+                query = query.eq('data_provider', request.data_provider)
+
+            # Order by period_start descending and limit results
+            query = query.order('period_start', desc=True)
+
+            if request.limit:
+                query = query.limit(request.limit)
+
+            response = query.execute()
+
+            if response.data and len(response.data) > 0:
+                # Convert response data to CacheData objects
+                data_points = [CacheData(**item) for item in response.data]
+
+                # Find latest timestamp
+                latest_timestamp = max((point.period_start for point in data_points)) if data_points else None
+
+                return CachedSymbolData(
+                    symbol=request.symbol.upper(),
+                    data_points=data_points,
+                    latest_timestamp=latest_timestamp,
+                    data_points_count=len(data_points)
+                )
+            return None
+
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_major_indices_data(
+        self,
+        limit: int = 100,
+        period_type: str = "1min",
+        data_provider: str = "finance_query",
+        access_token: str = None
+    ) -> MajorIndicesResponse:
+        """Get cached data for major indices (SPY, QQQ, DIA, VIX)."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+
+            indices_symbols = ['SPY', 'QQQ', 'DIA', 'VIX']
+            indices_data = {}
+
+            total_data_points = 0
+
+            for symbol in indices_symbols:
+                # Query the caching table for each symbol
+                query = client.table('caching').select('*').eq('symbol', symbol)
+
+                if period_type:
+                    query = query.eq('period_type', period_type)
+
+                if data_provider:
+                    query = query.eq('data_provider', data_provider)
+
+                # Order by period_start descending and limit results
+                query = query.order('period_start', desc=True)
+
+                if limit:
+                    query = query.limit(limit)
+
+                response = query.execute()
+
+                if response.data and len(response.data) > 0:
+                    # Convert response data to CacheData objects
+                    data_points = [CacheData(**item) for item in response.data]
+
+                    # Find latest timestamp
+                    latest_timestamp = max((point.period_start for point in data_points)) if data_points else None
+
+                    indices_data[symbol.lower()] = CachedSymbolData(
+                        symbol=symbol,
+                        data_points=data_points,
+                        latest_timestamp=latest_timestamp,
+                        data_points_count=len(data_points)
+                    )
+
+                    total_data_points += len(data_points)
+
+            return MajorIndicesResponse(
+                spy=indices_data.get('spy'),
+                qqq=indices_data.get('qqq'),
+                dia=indices_data.get('dia'),
+                vix=indices_data.get('vix'),
+                timestamp=datetime.now(),
+                total_data_points=total_data_points
+            )
+
         return await self._execute_with_retry(operation, access_token)

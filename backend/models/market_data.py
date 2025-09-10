@@ -333,3 +333,48 @@ class SymbolSaveResponse(BaseModel):
     success: bool
     symbol: str
     message: str
+
+
+# =====================================================
+# CACHING MODELS
+# =====================================================
+
+class CacheData(BaseModel):
+    id: int
+    symbol: str
+    exchange_id: Optional[int] = None
+    open: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    adjclose: Optional[Decimal] = None
+    volume: Optional[int] = None
+    period_start: datetime
+    period_end: datetime
+    period_type: str
+    data_provider: str
+    cache_timestamp: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class CachedSymbolData(BaseModel):
+    symbol: str
+    data_points: List[CacheData] = []
+    latest_timestamp: Optional[datetime] = None
+    data_points_count: int = 0
+
+
+class MajorIndicesResponse(BaseModel):
+    spy: Optional[CachedSymbolData] = None
+    qqq: Optional[CachedSymbolData] = None
+    dia: Optional[CachedSymbolData] = None
+    vix: Optional[CachedSymbolData] = None
+    timestamp: datetime
+    total_data_points: int = 0
+
+
+class CacheDataRequest(BaseModel):
+    symbol: str
+    limit: Optional[int] = 100
+    period_type: Optional[str] = "1min"
+    data_provider: Optional[str] = "finance_query"

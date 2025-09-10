@@ -11,7 +11,8 @@ from models.market_data import (
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
-    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse
+    TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
+    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -435,6 +436,146 @@ async def health_check():
             "movements/top-movers-today",
             "overview/{symbol}",
             "symbols/check/{symbol}",
-            "symbols/save"
+            "symbols/save",
+            "cache/symbol/{symbol}",
+            "cache/major-indices",
+            "cache/spy",
+            "cache/qqq",
+            "cache/dia",
+            "cache/vix"
         ]
     }
+
+
+# =====================================================
+# CACHING ENDPOINTS
+# =====================================================
+
+@router.get("/cache/symbol/{symbol}", response_model=Optional[CachedSymbolData])
+async def get_cached_symbol_data(
+    symbol: str,
+    limit: int = Query(100, description="Maximum number of data points to return"),
+    period_type: str = Query("1min", description="Time period type (1min, 5min, 1hour, 1day, etc.)"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached market data for a specific symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        request = CacheDataRequest(
+            symbol=validated_symbol,
+            limit=limit,
+            period_type=period_type,
+            data_provider=data_provider
+        )
+        result = await service.get_cached_symbol_data(request, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get cached symbol data: {str(e)}")
+
+
+@router.get("/cache/major-indices", response_model=MajorIndicesResponse)
+async def get_major_indices_data(
+    limit: int = Query(100, description="Maximum number of data points per symbol"),
+    period_type: str = Query("1min", description="Time period type (1min, 5min, 1hour, 1day, etc.)"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached data for major indices (SPY, QQQ, DIA, VIX)."""
+    try:
+        service = MarketDataService()
+        result = await service.get_major_indices_data(limit, period_type, data_provider, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get major indices data: {str(e)}")
+
+
+@router.get("/cache/spy", response_model=Optional[CachedSymbolData])
+async def get_spy_data(
+    limit: int = Query(100, description="Maximum number of data points to return"),
+    period_type: str = Query("1min", description="Time period type"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached SPY (S&P 500 ETF) data."""
+    try:
+        service = MarketDataService()
+        request = CacheDataRequest(
+            symbol="SPY",
+            limit=limit,
+            period_type=period_type,
+            data_provider=data_provider
+        )
+        result = await service.get_cached_symbol_data(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get SPY data: {str(e)}")
+
+
+@router.get("/cache/qqq", response_model=Optional[CachedSymbolData])
+async def get_qqq_data(
+    limit: int = Query(100, description="Maximum number of data points to return"),
+    period_type: str = Query("1min", description="Time period type"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached QQQ (Nasdaq-100 ETF) data."""
+    try:
+        service = MarketDataService()
+        request = CacheDataRequest(
+            symbol="QQQ",
+            limit=limit,
+            period_type=period_type,
+            data_provider=data_provider
+        )
+        result = await service.get_cached_symbol_data(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get QQQ data: {str(e)}")
+
+
+@router.get("/cache/dia", response_model=Optional[CachedSymbolData])
+async def get_dia_data(
+    limit: int = Query(100, description="Maximum number of data points to return"),
+    period_type: str = Query("1min", description="Time period type"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached DIA (Dow Jones Industrial Average ETF) data."""
+    try:
+        service = MarketDataService()
+        request = CacheDataRequest(
+            symbol="DIA",
+            limit=limit,
+            period_type=period_type,
+            data_provider=data_provider
+        )
+        result = await service.get_cached_symbol_data(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get DIA data: {str(e)}")
+
+
+@router.get("/cache/vix", response_model=Optional[CachedSymbolData])
+async def get_vix_data(
+    limit: int = Query(100, description="Maximum number of data points to return"),
+    period_type: str = Query("1min", description="Time period type"),
+    data_provider: str = Query("finance_query", description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get cached VIX (fear & greed index) data."""
+    try:
+        service = MarketDataService()
+        request = CacheDataRequest(
+            symbol="VIX",
+            limit=limit,
+            period_type=period_type,
+            data_provider=data_provider
+        )
+        result = await service.get_cached_symbol_data(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get VIX data: {str(e)}")
