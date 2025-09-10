@@ -390,3 +390,41 @@ export interface MarketDataHealth {
   timestamp: string;
   available_endpoints: string[];
 }
+
+// =====================================================
+// CACHING TYPES
+// =====================================================
+
+export interface CacheData {
+  id: number;
+  symbol: string;
+  exchange_id?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  adjclose?: number;
+  volume?: number;
+  period_start: string;
+  period_end: string;
+  period_type: string;
+  data_provider: string;
+  cache_timestamp: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CachedSymbolData {
+  symbol: string;
+  data_points: CacheData[];
+  latest_timestamp?: string;
+  data_points_count: number;
+}
+
+export interface MajorIndicesResponse {
+  spy?: CachedSymbolData;
+  qqq?: CachedSymbolData;
+  dia?: CachedSymbolData;
+  vix?: CachedSymbolData;
+  timestamp: string;
+  total_data_points: number;
+}

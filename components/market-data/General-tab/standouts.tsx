@@ -11,24 +11,31 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { PriceMovement } from '@/lib/types/market-data';
 
 // Format functions
-const formatPrice = (value: number) => {
-  return `$${value.toFixed(2)}`;
+const formatPrice = (value: number | string | null | undefined) => {
+  const numValue = typeof value === 'string' ? parseFloat(value) : (value || 0);
+  if (isNaN(numValue)) return '$0.00';
+  return `$${numValue.toFixed(2)}`;
 };
 
-const formatPercentage = (value: number) => {
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
+const formatPercentage = (value: number | string | null | undefined) => {
+  const numValue = typeof value === 'string' ? parseFloat(value) : (value || 0);
+  if (isNaN(numValue)) return '0.00%';
+  const sign = numValue >= 0 ? '+' : '';
+  return `${sign}${numValue.toFixed(2)}%`;
 };
 
-const formatVolume = (volume: number) => {
-  if (volume >= 1000000000) {
-    return `${(volume / 1000000000).toFixed(1)}B`;
-  } else if (volume >= 1000000) {
-    return `${(volume / 1000000).toFixed(1)}M`;
-  } else if (volume >= 1000) {
-    return `${(volume / 1000).toFixed(1)}K`;
+const formatVolume = (volume: number | string | null | undefined) => {
+  const numVolume = typeof volume === 'string' ? parseFloat(volume) : (volume || 0);
+  if (isNaN(numVolume)) return '0';
+  
+  if (numVolume >= 1000000000) {
+    return `${(numVolume / 1000000000).toFixed(1)}B`;
+  } else if (numVolume >= 1000000) {
+    return `${(numVolume / 1000000).toFixed(1)}M`;
+  } else if (numVolume >= 1000) {
+    return `${(numVolume / 1000).toFixed(1)}K`;
   }
-  return volume.toString();
+  return numVolume.toString();
 };
 
 const formatMarketCap = (marketCap?: number) => {
