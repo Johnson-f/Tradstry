@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useSignificantPriceMovements, useSymbolHistoricalData } from '@/lib/hooks/use-market-data';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { PriceMovement } from '@/lib/types/market-data';
 
@@ -68,18 +68,18 @@ const StandoutCard: React.FC<StandoutCardProps> = ({ movement }) => {
   const isNegative = (movement.price_change_percent || 0) < 0;
   
   // Prepare chart data
-  const chartData = historicalData.map(point => ({
+  const chartData = (historicalData || []).map(point => ({
     time: formatTime(point.timestamp),
     price: point.close,
     timestamp: point.timestamp
   }));
 
-  // Get price range for Y-axis
-  const prices = chartData.map(d => d.price);
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
+  // Get price range for Y-axis - with fallbacks for empty data
+  const prices = chartData.map(d => d.price).filter(price => price != null && !isNaN(price));
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 100;
   const priceRange = maxPrice - minPrice;
-  const padding = priceRange * 0.1; // 10% padding
+  const padding = priceRange > 0 ? priceRange * 0.1 : 10; // 10% padding or fallback
 
   return (
     <Card className="bg-gray-900 border-gray-700 text-white">
@@ -109,66 +109,84 @@ const StandoutCard: React.FC<StandoutCardProps> = ({ movement }) => {
           </div>
         </div>
 
-        {/* Chart */}
-        <div className="h-[200px] mb-6">
-          {chartLoading ? (
-            <div className="h-full flex items-center justify-center">
-              <Skeleton className="w-full h-full bg-gray-700" />
-            </div>
-          ) : chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <XAxis 
-                  dataKey="time" 
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: '#9CA3AF' }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis 
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: '#9CA3AF' }}
-                  domain={[minPrice - padding, maxPrice + padding]}
-                  tickFormatter={(value) => value.toFixed(2)}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="price" 
-                  stroke={isNegative ? "#EF4444" : "#22C55E"}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 3, fill: isNegative ? "#EF4444" : "#22C55E" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              No chart data available
-            </div>
-          )}
-        </div>
-
-        {/* Metrics */}
-        <div className="grid grid-cols-2 gap-6 mb-4">
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Volume</span>
-              <span className="font-medium">{formatVolume(movement.volume || 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Market Cap</span>
-              <span className="font-medium">N/A</span>
-            </div>
+        {/* Chart and Metrics Side by Side */}
+        <div className="flex gap-6 mb-4">
+          {/* Chart - Left Side */}
+          <div className="flex-1 h-[200px]">
+            {chartLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Skeleton className="w-full h-full bg-gray-700" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.length > 0 ? chartData : []}>
+                  <XAxis 
+                    dataKey="time" 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                    domain={chartData.length > 0 ? [minPrice - padding, maxPrice + padding] : [0, 100]}
+                    tickFormatter={(value) => value.toFixed(2)}
+                  />
+                  <Tooltip 
+                    labelFormatter={(label) => `Time: ${label}`}
+                    formatter={(value: number) => [formatPrice(value), 'Price']}
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--background))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      color: 'hsl(var(--foreground))',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}
+                    labelStyle={{
+                      color: 'hsl(var(--muted-foreground))',
+                      fontSize: '11px'
+                    }}
+                  />
+                  {chartData.length > 0 && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="price" 
+                      stroke={isNegative ? "#EF4444" : "#22C55E"}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, fill: isNegative ? "#EF4444" : "#22C55E", strokeWidth: 0 }}
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+            {!chartLoading && chartData.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                No chart data available
+              </div>
+            )}
           </div>
-          <div className="space-y-3">
+
+          {/* Metrics - Right Side */}
+          <div className="w-48 space-y-4 flex flex-col justify-center">
             <div className="flex justify-between">
-              <span className="text-gray-400">P/E Ratio</span>
-              <span className="font-medium">N/A</span>
+              <span className="text-gray-400 text-sm">Volume</span>
+              <span className="font-medium text-sm">{formatVolume(movement.volume || 0)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Dividend Yield</span>
-              <span className="font-medium">N/A</span>
+              <span className="text-gray-400 text-sm">Market Cap</span>
+              <span className="font-medium text-sm">{formatMarketCap(movement.market_cap)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400 text-sm">P/E Ratio</span>
+              <span className="font-medium text-sm">N/A</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400 text-sm">Dividend Yield</span>
+              <span className="font-medium text-sm">N/A</span>
             </div>
           </div>
         </div>
@@ -263,7 +281,7 @@ export const Standouts: React.FC = () => {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-6">
         {isLoading ? (
           // Show skeletons during loading
           Array.from({ length: 4 }).map((_, index) => (

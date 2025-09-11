@@ -12,26 +12,64 @@ CREATE OR REPLACE FUNCTION upsert_company_info(
     p_exchange_country TEXT DEFAULT NULL,
     p_exchange_timezone TEXT DEFAULT NULL,
     
-    -- Company parameters
+    -- Basic company information
     p_name VARCHAR(255) DEFAULT NULL,
     p_company_name VARCHAR(255) DEFAULT NULL,
     p_exchange VARCHAR(50) DEFAULT NULL,
     p_sector VARCHAR(100) DEFAULT NULL,
     p_industry VARCHAR(100) DEFAULT NULL,
-    p_market_cap BIGINT DEFAULT NULL,
+    p_about TEXT DEFAULT NULL,
     p_employees INTEGER DEFAULT NULL,
-    p_revenue BIGINT DEFAULT NULL,
-    p_net_income BIGINT DEFAULT NULL,
+    p_logo VARCHAR(500) DEFAULT NULL,
+    
+    -- Real-time price data
+    p_price DECIMAL(15,4) DEFAULT NULL,
+    p_pre_market_price DECIMAL(15,4) DEFAULT NULL,
+    p_after_hours_price DECIMAL(15,4) DEFAULT NULL,
+    p_change DECIMAL(15,4) DEFAULT NULL,
+    p_percent_change DECIMAL(8,4) DEFAULT NULL,
+    p_open DECIMAL(15,4) DEFAULT NULL,
+    p_high DECIMAL(15,4) DEFAULT NULL,
+    p_low DECIMAL(15,4) DEFAULT NULL,
+    p_year_high DECIMAL(15,4) DEFAULT NULL,
+    p_year_low DECIMAL(15,4) DEFAULT NULL,
+    
+    -- Volume and trading metrics
+    p_volume BIGINT DEFAULT NULL,
+    p_avg_volume BIGINT DEFAULT NULL,
+    
+    -- Financial ratios and metrics
+    p_market_cap BIGINT DEFAULT NULL,
+    p_beta DECIMAL(8,4) DEFAULT NULL,
     p_pe_ratio DECIMAL(10,2) DEFAULT NULL,
-    p_pb_ratio DECIMAL(10,2) DEFAULT NULL,
-    p_dividend_yield DECIMAL(7,4) DEFAULT NULL,
-    p_description TEXT DEFAULT NULL,
-    p_website VARCHAR(500) DEFAULT NULL,
-    p_ceo VARCHAR(255) DEFAULT NULL,
-    p_headquarters VARCHAR(255) DEFAULT NULL,
-    p_founded VARCHAR(50) DEFAULT NULL,
-    p_phone VARCHAR(50) DEFAULT NULL,
-    p_email VARCHAR(255) DEFAULT NULL,
+    p_eps DECIMAL(10,4) DEFAULT NULL,
+    
+    -- Dividend information
+    p_dividend DECIMAL(10,4) DEFAULT NULL,
+    p_yield DECIMAL(7,4) DEFAULT NULL,
+    p_ex_dividend DATE DEFAULT NULL,
+    p_last_dividend DECIMAL(10,4) DEFAULT NULL,
+    
+    -- Fund-specific metrics
+    p_net_assets BIGINT DEFAULT NULL,
+    p_nav DECIMAL(15,4) DEFAULT NULL,
+    p_expense_ratio DECIMAL(7,4) DEFAULT NULL,
+    
+    -- Corporate events
+    p_earnings_date DATE DEFAULT NULL,
+    
+    -- Performance returns
+    p_five_day_return DECIMAL(8,4) DEFAULT NULL,
+    p_one_month_return DECIMAL(8,4) DEFAULT NULL,
+    p_three_month_return DECIMAL(8,4) DEFAULT NULL,
+    p_six_month_return DECIMAL(8,4) DEFAULT NULL,
+    p_ytd_return DECIMAL(8,4) DEFAULT NULL,
+    p_year_return DECIMAL(8,4) DEFAULT NULL,
+    p_five_year_return DECIMAL(8,4) DEFAULT NULL,
+    p_ten_year_return DECIMAL(8,4) DEFAULT NULL,
+    p_max_return DECIMAL(8,4) DEFAULT NULL,
+    
+    -- Additional metadata
     p_ipo_date DATE DEFAULT NULL,
     p_currency VARCHAR(3) DEFAULT 'USD',
     p_fiscal_year_end VARCHAR(10) DEFAULT NULL
@@ -55,16 +93,24 @@ BEGIN
 
     -- Step 2: Insert/update company info
     INSERT INTO company_info (
-        symbol, exchange_id, name, company_name, exchange, sector, industry,
-        market_cap, employees, revenue, net_income, pe_ratio, pb_ratio,
-        dividend_yield, description, website, ceo, headquarters, founded,
-        phone, email, ipo_date, currency, fiscal_year_end, data_provider,
+        symbol, exchange_id, name, company_name, exchange, sector, industry, about, employees, logo,
+        price, pre_market_price, after_hours_price, change, percent_change, open, high, low, year_high, year_low,
+        volume, avg_volume, market_cap, beta, pe_ratio, eps,
+        dividend, yield, ex_dividend, last_dividend,
+        net_assets, nav, expense_ratio, earnings_date,
+        five_day_return, one_month_return, three_month_return, six_month_return, ytd_return, year_return,
+        five_year_return, ten_year_return, max_return,
+        ipo_date, currency, fiscal_year_end, data_provider,
         created_at, updated_at
     ) VALUES (
-        p_symbol, v_exchange_id, p_name, p_company_name, p_exchange, p_sector, p_industry,
-        p_market_cap, p_employees, p_revenue, p_net_income, p_pe_ratio, p_pb_ratio,
-        p_dividend_yield, p_description, p_website, p_ceo, p_headquarters, p_founded,
-        p_phone, p_email, p_ipo_date, p_currency, p_fiscal_year_end, p_data_provider,
+        p_symbol, v_exchange_id, p_name, p_company_name, p_exchange, p_sector, p_industry, p_about, p_employees, p_logo,
+        p_price, p_pre_market_price, p_after_hours_price, p_change, p_percent_change, p_open, p_high, p_low, p_year_high, p_year_low,
+        p_volume, p_avg_volume, p_market_cap, p_beta, p_pe_ratio, p_eps,
+        p_dividend, p_yield, p_ex_dividend, p_last_dividend,
+        p_net_assets, p_nav, p_expense_ratio, p_earnings_date,
+        p_five_day_return, p_one_month_return, p_three_month_return, p_six_month_return, p_ytd_return, p_year_return,
+        p_five_year_return, p_ten_year_return, p_max_return,
+        p_ipo_date, p_currency, p_fiscal_year_end, p_data_provider,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
     ON CONFLICT (symbol, data_provider) 
@@ -75,20 +121,58 @@ BEGIN
         exchange = COALESCE(EXCLUDED.exchange, company_info.exchange),
         sector = COALESCE(EXCLUDED.sector, company_info.sector),
         industry = COALESCE(EXCLUDED.industry, company_info.industry),
-        market_cap = COALESCE(EXCLUDED.market_cap, company_info.market_cap),
+        about = COALESCE(EXCLUDED.about, company_info.about),
         employees = COALESCE(EXCLUDED.employees, company_info.employees),
-        revenue = COALESCE(EXCLUDED.revenue, company_info.revenue),
-        net_income = COALESCE(EXCLUDED.net_income, company_info.net_income),
+        logo = COALESCE(EXCLUDED.logo, company_info.logo),
+        
+        -- Real-time price data (always update when provided)
+        price = COALESCE(EXCLUDED.price, company_info.price),
+        pre_market_price = COALESCE(EXCLUDED.pre_market_price, company_info.pre_market_price),
+        after_hours_price = COALESCE(EXCLUDED.after_hours_price, company_info.after_hours_price),
+        change = COALESCE(EXCLUDED.change, company_info.change),
+        percent_change = COALESCE(EXCLUDED.percent_change, company_info.percent_change),
+        open = COALESCE(EXCLUDED.open, company_info.open),
+        high = COALESCE(EXCLUDED.high, company_info.high),
+        low = COALESCE(EXCLUDED.low, company_info.low),
+        year_high = COALESCE(EXCLUDED.year_high, company_info.year_high),
+        year_low = COALESCE(EXCLUDED.year_low, company_info.year_low),
+        
+        -- Volume and trading metrics
+        volume = COALESCE(EXCLUDED.volume, company_info.volume),
+        avg_volume = COALESCE(EXCLUDED.avg_volume, company_info.avg_volume),
+        
+        -- Financial ratios and metrics
+        market_cap = COALESCE(EXCLUDED.market_cap, company_info.market_cap),
+        beta = COALESCE(EXCLUDED.beta, company_info.beta),
         pe_ratio = COALESCE(EXCLUDED.pe_ratio, company_info.pe_ratio),
-        pb_ratio = COALESCE(EXCLUDED.pb_ratio, company_info.pb_ratio),
-        dividend_yield = COALESCE(EXCLUDED.dividend_yield, company_info.dividend_yield),
-        description = COALESCE(EXCLUDED.description, company_info.description),
-        website = COALESCE(EXCLUDED.website, company_info.website),
-        ceo = COALESCE(EXCLUDED.ceo, company_info.ceo),
-        headquarters = COALESCE(EXCLUDED.headquarters, company_info.headquarters),
-        founded = COALESCE(EXCLUDED.founded, company_info.founded),
-        phone = COALESCE(EXCLUDED.phone, company_info.phone),
-        email = COALESCE(EXCLUDED.email, company_info.email),
+        eps = COALESCE(EXCLUDED.eps, company_info.eps),
+        
+        -- Dividend information
+        dividend = COALESCE(EXCLUDED.dividend, company_info.dividend),
+        yield = COALESCE(EXCLUDED.yield, company_info.yield),
+        ex_dividend = COALESCE(EXCLUDED.ex_dividend, company_info.ex_dividend),
+        last_dividend = COALESCE(EXCLUDED.last_dividend, company_info.last_dividend),
+        
+        -- Fund-specific metrics
+        net_assets = COALESCE(EXCLUDED.net_assets, company_info.net_assets),
+        nav = COALESCE(EXCLUDED.nav, company_info.nav),
+        expense_ratio = COALESCE(EXCLUDED.expense_ratio, company_info.expense_ratio),
+        
+        -- Corporate events
+        earnings_date = COALESCE(EXCLUDED.earnings_date, company_info.earnings_date),
+        
+        -- Performance returns
+        five_day_return = COALESCE(EXCLUDED.five_day_return, company_info.five_day_return),
+        one_month_return = COALESCE(EXCLUDED.one_month_return, company_info.one_month_return),
+        three_month_return = COALESCE(EXCLUDED.three_month_return, company_info.three_month_return),
+        six_month_return = COALESCE(EXCLUDED.six_month_return, company_info.six_month_return),
+        ytd_return = COALESCE(EXCLUDED.ytd_return, company_info.ytd_return),
+        year_return = COALESCE(EXCLUDED.year_return, company_info.year_return),
+        five_year_return = COALESCE(EXCLUDED.five_year_return, company_info.five_year_return),
+        ten_year_return = COALESCE(EXCLUDED.ten_year_return, company_info.ten_year_return),
+        max_return = COALESCE(EXCLUDED.max_return, company_info.max_return),
+        
+        -- Metadata fields
         ipo_date = COALESCE(EXCLUDED.ipo_date, company_info.ipo_date),
         currency = COALESCE(EXCLUDED.currency, company_info.currency),
         fiscal_year_end = COALESCE(EXCLUDED.fiscal_year_end, company_info.fiscal_year_end),
@@ -100,39 +184,69 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Test script for Supabase SQL Editor 
+-- Test script for comprehensive company_info upsert 
 /*
--- Test insert: new company with automatic exchange handling
+-- Test insert: comprehensive company data with all new fields
 SELECT upsert_company_info(
     p_symbol => 'AAPL',
     p_data_provider => 'YahooFinance',
     
-    -- Exchange information (replaces p_exchange_id)
+    -- Exchange information
     p_exchange_code => 'NASDAQ',
     p_exchange_name => 'NASDAQ Stock Market',
     p_exchange_country => 'USA',
     p_exchange_timezone => 'America/New_York',
     
-    -- Company information
+    -- Basic company information
     p_name => 'Apple',
     p_company_name => 'Apple Inc.',
     p_exchange => 'NASDAQ',
     p_sector => 'Technology',
     p_industry => 'Consumer Electronics',
-    p_market_cap => 2500000000000,
+    p_about => 'Apple Inc. designs, manufactures, and markets consumer electronics, computer software, and online services.',
     p_employees => 164000,
-    p_revenue => 400000000000,
-    p_net_income => 100000000000,
-    p_pe_ratio => 28.5,
-    p_pb_ratio => 35.2,
-    p_dividend_yield => 0.0065,
-    p_description => 'Apple designs, manufactures and markets consumer electronics and software.',
-    p_website => 'https://www.apple.com',
-    p_ceo => 'Tim Cook',
-    p_headquarters => 'Cupertino, California',
-    p_founded => '1976',
-    p_phone => '+1-408-996-1010',
-    p_email => 'contact@apple.com',
+    p_logo => 'https://logo.clearbit.com/apple.com',
+    
+    -- Real-time price data
+    p_price => 185.25,
+    p_pre_market_price => 184.80,
+    p_after_hours_price => 185.50,
+    p_change => 2.15,
+    p_percent_change => 1.17,
+    p_open => 183.10,
+    p_high => 186.40,
+    p_low => 182.75,
+    p_year_high => 199.62,
+    p_year_low => 164.08,
+    
+    -- Volume and trading metrics
+    p_volume => 54320000,
+    p_avg_volume => 58750000,
+    
+    -- Financial ratios and metrics
+    p_market_cap => 2850000000000,
+    p_beta => 1.25,
+    p_pe_ratio => 28.45,
+    p_eps => 6.52,
+    
+    -- Dividend information
+    p_dividend => 0.96,
+    p_yield => 0.0052,
+    p_ex_dividend => '2024-02-09',
+    p_last_dividend => 0.24,
+    
+    -- Performance returns
+    p_five_day_return => 0.0234,
+    p_one_month_return => 0.0567,
+    p_three_month_return => 0.1245,
+    p_six_month_return => 0.0892,
+    p_ytd_return => 0.1567,
+    p_year_return => 0.2134,
+    p_five_year_return => 1.8765,
+    p_ten_year_return => 8.9234,
+    p_max_return => 12.4567,
+    
+    -- Metadata fields
     p_ipo_date => '1980-12-12',
     p_currency => 'USD',
     p_fiscal_year_end => '09-30'

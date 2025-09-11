@@ -10,15 +10,19 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'rec
 import { TrendingUp, TrendingDown, Clock, RefreshCw } from 'lucide-react';
 
 // Format percentage with proper styling
-const formatPercentage = (value: number | undefined) => {
+const formatPercentage = (value: number | string | undefined | null) => {
   if (value === undefined || value === null) return '0.00%';
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(numValue)) return '0.00%';
+  return `${numValue > 0 ? '+' : ''}${numValue.toFixed(2)}%`;
 };
 
 // Format price with proper decimals
-const formatPrice = (value: number | undefined) => {
+const formatPrice = (value: number | string | undefined | null) => {
   if (value === undefined || value === null) return '$0.00';
-  return `$${value.toFixed(2)}`;
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(numValue)) return '$0.00';
+  return `$${numValue.toFixed(2)}`;
 };
 
 // Index card component
@@ -63,28 +67,47 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
 
   const { data_points } = cachedData;
   
-  // Prepare chart data from cached data points
-  const chartData = data_points.slice(-60).map(point => ({
-    time: new Date(point.period_start).toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+  // Prepare chart data from cached data points - modify the chart rendering here
+  const chartData = data_points.slice(-60).reverse().map(point => ({
+    time: new Date(point.period_start).toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: false 
+      hour12: false
     }),
     price: point.adjclose || point.open || 0,
     timestamp: new Date(point.period_start).getTime()
   }));
 
-  // Calculate current price and change (using latest data point)
-  const latestPoint = data_points[data_points.length - 1];
-  const previousPoint = data_points.length > 1 ? data_points[data_points.length - 2] : null;
+  // Calculate daily performance - current price vs opening price of the day
+  const sortedPoints = [...data_points].sort((a, b) => 
+    new Date(a.period_start).getTime() - new Date(b.period_start).getTime()
+  );
   
-  const currentPrice = latestPoint.adjclose || latestPoint.open || 0;
-  const previousPrice = previousPoint ? (previousPoint.adjclose || previousPoint.open || 0) : currentPrice;
+  const currentPoint = sortedPoints[sortedPoints.length - 1]; // Most recent point
+  const currentPrice = currentPoint.adjclose || currentPoint.open || 0;
   
-  const change = currentPrice - previousPrice;
-  const changePercent = previousPrice !== 0 ? (change / previousPrice) * 100 : 0;
+  // Find today's opening price - first data point of today
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  
+  // Get opening price from today's first data point or use the open price from current point
+  let openingPrice = currentPoint.open || currentPrice;
+  
+  // Try to find the actual opening from today's data
+  const todayPoints = sortedPoints.filter(point => {
+    const pointDate = new Date(point.period_start);
+    return pointDate >= todayStart;
+  });
+  
+  if (todayPoints.length > 0) {
+    openingPrice = todayPoints[0].open || todayPoints[0].adjclose || openingPrice;
+  }
+  
+  // Calculate daily change and percentage
+  const dailyChange = currentPrice - openingPrice;
+  const dailyChangePercent = openingPrice !== 0 ? (dailyChange / openingPrice) * 100 : 0;
 
-  const isPositive = changePercent >= 0;
+  const isPositive = dailyChangePercent >= 0;
 
   // Get ticker symbol for display
   const getTickerSymbol = (symbol: string) => {
@@ -98,78 +121,84 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
   };
 
   return (
-    <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] flex flex-col">
-      <CardHeader className="pb-1 px-4 pt-3">
-        <div className="flex items-start justify-between mb-1">
+    <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] relative overflow-hidden">
+      {/* Full background chart */}
+      <div className="absolute inset-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData}>
+            <XAxis 
+              dataKey="time" 
+              axisLine={false}
+              tickLine={false}
+              tick={false}
+            />
+            <YAxis 
+              axisLine={false}
+              tickLine={false}
+              tick={false}
+              domain={['dataMin - 1', 'dataMax + 1']}
+            />
+            <Tooltip 
+              labelFormatter={(label) => `Time: ${label}`}
+              formatter={(value: number) => [formatPrice(value), 'Price']}
+              contentStyle={{
+                backgroundColor: 'hsl(var(--background))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '11px',
+                color: 'hsl(var(--foreground))',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+              }}
+              labelStyle={{
+                color: 'hsl(var(--muted-foreground))',
+                fontSize: '10px'
+              }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="price" 
+              stroke={isPositive ? "#22c55e" : "#ef4444"}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 3, fill: isPositive ? "#22c55e" : "#ef4444", strokeWidth: 0 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      
+      {/* Overlay content - style the card internals here */}
+      <div className="relative z-100 px-4 pt-1 pb-120 h-full flex flex-col justify-between">
+        {/* Top row */}
+        <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-sm font-medium text-muted-foreground">{symbol}</CardTitle>
-            <div className="text-xs text-muted-foreground mt-0.5">
+            <div className="text-sm font-medium">{symbol}</div>
+            <div className="text-xs opacity-80">
               {getTickerSymbol(symbol)}
             </div>
           </div>
-          <div className="text-right">
-            <Badge 
-              variant={isPositive ? "default" : "destructive"}
-              className="flex items-center gap-1 text-xs px-2 py-0.5 mb-1"
-            >
-              {isPositive ? (
-                <TrendingUp className="w-3 h-3" />
-              ) : (
-                <TrendingDown className="w-3 h-3" />
-              )}
-              {formatPercentage(changePercent)}
-            </Badge>
-            <div className={`text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-              {change > 0 ? '+' : ''}{Math.abs(change).toFixed(0)}
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="flex-1 pt-0 px-4 pb-3">
-        {/* Chart takes most of the space */}
-        <div className="h-[60px] w-full mb-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis 
-                dataKey="time" 
-                axisLine={false}
-                tickLine={false}
-                tick={false}
-              />
-              <YAxis 
-                axisLine={false}
-                tickLine={false}
-                tick={false}
-                domain={['dataMin - 1', 'dataMax + 1']}
-              />
-              <Tooltip 
-                labelFormatter={(label) => `Time: ${label}`}
-                formatter={(value: number) => [formatPrice(value), 'Price']}
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '6px',
-                  fontSize: '11px'
-                }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="price" 
-                stroke={isPositive ? "#22c55e" : "#ef4444"}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 2 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <Badge 
+            variant={isPositive ? "default" : "destructive"}
+            className="flex items-center gap-1 text-xs px-2 py-0.5"
+          >
+            {isPositive ? (
+              <TrendingUp className="w-3 h-3" />
+            ) : (
+              <TrendingDown className="w-3 h-3" />
+            )}
+            {formatPercentage(dailyChangePercent)}
+          </Badge>
         </div>
         
-        {/* Price at bottom */}
-        <div className="text-lg font-bold">
-          {formatPrice(currentPrice)}
+        {/* Bottom row */}
+        <div className="flex items-end justify-between">
+          <div className="text-xl font-bold">
+            {formatPrice(currentPrice)}
+          </div>
+          <div className={`text-sm font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            {dailyChange > 0 ? '+' : ''}{Math.abs(dailyChange).toFixed(2)}
+          </div>
         </div>
-      </CardContent>
+      </div>
     </Card>
   );
 };

@@ -1,8 +1,9 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useLatestMarketNews } from '@/lib/hooks/use-market-data';
 import { Clock } from 'lucide-react';
@@ -67,7 +68,7 @@ const NewsItemSkeleton: React.FC = () => (
 
 // Main component
 export const MarketSummary: React.FC = () => {
-  const { marketNews, isLoading, error } = useLatestMarketNews(3); // Limit to 3 articles for compact layout
+  const { marketNews, isLoading, error } = useLatestMarketNews(7); // Limit to 7 articles
 
   // Get the most recent update time
   const latestUpdate = marketNews.length > 0 
@@ -76,55 +77,79 @@ export const MarketSummary: React.FC = () => {
 
   if (error) {
     return (
-      <Card className="bg-gray-900 border-gray-700">
-        <CardContent className="p-6">
-          <Alert variant="destructive" className="bg-red-900/20 border-red-700">
-            <AlertDescription className="text-red-300">
-              Failed to load market news: {error.message}
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="bg-gray-900 border-gray-700 text-white">
-      <CardHeader className="pb-4">
+      <div className="space-y-4">
+        {/* Header outside card */}
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-white">Market Summary</CardTitle>
+          <h2 className="text-lg font-semibold text-white">Market Summary</h2>
           <div className="flex items-center gap-1 text-sm text-gray-400">
             <Clock className="w-3 h-3" />
             <span>Updated {formatTimeAgo(latestUpdate)}</span>
           </div>
         </div>
-      </CardHeader>
+        
+        <Card className="bg-gray-900 border-gray-700">
+          <CardContent className="p-6">
+            <Alert variant="destructive" className="bg-red-900/20 border-red-700">
+              <AlertDescription className="text-red-300">
+                Failed to load market news: {error.message}
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header outside card */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Market Summary</h2>
+        <div className="flex items-center gap-1 text-sm text-gray-400">
+          <Clock className="w-3 h-3" />
+          <span>Updated {formatTimeAgo(latestUpdate)}</span>
+        </div>
+      </div>
       
-      <CardContent className="pt-0 space-y-6">
-        {isLoading ? (
-          // Loading skeletons
-          Array.from({ length: 3 }).map((_, index) => (
-            <NewsItemSkeleton key={index} />
-          ))
-        ) : marketNews.length === 0 ? (
-          // No news available
-          <div className="text-center py-8 text-gray-400">
-            <p>No market news available at the moment.</p>
-          </div>
-        ) : (
-          // Render news items
-          marketNews.slice(0, 3).map((news, index) => (
-            <NewsItem
-              key={news.id || index}
-              title={news.title}
-              summary={news.summary}
-              content={news.content}
-              publishedAt={news.published_at || news.updated_at}
-            />
-          ))
-        )}
-      </CardContent>
-    </Card>
+      {/* Card with news content */}
+      <Card className="bg-gray-900 border-gray-700 text-white">
+        <CardContent className="px-10 py-1">
+          {isLoading ? (
+            // Loading skeletons
+            <div className="space-y-4">
+              {Array.from({ length: 7 }).map((_, index) => (
+                <div key={index}>
+                  <NewsItemSkeleton />
+                  {index < 6 && <Separator className="mt-4 bg-gray-700" />}
+                </div>
+              ))}
+            </div>
+          ) : marketNews.length === 0 ? (
+            // No news available
+            <div className="text-center py-8 text-gray-400">
+              <p>No market news available at the moment.</p>
+            </div>
+          ) : (
+            // Render news items with separators
+            <div className="space-y-4">
+              {marketNews.slice(0, 7).map((news, index) => (
+                <div key={news.id || index}>
+                  <NewsItem
+                    title={news.title}
+                    summary={news.summary}
+                    content={news.content}
+                    publishedAt={news.published_at || news.updated_at}
+                  />
+                  {index < marketNews.slice(0, 7).length - 1 && (
+                    <Separator className="mt-4 bg-gray-700" />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

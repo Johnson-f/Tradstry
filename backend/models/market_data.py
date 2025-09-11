@@ -53,20 +53,58 @@ class CompanyInfo(BaseModel):
     exchange: Optional[str] = None
     sector: Optional[str] = None
     industry: Optional[str] = None
-    market_cap: Optional[int] = None
+    about: Optional[str] = None
     employees: Optional[int] = None
-    revenue: Optional[int] = None
-    net_income: Optional[int] = None
+    logo: Optional[str] = None
+    
+    # Real-time price data
+    price: Optional[Decimal] = None
+    pre_market_price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    open: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    year_high: Optional[Decimal] = None
+    year_low: Optional[Decimal] = None
+    
+    # Volume and trading metrics
+    volume: Optional[int] = None
+    avg_volume: Optional[int] = None
+    
+    # Financial ratios and metrics
+    market_cap: Optional[int] = None
+    beta: Optional[Decimal] = None
     pe_ratio: Optional[Decimal] = None
-    pb_ratio: Optional[Decimal] = None
-    dividend_yield: Optional[Decimal] = None
-    description: Optional[str] = None
-    website: Optional[str] = None
-    ceo: Optional[str] = None
-    headquarters: Optional[str] = None
-    founded: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
+    eps: Optional[Decimal] = None
+    
+    # Dividend information
+    dividend: Optional[Decimal] = None
+    yield_: Optional[Decimal] = Field(None, alias="yield")  # yield is a Python keyword
+    ex_dividend: Optional[date] = None
+    last_dividend: Optional[Decimal] = None
+    
+    # Fund-specific metrics (for ETFs/Mutual Funds)
+    net_assets: Optional[int] = None
+    nav: Optional[Decimal] = None
+    expense_ratio: Optional[Decimal] = None
+    
+    # Corporate events
+    earnings_date: Optional[date] = None
+    
+    # Performance returns
+    five_day_return: Optional[Decimal] = None
+    one_month_return: Optional[Decimal] = None
+    three_month_return: Optional[Decimal] = None
+    six_month_return: Optional[Decimal] = None
+    ytd_return: Optional[Decimal] = None
+    year_return: Optional[Decimal] = None
+    five_year_return: Optional[Decimal] = None
+    ten_year_return: Optional[Decimal] = None
+    max_return: Optional[Decimal] = None
+    
+    # Metadata fields
     ipo_date: Optional[date] = None
     currency: Optional[str] = None
     fiscal_year_end: Optional[str] = None
@@ -84,8 +122,14 @@ class CompanyBasic(BaseModel):
     sector: Optional[str] = None
     industry: Optional[str] = None
     market_cap: Optional[int] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    volume: Optional[int] = None
     pe_ratio: Optional[Decimal] = None
-    dividend_yield: Optional[Decimal] = None
+    yield_: Optional[Decimal] = Field(None, alias="yield")  # yield is a Python keyword
+    ytd_return: Optional[Decimal] = None
+    year_return: Optional[Decimal] = None
     data_provider: Optional[str] = None
     updated_at: Optional[datetime] = None
 
