@@ -92,7 +92,11 @@ class MarketDataService:
             response = client.rpc('get_company_info_by_symbol', params).execute()
             
             if response.data and len(response.data) > 0:
-                return CompanyInfo(**response.data[0])
+                # Handle the yield field alias since 'yield' is a Python keyword
+                data = response.data[0]
+                if 'yield' in data:
+                    data['yield_'] = data.pop('yield')
+                return CompanyInfo(**data)
             return None
         
         return await self._execute_with_retry(operation, access_token)
@@ -116,7 +120,14 @@ class MarketDataService:
             
             response = client.rpc('get_companies_by_sector_industry', params).execute()
             
-            return [CompanyBasic(**item) for item in response.data] if response.data else []
+            # Handle the yield field alias for each company
+            result = []
+            if response.data:
+                for item in response.data:
+                    if 'yield' in item:
+                        item['yield_'] = item.pop('yield')
+                    result.append(CompanyBasic(**item))
+            return result
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -137,7 +148,14 @@ class MarketDataService:
             
             response = client.rpc('search_companies', params).execute()
             
-            return [CompanyBasic(**item) for item in response.data] if response.data else []
+            # Handle the yield field alias for each company
+            result = []
+            if response.data:
+                for item in response.data:
+                    if 'yield' in item:
+                        item['yield_'] = item.pop('yield')
+                    result.append(CompanyBasic(**item))
+            return result
         
         return await self._execute_with_retry(operation, access_token)
 
