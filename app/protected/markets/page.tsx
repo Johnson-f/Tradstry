@@ -2,6 +2,7 @@
 
 import { SymbolSearch } from '@/components/market-data/symbol-search';
 import { TabManager } from '@/components/market-data/tab-manager';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function MarketPage() {
   return (
@@ -20,13 +21,13 @@ export default function MarketPage() {
         </div>
       </div>
       
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8">
             <TabManager />
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

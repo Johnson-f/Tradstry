@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMajorIndicesData } from '@/lib/hooks/use-market-data';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 
 // Format percentage with proper styling
 const formatPercentage = (value: number | string | undefined | null) => {
@@ -261,24 +261,16 @@ export const IndicesTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header with last updated info */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="w-4 h-4" />
-          <span>Last updated: {majorIndicesData ? formatLastUpdated(majorIndicesData.timestamp) : 'Never'}</span>
-        </div>
-      </div>
-
       {/* Cards container */}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {isLoading && !majorIndicesData ? (
           // Show skeletons only on initial load
-          ['SPY', 'QQQ', 'DIA', 'VIX'].map((symbol) => (
+          ['SPY', 'QQQ', 'DIA'].map((symbol) => (
             <IndexCardSkeleton key={symbol} />
           ))
         ) : (
           // Show actual data
-          ['SPY', 'QQQ', 'DIA', 'VIX'].map((symbol) => {
+          ['SPY', 'QQQ', 'DIA'].map((symbol) => {
             const cachedData = majorIndicesData?.[symbol.toLowerCase() as keyof typeof majorIndicesData] || null;
             return (
               <IndexCard 

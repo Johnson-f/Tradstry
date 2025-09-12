@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
 import { useSignificantPriceMovements, useSymbolHistoricalData } from '@/lib/hooks/use-market-data';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
@@ -254,6 +255,18 @@ export const Standouts: React.FC = () => {
     error 
   } = useSignificantPriceMovements(undefined, 1, 5, 6); // Last 1 day, min 5% change, limit 6
 
+  // Deduplicate price movements by symbol to prevent duplicate cards
+  const uniquePriceMovements = React.useMemo(() => {
+    const seen = new Set<string>();
+    return priceMovements.filter(movement => {
+      if (seen.has(movement.symbol)) {
+        return false;
+      }
+      seen.add(movement.symbol);
+      return true;
+    });
+  }, [priceMovements]);
+
   if (error) {
     return (
       <div className="space-y-4">
@@ -272,9 +285,7 @@ export const Standouts: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold">Market Standouts</h2>
-          <p className="text-sm text-muted-foreground">
-            Stocks with significant price movements today
-          </p>
+          
         </div>
         <Badge variant="outline" className="text-xs">
           Min 5% movement
@@ -287,7 +298,7 @@ export const Standouts: React.FC = () => {
           Array.from({ length: 4 }).map((_, index) => (
             <StandoutCardSkeleton key={index} />
           ))
-        ) : priceMovements.length === 0 ? (
+        ) : uniquePriceMovements.length === 0 ? (
           // No standouts available
           <div className="col-span-full">
             <Card className="bg-gray-900 border-gray-700">
@@ -297,9 +308,14 @@ export const Standouts: React.FC = () => {
             </Card>
           </div>
         ) : (
-          // Render standout cards
-          priceMovements.map((movement, index) => (
-            <StandoutCard key={`${movement.symbol}-${index}`} movement={movement} />
+          // Render standout cards with separators
+          uniquePriceMovements.map((movement, index) => (
+            <React.Fragment key={`${movement.symbol}-${index}`}>
+              <StandoutCard movement={movement} />
+              {index < uniquePriceMovements.length - 1 && (
+                <Separator className="my-4" />
+              )}
+            </React.Fragment>
           ))
         )}
       </div>
