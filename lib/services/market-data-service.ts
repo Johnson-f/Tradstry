@@ -344,14 +344,17 @@ class MarketDataService {
     
     const data = await response.json();
     
+    
     // Transform the response to match our MarketMover interface
-    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: moverData.price || 0,
-      change: moverData.change || 0,
-      percent_change: moverData.changePercent || 0,
+      price: parseFloat(moverData.price) || 0,
+      change: parseFloat(moverData.change) || 0,
+      percent_change: parseFloat(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change) || 0,
+      changePercent: parseFloat(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change) || 0,
     }));
+    return transformed;
   }
 
   async getLosers(count: number = 25): Promise<MarketMover[]> {
@@ -365,14 +368,19 @@ class MarketDataService {
     
     const data = await response.json();
     
+    
     // Transform the response to match our MarketMover interface
-    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: moverData.price || 0,
-      change: moverData.change || 0,
-      percent_change: moverData.changePercent || 0,
+      price: parseFloat(moverData.price) || 0,
+      change: parseFloat(moverData.change) || 0,
+      percent_change: parseFloat(moverData.changePercent) || 0,
+      changePercent: parseFloat(moverData.changePercent) || 0, // Add legacy field
     }));
+    
+    
+    return transformed;
   }
 
   async getActives(count: number = 25): Promise<MarketMover[]> {
@@ -386,14 +394,19 @@ class MarketDataService {
     
     const data = await response.json();
     
+    
     // Transform the response to match our MarketMover interface
-    return Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: moverData.price || 0,
-      change: moverData.change || 0,
-      percent_change: moverData.changePercent || 0,
+      price: parseFloat(moverData.price) || 0,
+      change: parseFloat(moverData.change) || 0,
+      percent_change: parseFloat(moverData.changePercent) || 0,
+      changePercent: parseFloat(moverData.changePercent) || 0, // Add legacy field
     }));
+    
+    
+    return transformed;
   }
 
   // =====================================================
