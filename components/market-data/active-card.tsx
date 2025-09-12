@@ -6,30 +6,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useGainers, useLosers, useActives } from '@/lib/hooks/use-market-data';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import type { MarketMover } from '@/lib/types/market-data';
 
 // Format functions
-const formatPrice = (value: number) => {
-  return value.toFixed(2);
+const formatPrice = (value: number | undefined | null): string => {
+  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return numValue.toFixed(2);
 };
 
-const formatChange = (value: number) => {
-  return value.toFixed(2);
+const formatChange = (value: number | undefined | null): string => {
+  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return numValue.toFixed(2);
 };
 
-const formatPercentChange = (value: number) => {
-  return `${value.toFixed(2)}%`;
+const formatPercentChange = (value: number | undefined | null): string => {
+  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return `${numValue.toFixed(2)}%`;
 };
 
-const formatVolume = (volume: number) => {
-  if (volume >= 1000000) {
-    return `${(volume / 1000000).toFixed(1)}M`;
-  } else if (volume >= 1000) {
-    return `${(volume / 1000).toFixed(1)}K`;
+const formatVolume = (volume: number | undefined | null): string => {
+  const numValue = typeof volume === 'number' && !isNaN(volume) ? volume : 0;
+  if (numValue >= 1000000) {
+    return `${(numValue / 1000000).toFixed(1)}M`;
+  } else if (numValue >= 1000) {
+    return `${(numValue / 1000).toFixed(1)}K`;
   }
-  return volume.toString();
+  return numValue.toString();
 };
 
 // Stock item component
@@ -39,7 +44,7 @@ interface StockItemProps {
 }
 
 const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
-  const isPositive = stock.changePercent >= 0;
+  const isPositive = (stock.changePercent ?? 0) >= 0;
   
   return (
     <div className="flex items-center justify-between p-3 hover:bg-muted/50 rounded-lg transition-colors">
@@ -69,21 +74,21 @@ const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
       </div>
       
       <div className="text-right">
-        <div className="font-semibold text-sm">{formatPrice(stock.price)}</div>
+        <div className="font-semibold text-sm">{formatPrice(stock.price ?? 0)}</div>
         <div className="text-xs font-medium text-muted-foreground">
-          {formatChange(stock.change)}
+          {formatChange(stock.change ?? 0)}
         </div>
       </div>
       
       <div className="text-right ml-3">
         <div className={`text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-          {formatPercentChange(stock.changePercent)}
+          {formatPercentChange(stock.changePercent ?? 0)}
         </div>
       </div>
       
       <div className="text-right ml-4 min-w-[50px]">
         <div className="text-xs text-muted-foreground">Vol</div>
-        <div className="text-xs font-medium">{formatVolume(stock.volume)}</div>
+        <div className="text-xs font-medium">{formatVolume(stock.volume ?? 0)}</div>
       </div>
     </div>
   );
@@ -149,11 +154,13 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
   }
 
   return (
-    <div className="space-y-1 max-h-[400px] overflow-y-auto">
-      {stocks.map((stock, index) => (
-        <StockItem key={stock.symbol} stock={stock} rank={index + 1} />
-      ))}
-    </div>
+    <ScrollArea className="h-[400px]">
+      <div className="space-y-1">
+        {stocks.map((stock, index) => (
+          <StockItem key={stock.symbol} stock={stock} rank={index + 1} />
+        ))}
+      </div>
+    </ScrollArea>
   );
 };
 
@@ -175,19 +182,6 @@ export const ActiveCard: React.FC = () => {
         return <Activity className="w-4 h-4" />;
       default:
         return null;
-    }
-  };
-
-  const getTabColor = (tab: string) => {
-    switch (tab) {
-      case 'gainers':
-        return 'text-green-600';
-      case 'losers':
-        return 'text-red-600';
-      case 'actives':
-        return 'text-blue-600';
-      default:
-        return '';
     }
   };
 

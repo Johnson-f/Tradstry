@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Card } from '@/components/ui/card';
 import { MarketSummary } from './General-tab/market-summary';
 import { IndicesTab } from './General-tab/indicies-tab';
 import { Standouts } from './General-tab/standouts';
+import { ActiveCard } from './active-card';
+import { EarningsCalendar } from './Earnings-tab/earnings';
 
 
 // Button component with Tailwind-only depth effects
@@ -23,26 +24,17 @@ const DepthButton: React.FC<DepthButtonProps> = ({
 }) => {
   // Active button classes (elevated, prominent)
   const activeClasses = `
-    inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium cursor-pointer select-none
-    bg-white text-slate-900 border border-slate-200/80
-    shadow-[0_2px_8px_-2px_rgba(0,0,0,0.12),0_1px_3px_-1px_rgba(0,0,0,0.08),inset_0_1px_0_0_rgba(255,255,255,0.8),inset_0_-1px_0_0_rgba(0,0,0,0.06)]
-    hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.15),0_2px_6px_-1px_rgba(0,0,0,0.10),inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_-1px_0_0_rgba(0,0,0,0.08)]
-    hover:-translate-y-0.5 hover:scale-[1.02]
-    active:translate-y-0 active:scale-100
-    active:shadow-[0_1px_3px_-1px_rgba(0,0,0,0.12),inset_0_2px_4px_-1px_rgba(0,0,0,0.1),inset_0_1px_0_0_rgba(255,255,255,0.7)]
+    inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer select-none
+    bg-red-500 text-white border border-red-500
+    shadow-sm hover:shadow-md
     transition-all duration-200 ease-out
   `.replace(/\s+/g, ' ').trim();
 
   // Inactive button classes (receded, subtle)
   const inactiveClasses = `
-    inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium cursor-pointer select-none
-    bg-slate-50/80 text-slate-500 border border-slate-200/60
-    shadow-[0_1px_3px_-1px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.6),inset_0_-1px_0_0_rgba(0,0,0,0.04)]
-    hover:bg-white hover:text-slate-700 hover:border-slate-200
-    hover:shadow-[0_2px_6px_-1px_rgba(0,0,0,0.08),0_1px_3px_-1px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.7)]
-    hover:-translate-y-0.5 hover:scale-[1.01]
-    active:translate-y-0 active:scale-100
-    active:shadow-[inset_0_1px_3px_-1px_rgba(0,0,0,0.08),inset_0_1px_0_0_rgba(255,255,255,0.5)]
+    inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer select-none
+    bg-transparent text-gray-400 border-0
+    hover:text-gray-300 hover:bg-gray-800/50
     transition-all duration-200 ease-out
   `.replace(/\s+/g, ' ').trim();
 
@@ -94,8 +86,9 @@ export const TabManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState('us-markets');
 
   return (
-    <div className="space-y-3">
-      {/* Tab Navigation with depth effects */}
+    <div className="space-y-6">
+      {/* Tab Navigation - Horizontal Layout */}
+      <div className="flex items-center gap-1">
         <DepthButton
           isActive={activeTab === 'us-markets'}
           onClick={() => setActiveTab('us-markets')}
@@ -128,38 +121,51 @@ export const TabManager: React.FC = () => {
         >
           Screener
         </DepthButton>
+      </div>
 
       {/* Content based on active tab */}
       {activeTab === 'us-markets' ? (
-        <div className="space-y-6">
-          
-          {/* Market Indices - Full Width */}
-          <div className="w-full">
+        <div className="flex flex-col xl:flex-row gap-6 xl:gap-6">
+          {/* Left Column - Main Content */}
+          <div className="flex-1 min-w-0 space-y-6 max-w-10xl">
+            {/* Market Indices */}
+            <div className="w-full max-w-4xl">
               <IndicesTab />
+            </div>
+
+            {/* Market Summary */}
+            <div className="w-full max-w-4xl">
+              <MarketSummary />
+            </div>
+            
+            {/* Market Standouts */}
+            <div className="w-full max-w-4xl">
+              <Standouts />
+            </div>
           </div>
 
-          {/* Market Summary - Full Width */}
-          <div className="w-full">
-            <MarketSummary />
+          {/* Right Column - Active Card */}
+          <div className="w-full xl:w-80 xl:flex-shrink-0">
+            <div className="xl:sticky xl:top-4">
+              <ActiveCard />
+            </div>
           </div>
-          
-          {/* Market Standouts - Full Width */}
-          <div className="w-full">
-            <Standouts />
-          </div>
+        </div>
+      ) : activeTab === 'earnings' ? (
+        /* Earnings tab content */
+        <div className="w-full max-w-6xl">
+          <EarningsCalendar />
         </div>
       ) : (
         /* Other tab content */
-        <div className="p-6 bg-white rounded-xl border border-slate-200/50 shadow-sm">
+        <div className="p-6 bg-gray-800/50 rounded-xl border border-gray-700/50">
           <div className="text-center py-8">
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">
+            <h2 className="text-xl font-semibold text-white mb-2">
               {activeTab === 'crypto' && 'Cryptocurrency'}
-              {activeTab === 'earnings' && 'Earnings Calendar'}
               {activeTab === 'screener' && 'Stock Screener'}
             </h2>
-            <p className="text-slate-500">
+            <p className="text-gray-400">
               {activeTab === 'crypto' && 'Track cryptocurrency prices and market movements.'}
-              {activeTab === 'earnings' && 'Stay updated with upcoming earnings announcements.'}
               {activeTab === 'screener' && 'Find stocks based on your custom criteria.'}
             </p>
           </div>
