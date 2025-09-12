@@ -28,6 +28,11 @@ import type {
   HistoricalData,
   QuoteData,
   MarketMover,
+  MarketMoverWithLogo,
+  CompanyLogo,
+  MarketMoversRequest,
+  CompanyLogosRequest,
+  MarketMoversOverview,
   SymbolCheckResponse,
   SymbolSaveRequest,
   SymbolSaveResponse,
@@ -252,7 +257,71 @@ class MarketDataService {
   }
 
   // =====================================================
-  // MARKET MOVERS ENDPOINTS
+  // MARKET MOVERS ENDPOINTS (NEW BACKEND INTEGRATION)
+  // =====================================================
+
+  async getTopGainers(params?: MarketMoversRequest): Promise<MarketMover[]> {
+    return apiClient.get<MarketMover[]>(
+      apiConfig.endpoints.marketData.movers.gainers,
+      { params }
+    );
+  }
+
+  async getTopLosers(params?: MarketMoversRequest): Promise<MarketMover[]> {
+    return apiClient.get<MarketMover[]>(
+      apiConfig.endpoints.marketData.movers.losers,
+      { params }
+    );
+  }
+
+  async getMostActive(params?: MarketMoversRequest): Promise<MarketMover[]> {
+    return apiClient.get<MarketMover[]>(
+      apiConfig.endpoints.marketData.movers.mostActive,
+      { params }
+    );
+  }
+
+  async getTopGainersWithLogos(params?: MarketMoversRequest): Promise<MarketMoverWithLogo[]> {
+    return apiClient.get<MarketMoverWithLogo[]>(
+      apiConfig.endpoints.marketData.movers.gainersWithLogos,
+      { params }
+    );
+  }
+
+  async getTopLosersWithLogos(params?: MarketMoversRequest): Promise<MarketMoverWithLogo[]> {
+    return apiClient.get<MarketMoverWithLogo[]>(
+      apiConfig.endpoints.marketData.movers.losersWithLogos,
+      { params }
+    );
+  }
+
+  async getMostActiveWithLogos(params?: MarketMoversRequest): Promise<MarketMoverWithLogo[]> {
+    return apiClient.get<MarketMoverWithLogo[]>(
+      apiConfig.endpoints.marketData.movers.mostActiveWithLogos,
+      { params }
+    );
+  }
+
+  async getMarketMoversOverview(params?: MarketMoversRequest): Promise<MarketMoversOverview> {
+    return apiClient.get<MarketMoversOverview>(
+      apiConfig.endpoints.marketData.movers.overview,
+      { params }
+    );
+  }
+
+  // =====================================================
+  // COMPANY LOGOS ENDPOINTS
+  // =====================================================
+
+  async getCompanyLogos(request: CompanyLogosRequest): Promise<CompanyLogo[]> {
+    return apiClient.post<CompanyLogo[]>(
+      apiConfig.endpoints.marketData.logos.batch,
+      request
+    );
+  }
+
+  // =====================================================
+  // LEGACY MARKET MOVERS ENDPOINTS (EXTERNAL API)
   // =====================================================
 
   async getGainers(count: number = 25): Promise<MarketMover[]> {
@@ -272,10 +341,7 @@ class MarketDataService {
       name: moverData.name || symbol,
       price: moverData.price || 0,
       change: moverData.change || 0,
-      changePercent: moverData.changePercent || 0,
-      volume: moverData.volume || 0,
-      marketCap: moverData.marketCap,
-      logo: moverData.logo,
+      percent_change: moverData.changePercent || 0,
     }));
   }
 
@@ -296,10 +362,7 @@ class MarketDataService {
       name: moverData.name || symbol,
       price: moverData.price || 0,
       change: moverData.change || 0,
-      changePercent: moverData.changePercent || 0,
-      volume: moverData.volume || 0,
-      marketCap: moverData.marketCap,
-      logo: moverData.logo,
+      percent_change: moverData.changePercent || 0,
     }));
   }
 
@@ -320,10 +383,7 @@ class MarketDataService {
       name: moverData.name || symbol,
       price: moverData.price || 0,
       change: moverData.change || 0,
-      changePercent: moverData.changePercent || 0,
-      volume: moverData.volume || 0,
-      marketCap: moverData.marketCap,
-      logo: moverData.logo,
+      percent_change: moverData.changePercent || 0,
     }));
   }
 

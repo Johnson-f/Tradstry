@@ -270,10 +270,10 @@ export const Standouts: React.FC = () => {
   if (error) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Market Standouts</h2>
+        <h2 className="text-xl font-semibold">Standouts</h2>
         <Alert variant="destructive">
           <AlertDescription>
-            Failed to load market standouts: {error.message}
+            Failed to load standouts: {error.message}
           </AlertDescription>
         </Alert>
       </div>
@@ -284,7 +284,7 @@ export const Standouts: React.FC = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold">Market Standouts</h2>
+          <h2 className="text-xl font-semibold">Standouts</h2>
           
         </div>
         <Badge variant="outline" className="text-xs">
