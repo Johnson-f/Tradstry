@@ -44,7 +44,9 @@ interface StockItemProps {
 }
 
 const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
-  const isPositive = (stock.changePercent ?? 0) >= 0;
+  // Use percent_change from backend, fallback to changePercent for compatibility
+  const percentChange = stock.percent_change ?? stock.changePercent ?? 0;
+  const isPositive = percentChange >= 0;
   
   return (
     <div className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0">
@@ -82,7 +84,7 @@ const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
             ? 'text-green-600 dark:text-green-400' 
             : 'text-red-600 dark:text-red-400'
         }`}>
-          {isPositive ? '+' : ''}{formatPercentChange(stock.changePercent ?? 0)}
+          {isPositive ? '+' : ''}{formatPercentChange(percentChange)}
         </div>
       </div>
     </div>
@@ -161,6 +163,14 @@ export const ActiveCard: React.FC = () => {
   const { gainers, isLoading: gainersLoading, error: gainersError } = useGainers(25);
   const { losers, isLoading: losersLoading, error: losersError } = useLosers(25);
   const { actives, isLoading: activesLoading, error: activesError } = useActives(25);
+
+  // Debug logging
+  console.log('DEBUG - Gainers:', { gainers, gainersLoading, gainersError });
+  console.log('DEBUG - First gainer object:', gainers[0]);
+  console.log('DEBUG - Losers:', { losers, losersLoading, losersError });
+  console.log('DEBUG - First loser object:', losers[0]);
+  console.log('DEBUG - Actives:', { actives, activesLoading, activesError });
+  console.log('DEBUG - First active object:', actives[0]);
 
   const getTabIcon = (tab: string) => {
     switch (tab) {

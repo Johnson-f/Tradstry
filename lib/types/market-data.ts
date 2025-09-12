@@ -356,7 +356,9 @@ export interface MarketMover {
   price?: number;
   change?: number;
   percent_change?: number;
+  changePercent?: number; // Legacy field for backward compatibility
   fetch_timestamp?: string;
+  logo?: string; // Add logo field for consistency
 }
 
 export interface MarketMoverWithLogo {

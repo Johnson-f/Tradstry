@@ -124,53 +124,55 @@ export const TabManager: React.FC = () => {
       </div>
 
       {/* Content based on active tab */}
-      {activeTab === 'us-markets' ? (
-        <div className="flex flex-col xl:flex-row gap-6 xl:gap-6">
-          {/* Left Column - Main Content */}
-          <div className="flex-1 min-w-0 space-y-6 max-w-10xl">
-            {/* Market Indices */}
-            <div className="w-full max-w-4xl">
-              <IndicesTab />
-            </div>
+      <div className="flex flex-col xl:flex-row gap-6 xl:gap-6">
+        {/* Left Column - Main Content */}
+        <div className="flex-1 min-w-0 space-y-6 max-w-10xl">
+          {activeTab === 'us-markets' ? (
+            <>
+              {/* Market Indices */}
+              <div className="w-full max-w-4xl">
+                <IndicesTab />
+              </div>
 
-            {/* Market Summary */}
+              {/* Market Summary */}
+              <div className="w-full max-w-4xl">
+                <MarketSummary />
+              </div>
+              
+              {/* Market Standouts */}
+              <div className="w-full max-w-4xl">
+                <Standouts />
+              </div>
+            </>
+          ) : activeTab === 'earnings' ? (
+            /* Earnings tab content */
             <div className="w-full max-w-4xl">
-              <MarketSummary />
+              <EarningsCalendar />
             </div>
-            
-            {/* Market Standouts */}
-            <div className="w-full max-w-4xl">
-              <Standouts />
+          ) : (
+            /* Other tab content */
+            <div className="p-6 bg-gray-800/50 rounded-xl border border-gray-700/50">
+              <div className="text-center py-8">
+                <h2 className="text-xl font-semibold text-white mb-2">
+                  {activeTab === 'crypto' && 'Cryptocurrency'}
+                  {activeTab === 'screener' && 'Stock Screener'}
+                </h2>
+                <p className="text-gray-400">
+                  {activeTab === 'crypto' && 'Track cryptocurrency prices and market movements.'}
+                  {activeTab === 'screener' && 'Find stocks based on your custom criteria.'}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Right Column - Active Card */}
-          <div className="w-full xl:w-80 xl:flex-shrink-0">
-            <div className="xl:sticky xl:top-4">
-              <ActiveCard />
-            </div>
+        {/* Right Column - Active Card (Always visible) */}
+        <div className="w-full xl:w-80 xl:flex-shrink-0">
+          <div className="xl:sticky xl:top-4">
+            <ActiveCard />
           </div>
         </div>
-      ) : activeTab === 'earnings' ? (
-        /* Earnings tab content */
-        <div className="w-full max-w-6xl">
-          <EarningsCalendar />
-        </div>
-      ) : (
-        /* Other tab content */
-        <div className="p-6 bg-gray-800/50 rounded-xl border border-gray-700/50">
-          <div className="text-center py-8">
-            <h2 className="text-xl font-semibold text-white mb-2">
-              {activeTab === 'crypto' && 'Cryptocurrency'}
-              {activeTab === 'screener' && 'Stock Screener'}
-            </h2>
-            <p className="text-gray-400">
-              {activeTab === 'crypto' && 'Track cryptocurrency prices and market movements.'}
-              {activeTab === 'screener' && 'Find stocks based on your custom criteria.'}
-            </p>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
