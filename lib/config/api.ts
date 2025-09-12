@@ -174,6 +174,7 @@ export const apiConfig = {
       // Company logos endpoints
       logos: {
         batch: "/market-data/logos/batch",
+        earningsCalendarBatch: "/market-data/logos/earnings-calendar-batch",
       },
       // Health check
       health: "/market-data/health",

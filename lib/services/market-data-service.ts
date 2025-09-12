@@ -30,8 +30,10 @@ import type {
   MarketMover,
   MarketMoverWithLogo,
   CompanyLogo,
+  EarningsCalendarLogo,
   MarketMoversRequest,
   CompanyLogosRequest,
+  EarningsCalendarLogosRequest,
   MarketMoversOverview,
   SymbolCheckResponse,
   SymbolSaveRequest,
@@ -316,6 +318,13 @@ class MarketDataService {
   async getCompanyLogos(request: CompanyLogosRequest): Promise<CompanyLogo[]> {
     return apiClient.post<CompanyLogo[]>(
       apiConfig.endpoints.marketData.logos.batch,
+      request
+    );
+  }
+
+  async getEarningsCalendarLogos(request: EarningsCalendarLogosRequest): Promise<EarningsCalendarLogo[]> {
+    return apiClient.post<EarningsCalendarLogo[]>(
+      apiConfig.endpoints.marketData.logos.earningsCalendarBatch,
       request
     );
   }

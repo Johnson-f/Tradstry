@@ -7,13 +7,13 @@ from auth_service import AuthService
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
-    MarketMover, MarketMoverWithLogo, CompanyLogo,
+    MarketMover, MarketMoverWithLogo, CompanyLogo, EarningsCalendarLogo,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
     CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
-    MarketMoversRequest, CompanyLogosRequest
+    MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
 )
 
 
@@ -888,4 +888,25 @@ class MarketDataService:
                 total_data_points=total_data_points
             )
 
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_earnings_calendar_logos_batch(
+        self, 
+        request: EarningsCalendarLogosRequest, 
+        access_token: str = None
+    ) -> List[EarningsCalendarLogo]:
+        """Get company logos for multiple symbols from earnings_calendar table only."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            # Convert symbols list to PostgreSQL array format
+            symbols_array = request.symbols
+            
+            params = {'p_symbols': symbols_array}
+            
+            response = client.rpc('get_earnings_calendar_logos_batch', params).execute()
+            
+            return [EarningsCalendarLogo(**item) for item in response.data] if response.data else []
+        
         return await self._execute_with_retry(operation, access_token)
