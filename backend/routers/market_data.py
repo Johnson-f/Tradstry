@@ -8,13 +8,13 @@ from services.market_data_service import MarketDataService
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
-    MarketMover, MarketMoverWithLogo, CompanyLogo,
+    MarketMover, MarketMoverWithLogo, CompanyLogo, EarningsCalendarLogo,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
     CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
-    MarketMoversRequest, CompanyLogosRequest
+    MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -452,7 +452,8 @@ async def health_check():
             "movers/losers-with-logos",
             "movers/most-active-with-logos",
             "movers/overview",
-            "logos/batch"
+            "logos/batch",
+            "logos/earnings-calendar-batch"
         ]
     }
 
@@ -723,3 +724,17 @@ async def get_vix_data(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get VIX data: {str(e)}")
+
+
+@router.post("/logos/earnings-calendar-batch", response_model=List[EarningsCalendarLogo])
+async def get_earnings_calendar_logos_batch(
+    request: EarningsCalendarLogosRequest,
+    token: str = Depends(get_token)
+):
+    """Get company logos for multiple symbols from earnings_calendar table only."""
+    try:
+        service = MarketDataService()
+        result = await service.get_earnings_calendar_logos_batch(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get earnings calendar logos: {str(e)}")

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, TrendingUp, TrendingDown, Building2 } from 'lucide-react';
+import { Search, TrendingUp, Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { marketDataService } from '@/lib/services/market-data-service';
+import { useCompanyLogos } from '@/lib/hooks/use-market-data';
+import Image from 'next/image';
 
 interface SearchResult {
   symbol: string;
@@ -38,6 +39,12 @@ export function SymbolSearch({
   
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Fetch company logos for search results (only when we have results)
+  const symbols = results.map(result => result.symbol);
+  const { logos } = useCompanyLogos({ 
+    symbols: symbols.length > 0 ? symbols : [] 
+  });
 
   // Debounce search
   useEffect(() => {
@@ -184,6 +191,10 @@ export function SymbolSearch({
     return `$${marketCap.toLocaleString()}`;
   };
 
+  const getCompanyLogo = (symbol: string) => {
+    return logos.find(logo => logo.symbol === symbol)?.logo;
+  };
+
   return (
     <div ref={searchRef} className={`relative ${className}`}>
       <div className="relative">
@@ -237,31 +248,50 @@ export function SymbolSearch({
                   className="w-full p-3 text-left hover:bg-muted/50 border-b last:border-b-0 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm">{result.symbol}</span>
-                        <Badge variant={getTypeBadgeVariant(result.type)} className="text-xs">
-                          {getTypeIcon(result.type)}
-                          <span className="ml-1">{result.type}</span>
-                        </Badge>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {/* Company logo */}
+                      <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                        {getCompanyLogo(result.symbol) ? (
+                          <img
+                            src={getCompanyLogo(result.symbol)}
+                            alt={`${result.symbol} logo`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              target.nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        <Building2 className={`w-5 h-5 text-muted-foreground ${getCompanyLogo(result.symbol) ? 'hidden' : ''}`} />
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {result.name}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-xs text-muted-foreground">
-                          {result.exchange}
-                        </span>
-                        {result.currency && (
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm">{result.symbol}</span>
+                          <Badge variant={getTypeBadgeVariant(result.type)} className="text-xs">
+                            {getTypeIcon(result.type)}
+                            <span className="ml-1">{result.type}</span>
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {result.name}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-muted-foreground">
-                            {result.currency}
+                            {result.exchange}
                           </span>
-                        )}
-                        {result.marketCap && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatMarketCap(result.marketCap)}
-                          </span>
-                        )}
+                          {result.currency && (
+                            <span className="text-xs text-muted-foreground">
+                              {result.currency}
+                            </span>
+                          )}
+                          {result.marketCap && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatMarketCap(result.marketCap)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

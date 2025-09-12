@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useDailyEarningsSummary } from '@/lib/hooks/use-market-data';
+import { useDailyEarningsSummary, useCompanyLogos } from '@/lib/hooks/use-market-data';
 import { Calendar, ChevronLeft, ChevronRight, Clock, Building2 } from 'lucide-react';
 import type { EarningsCompany, DailyEarningsSummary } from '@/lib/types/market-data';
 
@@ -39,9 +39,10 @@ const getWeekDates = (startDate: Date): Date[] => {
 // Company card component
 interface CompanyCardProps {
   company: EarningsCompany;
+  logo?: string;
 }
 
-const CompanyCard: React.FC<CompanyCardProps> = ({ company }) => {
+const CompanyCard: React.FC<CompanyCardProps> = ({ company, logo }) => {
   const getQuarterText = () => {
     if (company.fiscal_quarter && company.fiscal_year) {
       return `Q${company.fiscal_quarter} '${String(company.fiscal_year).slice(-2)}`;
@@ -70,9 +71,28 @@ const CompanyCard: React.FC<CompanyCardProps> = ({ company }) => {
   return (
     <div className="border-b border-gray-700 last:border-b-0 pb-6 last:pb-0 mb-6 last:mb-0">
       <div className="flex items-start gap-4">
-        {/* Company logo placeholder */}
-        <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Building2 className="w-6 h-6 text-white" />
+        {/* Company logo */}
+        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center flex-shrink-0 relative">
+          {logo ? (
+            <>
+              <img
+                src={logo}
+                alt={`${company.symbol} logo`}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  const fallback = target.parentElement?.querySelector('.fallback-icon') as HTMLElement;
+                  if (fallback) {
+                    fallback.style.display = 'block';
+                  }
+                }}
+              />
+              <Building2 className="fallback-icon w-6 h-6 text-white absolute inset-0 m-auto hidden" />
+            </>
+          ) : (
+            <Building2 className="w-6 h-6 text-white" />
+          )}
         </div>
 
         <div className="flex-1 space-y-3">
@@ -175,6 +195,22 @@ export const EarningsCalendar: React.FC = () => {
   // Fetch earnings data for selected date
   const { earningsSummary, isLoading, error } = useDailyEarningsSummary(formatDate(selectedDate));
 
+  // Get companies from earnings summary
+  const companies = useMemo(() => {
+    if (!earningsSummary) return [];
+    
+    const scheduled = earningsSummary.companies_scheduled || [];
+    const reported = earningsSummary.companies_reported || [];
+    
+    return [...scheduled, ...reported].slice(0, 10); // Limit to 10 companies
+  }, [earningsSummary]);
+
+  // Fetch company logos for all companies (only when we have companies)
+  const symbols = companies.map(company => company.symbol);
+  const { logos } = useCompanyLogos({ 
+    symbols: symbols.length > 0 ? symbols : [] 
+  });
+
   // Navigation functions
   const goToPreviousWeek = () => {
     const newStart = new Date(currentWeekStart);
@@ -210,15 +246,10 @@ export const EarningsCalendar: React.FC = () => {
     return 0;
   };
 
-  // Get companies from earnings summary
-  const companies = useMemo(() => {
-    if (!earningsSummary) return [];
-    
-    const scheduled = earningsSummary.companies_scheduled || [];
-    const reported = earningsSummary.companies_reported || [];
-    
-    return [...scheduled, ...reported].slice(0, 10); // Limit to 10 companies
-  }, [earningsSummary]);
+  // Helper function to get company logo
+  const getCompanyLogo = (symbol: string) => {
+    return logos.find(logo => logo.symbol === symbol)?.logo;
+  };
 
   return (
     <div className="space-y-6">
@@ -305,7 +336,11 @@ export const EarningsCalendar: React.FC = () => {
         ) : (
           <div className="space-y-6">
             {companies.map((company, index) => (
-              <CompanyCard key={`${company.symbol}-${index}`} company={company} />
+              <CompanyCard 
+                key={`${company.symbol}-${index}`} 
+                company={company} 
+                logo={getCompanyLogo(company.symbol)}
+              />
             ))}
           </div>
         )}

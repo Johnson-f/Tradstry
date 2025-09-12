@@ -47,48 +47,43 @@ const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
   const isPositive = (stock.changePercent ?? 0) >= 0;
   
   return (
-    <div className="flex items-center justify-between p-3 hover:bg-muted/50 rounded-lg transition-colors">
-      <div className="flex items-center gap-3 flex-1">
-        <span className="text-xs text-muted-foreground font-mono w-6 text-center">
-          {rank}
-        </span>
-        
-        <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           {stock.logo && (
-            <img 
-              src={stock.logo} 
-              alt={`${stock.symbol} logo`} 
-              className="w-6 h-6 rounded-full"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
+            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+              <img 
+                src={stock.logo} 
+                alt={`${stock.symbol} logo`} 
+                className="w-6 h-6 rounded-full"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
           )}
-          <div>
-            <div className="font-semibold text-sm">{stock.symbol}</div>
-            <div className="text-xs text-muted-foreground truncate max-w-[120px]">
+          <div className="min-w-0">
+            <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+              {stock.symbol}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
               {stock.name}
             </div>
           </div>
         </div>
       </div>
       
-      <div className="text-right">
-        <div className="font-semibold text-sm">{formatPrice(stock.price ?? 0)}</div>
-        <div className="text-xs font-medium text-muted-foreground">
-          {formatChange(stock.change ?? 0)}
+      <div className="text-right flex-shrink-0 ml-4">
+        <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+          ${formatPrice(stock.price ?? 0)}
         </div>
-      </div>
-      
-      <div className="text-right ml-3">
-        <div className={`text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-          {formatPercentChange(stock.changePercent ?? 0)}
+        <div className={`text-xs font-medium ${
+          isPositive 
+            ? 'text-green-600 dark:text-green-400' 
+            : 'text-red-600 dark:text-red-400'
+        }`}>
+          {isPositive ? '+' : ''}{formatPercentChange(stock.changePercent ?? 0)}
         </div>
-      </div>
-      
-      <div className="text-right ml-4 min-w-[50px]">
-        <div className="text-xs text-muted-foreground">Vol</div>
-        <div className="text-xs font-medium">{formatVolume(stock.volume ?? 0)}</div>
       </div>
     </div>
   );
@@ -96,10 +91,9 @@ const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
 
 // Loading skeleton
 const StockItemSkeleton: React.FC = () => (
-  <div className="flex items-center justify-between p-3">
+  <div className="flex items-center justify-between py-2 px-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
     <div className="flex items-center gap-3 flex-1">
-      <Skeleton className="w-6 h-4" />
-      <Skeleton className="w-6 h-6 rounded-full" />
+      <Skeleton className="w-8 h-8 rounded-full" />
       <div className="space-y-1">
         <Skeleton className="w-12 h-4" />
         <Skeleton className="w-20 h-3" />
@@ -108,10 +102,6 @@ const StockItemSkeleton: React.FC = () => (
     <div className="text-right space-y-1">
       <Skeleton className="w-16 h-4" />
       <Skeleton className="w-12 h-3" />
-    </div>
-    <div className="text-right ml-4 space-y-1">
-      <Skeleton className="w-8 h-3" />
-      <Skeleton className="w-10 h-3" />
     </div>
   </div>
 );
@@ -155,7 +145,7 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
 
   return (
     <ScrollArea className="h-[400px]">
-      <div className="space-y-1">
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {stocks.map((stock, index) => (
           <StockItem key={stock.symbol} stock={stock} rank={index + 1} />
         ))}
@@ -186,28 +176,28 @@ export const ActiveCard: React.FC = () => {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold">Market Movers</CardTitle>
-          <Badge variant="outline" className="text-xs">
-            Auto-refresh: 30s
-          </Badge>
-        </div>
-      </CardHeader>
-      
-      <CardContent>
+    <Card className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
+      <CardContent className="pt-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="gainers" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+            <TabsTrigger 
+              value="gainers" 
+              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-green-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-green-400"
+            >
               <TrendingUp className="w-3 h-3" />
               <span>Gainers</span>
             </TabsTrigger>
-            <TabsTrigger value="losers" className="flex items-center gap-2">
+            <TabsTrigger 
+              value="losers" 
+              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-red-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-red-400"
+            >
               <TrendingDown className="w-3 h-3" />
               <span>Losers</span>
             </TabsTrigger>
-            <TabsTrigger value="actives" className="flex items-center gap-2">
+            <TabsTrigger 
+              value="actives" 
+              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-blue-400"
+            >
               <Activity className="w-3 h-3" />
               <span>Active</span>
             </TabsTrigger>

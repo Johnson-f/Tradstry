@@ -459,3 +459,12 @@ class MarketMoversRequest(BaseModel):
 
 class CompanyLogosRequest(BaseModel):
     symbols: List[str]
+
+
+class EarningsCalendarLogo(BaseModel):
+    symbol: str
+    logo: Optional[str] = None
+
+
+class EarningsCalendarLogosRequest(BaseModel):
+    symbols: List[str]

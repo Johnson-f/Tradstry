@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -896,6 +896,28 @@ export function useCompanyLogos(request: CompanyLogosRequest) {
   } = useQuery({
     queryKey: ['company-logos', request.symbols],
     queryFn: () => marketDataService.getCompanyLogos(request),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: request.symbols.length > 0,
+  });
+
+  return {
+    logos: logos ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useEarningsCalendarLogos(request: EarningsCalendarLogosRequest) {
+  const {
+    data: logos,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['earnings-calendar-logos', request.symbols],
+    queryFn: () => marketDataService.getEarningsCalendarLogos(request),
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 1 hour
     enabled: request.symbols.length > 0,

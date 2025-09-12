@@ -383,6 +383,15 @@ export interface CompanyLogosRequest {
   symbols: string[];
 }
 
+export interface EarningsCalendarLogo {
+  symbol: string;
+  logo?: string;
+}
+
+export interface EarningsCalendarLogosRequest {
+  symbols: string[];
+}
+
 export interface MarketMoversOverview {
   gainers: MarketMoverWithLogo[];
   losers: MarketMoverWithLogo[];
