@@ -279,6 +279,34 @@ class TopMover(BaseModel):
 
 
 # =====================================================
+# MARKET MOVERS MODELS
+# =====================================================
+
+class MarketMover(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    fetch_timestamp: Optional[datetime] = None
+
+
+class MarketMoverWithLogo(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    fetch_timestamp: Optional[datetime] = None
+    logo: Optional[str] = None
+
+
+class CompanyLogo(BaseModel):
+    symbol: str
+    logo: Optional[str] = None
+
+
+# =====================================================
 # REQUEST MODELS
 # =====================================================
 
@@ -422,3 +450,12 @@ class CacheDataRequest(BaseModel):
     limit: Optional[int] = 100
     period_type: Optional[str] = "1min"
     data_provider: Optional[str] = "finance_query"
+
+
+class MarketMoversRequest(BaseModel):
+    data_date: Optional[date] = None
+    limit: Optional[int] = 10
+
+
+class CompanyLogosRequest(BaseModel):
+    symbols: List[str]

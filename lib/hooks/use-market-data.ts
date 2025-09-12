@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -730,6 +730,179 @@ export function useSymbolHistoricalData(symbol: string, enabled: boolean = true)
 
   return {
     historicalData,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// NEW MARKET MOVERS HOOKS (BACKEND INTEGRATION)
+// =====================================================
+
+export function useTopGainers(params?: MarketMoversRequest) {
+  const {
+    data: gainers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'gainers', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopGainers(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    gainers: gainers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopLosers(params?: MarketMoversRequest) {
+  const {
+    data: losers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'losers', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopLosers(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    losers: losers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useMostActive(params?: MarketMoversRequest) {
+  const {
+    data: mostActive,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'most-active', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getMostActive(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    mostActive: mostActive ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopGainersWithLogos(params?: MarketMoversRequest) {
+  const {
+    data: gainers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'gainers-with-logos', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopGainersWithLogos(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    gainers: gainers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopLosersWithLogos(params?: MarketMoversRequest) {
+  const {
+    data: losers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'losers-with-logos', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopLosersWithLogos(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    losers: losers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useMostActiveWithLogos(params?: MarketMoversRequest) {
+  const {
+    data: mostActive,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'most-active-with-logos', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getMostActiveWithLogos(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    mostActive: mostActive ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useMarketMoversOverview(params?: MarketMoversRequest) {
+  const {
+    data: overview,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['market-movers', 'overview', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getMarketMoversOverview(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return {
+    overview,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useCompanyLogos(request: CompanyLogosRequest) {
+  const {
+    data: logos,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['company-logos', request.symbols],
+    queryFn: () => marketDataService.getCompanyLogos(request),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: request.symbols.length > 0,
+  });
+
+  return {
+    logos: logos ?? [],
     isLoading,
     error: error as Error | null,
     refetch,

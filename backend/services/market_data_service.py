@@ -7,11 +7,13 @@ from auth_service import AuthService
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
+    MarketMover, MarketMoverWithLogo, CompanyLogo,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
-    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest
+    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
+    MarketMoversRequest, CompanyLogosRequest
 )
 
 
@@ -558,6 +560,225 @@ class MarketDataService:
         
         return await self._execute_with_retry(operation, access_token)
 
+    # =====================================================
+    # MARKET MOVERS FUNCTIONS
+    # =====================================================
+
+    async def get_top_gainers(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMover]:
+        """Get top gainers for a specific date."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_limit': request.limit
+            }
+            
+            response = client.rpc('get_top_gainers', params).execute()
+            
+            return [MarketMover(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_top_losers(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMover]:
+        """Get top losers for a specific date."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_limit': request.limit
+            }
+            
+            response = client.rpc('get_top_losers', params).execute()
+            
+            return [MarketMover(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_most_active(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMover]:
+        """Get most active stocks for a specific date."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_limit': request.limit
+            }
+            
+            response = client.rpc('get_most_active', params).execute()
+            
+            return [MarketMover(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_top_gainers_with_logos(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMoverWithLogo]:
+        """Get top gainers with company logos."""
+        # First get the gainers
+        gainers = await self.get_top_gainers(request, access_token)
+        
+        if not gainers:
+            return []
+        
+        # Extract symbols for logo lookup
+        symbols = [gainer.symbol for gainer in gainers]
+        logos_request = CompanyLogosRequest(symbols=symbols)
+        logos = await self.get_company_logos_batch(logos_request, access_token)
+        
+        # Create a logo lookup dictionary
+        logo_dict = {logo.symbol: logo.logo for logo in logos}
+        
+        # Combine gainers with logos
+        result = []
+        for gainer in gainers:
+            mover_with_logo = MarketMoverWithLogo(
+                symbol=gainer.symbol,
+                name=gainer.name,
+                price=gainer.price,
+                change=gainer.change,
+                percent_change=gainer.percent_change,
+                fetch_timestamp=gainer.fetch_timestamp,
+                logo=logo_dict.get(gainer.symbol)
+            )
+            result.append(mover_with_logo)
+        
+        return result
+
+    async def get_top_losers_with_logos(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMoverWithLogo]:
+        """Get top losers with company logos."""
+        # First get the losers
+        losers = await self.get_top_losers(request, access_token)
+        
+        if not losers:
+            return []
+        
+        # Extract symbols for logo lookup
+        symbols = [loser.symbol for loser in losers]
+        logos_request = CompanyLogosRequest(symbols=symbols)
+        logos = await self.get_company_logos_batch(logos_request, access_token)
+        
+        # Create a logo lookup dictionary
+        logo_dict = {logo.symbol: logo.logo for logo in logos}
+        
+        # Combine losers with logos
+        result = []
+        for loser in losers:
+            mover_with_logo = MarketMoverWithLogo(
+                symbol=loser.symbol,
+                name=loser.name,
+                price=loser.price,
+                change=loser.change,
+                percent_change=loser.percent_change,
+                fetch_timestamp=loser.fetch_timestamp,
+                logo=logo_dict.get(loser.symbol)
+            )
+            result.append(mover_with_logo)
+        
+        return result
+
+    async def get_most_active_with_logos(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> List[MarketMoverWithLogo]:
+        """Get most active stocks with company logos."""
+        # First get the most active
+        most_active = await self.get_most_active(request, access_token)
+        
+        if not most_active:
+            return []
+        
+        # Extract symbols for logo lookup
+        symbols = [stock.symbol for stock in most_active]
+        logos_request = CompanyLogosRequest(symbols=symbols)
+        logos = await self.get_company_logos_batch(logos_request, access_token)
+        
+        # Create a logo lookup dictionary
+        logo_dict = {logo.symbol: logo.logo for logo in logos}
+        
+        # Combine most active with logos
+        result = []
+        for stock in most_active:
+            mover_with_logo = MarketMoverWithLogo(
+                symbol=stock.symbol,
+                name=stock.name,
+                price=stock.price,
+                change=stock.change,
+                percent_change=stock.percent_change,
+                fetch_timestamp=stock.fetch_timestamp,
+                logo=logo_dict.get(stock.symbol)
+            )
+            result.append(mover_with_logo)
+        
+        return result
+
+    # =====================================================
+    # COMPANY LOGOS FUNCTIONS
+    # =====================================================
+
+    async def get_company_logos_batch(
+        self, 
+        request: CompanyLogosRequest, 
+        access_token: str = None
+    ) -> List[CompanyLogo]:
+        """Get company logos for multiple symbols at once."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            # Convert symbols list to PostgreSQL array format
+            symbols_array = request.symbols
+            
+            params = {'p_symbols': symbols_array}
+            
+            response = client.rpc('get_company_logos_batch', params).execute()
+            
+            return [CompanyLogo(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_market_movers_overview(
+        self, 
+        request: MarketMoversRequest, 
+        access_token: str = None
+    ) -> Dict[str, Any]:
+        """Get comprehensive market movers overview with logos."""
+        # Get all three types of movers with logos
+        gainers = await self.get_top_gainers_with_logos(request, access_token)
+        losers = await self.get_top_losers_with_logos(request, access_token)
+        most_active = await self.get_most_active_with_logos(request, access_token)
+        
+        return {
+            'gainers': [mover.dict() for mover in gainers],
+            'losers': [mover.dict() for mover in losers],
+            'most_active': [mover.dict() for mover in most_active],
+            'data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+            'limit_per_category': request.limit,
+            'timestamp': datetime.now().isoformat()
+        }
 
     # =====================================================
     # CACHING FUNCTIONS

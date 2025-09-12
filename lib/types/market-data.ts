@@ -352,13 +352,44 @@ export interface IndexData {
 
 export interface MarketMover {
   symbol: string;
-  name: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  volume: number;
-  marketCap?: number;
+  name?: string;
+  price?: number;
+  change?: number;
+  percent_change?: number;
+  fetch_timestamp?: string;
+}
+
+export interface MarketMoverWithLogo {
+  symbol: string;
+  name?: string;
+  price?: number;
+  change?: number;
+  percent_change?: number;
+  fetch_timestamp?: string;
   logo?: string;
+}
+
+export interface CompanyLogo {
+  symbol: string;
+  logo?: string;
+}
+
+export interface MarketMoversRequest {
+  data_date?: string;
+  limit?: number;
+}
+
+export interface CompanyLogosRequest {
+  symbols: string[];
+}
+
+export interface MarketMoversOverview {
+  gainers: MarketMoverWithLogo[];
+  losers: MarketMoverWithLogo[];
+  most_active: MarketMoverWithLogo[];
+  data_date: string;
+  limit_per_category: number;
+  timestamp: string;
 }
 
 // =====================================================

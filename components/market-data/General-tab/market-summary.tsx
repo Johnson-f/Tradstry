@@ -106,7 +106,6 @@ export const MarketSummary: React.FC = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">Market Summary</h2>
         <div className="flex items-center gap-1 text-sm text-gray-400">
-          <Clock className="w-3 h-3" />
           <span>Updated {formatTimeAgo(latestUpdate)}</span>
         </div>
       </div>

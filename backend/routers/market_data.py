@@ -8,11 +8,13 @@ from services.market_data_service import MarketDataService
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
+    MarketMover, MarketMoverWithLogo, CompanyLogo,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
-    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest
+    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
+    MarketMoversRequest, CompanyLogosRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -442,9 +444,151 @@ async def health_check():
             "cache/spy",
             "cache/qqq",
             "cache/dia",
-            "cache/vix"
+            "cache/vix",
+            "movers/gainers",
+            "movers/losers",
+            "movers/most-active",
+            "movers/gainers-with-logos",
+            "movers/losers-with-logos",
+            "movers/most-active-with-logos",
+            "movers/overview",
+            "logos/batch"
         ]
     }
+
+
+# =====================================================
+# MARKET MOVERS ENDPOINTS
+# =====================================================
+
+@router.get("/movers/gainers", response_model=List[MarketMover])
+async def get_top_gainers(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get top gainers for a specific date."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_top_gainers(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top gainers: {str(e)}")
+
+
+@router.get("/movers/losers", response_model=List[MarketMover])
+async def get_top_losers(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get top losers for a specific date."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_top_losers(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top losers: {str(e)}")
+
+
+@router.get("/movers/most-active", response_model=List[MarketMover])
+async def get_most_active(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get most active stocks for a specific date."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_most_active(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get most active stocks: {str(e)}")
+
+
+@router.get("/movers/gainers-with-logos", response_model=List[MarketMoverWithLogo])
+async def get_top_gainers_with_logos(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get top gainers with company logos."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_top_gainers_with_logos(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top gainers with logos: {str(e)}")
+
+
+@router.get("/movers/losers-with-logos", response_model=List[MarketMoverWithLogo])
+async def get_top_losers_with_logos(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get top losers with company logos."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_top_losers_with_logos(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top losers with logos: {str(e)}")
+
+
+@router.get("/movers/most-active-with-logos", response_model=List[MarketMoverWithLogo])
+async def get_most_active_with_logos(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Get most active stocks with company logos."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_most_active_with_logos(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get most active stocks with logos: {str(e)}")
+
+
+@router.get("/movers/overview", response_model=Dict[str, Any])
+async def get_market_movers_overview(
+    data_date: Optional[date] = Query(None, description="Date for market movers (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results per category"),
+    token: str = Depends(get_token)
+):
+    """Get comprehensive market movers overview with logos (gainers, losers, most active)."""
+    try:
+        service = MarketDataService()
+        request = MarketMoversRequest(data_date=data_date, limit=limit)
+        result = await service.get_market_movers_overview(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get market movers overview: {str(e)}")
+
+
+# =====================================================
+# COMPANY LOGOS ENDPOINTS
+# =====================================================
+
+@router.post("/logos/batch", response_model=List[CompanyLogo])
+async def get_company_logos_batch(
+    request: CompanyLogosRequest,
+    token: str = Depends(get_token)
+):
+    """Get company logos for multiple symbols at once."""
+    try:
+        service = MarketDataService()
+        result = await service.get_company_logos_batch(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get company logos: {str(e)}")
 
 
 # =====================================================

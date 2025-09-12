@@ -161,6 +161,20 @@ export const apiConfig = {
         check: (symbol: string) => `/market-data/symbols/check/${symbol}`,
         save: "/market-data/symbols/save",
       },
+      // Market movers endpoints
+      movers: {
+        gainers: "/market-data/movers/gainers",
+        losers: "/market-data/movers/losers",
+        mostActive: "/market-data/movers/most-active",
+        gainersWithLogos: "/market-data/movers/gainers-with-logos",
+        losersWithLogos: "/market-data/movers/losers-with-logos",
+        mostActiveWithLogos: "/market-data/movers/most-active-with-logos",
+        overview: "/market-data/movers/overview",
+      },
+      // Company logos endpoints
+      logos: {
+        batch: "/market-data/logos/batch",
+      },
       // Health check
       health: "/market-data/health",
     },
