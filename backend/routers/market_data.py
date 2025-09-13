@@ -9,12 +9,14 @@ from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
     MarketMover, MarketMoverWithLogo, CompanyLogo, EarningsCalendarLogo,
+    HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
-    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
-    MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
+    HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest,
+    HistoricalPriceRangeRequest, CacheData, CachedSymbolData, MajorIndicesResponse, 
+    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -738,3 +740,94 @@ async def get_earnings_calendar_logos_batch(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get earnings calendar logos: {str(e)}")
+
+
+# =====================================================
+# HISTORICAL PRICES ENDPOINTS
+# =====================================================
+
+@router.get("/historical/{symbol}", response_model=List[HistoricalPrice])
+async def get_historical_prices(
+    symbol: str,
+    time_range: str = Query(..., description="Time range (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max)"),
+    time_interval: str = Query(..., description="Time interval (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)"),
+    data_provider: Optional[str] = Query(None, description="Data provider filter"),
+    limit: Optional[int] = Query(1000, ge=1, le=10000, description="Maximum number of records to return"),
+    token: str = Depends(get_token)
+):
+    """Get historical price data for a symbol with specific range and interval."""
+    validated_symbol = validate_symbol(symbol)
+    service = MarketDataService()
+    request = HistoricalPriceRequest(
+        symbol=validated_symbol,
+        time_range=time_range,
+        time_interval=time_interval,
+        data_provider=data_provider,
+        limit=limit
+    )
+    result = await service.get_historical_prices(request, token)
+    return result
+
+
+@router.get("/historical/{symbol}/summary", response_model=List[HistoricalPriceSummary])
+async def get_historical_prices_summary(
+    symbol: str,
+    token: str = Depends(get_token)
+):
+    """Get all available range/interval combinations for a specific symbol."""
+    validated_symbol = validate_symbol(symbol)
+    service = MarketDataService()
+    request = HistoricalPriceSummaryRequest(symbol=validated_symbol)
+    result = await service.get_historical_prices_by_symbol(request, token)
+    return result
+
+
+@router.get("/historical/{symbol}/latest", response_model=List[LatestHistoricalPrice])
+async def get_latest_historical_prices(
+    symbol: str,
+    limit: Optional[int] = Query(10, ge=1, le=100, description="Maximum number of records to return"),
+    token: str = Depends(get_token)
+):
+    """Get the most recent historical price data for a symbol across all ranges/intervals."""
+    validated_symbol = validate_symbol(symbol)
+    service = MarketDataService()
+    request = LatestHistoricalPriceRequest(symbol=validated_symbol, limit=limit)
+    result = await service.get_latest_historical_prices(request, token)
+    return result
+
+
+@router.get("/historical/{symbol}/range", response_model=List[HistoricalPriceRange])
+async def get_historical_price_range(
+    symbol: str,
+    time_range: str = Query(..., description="Time range (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max)"),
+    time_interval: str = Query(..., description="Time interval (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)"),
+    start_date: datetime = Query(..., description="Start date for the range query"),
+    end_date: datetime = Query(..., description="End date for the range query"),
+    data_provider: Optional[str] = Query(None, description="Data provider filter"),
+    token: str = Depends(get_token)
+):
+    """Get historical prices within a specific date range for analysis."""
+    validated_symbol = validate_symbol(symbol)
+    service = MarketDataService()
+    request = HistoricalPriceRangeRequest(
+        symbol=validated_symbol,
+        time_range=time_range,
+        time_interval=time_interval,
+        start_date=start_date,
+        end_date=end_date,
+        data_provider=data_provider
+    )
+    result = await service.get_historical_price_range(request, token)
+    return result
+
+
+@router.get("/historical/{symbol}/overview", response_model=Dict[str, Any])
+async def get_symbol_historical_overview(
+    symbol: str,
+    token: str = Depends(get_token)
+):
+    """Get comprehensive historical price overview for a symbol."""
+    validated_symbol = validate_symbol(symbol)
+    service = MarketDataService()
+    result = await service.get_symbol_historical_overview(validated_symbol, token)
+    return result

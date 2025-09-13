@@ -408,6 +408,93 @@ class SymbolSaveResponse(BaseModel):
 
 
 # =====================================================
+# HISTORICAL PRICES MODELS
+# =====================================================
+
+class HistoricalPrice(BaseModel):
+    id: int
+    symbol: str
+    exchange_id: Optional[int] = None
+    timestamp_utc: datetime
+    date_only: date
+    time_range: str
+    time_interval: str
+    open: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    close: Optional[Decimal] = None
+    volume: Optional[int] = None
+    adjusted_close: Optional[Decimal] = None
+    dividend: Optional[Decimal] = None
+    split_ratio: Optional[Decimal] = None
+    data_provider: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class HistoricalPriceSummary(BaseModel):
+    time_range: str
+    time_interval: str
+    data_count: int
+    earliest_date: datetime
+    latest_date: datetime
+    data_providers: List[str]
+
+
+class LatestHistoricalPrice(BaseModel):
+    timestamp_utc: datetime
+    time_range: str
+    time_interval: str
+    open: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    close: Optional[Decimal] = None
+    volume: Optional[int] = None
+    adjusted_close: Optional[Decimal] = None
+    data_provider: str
+
+
+class HistoricalPriceRange(BaseModel):
+    timestamp_utc: datetime
+    open: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    close: Optional[Decimal] = None
+    volume: Optional[int] = None
+    adjusted_close: Optional[Decimal] = None
+
+
+# =====================================================
+# HISTORICAL PRICES REQUEST MODELS
+# =====================================================
+
+class HistoricalPriceRequest(BaseModel):
+    symbol: str
+    time_range: str
+    time_interval: str
+    data_provider: Optional[str] = None
+    limit: Optional[int] = 1000
+
+
+class HistoricalPriceSummaryRequest(BaseModel):
+    symbol: str
+
+
+class LatestHistoricalPriceRequest(BaseModel):
+    symbol: str
+    limit: Optional[int] = 10
+
+
+class HistoricalPriceRangeRequest(BaseModel):
+    symbol: str
+    time_range: str
+    time_interval: str
+    start_date: datetime
+    end_date: datetime
+    data_provider: Optional[str] = None
+
+
+# =====================================================
 # CACHING MODELS
 # =====================================================
 

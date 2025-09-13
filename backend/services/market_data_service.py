@@ -8,12 +8,14 @@ from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
     NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
     MarketMover, MarketMoverWithLogo, CompanyLogo, EarningsCalendarLogo,
+    HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
     NewsSearchRequest, StockQuoteRequest, FundamentalRequest, PriceMovementRequest,
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
-    CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest,
-    MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
+    HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest,
+    HistoricalPriceRangeRequest, CacheData, CachedSymbolData, MajorIndicesResponse, 
+    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
 )
 
 
@@ -777,6 +779,136 @@ class MarketDataService:
             'most_active': [mover.dict() for mover in most_active],
             'data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
             'limit_per_category': request.limit,
+            'timestamp': datetime.now().isoformat()
+        }
+
+    # =====================================================
+    # HISTORICAL PRICES FUNCTIONS
+    # =====================================================
+
+    async def get_historical_prices(
+        self, 
+        request: HistoricalPriceRequest, 
+        access_token: str = None
+    ) -> List[HistoricalPrice]:
+        """Get historical price data with range/interval filtering."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_symbol': request.symbol.upper(),
+                'p_time_range': request.time_range,
+                'p_time_interval': request.time_interval,
+                'p_data_provider': request.data_provider,
+                'p_limit': request.limit
+            }
+            
+            response = client.rpc('get_historical_prices', params).execute()
+            
+            return [HistoricalPrice(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_historical_prices_by_symbol(
+        self, 
+        request: HistoricalPriceSummaryRequest, 
+        access_token: str = None
+    ) -> List[HistoricalPriceSummary]:
+        """Get all available range/interval combinations for a specific symbol."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {'p_symbol': request.symbol.upper()}
+            
+            response = client.rpc('get_historical_prices_by_symbol', params).execute()
+            
+            return [HistoricalPriceSummary(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_latest_historical_prices(
+        self, 
+        request: LatestHistoricalPriceRequest, 
+        access_token: str = None
+    ) -> List[LatestHistoricalPrice]:
+        """Get the most recent historical price data for a symbol across all ranges/intervals."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_symbol': request.symbol.upper(),
+                'p_limit': request.limit
+            }
+            
+            response = client.rpc('get_latest_historical_prices', params).execute()
+            
+            return [LatestHistoricalPrice(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_historical_price_range(
+        self, 
+        request: HistoricalPriceRangeRequest, 
+        access_token: str = None
+    ) -> List[HistoricalPriceRange]:
+        """Get historical prices within a specific date range for analysis."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            params = {
+                'p_symbol': request.symbol.upper(),
+                'p_time_range': request.time_range,
+                'p_time_interval': request.time_interval,
+                'p_start_date': request.start_date.isoformat(),
+                'p_end_date': request.end_date.isoformat(),
+                'p_data_provider': request.data_provider
+            }
+            
+            response = client.rpc('get_historical_price_range', params).execute()
+            
+            return [HistoricalPriceRange(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    async def get_symbol_historical_overview(
+        self, 
+        symbol: str, 
+        access_token: str = None
+    ) -> Dict[str, Any]:
+        """Get comprehensive historical price overview for a symbol."""
+        # Get available range/interval combinations
+        summary_request = HistoricalPriceSummaryRequest(symbol=symbol)
+        available_data = await self.get_historical_prices_by_symbol(summary_request, access_token)
+        
+        # Get latest prices across all ranges/intervals
+        latest_request = LatestHistoricalPriceRequest(symbol=symbol, limit=10)
+        latest_prices = await self.get_latest_historical_prices(latest_request, access_token)
+        
+        # Get sample data for each available range/interval combination (limited)
+        sample_data = {}
+        for combo in available_data[:5]:  # Limit to first 5 combinations to avoid overwhelming response
+            try:
+                sample_request = HistoricalPriceRequest(
+                    symbol=symbol,
+                    time_range=combo.time_range,
+                    time_interval=combo.time_interval,
+                    limit=10
+                )
+                sample_prices = await self.get_historical_prices(sample_request, access_token)
+                sample_data[f"{combo.time_range}_{combo.time_interval}"] = [price.dict() for price in sample_prices]
+            except Exception as e:
+                print(f"Error getting sample data for {combo.time_range}_{combo.time_interval}: {e}")
+                continue
+        
+        return {
+            'symbol': symbol.upper(),
+            'available_combinations': [combo.dict() for combo in available_data],
+            'latest_prices': [price.dict() for price in latest_prices],
+            'sample_data': sample_data,
             'timestamp': datetime.now().isoformat()
         }
 
