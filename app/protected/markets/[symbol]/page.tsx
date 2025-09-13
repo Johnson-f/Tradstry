@@ -2,13 +2,17 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, TrendingUp, TrendingDown, Clock, DollarSign } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { marketDataService } from '@/lib/services/market-data-service';
+import { SymbolSearch } from '@/components/market-data/symbol-search';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useCompanyLogos } from '@/lib/hooks/use-market-data';
+import { ManagerTab } from '@/components/market-data/stock-data/manager-tab';
 import type { QuoteData, CompanyInfo, FundamentalData } from '@/lib/types/market-data';
 
 interface StockData {
@@ -34,6 +38,9 @@ export default function StockSymbolPage() {
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Get company logo
+  const { logos } = useCompanyLogos({ symbols: symbol ? [symbol] : [] });
 
   useEffect(() => {
     if (!symbol) return;
@@ -120,50 +127,33 @@ export default function StockSymbolPage() {
   return (
     <div className="h-screen flex flex-col">
       {/* Header - Fixed */}
-      <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/protected/markets">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{symbol}</h1>
-              {stockData && (
-                <p className="text-sm text-muted-foreground">
-                  {stockData.companyInfo?.name || stockData.quote.name || symbol}
-                </p>
-              )}
+      <div className="w-full border-b bg-background flex-shrink-0">
+        <div className="px-6 py-4">
+          <div className="relative flex items-center">
+            {/* Left side - Navigation breadcrumb */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Link href="/protected/markets" className="hover:text-foreground transition-colors">
+                Markets
+              </Link>
+              <ChevronRight className="w-4 h-4" />
+              <span className="font-semibold text-foreground">
+                {symbol}
+              </span>
+            </div>
+            
+            {/* Centered Search */}
+            <div className="absolute left-1/2 transform -translate-x-1/2 rounded-md">
+              <div className="w-96">
+                <SymbolSearch placeholder="Search for companies, tickers" />
+              </div>
             </div>
           </div>
-          {stockData && (
-            <div className="text-right">
-              <div className="text-2xl font-bold">
-                {formatCurrency(stockData.quote.price)}
-              </div>
-              <div className={`flex items-center gap-1 ${
-                stockData.quote.change >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {stockData.quote.change >= 0 ? (
-                  <TrendingUp className="w-4 h-4" />
-                ) : (
-                  <TrendingDown className="w-4 h-4" />
-                )}
-                <span>
-                  {stockData.quote.change >= 0 ? '+' : ''}
-                  {formatCurrency(stockData.quote.change)} ({stockData.quote.changePercent.toFixed(2)}%)
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
       
-      {/* Main content - Scrollable area */}
+      {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8">
             {isLoading && (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -199,100 +189,51 @@ export default function StockSymbolPage() {
             )}
 
             {stockData && !isLoading && !error && (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {/* Price Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <DollarSign className="w-5 h-5" />
-                      Price Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Current Price:</span>
-                      <span className="font-semibold">{formatCurrency(stockData.quote.price)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Day High:</span>
-                      <span>{formatCurrency(stockData.quote.dayHigh || 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Day Low:</span>
-                      <span>{formatCurrency(stockData.quote.dayLow || 0)}</span>
-                    </div>
-                    {stockData.fundamentals?.yearHigh && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">52W High:</span>
-                        <span>{formatCurrency(stockData.fundamentals.yearHigh)}</span>
+              <div className="space-y-6">
+                {/* Company Header with Logo and Name */}
+                <div className="flex items-center gap-4 pt-6 pl-6 rounded-lg">
+                  {/* Company Logo */}
+                  <div className="flex-shrink-0">
+                    {logos.length > 0 && logos[0]?.logo ? (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden  flex items-center justify-center">
+                        <img
+                          src={logos[0].logo}
+                          alt={`${symbol} logo`}
+                          className="w-10 h-10 object-contain"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                        <div className="hidden w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded flex items-center justify-center text-white font-bold text-lg">
+                          {symbol.charAt(0)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
+                        {symbol.charAt(0)}
                       </div>
                     )}
-                    {stockData.fundamentals?.yearLow && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">52W Low:</span>
-                        <span>{formatCurrency(stockData.fundamentals.yearLow)}</span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  </div>
+                  
+                  {/* Company Name */}
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-semibold text-white">
+                      {stockData.companyInfo?.name || stockData.quote.name || `${symbol} Limited`}
+                    </h1>
+                    <p className="text-slate-400 text-sm mt-1">
+                      {symbol} • {stockData.quote.exchange || 'Stock Exchange'}
+                    </p>
+                  </div>
+                </div>
 
-                {/* Trading Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Trading Information</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Volume:</span>
-                      <span>{formatVolume(stockData.quote.volume || 0)}</span>
-                    </div>
-                    {stockData.quote.marketCap && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Market Cap:</span>
-                        <span>{formatNumber(stockData.quote.marketCap)}</span>
-                      </div>
-                    )}
-                    {stockData.fundamentals?.peRatio && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">P/E Ratio:</span>
-                        <span>{stockData.fundamentals.peRatio.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {stockData.fundamentals?.dividendYield && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Dividend Yield:</span>
-                        <span>{stockData.fundamentals.dividendYield.toFixed(2)}%</span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Status */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Clock className="w-5 h-5" />
-                      Status
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <Badge variant="outline" className="w-full justify-center py-2">
-                        Market Open
-                      </Badge>
-                      <div className="text-center">
-                        <p className="text-sm text-muted-foreground">Last Updated</p>
-                        <p className="text-sm font-medium">
-                          {new Date(stockData.lastUpdated).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Tab Manager */}
+                <ManagerTab symbol={symbol} />
               </div>
             )}
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

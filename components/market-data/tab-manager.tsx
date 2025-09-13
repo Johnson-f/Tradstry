@@ -7,7 +7,6 @@ import { Standouts } from './General-tab/standouts';
 import { ActiveCard } from './active-card';
 import { EarningsCalendar } from './Earnings-tab/earnings';
 
-
 // Button component with Tailwind-only depth effects
 interface DepthButtonProps {
   children: React.ReactNode;

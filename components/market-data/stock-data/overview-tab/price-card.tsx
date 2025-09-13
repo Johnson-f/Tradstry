@@ -89,10 +89,16 @@ const formatChange = (change: number | undefined | null): string => {
   return `${sign}${formatPrice(Math.abs(change)).replace('$', '$')}`;
 };
 
-const formatPercentChange = (percent: number | undefined | null): string => {
-  if (!percent || isNaN(percent)) return '0.00%';
-  const sign = percent >= 0 ? '+' : '';
-  return `${sign}${percent.toFixed(2)}%`;
+const formatPercentChange = (percent: number | string | undefined | null): string => {
+  if (!percent) return '0.00%';
+  
+  // Convert to number if it's a string
+  const numPercent = typeof percent === 'string' ? parseFloat(percent) : percent;
+  
+  if (isNaN(numPercent)) return '0.00%';
+  
+  const sign = numPercent >= 0 ? '+' : '';
+  return `${sign}${numPercent.toFixed(2)}%`;
 };
 
 // Format timestamp
