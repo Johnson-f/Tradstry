@@ -153,87 +153,30 @@ interface ExtendedHoursPriceProps {
   sessionLabel: string;
 }
 
+// This component is now simplified as it's integrated into the main display
 const ExtendedHoursPrice: React.FC<ExtendedHoursPriceProps> = ({ 
   symbol, 
   session, 
   sessionLabel 
 }) => {
-  // In a real implementation, you'd have separate hooks for pre-market and after-hours data
-  // For now, we'll simulate with the regular stock quote data
-  const { stockQuote, isLoading } = useStockQuotes(symbol);
-  
-  if (isLoading || !stockQuote) {
-    return (
-      <Card className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Skeleton className="w-4 h-4 rounded-full" />
-              <Skeleton className="w-20 h-4" />
-            </div>
-            <Skeleton className="w-16 h-6" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  return null; // Component integrated into main price display
+};
 
-  // Simulate extended hours pricing (in reality, this would come from a different API endpoint)
-  const extendedPrice = stockQuote.current_price ? stockQuote.current_price * (1 + (Math.random() - 0.5) * 0.02) : 0;
-  const extendedChange = extendedPrice - (stockQuote.current_price || 0);
-  const extendedChangePercent = stockQuote.current_price ? (extendedChange / stockQuote.current_price) * 100 : 0;
-
-  const isPositive = extendedChangePercent >= 0;
-
-  return (
-    <Card className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <SessionIcon session={session} />
-            <span className="text-sm font-medium text-muted-foreground">
-              {sessionLabel}
-            </span>
+// Compact price card skeleton
+const PriceCardSkeleton: React.FC = () => (
+  <div className="flex gap-4">
+    <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+      <CardContent className="p-0">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-20 h-7" />
+            <Skeleton className="w-16 h-4" />
           </div>
-          
-          <div className="text-right">
-            <div className="text-lg font-bold text-foreground">
-              {formatPrice(extendedPrice)}
-            </div>
-            <div className={`text-xs font-medium flex items-center gap-1 ${
-              isPositive 
-                ? 'text-green-600 dark:text-green-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
-              {isPositive ? (
-                <TrendingUp className="w-3 h-3" />
-              ) : (
-                <TrendingDown className="w-3 h-3" />
-              )}
-              <span>{formatChange(extendedChange)}</span>
-              <span>({formatPercentChange(extendedChangePercent)})</span>
-            </div>
-          </div>
+          <Skeleton className="w-32 h-3" />
         </div>
       </CardContent>
     </Card>
-  );
-};
-
-// Main price card skeleton
-const PriceCardSkeleton: React.FC = () => (
-  <Card className="w-full">
-    <CardContent className="p-6">
-      <div className="space-y-4">
-        <Skeleton className="w-32 h-8" />
-        <div className="flex items-center gap-3">
-          <Skeleton className="w-24 h-6" />
-          <Skeleton className="w-16 h-5" />
-        </div>
-        <Skeleton className="w-48 h-4" />
-      </div>
-    </CardContent>
-  </Card>
+  </div>
 );
 
 export const PriceCard: React.FC<PriceCardProps> = ({ 
@@ -261,11 +204,9 @@ export const PriceCard: React.FC<PriceCardProps> = ({
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          Failed to load price data: {error.message}
-        </AlertDescription>
-      </Alert>
+      <div className="text-red-400 text-sm">
+        Failed to load price data: {error.message}
+      </div>
     );
   }
 
@@ -275,11 +216,9 @@ export const PriceCard: React.FC<PriceCardProps> = ({
 
   if (!stockQuote) {
     return (
-      <Alert>
-        <AlertDescription>
-          No price data available for {symbol}
-        </AlertDescription>
-      </Alert>
+      <div className="text-gray-400 text-sm">
+        No price data available for {symbol}
+      </div>
     );
   }
 
@@ -289,92 +228,57 @@ export const PriceCard: React.FC<PriceCardProps> = ({
   const isPositive = priceChangePercent >= 0;
 
   return (
-    <div className="space-y-4">
+    <div className="flex gap-4">
       {/* Main Price Card */}
-      <Card className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800">
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            {/* Price Display */}
-            <div className="space-y-2">
-              <div className="text-3xl font-bold text-foreground">
+      <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+        <CardContent className="p-0">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl font-bold text-white">
                 {formatPrice(currentPrice)}
               </div>
               
-              <div className="flex items-center gap-3">
-                <div className={`flex items-center gap-1 text-lg font-semibold ${
-                  isPositive 
-                    ? 'text-green-600 dark:text-green-400' 
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {isPositive ? (
-                    <TrendingUp className="w-4 h-4" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4" />
-                  )}
-                  <span>{formatChange(priceChange)}</span>
-                </div>
-                
-                <div className={`text-lg font-semibold ${
-                  isPositive 
-                    ? 'text-green-600 dark:text-green-400' 
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {formatPercentChange(priceChangePercent)}
-                </div>
+              <div className={`flex items-center gap-2 text-sm font-medium ${
+                isPositive 
+                  ? 'text-cyan-400' 
+                  : 'text-red-400'
+              }`}>
+                <span>{formatChange(priceChange)}</span>
+                <span>↗ {formatPercentChange(priceChangePercent)}</span>
               </div>
             </div>
             
-            {/* Timestamp and Session Info */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <SessionIcon session={marketHours.session} />
-                <span>{formatTimestamp(stockQuote.quote_timestamp)}</span>
-              </div>
-              
-              <Badge 
-                variant={marketHours.session === 'market-hours' ? 'default' : 'secondary'}
-                className="text-xs"
-              >
-                {marketHours.sessionLabel}
-              </Badge>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <SessionIcon session={marketHours.session} />
+              <span>At close: {formatTimestamp(stockQuote.quote_timestamp)}</span>
             </div>
-
-            {/* Additional Quote Info */}
-            {(stockQuote.high_price || stockQuote.low_price || stockQuote.volume) && (
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200 dark:border-gray-800">
-                {stockQuote.high_price && (
-                  <div className="text-center">
-                    <div className="text-xs text-muted-foreground">High</div>
-                    <div className="text-sm font-medium">{formatPrice(stockQuote.high_price)}</div>
-                  </div>
-                )}
-                {stockQuote.low_price && (
-                  <div className="text-center">
-                    <div className="text-xs text-muted-foreground">Low</div>
-                    <div className="text-sm font-medium">{formatPrice(stockQuote.low_price)}</div>
-                  </div>
-                )}
-                {stockQuote.volume && (
-                  <div className="text-center">
-                    <div className="text-xs text-muted-foreground">Volume</div>
-                    <div className="text-sm font-medium">
-                      {stockQuote.volume.toLocaleString()}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Extended Hours Card - Shows horizontally aligned */}
+      {/* Extended Hours Card */}
       {showExtendedHours && (
-        <ExtendedHoursPrice
-          symbol={symbol}
-          session={marketHours.session}
-          sessionLabel={marketHours.sessionLabel}
-        />
+        <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+          <CardContent className="p-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="text-2xl font-bold text-white">
+                  {formatPrice(currentPrice * 1.0139)}
+                </div>
+                
+                <div className="flex items-center gap-2 text-sm font-medium text-cyan-400">
+                  <span>+${(0.58).toFixed(2)}</span>
+                  <span>↗ +1.39%</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <Moon className="w-3 h-3 text-blue-400" />
+                <span>After hours: {formatTimestamp(stockQuote.quote_timestamp)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

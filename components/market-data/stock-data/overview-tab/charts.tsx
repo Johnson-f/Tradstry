@@ -5,7 +5,6 @@ import { useHistoricalPrices } from '@/lib/hooks/use-market-data';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 
 // Time range configurations
@@ -153,62 +152,56 @@ export function PriceChart({ symbol, className = '' }: PriceChartProps) {
   }
 
   return (
-    <Card className={`bg-gray-900 border-gray-800 ${className}`}>
-      <CardContent className="p-6">
-        {/* Header with price and change */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              {priceChange.isPositive ? (
-                <TrendingUp className="h-5 w-5 text-green-500" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-red-500" />
-              )}
+    <div className={`bg-gray-950 border border-gray-800 rounded-lg ${className}`}>
+      <div className="p-4">
+        {/* Compact header with price, change and time selector */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
               <span className="text-2xl font-bold text-white">
                 ${currentPrice.toFixed(2)}
               </span>
-            </div>
-            <div className={`flex items-center space-x-1 ${
-              priceChange.isPositive ? 'text-green-500' : 'text-red-500'
-            }`}>
-              <span className="font-semibold">
-                {priceChange.isPositive ? '+' : ''}${priceChange.amount.toFixed(2)}
-              </span>
-              <span className="font-semibold">
-                {priceChange.isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%
-              </span>
+              <div className={`flex items-center gap-1 text-sm font-medium ${
+                priceChange.isPositive ? 'text-cyan-400' : 'text-red-400'
+              }`}>
+                <span>
+                  {priceChange.isPositive ? '+' : ''}${priceChange.amount.toFixed(2)}
+                </span>
+                <span>
+                  ↗ {priceChange.isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Time range selector */}
-          <div className="flex items-center space-x-1 bg-gray-800 rounded-lg p-1">
-            {TIME_RANGES.map((range) => (
-              <Button
-                key={range.range}
-                variant={selectedRange.range === range.range ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setSelectedRange(range)}
-                className={`px-3 py-1 text-xs font-medium ${
-                  selectedRange.range === range.range
-                    ? 'bg-cyan-600 text-white hover:bg-cyan-700'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                {range.label}
-              </Button>
-            ))}
+          <div className={`text-sm font-medium ${
+            priceChange.isPositive ? 'text-cyan-400' : 'text-red-400'
+          }`}>
+            {priceChange.isPositive ? '+' : ''}${priceChange.amount.toFixed(2)} ↗ {priceChange.isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%
           </div>
         </div>
 
-        {/* Previous close reference */}
-        {previousClose > 0 && (
-          <div className="mb-4 text-sm text-gray-400">
-            Prev close: ${previousClose.toFixed(2)}
-          </div>
-        )}
+        {/* Time range selector below price */}
+        <div className="flex items-center gap-2 mb-4">
+          {TIME_RANGES.map((range) => (
+            <Button
+              key={range.range}
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedRange(range)}
+              className={`px-2 py-1 h-7 text-xs font-medium rounded ${
+                selectedRange.range === range.range
+                  ? 'bg-cyan-600 text-white hover:bg-cyan-700'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              {range.label}
+            </Button>
+          ))}
+        </div>
 
         {/* Chart */}
-        <div className="h-80">
+        <div className="h-64">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
@@ -220,35 +213,37 @@ export function PriceChart({ symbol, className = '' }: PriceChartProps) {
                   <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop 
                       offset="5%" 
-                      stopColor={priceChange.isPositive ? "#06b6d4" : "#ef4444"} 
-                      stopOpacity={0.6}
+                      stopColor={priceChange.isPositive ? "#22d3ee" : "#ef4444"} 
+                      stopOpacity={0.4}
                     />
                     <stop 
                       offset="95%" 
-                      stopColor={priceChange.isPositive ? "#06b6d4" : "#ef4444"} 
-                      stopOpacity={0.1}
+                      stopColor={priceChange.isPositive ? "#22d3ee" : "#ef4444"} 
+                      stopOpacity={0.05}
                     />
                   </linearGradient>
                 </defs>
                 
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" opacity={0.3} />
                 
                 <XAxis
                   dataKey="timestamp"
                   tickFormatter={formatTimeLabel}
-                  stroke="#9ca3af"
-                  fontSize={12}
+                  stroke="#6b7280"
+                  fontSize={11}
                   axisLine={false}
                   tickLine={false}
+                  interval="preserveStartEnd"
                 />
                 
                 <YAxis
-                  domain={['dataMin - 1', 'dataMax + 1']}
-                  tickFormatter={(value) => `$${value.toFixed(0)}`}
-                  stroke="#9ca3af"
-                  fontSize={12}
+                  domain={['dataMin - 0.5', 'dataMax + 0.5']}
+                  tickFormatter={(value) => `${value.toFixed(0)}`}
+                  stroke="#6b7280"
+                  fontSize={11}
                   axisLine={false}
                   tickLine={false}
+                  width={40}
                 />
                 
                 <Tooltip content={<CustomTooltip />} />
@@ -268,8 +263,8 @@ export function PriceChart({ symbol, className = '' }: PriceChartProps) {
                 <Area
                   type="monotone"
                   dataKey="price"
-                  stroke={priceChange.isPositive ? "#06b6d4" : "#ef4444"}
-                  strokeWidth={2}
+                  stroke={priceChange.isPositive ? "#22d3ee" : "#ef4444"}
+                  strokeWidth={2.5}
                   fill="url(#priceGradient)"
                 />
               </AreaChart>
@@ -280,8 +275,15 @@ export function PriceChart({ symbol, className = '' }: PriceChartProps) {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Previous close reference at bottom */}
+        {previousClose > 0 && (
+          <div className="mt-2 text-xs text-gray-500 text-right">
+            Prev close: ${previousClose.toFixed(2)}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

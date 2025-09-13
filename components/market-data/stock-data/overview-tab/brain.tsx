@@ -5,7 +5,7 @@ import { PriceCard } from './price-card';
 import { PriceChart } from './charts';
 import { StockMini } from './mini';
 import { RecentDevelopments } from './recent-development';
-import { LatestPriceMovement } from './latest-price';
+import { StockMetrics } from './latest-price';
 
 interface OverviewTabProps {
   symbol: string;
@@ -26,21 +26,20 @@ export function OverviewTab({ symbol, className = '' }: OverviewTabProps) {
       </div>
 
       {/* Grid layout for Mini, Recent Developments, and Latest Price Movement */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
         {/* Mini - Third */}
-        <div className="lg:col-span-1">
+        <div>
           <StockMini symbol={symbol} />
         </div>
 
         {/* Recent Developments - Fourth */}
-        <div className="lg:col-span-2">
+        <div>
           <RecentDevelopments symbol={symbol} />
         </div>
-      </div>
 
-      {/* Latest Price Movement - Fifth */}
+      {/* Stock Metrics - Fifth */}
       <div className="w-full">
-        <LatestPriceMovement symbol={symbol} />
+        <StockMetrics symbol={symbol} />
       </div>
     </div>
   );
