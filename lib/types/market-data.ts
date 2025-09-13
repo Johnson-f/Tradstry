@@ -470,3 +470,98 @@ export interface MajorIndicesResponse {
   timestamp: string;
   total_data_points: number;
 }
+
+// =====================================================
+// HISTORICAL PRICES TYPES
+// =====================================================
+
+export interface HistoricalPrice {
+  id: number;
+  symbol: string;
+  exchange_id?: number;
+  timestamp_utc: string;
+  date_only: string;
+  time_range: string;
+  time_interval: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  adjusted_close?: number;
+  dividend?: number;
+  split_ratio?: number;
+  data_provider: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface HistoricalPriceSummary {
+  time_range: string;
+  time_interval: string;
+  data_count: number;
+  earliest_date: string;
+  latest_date: string;
+  data_providers: string[];
+}
+
+export interface LatestHistoricalPrice {
+  timestamp_utc: string;
+  time_range: string;
+  time_interval: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  adjusted_close?: number;
+  data_provider: string;
+}
+
+export interface HistoricalPriceRange {
+  timestamp_utc: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  adjusted_close?: number;
+}
+
+// =====================================================
+// HISTORICAL PRICES REQUEST TYPES
+// =====================================================
+
+export interface HistoricalPriceRequest {
+  symbol: string;
+  time_range: string;
+  time_interval: string;
+  data_provider?: string;
+  limit?: number;
+}
+
+export interface HistoricalPriceSummaryRequest {
+  symbol: string;
+}
+
+export interface LatestHistoricalPriceRequest {
+  symbol: string;
+  limit?: number;
+}
+
+export interface HistoricalPriceRangeRequest {
+  symbol: string;
+  time_range: string;
+  time_interval: string;
+  start_date: string;
+  end_date: string;
+  data_provider?: string;
+}
+
+export interface SymbolHistoricalOverview {
+  symbol: string;
+  available_combinations: HistoricalPriceSummary[];
+  latest_prices: LatestHistoricalPrice[];
+  sample_data: Record<string, HistoricalPrice[]>;
+  timestamp: string;
+}

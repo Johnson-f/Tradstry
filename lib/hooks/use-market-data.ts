@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -925,6 +925,120 @@ export function useEarningsCalendarLogos(request: EarningsCalendarLogosRequest) 
 
   return {
     logos: logos ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// HISTORICAL PRICES HOOKS
+// =====================================================
+
+export function useHistoricalPrices(params: HistoricalPriceRequest) {
+  const {
+    data: historicalPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['historical-prices', params.symbol, params.time_range, params.time_interval, params.data_provider, params.limit],
+    queryFn: () => marketDataService.getHistoricalPrices(params),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!params.symbol && !!params.time_range && !!params.time_interval,
+  });
+
+  return {
+    historicalPrices: historicalPrices ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useHistoricalPricesSummary(params: HistoricalPriceSummaryRequest) {
+  const {
+    data: summary,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['historical-prices-summary', params.symbol],
+    queryFn: () => marketDataService.getHistoricalPricesSummary(params),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    enabled: !!params.symbol,
+  });
+
+  return {
+    summary: summary ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useLatestHistoricalPrices(params: LatestHistoricalPriceRequest) {
+  const {
+    data: latestPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['latest-historical-prices', params.symbol, params.limit],
+    queryFn: () => marketDataService.getLatestHistoricalPrices(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: !!params.symbol,
+  });
+
+  return {
+    latestPrices: latestPrices ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useHistoricalPriceRange(params: HistoricalPriceRangeRequest) {
+  const {
+    data: priceRange,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['historical-price-range', params.symbol, params.time_range, params.time_interval, params.start_date, params.end_date, params.data_provider],
+    queryFn: () => marketDataService.getHistoricalPriceRange(params),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!params.symbol && !!params.time_range && !!params.time_interval && !!params.start_date && !!params.end_date,
+  });
+
+  return {
+    priceRange: priceRange ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useSymbolHistoricalOverview(symbol: string) {
+  const {
+    data: overview,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['symbol-historical-overview', symbol],
+    queryFn: () => marketDataService.getSymbolHistoricalOverview(symbol),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    overview: overview ?? null,
     isLoading,
     error: error as Error | null,
     refetch,

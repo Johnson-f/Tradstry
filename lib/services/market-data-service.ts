@@ -40,7 +40,27 @@ import type {
   SymbolSaveResponse,
   CachedSymbolData,
   MajorIndicesResponse,
+  HistoricalPrice,
+  HistoricalPriceSummary,
+  LatestHistoricalPrice,
+  HistoricalPriceRange,
+  HistoricalPriceRequest,
+  HistoricalPriceSummaryRequest,
+  LatestHistoricalPriceRequest,
+  HistoricalPriceRangeRequest,
+  SymbolHistoricalOverview,
 } from "@/lib/types/market-data";
+
+// Raw API response type for market movers (strings that need to be transformed to numbers)
+interface RawMarketMover {
+  symbol: string;
+  name?: string;
+  price: string;
+  change: string;
+  percent_change: string;
+  fetch_timestamp?: string;
+  logo?: string;
+}
 
 class MarketDataService {
   // =====================================================
@@ -263,24 +283,60 @@ class MarketDataService {
   // =====================================================
 
   async getTopGainers(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    return apiClient.get<MarketMover[]>(
+    const data = await apiClient.get<RawMarketMover[]>(
       apiConfig.endpoints.marketData.movers.gainers,
       { params }
     );
+    
+    // Transform string values to numbers
+    return data.map((item: RawMarketMover) => ({
+      symbol: item.symbol,
+      name: item.name,
+      price: parseFloat(item.price) || 0,
+      change: parseFloat(item.change) || 0,
+      percent_change: parseFloat(item.percent_change) || 0,
+      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
+      fetch_timestamp: item.fetch_timestamp,
+      logo: item.logo,
+    }));
   }
 
   async getTopLosers(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    return apiClient.get<MarketMover[]>(
+    const data = await apiClient.get<RawMarketMover[]>(
       apiConfig.endpoints.marketData.movers.losers,
       { params }
     );
+    
+    // Transform string values to numbers
+    return data.map((item: RawMarketMover) => ({
+      symbol: item.symbol,
+      name: item.name,
+      price: parseFloat(item.price) || 0,
+      change: parseFloat(item.change) || 0,
+      percent_change: parseFloat(item.percent_change) || 0,
+      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
+      fetch_timestamp: item.fetch_timestamp,
+      logo: item.logo,
+    }));
   }
 
   async getMostActive(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    return apiClient.get<MarketMover[]>(
+    const data = await apiClient.get<RawMarketMover[]>(
       apiConfig.endpoints.marketData.movers.mostActive,
       { params }
     );
+    
+    // Transform string values to numbers
+    return data.map((item: RawMarketMover) => ({
+      symbol: item.symbol,
+      name: item.name,
+      price: parseFloat(item.price) || 0,
+      change: parseFloat(item.change) || 0,
+      percent_change: parseFloat(item.percent_change) || 0,
+      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
+      fetch_timestamp: item.fetch_timestamp,
+      logo: item.logo,
+    }));
   }
 
   async getTopGainersWithLogos(params?: MarketMoversRequest): Promise<MarketMoverWithLogo[]> {
@@ -424,6 +480,58 @@ class MarketDataService {
     return apiClient.get<MajorIndicesResponse | null>(
       `${apiConfig.endpoints.marketData.base}/cache/major-indices`,
       { params: { limit } }
+    );
+  }
+
+  // =====================================================
+  // HISTORICAL PRICES ENDPOINTS
+  // =====================================================
+
+  async getHistoricalPrices(params: HistoricalPriceRequest): Promise<HistoricalPrice[]> {
+    return apiClient.get<HistoricalPrice[]>(
+      apiConfig.endpoints.marketData.historical.base(params.symbol),
+      { 
+        params: {
+          time_range: params.time_range,
+          time_interval: params.time_interval,
+          data_provider: params.data_provider,
+          limit: params.limit
+        }
+      }
+    );
+  }
+
+  async getHistoricalPricesSummary(params: HistoricalPriceSummaryRequest): Promise<HistoricalPriceSummary[]> {
+    return apiClient.get<HistoricalPriceSummary[]>(
+      apiConfig.endpoints.marketData.historical.summary(params.symbol)
+    );
+  }
+
+  async getLatestHistoricalPrices(params: LatestHistoricalPriceRequest): Promise<LatestHistoricalPrice[]> {
+    return apiClient.get<LatestHistoricalPrice[]>(
+      apiConfig.endpoints.marketData.historical.latest(params.symbol),
+      { params: { limit: params.limit } }
+    );
+  }
+
+  async getHistoricalPriceRange(params: HistoricalPriceRangeRequest): Promise<HistoricalPriceRange[]> {
+    return apiClient.get<HistoricalPriceRange[]>(
+      apiConfig.endpoints.marketData.historical.range(params.symbol),
+      {
+        params: {
+          time_range: params.time_range,
+          time_interval: params.time_interval,
+          start_date: params.start_date,
+          end_date: params.end_date,
+          data_provider: params.data_provider
+        }
+      }
+    );
+  }
+
+  async getSymbolHistoricalOverview(symbol: string): Promise<SymbolHistoricalOverview> {
+    return apiClient.get<SymbolHistoricalOverview>(
+      apiConfig.endpoints.marketData.historical.overview(symbol)
     );
   }
 

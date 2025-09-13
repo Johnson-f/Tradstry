@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useGainers, useLosers, useActives } from '@/lib/hooks/use-market-data';
+import { useTopGainers, useTopLosers, useMostActive } from '@/lib/hooks/use-market-data';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import type { MarketMover } from '@/lib/types/market-data';
 
@@ -160,9 +159,9 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
 export const ActiveCard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('gainers');
   
-  const { gainers, isLoading: gainersLoading, error: gainersError } = useGainers(25);
-  const { losers, isLoading: losersLoading, error: losersError } = useLosers(25);
-  const { actives, isLoading: activesLoading, error: activesError } = useActives(25);
+  const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainers({ limit: 25 });
+  const { losers, isLoading: losersLoading, error: losersError } = useTopLosers({ limit: 25 });
+  const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActive({ limit: 25 });
 
   // Debug logging
   console.log('DEBUG - Gainers:', { gainers, gainersLoading, gainersError });
@@ -186,8 +185,8 @@ export const ActiveCard: React.FC = () => {
   };
 
   return (
-    <Card className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
-      <CardContent className="pt-0">
+    <Card className="w-full max-w-4xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
+      <CardContent className="p-90">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             <TabsTrigger 

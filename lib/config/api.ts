@@ -176,6 +176,14 @@ export const apiConfig = {
         batch: "/market-data/logos/batch",
         earningsCalendarBatch: "/market-data/logos/earnings-calendar-batch",
       },
+      // Historical prices endpoints
+      historical: {
+        base: (symbol: string) => `/market-data/historical/${symbol}`,
+        summary: (symbol: string) => `/market-data/historical/${symbol}/summary`,
+        latest: (symbol: string) => `/market-data/historical/${symbol}/latest`,
+        range: (symbol: string) => `/market-data/historical/${symbol}/range`,
+        overview: (symbol: string) => `/market-data/historical/${symbol}/overview`,
+      },
       // Health check
       health: "/market-data/health",
     },
