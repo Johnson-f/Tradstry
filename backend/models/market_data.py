@@ -363,6 +363,52 @@ class NewsSearchRequest(BaseModel):
     limit: Optional[int] = 10
 
 
+# =====================================================
+# SYMBOL SEARCH MODELS
+# =====================================================
+
+class SymbolSearchRequest(BaseModel):
+    query: str
+    yahoo: Optional[bool] = True
+    limit: Optional[int] = 10
+
+
+class SymbolSearchResult(BaseModel):
+    symbol: str
+    name: str
+    exchange: str
+    type: str
+    currency: Optional[str] = None
+    marketCap: Optional[int] = None
+    sector: Optional[str] = None
+
+
+class SymbolSearchResponse(BaseModel):
+    results: List[SymbolSearchResult]
+    total: int
+
+
+class QuoteRequest(BaseModel):
+    symbols: List[str]
+
+
+class QuoteResult(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    change: float
+    changePercent: float
+    dayHigh: float
+    dayLow: float
+    volume: int
+    marketCap: Optional[int] = None
+    logo: Optional[str] = None
+
+
+class QuoteResponse(BaseModel):
+    quotes: List[QuoteResult]
+
+
 class StockQuoteRequest(BaseModel):
     symbol: str
     quote_date: Optional[date] = None

@@ -49,6 +49,9 @@ import type {
   LatestHistoricalPriceRequest,
   HistoricalPriceRangeRequest,
   SymbolHistoricalOverview,
+  SymbolSearchRequest,
+  SymbolSearchResponse,
+  QuoteResponse,
 } from "@/lib/types/market-data";
 
 // Raw API response type for market movers (strings that need to be transformed to numbers)
@@ -60,6 +63,17 @@ interface RawMarketMover {
   percent_change: string;
   fetch_timestamp?: string;
   logo?: string;
+}
+
+// External API response types for legacy endpoints
+interface ExternalMoverData {
+  name?: string;
+  price?: string | number;
+  change?: string | number;
+  changePercent?: string | number;
+  percentChange?: string | number;
+  change_percent?: string | number;
+  percent_change?: string | number;
 }
 
 class MarketDataService {
@@ -236,46 +250,40 @@ class MarketDataService {
   }
 
   async getQuoteData(symbols: string[]): Promise<QuoteData[]> {
-    const symbolsParam = symbols.join(',');
-    const response = await fetch(
-      `https://finance-query.onrender.com/v1/quotes?symbols=${symbolsParam}`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch quote data for symbols: ${symbolsParam}`);
-    }
-    
-    const data = await response.json();
-    
-    // Transform the response to match our QuoteData interface
-    return symbols.map(symbol => {
-      const quote = data[symbol];
-      if (!quote) {
-        return {
-          symbol,
-          name: symbol,
-          price: 0,
-          change: 0,
-          changePercent: 0,
-          dayHigh: 0,
-          dayLow: 0,
-          volume: 0,
-        };
-      }
+    try {
+      // Use the backend endpoint instead of direct external API call
+      const response = await apiClient.get<QuoteResponse>(
+        apiConfig.endpoints.marketData.quotes,
+        { params: { symbols: symbols.join(',') } }
+      );
       
-      return {
-        symbol,
-        name: quote.name || symbol,
-        price: quote.price || 0,
-        change: quote.change || 0,
-        changePercent: quote.changePercent || 0,
-        dayHigh: quote.dayHigh || 0,
-        dayLow: quote.dayLow || 0,
-        volume: quote.volume || 0,
+      // Transform the response to match our QuoteData interface
+      return response.quotes.map(quote => ({
+        symbol: quote.symbol,
+        name: quote.name,
+        price: quote.price,
+        change: quote.change,
+        changePercent: quote.changePercent,
+        dayHigh: quote.dayHigh,
+        dayLow: quote.dayLow,
+        volume: quote.volume,
         marketCap: quote.marketCap,
         logo: quote.logo,
-      };
-    });
+      }));
+    } catch (error) {
+      console.error('Error fetching quote data:', error);
+      // Return default values for all symbols if API fails
+      return symbols.map(symbol => ({
+        symbol,
+        name: symbol,
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        dayHigh: 0,
+        dayLow: 0,
+        volume: 0,
+      }));
+    }
   }
 
   // =====================================================
@@ -402,13 +410,13 @@ class MarketDataService {
     
     
     // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data as Record<string, ExternalMoverData>).map(([symbol, moverData]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: parseFloat(moverData.price) || 0,
-      change: parseFloat(moverData.change) || 0,
-      percent_change: parseFloat(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change) || 0,
-      changePercent: parseFloat(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change) || 0,
+      price: parseFloat(String(moverData.price)) || 0,
+      change: parseFloat(String(moverData.change)) || 0,
+      percent_change: parseFloat(String(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change)) || 0,
+      changePercent: parseFloat(String(moverData.changePercent || moverData.percentChange || moverData.change_percent || moverData.percent_change)) || 0,
     }));
     return transformed;
   }
@@ -426,13 +434,13 @@ class MarketDataService {
     
     
     // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data as Record<string, ExternalMoverData>).map(([symbol, moverData]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: parseFloat(moverData.price) || 0,
-      change: parseFloat(moverData.change) || 0,
-      percent_change: parseFloat(moverData.changePercent) || 0,
-      changePercent: parseFloat(moverData.changePercent) || 0, // Add legacy field
+      price: parseFloat(String(moverData.price)) || 0,
+      change: parseFloat(String(moverData.change)) || 0,
+      percent_change: parseFloat(String(moverData.changePercent)) || 0,
+      changePercent: parseFloat(String(moverData.changePercent)) || 0, // Add legacy field
     }));
     
     
@@ -452,13 +460,13 @@ class MarketDataService {
     
     
     // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(data).map(([symbol, moverData]: [string, any]) => ({
+    const transformed = Object.entries(data as Record<string, ExternalMoverData>).map(([symbol, moverData]) => ({
       symbol,
       name: moverData.name || symbol,
-      price: parseFloat(moverData.price) || 0,
-      change: parseFloat(moverData.change) || 0,
-      percent_change: parseFloat(moverData.changePercent) || 0,
-      changePercent: parseFloat(moverData.changePercent) || 0, // Add legacy field
+      price: parseFloat(String(moverData.price)) || 0,
+      change: parseFloat(String(moverData.change)) || 0,
+      percent_change: parseFloat(String(moverData.changePercent)) || 0,
+      changePercent: parseFloat(String(moverData.changePercent)) || 0, // Add legacy field
     }));
     
     
@@ -532,6 +540,17 @@ class MarketDataService {
   async getSymbolHistoricalOverview(symbol: string): Promise<SymbolHistoricalOverview> {
     return apiClient.get<SymbolHistoricalOverview>(
       apiConfig.endpoints.marketData.historical.overview(symbol)
+    );
+  }
+
+  // =====================================================
+  // SYMBOL SEARCH ENDPOINT
+  // =====================================================
+
+  async searchSymbols(params: SymbolSearchRequest): Promise<SymbolSearchResponse> {
+    return apiClient.get<SymbolSearchResponse>(
+      apiConfig.endpoints.marketData.search,
+      { params }
     );
   }
 

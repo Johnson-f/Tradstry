@@ -142,9 +142,14 @@ export default function StockSymbolPage() {
             </div>
             
             {/* Centered Search */}
-            <div className="absolute left-1/2 transform -translate-x-1/2 rounded-md">
+            <div className="absolute left-1/2 transform -translate-x-1/2 rounded-md z-[10002]">
               <div className="w-96">
-                <SymbolSearch placeholder="Search for companies, tickers" />
+                <SymbolSearch 
+                  placeholder="Search for companies, tickers"
+                  onSymbolSelect={(selectedSymbol) => {
+                    router.push(`/protected/markets/${selectedSymbol.toUpperCase()}`);
+                  }}
+                />
               </div>
             </div>
           </div>
