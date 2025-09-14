@@ -565,3 +565,53 @@ export interface SymbolHistoricalOverview {
   sample_data: Record<string, HistoricalPrice[]>;
   timestamp: string;
 }
+
+// =====================================================
+// SYMBOL SEARCH TYPES
+// =====================================================
+
+export interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+  type: string;
+  currency?: string;
+  marketCap?: number;
+  sector?: string;
+}
+
+export interface SymbolSearchResponse {
+  results: SymbolSearchResult[];
+  total: number;
+}
+
+export interface SymbolSearchRequest {
+  query: string;
+  yahoo?: boolean;
+  limit?: number;
+}
+
+// =====================================================
+// QUOTES TYPES
+// =====================================================
+
+export interface QuoteRequest {
+  symbols: string[];
+}
+
+export interface QuoteResult {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  dayHigh: number;
+  dayLow: number;
+  volume: number;
+  marketCap?: number;
+  logo?: string;
+}
+
+export interface QuoteResponse {
+  quotes: QuoteResult[];
+}

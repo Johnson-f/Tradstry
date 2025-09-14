@@ -16,7 +16,8 @@ from models.market_data import (
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
     HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest,
     HistoricalPriceRangeRequest, CacheData, CachedSymbolData, MajorIndicesResponse, 
-    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
+    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest,
+    SymbolSearchRequest, SymbolSearchResponse, QuoteRequest, QuoteResponse
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -831,3 +832,40 @@ async def get_symbol_historical_overview(
     service = MarketDataService()
     result = await service.get_symbol_historical_overview(validated_symbol, token)
     return result
+
+
+# =====================================================
+# SYMBOL SEARCH ENDPOINTS
+# =====================================================
+
+@router.get("/search", response_model=SymbolSearchResponse)
+async def search_symbols(
+    query: str = Query(..., description="Search query for symbols"),
+    yahoo: Optional[bool] = Query(True, description="Use Yahoo Finance data"),
+    limit: Optional[int] = Query(10, ge=1, le=50, description="Maximum number of results"),
+    token: str = Depends(get_token)
+):
+    """Search for stock symbols, ETFs, and other securities."""
+    try:
+        service = MarketDataService()
+        request = SymbolSearchRequest(query=query, yahoo=yahoo, limit=limit)
+        result = await service.search_symbols(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to search symbols: {str(e)}")
+
+
+@router.get("/quotes", response_model=QuoteResponse)
+async def get_quotes(
+    symbols: str = Query(..., description="Comma-separated list of symbols"),
+    token: str = Depends(get_token)
+):
+    """Get stock quotes for multiple symbols."""
+    try:
+        service = MarketDataService()
+        symbols_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
+        request = QuoteRequest(symbols=symbols_list)
+        result = await service.get_quotes(request, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")

@@ -5,10 +5,10 @@ import { Search, TrendingUp, Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { marketDataService } from '@/lib/services/market-data-service';
 import { useCompanyLogos } from '@/lib/hooks/use-market-data';
-import Image from 'next/image';
 
 interface SearchResult {
   symbol: string;
@@ -78,28 +78,25 @@ export function SymbolSearch({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(
-        `https://finance-query.onrender.com/v1/search?query=${encodeURIComponent(searchQuery)}&yahoo=true`
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to search symbols');
-      }
-
-      const data = await response.json();
+      // Use the backend endpoint instead of direct external API call
+      const response = await marketDataService.searchSymbols({
+        query: searchQuery,
+        yahoo: true,
+        limit: 10
+      });
       
       // Transform the response to match our SearchResult interface
-      // API returns an array, not an object
-      const transformedResults: SearchResult[] = (Array.isArray(data) ? data : []).map((info: any) => ({
-        symbol: info.symbol,
-        name: info.name || info.longName || info.symbol,
-        exchange: info.exchange || 'Unknown',
-        type: info.quoteType || info.typeDisp || info.type || 'Stock',
-        currency: info.currency,
-        marketCap: info.marketCap,
-        sector: info.sector,
+      const transformedResults: SearchResult[] = response.results.map((result) => ({
+        symbol: result.symbol,
+        name: result.name,
+        exchange: result.exchange,
+        type: result.type,
+        currency: result.currency,
+        marketCap: result.marketCap,
+        sector: result.sector,
       }));
-      setResults(transformedResults.slice(0, 10)); // Limit to 10 results
+      
+      setResults(transformedResults);
       setIsOpen(true);
     } catch (err) {
       setError('Failed to search symbols');
@@ -196,7 +193,7 @@ export function SymbolSearch({
   };
 
   return (
-    <div ref={searchRef} className={`relative ${className}`}>
+    <div ref={searchRef} className={`relative z-[10000] ${className}`}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -213,7 +210,7 @@ export function SymbolSearch({
 
       {/* Loading indicator */}
       {isLoading && (
-        <div className="absolute top-full mt-1 w-full">
+        <div className="absolute top-full mt-1 w-full z-[10001]">
           <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2">
@@ -227,7 +224,7 @@ export function SymbolSearch({
 
       {/* Error state */}
       {error && !isLoading && (
-        <div className="absolute top-full mt-1 w-full">
+        <div className="absolute top-full mt-1 w-full z-[10001]">
           <Card>
             <CardContent className="p-3">
               <p className="text-sm text-red-500">{error}</p>
@@ -238,76 +235,78 @@ export function SymbolSearch({
 
       {/* Search results dropdown */}
       {isOpen && results.length > 0 && !isLoading && (
-        <div className="absolute top-full mt-1 w-full z-50">
-          <Card className="max-h-80 overflow-y-auto">
-            <CardContent className="p-0">
-              {results.map((result, index) => (
-                <button
-                  key={`${result.symbol}-${index}`}
-                  onClick={() => handleSymbolSelect(result.symbol)}
-                  className="w-full p-3 text-left hover:bg-muted/50 border-b last:border-b-0 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {/* Company logo */}
-                      <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                        {getCompanyLogo(result.symbol) ? (
-                          <img
-                            src={getCompanyLogo(result.symbol)}
-                            alt={`${result.symbol} logo`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              target.nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <Building2 className={`w-5 h-5 text-muted-foreground ${getCompanyLogo(result.symbol) ? 'hidden' : ''}`} />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm">{result.symbol}</span>
-                          <Badge variant={getTypeBadgeVariant(result.type)} className="text-xs">
-                            {getTypeIcon(result.type)}
-                            <span className="ml-1">{result.type}</span>
-                          </Badge>
+        <div className="absolute top-full mt-1 w-full z-[10001]">
+          <Card className="overflow-hidden border shadow-lg">
+            <ScrollArea className="h-80 w-full">
+              <div className="p-1">
+                {results.map((result, index) => (
+                  <button
+                    key={`${result.symbol}-${index}`}
+                    onClick={() => handleSymbolSelect(result.symbol)}
+                    className="w-full p-3 text-left hover:bg-muted/50 rounded-md border-b last:border-b-0 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {/* Company logo */}
+                        <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                          {getCompanyLogo(result.symbol) ? (
+                            <img
+                              src={getCompanyLogo(result.symbol)}
+                              alt={`${result.symbol} logo`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <Building2 className={`w-5 h-5 text-muted-foreground ${getCompanyLogo(result.symbol) ? 'hidden' : ''}`} />
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {result.name}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-muted-foreground">
-                            {result.exchange}
-                          </span>
-                          {result.currency && (
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-sm">{result.symbol}</span>
+                            <Badge variant={getTypeBadgeVariant(result.type)} className="text-xs">
+                              {getTypeIcon(result.type)}
+                              <span className="ml-1">{result.type}</span>
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {result.name}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1">
                             <span className="text-xs text-muted-foreground">
-                              {result.currency}
+                              {result.exchange}
                             </span>
-                          )}
-                          {result.marketCap && (
-                            <span className="text-xs text-muted-foreground">
-                              {formatMarketCap(result.marketCap)}
-                            </span>
-                          )}
+                            {result.currency && (
+                              <span className="text-xs text-muted-foreground">
+                                {result.currency}
+                              </span>
+                            )}
+                            {result.marketCap && (
+                              <span className="text-xs text-muted-foreground">
+                                {formatMarketCap(result.marketCap)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))}
-            </CardContent>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
           </Card>
         </div>
       )}
 
       {/* No results */}
       {isOpen && results.length === 0 && !isLoading && query.trim() && !error && (
-        <div className="absolute top-full mt-1 w-full">
+        <div className="absolute top-full mt-1 w-full z-[10001]">
           <Card>
             <CardContent className="p-3">
-              <p className="text-sm text-muted-foreground">No results found for "{query}"</p>
+              <p className="text-sm text-muted-foreground">No results found for &quot;{query}&quot;</p>
             </CardContent>
           </Card>
         </div>

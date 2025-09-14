@@ -1,7 +1,11 @@
 from typing import List, Optional, Dict, Any
-from datetime import datetime, date
-from decimal import Decimal
+from datetime import datetime, timedelta, date
+import os
+from dotenv import load_dotenv
 from supabase import Client
+
+# Load environment variables
+load_dotenv()
 from database import get_supabase, get_supabase_admin_client
 from auth_service import AuthService
 from models.market_data import (
@@ -15,7 +19,9 @@ from models.market_data import (
     TopMoversRequest, SymbolCheckResponse, SymbolSaveRequest, SymbolSaveResponse,
     HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest,
     HistoricalPriceRangeRequest, CacheData, CachedSymbolData, MajorIndicesResponse, 
-    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest
+    CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest,
+    SymbolSearchRequest, SymbolSearchResult, SymbolSearchResponse,
+    QuoteRequest, QuoteResult, QuoteResponse
 )
 
 
@@ -1040,5 +1046,388 @@ class MarketDataService:
             response = client.rpc('get_earnings_calendar_logos_batch', params).execute()
             
             return [EarningsCalendarLogo(**item) for item in response.data] if response.data else []
+        
+        return await self._execute_with_retry(operation, access_token)
+
+    # =====================================================
+    # SYMBOL SEARCH FUNCTIONS
+    # =====================================================
+
+    async def search_symbols(
+        self, 
+        request: SymbolSearchRequest, 
+        access_token: str = None
+    ) -> SymbolSearchResponse:
+        """Search for stock symbols using multiple APIs in parallel."""
+        import httpx
+        import asyncio
+        
+        async def search_finance_query():
+            """Search using Finance Query API with retry logic"""
+            max_retries = 3
+            base_delay = 1.0
+            
+            for attempt in range(max_retries):
+                try:
+                    url = "https://finance-query.onrender.com/v1/search"
+                    params = {
+                        "query": request.query,
+                        "yahoo": "true" if request.yahoo else "false"
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(url, params=params)
+                        
+                        # Handle rate limiting with exponential backoff
+                        if response.status_code == 429:
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"Finance Query rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                print(f"Finance Query API: Max retries exceeded due to rate limiting")
+                                return []
+                        
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        results = []
+                        raw_results = data if isinstance(data, list) else []
+                        
+                        for item in raw_results:
+                            result = SymbolSearchResult(
+                                symbol=item.get('symbol', ''),
+                                name=item.get('name') or item.get('longName') or item.get('symbol', ''),
+                                exchange=item.get('exchange', 'Unknown'),
+                                type=item.get('quoteType') or item.get('typeDisp') or item.get('type', 'Stock'),
+                                currency=item.get('currency'),
+                                marketCap=item.get('marketCap'),
+                                sector=item.get('sector')
+                            )
+                            results.append(result)
+                        return results
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Finance Query rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        print(f"Finance Query API error: {e}")
+                        return []
+                except Exception as e:
+                    print(f"Finance Query API error: {e}")
+                    return []
+            
+            return []
+
+        async def search_polygon():
+            """Search using Polygon.io API with retry logic"""
+            polygon_api_key = os.getenv("POLYGON_API_KEY")
+            
+            # Skip if no API key is configured
+            if not polygon_api_key:
+                return []
+            
+            max_retries = 3
+            base_delay = 1.0
+            
+            for attempt in range(max_retries):
+                try:
+                    url = "https://api.polygon.io/v3/reference/tickers"
+                    params = {
+                        "search": request.query,
+                        "active": "true",
+                        "limit": 50,
+                        "apikey": polygon_api_key
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(url, params=params)
+                        
+                        # Handle rate limiting with exponential backoff
+                        if response.status_code == 429:
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"Polygon API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                print(f"Polygon API: Max retries exceeded due to rate limiting")
+                                return []
+                        
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        results = []
+                        if data.get('results'):
+                            for item in data['results']:
+                                result = SymbolSearchResult(
+                                    symbol=item.get('ticker', ''),
+                                    name=item.get('name', ''),
+                                    exchange=item.get('primary_exchange', 'Unknown'),
+                                    type=item.get('type', 'Stock'),
+                                    currency=item.get('currency_name', 'USD'),
+                                    marketCap=item.get('market_cap'),
+                                    sector=None  # Not provided by Polygon tickers endpoint
+                                )
+                                results.append(result)
+                        return results
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Polygon API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        print(f"Polygon API error: {e}")
+                        return []
+                except Exception as e:
+                    print(f"Polygon API error: {e}")
+                    return []
+            
+            return []
+
+        async def search_finnhub():
+            """Search using Finnhub API with retry logic"""
+            finnhub_api_key = os.getenv("FINNHUB_API_KEY")
+            
+            # Skip if no API key is configured
+            if not finnhub_api_key:
+                return []
+            
+            max_retries = 3
+            base_delay = 1.0
+            
+            for attempt in range(max_retries):
+                try:
+                    url = "https://finnhub.io/api/v1/search"
+                    params = {
+                        "q": request.query,
+                        "token": finnhub_api_key
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(url, params=params)
+                        
+                        # Handle rate limiting with exponential backoff
+                        if response.status_code == 429:
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"Finnhub API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                print(f"Finnhub API: Max retries exceeded due to rate limiting")
+                                return []
+                        
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        results = []
+                        if data.get('result'):
+                            for item in data['result']:
+                                result = SymbolSearchResult(
+                                    symbol=item.get('symbol', ''),
+                                    name=item.get('description', ''),
+                                    exchange=item.get('primary', 'Unknown'),
+                                    type=item.get('type', 'Stock'),
+                                    currency=None,  # Not provided by Finnhub search
+                                    marketCap=None,
+                                    sector=None
+                                )
+                                results.append(result)
+                        return results
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Finnhub API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        print(f"Finnhub API error: {e}")
+                        return []
+                except Exception as e:
+                    print(f"Finnhub API error: {e}")
+                    return []
+            
+            return []
+
+        async def search_alpha_vantage():
+            """Search using Alpha Vantage API with retry logic"""
+            alpha_vantage_api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+            
+            # Skip if no API key is configured
+            if not alpha_vantage_api_key:
+                return []
+            
+            max_retries = 3
+            base_delay = 1.0
+            
+            for attempt in range(max_retries):
+                try:
+                    url = "https://www.alphavantage.co/query"
+                    params = {
+                        "function": "SYMBOL_SEARCH",
+                        "keywords": request.query,
+                        "apikey": alpha_vantage_api_key
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(url, params=params)
+                        
+                        # Handle rate limiting with exponential backoff
+                        if response.status_code == 429:
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"Alpha Vantage API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                print(f"Alpha Vantage API: Max retries exceeded due to rate limiting")
+                                return []
+                        
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        results = []
+                        if data.get('bestMatches'):
+                            for item in data['bestMatches']:
+                                result = SymbolSearchResult(
+                                    symbol=item.get('1. symbol', ''),
+                                    name=item.get('2. name', ''),
+                                    exchange=item.get('4. region', 'Unknown'),
+                                    type=item.get('3. type', 'Stock'),
+                                    currency=item.get('8. currency', 'USD'),
+                                    marketCap=item.get('6. marketCap'),
+                                    sector=None  # Not provided by Alpha Vantage search
+                                )
+                                results.append(result)
+                        return results
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Alpha Vantage API rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        print(f"Alpha Vantage API error: {e}")
+                        return []
+                except Exception as e:
+                    print(f"Alpha Vantage API error: {e}")
+                    return []
+            
+            return []
+
+        try:
+            # Execute all searches in parallel
+            search_tasks = [
+                search_finance_query(),
+                search_polygon(),
+                search_finnhub(),
+                search_alpha_vantage()
+            ]
+            
+            # Wait for all searches to complete (with timeout)
+            search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+            
+            # Combine results from all providers
+            all_results = []
+            seen_symbols = set()
+            
+            for provider_results in search_results:
+                if isinstance(provider_results, list):
+                    for result in provider_results:
+                        # Deduplicate by symbol (case-insensitive)
+                        symbol_key = result.symbol.upper()
+                        if symbol_key not in seen_symbols and result.symbol:
+                            seen_symbols.add(symbol_key)
+                            all_results.append(result)
+            
+            # Sort by relevance (exact matches first, then by symbol length)
+            query_upper = request.query.upper()
+            all_results.sort(key=lambda x: (
+                0 if x.symbol.upper() == query_upper else 1,  # Exact symbol match first
+                1 if query_upper in x.symbol.upper() else 2,   # Symbol contains query
+                2 if query_upper in x.name.upper() else 3,     # Name contains query
+                len(x.symbol)  # Shorter symbols first
+            ))
+            
+            # Limit results
+            limited_results = all_results[:request.limit]
+            
+            return SymbolSearchResponse(
+                results=limited_results,
+                total=len(limited_results)
+            )
+            
+        except Exception as e:
+            print(f"Error in parallel symbol search: {e}")
+            return SymbolSearchResponse(
+                results=[],
+                total=0
+            )
+
+    async def get_quotes(
+        self, 
+        request: QuoteRequest, 
+        access_token: str = None
+    ) -> QuoteResponse:
+        """Get stock quotes from database instead of external API."""
+        async def operation(client=None):
+            if client is None:
+                client = await self.get_authenticated_client(access_token)
+            
+            # Convert symbols to uppercase for database query
+            symbols_array = [s.upper() for s in request.symbols]
+            
+            params = {'p_symbols': symbols_array}
+            
+            response = client.rpc('get_company_info_by_symbols', params).execute()
+            
+            results = []
+            if response.data:
+                for item in response.data:
+                    # Handle the yield field alias since 'yield' is a Python keyword
+                    if 'yield' in item:
+                        item['yield_'] = item.pop('yield')
+                    
+                    # Convert database fields to QuoteResult format
+                    result = QuoteResult(
+                        symbol=item.get('symbol', ''),
+                        name=item.get('name') or item.get('company_name') or item.get('symbol', ''),
+                        price=float(item.get('price', 0) or 0),
+                        change=float(item.get('change', 0) or 0),
+                        changePercent=float(item.get('percent_change', 0) or 0),
+                        dayHigh=float(item.get('high', 0) or 0),  # Use 'high' for day's high
+                        dayLow=float(item.get('low', 0) or 0),    # Use 'low' for day's low
+                        volume=int(item.get('volume', 0) or 0),
+                        marketCap=item.get('market_cap'),
+                        logo=item.get('logo')
+                    )
+                    results.append(result)
+            
+            # For symbols not found in database, return default values
+            found_symbols = {r.symbol.upper() for r in results}
+            for symbol in request.symbols:
+                if symbol.upper() not in found_symbols:
+                    result = QuoteResult(
+                        symbol=symbol,
+                        name=symbol,
+                        price=0.0,
+                        change=0.0,
+                        changePercent=0.0,
+                        dayHigh=0.0,
+                        dayLow=0.0,
+                        volume=0
+                    )
+                    results.append(result)
+            
+            return QuoteResponse(quotes=results)
         
         return await self._execute_with_retry(operation, access_token)

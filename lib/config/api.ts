@@ -161,6 +161,10 @@ export const apiConfig = {
         check: (symbol: string) => `/market-data/symbols/check/${symbol}`,
         save: "/market-data/symbols/save",
       },
+      // Symbol search endpoint
+      search: "/market-data/search",
+      // Quotes endpoint
+      quotes: "/market-data/quotes",
       // Market movers endpoints
       movers: {
         gainers: "/market-data/movers/gainers",
