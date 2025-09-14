@@ -7,6 +7,7 @@ import { FinancialTab } from './financial-tab/brain';
 import { EarningsTab } from './earnings-tab';
 import { HoldersTab } from './holder-tab';
 import { ResearchTab } from './reasearch';
+import { CompanyInfoCard } from './company-info-card';
 
 interface ManagerTabProps {
   symbol: string;
@@ -38,35 +39,36 @@ export function ManagerTab({ symbol, className = '' }: ManagerTabProps) {
   return (
     <div className={`w-full ${className}`}>
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1 mb-6 bg-gray-800/50 p-1 rounded-lg backdrop-blur-sm">
+      <div className="flex items-center gap-4 mb-6">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`
-              relative px-6 py-3 rounded-md text-sm font-medium transition-all duration-200 ease-in-out
+              relative px-6 py-3 rounded-full text-sm font-medium transition-all duration-300 ease-in-out
+              border-2 backdrop-blur-sm
               ${activeTab === tab.id
-                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/25 transform translate-y-[-1px]'
-                : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+                ? 'bg-teal-500/20 border-teal-400 text-teal-300 shadow-lg shadow-teal-400/20'
+                : 'bg-gray-800/30 border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 hover:bg-gray-700/30'
               }
             `}
-            style={{
-              boxShadow: activeTab === tab.id 
-                ? '0 4px 14px 0 rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-                : 'none'
-            }}
           >
-            <span className="relative z-10">{tab.label}</span>
-            {activeTab === tab.id && (
-              <div className="absolute inset-0 bg-gradient-to-b from-cyan-500 to-cyan-700 rounded-md" />
-            )}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="w-full">
-        <ActiveComponent symbol={symbol} />
+      {/* Main Content Layout */}
+      <div className="flex gap-6">
+        {/* Tab Content - Left Side */}
+        <div className="flex-1 min-w-0">
+          <ActiveComponent symbol={symbol} />
+        </div>
+
+        {/* Company Info Card - Right Side */}
+                                        <div className="w-80 flex-shrink-0 -mt-40">
+          <CompanyInfoCard symbol={symbol} />
+        </div>
       </div>
     </div>
   );

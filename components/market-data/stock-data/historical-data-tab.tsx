@@ -5,6 +5,7 @@ import { useHistoricalPrices } from '@/lib/hooks/use-market-data';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -215,27 +216,29 @@ export function HistoricalDataTab({ symbol, className = '' }: HistoricalDataTabP
       <CardContent className="p-6">
         {/* Controls */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-          {/* Range buttons */}
-          <div className="flex items-center flex-wrap gap-2">
-            {TIME_RANGES.map((rangeConfig) => (
-              <Button
-                key={rangeConfig.range}
-                variant={selectedRangeConfig.range === rangeConfig.range ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleRangeChange(rangeConfig)}
-                className={`px-4 py-2 text-sm font-medium ${
-                  selectedRangeConfig.range === rangeConfig.range
-                    ? 'bg-cyan-600 text-white hover:bg-cyan-700 border-cyan-600'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700 border-gray-600'
-                }`}
-              >
-                {rangeConfig.label}
-              </Button>
-            ))}
-          </div>
+          {/* Range buttons - with horizontal scroll for mobile */}
+          <ScrollArea className="w-full lg:w-auto">
+            <div className="flex items-center gap-2 min-w-max pb-2">
+              {TIME_RANGES.map((rangeConfig) => (
+                <Button
+                  key={rangeConfig.range}
+                  variant={selectedRangeConfig.range === rangeConfig.range ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleRangeChange(rangeConfig)}
+                  className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${
+                    selectedRangeConfig.range === rangeConfig.range
+                      ? 'bg-cyan-600 text-white hover:bg-cyan-700 border-cyan-600'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700 border-gray-600'
+                  }`}
+                >
+                  {rangeConfig.label}
+                </Button>
+              ))}
+            </div>
+          </ScrollArea>
 
           {/* Interval selector and download */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <Select value={selectedInterval} onValueChange={(value: TimeInterval) => setSelectedInterval(value)}>
               <SelectTrigger className="w-36 bg-gray-800 border-gray-700 text-white">
                 <SelectValue />
@@ -258,18 +261,18 @@ export function HistoricalDataTab({ symbol, className = '' }: HistoricalDataTabP
               size="sm"
               onClick={handleDownload}
               disabled={!tableData.length}
-              className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               <Download className="h-4 w-4" />
-              Download 1D
+              Download {selectedRangeConfig.label}
             </Button>
           </div>
         </div>
 
-        {/* Data Table */}
-        <div className="overflow-x-auto">
+        {/* Data Table Container with ScrollArea */}
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="space-y-4 p-4">
               <div className="grid grid-cols-6 gap-4 py-3 border-b border-gray-700">
                 {['Date', 'Open', 'High', 'Low', 'Close', 'Volume'].map((header) => (
                   <div key={header} className="text-gray-400 text-sm font-medium">
@@ -289,9 +292,9 @@ export function HistoricalDataTab({ symbol, className = '' }: HistoricalDataTabP
               ))}
             </div>
           ) : tableData.length > 0 ? (
-            <div className="min-w-full">
-              {/* Table Header */}
-              <div className="grid grid-cols-6 gap-4 py-3 border-b border-gray-700 sticky top-0 bg-gray-900">
+            <>
+              {/* Table Header - Fixed outside ScrollArea */}
+              <div className="grid grid-cols-6 gap-4 py-4 px-4 border-b border-gray-700 bg-gray-900 sticky top-0 z-10">
                 <div className="text-gray-400 text-sm font-medium">Date</div>
                 <div className="text-gray-400 text-sm font-medium text-right">Open</div>
                 <div className="text-gray-400 text-sm font-medium text-right">High</div>
@@ -300,35 +303,37 @@ export function HistoricalDataTab({ symbol, className = '' }: HistoricalDataTabP
                 <div className="text-gray-400 text-sm font-medium text-right">Volume</div>
               </div>
 
-              {/* Table Body */}
-              <div className="max-h-96 overflow-y-auto">
-                {tableData.map((row, index) => (
-                  <div 
-                    key={`${row.timestamp}-${index}`} 
-                    className="grid grid-cols-6 gap-4 py-3 hover:bg-gray-800/50 transition-colors"
-                  >
-                    <div className="text-white text-sm">
-                      {formatDate(row.date)}
+              {/* Scrollable Table Body */}
+              <ScrollArea className="h-[400px]">
+                <div className="px-4">
+                  {tableData.map((row, index) => (
+                    <div 
+                      key={`${row.timestamp}-${index}`} 
+                      className="grid grid-cols-6 gap-4 py-3 hover:bg-gray-800/50 transition-colors border-b border-gray-800/50 last:border-b-0"
+                    >
+                      <div className="text-white text-sm">
+                        {formatDate(row.date)}
+                      </div>
+                      <div className="text-white text-sm text-right">
+                        ${row.open.toFixed(2)}
+                      </div>
+                      <div className="text-white text-sm text-right">
+                        ${row.high.toFixed(2)}
+                      </div>
+                      <div className="text-white text-sm text-right">
+                        ${row.low.toFixed(2)}
+                      </div>
+                      <div className="text-white text-sm text-right">
+                        ${row.close.toFixed(2)}
+                      </div>
+                      <div className="text-white text-sm text-right">
+                        {formatVolume(row.volume)}
+                      </div>
                     </div>
-                    <div className="text-white text-sm text-right">
-                      ${row.open.toFixed(2)}
-                    </div>
-                    <div className="text-white text-sm text-right">
-                      ${row.high.toFixed(2)}
-                    </div>
-                    <div className="text-white text-sm text-right">
-                      ${row.low.toFixed(2)}
-                    </div>
-                    <div className="text-white text-sm text-right">
-                      ${row.close.toFixed(2)}
-                    </div>
-                    <div className="text-white text-sm text-right">
-                      {formatVolume(row.volume)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </>
           ) : (
             <div className="text-center text-gray-400 py-8">
               No historical data available for {symbol}
