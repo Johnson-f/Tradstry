@@ -50,7 +50,7 @@ const MetricItem = ({ label, value, isRange = false }: MetricItemProps) => {
   };
 
   return (
-    <div className="flex justify-between items-center py-2">
+    <div className="flex justify-between items-center">
       <span className="text-gray-400 text-sm">{label}</span>
       <span className="text-white text-sm font-medium">
         {formatValue(value)}
@@ -111,49 +111,46 @@ export function StockMini({ symbol, className = '' }: StockMiniProps) {
   return (
     <Card className={`bg-gray-900 border-gray-800 ${className}`}>
       <CardContent className="p-4">
-        <div className="space-y-1">
+        <div className="grid grid-cols-3 gap-x-8 gap-y-3">
+          {/* Row 1 */}
           <MetricItem 
             label="Prev Close" 
             value={companyInfo.price ? Number(companyInfo.price) - Number(companyInfo.change || 0) : null} 
           />
-          
-          <MetricItem 
-            label="Open" 
-            value={companyInfo.open ? Number(companyInfo.open) : null} 
-          />
-          
-          <MetricItem 
-            label="Day Range" 
-            value={dayRange}
-            isRange={true}
-          />
-          
           <MetricItem 
             label="52W Range" 
             value={yearRange}
             isRange={true}
           />
-          
-          <MetricItem 
-            label="P/E Ratio" 
-            value={companyInfo.pe_ratio ? Number(companyInfo.pe_ratio) : null} 
-          />
-          
-          <MetricItem 
-            label="Volume" 
-            value={companyInfo.volume ? Number(companyInfo.volume) : null} 
-          />
-          
           <MetricItem 
             label="Market Cap" 
             value={companyInfo.market_cap ? Number(companyInfo.market_cap) : null} 
           />
           
+          {/* Row 2 */}
+          <MetricItem 
+            label="Open" 
+            value={companyInfo.open ? Number(companyInfo.open) : null} 
+          />
+          <MetricItem 
+            label="P/E Ratio" 
+            value={companyInfo.pe_ratio ? Number(companyInfo.pe_ratio) : null} 
+          />
           <MetricItem 
             label="Dividend Yield" 
             value={companyInfo.yield ? Number(companyInfo.yield) : null} 
           />
           
+          {/* Row 3 */}
+          <MetricItem 
+            label="Day Range" 
+            value={dayRange}
+            isRange={true}
+          />
+          <MetricItem 
+            label="Volume" 
+            value={companyInfo.volume ? Number(companyInfo.volume) : null} 
+          />
           <MetricItem 
             label="EPS" 
             value={companyInfo.eps ? Number(companyInfo.eps) : null} 

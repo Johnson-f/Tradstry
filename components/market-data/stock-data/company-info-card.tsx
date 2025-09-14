@@ -1,13 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useCompanyInfo } from '@/lib/hooks/use-market-data';
-import { Building2, Users, Calendar, MapPin, ExternalLink, Globe } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 
 interface CompanyInfoCardProps {
   symbol: string;
@@ -52,26 +50,22 @@ const formatDate = (dateString: string | undefined | null): string => {
   }
 };
 
-// Info item component
-interface InfoItemProps {
+// Info row component
+interface InfoRowProps {
   label: string;
   value: string | number | undefined | null;
-  icon?: React.ReactNode;
   formatter?: (value: any) => string;
 }
 
-const InfoItem: React.FC<InfoItemProps> = ({ label, value, icon, formatter }) => {
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, formatter }) => {
   const displayValue = formatter ? formatter(value) : (value?.toString() || 'N/A');
   
   return (
-    <div className="flex items-center justify-between py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="text-sm font-medium text-foreground text-right">
+    <div className="flex justify-between items-center py-3 border-b border-gray-700/30 last:border-b-0">
+      <span className="text-gray-400 font-medium text-sm">{label}</span>
+      <span className="text-gray-200 font-medium text-sm text-right max-w-[60%] truncate">
         {displayValue}
-      </div>
+      </span>
     </div>
   );
 };
@@ -79,27 +73,19 @@ const InfoItem: React.FC<InfoItemProps> = ({ label, value, icon, formatter }) =>
 // Loading skeleton
 const CompanyInfoSkeleton: React.FC = () => (
   <div className="space-y-4">
-    <div className="flex items-center gap-3">
-      <Skeleton className="w-8 h-8 rounded-full" />
-      <div className="space-y-1">
-        <Skeleton className="w-16 h-5" />
-        <Skeleton className="w-24 h-4" />
-      </div>
-    </div>
-    
-    <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-3">
       {Array.from({ length: 8 }).map((_, index) => (
-        <div key={index} className="flex justify-between">
-          <Skeleton className="w-20 h-4" />
-          <Skeleton className="w-16 h-4" />
+        <div key={index} className="flex justify-between items-center py-3">
+          <Skeleton className="w-24 h-4 bg-gray-700" />
+          <Skeleton className="w-20 h-4 bg-gray-700" />
         </div>
       ))}
     </div>
     
-    <div className="space-y-2">
-      <Skeleton className="w-full h-4" />
-      <Skeleton className="w-full h-4" />
-      <Skeleton className="w-3/4 h-4" />
+    <div className="space-y-2 pt-4 border-t border-gray-700/30">
+      <Skeleton className="w-full h-4 bg-gray-700" />
+      <Skeleton className="w-full h-4 bg-gray-700" />
+      <Skeleton className="w-3/4 h-4 bg-gray-700" />
     </div>
   </div>
 );
@@ -114,10 +100,10 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
 
   if (error) {
     return (
-      <Card className="w-full">
+      <Card className="w-full bg-gray-800/50 border-gray-700/50">
         <CardContent className="p-6">
-          <Alert variant="destructive">
-            <AlertDescription>
+          <Alert variant="destructive" className="bg-red-900/20 border-red-500/30">
+            <AlertDescription className="text-red-300">
               Failed to load company information: {error.message}
             </AlertDescription>
           </Alert>
@@ -128,7 +114,7 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
 
   if (isLoading) {
     return (
-      <Card className="w-full">
+      <Card className="w-full bg-gray-800/50 border-gray-700/50 backdrop-blur-sm">
         <CardContent className="p-6">
           <CompanyInfoSkeleton />
         </CardContent>
@@ -138,9 +124,9 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
 
   if (!companyInfo) {
     return (
-      <Card className="w-full">
+      <Card className="w-full bg-gray-800/50 border-gray-700/50">
         <CardContent className="p-6">
-          <div className="text-center py-8 text-muted-foreground">
+          <div className="text-center py-8 text-gray-400">
             <Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No company information available for {symbol}</p>
           </div>
@@ -156,139 +142,69 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
     : description.slice(0, 200) + '...';
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-            {symbol.charAt(0)}
-          </div>
-          <div>
-            <CardTitle className="text-xl font-bold">{symbol}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {companyInfo.name || companyInfo.company_name || 'Company Information'}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {/* Key Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-b pb-4">
-          <InfoItem 
+    <Card className="w-full bg-gray-800/50 border-gray-700/50 backdrop-blur-sm shadow-xl">
+      <CardContent className="space-y-0">
+        {/* Company Details Grid */}
+        <div className="space-y-0">
+          <InfoRow 
+            label="Symbol" 
+            value={symbol}
+          />
+          <InfoRow 
             label="Market Cap" 
             value={companyInfo.market_cap}
             formatter={formatMarketCap}
-            icon={<Building2 className="w-4 h-4" />}
           />
-          <InfoItem 
+          <InfoRow 
             label="IPO Date" 
             value={companyInfo.ipo_date}
             formatter={formatDate}
-            icon={<Calendar className="w-4 h-4" />}
           />
-          <InfoItem 
+          <InfoRow 
             label="CEO" 
             value={companyInfo.ceo}
-            icon={<Users className="w-4 h-4" />}
           />
-          <InfoItem 
+          <InfoRow 
             label="Fulltime Employees" 
             value={companyInfo.employees}
             formatter={formatEmployeeCount}
-            icon={<Users className="w-4 h-4" />}
           />
-          <InfoItem 
+          <InfoRow 
             label="Sector" 
             value={companyInfo.sector}
           />
-          <InfoItem 
+          <InfoRow 
             label="Industry" 
             value={companyInfo.industry}
           />
-          <InfoItem 
+          <InfoRow 
             label="Country" 
-            value={companyInfo.headquarters?.split(',').pop()?.trim() || 'N/A'}
-            icon={<MapPin className="w-4 h-4" />}
+            value={companyInfo.headquarters?.split(',').pop()?.trim() || 'US'}
           />
-          <InfoItem 
+          <InfoRow 
             label="Exchange" 
             value={companyInfo.exchange}
           />
+           <InfoRow 
+            label="About" 
+            value={companyInfo.about}
+          />
         </div>
 
-        {/* Additional Info */}
-        {(companyInfo.pe_ratio || companyInfo.pb_ratio || companyInfo.dividend_yield) && (
-          <div className="space-y-3 border-b pb-4">
-            <h4 className="font-medium text-sm text-muted-foreground">Financial Ratios</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {companyInfo.pe_ratio && (
-                <InfoItem label="P/E Ratio" value={companyInfo.pe_ratio.toFixed(2)} />
-              )}
-              {companyInfo.pb_ratio && (
-                <InfoItem label="P/B Ratio" value={companyInfo.pb_ratio.toFixed(2)} />
-              )}
-              {companyInfo.dividend_yield && (
-                <InfoItem 
-                  label="Dividend Yield" 
-                  value={`${(companyInfo.dividend_yield * 100).toFixed(2)}%`} 
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Description */}
+        {/* About Section */}
         {description && (
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm text-muted-foreground">About</h4>
-            <p className="text-sm leading-relaxed text-foreground">
+          <div className="pt-6 border-t border-gray-700/30 space-y-3">
+            <p className="text-gray-300 text-sm leading-relaxed">
               {displayDescription}
             </p>
             {shouldTruncate && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => setShowFullDescription(!showFullDescription)}
-                className="h-auto p-0 font-medium text-blue-600 hover:text-blue-700 hover:bg-transparent"
+                className="text-gray-400 text-sm hover:text-gray-300 transition-colors font-medium"
               >
                 {showFullDescription ? 'Read Less' : 'Read More'}
-              </Button>
+              </button>
             )}
-          </div>
-        )}
-
-        {/* Contact Information */}
-        {(companyInfo.website || companyInfo.phone) && (
-          <div className="space-y-3 pt-4 border-t">
-            <h4 className="font-medium text-sm text-muted-foreground">Contact</h4>
-            <div className="flex flex-wrap gap-2">
-              {companyInfo.website && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(companyInfo.website, '_blank')}
-                  className="h-8 text-xs"
-                >
-                  <Globe className="w-3 h-3 mr-1" />
-                  Website
-                  <ExternalLink className="w-3 h-3 ml-1" />
-                </Button>
-              )}
-              {companyInfo.phone && (
-                <Badge variant="outline" className="text-xs">
-                  {companyInfo.phone}
-                </Badge>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Data Provider Badge */}
-        {companyInfo.data_provider && (
-          <div className="pt-2">
-            <Badge variant="secondary" className="text-xs">
-              Data from {companyInfo.data_provider}
-            </Badge>
           </div>
         )}
       </CardContent>

@@ -46,11 +46,11 @@ const NewsItem = ({ title, summary, publishedAt, newsUrl, sourceName, sentimentS
   return (
     <div className="group cursor-pointer">
       <div 
-        className="p-4 rounded-lg bg-gray-800/50 hover:bg-gray-800/70 transition-colors border border-gray-700/50 hover:border-gray-600/50"
+        className="p-6 rounded-lg bg-gray-800/50 hover:bg-gray-800/70 transition-colors border border-gray-700/50 hover:border-gray-600/50 h-64 flex flex-col"
         onClick={() => newsUrl && window.open(newsUrl, '_blank')}
       >
         {/* Header with icon and timestamp */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             {getSentimentIcon(sentimentScore)}
             <span className="text-xs text-cyan-400 font-medium">
@@ -63,20 +63,22 @@ const NewsItem = ({ title, summary, publishedAt, newsUrl, sourceName, sentimentS
         </div>
 
         {/* Title */}
-        <h3 className="text-white font-medium text-sm leading-tight mb-2 group-hover:text-cyan-50 transition-colors">
-          {truncateText(title, 80)}
+        <h3 className="text-white font-medium text-sm leading-tight mb-3 group-hover:text-cyan-50 transition-colors">
+          {truncateText(title, 100)}
         </h3>
 
         {/* Summary/Description */}
-        {summary && (
-          <p className="text-gray-400 text-xs leading-relaxed mb-3">
-            {truncateText(summary, 150)}
-          </p>
-        )}
+        <div className="flex-1">
+          {summary && (
+            <p className="text-gray-400 text-xs leading-relaxed mb-4">
+              {truncateText(summary, 200)}
+            </p>
+          )}
+        </div>
 
         {/* Source */}
         {sourceName && (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mt-auto">
             <span className="text-xs text-gray-500">
               {sourceName}
             </span>
@@ -118,63 +120,62 @@ export function RecentDevelopments({ symbol, className = '' }: RecentDevelopment
   }
 
   return (
-    <Card className={`bg-gray-900 border-gray-800 ${className}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-white text-lg font-semibold">
-            Recent Developments
-          </CardTitle>
-          <div className="flex items-center space-x-1 text-gray-500 text-xs">
-            <Clock className="h-3 w-3" />
-            <span>{getLastUpdated()}</span>
-          </div>
+    <div className={className}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-white text-lg font-semibold">
+          Recent Developments
+        </h2>
+        <div className="flex items-center space-x-1 text-gray-500 text-xs">
+          <span>{getLastUpdated()}</span>
         </div>
-      </CardHeader>
+      </div>
       
-      <CardContent>
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(3)].map((_, index) => (
-              <div key={index} className="animate-pulse">
-                <div className="p-4 rounded-lg bg-gray-800/30 border border-gray-700/30">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="h-4 bg-gray-700 rounded w-20"></div>
-                    <div className="h-3 bg-gray-700 rounded w-3"></div>
-                  </div>
-                  <div className="h-4 bg-gray-700 rounded w-full mb-2"></div>
-                  <div className="h-4 bg-gray-700 rounded w-3/4 mb-3"></div>
-                  <div className="space-y-2">
-                    <div className="h-3 bg-gray-700 rounded w-full"></div>
-                    <div className="h-3 bg-gray-700 rounded w-5/6"></div>
-                    <div className="h-3 bg-gray-700 rounded w-4/6"></div>
-                  </div>
-                  <div className="h-3 bg-gray-700 rounded w-16 mt-3"></div>
+      {/* Content */}
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-4">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="animate-pulse">
+              <div className="p-6 rounded-lg bg-gray-800/30 border border-gray-700/30 h-64">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="h-4 bg-gray-700 rounded w-20"></div>
+                  <div className="h-3 bg-gray-700 rounded w-3"></div>
                 </div>
+                <div className="h-4 bg-gray-700 rounded w-full mb-3"></div>
+                <div className="h-4 bg-gray-700 rounded w-3/4 mb-4"></div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-gray-700 rounded w-full"></div>
+                  <div className="h-3 bg-gray-700 rounded w-5/6"></div>
+                  <div className="h-3 bg-gray-700 rounded w-4/6"></div>
+                  <div className="h-3 bg-gray-700 rounded w-full"></div>
+                  <div className="h-3 bg-gray-700 rounded w-3/4"></div>
+                </div>
+                <div className="h-3 bg-gray-700 rounded w-16 mt-4"></div>
               </div>
-            ))}
-          </div>
-        ) : symbolNews && symbolNews.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {symbolNews.slice(0, 6).map((newsItem) => (
-              <NewsItem
-                key={newsItem.id}
-                title={newsItem.title}
-                summary={newsItem.title} // Using title as summary since the API might not have separate summary
-                publishedAt={newsItem.published_at || newsItem.time_published || ''}
-                newsUrl={newsItem.news_url}
-                sourceName={newsItem.source_name}
-                sentimentScore={newsItem.sentiment_score}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center text-gray-400 py-8">
-            <TrendingUp className="h-12 w-12 mx-auto mb-4 text-gray-600" />
-            <p className="text-sm">No recent developments available for {symbol}</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            </div>
+          ))}
+        </div>
+      ) : symbolNews && symbolNews.length > 0 ? (
+        <div className="grid grid-cols-3 gap-4">
+          {symbolNews.slice(0, 3).map((newsItem) => (
+            <NewsItem
+              key={newsItem.id}
+              title={newsItem.title}
+              summary={newsItem.title} // Using title as summary since the API might not have separate summary
+              publishedAt={newsItem.published_at || newsItem.time_published || ''}
+              newsUrl={newsItem.news_url}
+              sourceName={newsItem.source_name}
+              sentimentScore={newsItem.sentiment_score}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-gray-400 py-8">
+          <TrendingUp className="h-12 w-12 mx-auto mb-4 text-gray-600" />
+          <p className="text-sm">No recent developments available for {symbol}</p>
+        </div>
+      )}
+    </div>
   );
 }
 
