@@ -601,3 +601,109 @@ class EarningsCalendarLogo(BaseModel):
 
 class EarningsCalendarLogosRequest(BaseModel):
     symbols: List[str]
+
+
+# =====================================================
+# WATCHLIST MODELS
+# =====================================================
+
+class Watchlist(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class WatchlistItem(BaseModel):
+    id: int
+    symbol: str
+    company_name: Optional[str] = None
+    price: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    added_at: datetime
+
+
+class WatchlistWithItems(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    items: List[WatchlistItem] = []
+
+
+# =====================================================
+# WATCHLIST REQUEST MODELS
+# =====================================================
+
+class CreateWatchlistRequest(BaseModel):
+    name: str
+
+
+class AddWatchlistItemRequest(BaseModel):
+    watchlist_id: int
+    symbol: str
+    company_name: Optional[str] = None
+    price: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+
+
+class DeleteWatchlistItemRequest(BaseModel):
+    item_id: Optional[int] = None
+    watchlist_id: Optional[int] = None
+    symbol: Optional[str] = None
+
+
+# =====================================================
+# WATCHLIST RESPONSE MODELS
+# =====================================================
+
+class WatchlistResponse(BaseModel):
+    success: bool
+    message: str
+    watchlist_id: Optional[int] = None
+
+
+class DeleteResponse(BaseModel):
+    success: bool
+    message: str
+    deleted_count: Optional[int] = None
+
+
+# =====================================================
+# STOCK PEERS MODELS
+# =====================================================
+
+class StockPeer(BaseModel):
+    peer_symbol: str
+    peer_name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    logo: Optional[str] = None
+    fetch_timestamp: Optional[datetime] = None
+
+
+class PeerComparison(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[Decimal] = None
+    logo: Optional[str] = None
+    is_main_stock: bool
+    peer_rank: Optional[int] = None
+
+
+class StockPeersRequest(BaseModel):
+    symbol: str
+    data_date: Optional[date] = None
+    limit: Optional[int] = 20
+
+
+class PeersPaginatedRequest(BaseModel):
+    symbol: str
+    data_date: Optional[date] = None
+    offset: Optional[int] = 0
+    limit: Optional[int] = 20
+    sort_column: Optional[str] = "percent_change"
+    sort_direction: Optional[str] = "DESC"

@@ -52,6 +52,18 @@ import type {
   SymbolSearchRequest,
   SymbolSearchResponse,
   QuoteResponse,
+  Watchlist,
+  WatchlistItem,
+  WatchlistWithItems,
+  CreateWatchlistRequest,
+  AddWatchlistItemRequest,
+  DeleteWatchlistItemRequest,
+  WatchlistResponse,
+  DeleteResponse,
+  StockPeer,
+  PeerComparison,
+  StockPeersRequest,
+  PeersPaginatedRequest,
 } from "@/lib/types/market-data";
 
 // Raw API response type for market movers (strings that need to be transformed to numbers)
@@ -551,6 +563,113 @@ class MarketDataService {
     return apiClient.get<SymbolSearchResponse>(
       apiConfig.endpoints.marketData.search,
       { params }
+    );
+  }
+
+  // =====================================================
+  // WATCHLIST ENDPOINTS
+  // =====================================================
+
+  async getWatchlists(): Promise<Watchlist[]> {
+    return apiClient.get<Watchlist[]>(
+      apiConfig.endpoints.marketData.watchlists.base
+    );
+  }
+
+  async getWatchlistById(id: number): Promise<WatchlistWithItems | null> {
+    return apiClient.get<WatchlistWithItems | null>(
+      apiConfig.endpoints.marketData.watchlists.byId(id)
+    );
+  }
+
+  async createWatchlist(data: CreateWatchlistRequest): Promise<WatchlistResponse> {
+    return apiClient.post<WatchlistResponse>(
+      apiConfig.endpoints.marketData.watchlists.base,
+      data
+    );
+  }
+
+  async deleteWatchlist(id: number): Promise<DeleteResponse> {
+    return apiClient.delete<DeleteResponse>(
+      apiConfig.endpoints.marketData.watchlists.byId(id)
+    );
+  }
+
+  async getWatchlistItems(id: number): Promise<WatchlistItem[]> {
+    return apiClient.get<WatchlistItem[]>(
+      apiConfig.endpoints.marketData.watchlists.items(id)
+    );
+  }
+
+  async addWatchlistItem(data: AddWatchlistItemRequest): Promise<WatchlistResponse> {
+    return apiClient.post<WatchlistResponse>(
+      apiConfig.endpoints.marketData.watchlists.addItem,
+      data
+    );
+  }
+
+  async deleteWatchlistItem(itemId: number): Promise<DeleteResponse> {
+    return apiClient.delete<DeleteResponse>(
+      apiConfig.endpoints.marketData.watchlists.deleteItem(itemId)
+    );
+  }
+
+  async deleteWatchlistItemBySymbol(watchlistId: number, symbol: string): Promise<DeleteResponse> {
+    return apiClient.delete<DeleteResponse>(
+      apiConfig.endpoints.marketData.watchlists.deleteBySymbol(watchlistId, symbol)
+    );
+  }
+
+  async clearWatchlist(id: number): Promise<DeleteResponse> {
+    return apiClient.delete<DeleteResponse>(
+      apiConfig.endpoints.marketData.watchlists.clear(id)
+    );
+  }
+
+  // =====================================================
+  // STOCK PEERS ENDPOINTS
+  // =====================================================
+
+  async getStockPeers(params: StockPeersRequest): Promise<StockPeer[]> {
+    return apiClient.get<StockPeer[]>(
+      apiConfig.endpoints.marketData.peers.base(params.symbol),
+      { params: { data_date: params.data_date, limit: params.limit } }
+    );
+  }
+
+  async getTopPerformingPeers(params: StockPeersRequest): Promise<StockPeer[]> {
+    return apiClient.get<StockPeer[]>(
+      apiConfig.endpoints.marketData.peers.topPerformers(params.symbol),
+      { params: { data_date: params.data_date, limit: params.limit } }
+    );
+  }
+
+  async getWorstPerformingPeers(params: StockPeersRequest): Promise<StockPeer[]> {
+    return apiClient.get<StockPeer[]>(
+      apiConfig.endpoints.marketData.peers.worstPerformers(params.symbol),
+      { params: { data_date: params.data_date, limit: params.limit } }
+    );
+  }
+
+  async getPeerComparison(params: StockPeersRequest): Promise<PeerComparison[]> {
+    return apiClient.get<PeerComparison[]>(
+      apiConfig.endpoints.marketData.peers.comparison(params.symbol),
+      { params: { data_date: params.data_date, limit: params.limit } }
+    );
+  }
+
+  async getPeersPaginated(params: PeersPaginatedRequest): Promise<{ peers: StockPeer[]; total: number; offset: number; limit: number }> {
+    return apiClient.get<{ peers: StockPeer[]; total: number; offset: number; limit: number }>(
+      apiConfig.endpoints.marketData.peers.paginated(params.symbol),
+      { 
+        params: { 
+          data_date: params.data_date,
+          offset: params.offset,
+          limit: params.limit,
+          sort_column: params.sort_column,
+          sort_direction: params.sort_direction
+        } 
+      }
     );
   }
 

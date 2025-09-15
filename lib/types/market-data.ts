@@ -615,3 +615,109 @@ export interface QuoteResult {
 export interface QuoteResponse {
   quotes: QuoteResult[];
 }
+
+// =====================================================
+// WATCHLIST TYPES
+// =====================================================
+
+export interface Watchlist {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistItem {
+  id: number;
+  symbol: string;
+  company_name?: string;
+  price?: number;
+  percent_change?: number;
+  added_at: string;
+}
+
+export interface WatchlistWithItems {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  items: WatchlistItem[];
+}
+
+// =====================================================
+// WATCHLIST REQUEST TYPES
+// =====================================================
+
+export interface CreateWatchlistRequest {
+  name: string;
+}
+
+export interface AddWatchlistItemRequest {
+  watchlist_id: number;
+  symbol: string;
+  company_name?: string;
+  price?: number;
+  percent_change?: number;
+}
+
+export interface DeleteWatchlistItemRequest {
+  item_id?: number;
+  watchlist_id?: number;
+  symbol?: string;
+}
+
+// =====================================================
+// WATCHLIST RESPONSE TYPES
+// =====================================================
+
+export interface WatchlistResponse {
+  success: boolean;
+  message: string;
+  watchlist_id?: number;
+}
+
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+  deleted_count?: number;
+}
+
+// =====================================================
+// STOCK PEERS TYPES
+// =====================================================
+
+export interface StockPeer {
+  peer_symbol: string;
+  peer_name?: string;
+  price?: number;
+  change?: number;
+  percent_change?: number;
+  logo?: string;
+  fetch_timestamp?: string;
+}
+
+export interface PeerComparison {
+  symbol: string;
+  name?: string;
+  price?: number;
+  change?: number;
+  percent_change?: number;
+  logo?: string;
+  is_main_stock: boolean;
+  peer_rank?: number;
+}
+
+export interface StockPeersRequest {
+  symbol: string;
+  data_date?: string;
+  limit?: number;
+}
+
+export interface PeersPaginatedRequest {
+  symbol: string;
+  data_date?: string;
+  offset?: number;
+  limit?: number;
+  sort_column?: string;
+  sort_direction?: string;
+}

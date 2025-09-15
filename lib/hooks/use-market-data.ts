@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -1039,6 +1039,222 @@ export function useSymbolHistoricalOverview(symbol: string) {
 
   return {
     overview: overview ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// WATCHLIST HOOKS
+// =====================================================
+
+export function useWatchlists() {
+  const {
+    data: watchlists,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['watchlists'],
+    queryFn: () => marketDataService.getWatchlists(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+  });
+
+  return {
+    watchlists: watchlists ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useWatchlistById(id: number) {
+  const {
+    data: watchlist,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['watchlist', id],
+    queryFn: () => marketDataService.getWatchlistById(id),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: !!id,
+  });
+
+  return {
+    watchlist: watchlist ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useWatchlistItems(id: number) {
+  const {
+    data: items,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['watchlist-items', id],
+    queryFn: () => marketDataService.getWatchlistItems(id),
+    staleTime: 1 * 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!id,
+  });
+
+  return {
+    items: items ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// STOCK PEERS HOOKS
+// =====================================================
+
+export function useStockPeers(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: peers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['stock-peers', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getStockPeers({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    peers: peers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopPerformingPeers(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: topPeers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['top-performing-peers', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getTopPerformingPeers({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    topPeers: topPeers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useWorstPerformingPeers(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: worstPeers,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['worst-performing-peers', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getWorstPerformingPeers({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    worstPeers: worstPeers ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function usePeerComparison(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: comparison,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['peer-comparison', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getPeerComparison({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    comparison: comparison ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function usePeersPaginated(
+  symbol: string,
+  dataDate?: string,
+  offset?: number,
+  limit?: number,
+  sortColumn?: string,
+  sortDirection?: string
+) {
+  const {
+    data: paginatedData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['peers-paginated', symbol, dataDate, offset, limit, sortColumn, sortDirection],
+    queryFn: () => marketDataService.getPeersPaginated({
+      symbol,
+      data_date: dataDate,
+      offset,
+      limit,
+      sort_column: sortColumn,
+      sort_direction: sortDirection,
+    }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    enabled: !!symbol,
+  });
+
+  return {
+    peers: paginatedData?.peers ?? [],
+    total: paginatedData?.total ?? 0,
+    offset: paginatedData?.offset ?? 0,
+    limit: paginatedData?.limit ?? 10,
     isLoading,
     error: error as Error | null,
     refetch,

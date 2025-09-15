@@ -118,17 +118,22 @@ function getCurrentTimestamp(): string {
 
 /**
  * Parse percentage string to decimal (e.g., "+64.82%" -> 64.82)
+ * Clamps values to prevent database overflow for DECIMAL(8,4) fields
  */
 function parsePercentage(percentStr: string): number | undefined {
   if (!percentStr) return undefined;
   
   const cleanStr = percentStr.replace(/[+%,]/g, '');
   const parsed = parseFloat(cleanStr);
-  return isNaN(parsed) ? undefined : parsed;
+  if (isNaN(parsed)) return undefined;
+  
+  // Clamp to prevent DECIMAL(8,4) overflow (max value: 9999.9999)
+  return Math.max(-9999.9999, Math.min(9999.9999, parsed));
 }
 
 /**
  * Parse number string with possible suffixes (e.g., "7.11B" -> 7110000000)
+ * Returns integer for BIGINT fields in database
  */
 function parseNumberWithSuffix(numStr: string | undefined): number | undefined {
   if (!numStr) return undefined;
@@ -138,16 +143,16 @@ function parseNumberWithSuffix(numStr: string | undefined): number | undefined {
   // Handle suffixes
   if (cleanStr.includes('B')) {
     const num = parseFloat(cleanStr.replace('B', ''));
-    return isNaN(num) ? undefined : num * 1000000000;
+    return isNaN(num) ? undefined : Math.round(num * 1000000000);
   } else if (cleanStr.includes('M')) {
     const num = parseFloat(cleanStr.replace('M', ''));
-    return isNaN(num) ? undefined : num * 1000000;
+    return isNaN(num) ? undefined : Math.round(num * 1000000);
   } else if (cleanStr.includes('K')) {
     const num = parseFloat(cleanStr.replace('K', ''));
-    return isNaN(num) ? undefined : num * 1000;
+    return isNaN(num) ? undefined : Math.round(num * 1000);
   } else {
     const num = parseFloat(cleanStr);
-    return isNaN(num) ? undefined : num;
+    return isNaN(num) ? undefined : Math.round(num);
   }
 }
 
@@ -190,7 +195,7 @@ function transformToCompanyInfo(apiData: FinanceQuoteResponse): CompanyInfoData 
       year_high: parseFloat(apiData.yearHigh) || undefined,
       year_low: parseFloat(apiData.yearLow) || undefined,
       
-      // Volume and market data
+      // Volume and market data (ensure integers for BIGINT fields)
       volume: parseNumberWithSuffix(apiData.volume?.toString()),
       avg_volume: parseNumberWithSuffix(apiData.avgVolume?.toString()),
       market_cap: apiData.marketCap ? parseNumberWithSuffix(apiData.marketCap) : (apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined),
@@ -203,7 +208,7 @@ function transformToCompanyInfo(apiData: FinanceQuoteResponse): CompanyInfoData 
       ex_dividend: apiData.exDividend ? parseDate(apiData.exDividend) : undefined,
       last_dividend: apiData.lastDividend ? parseFloat(apiData.lastDividend) : undefined,
       
-      // ETF-specific data
+      // ETF-specific data (ensure integer for BIGINT field)
       net_assets: apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined,
       nav: apiData.nav ? parseFloat(apiData.nav) : undefined,
       

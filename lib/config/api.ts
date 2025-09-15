@@ -190,6 +190,24 @@ export const apiConfig = {
       },
       // Health check
       health: "/market-data/health",
+      // Watchlist endpoints
+      watchlists: {
+        base: "/market-data/watchlists",
+        byId: (id: number) => `/market-data/watchlists/${id}`,
+        items: (id: number) => `/market-data/watchlists/${id}/items`,
+        addItem: "/market-data/watchlists/items",
+        deleteItem: (itemId: number) => `/market-data/watchlists/items/${itemId}`,
+        deleteBySymbol: (watchlistId: number, symbol: string) => `/market-data/watchlists/${watchlistId}/items/${symbol}`,
+        clear: (id: number) => `/market-data/watchlists/${id}/clear`,
+      },
+      // Stock peers endpoints
+      peers: {
+        base: (symbol: string) => `/market-data/peers/${symbol}`,
+        topPerformers: (symbol: string) => `/market-data/peers/${symbol}/top-performers`,
+        worstPerformers: (symbol: string) => `/market-data/peers/${symbol}/worst-performers`,
+        comparison: (symbol: string) => `/market-data/peers/${symbol}/comparison`,
+        paginated: (symbol: string) => `/market-data/peers/${symbol}/paginated`,
+      },
     },
     // Health check
     health: "/health",
