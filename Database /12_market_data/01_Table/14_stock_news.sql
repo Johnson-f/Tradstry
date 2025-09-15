@@ -1,0 +1,1 @@
+-- Table for storing company related NEWS 

@@ -1,13 +1,16 @@
 -- ----------------------------------------------------------------------------
 -- Function: upsert_historical_price
--- Updated to match the new historical_prices table structure
+-- Updated to match the new historical_prices table structure with timestamp support
+-- Supports both intraday (with specific timestamps) and daily data (using date midnight)
 -- ----------------------------------------------------------------------------
 
 -- Tested 
 
 CREATE OR REPLACE FUNCTION upsert_historical_price(
     p_symbol TEXT,
-    p_date DATE,
+    p_timestamp_utc TIMESTAMP,
+    p_time_range TEXT,
+    p_time_interval TEXT,
     p_data_provider TEXT,
     
     -- Exchange parameters (for automatic exchange handling)
@@ -30,7 +33,16 @@ DECLARE
     v_id BIGINT;
     v_exchange_id INTEGER;
 BEGIN
-    -- Step 1: Handle exchange upsert if exchange data is provided
+    -- Step 1: Validate time_range and time_interval parameters
+    IF p_time_range NOT IN ('1d', '5d', '1mo', '3mo', '6mo', 'ytd', '1y', '2y', '5y', '10y', 'max') THEN
+        RAISE EXCEPTION 'Invalid time_range: %. Must be one of: 1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max', p_time_range;
+    END IF;
+
+    IF p_time_interval NOT IN ('1m', '5m', '15m', '30m', '1h', '1d', '1wk', '1mo') THEN
+        RAISE EXCEPTION 'Invalid time_interval: %. Must be one of: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo', p_time_interval;
+    END IF;
+
+    -- Step 2: Handle exchange upsert if exchange data is provided
     IF p_exchange_code IS NOT NULL THEN
         SELECT upsert_exchange(
             p_exchange_code,
@@ -40,18 +52,20 @@ BEGIN
         ) INTO v_exchange_id;
     END IF;
 
-    -- Step 2: Insert/update historical price data
+    -- Step 3: Insert/update historical price data
     INSERT INTO historical_prices (
-        symbol, exchange_id, date, open, high, low, close, adjusted_close, volume, 
+        symbol, exchange_id, timestamp_utc, time_range, time_interval,
+        open, high, low, close, adjusted_close, volume, 
         dividend, split_ratio, data_provider,
         created_at, updated_at
     )
     VALUES (
-        p_symbol, v_exchange_id, p_date, p_open, p_high, p_low, p_close, p_adjusted_close, p_volume, 
+        p_symbol, v_exchange_id, p_timestamp_utc, p_time_range, p_time_interval,
+        p_open, p_high, p_low, p_close, p_adjusted_close, p_volume, 
         COALESCE(p_dividend, 0), COALESCE(p_split_ratio, 1.0), p_data_provider,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
-    ON CONFLICT (symbol, date, data_provider) DO UPDATE SET
+    ON CONFLICT (symbol, timestamp_utc, time_range, time_interval, data_provider) DO UPDATE SET
         exchange_id = COALESCE(EXCLUDED.exchange_id, historical_prices.exchange_id),
         open = COALESCE(EXCLUDED.open, historical_prices.open),
         high = COALESCE(EXCLUDED.high, historical_prices.high),
@@ -69,21 +83,44 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Example usage:
+-- Example usage for intraday data:
 -- SELECT upsert_historical_price(
---     'AAPL',                    -- symbol
---     '2024-01-15'::DATE,        -- date
---     'alpha_vantage',           -- data_provider
---     'NASDAQ',                  -- exchange_code
---     'NASDAQ Stock Market',     -- exchange_name
---     'US',                      -- exchange_country
---     'America/New_York',        -- exchange_timezone
---     150.25,                    -- open
---     152.75,                    -- high
---     149.80,                    -- low
---     151.50,                    -- close
---     151.50,                    -- adjusted_close
---     25000000,                  -- volume
---     0.25,                      -- dividend
---     1.0                        -- split_ratio
+--     'AAPL',                          -- symbol
+--     '2025-09-12 14:58:00'::TIMESTAMP, -- timestamp_utc
+--     '1d',                            -- time_range
+--     '1m',                            -- time_interval
+--     'alpha_vantage',                 -- data_provider
+--     'NASDAQ',                        -- exchange_code
+--     'NASDAQ Stock Market',           -- exchange_name
+--     'US',                            -- exchange_country
+--     'America/New_York',              -- exchange_timezone
+--     394.15,                          -- open
+--     394.16,                          -- high
+--     393.7,                           -- low
+--     393.75,                          -- close
+--     NULL,                            -- adjusted_close (typically null for intraday)
+--     218081,                          -- volume
+--     NULL,                            -- dividend
+--     1.0                              -- split_ratio
+-- );
+
+-- Example usage for daily data:
+-- SELECT upsert_historical_price(
+--     'AAPL',                          -- symbol
+--     '2020-06-01 00:00:00'::TIMESTAMP, -- timestamp_utc (midnight for daily data)
+--     '5y',                            -- time_range
+--     '1d',                            -- time_interval
+--     'alpha_vantage',                 -- data_provider
+--     'NASDAQ',                        -- exchange_code
+--     'NASDAQ Stock Market',           -- exchange_name
+--     'US',                            -- exchange_country
+--     'America/New_York',              -- exchange_timezone
+--     57.2,                            -- open
+--     72.51,                           -- high
+--     56.94,                           -- low
+--     71.99,                           -- close
+--     71.99,                           -- adjusted_close
+--     3836590500,                      -- volume
+--     0.0,                             -- dividend
+--     1.0                              -- split_ratio
 -- );

@@ -638,6 +638,131 @@ async function fetchFromGNews(): Promise<NewsArticle[]> {
 }
 
 /**
+ * Parse relative time string to ISO timestamp
+ */
+function parseRelativeTime(timeStr: string): string {
+  const now = new Date();
+  
+  // Parse different time formats
+  const patterns = [
+    { regex: /(\d+)\s*hours?\s*ago/i, unit: 'hours' },
+    { regex: /(\d+)\s*days?\s*ago/i, unit: 'days' },
+    { regex: /(\d+)\s*minutes?\s*ago/i, unit: 'minutes' },
+    { regex: /(\d+)\s*weeks?\s*ago/i, unit: 'weeks' },
+    { regex: /(\d+)\s*months?\s*ago/i, unit: 'months' }
+  ];
+  
+  for (const pattern of patterns) {
+    const match = timeStr.match(pattern.regex);
+    if (match) {
+      const amount = parseInt(match[1]);
+      const pastTime = new Date(now);
+      
+      switch (pattern.unit) {
+        case 'minutes':
+          pastTime.setMinutes(pastTime.getMinutes() - amount);
+          break;
+        case 'hours':
+          pastTime.setHours(pastTime.getHours() - amount);
+          break;
+        case 'days':
+          pastTime.setDate(pastTime.getDate() - amount);
+          break;
+        case 'weeks':
+          pastTime.setDate(pastTime.getDate() - (amount * 7));
+          break;
+        case 'months':
+          pastTime.setMonth(pastTime.getMonth() - amount);
+          break;
+      }
+      
+      return pastTime.toISOString();
+    }
+  }
+  
+  // If no pattern matches, return current timestamp
+  return now.toISOString();
+}
+
+/**
+ * Fetch stock-specific news from Finance Query API
+ */
+async function fetchFromFinanceQuery(symbols: string[] = []): Promise<NewsArticle[]> {
+  try {
+    const articles: NewsArticle[] = [];
+    
+    if (symbols.length === 0) {
+      console.log('No symbols provided for finance-query API');
+      return [];
+    }
+    
+    console.log(`Fetching news for ${symbols.length} symbols from finance-query API`);
+    
+    // Fetch news for each symbol individually
+    for (const symbol of symbols.slice(0, 20)) { // Limit to first 20 symbols to avoid rate limits
+      try {
+        const url = `https://finance-query.onrender.com/v1/news?symbol=${symbol}`;
+        const response = await fetch(url);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            for (const article of data) {
+              if (article.title && article.link) {
+                const content = article.title; // Only title is available as content
+                const sentiment = calculateSentiment(content);
+                const mentionedSymbols = extractStockSymbols(content);
+                
+                // Add the symbol we're fetching for as a primary symbol
+                const primarySymbols = [symbol];
+                const allMentionedSymbols = [...new Set([symbol, ...mentionedSymbols])];
+                
+                // Parse the relative time to ISO timestamp
+                const publishedAt = parseRelativeTime(article.time || '0 hours ago');
+                
+                articles.push({
+                  title: article.title,
+                  summary: article.title.length > 100 ? article.title.substring(0, 100) + '...' : article.title,
+                  url: article.link,
+                  source: article.source || 'Finance Query',
+                  published_at: publishedAt,
+                  category: 'stock_specific',
+                  sentiment: sentiment.score,
+                  sentiment_confidence: sentiment.confidence,
+                  relevance_score: 0.95, // Very high relevance since it's symbol-specific
+                  language: 'en',
+                  word_count: content.split(' ').length,
+                  image_url: article.img,
+                  tags: allMentionedSymbols.length > 0 ? allMentionedSymbols : undefined,
+                  data_provider: 'finance_query'
+                });
+              }
+            }
+            
+            console.log(`Fetched ${data.length} articles for ${symbol}`);
+          }
+        } else {
+          console.warn(`Failed to fetch news for ${symbol}: ${response.status} ${response.statusText}`);
+        }
+        
+        // Add delay between requests to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (symbolError) {
+        console.error(`Error fetching news for symbol ${symbol}:`, symbolError);
+      }
+    }
+    
+    console.log(`Total articles fetched from finance-query API: ${articles.length}`);
+    return articles;
+    
+  } catch (error) {
+    console.error(`Finance Query fetch error:`, error);
+    return [];
+  }
+}
+
+/**
  * Combine and deduplicate news articles from multiple providers
  */
 function combineNewsData(dataArray: NewsArticle[]): NewsArticle[] {
@@ -704,24 +829,27 @@ function combineNewsData(dataArray: NewsArticle[]): NewsArticle[] {
  */
 async function getExistingSymbols(supabase: SupabaseClient): Promise<string[]> {
   try {
-    // Get symbols from stocks table
+    // Get symbols from stock_quotes table
     const { data, error } = await supabase
-      .from('stocks')
+      .from('stock_quotes')
       .select('symbol')
       .order('symbol');
     
     if (error) {
-      console.error('Error fetching symbols:', error);
+      console.error('Error fetching symbols from stock_quotes:', error);
       return [];
     }
     
     if (data && data.length > 0) {
-      const uniqueSymbols = [...new Set(data.map((row: { symbol: string }) => row.symbol))];
-      console.log(`Found ${uniqueSymbols.length} existing symbols`);
+      const symbols: string[] = data
+        .map((row: any) => row.symbol)
+        .filter((symbol: any): symbol is string => typeof symbol === 'string' && symbol.length > 0);
+      const uniqueSymbols: string[] = [...new Set(symbols)];
+      console.log(`Found ${uniqueSymbols.length} existing symbols from stock_quotes`);
       return uniqueSymbols;
     }
     
-    console.log('No existing symbols found');
+    console.log('No existing symbols found in stock_quotes');
     return [];
     
   } catch (error) {
@@ -839,10 +967,76 @@ function filterExistingArticles(
 }
 
 /**
- * Save news articles to the database
+ * Save finance news to the new finance_news table
+ */
+async function saveFinanceNewsData(supabase: SupabaseClient, articles: NewsArticle[]): Promise<boolean> {
+  if (articles.length === 0) return true;
+  
+  try {
+    let successfulInserts = 0;
+    let errorCount = 0;
+    
+    // Process finance-query articles only
+    const financeQueryArticles = articles.filter(article => article.data_provider === 'finance_query');
+    
+    if (financeQueryArticles.length === 0) {
+      console.log('No finance-query articles to process');
+      return true;
+    }
+    
+    for (const article of financeQueryArticles) {
+      try {
+        // Use the new upsert function for finance news
+        const { data, error } = await supabase.rpc('process_finance_news_with_symbols', {
+          p_title: article.title,
+          p_news_url: article.url,
+          p_source_name: article.source || 'Finance Query',
+          p_time_published: article.published_at, // Store original time for reference
+          p_published_at: article.published_at,
+          p_image_url: article.image_url,
+          p_sentiment_score: article.sentiment,
+          p_relevance_score: article.relevance_score,
+          p_sentiment_confidence: article.sentiment_confidence,
+          p_mentioned_symbols: article.tags && article.tags.length > 0 ? article.tags : null,
+          p_primary_symbols: article.tags && article.tags.length > 0 ? article.tags.slice(0, 2) : null, // First 2 as primary
+          p_word_count: article.word_count || 0,
+          p_language: article.language || 'en',
+          p_category: 'financial'
+        });
+        
+        if (error) {
+          console.error(`Error inserting finance news "${article.title.substring(0, 50)}...":`, error);
+          errorCount++;
+        } else {
+          successfulInserts++;
+          console.log(`Inserted finance news: ${article.title.substring(0, 50)}... (ID: ${data})`);
+        }
+        
+      } catch (insertError) {
+        console.error(`Error processing finance news "${article.title.substring(0, 50)}...":`, insertError);
+        errorCount++;
+      }
+    }
+    
+    console.log(`Finance news save summary: ${successfulInserts} successful, ${errorCount} errors`);
+    return successfulInserts > 0;
+    
+  } catch (error) {
+    console.error('Error in saveFinanceNewsData:', error);
+    return false;
+  }
+}
+
+/**
+ * Save regular news articles to the database (existing function for other providers)
  */
 async function saveNewsData(supabase: SupabaseClient, articles: NewsArticle[]): Promise<boolean> {
   if (articles.length === 0) return true;
+  
+  // Filter out finance-query articles (they'll be handled separately)
+  const regularArticles = articles.filter(article => article.data_provider !== 'finance_query');
+  
+  if (regularArticles.length === 0) return true;
   
   try {
     let successfulInserts = 0;
@@ -851,8 +1045,8 @@ async function saveNewsData(supabase: SupabaseClient, articles: NewsArticle[]): 
     // Insert articles in batches to avoid overwhelming the database
     const batchSize = 10;
     
-    for (let i = 0; i < articles.length; i += batchSize) {
-      const batch = articles.slice(i, i + batchSize);
+    for (let i = 0; i < regularArticles.length; i += batchSize) {
+      const batch = regularArticles.slice(i, i + batchSize);
       
       for (const article of batch) {
         try {
@@ -904,7 +1098,7 @@ async function saveNewsData(supabase: SupabaseClient, articles: NewsArticle[]): 
       }
     }
     
-    console.log(`News save summary: ${successfulInserts} successful, ${errorCount} errors`);
+    console.log(`Regular news save summary: ${successfulInserts} successful, ${errorCount} errors`);
     return successfulInserts > 0;
     
   } catch (error) {
@@ -1063,6 +1257,19 @@ Deno.serve(async (req) => {
       } else {
         skippedProviders.push('gnews');
       }
+      
+      // Add Finance Query API fetch
+      if (!wasRecentlyFetched('finance_query', existingArticlesInfo.recentProviderFetches, providerFetchLimit)) {
+        providerPromises.push(
+          fetchFromFinanceQuery(existingSymbols.slice(0, 10)).then(articles => {
+            const filteredArticles = filterExistingArticles(articles, existingArticlesInfo.existingUrls, existingArticlesInfo.existingTitles);
+            providerResults['finance_query'] = `${filteredArticles.length}/${articles.length}`;
+            return filteredArticles;
+          })
+        );
+      } else {
+        skippedProviders.push('finance_query');
+      }
     }
     
     // Execute all provider fetches
@@ -1096,8 +1303,10 @@ Deno.serve(async (req) => {
     );
     console.log(`After final existing filter: ${finalFilteredArticles.length}`);
     
-    // Save to database
-    const saveSuccess = await saveNewsData(supabaseClient, finalFilteredArticles);
+    // Save to database (both regular news and finance news)
+    const regularSaveSuccess = await saveNewsData(supabaseClient, finalFilteredArticles);
+    const financeSaveSuccess = await saveFinanceNewsData(supabaseClient, finalFilteredArticles);
+    const saveSuccess = regularSaveSuccess || financeSaveSuccess;
     
     const response = {
       success: true,

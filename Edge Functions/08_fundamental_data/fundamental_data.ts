@@ -43,14 +43,73 @@ Deno.serve(async (req) => {
       const startTime = Date.now();
       
       try {
+        console.log('Checking for existing fundamental data...');
+        
+        // Check which symbols already have recent fundamental data (within last 24 hours)
+        const { data: existingData, error: existingError } = await supabaseClient
+          .from('fundamental_data')
+          .select('symbol, updated_at')
+          .in('symbol', existingSymbols)
+          .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+        if (existingError) {
+          console.error('Error checking existing data:', existingError);
+        }
+
+        // Filter out symbols that have recent data (less than 24 hours old)
+        const recentSymbols = new Set(existingData?.map(row => row.symbol) || []);
+        const symbolsToFetch = existingSymbols.filter(symbol => !recentSymbols.has(symbol));
+        
+        console.log(`Found ${recentSymbols.size} symbols with recent data (skipping)`);
+        console.log(`Fetching fresh data for ${symbolsToFetch.length} symbols`);
+
+        if (symbolsToFetch.length === 0) {
+          console.log('All symbols have recent data - no fetching needed');
+          
+          // Return success response for existing data
+          const processingTime = Date.now() - startTime;
+          const availableMetrics: string[] = [
+            'sector', 'pe_ratio', 'pb_ratio', 'ps_ratio', 'pegr_ratio', 'dividend_yield',
+            'roe', 'roa', 'roic', 'gross_margin', 'operating_margin', 'net_margin', 'ebitda_margin',
+            'current_ratio', 'quick_ratio', 'debt_to_equity', 'debt_to_assets', 'interest_coverage',
+            'asset_turnover', 'inventory_turnover', 'receivables_turnover', 'payables_turnover',
+            'revenue_growth', 'earnings_growth', 'book_value_growth', 'dividend_growth',
+            'eps', 'book_value_per_share', 'revenue_per_share', 'cash_flow_per_share', 'dividend_per_share',
+            'market_cap', 'enterprise_value', 'beta', 'shares_outstanding',
+            'fiscal_year', 'fiscal_quarter', 'period_end_date', 'report_type'
+          ];
+
+          return new Response(JSON.stringify({
+            success: true,
+            message: 'All fundamental data is up to date - no fetching required',
+            summary: {
+              successful_providers: 0,
+              total_fundamentals: recentSymbols.size,
+              symbols_processed: existingSymbols.length,
+              data_coverage_percentage: 100,
+              processing_time_seconds: Math.round(processingTime / 1000),
+              errors: 0,
+              symbols_skipped: recentSymbols.size,
+              symbols_fetched: 0
+            },
+            available_metrics: availableMetrics
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          });
+        }
+        
         console.log('Fetching data from all available providers...');
         
-        // Fetch data from providers in parallel with controlled concurrency
+        // Fetch data from providers in parallel with controlled concurrency - only for symbols that need updates
         const providerPromises = [
-          fetchFromFMP(existingSymbols),
-          fetchFromAlphaVantage(existingSymbols.slice(0, 10)), // Limited due to rate limits
-          fetchFromFinnhub(existingSymbols.slice(0, 30)),
-          fetchFromIEX(existingSymbols.slice(0, 50)),
+          fetchFromFMP(symbolsToFetch.slice(0, 50)),
+          fetchFromAlphaVantage(symbolsToFetch.slice(0, 50)), 
+          fetchFromFinnhub(symbolsToFetch.slice(0, 50)),
+          fetchFromPolygon(symbolsToFetch.slice(0, 50)), 
+          fetchFromTwelveData(symbolsToFetch.slice(0, 50)), 
+          fetchFromTiingo(symbolsToFetch.slice(0, 50)),
+          fetchFromIEX(symbolsToFetch.slice(0, 50)),
         ];
         
         console.log('Waiting for provider responses...');
@@ -58,7 +117,7 @@ Deno.serve(async (req) => {
         
         // Process results
         const validResults: Partial<FundamentalData>[][] = [];
-        const providerNames = ['FMP', 'Alpha Vantage', 'Finnhub', 'IEX'];
+        const providerNames = ['FMP', 'Alpha Vantage', 'Finnhub', 'Polygon', 'TwelveData', 'Tiingo', 'IEX'];
         
         providerResults.forEach((result, index) => {
           if (result.status === 'fulfilled' && result.value !== null) {
@@ -72,7 +131,7 @@ Deno.serve(async (req) => {
         
         if (validResults.length > 0) {
           console.log('Combining data from all providers...');
-          const combinedData = combineFundamentalData(validResults, existingSymbols);
+          const combinedData = combineFundamentalData(validResults, symbolsToFetch);
           
           if (combinedData.length > 0) {
             // Calculate data coverage
@@ -88,10 +147,10 @@ Deno.serve(async (req) => {
               console.log('Applied data interpolation for missing values');
               
               // Fetch quarterly data for additional coverage
-              const quarterlyData = await fetchQuarterlyData(existingSymbols, PROVIDERS);
+              const quarterlyData = await fetchQuarterlyData(symbolsToFetch, PROVIDERS);
               if (quarterlyData.length > 0) {
                 console.log(`Fetched ${quarterlyData.length} quarterly data points`);
-                const enhancedCombined = combineFundamentalData([interpolatedData, quarterlyData], existingSymbols);
+                const enhancedCombined = combineFundamentalData([interpolatedData, quarterlyData], symbolsToFetch);
                 dataCoverage = calculateDataCoverage(enhancedCombined);
                 console.log(`Enhanced data coverage with quarterly data: ${dataCoverage.toFixed(2)}%`);
               } else {
@@ -165,7 +224,7 @@ Deno.serve(async (req) => {
           filled_data_points: Math.round((dataCoverage / 100) * totalFundamentals * availableMetrics.length),
         },
         providers_used: [
-          'fmp', 'alpha_vantage', 'finnhub', 'twelve_data', 'iex'
+          'fmp', 'alpha_vantage', 'finnhub', 'polygon', 'twelve_data', 'tiingo', 'iex'
         ],
         next_steps: dataCoverage < 95 ? [
           'Consider adding more API providers',
@@ -177,7 +236,7 @@ Deno.serve(async (req) => {
           'Add data validation and quality checks'
         ],
         features_implemented: [
-          'Multi-provider data fetching (FMP, Alpha Vantage, Finnhub, IEX)',
+          'Multi-provider data fetching (FMP, Alpha Vantage, Finnhub, Polygon, TwelveData, Tiingo, IEX)',
           'Advanced data interpolation for missing values',
           'Quarterly data fetching for enhanced coverage',
           'Industry-based sector averages for better estimates',
@@ -693,57 +752,252 @@ Deno.serve(async (req) => {
     // Provider-specific field mappings
     const fieldMappings: Record<string, Record<string, string[]>> = {
       fmp: {
-        pe_ratio: ['peRatio', 'priceEarningsRatio', 'pe'],
-        pb_ratio: ['pbRatio', 'priceToBookRatio', 'pb'],
-        ps_ratio: ['psRatio', 'priceToSalesRatio', 'ps'],
-        pegr_ratio: ['pegRatio', 'priceEarningsToGrowthRatio'],
-        dividend_yield: ['dividendYield', 'dividendYieldPercentage'],
-        roe: ['returnOnEquity', 'roe'],
-        roa: ['returnOnAssets', 'roa'],
-        roic: ['returnOnCapitalEmployed', 'roic'],
-        gross_margin: ['grossProfitMargin', 'grossMargin'],
-        operating_margin: ['operatingProfitMargin', 'operatingMargin'],
-        net_margin: ['netProfitMargin', 'netMargin'],
-        current_ratio: ['currentRatio'],
-        quick_ratio: ['quickRatio', 'acidTestRatio'],
-        debt_to_equity: ['debtEquityRatio', 'debtToEquity'],
-        eps: ['eps', 'earningsPerShare'],
-        market_cap: ['marketCap', 'marketCapitalization'],
-        enterprise_value: ['enterpriseValue'],
-        beta: ['beta'],
-        shares_outstanding: ['sharesOutstanding', 'weightedAverageShsOut']
+        pe_ratio: ['peRatio', 'priceEarningsRatio', 'pe', 'peRatioTTM', 'priceToEarningsRatio', 'P/E'],
+        pb_ratio: ['pbRatio', 'priceToBookRatio', 'pb', 'priceBookRatio', 'P/B', 'bookValueRatio'],
+        ps_ratio: ['psRatio', 'priceToSalesRatio', 'ps', 'priceSalesRatio', 'P/S', 'salesRatio'],
+        pegr_ratio: ['pegRatio', 'priceEarningsToGrowthRatio', 'peg', 'PEGRatio', 'priceEarningsGrowth'],
+        dividend_yield: ['dividendYield', 'dividendYieldPercentage', 'dividendYieldTTM', 'yield', 'divYield'],
+        roe: ['returnOnEquity', 'roe', 'returnonEquity', 'roeTTM', 'equityReturn'],
+        roa: ['returnOnAssets', 'roa', 'returnonAssets', 'roaTTM', 'assetReturn'],
+        roic: ['returnOnCapitalEmployed', 'roic', 'returnOnInvestedCapital', 'roicTTM', 'capitalReturn'],
+        gross_margin: ['grossProfitMargin', 'grossMargin', 'grossProfitMarginTTM', 'grossMarginPercentage'],
+        operating_margin: ['operatingProfitMargin', 'operatingMargin', 'operatingMarginTTM', 'operatingProfitMarginTTM'],
+        net_margin: ['netProfitMargin', 'netMargin', 'netIncomeMargin', 'netMarginTTM', 'profitMargin'],
+        ebitda_margin: ['ebitdaMargin', 'ebitdaProfitMargin', 'ebitdaMarginTTM', 'EBITDAMargin'],
+        current_ratio: ['currentRatio', 'currentRatioTTM', 'liquidityRatio', 'workingCapitalRatio'],
+        quick_ratio: ['quickRatio', 'acidTestRatio', 'quickRatioTTM', 'liquidRatio'],
+        debt_to_equity: ['debtEquityRatio', 'debtToEquity', 'debtToEquityRatio', 'leverageRatio', 'D/E'],
+        debt_to_assets: ['debtToAssets', 'debtRatio', 'debtToTotalAssets', 'totalDebtRatio'],
+        interest_coverage: ['interestCoverage', 'timesInterestEarned', 'interestCoverageRatio', 'TIE'],
+        asset_turnover: ['assetTurnover', 'totalAssetTurnover', 'assetTurnoverRatio', 'assetEfficiency'],
+        inventory_turnover: ['inventoryTurnover', 'inventoryTurnoverRatio', 'stockTurnover'],
+        receivables_turnover: ['receivablesTurnover', 'accountsReceivableTurnover', 'receivableTurnover', 'A/R_Turnover'],
+        payables_turnover: ['payablesTurnover', 'accountsPayableTurnover', 'payableTurnover', 'A/P_Turnover'],
+        revenue_growth: ['revenueGrowth', 'revenueGrowthRate', 'salesGrowth', 'revenueGrowthTTM', 'topLineGrowth'],
+        earnings_growth: ['earningsGrowth', 'netIncomeGrowth', 'earningsGrowthRate', 'profitGrowth', 'epsGrowth'],
+        book_value_growth: ['bookValueGrowth', 'bookValuePerShareGrowth', 'bookValueGrowthRate', 'equityGrowth'],
+        dividend_growth: ['dividendGrowth', 'dividendPerShareGrowth', 'dividendGrowthRate', 'divGrowth'],
+        eps: ['eps', 'earningsPerShare', 'basicEPS', 'dilutedEPS', 'epsTTM', 'netIncomePerShare'],
+        book_value_per_share: ['bookValuePerShare', 'bvps', 'bookValue', 'tangibleBookValuePerShare', 'shareEquity'],
+        revenue_per_share: ['revenuePerShare', 'salesPerShare', 'revenuePS', 'salesPS', 'toplinePerShare'],
+        cash_flow_per_share: ['cashFlowPerShare', 'freeCashFlowPerShare', 'operatingCashFlowPerShare', 'cfps'],
+        dividend_per_share: ['dividendPerShare', 'dps', 'dividendsPerShare', 'annualDividend'],
+        market_cap: ['marketCap', 'marketCapitalization', 'marketValue', 'equity_market_value'],
+        enterprise_value: ['enterpriseValue', 'EV', 'enterpriseVal', 'totalValue'],
+        beta: ['beta', 'stockBeta', 'marketBeta', 'systematicRisk'],
+        shares_outstanding: ['sharesOutstanding', 'weightedAverageShsOut', 'commonSharesOutstanding', 'shareCount', 'outstandingShares']
       },
       alpha_vantage: {
-        pe_ratio: ['PERatio', 'PE'],
-        pb_ratio: ['PriceToBookRatio', 'PB'],
-        ps_ratio: ['PriceToSalesRatioTTM', 'PS'],
-        pegr_ratio: ['PEGRatio', 'PEG'],
-        dividend_yield: ['DividendYield'],
-        roe: ['ReturnOnEquityTTM', 'ROE'],
-        roa: ['ReturnOnAssetsTTM', 'ROA'],
-        gross_margin: ['GrossProfitTTM', 'GrossMargin'],
-        operating_margin: ['OperatingMarginTTM', 'OperatingMargin'],
-        net_margin: ['ProfitMargin', 'NetMargin'],
-        eps: ['EPS', 'DilutedEPSTTM'],
-        market_cap: ['MarketCapitalization', 'MarketCap'],
-        beta: ['Beta'],
-        shares_outstanding: ['SharesOutstanding']
+        pe_ratio: ['PERatio', 'PE', 'TrailingPE', 'ForwardPE', 'PriceEarningsRatio'],
+        pb_ratio: ['PriceToBookRatio', 'PB', 'BookValue', 'PriceBookRatio'],
+        ps_ratio: ['PriceToSalesRatioTTM', 'PS', 'PriceToSales', 'SalesRatio'],
+        pegr_ratio: ['PEGRatio', 'PEG', 'PriceEarningsGrowth'],
+        dividend_yield: ['DividendYield', 'TrailingAnnualDividendYield', 'ForwardAnnualDividendYield', 'DividendYieldPercentage'],
+        roe: ['ReturnOnEquityTTM', 'ROE', 'ReturnOnEquity', 'ROEPercent'],
+        roa: ['ReturnOnAssetsTTM', 'ROA', 'ReturnOnAssets', 'ROAPercent'],
+        roic: ['ROIC', 'ReturnOnInvestedCapital', 'ReturnOnCapital'],
+        gross_margin: ['GrossProfitTTM', 'GrossMargin', 'GrossProfitMargin', 'GrossMarginTTM'],
+        operating_margin: ['OperatingMarginTTM', 'OperatingMargin', 'OperatingProfitMargin'],
+        net_margin: ['ProfitMargin', 'NetMargin', 'NetProfitMargin', 'ProfitMarginTTM'],
+        ebitda_margin: ['EBITDAMargin', 'EBITDA_Margin', 'EbitdaMarginTTM'],
+        current_ratio: ['CurrentRatio', 'LiquidityRatio'],
+        quick_ratio: ['QuickRatio', 'AcidTestRatio'],
+        debt_to_equity: ['DebtToEquity', 'TotalDebtEquityRatio', 'DebtEquityRatio'],
+        debt_to_assets: ['DebtToAssets', 'TotalDebtToAssets', 'DebtRatio'],
+        interest_coverage: ['InterestCoverage', 'TimesInterestEarned', 'InterestCoverageRatio'],
+        asset_turnover: ['AssetTurnover', 'TotalAssetTurnover', 'AssetTurnoverTTM'],
+        inventory_turnover: ['InventoryTurnover', 'InventoryTurnoverTTM'],
+        receivables_turnover: ['ReceivablesTurnover', 'AccountsReceivableTurnover'],
+        payables_turnover: ['PayablesTurnover', 'AccountsPayableTurnover'],
+        revenue_growth: ['RevenueGrowth', 'QuarterlyRevenueGrowthYOY', 'RevenueGrowthTTM', 'SalesGrowth'],
+        earnings_growth: ['EarningsGrowth', 'QuarterlyEarningsGrowthYOY', 'EarningsGrowthTTM', 'NetIncomeGrowth'],
+        book_value_growth: ['BookValueGrowth', 'BookValueGrowthYOY', 'EquityGrowth'],
+        dividend_growth: ['DividendGrowth', 'DividendGrowthRate', 'DividendGrowthYOY'],
+        eps: ['EPS', 'DilutedEPSTTM', 'BasicEPS', 'EarningsPerShare', 'EPSEstimate'],
+        book_value_per_share: ['BookValue', 'BookValuePerShare', 'TangibleBookValuePerShare', 'BVPS'],
+        revenue_per_share: ['RevenuePerShare', 'RevenuePerShareTTM', 'SalesPerShare'],
+        cash_flow_per_share: ['OperatingCashflowPerShare', 'CashFlowPerShare', 'FreeCashFlowPerShare', 'CFPS'],
+        dividend_per_share: ['DividendPerShare', 'DividendsPerShare', 'AnnualDividend', 'DPS'],
+        market_cap: ['MarketCapitalization', 'MarketCap', 'MarketValue', 'EquityMarketValue'],
+        enterprise_value: ['EnterpriseValue', 'EV', 'TotalValue'],
+        beta: ['Beta', 'StockBeta', 'SystematicRisk'],
+        shares_outstanding: ['SharesOutstanding', 'CommonSharesOutstanding', 'ShareCount']
       },
       finnhub: {
-        pe_ratio: ['peBasicExclExtraTTM', 'pe'],
-        pb_ratio: ['pbAnnual', 'pb'],
-        ps_ratio: ['psAnnual', 'ps'],
-        dividend_yield: ['dividendYieldIndicatedAnnual'],
-        roe: ['roeRfy', 'roeTTM'],
-        roa: ['roaRfy', 'roaTTM'],
-        roic: ['roicTTM'],
-        current_ratio: ['currentRatioAnnual'],
-        quick_ratio: ['quickRatioAnnual'],
-        debt_to_equity: ['totalDebtToEquityAnnual'],
-        eps: ['epsBasicExclExtraTTM'],
-        market_cap: ['marketCapitalization'],
-        enterprise_value: ['enterpriseValueTTM'],
-        beta: ['beta']
+        pe_ratio: ['peBasicExclExtraTTM', 'pe', 'peRatio', 'priceEarningsRatio', 'peBasicInclExtraTTM'],
+        pb_ratio: ['pbAnnual', 'pb', 'priceToBookRatio', 'bookValueRatio', 'pbQuarterly'],
+        ps_ratio: ['psAnnual', 'ps', 'priceToSalesRatio', 'salesRatio', 'psQuarterly'],
+        pegr_ratio: ['pegRatio', 'priceEarningsGrowthRatio', 'peg'],
+        dividend_yield: ['dividendYieldIndicatedAnnual', 'dividendYield', 'yield', 'annualDividendYield'],
+        roe: ['roeRfy', 'roeTTM', 'returnOnEquity', 'roe', 'roeAnnual'],
+        roa: ['roaRfy', 'roaTTM', 'returnOnAssets', 'roa', 'roaAnnual'],
+        roic: ['roicTTM', 'returnOnInvestedCapitalTTM', 'roic', 'returnOnCapital'],
+        gross_margin: ['grossMarginTTM', 'grossMarginAnnual', 'grossProfitMargin', 'grossMargin'],
+        operating_margin: ['operatingMarginTTM', 'operatingMargin', 'operatingProfitMargin', 'operatingMarginAnnual'],
+        net_margin: ['netMarginTTM', 'netMargin', 'profitMargin', 'netProfitMargin'],
+        ebitda_margin: ['ebitdaMargin', 'ebitdaMarginTTM', 'EBITDAMargin'],
+        current_ratio: ['currentRatio', 'currentRatioAnnual', 'liquidityRatio'],
+        quick_ratio: ['quickRatio', 'quickRatioAnnual', 'acidTestRatio'],
+        debt_to_equity: ['totalDebt/totalEquityAnnual', 'debtToEquity', 'leverageRatio', 'debtEquityRatio'],
+        debt_to_assets: ['debtToAssets', 'totalDebtRatio', 'debtRatio'],
+        interest_coverage: ['interestCoverage', 'timesInterestEarned'],
+        asset_turnover: ['assetTurnoverAnnual', 'assetTurnover', 'totalAssetTurnover'],
+        inventory_turnover: ['inventoryTurnover', 'inventoryTurnoverAnnual'],
+        receivables_turnover: ['receivablesTurnover', 'accountsReceivableTurnover'],
+        revenue_growth: ['revenueGrowth', 'salesGrowth', 'topLineGrowth'],
+        earnings_growth: ['earningsGrowth', 'netIncomeGrowth', 'profitGrowth'],
+        eps: ['epsInclExtraItemsTTM', 'eps', 'earningsPerShare', 'basicEPS', 'dilutedEPS'],
+        book_value_per_share: ['bookValuePerShareAnnual', 'bookValuePerShare', 'bvps', 'tangibleBookValue'],
+        revenue_per_share: ['revenuePerShare', 'salesPerShare'],
+        cash_flow_per_share: ['cashFlowPerShare', 'operatingCashFlowPerShare', 'freeCashFlowPerShare'],
+        dividend_per_share: ['dividendPerShare', 'annualDividend', 'dps'],
+        market_cap: ['marketCapitalization', 'marketCap', 'marketValue'],
+        enterprise_value: ['enterpriseValue', 'EV', 'totalValue'],
+        beta: ['beta', 'stockBeta', 'systematicRisk'],
+        shares_outstanding: ['shareIssued', 'sharesOutstanding', 'commonShares', 'outstandingShares']
+      },
+      polygon: {
+        pe_ratio: ['price_to_earnings_ratio', 'pe_ratio', 'pe', 'peRatio', 'trailing_pe', 'forward_pe'],
+        pb_ratio: ['price_to_book_ratio', 'pb_ratio', 'pb', 'pbRatio', 'book_value_ratio'],
+        ps_ratio: ['price_to_sales_ratio', 'ps_ratio', 'ps', 'psRatio', 'sales_ratio'],
+        pegr_ratio: ['peg_ratio', 'price_earnings_growth_ratio', 'pegRatio'],
+        dividend_yield: ['dividend_yield', 'dividendYield', 'yield', 'annual_dividend_yield'],
+        roe: ['return_on_equity', 'roe', 'returnOnEquity', 'equity_return', 'roe_ttm'],
+        roa: ['return_on_assets', 'roa', 'returnOnAssets', 'asset_return', 'roa_ttm'],
+        roic: ['return_on_invested_capital', 'roic', 'returnOnInvestedCapital', 'capital_return'],
+        gross_margin: ['gross_profit_margin', 'gross_margin', 'grossMargin', 'gross_profit_margin_ttm'],
+        operating_margin: ['operating_profit_margin', 'operating_margin', 'operatingMargin', 'operating_margin_ttm'],
+        net_margin: ['net_profit_margin', 'net_margin', 'netMargin', 'profit_margin', 'net_margin_ttm'],
+        ebitda_margin: ['ebitda_margin', 'ebitdaMargin', 'EBITDA_margin'],
+        current_ratio: ['current_ratio', 'currentRatio', 'liquidity_ratio'],
+        quick_ratio: ['quick_ratio', 'quickRatio', 'acid_test_ratio'],
+        debt_to_equity: ['debt_to_equity_ratio', 'debt_equity_ratio', 'leverage_ratio', 'debtToEquity'],
+        debt_to_assets: ['debt_to_assets_ratio', 'debt_ratio', 'total_debt_ratio', 'debtToAssets'],
+        interest_coverage: ['interest_coverage', 'times_interest_earned', 'interestCoverage'],
+        asset_turnover: ['asset_turnover', 'total_asset_turnover', 'assetTurnover', 'asset_efficiency'],
+        inventory_turnover: ['inventory_turnover', 'inventoryTurnover', 'stock_turnover'],
+        receivables_turnover: ['receivables_turnover', 'accounts_receivable_turnover', 'receivableTurnover'],
+        payables_turnover: ['payables_turnover', 'accounts_payable_turnover', 'payableTurnover'],
+        revenue_growth: ['revenue_growth', 'sales_growth', 'revenueGrowth', 'topline_growth'],
+        earnings_growth: ['earnings_growth', 'net_income_growth', 'profit_growth', 'earningsGrowth'],
+        book_value_growth: ['book_value_growth', 'equity_growth', 'bookValueGrowth'],
+        dividend_growth: ['dividend_growth', 'dividendGrowth', 'dividend_growth_rate'],
+        eps: ['earnings_per_share', 'eps', 'earningsPerShare', 'basic_eps', 'diluted_eps'],
+        book_value_per_share: ['book_value_per_share', 'bookValuePerShare', 'bvps', 'tangible_book_value'],
+        revenue_per_share: ['revenue_per_share', 'sales_per_share', 'revenuePerShare'],
+        cash_flow_per_share: ['cash_flow_per_share', 'operating_cash_flow_per_share', 'free_cash_flow_per_share'],
+        dividend_per_share: ['dividend_per_share', 'dividendPerShare', 'annual_dividend', 'dps'],
+        market_cap: ['market_cap', 'market_capitalization', 'marketCap', 'market_value'],
+        enterprise_value: ['enterprise_value', 'enterpriseValue', 'EV', 'total_value'],
+        beta: ['beta', 'stock_beta', 'market_beta', 'systematic_risk'],
+        shares_outstanding: ['shares_outstanding', 'sharesOutstanding', 'common_shares_outstanding', 'share_count']
+      },
+      twelve_data: {
+        pe_ratio: ['pe_ratio', 'priceEarningsRatio', 'pe', 'PE', 'trailing_pe', 'forward_pe'],
+        pb_ratio: ['pb_ratio', 'priceToBookRatio', 'pb', 'PB', 'book_ratio', 'price_book_ratio'],
+        ps_ratio: ['ps_ratio', 'priceToSalesRatio', 'ps', 'PS', 'sales_ratio', 'price_sales_ratio'],
+        pegr_ratio: ['peg_ratio', 'priceEarningsGrowthRatio', 'peg', 'PEG'],
+        dividend_yield: ['dividend_yield', 'dividendYield', 'yield', 'annual_yield', 'div_yield'],
+        roe: ['return_on_equity', 'roe', 'ROE', 'equity_return', 'return_equity'],
+        roa: ['return_on_assets', 'roa', 'ROA', 'asset_return', 'return_assets'],
+        roic: ['return_on_invested_capital', 'roic', 'ROIC', 'invested_capital_return'],
+        gross_margin: ['gross_margin', 'grossMargin', 'gross_profit_margin', 'GP_margin'],
+        operating_margin: ['operating_margin', 'operatingMargin', 'operating_profit_margin', 'OP_margin'],
+        net_margin: ['net_margin', 'netMargin', 'net_profit_margin', 'profit_margin'],
+        ebitda_margin: ['ebitda_margin', 'ebitdaMargin', 'EBITDA_margin'],
+        current_ratio: ['current_ratio', 'currentRatio', 'liquidity_ratio', 'CR'],
+        quick_ratio: ['quick_ratio', 'quickRatio', 'acid_test_ratio', 'QR'],
+        debt_to_equity: ['debt_to_equity', 'debtToEquity', 'debt_equity_ratio', 'DE_ratio'],
+        debt_to_assets: ['debt_to_assets', 'debtToAssets', 'debt_assets_ratio', 'DA_ratio'],
+        interest_coverage: ['interest_coverage', 'interestCoverage', 'times_interest_earned', 'TIE'],
+        asset_turnover: ['asset_turnover', 'assetTurnover', 'total_asset_turnover', 'AT_ratio'],
+        inventory_turnover: ['inventory_turnover', 'inventoryTurnover', 'stock_turnover', 'IT_ratio'],
+        receivables_turnover: ['receivables_turnover', 'receivablesTurnover', 'AR_turnover'],
+        payables_turnover: ['payables_turnover', 'payablesTurnover', 'AP_turnover'],
+        revenue_growth: ['revenue_growth', 'revenueGrowth', 'sales_growth', 'topline_growth'],
+        earnings_growth: ['earnings_growth', 'earningsGrowth', 'profit_growth', 'net_income_growth'],
+        book_value_growth: ['book_value_growth', 'bookValueGrowth', 'equity_growth', 'BV_growth'],
+        dividend_growth: ['dividend_growth', 'dividendGrowth', 'div_growth', 'dividend_growth_rate'],
+        eps: ['eps', 'earningsPerShare', 'EPS', 'earnings_per_share', 'basic_eps', 'diluted_eps', 'basicEPS', 'dilutedEPS', 'net_income_per_share'],
+        book_value_per_share: ['book_value_per_share', 'bookValuePerShare', 'bvps', 'BVPS', 'book_value', 'tangible_book_value'],
+        revenue_per_share: ['revenue_per_share', 'revenuePerShare', 'sales_per_share', 'RPS', 'salesPerShare', 'revenue_PS', 'topline_per_share'],
+        cash_flow_per_share: ['cash_flow_per_share', 'cashFlowPerShare', 'cfps', 'CFPS', 'operating_cash_flow_per_share', 'free_cash_flow_per_share', 'ocfps'],
+        dividend_per_share: ['dividend_per_share', 'dividendPerShare', 'dps', 'DPS', 'annual_dividend', 'dividend_PS', 'dividends_per_share'],
+        market_cap: ['market_cap', 'marketCap', 'market_capitalization', 'market_value'],
+        enterprise_value: ['enterprise_value', 'enterpriseValue', 'EV', 'total_value'],
+        shares_outstanding: ['shares_outstanding', 'sharesOutstanding', 'common_shares', 'share_count']
+      },
+      tiingo: {
+        pe_ratio: ['priceEarningsRatio', 'pe', 'PE', 'trailing_pe', 'forward_pe', 'peRatio'],
+        pb_ratio: ['priceToBookValue', 'pb', 'PB', 'book_ratio', 'priceBookRatio', 'bookValueRatio'],
+        ps_ratio: ['priceToSales', 'ps', 'PS', 'sales_ratio', 'priceSalesRatio', 'salesRatio'],
+        pegr_ratio: ['pegRatio', 'priceEarningsGrowthRatio', 'peg', 'PEG'],
+        dividend_yield: ['dividendYield', 'yield', 'annual_yield', 'div_yield', 'dividendYieldPercentage'],
+        roe: ['returnOnEquity', 'roe', 'ROE', 'equity_return', 'return_equity', 'roeTTM'],
+        roa: ['returnOnAssets', 'roa', 'ROA', 'asset_return', 'return_assets', 'roaTTM'],
+        roic: ['returnOnInvestedCapital', 'roic', 'ROIC', 'capital_return', 'invested_capital_return'],
+        gross_margin: ['grossMargin', 'grossProfitMargin', 'gross_margin', 'GP_margin', 'grossMarginTTM'],
+        operating_margin: ['operatingMargin', 'operatingProfitMargin', 'operating_margin', 'OP_margin', 'operatingMarginTTM'],
+        net_margin: ['netMargin', 'profitMargin', 'net_margin', 'netProfitMargin', 'netMarginTTM'],
+        ebitda_margin: ['ebitdaMargin', 'ebitda_margin', 'EBITDA_margin', 'EBITDAMargin'],
+        current_ratio: ['currentRatio', 'current_ratio', 'liquidity_ratio', 'CR'],
+        quick_ratio: ['quickRatio', 'quick_ratio', 'acid_test_ratio', 'QR'],
+        debt_to_equity: ['debtToEquity', 'debt_equity_ratio', 'leverage_ratio', 'DE_ratio', 'debtEquityRatio'],
+        debt_to_assets: ['debtToAssets', 'debt_assets_ratio', 'debt_ratio', 'DA_ratio'],
+        interest_coverage: ['interestCoverage', 'times_interest_earned', 'interest_coverage_ratio', 'TIE'],
+        asset_turnover: ['assetTurnover', 'asset_turnover', 'total_asset_turnover', 'AT_ratio'],
+        inventory_turnover: ['inventoryTurnover', 'inventory_turnover', 'stock_turnover', 'IT_ratio'],
+        receivables_turnover: ['receivablesTurnover', 'receivables_turnover', 'AR_turnover', 'accountsReceivableTurnover'],
+        payables_turnover: ['payablesTurnover', 'payables_turnover', 'AP_turnover', 'accountsPayableTurnover'],
+        revenue_growth: ['revenueGrowth', 'revenue_growth', 'sales_growth', 'topline_growth', 'salesGrowth'],
+        earnings_growth: ['earningsGrowth', 'earnings_growth', 'profit_growth', 'net_income_growth', 'netIncomeGrowth'],
+        book_value_growth: ['bookValueGrowth', 'book_value_growth', 'equity_growth', 'BV_growth'],
+        dividend_growth: ['dividendGrowth', 'dividend_growth', 'div_growth', 'dividend_growth_rate'],
+        eps: ['earningsPerShare', 'eps', 'EPS', 'earnings_per_share', 'basic_eps', 'dilutedEPS'],
+        book_value_per_share: ['bookValuePerShare', 'book_value_per_share', 'bvps', 'BVPS', 'tangibleBookValue'],
+        revenue_per_share: ['revenuePerShare', 'revenue_per_share', 'sales_per_share', 'RPS', 'salesPerShare'],
+        cash_flow_per_share: ['cashFlowPerShare', 'cash_flow_per_share', 'cfps', 'CFPS', 'operatingCashFlowPerShare'],
+        dividend_per_share: ['dividendPerShare', 'dividend_per_share', 'dps', 'DPS', 'annualDividend'],
+        market_cap: ['marketCapitalization', 'marketCap', 'market_cap', 'market_capitalization', 'market_value'],
+        enterprise_value: ['enterpriseValue', 'enterprise_value', 'EV', 'total_value', 'totalValue'],
+        beta: ['beta', 'stock_beta', 'market_beta', 'systematic_risk', 'stockBeta'],
+        shares_outstanding: ['sharesOutstanding', 'shares_outstanding', 'common_shares', 'share_count', 'commonShares']
+      },
+      iex_cloud: {
+        pe_ratio: ['peRatio', 'pe', 'PE', 'priceEarningsRatio', 'trailing_pe'],
+        pb_ratio: ['priceToBook', 'pb', 'PB', 'bookValueRatio', 'priceBookRatio'],
+        ps_ratio: ['priceToSales', 'ps', 'PS', 'salesRatio', 'priceSalesRatio'],
+        pegr_ratio: ['pegRatio', 'peg', 'PEG', 'priceEarningsGrowthRatio'],
+        dividend_yield: ['dividendYield', 'yield', 'annual_yield', 'div_yield', 'ttmDividendRate'],
+        roe: ['returnOnEquity', 'roe', 'ROE', 'equity_return'],
+        roa: ['returnOnAssets', 'roa', 'ROA', 'asset_return'],
+        roic: ['returnOnInvestedCapital', 'roic', 'ROIC', 'capital_return'],
+        gross_margin: ['grossMargin', 'grossProfitMargin', 'gross_margin'],
+        operating_margin: ['operatingMargin', 'operatingProfitMargin', 'operating_margin'],
+        net_margin: ['profitMargin', 'netMargin', 'net_margin'],
+        ebitda_margin: ['ebitdaMargin', 'EBITDA_margin'],
+        current_ratio: ['currentRatio', 'liquidity_ratio'],
+        quick_ratio: ['quickRatio', 'acid_test_ratio'],
+        debt_to_equity: ['debtToEquity', 'debt_equity_ratio', 'totalDebtToEquity'],
+        debt_to_assets: ['debtToAssets', 'totalDebtToTotalAssets', 'debt_ratio'],
+        interest_coverage: ['interestCoverage', 'times_interest_earned'],
+        asset_turnover: ['assetTurnover', 'totalAssetTurnover'],
+        inventory_turnover: ['inventoryTurnover'],
+        receivables_turnover: ['receivablesTurnover'],
+        payables_turnover: ['payablesTurnover'],
+        revenue_growth: ['revenueGrowth', 'revenue_growth', 'sales_growth'],
+        earnings_growth: ['earningsGrowth', 'earnings_growth', 'profit_growth'],
+        book_value_growth: ['bookValueGrowth', 'book_value_growth'],
+        dividend_growth: ['dividendGrowth', 'dividend_growth'],
+        eps: ['eps', 'ttmEPS', 'basicEPS', 'dilutedEPS', 'earningsPerShare'],
+        book_value_per_share: ['bookValuePerShare', 'tangibleBookValuePerShare', 'bvps'],
+        revenue_per_share: ['revenuePerShare', 'ttmRevenuePerShare', 'salesPerShare'],
+        cash_flow_per_share: ['cashFlowPerShare', 'freeCashFlowPerShare', 'operatingCashFlowPerShare'],
+        dividend_per_share: ['dividendPerShare', 'ttmDividendRate', 'annualDividend'],
+        market_cap: ['marketcap', 'marketCapitalization', 'market_cap'],
+        enterprise_value: ['enterpriseValue', 'EV'],
+        beta: ['beta', 'stock_beta'],
+        shares_outstanding: ['sharesOutstanding', 'avgTotalVolume', 'shareCount']
       }
     };
   
@@ -754,7 +1008,7 @@ Deno.serve(async (req) => {
       for (const alias of aliases) {
         const value = data[alias];
         if (value !== undefined && value !== null) {
-          if (['dividend_yield', 'roe', 'roa', 'roic', 'gross_margin', 'operating_margin', 'net_margin'].includes(field)) {
+          if (['dividend_yield', 'roe', 'roa', 'roic', 'gross_margin', 'operating_margin', 'net_margin', 'ebitda_margin', 'revenue_growth', 'earnings_growth', 'book_value_growth', 'dividend_growth'].includes(field)) {
             cleaned[field as keyof FundamentalData] = parsePercentage(value) as never;
           } else if (['market_cap', 'enterprise_value', 'shares_outstanding'].includes(field)) {
             cleaned[field as keyof FundamentalData] = parseBigInt(value) as never;
@@ -896,19 +1150,25 @@ Deno.serve(async (req) => {
         
         try {
           const url = `${config.baseUrl}${config.endpoints.fundamentals}&symbol=${symbol}&apikey=${config.apiKey}`;
+          console.log(`Alpha Vantage fetching: ${symbol}`);
           const data = await fetchWithRetry(url);
           
-          const cleaned = cleanFundamentalMetrics(data, 'alpha_vantage');
-          
-          if (Object.keys(cleaned).length > 0) {
-            allFundamentals.push({
-              symbol: symbol,
-              sector: data.Sector,
-              ...cleaned,
-              fiscal_year: new Date().getFullYear(),
-              report_type: 'ttm',
-              data_provider: 'alpha_vantage'
-            });
+          if (data && typeof data === 'object' && !data.Note && !data['Error Message']) {
+            const cleaned = cleanFundamentalMetrics(data, 'alpha_vantage');
+            
+            if (Object.keys(cleaned).length > 0) {
+              allFundamentals.push({
+                symbol: symbol,
+                sector: data.Sector,
+                ...cleaned,
+                fiscal_year: new Date().getFullYear(),
+                report_type: 'ttm',
+                data_provider: 'alpha_vantage'
+              });
+              console.log(`✅ Alpha Vantage success for ${symbol}`);
+            }
+          } else {
+            console.log(`❌ Alpha Vantage no valid data for ${symbol}`);
           }
           
           // Respect rate limits
@@ -1049,6 +1309,216 @@ Deno.serve(async (req) => {
   }
   
   /**
+   * Enhanced Polygon fetcher
+   */
+  async function fetchFromPolygon(symbols: string[]): Promise<Partial<FundamentalData>[] | null> {
+    const config = PROVIDERS.polygon;
+    if (!config.apiKey || symbols.length === 0) return null;
+    
+    try {
+      const allFundamentals: Partial<FundamentalData>[] = [];
+      
+      for (let i = 0; i < Math.min(symbols.length, 20); i += config.batchSize) {
+        const batch = symbols.slice(i, i + config.batchSize);
+        
+        for (const symbol of batch) {
+          try {
+            // Polygon uses different endpoint structure
+            console.log(`Polygon fetching: ${symbol}`);
+            const urls = [
+              `${config.baseUrl}/reference/financials?ticker=${symbol}&apikey=${config.apiKey}`,
+              `${config.baseUrl}/reference/tickers/${symbol}?apikey=${config.apiKey}`
+            ];
+            
+            const results = await Promise.allSettled(
+              urls.map(url => fetchWithRetry(url))
+            );
+            
+            let combinedData: Record<string, unknown> = {};
+            
+            results.forEach(result => {
+              if (result.status === 'fulfilled') {
+                if (result.value.results && Array.isArray(result.value.results)) {
+                  // Financial data endpoint
+                  const latestFinancials = result.value.results[0];
+                  if (latestFinancials && latestFinancials.financials) {
+                    combinedData = { ...combinedData, ...latestFinancials.financials };
+                  }
+                } else {
+                  // Company overview endpoint
+                  combinedData = { ...combinedData, ...result.value };
+                }
+              }
+            });
+            
+            if (Object.keys(combinedData).length > 0) {
+              const cleaned = cleanFundamentalMetrics(combinedData, 'polygon');
+              
+              if (Object.keys(cleaned).length > 0) {
+                allFundamentals.push({
+                  symbol: symbol,
+                  ...cleaned,
+                  fiscal_year: new Date().getFullYear(),
+                  report_type: 'ttm',
+                  data_provider: 'polygon'
+                });
+                console.log(`✅ Polygon success for ${symbol}`);
+              }
+            } else {
+              console.log(`❌ Polygon no valid data for ${symbol}`);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 12000)); // 5 requests per minute
+          } catch (error) {
+            console.error(`Polygon error for ${symbol}:`, error.message);
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      return allFundamentals.length > 0 ? allFundamentals : null;
+    } catch (error) {
+      console.error(`Polygon fetch error:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Enhanced TwelveData fetcher
+   */
+  async function fetchFromTwelveData(symbols: string[]): Promise<Partial<FundamentalData>[] | null> {
+    const config = PROVIDERS.twelve_data;
+    if (!config.apiKey || symbols.length === 0) return null;
+    
+    try {
+      const allFundamentals: Partial<FundamentalData>[] = [];
+      
+      for (let i = 0; i < Math.min(symbols.length, 15); i += config.batchSize) {
+        const batch = symbols.slice(i, i + config.batchSize);
+        
+        for (const symbol of batch) {
+          try {
+            const urls = [
+              `${config.baseUrl}${config.endpoints.fundamentals}?symbol=${symbol}&apikey=${config.apiKey}`,
+              `${config.baseUrl}${config.endpoints.ratios}?symbol=${symbol}&apikey=${config.apiKey}`,
+              `${config.baseUrl}${config.endpoints.overview}?symbol=${symbol}&apikey=${config.apiKey}`
+            ];
+            
+            const results = await Promise.allSettled(
+              urls.map(url => fetchWithRetry(url))
+            );
+            
+            let combinedData: Record<string, unknown> = {};
+            
+            results.forEach(result => {
+              if (result.status === 'fulfilled') {
+                if (result.value.statistics) {
+                  combinedData = { ...combinedData, ...result.value.statistics };
+                } else if (result.value.ratios) {
+                  combinedData = { ...combinedData, ...result.value.ratios };
+                } else {
+                  combinedData = { ...combinedData, ...result.value };
+                }
+              }
+            });
+            
+            if (Object.keys(combinedData).length > 0) {
+              const cleaned = cleanFundamentalMetrics(combinedData, 'twelve_data');
+              
+              allFundamentals.push({
+                symbol: symbol,
+                ...cleaned,
+                fiscal_year: new Date().getFullYear(),
+                report_type: 'ttm',
+                data_provider: 'twelve_data'
+              });
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 8000)); // ~8 requests per minute
+          } catch (error) {
+            console.error(`TwelveData error for ${symbol}:`, error.message);
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      return allFundamentals.length > 0 ? allFundamentals : null;
+    } catch (error) {
+      console.error(`TwelveData fetch error:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Enhanced Tiingo fetcher
+   */
+  async function fetchFromTiingo(symbols: string[]): Promise<Partial<FundamentalData>[] | null> {
+    const config = PROVIDERS.tiingo;
+    if (!config.apiKey || symbols.length === 0) return null;
+    
+    try {
+      const allFundamentals: Partial<FundamentalData>[] = [];
+      
+      for (let i = 0; i < Math.min(symbols.length, 40); i += config.batchSize) {
+        const batch = symbols.slice(i, i + config.batchSize);
+        
+        for (const symbol of batch) {
+          try {
+            // Tiingo has different endpoint structure
+            const urls = [
+              `${config.baseUrl}${config.endpoints.fundamentals}/${symbol}/statements?token=${config.apiKey}`,
+              `${config.baseUrl}${config.endpoints.fundamentals}/${symbol}/metrics?token=${config.apiKey}`
+            ];
+            
+            const results = await Promise.allSettled(
+              urls.map(url => fetchWithRetry(url))
+            );
+            
+            let combinedData: Record<string, unknown> = {};
+            
+            results.forEach(result => {
+              if (result.status === 'fulfilled') {
+                if (Array.isArray(result.value) && result.value.length > 0) {
+                  // Get the most recent data
+                  const latestData = result.value[0];
+                  combinedData = { ...combinedData, ...latestData };
+                } else {
+                  combinedData = { ...combinedData, ...result.value };
+                }
+              }
+            });
+            
+            if (Object.keys(combinedData).length > 0) {
+              const cleaned = cleanFundamentalMetrics(combinedData, 'tiingo');
+              
+              allFundamentals.push({
+                symbol: symbol,
+                ...cleaned,
+                fiscal_year: new Date().getFullYear(),
+                report_type: 'ttm',
+                data_provider: 'tiingo'
+              });
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 100)); // 1000 requests per hour
+          } catch (error) {
+            console.error(`Tiingo error for ${symbol}:`, error.message);
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      return allFundamentals.length > 0 ? allFundamentals : null;
+    } catch (error) {
+      console.error(`Tiingo fetch error:`, error);
+      return null;
+    }
+  }
+  
+  /**
    * Enhanced data combination with improved merging logic
    */
   function combineFundamentalData(dataArrays: (Partial<FundamentalData>[] | null)[], symbols: string[]): FundamentalData[] {
@@ -1078,10 +1548,8 @@ Deno.serve(async (req) => {
             const existingValue = merged[fieldKey as keyof FundamentalData];
             
             // If existing value is null/undefined, use new value
-            // If both exist, prefer FMP or Alpha Vantage data
-            if (!existingValue || 
-                (fundamental.data_provider === 'fmp' && existing.data_provider !== 'fmp') ||
-                (fundamental.data_provider === 'alpha_vantage' && !['fmp'].includes(existing.data_provider))) {
+            // Treat all providers equally - use the most recent non-null value
+            if (!existingValue) {
               
               // Round BIGINT fields to prevent decimal values
               if (['market_cap', 'enterprise_value', 'shares_outstanding'].includes(fieldKey) && typeof value === 'number') {

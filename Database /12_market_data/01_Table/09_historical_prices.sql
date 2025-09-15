@@ -2,14 +2,22 @@
 -- This table stores historical price data accessible to ALL users
 -- NO user ownership - data is shared across the entire platform
 -- Stores OHLCV and adjusted price data from market data providers
+-- Supports multiple time ranges and intervals for intraday and daily data
 
 CREATE TABLE IF NOT EXISTS historical_prices (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
     exchange_id INTEGER REFERENCES exchanges(id),
 
+    -- Time dimension - supports both intraday and daily data
+    timestamp_utc TIMESTAMP NOT NULL,
+    date_only DATE GENERATED ALWAYS AS (timestamp_utc::DATE) STORED,
+    
+    -- Time range and interval specification
+    time_range VARCHAR(10) NOT NULL CHECK (time_range IN ('1d', '5d', '1mo', '3mo', '6mo', 'ytd', '1y', '2y', '5y', '10y', 'max')),
+    time_interval VARCHAR(10) NOT NULL CHECK (time_interval IN ('1m', '5m', '15m', '30m', '1h', '1d', '1wk', '1mo')),
+
     -- Core OHLCV data (shared globally)
-    date DATE NOT NULL,
     open DECIMAL(15,4),
     high DECIMAL(15,4),
     low DECIMAL(15,4),
@@ -26,15 +34,19 @@ CREATE TABLE IF NOT EXISTS historical_prices (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    -- Ensure one record per symbol per date per provider
-    UNIQUE(symbol, date, data_provider)
+    -- Ensure one record per symbol per timestamp per range per interval per provider
+    UNIQUE(symbol, timestamp_utc, time_range, time_interval, data_provider)
 );
 
- -- Time series indexes for fast historical queries
-CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_date ON historical_prices (symbol, date DESC);
-CREATE INDEX IF NOT EXISTS idx_historical_prices_date ON historical_prices (date DESC);
+-- Time series indexes for fast historical queries
+CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_timestamp ON historical_prices (symbol, timestamp_utc DESC);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_date ON historical_prices (symbol, date_only DESC);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_timestamp ON historical_prices (timestamp_utc DESC);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_date ON historical_prices (date_only DESC);
 CREATE INDEX IF NOT EXISTS idx_historical_prices_provider ON historical_prices (data_provider);
 CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_provider ON historical_prices (symbol, data_provider);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_range_interval ON historical_prices (time_range, time_interval);
+CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_range_interval ON historical_prices (symbol, time_range, time_interval, timestamp_utc DESC);
 
 -- Add table comment
 COMMENT ON TABLE historical_prices IS 'Historical OHLCV price data from multiple market data providers';
@@ -42,14 +54,17 @@ COMMENT ON TABLE historical_prices IS 'Historical OHLCV price data from multiple
 -- Add column comments
 COMMENT ON COLUMN historical_prices.symbol IS 'Stock ticker symbol (e.g., AAPL, GOOGL)';
 COMMENT ON COLUMN historical_prices.exchange_id IS 'Foreign key to exchanges table';
-COMMENT ON COLUMN historical_prices.date IS 'Trading date for this price data';
-COMMENT ON COLUMN historical_prices.open IS 'Opening price for the trading day';
-COMMENT ON COLUMN historical_prices.high IS 'Highest price during the trading day';
-COMMENT ON COLUMN historical_prices.low IS 'Lowest price during the trading day';
-COMMENT ON COLUMN historical_prices.close IS 'Closing price for the trading day';
-COMMENT ON COLUMN historical_prices.volume IS 'Trading volume for the day';
-COMMENT ON COLUMN historical_prices.adjusted_close IS 'Split and dividend adjusted closing price';
-COMMENT ON COLUMN historical_prices.dividend IS 'Dividend amount paid on this date';
+COMMENT ON COLUMN historical_prices.timestamp_utc IS 'UTC timestamp for this price data point (supports intraday and daily data)';
+COMMENT ON COLUMN historical_prices.date_only IS 'Generated column: date portion of timestamp_utc for efficient date-based queries';
+COMMENT ON COLUMN historical_prices.time_range IS 'Time range period (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max)';
+COMMENT ON COLUMN historical_prices.time_interval IS 'Time interval granularity (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)';
+COMMENT ON COLUMN historical_prices.open IS 'Opening price for the time period';
+COMMENT ON COLUMN historical_prices.high IS 'Highest price during the time period';
+COMMENT ON COLUMN historical_prices.low IS 'Lowest price during the time period';
+COMMENT ON COLUMN historical_prices.close IS 'Closing price for the time period';
+COMMENT ON COLUMN historical_prices.volume IS 'Trading volume for the time period';
+COMMENT ON COLUMN historical_prices.adjusted_close IS 'Split and dividend adjusted closing price (null for intraday data)';
+COMMENT ON COLUMN historical_prices.dividend IS 'Dividend amount paid on this date (typically for daily data only)';
 COMMENT ON COLUMN historical_prices.split_ratio IS 'Stock split ratio (e.g., 2.0 for 2:1 split)';
 COMMENT ON COLUMN historical_prices.data_provider IS 'Market data provider (alpha_vantage, finnhub, polygon, etc.)';
 

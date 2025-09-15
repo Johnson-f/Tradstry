@@ -55,3 +55,13 @@ export function useRealtimeNotes(queryClient: QueryClient) {
 export function useRealtimeImages(queryClient: QueryClient) {
   return useRealtimeTable('images', queryClient, ['images'])
 }
+
+// Hook for watchlists
+export function useRealtimeWatchlists(queryClient: QueryClient) {
+  return useRealtimeTable('watchlist', queryClient, ['watchlists'])
+}
+
+// Hook for watchlist items
+export function useRealtimeWatchlistItems(queryClient: QueryClient, watchlistId?: number) {
+  return useRealtimeTable('watchlist_items', queryClient, watchlistId ? ['watchlist-items', watchlistId] : ['watchlist-items'])
+}

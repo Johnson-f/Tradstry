@@ -14,24 +14,56 @@ CREATE TABLE IF NOT EXISTS company_info (
     exchange VARCHAR(50),
     sector VARCHAR(100),
     industry VARCHAR(100),
-
-    -- Financial metrics
-    market_cap BIGINT,
+    about TEXT,  -- Company description/business overview
     employees INTEGER,
-    revenue BIGINT,
-    net_income BIGINT,
-    pe_ratio DECIMAL(10,2),
-    pb_ratio DECIMAL(10,2),
-    dividend_yield DECIMAL(7,4),
+    logo VARCHAR(500),  -- URL to company logo
 
-    -- Company details
-    description TEXT,
-    website VARCHAR(500),
-    ceo VARCHAR(255),
-    headquarters VARCHAR(255),
-    founded VARCHAR(50),  -- Year or date string
-    phone VARCHAR(50),
-    email VARCHAR(255),
+    -- Real-time price data
+    price DECIMAL(15,4),  -- Current stock price
+    pre_market_price DECIMAL(15,4),  -- Pre-market trading price
+    after_hours_price DECIMAL(15,4),  -- After-hours trading price
+    change DECIMAL(15,4),  -- Price change from previous close
+    percent_change DECIMAL(8,4),  -- Percentage change from previous close
+    open DECIMAL(15,4),  -- Opening price
+    high DECIMAL(15,4),  -- Day's high price
+    low DECIMAL(15,4),  -- Day's low price
+    year_high DECIMAL(15,4),  -- 52-week high
+    year_low DECIMAL(15,4),  -- 52-week low
+
+    -- Volume and trading metrics
+    volume BIGINT,  -- Current day's volume
+    avg_volume BIGINT,  -- Average daily volume
+
+    -- Financial ratios and metrics
+    market_cap BIGINT,  -- Market capitalization
+    beta DECIMAL(8,4),  -- Beta coefficient (volatility measure)
+    pe_ratio DECIMAL(10,2),  -- Price-to-earnings ratio
+    eps DECIMAL(10,4),  -- Earnings per share
+
+    -- Dividend information
+    dividend DECIMAL(10,4),  -- Annual dividend per share
+    yield DECIMAL(7,4),  -- Dividend yield percentage
+    ex_dividend DATE,  -- Ex-dividend date
+    last_dividend DECIMAL(10,4),  -- Last dividend payment
+
+    -- Fund-specific metrics (for ETFs/Mutual Funds)
+    net_assets BIGINT,  -- Total net assets
+    nav DECIMAL(15,4),  -- Net Asset Value
+    expense_ratio DECIMAL(7,4),  -- Annual expense ratio
+
+    -- Corporate events
+    earnings_date DATE,  -- Next earnings announcement date
+
+    -- Performance returns
+    five_day_return DECIMAL(8,4),  -- 5-day return percentage
+    one_month_return DECIMAL(8,4),  -- 1-month return percentage
+    three_month_return DECIMAL(8,4),  -- 3-month return percentage
+    six_month_return DECIMAL(8,4),  -- 6-month return percentage
+    ytd_return DECIMAL(8,4),  -- Year-to-date return percentage
+    year_return DECIMAL(8,4),  -- 1-year return percentage
+    five_year_return DECIMAL(8,4),  -- 5-year return percentage
+    ten_year_return DECIMAL(8,4),  -- 10-year return percentage
+    max_return DECIMAL(8,4),  -- Maximum return percentage
 
     -- Additional metadata
     ipo_date DATE,
@@ -54,9 +86,17 @@ CREATE INDEX IF NOT EXISTS idx_company_info_industry ON company_info (industry);
 CREATE INDEX IF NOT EXISTS idx_company_info_market_cap ON company_info (market_cap DESC);
 CREATE INDEX IF NOT EXISTS idx_company_info_provider ON company_info (data_provider);
 CREATE INDEX IF NOT EXISTS idx_company_info_sector_industry ON company_info (sector, industry);
+CREATE INDEX IF NOT EXISTS idx_company_info_price ON company_info (price DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_volume ON company_info (volume DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_pe_ratio ON company_info (pe_ratio);
+CREATE INDEX IF NOT EXISTS idx_company_info_yield ON company_info (yield DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_ytd_return ON company_info (ytd_return DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_year_return ON company_info (year_return DESC);
+CREATE INDEX IF NOT EXISTS idx_company_info_earnings_date ON company_info (earnings_date);
+CREATE INDEX IF NOT EXISTS idx_company_info_ex_dividend ON company_info (ex_dividend);
 
 -- Add table comment
-COMMENT ON TABLE company_info IS 'Fundamental company information and metrics from multiple market data providers';
+COMMENT ON TABLE company_info IS 'Comprehensive company information including real-time prices, financial metrics, dividends, and performance returns from multiple market data providers';
 
 -- Add column comments
 COMMENT ON COLUMN company_info.symbol IS 'Stock ticker symbol';
@@ -66,20 +106,58 @@ COMMENT ON COLUMN company_info.company_name IS 'Full legal company name';
 COMMENT ON COLUMN company_info.exchange IS 'Stock exchange where listed';
 COMMENT ON COLUMN company_info.sector IS 'Business sector classification';
 COMMENT ON COLUMN company_info.industry IS 'Industry classification within sector';
-COMMENT ON COLUMN company_info.market_cap IS 'Market capitalization in company currency';
+COMMENT ON COLUMN company_info.about IS 'Company business description and overview';
 COMMENT ON COLUMN company_info.employees IS 'Number of employees';
-COMMENT ON COLUMN company_info.revenue IS 'Annual revenue in company currency';
-COMMENT ON COLUMN company_info.net_income IS 'Annual net income in company currency';
+COMMENT ON COLUMN company_info.logo IS 'URL to company logo image';
+
+-- Real-time price data comments
+COMMENT ON COLUMN company_info.price IS 'Current stock price';
+COMMENT ON COLUMN company_info.pre_market_price IS 'Pre-market trading price';
+COMMENT ON COLUMN company_info.after_hours_price IS 'After-hours trading price';
+COMMENT ON COLUMN company_info.change IS 'Price change from previous close';
+COMMENT ON COLUMN company_info.percent_change IS 'Percentage change from previous close';
+COMMENT ON COLUMN company_info.open IS 'Opening price for current/last trading day';
+COMMENT ON COLUMN company_info.high IS 'Highest price for current/last trading day';
+COMMENT ON COLUMN company_info.low IS 'Lowest price for current/last trading day';
+COMMENT ON COLUMN company_info.year_high IS '52-week high price';
+COMMENT ON COLUMN company_info.year_low IS '52-week low price';
+
+-- Volume and trading metrics comments
+COMMENT ON COLUMN company_info.volume IS 'Current day trading volume';
+COMMENT ON COLUMN company_info.avg_volume IS 'Average daily trading volume';
+
+-- Financial metrics comments
+COMMENT ON COLUMN company_info.market_cap IS 'Market capitalization in company currency';
+COMMENT ON COLUMN company_info.beta IS 'Beta coefficient (volatility measure vs market)';
 COMMENT ON COLUMN company_info.pe_ratio IS 'Price-to-earnings ratio';
-COMMENT ON COLUMN company_info.pb_ratio IS 'Price-to-book ratio';
-COMMENT ON COLUMN company_info.dividend_yield IS 'Annual dividend yield as decimal (0.025 = 2.5%)';
-COMMENT ON COLUMN company_info.description IS 'Company business description';
-COMMENT ON COLUMN company_info.website IS 'Company website URL';
-COMMENT ON COLUMN company_info.ceo IS 'Chief Executive Officer name';
-COMMENT ON COLUMN company_info.headquarters IS 'Company headquarters location';
-COMMENT ON COLUMN company_info.founded IS 'Year company was founded';
-COMMENT ON COLUMN company_info.phone IS 'Company phone number';
-COMMENT ON COLUMN company_info.email IS 'Company email address';
+COMMENT ON COLUMN company_info.eps IS 'Earnings per share';
+
+-- Dividend information comments
+COMMENT ON COLUMN company_info.dividend IS 'Annual dividend per share';
+COMMENT ON COLUMN company_info.yield IS 'Current dividend yield as decimal (0.025 = 2.5%)';
+COMMENT ON COLUMN company_info.ex_dividend IS 'Ex-dividend date';
+COMMENT ON COLUMN company_info.last_dividend IS 'Last dividend payment amount';
+
+-- Fund-specific metrics comments
+COMMENT ON COLUMN company_info.net_assets IS 'Total net assets (for ETFs/Mutual Funds)';
+COMMENT ON COLUMN company_info.nav IS 'Net Asset Value (for ETFs/Mutual Funds)';
+COMMENT ON COLUMN company_info.expense_ratio IS 'Annual expense ratio as decimal';
+
+-- Corporate events comments
+COMMENT ON COLUMN company_info.earnings_date IS 'Next earnings announcement date';
+
+-- Performance returns comments
+COMMENT ON COLUMN company_info.five_day_return IS '5-day return percentage as decimal';
+COMMENT ON COLUMN company_info.one_month_return IS '1-month return percentage as decimal';
+COMMENT ON COLUMN company_info.three_month_return IS '3-month return percentage as decimal';
+COMMENT ON COLUMN company_info.six_month_return IS '6-month return percentage as decimal';
+COMMENT ON COLUMN company_info.ytd_return IS 'Year-to-date return percentage as decimal';
+COMMENT ON COLUMN company_info.year_return IS '1-year return percentage as decimal';
+COMMENT ON COLUMN company_info.five_year_return IS '5-year return percentage as decimal';
+COMMENT ON COLUMN company_info.ten_year_return IS '10-year return percentage as decimal';
+COMMENT ON COLUMN company_info.max_return IS 'Maximum return percentage as decimal';
+
+-- Metadata fields comments
 COMMENT ON COLUMN company_info.ipo_date IS 'Initial public offering date';
 COMMENT ON COLUMN company_info.currency IS 'Company reporting currency (ISO 4217)';
 COMMENT ON COLUMN company_info.fiscal_year_end IS 'Fiscal year end date (MM-DD format)';
