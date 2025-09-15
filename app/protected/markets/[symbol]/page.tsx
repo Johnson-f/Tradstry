@@ -3,9 +3,11 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Plus, Star } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { marketDataService } from '@/lib/services/market-data-service';
@@ -13,7 +15,9 @@ import { SymbolSearch } from '@/components/market-data/symbol-search';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCompanyLogos } from '@/lib/hooks/use-market-data';
 import { ManagerTab } from '@/components/market-data/stock-data/manager-tab';
+import { WatchlistModal } from '@/components/market-data/watchlist-modal';
 import type { QuoteData, CompanyInfo, FundamentalData } from '@/lib/types/market-data';
+import { toast } from 'sonner';
 
 interface StockData {
   quote: QuoteData;
@@ -38,6 +42,12 @@ export default function StockSymbolPage() {
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Watchlist modal states
+  const [isWatchlistModalOpen, setIsWatchlistModalOpen] = useState(false);
+  const [isCreateWatchlistDialogOpen, setIsCreateWatchlistDialogOpen] = useState(false);
+  const [newWatchlistName, setNewWatchlistName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   // Get company logo
   const { logos } = useCompanyLogos({ symbols: symbol ? [symbol] : [] });
@@ -84,6 +94,26 @@ export default function StockSymbolPage() {
 
     fetchStockData();
   }, [symbol]);
+
+  // Handle creating a new watchlist
+  const handleCreateWatchlist = async () => {
+    if (!newWatchlistName.trim()) return;
+
+    setIsCreating(true);
+    try {
+      const response = await marketDataService.createWatchlist({ name: newWatchlistName });
+      if (response.success) {
+        toast.success("Watchlist created successfully");
+        setNewWatchlistName("");
+        setIsCreateWatchlistDialogOpen(false);
+      }
+    } catch (error) {
+      toast.error("Failed to create watchlist");
+      console.error("Error creating watchlist:", error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -151,6 +181,53 @@ export default function StockSymbolPage() {
                   }}
                 />
               </div>
+            </div>
+
+            {/* Right side - Watchlist buttons */}
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsWatchlistModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Star className="h-4 w-4" />
+                Watchlists
+              </Button>
+              
+              <Dialog open={isCreateWatchlistDialogOpen} onOpenChange={setIsCreateWatchlistDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    New Watchlist
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Watchlist</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="watchlist-name">Watchlist Name</Label>
+                      <Input
+                        id="watchlist-name"
+                        value={newWatchlistName}
+                        onChange={(e) => setNewWatchlistName(e.target.value)}
+                        placeholder="Enter watchlist name..."
+                        onKeyDown={(e) => e.key === 'Enter' && handleCreateWatchlist()}
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button variant="outline" onClick={() => setIsCreateWatchlistDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleCreateWatchlist} disabled={isCreating || !newWatchlistName.trim()}>
+                        {isCreating ? "Creating..." : "Create"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </div>
@@ -228,7 +305,7 @@ export default function StockSymbolPage() {
                       {stockData.companyInfo?.name || stockData.quote.name || `${symbol} Limited`}
                     </h1>
                     <p className="text-slate-400 text-sm mt-1">
-                      {symbol} • {stockData.quote.exchange || 'Stock Exchange'}
+                      {symbol} • Stock Exchange
                     </p>
                   </div>
                 </div>
@@ -240,6 +317,12 @@ export default function StockSymbolPage() {
           </div>
         </ScrollArea>
       </div>
+
+      {/* Watchlist Modal */}
+      <WatchlistModal 
+        open={isWatchlistModalOpen} 
+        onOpenChange={setIsWatchlistModalOpen} 
+      />
     </div>
   );
 }

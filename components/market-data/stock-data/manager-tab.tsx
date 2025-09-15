@@ -8,6 +8,8 @@ import { EarningsTab } from './earnings-tab';
 import { HoldersTab } from './holder-tab';
 import { ResearchTab } from './reasearch';
 import { CompanyInfoCard } from './company-info-card';
+import { PeersCard } from './peers-card';
+import { ActiveCard } from '../active-card';
 
 interface ManagerTabProps {
   symbol: string;
@@ -65,9 +67,17 @@ export function ManagerTab({ symbol, className = '' }: ManagerTabProps) {
           <ActiveComponent symbol={symbol} />
         </div>
 
-        {/* Company Info Card - Right Side */}
-                                        <div className="w-80 flex-shrink-0 -mt-40">
+        {/* Right Sidebar */}
+        <div className="w-80 flex-shrink-0 -mt-40 space-y-6">
           <CompanyInfoCard symbol={symbol} />
+          
+          <ActiveCard />
+          
+          <PeersCard 
+            symbol={symbol} 
+            limit={6}
+            className="h-fit"
+          />
         </div>
       </div>
     </div>

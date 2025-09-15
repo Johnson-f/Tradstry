@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS watchlist_items (
     price DECIMAL(15, 4),
     percent_change DECIMAL(8, 4),
     added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
     -- Ensure a stock symbol can only appear once per watchlist
     UNIQUE(watchlist_id, symbol)

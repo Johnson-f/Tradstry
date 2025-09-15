@@ -1470,11 +1470,26 @@ class MarketDataService:
                 client = await self.get_authenticated_client(access_token)
             
             params = {'p_name': name}
-            response = client.rpc('upsert_watchlist', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            raise Exception("Failed to create watchlist")
+            try:
+                response = client.rpc('upsert_watchlist', params).execute()
+                
+                if response.data is not None:
+                    # The RPC function returns a single integer, not an array
+                    if isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    elif isinstance(response.data, int):
+                        return response.data
+                    else:
+                        print(f"ERROR: Unexpected response format: {response.data}")
+                        raise Exception("Failed to create watchlist - unexpected response format")
+                else:
+                    print(f"ERROR: upsert_watchlist returned no data: {response}")
+                    raise Exception("Failed to create watchlist - no data returned")
+            except Exception as e:
+                print(f"ERROR in create_watchlist: {e}")
+                print(f"Response details: {getattr(e, 'response', 'No response details')}")
+                raise Exception(f"Failed to create watchlist: {str(e)}")
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1499,11 +1514,26 @@ class MarketDataService:
                 'p_price': price,
                 'p_percent_change': percent_change
             }
-            response = client.rpc('upsert_watchlist_item', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            raise Exception("Failed to add item to watchlist")
+            try:
+                response = client.rpc('upsert_watchlist_item', params).execute()
+                
+                # The RPC function returns an integer (item ID) directly
+                if response.data is not None:
+                    if isinstance(response.data, int):
+                        return response.data
+                    elif isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    else:
+                        print(f"ERROR: Unexpected add item response format: {response.data}")
+                        raise Exception("Failed to add item to watchlist - unexpected response format")
+                else:
+                    print(f"ERROR: upsert_watchlist_item returned no data: {response}")
+                    raise Exception("Failed to add item to watchlist - no data returned")
+            except Exception as e:
+                print(f"ERROR in add_watchlist_item: {e}")
+                print(f"Response details: {getattr(e, 'response', 'No response details')}")
+                raise Exception(f"Failed to add item to watchlist: {str(e)}")
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1514,11 +1544,23 @@ class MarketDataService:
                 client = await self.get_authenticated_client(access_token)
             
             params = {'p_watchlist_id': watchlist_id}
-            response = client.rpc('delete_watchlist', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return False
+            try:
+                response = client.rpc('delete_watchlist', params).execute()
+                
+                # The RPC function returns a boolean directly
+                if response.data is not None:
+                    if isinstance(response.data, bool):
+                        return response.data
+                    elif isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    else:
+                        print(f"ERROR: Unexpected delete response format: {response.data}")
+                        return False
+                return False
+            except Exception as e:
+                print(f"ERROR in delete_watchlist: {e}")
+                return False
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1529,11 +1571,23 @@ class MarketDataService:
                 client = await self.get_authenticated_client(access_token)
             
             params = {'p_item_id': item_id}
-            response = client.rpc('delete_watchlist_item', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return False
+            try:
+                response = client.rpc('delete_watchlist_item', params).execute()
+                
+                # The RPC function returns a boolean directly
+                if response.data is not None:
+                    if isinstance(response.data, bool):
+                        return response.data
+                    elif isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    else:
+                        print(f"ERROR: Unexpected delete item response format: {response.data}")
+                        return False
+                return False
+            except Exception as e:
+                print(f"ERROR in delete_watchlist_item: {e}")
+                return False
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1552,11 +1606,23 @@ class MarketDataService:
                 'p_watchlist_id': watchlist_id,
                 'p_symbol': symbol.upper()
             }
-            response = client.rpc('delete_watchlist_item_by_symbol', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return False
+            try:
+                response = client.rpc('delete_watchlist_item_by_symbol', params).execute()
+                
+                # The RPC function returns a boolean directly
+                if response.data is not None:
+                    if isinstance(response.data, bool):
+                        return response.data
+                    elif isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    else:
+                        print(f"ERROR: Unexpected delete by symbol response format: {response.data}")
+                        return False
+                return False
+            except Exception as e:
+                print(f"ERROR in delete_watchlist_item_by_symbol: {e}")
+                return False
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1567,11 +1633,23 @@ class MarketDataService:
                 client = await self.get_authenticated_client(access_token)
             
             params = {'p_watchlist_id': watchlist_id}
-            response = client.rpc('clear_watchlist', params).execute()
             
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return 0
+            try:
+                response = client.rpc('clear_watchlist', params).execute()
+                
+                # The RPC function returns an integer directly (count of deleted items)
+                if response.data is not None:
+                    if isinstance(response.data, int):
+                        return response.data
+                    elif isinstance(response.data, list) and len(response.data) > 0:
+                        return response.data[0]
+                    else:
+                        print(f"ERROR: Unexpected clear watchlist response format: {response.data}")
+                        return 0
+                return 0
+            except Exception as e:
+                print(f"ERROR in clear_watchlist: {e}")
+                return 0
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -1687,10 +1765,16 @@ class MarketDataService:
                 'p_symbol': symbol.upper(),
                 'p_data_date': (data_date or date.today()).isoformat()
             }
-            response = client.rpc('get_peer_comparison', params).execute()
             
-            from models.market_data import PeerComparison
-            return [PeerComparison(**item) for item in response.data] if response.data else []
+            try:
+                response = client.rpc('get_peer_comparison', params).execute()
+                
+                from models.market_data import PeerComparison
+                return [PeerComparison(**item) for item in response.data] if response.data else []
+            except Exception as e:
+                print(f"ERROR in get_peer_comparison for symbol {symbol}: {e}")
+                # Return empty list instead of failing completely
+                return []
         
         return await self._execute_with_retry(operation, access_token)
 

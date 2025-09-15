@@ -20,39 +20,14 @@ interface WatchlistProps {
 
 export function Watchlist({ className }: WatchlistProps) {
   const [selectedWatchlistId, setSelectedWatchlistId] = useState<number | null>(null);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
-  const [newWatchlistName, setNewWatchlistName] = useState("");
   const [newSymbol, setNewSymbol] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
 
   const queryClient = useQueryClient();
   const { watchlists, isLoading: watchlistsLoading, refetch: refetchWatchlists } = useWatchlists();
   const { watchlist, isLoading: watchlistLoading, refetch: refetchWatchlist } = useWatchlistById(selectedWatchlistId || 0);
 
-  const handleCreateWatchlist = async () => {
-    if (!newWatchlistName.trim()) return;
-
-    setIsCreating(true);
-    try {
-      const response = await marketDataService.createWatchlist({ name: newWatchlistName });
-      if (response.success) {
-        toast.success("Watchlist created successfully");
-        setNewWatchlistName("");
-        setIsCreateDialogOpen(false);
-        refetchWatchlists();
-        if (response.watchlist_id) {
-          setSelectedWatchlistId(response.watchlist_id);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to create watchlist");
-      console.error("Error creating watchlist:", error);
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleDeleteWatchlist = async (id: number) => {
     try {
@@ -130,46 +105,11 @@ export function Watchlist({ className }: WatchlistProps) {
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("w-full", className)}>
+
       {/* Watchlist Selector */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-lg font-semibold">Watchlists</CardTitle>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-8">
-                <Plus className="h-4 w-4 mr-1" />
-                New
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Watchlist</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="watchlist-name">Watchlist Name</Label>
-                  <Input
-                    id="watchlist-name"
-                    value={newWatchlistName}
-                    onChange={(e) => setNewWatchlistName(e.target.value)}
-                    placeholder="Enter watchlist name..."
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateWatchlist()}
-                  />
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateWatchlist} disabled={isCreating || !newWatchlistName.trim()}>
-                    {isCreating ? "Creating..." : "Create"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-4">
           {watchlistsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -218,11 +158,11 @@ export function Watchlist({ className }: WatchlistProps) {
 
       {/* Selected Watchlist Items */}
       {selectedWatchlistId && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-            <CardTitle className="text-lg font-semibold">
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-md font-medium">
               {watchlist?.name || "Watchlist Items"}
-            </CardTitle>
+            </h4>
             <div className="flex space-x-2">
               <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
                 <DialogTrigger asChild>
@@ -268,91 +208,93 @@ export function Watchlist({ className }: WatchlistProps) {
                 </Button>
               )}
             </div>
-          </CardHeader>
-          <CardContent>
-            {watchlistLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center space-x-3">
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-16" />
-                      </div>
-                    </div>
-                    <div className="text-right space-y-2">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-3 w-12" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : !watchlist?.items || watchlist.items.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">No symbols in this watchlist yet.</p>
-                <p className="text-sm text-muted-foreground mt-1">Add some symbols to get started.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {watchlist.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:bg-muted/50"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          {item.symbol.slice(0, 2)}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-medium text-sm">
-                          {item.company_name || item.symbol}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.symbol}
+          </div>
+          <Card>
+            <CardContent className="p-4">
+              {watchlistLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center space-x-3">
+                        <Skeleton className="h-8 w-8 rounded" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-3 w-16" />
                         </div>
                       </div>
+                      <div className="text-right space-y-2">
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-3 w-12" />
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="text-right">
-                        {item.price && (
+                  ))}
+                </div>
+              ) : !watchlist?.items || watchlist.items.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No symbols in this watchlist yet.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Add some symbols to get started.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {watchlist.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:bg-muted/50"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {item.symbol.slice(0, 2)}
+                          </span>
+                        </div>
+                        <div>
                           <div className="font-medium text-sm">
-                            ${item.price.toFixed(2)}
+                            {item.company_name || item.symbol}
                           </div>
-                        )}
-                        {item.percent_change !== undefined && (
-                          <div className={cn(
-                            "flex items-center justify-end space-x-1 text-xs",
-                            item.percent_change >= 0 ? "text-green-600" : "text-red-600"
-                          )}>
-                            {item.percent_change >= 0 ? (
-                              <TrendingUp className="h-3 w-3" />
-                            ) : (
-                              <TrendingDown className="h-3 w-3" />
-                            )}
-                            <span>
-                              {item.percent_change >= 0 ? '+' : ''}{item.percent_change.toFixed(2)}%
-                            </span>
+                          <div className="text-xs text-muted-foreground">
+                            {item.symbol}
                           </div>
-                        )}
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center space-x-3">
+                        <div className="text-right">
+                          {item.price && (
+                            <div className="font-medium text-sm">
+                              ${typeof item.price === 'number' ? item.price.toFixed(2) : parseFloat(item.price).toFixed(2)}
+                            </div>
+                          )}
+                          {item.percent_change !== undefined && item.percent_change !== null && (
+                            <div className={cn(
+                              "flex items-center justify-end space-x-1 text-xs",
+                              item.percent_change >= 0 ? "text-green-600" : "text-red-600"
+                            )}>
+                              {item.percent_change >= 0 ? (
+                                <TrendingUp className="h-3 w-3" />
+                              ) : (
+                                <TrendingDown className="h-3 w-3" />
+                              )}
+                              <span>
+                                {item.percent_change >= 0 ? '+' : ''}{typeof item.percent_change === 'number' ? item.percent_change.toFixed(2) : parseFloat(item.percent_change).toFixed(2)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

@@ -25,19 +25,17 @@ export function OverviewTab({ symbol, className = '' }: OverviewTabProps) {
         <PriceChart symbol={symbol} />
       </div>
 
-      {/* Grid layout for Mini, Recent Developments, and Latest Price Movement */}
-      
-        {/* Mini - Third */}
-        <div>
-          <StockMini symbol={symbol} />
-        </div>
+      {/* Mini - Third */}
+      <div className="w-full">
+        <StockMini symbol={symbol} />
+      </div>
 
-        {/* Recent Developments - Fourth */}
-        <div>
-          <RecentDevelopments symbol={symbol} />
-        </div>
+      {/* Recent Developments - Fifth */}
+      <div className="w-full">
+        <RecentDevelopments symbol={symbol} />
+      </div>
 
-      {/* Stock Metrics - Fifth */}
+      {/* Stock Metrics - Sixth */}
       <div className="w-full">
         <StockMetrics symbol={symbol} />
       </div>

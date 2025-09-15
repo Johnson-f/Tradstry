@@ -150,7 +150,7 @@ BEGIN
         
         UNION ALL
         
-        -- Get main stock data from company_info
+        -- Get main stock data from company_info (try multiple providers)
         SELECT 
             c.symbol,
             c.name,
@@ -162,7 +162,15 @@ BEGIN
             0 as peer_rank
         FROM company_info c
         WHERE c.symbol = UPPER(p_symbol)
-          AND c.data_provider = 'finance-query'
+          AND c.data_provider IN ('finance-query', 'yahoo_finance', 'finnhub')
+        ORDER BY 
+            CASE c.data_provider 
+                WHEN 'finance-query' THEN 1
+                WHEN 'yahoo_finance' THEN 2
+                WHEN 'finnhub' THEN 3
+                ELSE 4
+            END
+        LIMIT 1
     )
     SELECT * FROM peer_data
     ORDER BY is_main_stock DESC, peer_rank ASC;
