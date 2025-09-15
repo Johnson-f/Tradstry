@@ -53,6 +53,19 @@ interface EarningsCalendar {
   last_updated?: string;
   update_source?: string;
   data_provider: string;
+  logo?: string;
+}
+
+// Types for logo API response
+interface LogoApiResponse {
+  symbol: string;
+  name: string;
+  price: string;
+  preMarketPrice: string;
+  afterHoursPrice: string;
+  change: string;
+  percentChange: string;
+  logo: string;
 }
 
 
@@ -327,6 +340,137 @@ async function getExistingSymbols(supabase: SupabaseClient): Promise<string[]> {
 }
 
 /**
+ * Fetch symbols from earnings calendar that need logos
+ */
+async function getEarningsSymbolsNeedingLogos(supabase: SupabaseClient): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('earnings_calendar')
+      .select('symbol')
+      .or('logo.is.null,logo.eq.""')
+      .order('symbol');
+    
+    if (error) {
+      console.error('Error fetching earnings symbols needing logos:', error);
+      return [];
+    }
+    
+    // Get unique symbols
+    const uniqueSymbols = [...new Set(data.map((row: { symbol: string }) => row.symbol))];
+    console.log(`Found ${uniqueSymbols.length} earnings symbols needing logos`);
+    return uniqueSymbols;
+  } catch (error) {
+    console.error('Error in getEarningsSymbolsNeedingLogos:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch logos from finance-query API
+ */
+async function fetchLogosFromAPI(symbols: string[]): Promise<Map<string, string>> {
+  const logoMap = new Map<string, string>();
+  
+  if (symbols.length === 0) {
+    return logoMap;
+  }
+  
+  try {
+    // Process symbols in batches of 10 to avoid overwhelming the API
+    const batchSize = 10;
+    const batches = [];
+    
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      batches.push(symbols.slice(i, i + batchSize));
+    }
+    
+    console.log(`Processing ${batches.length} batches of symbols for logo fetching`);
+    
+    for (const batch of batches) {
+      try {
+        const symbolsParam = batch.join(',');
+        const url = `https://finance-query.onrender.com/v1/simple-quotes?symbols=${symbolsParam}`;
+        
+        console.log(`Fetching logos for batch: ${symbolsParam}`);
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.warn(`Logo API request failed for batch ${symbolsParam}: ${response.status} ${response.statusText}`);
+          continue;
+        }
+        
+        const data: LogoApiResponse[] = await response.json();
+        
+        if (Array.isArray(data)) {
+          data.forEach(item => {
+            if (item.symbol && item.logo) {
+              logoMap.set(item.symbol.toUpperCase(), item.logo);
+            }
+          });
+        }
+        
+        // Add a small delay between requests to be respectful to the API
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (batchError) {
+        console.error(`Error processing logo batch ${batch.join(',')}:`, batchError);
+        continue;
+      }
+    }
+    
+    console.log(`Successfully fetched ${logoMap.size} logos from API`);
+    return logoMap;
+    
+  } catch (error) {
+    console.error('Error in fetchLogosFromAPI:', error);
+    return logoMap;
+  }
+}
+
+/**
+ * Update earnings calendar records with logos
+ */
+async function updateEarningsWithLogos(supabase: SupabaseClient, logoMap: Map<string, string>): Promise<{ updated: number; errors: number }> {
+  let updated = 0;
+  let errors = 0;
+  
+  if (logoMap.size === 0) {
+    return { updated, errors };
+  }
+  
+  try {
+    // Update records one by one to handle potential conflicts gracefully
+    for (const [symbol, logo] of logoMap.entries()) {
+      try {
+        const { error } = await supabase
+          .from('earnings_calendar')
+          .update({ logo })
+          .eq('symbol', symbol)
+          .or('logo.is.null,logo.eq.""');
+        
+        if (error) {
+          console.error(`Error updating logo for ${symbol}:`, error);
+          errors++;
+        } else {
+          updated++;
+        }
+      } catch (updateError) {
+        console.error(`Error updating logo for ${symbol}:`, updateError);
+        errors++;
+      }
+    }
+    
+    console.log(`Logo update completed: ${updated} updated, ${errors} errors`);
+    return { updated, errors };
+    
+  } catch (error) {
+    console.error('Error in updateEarningsWithLogos:', error);
+    return { updated, errors };
+  }
+}
+
+/**
  * Save earnings calendar data to the database
  */
 async function saveEarningsData(supabase: SupabaseClient, earningsData: EarningsCalendar[]): Promise<boolean> {
@@ -371,6 +515,17 @@ Deno.serve(async (req) => {
     
     // Get existing symbols from the database
     const existingSymbols = await getExistingSymbols(supabaseClient);
+    
+    // Also fetch logos for earnings calendar symbols that need them
+    console.log('Fetching logos for earnings calendar symbols...');
+    const earningsSymbolsNeedingLogos = await getEarningsSymbolsNeedingLogos(supabaseClient);
+    let logoUpdateResult = { updated: 0, errors: 0 };
+    
+    if (earningsSymbolsNeedingLogos.length > 0) {
+      const logoMap = await fetchLogosFromAPI(earningsSymbolsNeedingLogos);
+      logoUpdateResult = await updateEarningsWithLogos(supabaseClient, logoMap);
+      console.log(`Logo update result: ${logoUpdateResult.updated} updated, ${logoUpdateResult.errors} errors`);
+    }
     
     if (existingSymbols.length === 0) {
       return new Response(
@@ -430,7 +585,8 @@ Deno.serve(async (req) => {
                 processed: processedSymbols.size,
                 successful: processedSymbols.size,
                 errors: 0,
-                total_earnings_records: combinedData.length
+                total_earnings_records: combinedData.length,
+                logos_updated: earningsSymbolsNeedingLogos.length > 0 ? logoUpdateResult?.updated || 0 : 0
               },
               results: results.slice(0, 50)
             };

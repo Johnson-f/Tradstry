@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
-from routers import analytics, setups_router, notes_router, images, trade_notes_router
+from routers import analytics, setups_router, notes_router, images, trade_notes_router, market_data_router
 from routers import ai_reports, ai_chat, ai_insights
 from routers.stocks import router as stocks_router
 from routers.options import router as options_router
@@ -35,6 +35,7 @@ app.include_router(setups_router, prefix=get_settings().API_PREFIX)
 app.include_router(notes_router, prefix=get_settings().API_PREFIX)
 app.include_router(images.router, prefix=get_settings().API_PREFIX)
 app.include_router(trade_notes_router, prefix=get_settings().API_PREFIX)
+app.include_router(market_data_router, prefix=get_settings().API_PREFIX)
 
 # AI routers
 app.include_router(ai_reports.router, prefix=get_settings().API_PREFIX)

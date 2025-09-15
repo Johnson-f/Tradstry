@@ -33,6 +33,53 @@ CREATE TABLE IF NOT EXISTS news_articles (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- =====================================================
+-- NEW TABLE: Finance Query News Data
+-- =====================================================
+-- This table stores news specifically from finance-query.onrender.com API
+-- Optimized for finance-specific news with stock symbol tracking
+
+CREATE TABLE IF NOT EXISTS finance_news (
+    id BIGSERIAL PRIMARY KEY,
+    
+    -- Core news data from finance-query API
+    title TEXT NOT NULL,
+    news_url TEXT UNIQUE NOT NULL,  -- The 'link' field from API
+    source_name VARCHAR(100) NOT NULL,  -- The 'source' field from API
+    image_url TEXT,  -- The 'img' field from API
+    time_published VARCHAR(50),  -- Original time string from API ("5 hours ago")
+    
+    -- Processed timestamps
+    published_at TIMESTAMP NOT NULL,  -- Converted to proper timestamp
+    
+    -- Calculated fields (from Edge Function processing)
+    sentiment_score DECIMAL(4,3),  -- -1.000 to 1.000
+    relevance_score DECIMAL(4,3),  -- 0.000 to 1.000 
+    sentiment_confidence DECIMAL(4,3),  -- 0.000 to 1.000
+    
+    -- Stock symbol mentions
+    mentioned_symbols TEXT[],  -- Array of stock symbols found in title
+    primary_symbols TEXT[],  -- Most relevant symbols (if any)
+    
+    -- Metadata
+    word_count INTEGER DEFAULT 0,
+    language VARCHAR(5) DEFAULT 'en',
+    category VARCHAR(50) DEFAULT 'financial',
+    
+    -- Provider tracking
+    data_provider VARCHAR(50) DEFAULT 'finance_query',
+    api_fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Audit fields
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   
+   -- Constraints
+    CONSTRAINT valid_sentiment_score CHECK (sentiment_score IS NULL OR (sentiment_score >= -1 AND sentiment_score <= 1)),
+    CONSTRAINT valid_relevance_score CHECK (relevance_score IS NULL OR (relevance_score >= 0 AND relevance_score <= 1)),
+    CONSTRAINT valid_confidence_score CHECK (sentiment_confidence IS NULL OR (sentiment_confidence >= 0 AND sentiment_confidence <= 1));
+
+);
 -- Indexes for news analysis queries
 CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles (published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_news_articles_source ON news_articles (source);
@@ -41,6 +88,17 @@ CREATE INDEX IF NOT EXISTS idx_news_articles_relevance ON news_articles (relevan
 CREATE INDEX IF NOT EXISTS idx_news_articles_category ON news_articles (category);
 CREATE INDEX IF NOT EXISTS idx_news_articles_provider ON news_articles (data_provider);
 CREATE INDEX IF NOT EXISTS idx_news_articles_published_at_source ON news_articles (published_at DESC, source);
+
+-- Indexes for finance_news table (optimized for finance-query API)
+CREATE INDEX IF NOT EXISTS idx_finance_news_published_at ON finance_news (published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_finance_news_source ON finance_news (source_name);
+CREATE INDEX IF NOT EXISTS idx_finance_news_sentiment ON finance_news (sentiment_score DESC);
+CREATE INDEX IF NOT EXISTS idx_finance_news_relevance ON finance_news (relevance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_finance_news_symbols ON finance_news USING GIN (mentioned_symbols);
+CREATE INDEX IF NOT EXISTS idx_finance_news_primary_symbols ON finance_news USING GIN (primary_symbols);
+CREATE INDEX IF NOT EXISTS idx_finance_news_api_fetch ON finance_news (api_fetch_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_finance_news_url ON finance_news (news_url);
+CREATE INDEX IF NOT EXISTS idx_finance_news_title_search ON finance_news USING GIN (to_tsvector('english', title));
 
 -- Many-to-many relationship table for news mentioning multiple stocks
 CREATE TABLE IF NOT EXISTS news_stocks (
@@ -52,6 +110,22 @@ CREATE TABLE IF NOT EXISTS news_stocks (
     PRIMARY KEY (news_id, stock_id)
 );
 
+-- New relationship table for finance_news to stocks
+CREATE TABLE IF NOT EXISTS finance_news_stocks (
+    finance_news_id BIGINT REFERENCES finance_news(id) ON DELETE CASCADE,
+    stock_symbol VARCHAR(10) NOT NULL,  -- Direct symbol reference (no foreign key to allow flexibility)
+    mention_type VARCHAR(20) DEFAULT 'mentioned',  -- 'primary', 'mentioned', 'sector'
+    sentiment_impact DECIMAL(4,3),  -- -1.000 to 1.000 impact on stock
+    confidence_score DECIMAL(4,3),  -- 0.000 to 1.000 confidence in symbol detection
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (finance_news_id, stock_symbol)
+);
+
+-- Index for finance_news_stocks relationship
+CREATE INDEX IF NOT EXISTS idx_finance_news_stocks_symbol ON finance_news_stocks (stock_symbol);
+CREATE INDEX IF NOT EXISTS idx_finance_news_stocks_news_id ON finance_news_stocks (finance_news_id);
+CREATE INDEX IF NOT EXISTS idx_finance_news_stocks_sentiment ON finance_news_stocks (sentiment_impact DESC);
+
 -- Indexes for news-stock relationship queries
 CREATE INDEX IF NOT EXISTS idx_news_stocks_stock_id ON news_stocks (stock_id);
 CREATE INDEX IF NOT EXISTS idx_news_stocks_news_id ON news_stocks (news_id);
@@ -61,6 +135,8 @@ CREATE INDEX IF NOT EXISTS idx_news_stocks_sentiment_impact ON news_stocks (sent
 -- Add table comments
 COMMENT ON TABLE news_articles IS 'News articles and content from multiple market data providers';
 COMMENT ON TABLE news_stocks IS 'Many-to-many relationship between news articles and mentioned stocks';
+COMMENT ON TABLE finance_news IS 'Finance-specific news from finance-query.onrender.com API with enhanced stock tracking';
+COMMENT ON TABLE finance_news_stocks IS 'Relationship between finance news articles and mentioned stock symbols';
 
 -- Add column comments for news_articles
 COMMENT ON COLUMN news_articles.title IS 'News article title';
@@ -150,6 +226,58 @@ CREATE POLICY "news_articles_delete_policy" ON news_articles
     USING (false);  -- Deny all delete operations
 
 CREATE POLICY "news_stocks_delete_policy" ON news_stocks
+    FOR DELETE
+    USING (false);  -- Deny all delete operations
+
+-- =====================================================
+-- FINANCE NEWS TABLE SECURITY POLICIES
+-- =====================================================
+
+-- Enable Row Level Security on finance_news tables
+ALTER TABLE finance_news ENABLE ROW LEVEL SECURITY;
+ALTER TABLE finance_news_stocks ENABLE ROW LEVEL SECURITY;
+
+-- Grant SELECT permission to public for finance_news tables
+GRANT SELECT ON finance_news TO PUBLIC;
+GRANT SELECT ON finance_news_stocks TO PUBLIC;
+
+-- Revoke modification permissions from public
+REVOKE INSERT, UPDATE, DELETE ON finance_news FROM PUBLIC;
+REVOKE INSERT, UPDATE, DELETE ON finance_news_stocks FROM PUBLIC;
+
+-- Create policies for finance_news table
+CREATE POLICY "finance_news_select_policy" ON finance_news
+    FOR SELECT
+    USING (true);  -- Allow all users to read all rows
+
+CREATE POLICY "finance_news_insert_policy" ON finance_news
+    FOR INSERT
+    WITH CHECK (false);  -- Deny all insert operations
+
+CREATE POLICY "finance_news_update_policy" ON finance_news
+    FOR UPDATE
+    USING (false)  -- Deny all update operations
+    WITH CHECK (false);
+
+CREATE POLICY "finance_news_delete_policy" ON finance_news
+    FOR DELETE
+    USING (false);  -- Deny all delete operations
+
+-- Create policies for finance_news_stocks table
+CREATE POLICY "finance_news_stocks_select_policy" ON finance_news_stocks
+    FOR SELECT
+    USING (true);  -- Allow all users to read all rows
+
+CREATE POLICY "finance_news_stocks_insert_policy" ON finance_news_stocks
+    FOR INSERT
+    WITH CHECK (false);  -- Deny all insert operations
+
+CREATE POLICY "finance_news_stocks_update_policy" ON finance_news_stocks
+    FOR UPDATE
+    USING (false)  -- Deny all update operations
+    WITH CHECK (false);
+
+CREATE POLICY "finance_news_stocks_delete_policy" ON finance_news_stocks
     FOR DELETE
     USING (false);  -- Deny all delete operations
 

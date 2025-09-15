@@ -121,6 +121,94 @@ export const apiConfig = {
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
     },
+    // Market Data endpoints
+    marketData: {
+      base: "/market-data",
+      // Earnings endpoints
+      earnings: {
+        dailySummary: "/market-data/earnings/daily-summary",
+      },
+      // Company endpoints
+      companies: {
+        info: (symbol: string) => `/market-data/company/${symbol}`,
+        bySector: "/market-data/companies/by-sector",
+        search: "/market-data/companies/search",
+      },
+      // News endpoints
+      news: {
+        latest: "/market-data/news/latest",
+        filtered: "/market-data/news/filtered",
+        symbol: (symbol: string) => `/market-data/news/symbol/${symbol}`,
+        symbolLatest: (symbol: string) => `/market-data/news/symbol/${symbol}/latest`,
+        symbolStats: (symbol: string) => `/market-data/news/symbol/${symbol}/stats`,
+        symbolSearch: (symbol: string) => `/market-data/news/symbol/${symbol}/search`,
+      },
+      // Stock metrics endpoints
+      stocks: {
+        quotes: (symbol: string) => `/market-data/quotes/${symbol}`,
+        fundamentals: (symbol: string) => `/market-data/fundamentals/${symbol}`,
+        combined: (symbol: string) => `/market-data/stock/${symbol}/combined`,
+      },
+      // Price movements endpoints
+      movements: {
+        significant: "/market-data/movements/significant",
+        topMoversToday: "/market-data/movements/top-movers-today",
+      },
+      // Overview endpoint
+      overview: (symbol: string) => `/market-data/overview/${symbol}`,
+      // Symbol management endpoints
+      symbols: {
+        check: (symbol: string) => `/market-data/symbols/check/${symbol}`,
+        save: "/market-data/symbols/save",
+      },
+      // Symbol search endpoint
+      search: "/market-data/search",
+      // Quotes endpoint
+      quotes: "/market-data/quotes",
+      // Market movers endpoints
+      movers: {
+        gainers: "/market-data/movers/gainers",
+        losers: "/market-data/movers/losers",
+        mostActive: "/market-data/movers/most-active",
+        gainersWithLogos: "/market-data/movers/gainers-with-logos",
+        losersWithLogos: "/market-data/movers/losers-with-logos",
+        mostActiveWithLogos: "/market-data/movers/most-active-with-logos",
+        overview: "/market-data/movers/overview",
+      },
+      // Company logos endpoints
+      logos: {
+        batch: "/market-data/logos/batch",
+        earningsCalendarBatch: "/market-data/logos/earnings-calendar-batch",
+      },
+      // Historical prices endpoints
+      historical: {
+        base: (symbol: string) => `/market-data/historical/${symbol}`,
+        summary: (symbol: string) => `/market-data/historical/${symbol}/summary`,
+        latest: (symbol: string) => `/market-data/historical/${symbol}/latest`,
+        range: (symbol: string) => `/market-data/historical/${symbol}/range`,
+        overview: (symbol: string) => `/market-data/historical/${symbol}/overview`,
+      },
+      // Health check
+      health: "/market-data/health",
+      // Watchlist endpoints
+      watchlists: {
+        base: "/market-data/watchlists",
+        byId: (id: number) => `/market-data/watchlists/${id}`,
+        items: (id: number) => `/market-data/watchlists/${id}/items`,
+        addItem: "/market-data/watchlists/items",
+        deleteItem: (itemId: number) => `/market-data/watchlists/items/${itemId}`,
+        deleteBySymbol: (watchlistId: number, symbol: string) => `/market-data/watchlists/${watchlistId}/items/${symbol}`,
+        clear: (id: number) => `/market-data/watchlists/${id}/clear`,
+      },
+      // Stock peers endpoints
+      peers: {
+        base: (symbol: string) => `/market-data/peers/${symbol}`,
+        topPerformers: (symbol: string) => `/market-data/peers/${symbol}/top-performers`,
+        worstPerformers: (symbol: string) => `/market-data/peers/${symbol}/worst-performers`,
+        comparison: (symbol: string) => `/market-data/peers/${symbol}/comparison`,
+        paginated: (symbol: string) => `/market-data/peers/${symbol}/paginated`,
+      },
+    },
     // AI Summary endpoints (Static - Production)
     aiSummary: {
       generate: "/ai-summary/generate",

@@ -19,6 +19,15 @@ from .setups import (
     TradeSetupBase, TradeSetupCreate, TradeSetupInDB, SetupWithTrades,
     SetupAnalytics, TradeBySetup, SetupSummary
 )
+from .market_data import (
+    DailyEarningsSummary, EarningsCompany, CompanyInfo, CompanyBasic,
+    MarketNews, FinanceNews, NewsStats, NewsSearch, StockQuote, FundamentalData,
+    PriceMovement, TopMover, EarningsRequest, CompanySearchRequest,
+    CompanySectorRequest, CompanySearchTermRequest, MarketNewsRequest,
+    FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest, NewsSearchRequest,
+    StockQuoteRequest, FundamentalRequest, PriceMovementRequest, TopMoversRequest
+)
+
 from .trade_notes import (
     TradeNoteBase, TradeNoteCreate, TradeNoteUpdate, TradeNoteInDB,
     TradeNoteType, TradePhase
@@ -41,6 +50,15 @@ __all__ = [
     'SetupCategory', 'SetupBase', 'SetupCreate', 'SetupUpdate', 'SetupInDB',
     'TradeSetupBase', 'TradeSetupCreate', 'TradeSetupInDB', 'SetupWithTrades',
     'SetupAnalytics', 'TradeBySetup', 'SetupSummary',
+
+    # Market data models
+    'DailyEarningsSummary', 'EarningsCompany', 'CompanyInfo', 'CompanyBasic',
+    'MarketNews', 'FinanceNews', 'NewsStats', 'NewsSearch', 'StockQuote', 
+    'FundamentalData', 'PriceMovement', 'TopMover', 'EarningsRequest', 
+    'CompanySearchRequest', 'CompanySectorRequest', 'CompanySearchTermRequest',
+    'MarketNewsRequest', 'FilteredNewsRequest', 'SymbolNewsRequest', 
+    'NewsStatsRequest', 'NewsSearchRequest', 'StockQuoteRequest', 
+    'FundamentalRequest', 'PriceMovementRequest', 'TopMoversRequest'
 
     # Trade Note models
     'TradeNoteBase', 'TradeNoteCreate', 'TradeNoteUpdate', 'TradeNoteInDB',
