@@ -17,7 +17,12 @@ from models.market_data import (
     HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest,
     HistoricalPriceRangeRequest, CacheData, CachedSymbolData, MajorIndicesResponse, 
     CacheDataRequest, MarketMoversRequest, CompanyLogosRequest, EarningsCalendarLogosRequest,
-    SymbolSearchRequest, SymbolSearchResponse, QuoteRequest, QuoteResponse
+    SymbolSearchRequest, SymbolSearchResponse, QuoteRequest, QuoteResponse,
+    # Watchlist models
+    Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, 
+    AddWatchlistItemRequest, DeleteWatchlistItemRequest, WatchlistResponse, DeleteResponse,
+    # Stock peers models
+    StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -869,3 +874,287 @@ async def get_quotes(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")
+
+
+# =====================================================
+# WATCHLIST ENDPOINTS
+# =====================================================
+
+@router.get("/watchlists", response_model=List[Watchlist])
+async def get_user_watchlists(
+    token: str = Depends(get_token)
+):
+    """Get all watchlists for the authenticated user."""
+    try:
+        service = MarketDataService()
+        result = await service.get_user_watchlists(token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get watchlists: {str(e)}")
+
+
+@router.get("/watchlists/{watchlist_id}", response_model=Optional[WatchlistWithItems])
+async def get_watchlist_with_items(
+    watchlist_id: int,
+    token: str = Depends(get_token)
+):
+    """Get a watchlist with all its items."""
+    try:
+        service = MarketDataService()
+        result = await service.get_watchlist_with_items(watchlist_id, token)
+        if not result:
+            raise HTTPException(status_code=404, detail="Watchlist not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get watchlist: {str(e)}")
+
+
+@router.get("/watchlists/{watchlist_id}/items", response_model=List[WatchlistItem])
+async def get_watchlist_items(
+    watchlist_id: int,
+    token: str = Depends(get_token)
+):
+    """Get all items in a specific watchlist."""
+    try:
+        service = MarketDataService()
+        result = await service.get_watchlist_items(watchlist_id, token)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get watchlist items: {str(e)}")
+
+
+@router.post("/watchlists", response_model=WatchlistResponse)
+async def create_watchlist(
+    request: CreateWatchlistRequest,
+    token: str = Depends(get_token)
+):
+    """Create a new watchlist for the authenticated user."""
+    try:
+        service = MarketDataService()
+        watchlist_id = await service.create_watchlist(request.name, token)
+        return WatchlistResponse(
+            success=True,
+            message="Watchlist created successfully",
+            watchlist_id=watchlist_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create watchlist: {str(e)}")
+
+
+@router.post("/watchlists/items", response_model=WatchlistResponse)
+async def add_watchlist_item(
+    request: AddWatchlistItemRequest,
+    token: str = Depends(get_token)
+):
+    """Add an item to a watchlist."""
+    try:
+        service = MarketDataService()
+        item_id = await service.add_watchlist_item(
+            watchlist_id=request.watchlist_id,
+            symbol=request.symbol,
+            company_name=request.company_name,
+            price=float(request.price) if request.price else None,
+            percent_change=float(request.percent_change) if request.percent_change else None,
+            access_token=token
+        )
+        return WatchlistResponse(
+            success=True,
+            message="Item added to watchlist successfully",
+            watchlist_id=item_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add item to watchlist: {str(e)}")
+
+
+@router.delete("/watchlists/{watchlist_id}", response_model=DeleteResponse)
+async def delete_watchlist(
+    watchlist_id: int,
+    token: str = Depends(get_token)
+):
+    """Delete a watchlist."""
+    try:
+        service = MarketDataService()
+        success = await service.delete_watchlist(watchlist_id, token)
+        if not success:
+            raise HTTPException(status_code=404, detail="Watchlist not found or access denied")
+        return DeleteResponse(
+            success=True,
+            message="Watchlist deleted successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete watchlist: {str(e)}")
+
+
+@router.delete("/watchlists/items/{item_id}", response_model=DeleteResponse)
+async def delete_watchlist_item(
+    item_id: int,
+    token: str = Depends(get_token)
+):
+    """Delete a watchlist item by ID."""
+    try:
+        service = MarketDataService()
+        success = await service.delete_watchlist_item(item_id, token)
+        if not success:
+            raise HTTPException(status_code=404, detail="Watchlist item not found or access denied")
+        return DeleteResponse(
+            success=True,
+            message="Watchlist item deleted successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete watchlist item: {str(e)}")
+
+
+@router.delete("/watchlists/{watchlist_id}/items/{symbol}", response_model=DeleteResponse)
+async def delete_watchlist_item_by_symbol(
+    watchlist_id: int,
+    symbol: str,
+    token: str = Depends(get_token)
+):
+    """Delete a watchlist item by symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        success = await service.delete_watchlist_item_by_symbol(watchlist_id, validated_symbol, token)
+        if not success:
+            raise HTTPException(status_code=404, detail="Watchlist item not found or access denied")
+        return DeleteResponse(
+            success=True,
+            message=f"Symbol {validated_symbol} removed from watchlist successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete watchlist item: {str(e)}")
+
+
+@router.delete("/watchlists/{watchlist_id}/clear", response_model=DeleteResponse)
+async def clear_watchlist(
+    watchlist_id: int,
+    token: str = Depends(get_token)
+):
+    """Clear all items from a watchlist."""
+    try:
+        service = MarketDataService()
+        deleted_count = await service.clear_watchlist(watchlist_id, token)
+        return DeleteResponse(
+            success=True,
+            message=f"Watchlist cleared successfully. {deleted_count} items removed.",
+            deleted_count=deleted_count
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear watchlist: {str(e)}")
+
+
+# =====================================================
+# STOCK PEERS ENDPOINTS
+# =====================================================
+
+@router.get("/peers/{symbol}", response_model=List[StockPeer])
+async def get_stock_peers(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Date for peer data (defaults to today)"),
+    limit: int = Query(20, description="Maximum number of peers to return"),
+    token: str = Depends(get_token)
+):
+    """Get all peers for a specific stock symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.get_stock_peers(validated_symbol, data_date, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stock peers: {str(e)}")
+
+
+@router.get("/peers/{symbol}/top-performers", response_model=List[StockPeer])
+async def get_top_performing_peers(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Date for peer data (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of peers to return"),
+    token: str = Depends(get_token)
+):
+    """Get top performing peers for a specific stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.get_top_performing_peers(validated_symbol, data_date, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top performing peers: {str(e)}")
+
+
+@router.get("/peers/{symbol}/worst-performers", response_model=List[StockPeer])
+async def get_worst_performing_peers(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Date for peer data (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of peers to return"),
+    token: str = Depends(get_token)
+):
+    """Get worst performing peers for a specific stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.get_worst_performing_peers(validated_symbol, data_date, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get worst performing peers: {str(e)}")
+
+
+@router.get("/peers/{symbol}/comparison", response_model=List[PeerComparison])
+async def get_peer_comparison(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Date for peer data (defaults to today)"),
+    token: str = Depends(get_token)
+):
+    """Get peer comparison with the main stock data."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.get_peer_comparison(validated_symbol, data_date, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get peer comparison: {str(e)}")
+
+
+@router.get("/peers/{symbol}/paginated", response_model=List[StockPeer])
+async def get_peers_paginated(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Date for peer data (defaults to today)"),
+    offset: int = Query(0, description="Offset for pagination"),
+    limit: int = Query(20, description="Maximum number of peers to return"),
+    sort_column: str = Query("percent_change", description="Column to sort by"),
+    sort_direction: str = Query("DESC", description="Sort direction (ASC or DESC)"),
+    token: str = Depends(get_token)
+):
+    """Get paginated peer results with sorting options."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        result = await service.get_peers_paginated(
+            symbol=validated_symbol,
+            data_date=data_date,
+            offset=offset,
+            limit=limit,
+            sort_column=sort_column,
+            sort_direction=sort_direction,
+            access_token=token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get paginated peers: {str(e)}")
