@@ -9,6 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTopGainers, useTopLosers, useMostActive } from '@/lib/hooks/use-market-data';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import type { MarketMover } from '@/lib/types/market-data';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRealtimeTable } from '@/lib/hooks/useRealtimeUpdates';
 
 // Format functions
 const formatPrice = (value: number | undefined | null): string => {
@@ -158,6 +160,12 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
 // Main component
 export const ActiveCard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('gainers');
+  const queryClient = useQueryClient();
+  
+  // Enable realtime updates for market data
+  useRealtimeTable('market_movers', queryClient, ['top-gainers']);
+  useRealtimeTable('market_movers', queryClient, ['top-losers']);
+  useRealtimeTable('market_movers', queryClient, ['most-active']);
   
   const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainers({ limit: 25 });
   const { losers, isLoading: losersLoading, error: losersError } = useTopLosers({ limit: 25 });

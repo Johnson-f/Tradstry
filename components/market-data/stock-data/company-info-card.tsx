@@ -6,6 +6,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCompanyInfo } from '@/lib/hooks/use-market-data';
 import { Building2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRealtimeTable } from '@/lib/hooks/useRealtimeUpdates';
 
 interface CompanyInfoCardProps {
   symbol: string;
@@ -94,6 +96,11 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
   symbol, 
   dataProvider 
 }) => {
+  const queryClient = useQueryClient();
+  
+  // Enable realtime updates for company info
+  useRealtimeTable('company_info', queryClient, ['company-info', symbol]);
+  
   const [showFullDescription, setShowFullDescription] = useState(false);
   
   const { companyInfo, isLoading, error } = useCompanyInfo(symbol, dataProvider);
