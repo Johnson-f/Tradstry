@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Plus, Trash2, X, TrendingUp, TrendingDown, Star } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useRealtimeWatchlists, useRealtimeWatchlistItems } from "@/lib/hooks/useRealtimeUpdates";
 
 interface WatchlistProps {
   className?: string;
@@ -27,6 +28,10 @@ export function Watchlist({ className }: WatchlistProps) {
   const queryClient = useQueryClient();
   const { watchlists, isLoading: watchlistsLoading, refetch: refetchWatchlists } = useWatchlists();
   const { watchlist, isLoading: watchlistLoading, refetch: refetchWatchlist } = useWatchlistById(selectedWatchlistId || 0);
+
+  // Enable realtime updates
+  useRealtimeWatchlists(queryClient);
+  useRealtimeWatchlistItems(queryClient, selectedWatchlistId || undefined);
 
 
   const handleDeleteWatchlist = async (id: number) => {

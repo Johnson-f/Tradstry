@@ -18,6 +18,8 @@ import { ManagerTab } from '@/components/market-data/stock-data/manager-tab';
 import { WatchlistModal } from '@/components/market-data/watchlist-modal';
 import type { QuoteData, CompanyInfo, FundamentalData } from '@/lib/types/market-data';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRealtimeTable } from '@/lib/hooks/useRealtimeUpdates';
 
 interface StockData {
   quote: QuoteData;
@@ -48,6 +50,13 @@ export default function StockSymbolPage() {
   const [isCreateWatchlistDialogOpen, setIsCreateWatchlistDialogOpen] = useState(false);
   const [newWatchlistName, setNewWatchlistName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  const queryClient = useQueryClient();
+  
+  // Enable realtime updates for market data
+  useRealtimeTable('quotes', queryClient, ['quote-data', symbol]);
+  useRealtimeTable('company_info', queryClient, ['company-info', symbol]);
+  useRealtimeTable('fundamentals', queryClient, ['fundamental-data', symbol]);
 
   // Get company logo
   const { logos } = useCompanyLogos({ symbols: symbol ? [symbol] : [] });
