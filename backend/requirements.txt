@@ -9,6 +9,7 @@ coverage==7.10.6
 deprecation==2.1.0
 distro==1.9.0
 fastapi==0.116.1
+voyageai
 greenlet==3.2.4
 h11==0.16.0
 h2==4.3.0

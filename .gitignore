@@ -58,3 +58,7 @@ backend/celerybeat-schedule
 backend/celerybeat.pid
 backend/test.py
 backend/test_connection.py
+
+# Rust backend
+rust-backend/target/
+

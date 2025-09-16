@@ -1,44 +1,75 @@
 from typing import List, Dict, Any, Optional
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import logging
 from functools import lru_cache
+import os
+from dotenv import load_dotenv
+import voyageai
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class AIEmbeddingService:
     """
-    Service for generating embeddings using Hugging Face Sentence Transformers.
-    Provides local embedding generation for cost-effective AI operations.
+    Service for generating embeddings using Voyager AI embedding models.
+    Provides cloud-based embedding generation with high-quality results.
     """
     
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "voyage-3.5"):
         """
-        Initialize the embedding service with a specified model.
+        Initialize the embedding service with a specified Voyager AI model.
         
         Args:
-            model_name: Name of the sentence transformer model to use
+            model_name: Name of the Voyager AI embedding model to use
         """
         self.model_name = model_name
-        self._model = None
-        self.embedding_dimension = 384  # Default for all-MiniLM-L6-v2
+        self._client = None
+        # Set embedding dimensions based on model
+        if model_name == "voyage-3.5":
+            self.embedding_dimension = 1024
+        elif model_name == "voyage-3":
+            self.embedding_dimension = 1024
+        elif model_name == "voyage-large-2":
+            self.embedding_dimension = 1536
+        elif model_name == "voyage-code-2":
+            self.embedding_dimension = 1536
+        else:
+            self.embedding_dimension = 1024  # Default for other models
+        
+        # Set up environment variables for Voyager AI
+        self._setup_voyager_env()
+        
+    def _setup_voyager_env(self):
+        """Setup environment variables for Voyager AI if not already set."""
+        # Load environment variables from .env file if it exists
+        load_dotenv()
+        
+        # Check for required Voyager API key
+        api_key = os.getenv("VOYAGE_API_KEY")
+        if not api_key:
+            logger.warning(
+                "VOYAGE_API_KEY environment variable not set. "
+                "Please set it in your .env file or environment. "
+                "Get your API key from https://dashboard.voyageai.com/organization/api-keys"
+            )
         
     @property
-    def model(self):
-        """Lazy load the model to avoid initialization overhead."""
-        if self._model is None:
+    def client(self):
+        """Lazy load the Voyager AI client to avoid initialization overhead."""
+        if self._client is None:
             try:
-                self._model = SentenceTransformer(self.model_name)
-                self.embedding_dimension = self._model.get_sentence_embedding_dimension()
-                logger.info(f"Loaded embedding model: {self.model_name} (dim: {self.embedding_dimension})")
+                self._client = voyageai.Client()
+                logger.info(f"Initialized Voyager AI client for model: {self.model_name} (dim: {self.embedding_dimension})")
             except Exception as e:
-                logger.error(f"Failed to load embedding model {self.model_name}: {str(e)}")
-                raise Exception(f"Failed to initialize embedding model: {str(e)}")
-        return self._model
+                logger.error(f"Failed to initialize Voyager AI client: {str(e)}")
+                raise Exception(f"Failed to initialize Voyager AI embedding client: {str(e)}")
+        return self._client
     
     def generate_embedding(self, text: str) -> List[float]:
         """
-        Generate embedding for a single text.
+        Generate embedding for a single text using Voyager AI's embedding model.
         
         Args:
             text: Input text to embed
@@ -54,15 +85,21 @@ class AIEmbeddingService:
             # Clean and normalize text
             cleaned_text = self._preprocess_text(text)
             
-            # Generate embedding
-            embedding = self.model.encode(cleaned_text, convert_to_tensor=False)
+            # Generate embedding using Voyager AI's API
+            response = self.client.embed(
+                texts=[cleaned_text],
+                model=self.model_name,
+                input_type="document"
+            )
             
-            # Convert to list and ensure proper format
-            if isinstance(embedding, np.ndarray):
-                embedding = embedding.tolist()
+            # Extract embedding values
+            if response.embeddings and len(response.embeddings) > 0:
+                embedding = response.embeddings[0]
+                return list(embedding)
+            else:
+                logger.warning("No embedding returned from Voyager AI API")
+                return [0.0] * self.embedding_dimension
                 
-            return embedding
-            
         except Exception as e:
             logger.error(f"Error generating embedding for text: {str(e)}")
             # Return zero vector as fallback
@@ -70,7 +107,7 @@ class AIEmbeddingService:
     
     def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts efficiently.
+        Generate embeddings for multiple texts efficiently using Voyager AI's API.
         
         Args:
             texts: List of input texts to embed
@@ -85,14 +122,29 @@ class AIEmbeddingService:
             # Clean and normalize texts
             cleaned_texts = [self._preprocess_text(text) for text in texts]
             
-            # Generate embeddings in batch
-            embeddings = self.model.encode(cleaned_texts, convert_to_tensor=False)
+            # Voyager AI has a batch limit of 128 texts per request
+            batch_size = 128
+            all_embeddings = []
             
-            # Convert to list format
-            if isinstance(embeddings, np.ndarray):
-                embeddings = embeddings.tolist()
+            for i in range(0, len(cleaned_texts), batch_size):
+                batch_texts = cleaned_texts[i:i + batch_size]
                 
-            return embeddings
+                # Generate embeddings in batch using Voyager AI's API
+                response = self.client.embed(
+                    texts=batch_texts,
+                    model=self.model_name,
+                    input_type="document"
+                )
+                
+                # Extract embedding values
+                if response.embeddings:
+                    batch_embeddings = [list(embedding) for embedding in response.embeddings]
+                    all_embeddings.extend(batch_embeddings)
+                else:
+                    logger.warning(f"No embeddings returned from Voyager AI API for batch {i//batch_size + 1}")
+                    all_embeddings.extend([[0.0] * self.embedding_dimension] * len(batch_texts))
+                
+            return all_embeddings
             
         except Exception as e:
             logger.error(f"Error generating batch embeddings: {str(e)}")
@@ -118,8 +170,8 @@ class AIEmbeddingService:
         # Remove excessive whitespace
         cleaned = " ".join(cleaned.split())
         
-        # Truncate if too long (models have token limits)
-        max_length = 500  # Conservative limit for sentence transformers
+        # Truncate if too long (Voyager AI models have token limits)
+        max_length = 4000  # Conservative limit for Voyager AI embedding models
         if len(cleaned) > max_length:
             cleaned = cleaned[:max_length].rsplit(' ', 1)[0]  # Cut at word boundary
             
@@ -217,8 +269,9 @@ class AIEmbeddingService:
         return {
             'model_name': self.model_name,
             'embedding_dimension': self.embedding_dimension,
-            'max_sequence_length': getattr(self.model, 'max_seq_length', 512),
-            'model_type': 'sentence-transformer'
+            'max_sequence_length': 4000,  # Voyager AI embedding models limit
+            'model_type': 'voyager-ai',
+            'provider': 'Voyager AI'
         }
     
     def validate_embedding(self, embedding: List[float]) -> bool:
