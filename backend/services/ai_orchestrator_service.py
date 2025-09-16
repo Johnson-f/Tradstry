@@ -25,7 +25,7 @@ from services.ai_insights_service import AIInsightsService
 from models.ai_reports import ReportType, AIReportCreate
 from models.ai_chat import (
     AIChatMessageCreate, AIChatSessionCreate, MessageType, SourceType,
-    AIChatMessageResponse  # Added missing import
+    AIChatMessageResponse  
 )
 from models.ai_insights import AIInsightCreate, InsightType, InsightPriority
 from config.ai_config import (

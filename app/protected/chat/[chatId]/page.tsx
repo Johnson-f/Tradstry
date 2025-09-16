@@ -16,22 +16,21 @@ export default function ChatPage() {
 
   const {
     messages,
+    messagesLoading: loading,
+    messagesError: error,
     currentSession,
-    loading,
-    error,
     isChatting,
-    getSessionMessages,
     chatWithAI,
-    clearError,
-  } = useAIChat();
+    refetchMessages,
+  } = useAIChat({ 
+    sessionId: chatId && chatId !== "new" && chatId !== "undefined" ? chatId : undefined 
+  });
 
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (chatId && chatId !== "new" && chatId !== "undefined") {
-      getSessionMessages(chatId);
-    }
-  }, [chatId, getSessionMessages]);
+  const clearError = () => {
+    refetchMessages();
+  };
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
@@ -47,7 +46,7 @@ export default function ChatPage() {
         request.session_id = chatId;
       }
 
-      await chatWithAI(request);
+      await chatWithAI.mutateAsync(request);
       setMessage("");
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -137,7 +136,7 @@ export default function ChatPage() {
                 </div>
               ))
             )}
-            {isChatting && (
+            {chatWithAI.isPending && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-lg px-4 py-2 max-w-[70%]">
                   <div className="flex items-center gap-2">
@@ -159,15 +158,15 @@ export default function ChatPage() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            disabled={isChatting}
+            disabled={chatWithAI.isPending}
             className="flex-1"
           />
           <Button
             onClick={handleSendMessage}
-            disabled={!message.trim() || isChatting}
+            disabled={!message.trim() || chatWithAI.isPending}
             size="icon"
           >
-            {isChatting ? (
+            {chatWithAI.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />

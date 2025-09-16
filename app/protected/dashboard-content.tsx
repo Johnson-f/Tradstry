@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
 import { Button } from "@/components/ui/button";
@@ -14,15 +13,16 @@ export default function DashboardContent() {
   const router = useRouter();
   const {
     sessions,
-    loading,
-    error,
-    getSessions,
-    clearError,
-  } = useAIChat();
+    sessionsLoading: loading,
+    sessionsError: error,
+    refetchSessions,
+  } = useAIChat({ 
+    sessionsParams: { limit: 20 } 
+  });
 
-  useEffect(() => {
-    getSessions({ limit: 20 });
-  }, [getSessions]);
+  const clearError = () => {
+    refetchSessions();
+  };
 
   const handleNewChat = () => {
     router.push("/protected/chat/new");
