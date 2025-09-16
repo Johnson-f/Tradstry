@@ -1,0 +1,14 @@
+# UV configuration file for Tradistry backend
+# This file contains UV-specific settings
+
+# Python version constraint
+python-version = "3.12"
+
+# Default index URL (can be overridden)
+index-url = "https://pypi.org/simple"
+
+# Cache directory (optional)
+cache-dir = ".uv-cache"
+
+# Development mode settings
+dev = true

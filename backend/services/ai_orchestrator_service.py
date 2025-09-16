@@ -8,6 +8,10 @@ import uuid
 import time
 import os
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # LangChain imports - Updated to use OpenRouter via OpenAI SDK
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
