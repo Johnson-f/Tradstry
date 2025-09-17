@@ -22,6 +22,7 @@ from services.ai_embedding_service import AIEmbeddingService
 from services.ai_reports_service import AIReportsService
 from services.ai_chat_service import AIChatService
 from services.ai_insights_service import AIInsightsService
+from services.rag_retriever_service import RAGRetrieverService
 from models.ai_reports import ReportType, AIReportCreate
 from models.ai_chat import (
     AIChatMessageCreate, AIChatSessionCreate, MessageType, SourceType,
@@ -51,6 +52,19 @@ class AIOrchestrator:
         self.reports_service = AIReportsService()
         self.chat_service = AIChatService()
         self.insights_service = AIInsightsService()
+        
+        # Initialize RAG service with error handling
+        try:
+            logger.info("Initializing RAG system...")
+            self.rag_service = RAGRetrieverService()
+            self.rag_enabled = True
+            logger.info("RAG system initialized successfully")
+        except Exception as e:
+            logger.error(f"RAG system initialization failed: {str(e)}")
+            logger.error(f"RAG error details: {type(e).__name__}: {str(e)}")
+            self.rag_service = None
+            self.rag_enabled = False
+            logger.info("Continuing without RAG system - basic functionality will be available")
 
         # Model management with stable models
         self.stable_models = self._get_stable_models()
@@ -758,6 +772,21 @@ Provide:
             # Save report to database
             try:
                 saved_report = await self.reports_service.create_report(report_data, user["access_token"])
+                
+                # Index the generated report in RAG system for future retrieval (if enabled)
+                if self.rag_enabled and self.rag_service is not None:
+                    try:
+                        await self._index_ai_generated_content(
+                            user["access_token"],
+                            saved_report,
+                            "ai_report"
+                        )
+                        logger.info("Successfully indexed AI report in RAG system")
+                    except Exception as rag_error:
+                        logger.error(f"Error indexing report in RAG system: {str(rag_error)}")
+                else:
+                    logger.info("RAG system not available - skipping report indexing")
+                    
             except Exception as e:
                 logger.error(f"Error saving report: {str(e)}")
                 # Return generated content even if saving fails
@@ -1100,73 +1129,273 @@ Provide:
             return "Error retrieving conversation history."
 
     async def _get_relevant_trading_context(self, access_token: str, query: str) -> Dict[str, Any]:
-        """Get relevant trading context based on the query using vector search."""
+        """Enhanced RAG-based context retrieval using vector similarity search."""
+        
+        # Check if RAG is enabled and available
+        if not self.rag_enabled or self.rag_service is None:
+            logger.info("RAG system not available, using fallback context retrieval")
+            return await self._get_fallback_trading_context(access_token, query)
+        
         try:
-            # Generate embedding for the query (with fallback)
+            logger.info(f"Getting RAG context for query: '{query[:100]}...'")
+            
+            # Use RAG service to get contextually relevant documents
+            context_documents = await self.rag_service.get_contextual_documents(
+                access_token, 
+                query, 
+                context_types=['trades', 'insights', 'reports'],
+                time_range_days=30,
+                max_documents=8
+            )
+            
+            # Get recent trading context for baseline data
             try:
-                query_embedding = self.embedding_service.generate_embedding(query)
-            except Exception as e:
-                logger.error(f"Error generating query embedding: {str(e)}")
-                query_embedding = None
-
-            # Search for relevant chat messages and insights (with fallback)
-            try:
-                relevant_messages = await self.chat_service.search_messages(
-                    access_token, query, None, 3, 0.6
-                )
-            except Exception as e:
-                logger.error(f"Error searching messages: {str(e)}")
-                relevant_messages = []
-
-            try:
-                relevant_insights = await self.insights_service.search_insights(
-                    access_token, query, None, 3, 0.6
-                )
-            except Exception as e:
-                logger.error(f"Error searching insights: {str(e)}")
-                relevant_insights = []
-
-            # Get recent trading context (with fallback)
-            try:
-                trading_context = await self.reports_service.get_trading_context(
+                recent_trading_context = await self.reports_service.get_trading_context(
                     access_token, time_range="7d"
                 )
             except Exception as e:
                 logger.error(f"Error getting recent trading context: {str(e)}")
-                trading_context = {"message": "Recent trading data unavailable"}
-
-            # Safe attribute access for messages and insights
-            relevant_message_contents = []
-            for msg in relevant_messages:
+                recent_trading_context = {"message": "Recent trading data unavailable"}
+            
+            # Organize context by document type
+            trade_contexts = []
+            insight_contexts = []
+            report_contexts = []
+            
+            for doc in context_documents:
+                doc_type = doc.get('document_type', '')
+                content_summary = doc.get('content', '')[:500]  # Limit content length
+                
+                context_item = {
+                    'content': content_summary,
+                    'similarity_score': doc.get('similarity_score', 0.0),
+                    'relevance': doc.get('relevance_explanation', ''),
+                    'metadata': doc.get('metadata', {})
+                }
+                
+                if 'trade' in doc_type:
+                    trade_contexts.append(context_item)
+                elif 'insight' in doc_type:
+                    insight_contexts.append(context_item)
+                elif 'report' in doc_type:
+                    report_contexts.append(context_item)
+            
+            # Extract key symbols and themes from the query for additional context
+            query_symbols = self._extract_symbols_from_query(query)
+            if query_symbols:
                 try:
-                    if hasattr(msg, 'content'):
-                        relevant_message_contents.append(msg.content)
-                    elif isinstance(msg, dict) and 'content' in msg:
-                        relevant_message_contents.append(msg['content'])
+                    symbol_contexts = []
+                    for symbol in query_symbols[:3]:  # Limit to 3 symbols
+                        symbol_docs = await self.rag_service.get_trade_specific_context(
+                            access_token, symbol, ['trades', 'insights']
+                        )
+                        symbol_contexts.extend(symbol_docs[:2])  # Top 2 per symbol
                 except Exception as e:
-                    logger.error(f"Error processing message content: {str(e)}")
-                    continue
-
-            relevant_insight_descriptions = []
-            for insight in relevant_insights:
-                try:
-                    if hasattr(insight, 'description'):
-                        relevant_insight_descriptions.append(insight.description)
-                    elif isinstance(insight, dict) and 'description' in insight:
-                        relevant_insight_descriptions.append(insight['description'])
-                except Exception as e:
-                    logger.error(f"Error processing insight description: {str(e)}")
-                    continue
-
-            return {
-                "recent_trading": trading_context,
-                "relevant_messages": relevant_message_contents,
-                "relevant_insights": relevant_insight_descriptions
+                    logger.error(f"Error getting symbol-specific context: {str(e)}")
+                    symbol_contexts = []
+            else:
+                symbol_contexts = []
+            
+            enhanced_context = {
+                "query_analysis": {
+                    "original_query": query,
+                    "extracted_symbols": query_symbols,
+                    "context_documents_found": len(context_documents)
+                },
+                "recent_trading": recent_trading_context,
+                "relevant_trades": trade_contexts,
+                "relevant_insights": insight_contexts,
+                "relevant_reports": report_contexts,
+                "symbol_specific": symbol_contexts,
+                "rag_metadata": {
+                    "total_documents_searched": len(context_documents),
+                    "avg_similarity_score": sum(doc.get('similarity_score', 0) for doc in context_documents) / max(len(context_documents), 1),
+                    "context_types_found": list(set(doc.get('document_type', '') for doc in context_documents))
+                }
             }
+            
+            logger.info(f"RAG context retrieval successful: {len(context_documents)} documents, {len(symbol_contexts)} symbol-specific")
+            return enhanced_context
 
         except Exception as e:
-            logger.error(f"Error getting relevant context: {str(e)}")
-            return {"message": "Context retrieval failed"}
+            logger.error(f"Error in RAG context retrieval: {str(e)}")
+            # Fallback to basic context
+            return await self._get_fallback_trading_context(access_token, query)
+    
+    async def _get_fallback_trading_context(self, access_token: str, query: str) -> Dict[str, Any]:
+        """Fallback context retrieval when RAG system is unavailable."""
+        try:
+            logger.info("Using fallback context retrieval (non-RAG)")
+            
+            # Get basic trading context
+            try:
+                recent_trading_context = await self.reports_service.get_trading_context(
+                    access_token, time_range="7d"
+                )
+            except Exception as e:
+                logger.error(f"Error getting recent trading context: {str(e)}")
+                recent_trading_context = {"message": "Recent trading data unavailable"}
+            
+            # Search for relevant chat messages (if available)
+            try:
+                relevant_messages = await self.chat_service.search_messages(
+                    access_token, query, None, 3, 0.6
+                )
+                message_contents = []
+                for msg in relevant_messages:
+                    try:
+                        if hasattr(msg, 'content'):
+                            message_contents.append(msg.content)
+                        elif isinstance(msg, dict) and 'content' in msg:
+                            message_contents.append(msg['content'])
+                    except Exception as e:
+                        logger.error(f"Error processing message content: {str(e)}")
+                        continue
+            except Exception as e:
+                logger.error(f"Error searching messages: {str(e)}")
+                message_contents = []
+            
+            # Search for relevant insights (if available)
+            try:
+                relevant_insights = await self.insights_service.search_insights(
+                    access_token, query, None, 3, 0.6
+                )
+                insight_descriptions = []
+                for insight in relevant_insights:
+                    try:
+                        if hasattr(insight, 'description'):
+                            insight_descriptions.append(insight.description)
+                        elif isinstance(insight, dict) and 'description' in insight:
+                            insight_descriptions.append(insight['description'])
+                    except Exception as e:
+                        logger.error(f"Error processing insight description: {str(e)}")
+                        continue
+            except Exception as e:
+                logger.error(f"Error searching insights: {str(e)}")
+                insight_descriptions = []
+            
+            return {
+                "mode": "fallback",
+                "recent_trading": recent_trading_context,
+                "relevant_messages": message_contents,
+                "relevant_insights": insight_descriptions,
+                "note": "Using basic context retrieval - RAG system unavailable"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in fallback context retrieval: {str(e)}")
+            return {
+                "mode": "minimal",
+                "message": "All context retrieval methods failed", 
+                "error": str(e)
+            }
+    
+    def _extract_symbols_from_query(self, query: str) -> List[str]:
+        """Extract stock symbols from the user's query."""
+        import re
+        try:
+            # Common patterns for stock symbols
+            patterns = [
+                r'\b[A-Z]{1,5}\b',  # 1-5 uppercase letters
+                r'\$([A-Z]{1,5})\b',  # $SYMBOL format
+                r'\b([A-Z]{1,5})\s+stock\b',  # SYMBOL stock
+                r'\b([A-Z]{1,5})\s+shares?\b',  # SYMBOL shares
+            ]
+            
+            symbols = set()
+            query_upper = query.upper()
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, query_upper)
+                for match in matches:
+                    symbol = match if isinstance(match, str) else match[0] if match else ""
+                    if len(symbol) >= 1 and len(symbol) <= 5 and symbol.isalpha():
+                        symbols.add(symbol)
+            
+            # Filter out common words that might be mistaken for symbols
+            common_words = {'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'USE', 'MAN', 'NEW', 'NOW', 'WAY', 'MAY', 'SAY', 'SEE', 'HIM', 'TWO', 'HOW', 'ITS', 'WHO', 'BOY', 'DID', 'HAS', 'LET', 'PUT', 'TOO', 'OLD', 'ANY', 'SUN', 'SET'}
+            symbols = symbols - common_words
+            
+            return list(symbols)
+            
+        except Exception as e:
+            logger.error(f"Error extracting symbols from query: {str(e)}")
+            return []
+    
+    async def _index_ai_generated_content(
+        self, 
+        user_token: str, 
+        ai_content: Dict[str, Any], 
+        content_type: str
+    ) -> Optional[str]:
+        """Index AI-generated content in the RAG system for future retrieval."""
+        
+        # Check if RAG service is available
+        if not self.rag_enabled or self.rag_service is None:
+            logger.warning("RAG service not available - cannot index AI content")
+            return None
+            
+        try:
+            # Extract content details - handle both dict and object types
+            if hasattr(ai_content, 'title'):
+                title = getattr(ai_content, 'title', 'AI Generated Content')
+                content = getattr(ai_content, 'content', '')
+                content_id = getattr(ai_content, 'id', None)
+            else:
+                title = ai_content.get('title', 'AI Generated Content')
+                content = ai_content.get('content', '')
+                content_id = ai_content.get('id')
+            
+            if not content:
+                logger.warning("No content to index in RAG system")
+                return None
+            
+            # Prepare metadata - handle both dict and object types
+            if hasattr(ai_content, 'model_used'):
+                model_used = getattr(ai_content, 'model_used', self.current_llm_model)
+                confidence_score = getattr(ai_content, 'confidence_score', 0.0)
+                insights = getattr(ai_content, 'insights', None)
+                recommendations = getattr(ai_content, 'recommendations', None)
+            else:
+                model_used = ai_content.get('model_used', self.current_llm_model)
+                confidence_score = ai_content.get('confidence_score', 0.0)
+                insights = ai_content.get('insights')
+                recommendations = ai_content.get('recommendations')
+            
+            metadata = {
+                'model_used': model_used,
+                'confidence_score': confidence_score,
+                'content_type': content_type,
+                'generated_at': datetime.now().isoformat(),
+                'source_id': content_id
+            }
+            
+            # Add insights and recommendations if available
+            if insights:
+                metadata['has_insights'] = True
+                if isinstance(insights, dict) and 'items' in insights:
+                    metadata['insights_count'] = len(insights.get('items', []))
+            
+            if recommendations:
+                metadata['has_recommendations'] = True
+                if isinstance(recommendations, dict) and 'items' in recommendations:
+                    metadata['recommendations_count'] = len(recommendations.get('items', []))
+            
+            # Index the content
+            doc_id = await self.rag_service.index_ai_content(
+                user_token, ai_content, content_type
+            )
+            
+            if doc_id:
+                logger.info(f"Successfully indexed {content_type} in RAG system: {doc_id}")
+            else:
+                logger.warning(f"Failed to index {content_type} in RAG system")
+                
+            return doc_id
+            
+        except Exception as e:
+            logger.error(f"Error indexing AI content in RAG system: {str(e)}")
+            return None
 
     def _extract_actions_from_insight(self, insight_content: str) -> Optional[Dict[str, Any]]:
         """Extract actionable items from insight content."""
