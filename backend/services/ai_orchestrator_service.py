@@ -549,6 +549,10 @@ class AIOrchestrator:
                         # Call LLM directly with timeout
                         result = llm.invoke(formatted_prompt)
                         
+                        # Extract string content from AIMessage if needed
+                        if hasattr(result, 'content'):
+                            result = result.content
+                        
                         # Parse output manually if needed
                         if hasattr(chain, 'steps') and len(chain.steps) > 2:
                             output_parser = chain.steps[2]
@@ -559,6 +563,11 @@ class AIOrchestrator:
                     else:
                         # Fallback to chain invoke
                         result = chain.invoke(input_data)
+                        
+                        # Extract string content from AIMessage if needed
+                        if hasattr(result, 'content'):
+                            result = result.content
+                        
                         return result
                         
                 except (StopIteration, RuntimeError, ConnectionError) as e:
@@ -722,6 +731,12 @@ Provide:
 
             # Calculate processing time
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+
+            # Ensure report_content is a string
+            if hasattr(report_content, 'content'):
+                report_content = report_content.content
+            elif not isinstance(report_content, str):
+                report_content = str(report_content)
 
             # Extract insights and recommendations from the report
             insights, recommendations = self._extract_insights_and_recommendations(report_content)
@@ -1005,12 +1020,12 @@ Provide:
 
     def _extract_insights_and_recommendations(self, report_content: str) -> tuple:
         """Extract structured insights and recommendations from report content."""
-        insights = []
-        recommendations = []
+        insights_list = []
+        recommendations_list = []
 
         try:
             if not report_content or not isinstance(report_content, str):
-                return insights, recommendations
+                return {}, {}
 
             lines = report_content.split('\n')
             current_section = None
@@ -1026,14 +1041,27 @@ Provide:
                 elif any(keyword in line.lower() for keyword in ['recommend', 'suggest', 'should', 'consider']):
                     current_section = 'recommendations'
                 elif line and current_section == 'insights' and not line.startswith('#'):
-                    insights.append(line)
+                    insights_list.append(line)
                 elif line and current_section == 'recommendations' and not line.startswith('#'):
-                    recommendations.append(line)
+                    recommendations_list.append(line)
 
         except Exception as e:
             logger.error(f"Error extracting insights and recommendations: {str(e)}")
 
-        return insights[:5], recommendations[:5]
+        # Convert lists to dictionaries as expected by the Pydantic model
+        insights_dict = {
+            "items": insights_list[:5],
+            "count": len(insights_list[:5]),
+            "extracted_at": datetime.now().isoformat()
+        }
+        
+        recommendations_dict = {
+            "items": recommendations_list[:5],
+            "count": len(recommendations_list[:5]),
+            "extracted_at": datetime.now().isoformat()
+        }
+
+        return insights_dict, recommendations_dict
 
     def _format_chat_history(self, chat_history: List) -> str:
         """Format chat history for context in prompts."""

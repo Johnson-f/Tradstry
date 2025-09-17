@@ -1,18 +1,15 @@
 "use client";
 
+import { AIReportsDashboard } from '@/components/ai-reports/ai-reports-dashboard';
+
 export default function AireportsPage() {
   return (
     <div className="h-screen flex flex-col">
-      {/* Header - Fixed */}
-      <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold tracking-tight">AI reports</h1>
-      </div>
-
       {/* Main content - Scrollable area with native overflow */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
-            <div>COMING SOON</div>
+            <AIReportsDashboard />
           </div>
         </div>
       </div>
