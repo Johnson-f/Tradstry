@@ -46,21 +46,52 @@ const navItems = [
 ];
 
 export default function Sidebar({
-  collapsed,
+  collapsed: externalCollapsed,
   onCollapsedChange,
 }: {
-  collapsed: boolean;
-  onCollapsedChange: (collapsed: boolean) => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // Initialize collapsed state from localStorage immediately
+  const [collapsed, setCollapsed] = useState(() => {
+    // Check if we're in the browser (not SSR)
+    if (typeof window !== 'undefined') {
+      const savedCollapsed = localStorage.getItem('sidebar-collapsed');
+      if (savedCollapsed !== null) {
+        return JSON.parse(savedCollapsed);
+      }
+    }
+    return false; // Default to uncollapsed
+  });
 
+  // Handle external collapsed prop changes
   useEffect(() => {
     setMounted(true);
-  }, []);
+    
+    // If external collapsed prop is provided, use it and save to localStorage
+    if (externalCollapsed !== undefined) {
+      setCollapsed(externalCollapsed);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sidebar-collapsed', JSON.stringify(externalCollapsed));
+      }
+    }
+  }, [externalCollapsed]);
+
+  // Handle collapse toggle
+  const handleCollapsedChange = (newCollapsed: boolean) => {
+    setCollapsed(newCollapsed);
+    
+    // Save to localStorage
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(newCollapsed));
+    
+    // Call external handler if provided (for backward compatibility)
+    onCollapsedChange?.(newCollapsed);
+  };
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -101,7 +132,7 @@ export default function Sidebar({
             </div>
             <button
               className="ml-2 p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              onClick={() => onCollapsedChange(!collapsed)}
+              onClick={() => handleCollapsedChange(!collapsed)}
               aria-label="Toggle sidebar"
             >
               {collapsed ? (
