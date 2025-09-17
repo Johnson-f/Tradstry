@@ -38,9 +38,12 @@ export interface AIReportUpdate {
 }
 
 export interface AIReportGenerateRequest {
+  report_type: string;
   time_range?: string;
   custom_start_date?: string;
   custom_end_date?: string;
+  model_preference?: string;
+  include_tracking_data?: boolean;
 }
 
 export interface DeleteResponse {

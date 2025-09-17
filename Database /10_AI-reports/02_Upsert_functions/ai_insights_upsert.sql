@@ -1,6 +1,6 @@
 -- AI Insights Upsert Function
 -- Creates a new AI insight or updates an existing one
-CREATE OR REPLACE FUNCTION upsert_ai_insight(
+CREATE OR REPLACE FUNCTION upsert_ai_insights(
     p_user_id UUID,
     p_insight_type VARCHAR(50),
     p_title VARCHAR(255),

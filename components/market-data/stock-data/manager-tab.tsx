@@ -10,6 +10,7 @@ import { ResearchTab } from './reasearch';
 import { CompanyInfoCard } from './company-info-card';
 import { PeersCard } from './peers-card';
 import { ActiveCard } from '../active-card';
+import { FinanceTabButton } from '../../finance-tab-button';
 
 interface ManagerTabProps {
   symbol: string;
@@ -43,20 +44,13 @@ export function ManagerTab({ symbol, className = '' }: ManagerTabProps) {
       {/* Tab Navigation */}
       <div className="flex items-center gap-4 mb-6">
         {tabs.map((tab) => (
-          <button
+          <FinanceTabButton
             key={tab.id}
+            active={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`
-              relative px-6 py-3 rounded-full text-sm font-medium transition-all duration-300 ease-in-out
-              border-2 backdrop-blur-sm
-              ${activeTab === tab.id
-                ? 'bg-teal-500/20 border-teal-400 text-teal-300 shadow-lg shadow-teal-400/20'
-                : 'bg-gray-800/30 border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 hover:bg-gray-700/30'
-              }
-            `}
           >
             {tab.label}
-          </button>
+          </FinanceTabButton>
         ))}
       </div>
 
