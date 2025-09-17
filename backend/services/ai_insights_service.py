@@ -16,10 +16,34 @@ class AIInsightsService:
     Service for handling AI insights operations.
     Manages insight generation, retrieval, and lifecycle.
     """
-    
+
     def __init__(self, supabase: Optional[Client] = None):
         self.supabase = supabase or get_supabase()
         self.auth_service = AuthService(self.supabase)
+
+    async def _get_authenticated_user_id(self, access_token: str) -> str:
+        """
+        Helper method to extract and validate user_id from access_token.
+        
+        This method:
+        1. Validates the access token
+        2. Extracts the authenticated user
+        3. Returns the user_id
+        
+        Raises:
+            Exception: If authentication fails or token is invalid
+        """
+        try:
+            # Get authenticated client to extract user_id
+            client = await self.auth_service.get_authenticated_client(access_token)
+            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
+            if not user_response.user:
+                raise Exception("Invalid authentication token")
+            
+            return user_response.user.id
+            
+        except Exception as e:
+            raise Exception(f"Authentication failed: {str(e)}")
 
     async def _call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str) -> Any:
         """Helper method to call SQL functions with authentication."""
@@ -31,14 +55,9 @@ class AIInsightsService:
     async def create_insight(self, insight_data: AIInsightCreate, access_token: str) -> AIInsightUpsertResponse:
         """Create a new AI insight."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -56,8 +75,8 @@ class AIInsightsService:
             }
 
             # Call the upsert function
-            result = await self._call_sql_function('upsert_ai_insight', params, access_token)
-            
+            result = await self._call_sql_function('upsert_ai_insights', params, access_token)
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIInsightUpsertResponse(
@@ -87,14 +106,9 @@ class AIInsightsService:
     async def update_insight(self, insight_id: str, insight_data: AIInsightUpdate, access_token: str) -> AIInsightUpsertResponse:
         """Update an existing AI insight."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -113,8 +127,8 @@ class AIInsightsService:
             }
 
             # Call the upsert function with insight_id
-            result = await self._call_sql_function('upsert_ai_insight', params, access_token)
-            
+            result = await self._call_sql_function('upsert_ai_insights', params, access_token)
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return AIInsightUpsertResponse(
@@ -157,14 +171,9 @@ class AIInsightsService:
     ) -> List[AIInsightResponse]:
         """Get AI insights with filtering and pagination."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -182,7 +191,7 @@ class AIInsightsService:
 
             # Call the get function
             result = await self._call_sql_function('get_ai_insights', params, access_token)
-            
+
             insights = []
             if result.data:
                 for data in result.data:
@@ -206,7 +215,7 @@ class AIInsightsService:
                         is_expired=data.get('is_expired', False),
                         similarity_score=data.get('similarity_score')
                     ))
-            
+
             return insights
 
         except Exception as e:
@@ -215,14 +224,9 @@ class AIInsightsService:
     async def get_priority_insights(self, access_token: str, limit: int = 10) -> List[PriorityInsightsResponse]:
         """Get high-priority insights."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -231,7 +235,7 @@ class AIInsightsService:
 
             # Call the priority insights function
             result = await self._call_sql_function('get_priority_ai_insights', params, access_token)
-            
+
             insights = []
             if result.data:
                 for data in result.data:
@@ -247,7 +251,7 @@ class AIInsightsService:
                         is_expired=data.get('is_expired', False),
                         created_at=datetime.fromisoformat(data['created_at'])
                     ))
-            
+
             return insights
 
         except Exception as e:
@@ -256,14 +260,9 @@ class AIInsightsService:
     async def get_actionable_insights(self, access_token: str, limit: int = 20) -> List[ActionableInsightsResponse]:
         """Get actionable insights."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -272,7 +271,7 @@ class AIInsightsService:
 
             # Call the actionable insights function
             result = await self._call_sql_function('get_actionable_ai_insights', params, access_token)
-            
+
             insights = []
             if result.data:
                 for data in result.data:
@@ -288,7 +287,7 @@ class AIInsightsService:
                         valid_until=datetime.fromisoformat(data['valid_until']) if data['valid_until'] else None,
                         created_at=datetime.fromisoformat(data['created_at'])
                     ))
-            
+
             return insights
 
         except Exception as e:
@@ -297,14 +296,9 @@ class AIInsightsService:
     async def delete_insight(self, insight_id: str, access_token: str, soft_delete: bool = False) -> InsightDeleteResponse:
         """Delete an AI insight."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -314,7 +308,7 @@ class AIInsightsService:
 
             # Call the delete function
             result = await self._call_sql_function('delete_ai_insight', params, access_token)
-            
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return InsightDeleteResponse(
@@ -334,14 +328,9 @@ class AIInsightsService:
     async def expire_insight(self, insight_id: str, access_token: str) -> InsightExpireResponse:
         """Expire an AI insight."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -350,7 +339,7 @@ class AIInsightsService:
 
             # Call the expire function
             result = await self._call_sql_function('expire_ai_insight', params, access_token)
-            
+
             if result.data and len(result.data) > 0:
                 data = result.data[0]
                 return InsightExpireResponse(
@@ -375,14 +364,9 @@ class AIInsightsService:
     ) -> List[AIInsightResponse]:
         """Search insights using vector similarity."""
         try:
-            # Get authenticated client to extract user_id
-            client = await self.auth_service.get_authenticated_client(access_token)
-            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
-            if not user_response.user:
-                raise Exception("Invalid authentication token")
+            # Get authenticated user_id
+            user_id = await self._get_authenticated_user_id(access_token)
             
-            user_id = user_response.user.id
-
             # Prepare parameters for SQL function
             params = {
                 'p_user_id': user_id,
@@ -394,7 +378,7 @@ class AIInsightsService:
 
             # Call the search function
             result = await self._call_sql_function('search_ai_insights', params, access_token)
-            
+
             insights = []
             if result.data:
                 for data in result.data:
@@ -418,7 +402,7 @@ class AIInsightsService:
                         is_expired=data.get('is_expired', False),
                         similarity_score=data.get('similarity_score')
                     ))
-            
+
             return insights
 
         except Exception as e:

@@ -19,7 +19,7 @@ class AISettings(BaseSettings):
     # Default models
     DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b"
     DEFAULT_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    
+
     # Available hosted models from OpenRouter (Free Tier)
     AVAILABLE_LLM_MODELS: dict = {
         # High Performance Models
@@ -53,7 +53,7 @@ class AISettings(BaseSettings):
         "qwen3_8b": "qwen/qwen3-8b",
         "qwen3_4b": "qwen/qwen3-4b"
     }
-    
+
     AVAILABLE_EMBEDDING_MODELS: dict = {
         "all_minilm_l6_v2": "sentence-transformers/all-MiniLM-L6-v2",
         "all_minilm_l12_v2": "sentence-transformers/all-MiniLM-L12-v2",
@@ -70,7 +70,7 @@ class AISettings(BaseSettings):
         "bge_base_en": "BAAI/bge-base-en-v1.5",
         "bge_large_en": "BAAI/bge-large-en-v1.5"
     }
-    
+
     # Financial/Trading specific models
     FINANCIAL_MODELS: dict = {
         "finbert": "ProsusAI/finbert",
@@ -118,46 +118,46 @@ def get_financial_models() -> dict:
 def get_model_by_key(model_type: str, model_key: str) -> Optional[str]:
     """
     Get model path by key and type.
-    
+
     Args:
         model_type: Type of model ('llm', 'embedding', 'financial')
         model_key: Key identifier for the model
-        
+
     Returns:
         Model path string or None if not found
     """
     settings = get_ai_settings()
-    
+
     model_maps = {
         'llm': settings.AVAILABLE_LLM_MODELS,
         'embedding': settings.AVAILABLE_EMBEDDING_MODELS,
         'financial': settings.FINANCIAL_MODELS
     }
-    
+
     model_map = model_maps.get(model_type)
     if not model_map:
         return None
-        
+
     return model_map.get(model_key)
 
 def validate_model_availability(model_path: str) -> bool:
     """
     Validate if a model is available in our configuration.
-    
+
     Args:
         model_path: Full model path (e.g., 'mistralai/Mistral-7B-Instruct-v0.1')
-        
+
     Returns:
         True if model is available, False otherwise
     """
     settings = get_ai_settings()
-    
+
     all_models = {
         **settings.AVAILABLE_LLM_MODELS,
         **settings.AVAILABLE_EMBEDDING_MODELS,
         **settings.FINANCIAL_MODELS
     }
-    
+
     return model_path in all_models.values()
 
 # Validate OpenRouter API token on import
