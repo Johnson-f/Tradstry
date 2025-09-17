@@ -5,6 +5,8 @@ from datetime import datetime
 from auth_service import AuthService
 from services.analytics_service import AnalyticsService
 from services.trade_notes_service import TradeNotesService
+import asyncio
+import logging
 from models.ai_reports import (
     AIReportCreate, AIReportUpdate, AIReportInDB, AIReportResponse,
     AIReportUpsertResponse, DeleteResponse, ReportType, ReportStatus
@@ -23,16 +25,48 @@ class AIReportsService:
         self.auth_service = AuthService(self.supabase)
         self.analytics_service = AnalyticsService(self.supabase)
         self.trade_notes_service = TradeNotesService(self.supabase)
+        
+        # Set up structured logging
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger.info("AIReportsService initialized successfully")
 
     async def _call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str) -> Any:
         """Helper method to call SQL functions with authentication."""
         try:
-            return await self.auth_service.safe_rpc_call(function_name, params, access_token)
+            self.logger.debug(f"Calling SQL function: {function_name}", extra={
+                "function_name": function_name,
+                "param_count": len(params),
+                "has_access_token": bool(access_token)
+            })
+            
+            result = await self.auth_service.safe_rpc_call(function_name, params, access_token)
+            
+            self.logger.debug(f"SQL function {function_name} completed successfully", extra={
+                "function_name": function_name,
+                "result_type": type(result).__name__,
+                "has_data": hasattr(result, 'data') and bool(result.data)
+            })
+            
+            return result
         except Exception as e:
+            self.logger.error(f"Database operation failed for {function_name}", extra={
+                "function_name": function_name,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "param_count": len(params)
+            })
             raise Exception(f"Database operation failed: {str(e)}")
 
     async def create_report(self, report_data: AIReportCreate, access_token: str) -> AIReportUpsertResponse:
         """Create a new AI report."""
+        self.logger.info("Creating new AI report", extra={
+            "report_type": report_data.report_type.value,
+            "title": report_data.title,
+            "model_used": report_data.model_used,
+            "status": report_data.status.value,
+            "has_date_range": bool(report_data.date_range_start or report_data.date_range_end)
+        })
+        
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -40,9 +74,14 @@ class AIReportsService:
             # Get user from token
             user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
             if not user_response.user:
+                self.logger.error("Authentication failed: Invalid token provided")
                 raise Exception("Invalid authentication token")
 
             user_id = user_response.user.id
+            self.logger.debug(f"Authenticated user for report creation", extra={
+                "user_id": user_id,
+                "report_type": report_data.report_type.value
+            })
 
             # Prepare parameters for SQL function
             params = {
@@ -65,6 +104,12 @@ class AIReportsService:
 
             if result.data and len(result.data) > 0:
                 data = result.data[0]
+                self.logger.info("AI report created successfully", extra={
+                    "report_id": data['id'],
+                    "user_id": user_id,
+                    "report_type": report_data.report_type.value,
+                    "operation_type": data.get('operation_type', 'create')
+                })
                 return AIReportUpsertResponse(
                     id=data['id'],
                     user_id=data['user_id'],
@@ -85,9 +130,19 @@ class AIReportsService:
                     operation_type=data['operation_type']
                 )
             else:
+                self.logger.error("Report creation failed: No data returned from database", extra={
+                    "user_id": user_id,
+                    "report_type": report_data.report_type.value
+                })
                 raise Exception("Failed to create report")
 
         except Exception as e:
+            self.logger.error("Error creating AI report", extra={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "report_type": report_data.report_type.value,
+                "title": report_data.title
+            })
             raise Exception(f"Error creating AI report: {str(e)}")
 
     async def update_report(self, report_id: str, report_data: AIReportUpdate, access_token: str) -> AIReportUpsertResponse:
@@ -163,6 +218,18 @@ class AIReportsService:
         order_direction: str = "DESC"
     ) -> List[AIReportResponse]:
         """Get AI reports with filtering and pagination."""
+        self.logger.info("Retrieving AI reports", extra={
+            "report_id": report_id,
+            "report_type": report_type,
+            "status": status,
+            "has_search_query": bool(search_query),
+            "limit": limit,
+            "offset": offset,
+            "order_by": order_by,
+            "order_direction": order_direction,
+            "has_date_filter": bool(date_range_start or date_range_end)
+        })
+        
         try:
             # Get authenticated client to extract user_id
             client = await self.auth_service.get_authenticated_client(access_token)
@@ -192,6 +259,12 @@ class AIReportsService:
 
             reports = []
             if result.data:
+                self.logger.debug(f"Retrieved {len(result.data)} reports from database", extra={
+                    "user_id": user_id,
+                    "result_count": len(result.data),
+                    "limit": limit,
+                    "offset": offset
+                })
                 for data in result.data:
                     reports.append(AIReportResponse(
                         id=data['id'],
@@ -213,9 +286,28 @@ class AIReportsService:
                         updated_at=datetime.fromisoformat(data['updated_at'])
                     ))
 
+            self.logger.info("AI reports retrieval completed", extra={
+                "user_id": user_id,
+                "reports_returned": len(reports),
+                "limit": limit,
+                "offset": offset,
+                "has_filters": bool(report_id or report_type or status or search_query)
+            })
             return reports
 
         except Exception as e:
+            self.logger.error("Error retrieving AI reports", extra={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "limit": limit,
+                "offset": offset,
+                "filters": {
+                    "report_id": report_id,
+                    "report_type": report_type,
+                    "status": status,
+                    "search_query": bool(search_query)
+                }
+            })
             raise Exception(f"Error retrieving AI reports: {str(e)}")
 
     async def delete_report(self, report_id: str, access_token: str, soft_delete: bool = False) -> DeleteResponse:
@@ -258,23 +350,52 @@ class AIReportsService:
                                 custom_start_date: Optional[datetime] = None,
                                 custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Get comprehensive trading context for AI processing."""
+        self.logger.info("Getting trading context for AI processing", extra={
+            "time_range": time_range,
+            "has_custom_start": custom_start_date is not None,
+            "has_custom_end": custom_end_date is not None,
+            "custom_start_date": custom_start_date.isoformat() if custom_start_date else None,
+            "custom_end_date": custom_end_date.isoformat() if custom_end_date else None
+        })
+        
         try:
-            # Get analytics data using existing service
-            # Get analytics data using existing service
-            analytics_data = await self.analytics_service.get_daily_ai_summary(
-                access_token,
-                time_range,
-                custom_start_date.date() if custom_start_date else None,
-                custom_end_date.date() if custom_end_date else None
+            # Run independent I/O operations in parallel using asyncio.gather
+            # This improves performance by executing both API calls concurrently
+            self.logger.debug("Starting parallel data retrieval for trading context", extra={
+                "operations": ["analytics_service.get_daily_ai_summary", "trade_notes_service.get_tracking_summary"],
+                "time_range": time_range
+            })
+            
+            start_time = datetime.now()
+            
+            analytics_data, tracking_data = await asyncio.gather(
+                # Get analytics data using existing service
+                self.analytics_service.get_daily_ai_summary(
+                    access_token,
+                    time_range,
+                    custom_start_date.date() if custom_start_date else None,
+                    custom_end_date.date() if custom_end_date else None
+                ),
+                # Get tracking data using existing service
+                self.trade_notes_service.get_tracking_summary(
+                    access_token,
+                    time_range=time_range,
+                    custom_start_date=custom_start_date.date() if custom_start_date else None,
+                    custom_end_date=custom_end_date.date() if custom_end_date else None
+                )
             )
-
-            # Get tracking data using existing service
-            tracking_data = await self.trade_notes_service.get_tracking_summary(
-                access_token,
-                time_range=time_range,
-                custom_start_date=custom_start_date.date() if custom_start_date else None,
-                custom_end_date=custom_end_date.date() if custom_end_date else None
-            )
+            
+            end_time = datetime.now()
+            processing_time_ms = (end_time - start_time).total_seconds() * 1000
+            
+            self.logger.info("Trading context retrieved successfully", extra={
+                "time_range": time_range,
+                "processing_time_ms": round(processing_time_ms, 2),
+                "has_analytics_data": analytics_data is not None,
+                "has_tracking_data": tracking_data is not None,
+                "analytics_data_type": type(analytics_data).__name__ if analytics_data else None,
+                "tracking_data_type": type(tracking_data).__name__ if tracking_data else None
+            })
 
             return {
                 "analytics": analytics_data,
@@ -284,4 +405,10 @@ class AIReportsService:
             }
 
         except Exception as e:
+            self.logger.error("Error getting trading context", extra={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "time_range": time_range,
+                "has_custom_dates": bool(custom_start_date or custom_end_date)
+            })
             raise Exception(f"Error getting trading context: {str(e)}")
