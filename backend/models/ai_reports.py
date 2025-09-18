@@ -26,8 +26,23 @@ class AIReportBase(BaseModel):
     insights: Optional[Dict[str, Any]] = Field(default=None, description="Structured insights data")
     recommendations: Optional[Dict[str, Any]] = Field(default=None, description="AI-generated recommendations")
     metrics: Optional[Dict[str, Any]] = Field(default=None, description="Key metrics calculated for this report")
-    date_range_start: Optional[datetime] = Field(default=None, description="Start date for the report period")
-    date_range_end: Optional[datetime] = Field(default=None, description="End date for the report period")
+    
+    # Date and period fields
+    report_date: Optional[datetime] = Field(default=None, description="Date the report was generated for")
+    period_start: Optional[datetime] = Field(default=None, description="Start date for the report period")
+    period_end: Optional[datetime] = Field(default=None, description="End date for the report period")
+    date_range_start: Optional[datetime] = Field(default=None, description="Start date for the report period (alias)")
+    date_range_end: Optional[datetime] = Field(default=None, description="End date for the report period (alias)")
+    
+    # Trading analysis fields
+    symbols_analyzed: Optional[List[str]] = Field(default=None, description="List of symbols analyzed in this report")
+    total_trades: Optional[int] = Field(default=None, description="Total number of trades analyzed")
+    total_pnl: Optional[float] = Field(default=None, description="Total profit/loss for the period")
+    win_rate: Optional[float] = Field(default=None, ge=0, le=1, description="Win rate percentage")
+    generation_time_ms: Optional[int] = Field(default=None, description="Time taken to generate the report in milliseconds")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata for the report")
+    
+    # Model and analysis fields
     model_used: Optional[str] = Field(default=None, max_length=100, description="AI model that generated this report")
     confidence_score: Optional[float] = Field(default=None, ge=0, le=1, description="AI confidence in the analysis")
     status: ReportStatus = Field(default=ReportStatus.COMPLETED, description="Report generation status")
@@ -44,8 +59,23 @@ class AIReportUpdate(BaseModel):
     insights: Optional[Dict[str, Any]] = None
     recommendations: Optional[Dict[str, Any]] = None
     metrics: Optional[Dict[str, Any]] = None
+    
+    # Date fields
+    report_date: Optional[datetime] = None
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
     date_range_start: Optional[datetime] = None
     date_range_end: Optional[datetime] = None
+    
+    # Trading fields
+    symbols_analyzed: Optional[List[str]] = None
+    total_trades: Optional[int] = None
+    total_pnl: Optional[float] = None
+    win_rate: Optional[float] = Field(default=None, ge=0, le=1)
+    generation_time_ms: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+    
+    # Model fields
     model_used: Optional[str] = Field(default=None, max_length=100)
     confidence_score: Optional[float] = Field(default=None, ge=0, le=1)
     status: Optional[ReportStatus] = None
@@ -69,14 +99,14 @@ class AIReportUpsertResponse(BaseModel):
     report_type: ReportType
     title: str
     content: str
-    insights: Optional[Dict[str, Any]]
-    recommendations: Optional[Dict[str, Any]]
-    metrics: Optional[Dict[str, Any]]
-    date_range_start: Optional[datetime]
-    date_range_end: Optional[datetime]
-    model_used: Optional[str]
-    processing_time_ms: Optional[int]
-    confidence_score: Optional[float]
+    insights: Optional[Dict[str, Any]] = None
+    recommendations: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    date_range_start: Optional[datetime] = None
+    date_range_end: Optional[datetime] = None
+    model_used: Optional[str] = None
+    processing_time_ms: Optional[int] = None
+    confidence_score: Optional[float] = None
     status: ReportStatus
     created_at: datetime
     updated_at: datetime
