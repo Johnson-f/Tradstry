@@ -8,6 +8,9 @@ import logging
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
+from supabase import Client
+from database import get_supabase
+from auth_service import AuthService
 
 # Note: Not inheriting from BaseDatabaseService to avoid constructor conflicts
 # from services.base_database_service import BaseDatabaseService
@@ -32,8 +35,10 @@ class SearchResult:
 class RAGVectorService:
     """Core RAG vector search service"""
     
-    def __init__(self):
+    def __init__(self, supabase: Optional[Client] = None):
         try:
+            self.supabase = supabase or get_supabase()
+            self.auth_service = AuthService(self.supabase)
             self.embedding_service = AIEmbeddingService()
             logger.info("RAGVectorService initialized successfully")
         except Exception as e:
@@ -47,24 +52,90 @@ class RAGVectorService:
             user_id = await self._get_user_id_from_token(user_token)
             embedding = self.embedding_service.generate_embedding(f"{title}\n{content}")
             
-            doc_data = {
-                'user_id': user_id,
-                'document_type': doc_type.value,
-                'title': title,
-                'content': content,
-                'content_embedding': embedding,
-                'metadata': metadata or {}
-            }
-            
-            # Route to appropriate table based on document type
+            # Route to appropriate table based on document type with correct parameter names
             if doc_type in [DocumentType.TRADE_ENTRY, DocumentType.TRADE_NOTE]:
+                doc_data = {
+                    'p_user_id': user_id,
+                    'p_document_type': doc_type.value,
+                    'p_source_table': metadata.get('source_table', 'unknown'),
+                    'p_source_id': metadata.get('source_id'),
+                    'p_title': title,
+                    'p_content': content,
+                    'p_content_embedding': embedding,
+                    'p_symbol': metadata.get('symbol'),
+                    'p_trade_date': metadata.get('trade_date'),
+                    'p_trade_type': metadata.get('trade_type'),
+                    'p_action': metadata.get('action'),
+                    'p_pnl': metadata.get('pnl'),
+                    'p_tags': metadata.get('tags', []),
+                    'p_confidence_score': metadata.get('confidence_score', 0.0),
+                    'p_chunk_index': metadata.get('chunk_index', 0),
+                    'p_total_chunks': metadata.get('total_chunks', 1)
+                }
                 result = await self._call_sql_function('upsert_rag_trade_document', doc_data, user_token)
-            elif doc_type in [DocumentType.AI_REPORT, DocumentType.AI_INSIGHT]:
-                result = await self._call_sql_function('upsert_rag_ai_document', doc_data, user_token)
-            else:
-                result = await self._call_sql_function('upsert_rag_market_document', doc_data, user_token)
                 
-            return result.get('id') if result else None
+            elif doc_type in [DocumentType.AI_REPORT, DocumentType.AI_INSIGHT]:
+                doc_data = {
+                    'p_user_id': user_id,
+                    'p_document_type': doc_type.value,
+                    'p_title': title,
+                    'p_content': content,
+                    'p_content_embedding': embedding,
+                    'p_source_table': metadata.get('source_table', 'ai_reports'),
+                    'p_source_id': metadata.get('source_id'),
+                    'p_insight_types': metadata.get('insight_types', []),
+                    'p_model_used': metadata.get('model_used'),
+                    'p_generation_date': metadata.get('generation_date'),
+                    'p_confidence_score': metadata.get('confidence_score'),
+                    'p_time_horizon': metadata.get('time_horizon'),
+                    'p_actionability_score': metadata.get('actionability_score')
+                }
+                result = await self._call_sql_function('upsert_rag_ai_document', doc_data, user_token)
+                
+            else:  # Market documents
+                doc_data = {
+                    'p_user_id': user_id,
+                    'p_document_type': doc_type.value,
+                    'p_title': title,
+                    'p_content': content,
+                    'p_content_embedding': embedding,
+                    'p_source': metadata.get('source'),
+                    'p_source_id': metadata.get('source_id'),
+                    'p_symbols': metadata.get('symbols', []),
+                    'p_categories': metadata.get('categories', []),
+                    'p_sector': metadata.get('sector'),
+                    'p_market_cap_range': metadata.get('market_cap_range'),
+                    'p_publication_date': metadata.get('publication_date'),
+                    'p_sentiment_score': metadata.get('sentiment_score'),
+                    'p_relevance_score': metadata.get('relevance_score'),
+                    'p_expires_at': metadata.get('expires_at')
+                }
+                result = await self._call_sql_function('upsert_rag_market_document', doc_data, user_token)
+            
+            # Extract ID from result - handle different response formats
+            if result:
+                # Case 1: Result is a response object with 'data' attribute
+                if hasattr(result, 'data') and result.data:
+                    if isinstance(result.data, list) and len(result.data) > 0:
+                        return str(result.data[0].get('id'))
+                    elif hasattr(result.data, 'get'):
+                        return str(result.data.get('id'))
+                
+                # Case 2: Result is a direct list
+                elif isinstance(result, list) and len(result) > 0:
+                    return str(result[0].get('id'))
+                
+                # Case 3: Result is a direct dictionary
+                elif hasattr(result, 'get'):
+                    return str(result.get('id'))
+                
+                # Case 4: Log unexpected format for debugging
+                else:
+                    logger.warning(f"Unexpected result format from SQL function: {result}")
+                    return None
+            else:
+                logger.warning("No result returned from SQL function")
+                return None
             
         except Exception as e:
             logger.error(f"Error indexing document: {str(e)}")
@@ -97,3 +168,34 @@ class RAGVectorService:
         except Exception as e:
             logger.error(f"Error in semantic search: {str(e)}")
             return []
+    
+    async def _get_user_id_from_token(self, access_token: str) -> str:
+        """
+        Helper method to extract and validate user_id from access_token.
+        
+        This method:
+        1. Validates the access token
+        2. Extracts the authenticated user
+        3. Returns the user_id
+        
+        Raises:
+            Exception: If authentication fails or token is invalid
+        """
+        try:
+            # Get authenticated client to extract user_id
+            client = await self.auth_service.get_authenticated_client(access_token)
+            user_response = client.auth.get_user(access_token.replace("Bearer ", ""))
+            if not user_response.user:
+                raise Exception("Invalid authentication token")
+            
+            return user_response.user.id
+            
+        except Exception as e:
+            raise Exception(f"Authentication failed: {str(e)}")
+    
+    async def _call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str) -> Any:
+        """Helper method to call SQL functions with authentication."""
+        try:
+            return await self.auth_service.safe_rpc_call(function_name, params, access_token)
+        except Exception as e:
+            raise Exception(f"Database operation failed: {str(e)}")
