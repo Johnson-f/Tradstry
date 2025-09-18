@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import logging
 from datetime import datetime, timedelta
 import asyncio
+from supabase import Client
 
 # LangChain imports
 from langchain_core.retrievers import BaseRetriever
@@ -69,9 +70,13 @@ class TradistryRetriever(BaseRetriever):
 class RAGRetrieverService:
     """Enhanced RAG service with contextual retrieval capabilities"""
     
-    def __init__(self):
+    def __init__(self, supabase: Optional[Client] = None):
         try:
-            self.vector_service = RAGVectorService()
+            from supabase import Client
+            from database import get_supabase
+            
+            supabase_client = supabase or get_supabase()
+            self.vector_service = RAGVectorService(supabase_client)
             self.embedding_service = AIEmbeddingService()
             logger.info("RAGRetrieverService initialized successfully")
         except Exception as e:
@@ -217,13 +222,28 @@ Price: ${trade_data.get('price', 0)}
     async def index_ai_content(
         self, 
         user_token: str, 
-        ai_content: Dict[str, Any],
+        ai_content: Any,  # Changed from Dict[str, Any] to Any to handle both dicts and objects
         content_type: str = "ai_report"
     ) -> Optional[str]:
         """Index AI-generated content for future retrieval"""
         try:
-            title = ai_content.get('title', 'AI Generated Content')
-            content = ai_content.get('content', '')
+            # Handle both dictionary and object types (e.g., Pydantic models)
+            if hasattr(ai_content, '__dict__') and not isinstance(ai_content, dict):
+                # Handle Pydantic models or other objects
+                title = getattr(ai_content, 'title', 'AI Generated Content')
+                content = getattr(ai_content, 'content', '')
+                model_used = getattr(ai_content, 'model_used', '')
+                confidence_score = getattr(ai_content, 'confidence_score', 0.0)
+                source_id = getattr(ai_content, 'id', None)
+                report_type = getattr(ai_content, 'report_type', None)
+            else:
+                # Handle dictionary objects
+                title = ai_content.get('title', 'AI Generated Content')
+                content = ai_content.get('content', '')
+                model_used = ai_content.get('model_used', '')
+                confidence_score = ai_content.get('confidence_score', 0.0)
+                source_id = ai_content.get('id')
+                report_type = ai_content.get('report_type')
             
             if not content:
                 logger.warning("No content provided for AI indexing")
@@ -232,11 +252,17 @@ Price: ${trade_data.get('price', 0)}
             # Determine document type
             doc_type = DocumentType.AI_REPORT if content_type == "ai_report" else DocumentType.AI_INSIGHT
             
+            # Prepare metadata with correct structure for SQL function
             metadata = {
-                'model_used': ai_content.get('model_used', ''),
-                'confidence_score': ai_content.get('confidence_score', 0.0),
-                'generation_date': datetime.now().isoformat(),
-                'content_type': content_type
+                'source_table': 'ai_reports',
+                'source_id': source_id,
+                'model_used': model_used,
+                'confidence_score': confidence_score,
+                'generation_date': datetime.now().date().isoformat(),
+                'content_type': content_type,
+                'insight_types': [report_type.value] if report_type else [],
+                'time_horizon': 'short_term',  # Default value
+                'actionability_score': confidence_score  # Use confidence as actionability
             }
             
             # Index the AI content

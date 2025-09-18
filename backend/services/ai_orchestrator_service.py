@@ -1325,7 +1325,7 @@ Provide:
     async def _index_ai_generated_content(
         self, 
         user_token: str, 
-        ai_content: Dict[str, Any], 
+        ai_content: Any,  # Changed to Any to handle both dicts and Pydantic models
         content_type: str
     ) -> Optional[str]:
         """Index AI-generated content in the RAG system for future retrieval."""
