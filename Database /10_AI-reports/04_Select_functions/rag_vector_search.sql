@@ -16,7 +16,7 @@ RETURNS TABLE(
     document_type VARCHAR(50),
     similarity_score DECIMAL(5,4),
     metadata JSONB,
-    source_table VARCHAR(50),
+    source_table TEXT,
     created_at TIMESTAMPTZ
 ) AS $$
 BEGIN

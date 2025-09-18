@@ -55,8 +55,8 @@ class AIInsightInDB(AIInsightBase):
     """Model for AI insights as stored in database."""
     id: str = Field(description="Unique identifier for the insight")
     user_id: str = Field(description="User who owns this insight")
-    created_at: datetime = Field(description="When the insight was created")
-    updated_at: datetime = Field(description="When the insight was last updated")
+    created_at: Optional[datetime] = Field(default=None, description="When the insight was created")
+    updated_at: Optional[datetime] = Field(default=None, description="When the insight was last updated")
 
 class AIInsightResponse(AIInsightInDB):
     """Model for AI insight API responses."""
@@ -101,8 +101,8 @@ class AIInsightUpsertResponse(BaseModel):
     tags: Optional[List[str]]
     valid_until: Optional[datetime]
     model_used: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     operation_type: str = Field(description="'created' or 'updated'")
 
 class AIInsightListResponse(BaseModel):

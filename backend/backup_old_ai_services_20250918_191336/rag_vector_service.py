@@ -145,25 +145,67 @@ class RAGVectorService:
                             limit: int = 5) -> List[SearchResult]:
         """Perform semantic search across all indexes"""
         try:
+            user_id = await self._get_user_id_from_token(user_token)
             query_embedding = self.embedding_service.generate_embedding(query)
             
             search_params = {
-                'query_embedding': query_embedding,
-                'similarity_threshold': 0.7,
-                'limit_count': limit
+                'p_user_id': user_id,
+                'p_query_embedding': query_embedding,
+                'p_similarity_threshold': 0.7,
+                'p_limit_count': limit
             }
             
             results = await self._call_sql_function('semantic_search_all', search_params, user_token)
             
-            return [
-                SearchResult(
-                    content=r.get('content', ''),
-                    similarity_score=r.get('similarity_score', 0.0),
-                    metadata=r.get('metadata', {}),
-                    document_type=r.get('document_type', '')
-                )
-                for r in (results or [])
-            ]
+            # Handle the response format (Supabase returns response object with 'data' attribute)
+            search_results = []
+            if results:
+                # Extract data from Supabase response
+                data_list = []
+                if hasattr(results, 'data') and results.data is not None:
+                    data_list = results.data if isinstance(results.data, list) else [results.data]
+                elif isinstance(results, list):
+                    data_list = results
+                else:
+                    logger.warning(f"Unexpected results format: {type(results)}")
+                    data_list = []
+                
+                for r in data_list:
+                    # Handle different response formats - r could be dict, object, or tuple
+                    try:
+                        if isinstance(r, dict):
+                            # Standard dictionary response
+                            content = r.get('content', '')
+                            similarity_score = float(r.get('similarity_score', 0.0))
+                            metadata = r.get('metadata', {})
+                            document_type = r.get('document_type', '')
+                        elif hasattr(r, '__dict__'):
+                            # Object with attributes
+                            content = getattr(r, 'content', '')
+                            similarity_score = float(getattr(r, 'similarity_score', 0.0))
+                            metadata = getattr(r, 'metadata', {})
+                            document_type = getattr(r, 'document_type', '')
+                        elif isinstance(r, (list, tuple)) and len(r) >= 4:
+                            # Tuple/list response (id, content, document_type, similarity_score, metadata, source_table, created_at)
+                            content = str(r[1]) if len(r) > 1 else ''
+                            similarity_score = float(r[3]) if len(r) > 3 else 0.0
+                            metadata = r[4] if len(r) > 4 and isinstance(r[4], dict) else {}
+                            document_type = str(r[2]) if len(r) > 2 else ''
+                        else:
+                            logger.warning(f"Unexpected row format: {type(r)} - {r}")
+                            continue
+                        
+                        search_results.append(SearchResult(
+                            content=content,
+                            similarity_score=similarity_score,
+                            metadata=metadata,
+                            document_type=document_type
+                        ))
+                    except Exception as row_error:
+                        logger.error(f"Error processing search result row: {row_error}")
+                        continue
+            
+            return search_results
             
         except Exception as e:
             logger.error(f"Error in semantic search: {str(e)}")

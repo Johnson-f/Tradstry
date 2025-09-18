@@ -3,8 +3,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from services.user_service import UserService
 from utils.auth import get_user_with_token_retry
-from services.ai_reports_service import AIReportsService
-from services.ai_orchestrator_service import AIOrchestrator
+from services.ai.ai_reports_service import AIReportsService
+from services.ai.ai_orchestrator_service import AIOrchestrator
 from models.ai_reports import (
     AIReportCreate, AIReportUpdate, AIReportResponse, 
     AIReportGenerateRequest, DeleteResponse
@@ -57,9 +57,18 @@ async def get_reports(
     """Get AI reports with filtering and pagination."""
     try:
         service = AIReportsService()
+        # Convert string parameters to enums if provided
+        from models.ai_reports import ReportType, ReportStatus
+        report_type_enum = ReportType(report_type) if report_type else None
+        status_enum = ReportStatus(status) if status else None
+        
         reports = await service.get_reports(
-            current_user["access_token"], None, report_type, status, date_range_start, 
-            date_range_end, search_query, limit, offset, order_by, order_direction
+            current_user["access_token"], 
+            report_type=report_type_enum,
+            status=status_enum,
+            date_from=date_range_start, 
+            date_to=date_range_end,
+            limit=limit
         )
         return reports
     except Exception as e:
@@ -73,10 +82,10 @@ async def get_report(
     """Get a specific AI report by ID."""
     try:
         service = AIReportsService()
-        reports = await service.get_reports(current_user["access_token"], report_id=report_id, limit=1)
-        if not reports:
+        report = await service.get_report_by_id(report_id, current_user["access_token"])
+        if not report:
             raise HTTPException(status_code=404, detail="Report not found")
-        return reports[0]
+        return report
     except HTTPException:
         raise
     except Exception as e:

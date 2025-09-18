@@ -98,12 +98,12 @@ class AIEmbeddingService:
                 return list(embedding)
             else:
                 logger.warning("No embedding returned from Voyager AI API")
-                return [0.0] * self.embedding_dimension
+                return self._generate_fallback_embedding(cleaned_text)
                 
         except Exception as e:
             logger.error(f"Error generating embedding for text: {str(e)}")
-            # Return zero vector as fallback
-            return [0.0] * self.embedding_dimension
+            # Use fallback embedding generation
+            return self._generate_fallback_embedding(text)
     
     def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -148,8 +148,8 @@ class AIEmbeddingService:
             
         except Exception as e:
             logger.error(f"Error generating batch embeddings: {str(e)}")
-            # Return zero vectors as fallback
-            return [[0.0] * self.embedding_dimension] * len(texts)
+            # Use fallback embeddings for all texts
+            return [self._generate_fallback_embedding(text) for text in texts]
     
     def _preprocess_text(self, text: str) -> str:
         """
@@ -300,3 +300,58 @@ class AIEmbeddingService:
             
         except Exception:
             return False
+    
+    def _generate_fallback_embedding(self, text: str) -> List[float]:
+        """
+        Generate a simple fallback embedding when Voyager AI is unavailable.
+        This uses a basic hash-based approach to create consistent embeddings.
+        
+        Args:
+            text: Input text to embed
+            
+        Returns:
+            List of floats representing the embedding vector
+        """
+        try:
+            if not text or not text.strip():
+                return [0.0] * self.embedding_dimension
+            
+            # Use a simple hash-based approach for fallback embeddings
+            # This ensures consistent embeddings for the same text
+            import hashlib
+            
+            # Clean and normalize text
+            cleaned_text = self._preprocess_text(text).lower()
+            
+            # Create multiple hash values to generate the embedding
+            embedding = []
+            for i in range(self.embedding_dimension // 16):  # 16 values per hash
+                seed = f"{cleaned_text}_{i}"
+                hash_obj = hashlib.md5(seed.encode('utf-8'))
+                hash_bytes = hash_obj.digest()
+                
+                # Convert hash bytes to float values between -1 and 1
+                for j in range(0, len(hash_bytes), 2):
+                    if len(embedding) >= self.embedding_dimension:
+                        break
+                    if j + 1 < len(hash_bytes):
+                        # Combine two bytes to create a value
+                        val = (hash_bytes[j] << 8) | hash_bytes[j + 1]
+                        # Normalize to [-1, 1]
+                        normalized = (val / 65535.0) * 2.0 - 1.0
+                        embedding.append(normalized)
+            
+            # Pad with zeros if needed
+            while len(embedding) < self.embedding_dimension:
+                embedding.append(0.0)
+            
+            # Truncate if too long
+            embedding = embedding[:self.embedding_dimension]
+            
+            logger.info(f"Generated fallback embedding for text (length: {len(text)})")
+            return embedding
+            
+        except Exception as e:
+            logger.error(f"Error generating fallback embedding: {str(e)}")
+            # Return zero vector as final fallback
+            return [0.0] * self.embedding_dimension

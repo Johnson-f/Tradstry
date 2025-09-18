@@ -3,8 +3,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from services.user_service import UserService
 from utils.auth import get_user_with_token_retry
-from services.ai_chat_service import AIChatService
-from services.ai_orchestrator_service import AIOrchestrator
+from services.ai.ai_chat_service import AIChatService
+from services.ai.ai_orchestrator_service import AIOrchestrator
 from models.ai_chat import (
     AIChatMessageCreate, AIChatMessageUpdate, AIChatMessageResponse,
     AIChatSessionResponse, ChatMessageDeleteResponse, AIChatRequest
