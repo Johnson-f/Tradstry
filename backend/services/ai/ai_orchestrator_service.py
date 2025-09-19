@@ -23,6 +23,7 @@ from .ai_reports_service import AIReportsService
 from .ai_chat_service import AIChatService
 from .ai_insights_service import AIInsightsService
 from .rag_retriever_service import RAGRetrieverService
+from .prompt_service import PromptService, PromptStrategy
 from models.ai_reports import ReportType, AIReportCreate
 from models.ai_chat import (
     AIChatMessageCreate, AIChatSessionCreate, MessageType, SourceType,
@@ -37,6 +38,7 @@ from config.ai_config import (
     get_model_by_key,
     validate_model_availability
 )
+from config.prompt_registry import PromptType, PromptVersion
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,19 @@ class AIOrchestrator:
         self.reports_service = AIReportsService()
         self.chat_service = AIChatService()
         self.insights_service = AIInsightsService()
+        
+        # Initialize advanced prompt management
+        try:
+            logger.info("Initializing advanced prompt management system...")
+            self.prompt_service = PromptService()
+            self.prompt_enabled = True
+            logger.info("Advanced prompt system initialized successfully")
+        except Exception as e:
+            logger.error(f"Prompt system initialization failed: {str(e)}")
+            logger.error(f"Prompt error details: {type(e).__name__}: {str(e)}")
+            self.prompt_service = None
+            self.prompt_enabled = False
+            logger.info("Continuing with legacy prompt system - basic functionality will be available")
         
         # Initialize RAG service with error handling
         try:
@@ -81,8 +96,8 @@ class AIOrchestrator:
         self._vector_store = None
         self._index = None
 
-        # Trading-specific prompts
-        self.trading_prompts = self._initialize_trading_prompts()
+        # Trading-specific prompts (legacy fallback)
+        self.trading_prompts = self._initialize_legacy_prompts() if not self.prompt_enabled else {}
 
     def _get_stable_models(self) -> List[Dict[str, str]]:
         """Get list of free models available on OpenRouter, organized by tier."""
@@ -455,8 +470,9 @@ class AIOrchestrator:
 
         return None
 
-    def _initialize_trading_prompts(self) -> Dict[str, PromptTemplate]:
-        """Initialize trading-specific prompt templates."""
+    def _initialize_legacy_prompts(self) -> Dict[str, PromptTemplate]:
+        """Initialize legacy trading prompts as fallback when prompt service unavailable."""
+        logger.info("Initializing legacy prompt templates as fallback")
 
         daily_report_prompt = PromptTemplate(
             input_variables=["trading_data", "date_range"],
@@ -696,7 +712,7 @@ Provide:
                                   custom_start_date: Optional[datetime] = None,
                                   custom_end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Generate a comprehensive daily trading report using AI analysis.
+        Generate a comprehensive daily trading report using enhanced AI analysis with few-shot prompting.
 
         Args:
             user: User object with authentication information
@@ -707,7 +723,17 @@ Provide:
         Returns:
             Dictionary containing the generated report and metadata
         """
+        user_id = user.get("user_id", "unknown")
+        
         try:
+            logger.info(f"Starting daily report generation for user {user_id}", extra={
+                "user_id": user_id,
+                "time_range": time_range,
+                "custom_start_date": custom_start_date,
+                "custom_end_date": custom_end_date,
+                "prompt_enabled": self.prompt_enabled
+            })
+            
             start_time = datetime.now()
 
             # Validate token before proceeding
@@ -719,38 +745,88 @@ Provide:
                 raise Exception("LLM is not available. Please check your OPENROUTER_API_KEY and try again.")
 
             # Get trading context data with error handling
+            logger.debug("Fetching trading context data", extra={
+                "user_id": user_id,
+                "time_range": time_range
+            })
+            
             try:
                 trading_context = await self.reports_service.get_trading_context(
                     user["access_token"], time_range, custom_start_date, custom_end_date
                 )
+                logger.debug("Trading context retrieved successfully", extra={
+                    "user_id": user_id,
+                    "context_keys": list(trading_context.keys()) if trading_context else [],
+                    "analytics_available": "analytics" in (trading_context or {})
+                })
             except Exception as e:
-                logger.warning(f"Error getting trading context, using fallback: {str(e)}")
+                logger.warning(f"Error getting trading context, using fallback: {str(e)}", extra={
+                    "user_id": user_id,
+                    "error_type": type(e).__name__
+                })
                 trading_context = {"message": "No trading data available", "analytics": {}}
 
-            # Generate report using enhanced chain approach
-            try:
-                chain = self.trading_prompts["daily_report"] | self.llm | StrOutputParser()
-
-                report_content = self._safe_chain_invoke(chain, {
-                    "trading_data": json.dumps(trading_context, indent=2),
-                    "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+            # Generate report using advanced prompt service or fallback
+            if self.prompt_enabled and self.prompt_service:
+                logger.info("Using advanced prompt service for report generation", extra={
+                    "user_id": user_id,
+                    "prompt_type": PromptType.DAILY_REPORT
                 })
+                
+                try:
+                    # Use advanced prompt service with few-shot learning
+                    input_data = {
+                        "trading_data": json.dumps(trading_context, indent=2),
+                        "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                    }
                     
-            except Exception as llm_error:
-                logger.error(f"LLM generation failed: {str(llm_error)}")
-                report_content = self._get_fallback_response({
-                    "trading_data": trading_context,
-                    "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                    execution_result = await self.prompt_service.execute_prompt(
+                        prompt_type=PromptType.DAILY_REPORT,
+                        input_data=input_data,
+                        llm=self.llm,
+                        strategy=PromptStrategy.ADAPTIVE,
+                        user_id=user_id
+                    )
+                    
+                    if execution_result.success:
+                        report_content = execution_result.content
+                        logger.info("Advanced prompt execution successful", extra={
+                            "user_id": user_id,
+                            "version_used": execution_result.version_used,
+                            "processing_time_ms": execution_result.processing_time_ms,
+                            "confidence_score": execution_result.confidence_score
+                        })
+                    else:
+                        raise Exception(f"Prompt execution failed: {execution_result.error_message}")
+                        
+                except Exception as prompt_error:
+                    logger.error(f"Advanced prompt service failed, falling back to legacy: {str(prompt_error)}", extra={
+                        "user_id": user_id,
+                        "error_type": type(prompt_error).__name__
+                    })
+                    # Fallback to legacy approach
+                    report_content = await self._generate_report_legacy(trading_context, custom_start_date, custom_end_date)
+            else:
+                logger.info("Using legacy prompt system for report generation", extra={
+                    "user_id": user_id,
+                    "reason": "prompt_service_unavailable"
                 })
+                report_content = await self._generate_report_legacy(trading_context, custom_start_date, custom_end_date)
 
             # Calculate processing time
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
 
-            # Ensure report_content is a string
+            # Ensure report_content is a string (following validation fix from memory)
             if hasattr(report_content, 'content'):
                 report_content = report_content.content
             elif not isinstance(report_content, str):
                 report_content = str(report_content)
+                
+            logger.debug("Report content validated successfully", extra={
+                "user_id": user_id,
+                "content_length": len(report_content),
+                "is_string": isinstance(report_content, str)
+            })
 
             # Extract insights and recommendations from the report
             insights, recommendations = self._extract_insights_and_recommendations(report_content)
@@ -804,14 +880,38 @@ Provide:
             }
 
         except Exception as e:
-            logger.error(f"Error generating daily report: {str(e)}")
+            logger.error(f"Error generating daily report: {str(e)}", extra={
+                "user_id": user_id,
+                "error_type": type(e).__name__
+            })
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise Exception(f"Failed to generate daily report: {str(e)}")
+
+    async def _generate_report_legacy(self, trading_context: Dict[str, Any], 
+                                    custom_start_date: Optional[datetime] = None,
+                                    custom_end_date: Optional[datetime] = None) -> str:
+        """Generate report using legacy prompt system as fallback."""
+        try:
+            chain = self.trading_prompts["daily_report"] | self.llm | StrOutputParser()
+            
+            report_content = self._safe_chain_invoke(chain, {
+                "trading_data": json.dumps(trading_context, indent=2),
+                "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+            })
+            
+            return report_content
+                
+        except Exception as llm_error:
+            logger.error(f"Legacy LLM generation failed: {str(llm_error)}")
+            return self._get_fallback_response({
+                "trading_data": trading_context,
+                "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+            })
 
     async def process_chat_message(self, user: Dict[str, Any], session_id: str,
                                  user_message: str, context_limit: int = 10) -> Dict[str, Any]:
         """
-        Process a chat message with context from trading data and conversation history.
+        Process a chat message with enhanced context from trading data and conversation history.
 
         Args:
             user: User object with authentication information
@@ -822,8 +922,18 @@ Provide:
         Returns:
             Dictionary containing AI response and metadata
         """
+        user_id = user.get("user_id", "unknown")
+        
         try:
-            logger.info(f"Processing chat message: {user_message[:100]}...")
+            logger.info(f"Processing chat message for user {user_id}", extra={
+                "user_id": user_id,
+                "session_id": session_id,
+                "message_preview": user_message[:100],
+                "message_length": len(user_message),
+                "context_limit": context_limit,
+                "prompt_enabled": self.prompt_enabled
+            })
+            
             start_time = datetime.now()
 
             # Validate token before proceeding
@@ -887,21 +997,56 @@ Provide:
             except Exception as e:
                 logger.error(f"Error saving user message: {str(e)}")
 
-            # Prepare prompt for AI response
-            prompt_input = {
-                "context": json.dumps(trading_context, indent=2),
-                "question": user_message,
-                "chat_history": history_text
-            }
-
-            # Generate AI response using enhanced chain approach
-            try:
-                chain = self.trading_prompts["chat"] | self.llm | StrOutputParser()
-                ai_response = self._safe_chain_invoke(chain, prompt_input)
+            # Generate AI response using advanced prompt service or fallback
+            if self.prompt_enabled and self.prompt_service:
+                logger.info("Using advanced prompt service for chat response", extra={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "prompt_type": PromptType.CHAT
+                })
+                
+                try:
+                    # Use advanced prompt service with few-shot learning
+                    input_data = {
+                        "context": json.dumps(trading_context, indent=2),
+                        "question": user_message,
+                        "chat_history": history_text
+                    }
                     
-            except Exception as llm_error:
-                logger.error(f"LLM chat generation failed: {str(llm_error)}")
-                ai_response = self._get_fallback_response({"question": user_message})
+                    execution_result = await self.prompt_service.execute_prompt(
+                        prompt_type=PromptType.CHAT,
+                        input_data=input_data,
+                        llm=self.llm,
+                        strategy=PromptStrategy.BEST_PERFORMANCE,
+                        user_id=user_id
+                    )
+                    
+                    if execution_result.success:
+                        ai_response = execution_result.content
+                        logger.info("Advanced chat prompt execution successful", extra={
+                            "user_id": user_id,
+                            "session_id": session_id,
+                            "version_used": execution_result.version_used,
+                            "confidence_score": execution_result.confidence_score
+                        })
+                    else:
+                        raise Exception(f"Chat prompt execution failed: {execution_result.error_message}")
+                        
+                except Exception as prompt_error:
+                    logger.error(f"Advanced chat prompt failed, falling back to legacy: {str(prompt_error)}", extra={
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "error_type": type(prompt_error).__name__
+                    })
+                    # Fallback to legacy approach
+                    ai_response = await self._generate_chat_legacy(trading_context, user_message, history_text)
+            else:
+                logger.info("Using legacy chat prompt system", extra={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "reason": "prompt_service_unavailable"
+                })
+                ai_response = await self._generate_chat_legacy(trading_context, user_message, history_text)
 
             # Calculate processing time
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -952,6 +1097,25 @@ Provide:
             logger.error(f"Error processing chat message: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise Exception(f"Failed to process chat message: {str(e)}")
+
+    async def _generate_chat_legacy(self, trading_context: Dict[str, Any], 
+                                  user_message: str, history_text: str) -> str:
+        """Generate chat response using legacy prompt system as fallback."""
+        try:
+            prompt_input = {
+                "context": json.dumps(trading_context, indent=2),
+                "question": user_message,
+                "chat_history": history_text
+            }
+            
+            chain = self.trading_prompts["chat"] | self.llm | StrOutputParser()
+            ai_response = self._safe_chain_invoke(chain, prompt_input)
+            
+            return ai_response
+                
+        except Exception as llm_error:
+            logger.error(f"Legacy chat LLM generation failed: {str(llm_error)}")
+            return self._get_fallback_response({"question": user_message})
 
     async def generate_insights(self, user: Dict[str, Any], insight_types: List[InsightType],
                               time_range: str = "30d", min_confidence: float = 0.7) -> List[Dict[str, Any]]:

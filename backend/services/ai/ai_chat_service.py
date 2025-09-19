@@ -202,6 +202,122 @@ class AIChatService:
             self.logger.error(f"Error retrieving chat sessions: {str(e)}")
             raise Exception(f"Error retrieving chat sessions: {str(e)}")
 
+    async def get_sessions(self, access_token: str, limit: Optional[int] = None, offset: Optional[int] = None) -> List[AIChatSessionResponse]:
+        """
+        Get chat sessions for the user (alias for get_session_list for router compatibility).
+        
+        Args:
+            access_token: User authentication token
+            limit: Optional limit on number of sessions
+            offset: Optional offset for pagination (currently not used but kept for compatibility)
+            
+        Returns:
+            List[AIChatSessionResponse]: Chat sessions
+        """
+        return await self.get_session_list(access_token, limit)
+
+    async def get_messages(self, access_token: str, session_id: Optional[str] = None, 
+                          message_id: Optional[str] = None, message_type: Optional[str] = None, 
+                          role: Optional[str] = None, search_query: Optional[str] = None,
+                          limit: int = 50, offset: int = 0, order_by: str = "created_at", 
+                          order_direction: str = "ASC") -> List[AIChatMessageResponse]:
+        """
+        Get chat messages with filtering and pagination.
+        
+        Args:
+            access_token: User authentication token
+            session_id: Optional session ID filter
+            message_id: Optional specific message ID
+            message_type: Optional message type filter
+            role: Optional role filter (maps to message_type)
+            search_query: Optional text search query
+            limit: Maximum number of messages to return
+            offset: Number of messages to skip
+            order_by: Field to order by
+            order_direction: ASC or DESC
+            
+        Returns:
+            List[AIChatMessageResponse]: Chat messages
+        """
+        try:
+            self.logger.info("Retrieving chat messages", extra={
+                "session_id": session_id,
+                "message_type": message_type,
+                "role": role,
+                "search_query": search_query,
+                "limit": limit,
+                "offset": offset
+            })
+            
+            # Get user ID through DAL
+            user_id = await self.dal.get_authenticated_user_id(access_token)
+            
+            # Get messages through DAL
+            messages_data = await self.dal.get_messages(
+                user_id, access_token, session_id, message_id, message_type, 
+                role, search_query, limit, offset, order_by, order_direction
+            )
+            
+            # Convert to response models
+            messages = [self._convert_to_message_response(data) for data in messages_data]
+            
+            self.logger.info("Chat messages retrieved successfully", extra={
+                "message_count": len(messages),
+                "user_id": user_id
+            })
+            
+            return messages
+            
+        except Exception as e:
+            self.logger.error(f"Error retrieving chat messages: {str(e)}")
+            raise Exception(f"Error retrieving chat messages: {str(e)}")
+
+    async def search_messages(self, access_token: str, query: str, session_id: Optional[str] = None, 
+                             limit: int = 20, similarity_threshold: float = 0.7) -> List[AIChatMessageResponse]:
+        """
+        Search chat messages using vector similarity.
+        
+        Args:
+            access_token: User authentication token
+            query: Search query
+            session_id: Optional session ID filter
+            limit: Maximum number of messages to return
+            similarity_threshold: Minimum similarity score
+            
+        Returns:
+            List[AIChatMessageResponse]: Matching chat messages with similarity scores
+        """
+        try:
+            self.logger.info("Searching chat messages", extra={
+                "query": query,
+                "session_id": session_id,
+                "limit": limit,
+                "similarity_threshold": similarity_threshold
+            })
+            
+            # Get user ID through DAL
+            user_id = await self.dal.get_authenticated_user_id(access_token)
+            
+            # Search messages through DAL
+            messages_data = await self.dal.search_messages(
+                user_id, access_token, query, session_id, limit, similarity_threshold
+            )
+            
+            # Convert to response models
+            messages = [self._convert_to_message_response(data) for data in messages_data]
+            
+            self.logger.info("Chat messages search completed", extra={
+                "query": query,
+                "message_count": len(messages),
+                "user_id": user_id
+            })
+            
+            return messages
+            
+        except Exception as e:
+            self.logger.error(f"Error searching chat messages: {str(e)}")
+            raise Exception(f"Error searching chat messages: {str(e)}")
+
     async def delete_session(self, session_id: str, access_token: str) -> ChatDeleteResponse:
         """
         Delete a chat session and all its messages.
@@ -338,11 +454,11 @@ class AIChatService:
     def _convert_to_session_response(self, data: Dict[str, Any]) -> AIChatSessionResponse:
         """Convert database result to AIChatSessionResponse."""
         return AIChatSessionResponse(
-            id=data.get('session_id'),
-            user_id=data.get('user_id'),
-            title=data.get('title', 'Chat Session'),
+            session_id=data.get('session_id'),
             message_count=data.get('message_count', 0),
-            last_message_at=datetime.fromisoformat(data['last_message_at']) if data.get('last_message_at') else None,
-            created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else datetime.utcnow(),
-            updated_at=datetime.fromisoformat(data['updated_at']) if data.get('updated_at') else None
+            first_message=data.get('first_message', ''),
+            last_message=data.get('last_message', ''),
+            first_message_at=datetime.fromisoformat(data['first_message_at']) if data.get('first_message_at') else datetime.utcnow(),
+            last_message_at=datetime.fromisoformat(data['last_message_at']) if data.get('last_message_at') else datetime.utcnow(),
+            total_usage_count=data.get('total_usage_count', 0)
         )
