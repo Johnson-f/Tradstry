@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { aiChatService } from '@/lib/services/ai-chat-service';
+import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { aiChatService } from "@/lib/services/ai-chat-service";
 import type {
   AIChatMessage,
   AIChatSession,
@@ -8,25 +8,25 @@ import type {
   AIChatMessageUpdate,
   AIChatRequest,
   AIChatResponse,
-  ChatMessageDeleteResponse
-} from '@/lib/services/ai-chat-service';
+  ChatMessageDeleteResponse,
+} from "@/lib/services/ai-chat-service";
 
 // Query keys for TanStack Query
 export const aiChatKeys = {
-  all: ['ai-chat'] as const,
-  sessions: () => [...aiChatKeys.all, 'sessions'] as const,
-  sessionsList: (params?: { limit?: number; offset?: number }) => 
-    [...aiChatKeys.sessions(), 'list', params] as const,
+  all: ["ai-chat"] as const,
+  sessions: () => [...aiChatKeys.all, "sessions"] as const,
+  sessionsList: (params?: { limit?: number; offset?: number }) =>
+    [...aiChatKeys.sessions(), "list", params] as const,
   session: (id: string) => [...aiChatKeys.sessions(), id] as const,
-  sessionMessages: (sessionId: string, limit?: number) => 
-    [...aiChatKeys.session(sessionId), 'messages', limit] as const,
-  messages: () => [...aiChatKeys.all, 'messages'] as const,
+  sessionMessages: (sessionId: string, limit?: number) =>
+    [...aiChatKeys.session(sessionId), "messages", limit] as const,
+  messages: () => [...aiChatKeys.all, "messages"] as const,
   messageSearch: (params: {
     query: string;
     session_id?: string;
     limit?: number;
     similarity_threshold?: number;
-  }) => [...aiChatKeys.messages(), 'search', params] as const,
+  }) => [...aiChatKeys.messages(), "search", params] as const,
 } as const;
 
 interface UseAIChatState {
@@ -39,11 +39,11 @@ interface UseAIChatReturn extends UseAIChatState {
   sessions: AIChatSession[];
   sessionsLoading: boolean;
   sessionsError: Error | null;
-  
+
   messages: AIChatMessage[];
   messagesLoading: boolean;
   messagesError: Error | null;
-  
+
   searchResults: AIChatMessage[];
   searchLoading: boolean;
   searchError: Error | null;
@@ -55,28 +55,34 @@ interface UseAIChatReturn extends UseAIChatState {
     isPending: boolean;
     error: Error | null;
   };
-  
+
   updateMessage: {
-    mutate: (variables: { messageId: string; messageData: AIChatMessageUpdate }) => void;
-    mutateAsync: (variables: { messageId: string; messageData: AIChatMessageUpdate }) => Promise<AIChatResponse>;
+    mutate: (variables: {
+      messageId: string;
+      messageData: AIChatMessageUpdate;
+    }) => void;
+    mutateAsync: (variables: {
+      messageId: string;
+      messageData: AIChatMessageUpdate;
+    }) => Promise<AIChatResponse>;
     isPending: boolean;
     error: Error | null;
   };
-  
+
   deleteMessage: {
     mutate: (messageId: string) => void;
     mutateAsync: (messageId: string) => Promise<ChatMessageDeleteResponse>;
     isPending: boolean;
     error: Error | null;
   };
-  
+
   deleteSession: {
     mutate: (sessionId: string) => void;
     mutateAsync: (sessionId: string) => Promise<AIChatResponse>;
     isPending: boolean;
     error: Error | null;
   };
-  
+
   chatWithAI: {
     mutate: (request: AIChatRequest) => void;
     mutateAsync: (request: AIChatRequest) => Promise<AIChatResponse>;
@@ -107,14 +113,14 @@ interface UseAIChatParams {
 export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
   const { sessionId, sessionsParams, messagesLimit } = params;
   const queryClient = useQueryClient();
-  
+
   const [localState, setLocalState] = useState<UseAIChatState>({
     currentSession: null,
     isChatting: false,
   });
 
   const setCurrentSession = useCallback((session: AIChatSession | null) => {
-    setLocalState(prev => ({ ...prev, currentSession: session }));
+    setLocalState((prev) => ({ ...prev, currentSession: session }));
   }, []);
 
   // Queries
@@ -135,8 +141,11 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
     error: messagesError,
     refetch: refetchMessages,
   } = useQuery({
-    queryKey: aiChatKeys.sessionMessages(sessionId || '', messagesLimit),
-    queryFn: () => sessionId ? aiChatService.getSessionMessages(sessionId, messagesLimit) : Promise.resolve([]),
+    queryKey: aiChatKeys.sessionMessages(sessionId || "", messagesLimit),
+    queryFn: () =>
+      sessionId
+        ? aiChatService.getSessionMessages(sessionId, messagesLimit)
+        : Promise.resolve([]),
     enabled: !!sessionId,
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
@@ -161,22 +170,32 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
 
   // Mutations
   const createMessageMutation = useMutation({
-    mutationFn: (messageData: AIChatMessageCreate) => aiChatService.createMessage(messageData),
+    mutationFn: (messageData: AIChatMessageCreate) =>
+      aiChatService.createMessage(messageData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
       if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit) });
+        queryClient.invalidateQueries({
+          queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit),
+        });
       }
     },
   });
 
   const updateMessageMutation = useMutation({
-    mutationFn: ({ messageId, messageData }: { messageId: string; messageData: AIChatMessageUpdate }) =>
-      aiChatService.updateMessage(messageId, messageData),
+    mutationFn: ({
+      messageId,
+      messageData,
+    }: {
+      messageId: string;
+      messageData: AIChatMessageUpdate;
+    }) => aiChatService.updateMessage(messageId, messageData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
       if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit) });
+        queryClient.invalidateQueries({
+          queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit),
+        });
       }
     },
   });
@@ -186,7 +205,9 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
       if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit) });
+        queryClient.invalidateQueries({
+          queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit),
+        });
       }
     },
   });
@@ -201,28 +222,33 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
 
   const chatWithAIMutation = useMutation({
     mutationFn: (request: AIChatRequest) => {
-      setLocalState(prev => ({ ...prev, isChatting: true }));
+      setLocalState((prev) => ({ ...prev, isChatting: true }));
       return aiChatService.chatWithAI(request);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
       if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit) });
+        queryClient.invalidateQueries({
+          queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit),
+        });
       }
     },
     onSettled: () => {
-      setLocalState(prev => ({ ...prev, isChatting: false }));
+      setLocalState((prev) => ({ ...prev, isChatting: false }));
     },
   });
 
-  const searchMessages = useCallback((params: {
-    query: string;
-    session_id?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  }) => {
-    setSearchParams(params);
-  }, []);
+  const searchMessages = useCallback(
+    (params: {
+      query: string;
+      session_id?: string;
+      limit?: number;
+      similarity_threshold?: number;
+    }) => {
+      setSearchParams(params);
+    },
+    [],
+  );
 
   return {
     ...localState,

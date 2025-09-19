@@ -7,28 +7,36 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MessageCircle, Plus, Calendar, MessageSquare } from "lucide-react";
+import {
+  Loader2,
+  MessageCircle,
+  Plus,
+  Calendar,
+  MessageSquare,
+} from "lucide-react";
 import Link from "next/link";
 
 export default function ChatListPage() {
   const router = useRouter();
   const {
     sessions,
-    loading,
-    error,
-    getSessions,
-    clearError,
+    sessionsLoading, // Use sessionsLoading from the hook
+    sessionsError, // Use sessionsError from the hook
+    refetchSessions, // Use refetchSessions instead of getSessions
   } = useAIChat();
 
   useEffect(() => {
-    getSessions({ limit: 50 });
-  }, [getSessions]);
+    // Call refetchSessions to fetch data when the component mounts
+    // The limit is handled within the useQuery options in useAIChat hook if sessionsParams is provided.
+    // For this page, we are not passing any sessionsParams from here, so it will use defaults defined in the hook.
+    refetchSessions();
+  }, [refetchSessions]);
 
   const handleNewChat = () => {
     router.push("/protected/chat/new");
   };
 
-  if (loading && !sessions.length) {
+  if (sessionsLoading && !sessions.length) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -36,7 +44,7 @@ export default function ChatListPage() {
     );
   }
 
-  if (error) {
+  if (sessionsError) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Card className="w-96">
@@ -44,8 +52,10 @@ export default function ChatListPage() {
             <CardTitle className="text-red-600">Error</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">{error}</p>
-            <Button onClick={clearError} variant="outline">
+            <p className="text-sm text-muted-foreground mb-4">
+              {sessionsError.message}
+            </p>
+            <Button onClick={() => refetchSessions()} variant="outline">
               Try Again
             </Button>
           </CardContent>
@@ -60,7 +70,9 @@ export default function ChatListPage() {
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <MessageCircle className="h-6 w-6" />
-          <h1 className="text-2xl font-bold tracking-tight">AI Chat Sessions</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            AI Chat Sessions
+          </h1>
         </div>
         <Button onClick={handleNewChat}>
           <Plus className="h-4 w-4 mr-2" />
@@ -75,9 +87,12 @@ export default function ChatListPage() {
             {sessions.length === 0 ? (
               <div className="text-center py-12">
                 <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-semibold mb-2">No chat sessions yet</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  No chat sessions yet
+                </h3>
                 <p className="text-muted-foreground mb-6">
-                  Start your first conversation with AI about your trading data and strategies
+                  Start your first conversation with AI about your trading data
+                  and strategies
                 </p>
                 <Button onClick={handleNewChat}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -104,19 +119,26 @@ export default function ChatListPage() {
                           <div className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
                             <span>
-                              {new Date(session.created_at).toLocaleDateString()}
+                              {new Date(
+                                session.created_at,
+                              ).toLocaleDateString()}
                             </span>
                           </div>
                           <div className="flex items-center gap-1">
                             <MessageSquare className="h-4 w-4" />
                             <span>
-                              {new Date(session.created_at).toLocaleTimeString()}
+                              {new Date(
+                                session.created_at,
+                              ).toLocaleTimeString()}
                             </span>
                           </div>
                         </div>
                         <div className="mt-3">
                           <Badge variant="outline" className="text-xs">
-                            Last updated {new Date(session.updated_at || session.created_at).toLocaleDateString()}
+                            Last updated{" "}
+                            {new Date(
+                              session.updated_at || session.created_at,
+                            ).toLocaleDateString()}
                           </Badge>
                         </div>
                       </CardContent>
