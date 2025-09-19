@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Send, MessageCircle } from "lucide-react";
+import { Loader2, Send, MessageCircle, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default function ChatPage() {
   const params = useParams();
@@ -89,17 +90,28 @@ export default function ChatPage() {
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <MessageCircle className="h-6 w-6" />
-          <h1 className="text-2xl font-bold tracking-tight">
-            AI Chat {currentSession?.title ? `- ${currentSession.title}` : ""}
-          </h1>
-          {currentSession && (
-            <Badge variant="secondary">
-              {messages.length} messages
-            </Badge>
-          )}
+      <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          {/* Left side - Navigation breadcrumb */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Link href="/protected" className="hover:text-foreground transition-colors">
+              Dashboard
+            </Link>
+            <ChevronRight className="w-4 h-4" />
+            <span className="font-semibold text-foreground">
+              {currentSession?.title || "AI Chat"}
+            </span>
+          </div>
+          
+          {/* Right side - Chat info */}
+          <div className="flex items-center gap-3">
+            <MessageCircle className="h-5 w-5" />
+            {currentSession && (
+              <Badge variant="secondary">
+                {messages.length} messages
+              </Badge>
+            )}
+          </div>
         </div>
       </div>
 

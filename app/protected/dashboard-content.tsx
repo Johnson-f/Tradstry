@@ -1,50 +1,43 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useAIChat } from "@/hooks/use-ai-chat";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, MessageCircle, Plus, Calendar, MessageSquare, Home } from "lucide-react";
+import { Plus, Home } from "lucide-react";
 import Link from "next/link";
+import EmbeddedAIChat from "@/components/dashboard/embedded-ai-chat";
+import RecentChatsSheet from "@/components/dashboard/recent-chats-sheet";
 
 export default function DashboardContent() {
   const router = useRouter();
-  const {
-    sessions,
-    sessionsLoading: loading,
-    sessionsError: error,
-    refetchSessions,
-  } = useAIChat({ 
-    sessionsParams: { limit: 20 } 
-  });
-
-  const clearError = () => {
-    refetchSessions();
-  };
+  const { user } = useAuth();
 
   const handleNewChat = () => {
     router.push("/protected/chat/new");
   };
 
-  const handleViewAllChats = () => {
-    router.push("/protected/chat");
-  };
-
   return (
     <div className="h-screen flex flex-col">
       {/* Header - Fixed */}
-      <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
+      <div className="w-full border-b bg-background px-8 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Home className="h-6 w-6" />
-            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <Home className="h-5 w-5" />
+            <h1 className="text-xl font-bold tracking-tight">Tradistry Dashboard</h1>
           </div>
-          <Button onClick={handleNewChat}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Chat
-          </Button>
+          <div className="flex items-center gap-2">
+            <RecentChatsSheet>
+              <Button variant="outline" size="sm">
+                All Chats
+              </Button>
+            </RecentChatsSheet>
+            <Button onClick={handleNewChat} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              New Chat
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -52,107 +45,23 @@ export default function DashboardContent() {
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-8 space-y-8">
-            {/* Welcome Section */}
-            <div className="text-center py-8">
-              <h2 className="text-3xl font-bold mb-4">Welcome to Tradistry</h2>
-              <p className="text-muted-foreground text-lg">
-                Your AI-powered trading journal and analytics platform
-              </p>
-            </div>
-
-            {/* Recent AI Chat Sessions */}
+            {/* AI Chat Section - Featured */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <MessageCircle className="h-5 w-5" />
-                  <h3 className="text-xl font-semibold">Recent AI Conversations</h3>
-                </div>
-                <Button variant="outline" onClick={handleViewAllChats}>
-                  View All
-                </Button>
-              </div>
-
-              {loading && sessions.length === 0 ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : error ? (
-                <Card className="p-6">
-                  <div className="text-center">
-                    <p className="text-red-600 mb-4">{error}</p>
-                    <Button onClick={clearError} variant="outline">
-                      Try Again
-                    </Button>
-                  </div>
-                </Card>
-              ) : sessions.length === 0 ? (
-                <Card className="p-8">
-                  <div className="text-center">
-                    <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <h4 className="text-lg font-semibold mb-2">No conversations yet</h4>
-                    <p className="text-muted-foreground mb-6">
-                      Start your first conversation with AI about your trading data and strategies
-                    </p>
-                    <Button onClick={handleNewChat}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Start First Chat
-                    </Button>
-                  </div>
-                </Card>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {sessions.slice(0, 6).map((session) => (
-                    <Link key={session.id} href={`/protected/chat/${session.id}`}>
-                      <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-lg flex items-center justify-between">
-                            <span className="truncate">
-                              {session.title || "Untitled Chat"}
-                            </span>
-                            <Badge variant="secondary" className="ml-2">
-                              {session.message_count || 0}
-                            </Badge>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="flex items-center justify-between text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              <span>
-                                {new Date(session.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <MessageSquare className="h-4 w-4" />
-                              <span>
-                                {new Date(session.created_at).toLocaleTimeString()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-3">
-                            <Badge variant="outline" className="text-xs">
-                              Last updated {new Date(session.updated_at || session.created_at).toLocaleDateString()}
-                            </Badge>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              )}
+              <EmbeddedAIChat 
+                userName={user?.user_metadata?.full_name || user?.email?.split('@')[0]} 
+                defaultExpanded={true}
+                className="mb-8"
+              />
             </div>
+
 
             {/* Quick Actions */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card className="p-6 hover:shadow-md transition-shadow cursor-pointer" onClick={handleNewChat}>
-                <div className="flex items-center gap-3">
-                  <MessageCircle className="h-8 w-8 text-primary" />
-                  <div>
-                    <h4 className="font-semibold">AI Chat</h4>
-                    <p className="text-sm text-muted-foreground">Ask AI about your trades</p>
-                  </div>
-                </div>
-              </Card>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-semibold">Quick Actions</h3>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
+                {/* Removed AI Chat card since it's now embedded above */}
               
               <Link href="/protected/analytics">
                 <Card className="p-6 hover:shadow-md transition-shadow cursor-pointer">
@@ -195,6 +104,7 @@ export default function DashboardContent() {
                   </div>
                 </Card>
               </Link>
+              </div>
             </div>
           </div>
         </ScrollArea>
