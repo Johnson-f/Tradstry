@@ -168,3 +168,72 @@ class AIChatDAL(BaseDAL):
         except Exception as e:
             self.logger.error(f"Failed to delete chat message {message_id}: {str(e)}")
             return False
+    
+    async def get_messages(self, user_id: str, access_token: str, session_id: Optional[str] = None, 
+                          message_id: Optional[str] = None, message_type: Optional[str] = None, 
+                          role: Optional[str] = None, search_query: Optional[str] = None,
+                          limit: int = 50, offset: int = 0, order_by: str = "created_at", 
+                          order_direction: str = "ASC") -> List[Dict[str, Any]]:
+        """
+        Get chat messages with filtering and pagination.
+        
+        Args:
+            user_id: User ID
+            access_token: User authentication token
+            session_id: Optional session ID filter
+            message_id: Optional specific message ID
+            message_type: Optional message type filter
+            role: Optional role filter (maps to message_type)
+            search_query: Optional text search query
+            limit: Maximum number of messages to return
+            offset: Number of messages to skip
+            order_by: Field to order by
+            order_direction: ASC or DESC
+            
+        Returns:
+            List[Dict[str, Any]]: Chat messages
+        """
+        params = {
+            'p_user_id': user_id,
+            'p_message_id': message_id,
+            'p_session_id': session_id,
+            'p_message_type': message_type or role,  # Map role to message_type
+            'p_source_type': None,  # Can be added later
+            'p_search_query': search_query,
+            'p_similarity_threshold': 0.8,  # Default threshold
+            'p_limit': limit,
+            'p_offset': offset,
+            'p_order_by': order_by,
+            'p_order_direction': order_direction.upper()
+        }
+        
+        response = await self.call_sql_function('get_ai_chat_messages', params, access_token)
+        return self.extract_response_data(response)
+    
+    async def search_messages(self, user_id: str, access_token: str, query: str, 
+                             session_id: Optional[str] = None, limit: int = 20, 
+                             similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+        """
+        Search chat messages using vector similarity.
+        
+        Args:
+            user_id: User ID
+            access_token: User authentication token
+            query: Search query
+            session_id: Optional session ID filter
+            limit: Maximum number of messages to return
+            similarity_threshold: Minimum similarity score
+            
+        Returns:
+            List[Dict[str, Any]]: Matching chat messages with similarity scores
+        """
+        params = {
+            'p_user_id': user_id,
+            'p_query': query,
+            'p_session_id': session_id,
+            'p_similarity_threshold': similarity_threshold,
+            'p_limit': limit
+        }
+        
+        response = await self.call_sql_function('search_ai_chat_messages', params, access_token)
+        return self.extract_response_data(response)

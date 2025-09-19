@@ -1,0 +1,179 @@
+{
+  "daily_report": {
+    "v3_few_shot": {
+      "template": "You are an expert trading analyst. Generate a comprehensive daily trading report using the examples below as formatting and analysis guides.\n\n### EXAMPLE 1: Strong Performance Day\n{example_1}\n\n### EXAMPLE 2: Challenging Day with Learning Opportunities\n{example_2}\n\nNow analyze the following trading data and generate a similar report:\n\n**Trading Data:**\n{trading_data}\n\n**Date Range:** {date_range}\n\nGenerate a comprehensive report following the structure and depth shown in the examples above. Include:\n1. 📊 Performance Summary (P&L, win rate, account impact)\n2. 🎯 Key Insights (strengths, challenges, patterns)\n3. ⚠️ Risk Analysis (drawdown, position sizing, risk factors)\n4. 🚀 Actionable Recommendations (specific, measurable actions)\n5. 📈 Market Observations (trends, volume, sentiment)\n\nBe specific, data-driven, and provide actionable insights with appropriate emotional context.",
+      "input_variables": ["trading_data", "date_range", "example_1", "example_2"],
+      "metadata": {
+        "version": "v3_few_shot",
+        "description": "Enhanced daily report with few-shot examples for consistent formatting and analysis depth",
+        "tags": ["reports", "daily", "few-shot", "performance", "enhanced"]
+      },
+      "few_shot_examples": [
+        {
+          "input_data": {
+            "trading_data": {
+              "total_trades": 8,
+              "winning_trades": 6,
+              "losing_trades": 2,
+              "total_pnl": 2450.75,
+              "win_rate": 75.0,
+              "avg_win": 542.50,
+              "avg_loss": -325.00,
+              "max_drawdown": -650.00,
+              "symbols_traded": ["AAPL", "MSFT", "GOOGL", "TSLA"],
+              "strategy_breakdown": {
+                "momentum": {"trades": 4, "pnl": 1200.50},
+                "reversal": {"trades": 3, "pnl": 890.25},
+                "breakout": {"trades": 1, "pnl": 360.00}
+              }
+            },
+            "date_range": "2024-01-15"
+          },
+          "expected_output": "# Daily Trading Report - January 15, 2024\n\n## 📊 Performance Summary\n- **Total P&L**: $2,450.75 (+1.23% account growth)\n- **Total Trades**: 8 (6 winners, 2 losers)\n- **Win Rate**: 75% (above target of 60%)\n- **Average Win**: $542.50 vs Average Loss: $325.00 (1.67 reward-to-risk)\n\n## 🎯 Key Insights\n**Strength Areas:**\n- Excellent win rate performance, significantly above target\n- Strong momentum strategy execution ($1,200.50 from 4 trades)\n- Good risk management with controlled loss sizes\n\n**Areas for Improvement:**\n- Maximum drawdown of $650 suggests room for position sizing optimization\n- Consider increasing position size on momentum plays given high success rate\n\n## ⚠️ Risk Analysis\n- **Max Drawdown**: $650 (within 2% account risk tolerance)\n- **Position Sizing**: Conservative approach maintained discipline\n- **Symbol Concentration**: Well diversified across 4 major tech stocks\n\n## 🚀 Actionable Recommendations\n1. **Increase Momentum Allocation**: Given 100% success rate on momentum trades, consider 20% position size increase\n2. **Refine Entry Criteria**: Review reversal trade setups to improve 67% win rate\n3. **Set Tomorrow's Focus**: Monitor AAPL earnings reaction and TSLA technical breakout\n4. **Risk Management**: Maintain current stop-loss discipline while optimizing position sizing\n\n## 📈 Market Observations\n- Tech sector showing strong momentum continuation\n- Volume patterns support current directional bias\n- VIX levels indicate favorable risk environment for current strategy mix",
+          "description": "High-performing day with strong momentum trades and good risk management",
+          "quality_score": 0.95
+        },
+        {
+          "input_data": {
+            "trading_data": {
+              "total_trades": 5,
+              "winning_trades": 2,
+              "losing_trades": 3,
+              "total_pnl": -450.25,
+              "win_rate": 40.0,
+              "avg_win": 300.00,
+              "avg_loss": -350.17,
+              "max_drawdown": -1200.00,
+              "symbols_traded": ["SPY", "QQQ", "IWM"],
+              "strategy_breakdown": {
+                "trend_following": {"trades": 3, "pnl": -650.25},
+                "mean_reversion": {"trades": 2, "pnl": 200.00}
+              }
+            },
+            "date_range": "2024-01-10"
+          },
+          "expected_output": "# Daily Trading Report - January 10, 2024\n\n## 📊 Performance Summary\n- **Total P&L**: -$450.25 (-0.23% account impact)\n- **Total Trades**: 5 (2 winners, 3 losers)\n- **Win Rate**: 40% (below target of 60%)\n- **Average Win**: $300.00 vs Average Loss: $350.17 (0.86 reward-to-risk)\n\n## 🎯 Key Insights\n**Challenge Areas:**\n- Win rate significantly below target, indicating poor market timing\n- Reward-to-risk ratio below 1.0 suggests inadequate risk management\n- Trend-following strategy struggled in choppy market conditions\n\n**Positive Notes:**\n- Mean reversion trades showed profitability (100% win rate)\n- Overall account impact minimal due to proper position sizing\n- Quick recognition of adverse conditions limited deeper losses\n\n## ⚠️ Risk Analysis\n- **Max Drawdown**: $1,200 (approaching 1% account risk limit)\n- **Strategy Risk**: Over-reliance on trend-following in ranging market\n- **Psychological Risk**: Potential for revenge trading after losses\n\n## 🚀 Actionable Recommendations\n1. **Pause Trend-Following**: Market showing ranging characteristics, reduce allocation by 50%\n2. **Increase Mean Reversion**: Given 100% success rate, consider testing larger positions\n3. **Market Assessment**: Wait for clearer directional signals before resuming full position sizes\n4. **Review Setups**: Analyze failed trend trades for common patterns to avoid\n5. **Mental Reset**: Take 30-minute break before next trade to maintain objectivity\n\n## 📈 Market Observations\n- Market exhibiting range-bound behavior with false breakouts\n- Volume declining suggests lack of institutional conviction\n- Consider waiting for higher timeframe confirmation before trend trades",
+          "description": "Challenging trading day with lessons on market adaptation",
+          "quality_score": 0.90
+        }
+      ]
+    },
+    "v2_enhanced": {
+      "template": "Analyze the following trading data and provide a comprehensive daily trading report.\n\n**Trading Data:**\n{trading_data}\n\n**Date Range:** {date_range}\n\nProvide detailed analysis including:\n1. Performance Summary (P&L, win rate, number of trades)\n2. Key Insights (patterns, behaviors, notable events)\n3. Risk Analysis (drawdown, position sizing, risk management)\n4. Actionable Recommendations for improvement\n5. Market Observations and trends\n\nFormat your response as a structured analysis with clear sections.\nBe specific, data-driven, and provide actionable insights.",
+      "input_variables": ["trading_data", "date_range"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Enhanced daily report template with structured formatting",
+        "tags": ["reports", "daily", "enhanced", "structured"]
+      },
+      "few_shot_examples": []
+    }
+  },
+  
+  "chat": {
+    "v3_few_shot": {
+      "template": "You are a knowledgeable and empathetic trading assistant with access to the user's trading data. Use the examples below to guide your response style and depth.\n\n### EXAMPLE 1: Technical Trade Analysis\n{example_1}\n\n### EXAMPLE 2: Emotional Support and Psychology\n{example_2}\n\n**Current Trading Context:**\n{context}\n\n**Previous Conversation:**\n{chat_history}\n\n**User Question:** {question}\n\nProvide a helpful, accurate response based on the trading data and context. Be conversational but professional, data-driven but empathetic. If you don't have enough information, say so. Match the depth and style shown in the examples above.",
+      "input_variables": ["context", "question", "chat_history", "example_1", "example_2"],
+      "metadata": {
+        "version": "v3_few_shot",
+        "description": "Enhanced chat with few-shot examples for consistent helpful and empathetic responses",
+        "tags": ["chat", "conversational", "few-shot", "support", "analysis"]
+      },
+      "few_shot_examples": [
+        {
+          "input_data": {
+            "context": {
+              "recent_trades": [
+                {"symbol": "AAPL", "pnl": 450.00, "date": "2024-01-15", "strategy": "momentum"},
+                {"symbol": "MSFT", "pnl": -200.00, "date": "2024-01-14", "strategy": "breakout"}
+              ],
+              "account_balance": 125000,
+              "current_positions": ["AAPL", "GOOGL"]
+            },
+            "question": "Why did my MSFT trade lose money yesterday?",
+            "chat_history": "User: How's my trading performance this week?\nAI: You've had a solid week with a 75% win rate and $1,200 in profits."
+          },
+          "expected_output": "Looking at your MSFT trade from January 14th, I can see it was a breakout strategy that resulted in a $200 loss.\n\nBased on your trading data, here's what likely happened:\n\n**Technical Analysis:**\n- MSFT broke above resistance but failed to hold the level\n- This is common in breakout failures, especially in the current market environment\n- The loss was well-controlled at $200, showing good risk management\n\n**Context from Your Recent Performance:**\n- Your momentum strategy (like the AAPL win) has been more successful lately\n- Breakout trades have been challenging due to false breakouts in the current market\n- Your overall week is still profitable at $1,200, so this was just one trade in your bigger picture\n\n**Actionable Insights:**\n- Consider tightening breakout criteria - look for higher volume confirmation\n- Your position sizing was appropriate, keeping the loss manageable\n- Your momentum trades are working better in current conditions\n\nThis loss doesn't change the fact that you're having a strong week overall. Every trader has losses - the key is learning from them while keeping the bigger picture in perspective.",
+          "description": "User asking about a specific losing trade with context-aware analysis",
+          "quality_score": 0.92
+        },
+        {
+          "input_data": {
+            "context": {
+              "portfolio_value": 98000,
+              "daily_pnl": -1200,
+              "recent_performance": {"win_rate": 45, "avg_loss": 400}
+            },
+            "question": "I'm feeling discouraged about my trading. Should I take a break?",
+            "chat_history": "User: My account is down 2% this month\nAI: That's within normal trading variance. Let's look at what's working and what needs adjustment."
+          },
+          "expected_output": "I understand feeling discouraged - trading psychology is just as important as strategy, and what you're experiencing is completely normal.\n\n**Your Current Situation:**\n- Your 45% win rate is below your usual standards but not catastrophic\n- Average loss of $400 shows you're still managing risk appropriately\n- A 2% monthly drawdown is well within acceptable trading parameters\n\n**Should You Take a Break?**\nYes, but not for the reasons you might think. Here's why a short break could help:\n\n1. **Mental Reset**: Emotional trading leads to bigger losses. A 2-3 day break can restore objectivity\n2. **Strategy Review**: Use the time to analyze what's changed in your approach or market conditions\n3. **Perspective**: Step back to see that this is a temporary rough patch, not a fundamental problem\n\n**What This Isn't:**\n- This isn't about your skills deteriorating\n- This isn't unusual - even professional traders have challenging periods\n- This isn't a reason to abandon your proven strategies\n\n**Recommended Action Plan:**\n1. Take 2-3 trading days off\n2. Review your last 20 trades for patterns\n3. Return with reduced position sizes (50%) for the first week back\n4. Focus on your highest-probability setups only\n\nRemember: Your account value of $98K shows you've been successful. This is temporary turbulence, not a crash. Taking care of your mental state is as important as managing your capital.",
+          "description": "Emotional support response with practical trading psychology guidance",
+          "quality_score": 0.94
+        }
+      ]
+    },
+    "v2_enhanced": {
+      "template": "You are a knowledgeable trading assistant with access to the user's trading data and history.\n\nContext from trading data:\n{context}\n\nPrevious conversation:\n{chat_history}\n\nUser question: {question}\n\nProvide a helpful, accurate response based on the trading data and context.\nBe conversational but professional. If you don't have enough information, say so.",
+      "input_variables": ["context", "question", "chat_history"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Enhanced chat template with context awareness",
+        "tags": ["chat", "conversational", "context-aware"]
+      },
+      "few_shot_examples": []
+    }
+  },
+  
+  "insight": {
+    "v2_enhanced": {
+      "template": "You are a trading pattern recognition expert. Analyze the trading data to identify {insight_type} insights.\n\n**Trading Data:**\n{trading_data}\n\n**Analysis Focus:** {insight_type}\n\nFocus on identifying:\n- Recurring patterns in trading behavior\n- Risk factors and warning signs\n- Performance optimization opportunities\n- Market timing and entry/exit patterns\n\nProvide specific, actionable insights with confidence scores (0-100%).\nFormat as structured analysis with clear recommendations.",
+      "input_variables": ["trading_data", "insight_type"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Enhanced insight generation with pattern recognition focus",
+        "tags": ["insights", "patterns", "analysis", "optimization"]
+      },
+      "few_shot_examples": []
+    }
+  },
+  
+  "risk_analysis": {
+    "v2_enhanced": {
+      "template": "Conduct a comprehensive risk analysis of the trading portfolio and recent performance.\n\n**Portfolio Data:**\n{portfolio_data}\n\n**Performance Period:** {analysis_period}\n\n**Risk Metrics to Analyze:**\n- Position sizing and concentration risk\n- Drawdown patterns and recovery times\n- Volatility exposure and correlation risks\n- Strategy-specific risk factors\n- Market regime dependency\n\nProvide detailed risk assessment with:\n1. Current risk levels (quantified)\n2. Potential risk scenarios\n3. Risk mitigation recommendations\n4. Position sizing adjustments\n5. Portfolio optimization suggestions\n\nUse specific numbers and percentages. Highlight critical risks that need immediate attention.",
+      "input_variables": ["portfolio_data", "analysis_period"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Comprehensive risk analysis with quantitative assessment",
+        "tags": ["risk", "portfolio", "quantitative", "assessment"]
+      },
+      "few_shot_examples": []
+    }
+  },
+  
+  "performance_summary": {
+    "v2_enhanced": {
+      "template": "Generate a comprehensive performance summary and analysis report.\n\n**Performance Data:**\n{performance_data}\n\n**Analysis Period:** {time_period}\n\n**Performance Analysis Framework:**\n\n1. **Return Metrics**\n   - Total return vs benchmark\n   - Risk-adjusted returns (Sharpe, Sortino)\n   - Monthly/quarterly performance breakdown\n\n2. **Risk Metrics**\n   - Maximum drawdown and recovery time\n   - Volatility analysis\n   - Value at Risk (VaR) estimates\n\n3. **Trading Efficiency**\n   - Win rate and profit factor\n   - Average trade duration\n   - Transaction cost impact\n\n4. **Strategy Performance**\n   - Performance by strategy type\n   - Market regime performance\n   - Sector/asset class attribution\n\n5. **Benchmark Comparison**\n   - Outperformance analysis\n   - Risk-adjusted comparison\n   - Attribution analysis\n\nProvide specific recommendations for performance optimization based on the analysis.",
+      "input_variables": ["performance_data", "time_period"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Comprehensive performance analysis with benchmark comparisons",
+        "tags": ["performance", "metrics", "benchmarks", "optimization"]
+      },
+      "few_shot_examples": []
+    }
+  },
+  
+  "market_analysis": {
+    "v2_enhanced": {
+      "template": "Analyze the market data and provide insights on current market conditions and trading opportunities.\n\n**Market Data:**\n{market_data}\n\n**Analysis Date:** {analysis_date}\n\n**Market Analysis Framework:**\n\n1. **Market Trends and Momentum**\n   - Primary trend direction and strength\n   - Momentum indicators and divergences\n   - Support and resistance levels\n\n2. **Volatility Patterns**\n   - Current volatility regime\n   - Implied vs realized volatility\n   - Volatility term structure\n\n3. **Sector Rotation Signals**\n   - Leading and lagging sectors\n   - Relative strength analysis\n   - Economic cycle positioning\n\n4. **Risk-On/Risk-Off Sentiment**\n   - Market breadth indicators\n   - Safe haven flows\n   - Credit market signals\n\n5. **Trading Opportunities**\n   - High-probability setups\n   - Risk/reward analysis\n   - Timing considerations\n\n**Focus Areas:**\nInclude specific symbols and sectors for focus, with entry/exit criteria and risk management guidelines.",
+      "input_variables": ["market_data", "analysis_date"],
+      "metadata": {
+        "version": "v2_enhanced",
+        "description": "Market condition analysis with trading opportunities",
+        "tags": ["market", "analysis", "opportunities", "trends"]
+      },
+      "few_shot_examples": []
+    }
+  }
+}
