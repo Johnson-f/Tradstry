@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { aiChatService } from "@/lib/services/ai-chat-service";
+import { localChatCache } from "@/lib/services/local-chat-cache";
 import type {
   AIChatMessage,
   AIChatSession,
@@ -150,7 +151,7 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
   });
 
   const {
-    data: messages = [],
+    data: dbMessages = [],
     isLoading: messagesLoading,
     error: messagesError,
     refetch: refetchMessages,
@@ -163,6 +164,22 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
     enabled: !!sessionId,
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
+
+  // Combine database messages with localStorage messages
+  const messages = sessionId 
+    ? localChatCache.getCombinedMessages(sessionId, dbMessages)
+    : dbMessages;
+
+  // Debug logging
+  if (sessionId && (dbMessages.length > 0 || messages.length > dbMessages.length)) {
+    console.log('Messages Debug:', {
+      sessionId,
+      dbMessagesCount: dbMessages.length,
+      combinedMessagesCount: messages.length,
+      dbMessages: dbMessages.map(m => ({ role: m.role, content: m.content.substring(0, 50) + '...' })),
+      combinedMessages: messages.map(m => ({ role: m.role, content: m.content.substring(0, 50) + '...' }))
+    });
+  }
 
   const [searchParams, setSearchParams] = useState<{
     query: string;
@@ -280,6 +297,11 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
       const newController = new AbortController();
       setAbortController(newController);
 
+      // Track session ID that may be updated by backend response
+      let activeSessionId = request.session_id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Note: User messages are handled by the backend, we'll only save AI responses locally
+
       setLocalState((prev) => ({
         ...prev,
         isStreaming: true,
@@ -288,16 +310,37 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
         isChatting: true,
       }));
 
+      // Track streaming content for localStorage saving
+      let accumulatedContent = '';
+
       try {
         await aiChatService.chatWithAIStream(
           request,
           (chunk: ChatStreamChunk) => {
+            // Update session ID if provided by backend
+            if (chunk.type === 'session_info' && chunk.session_id) {
+              activeSessionId = chunk.session_id;
+              console.log('Updated active session ID to:', activeSessionId);
+            }
+
             // Update streaming content based on chunk type
-            if (chunk.type === 'content' && chunk.content) {
+            if ((chunk.type === 'content' || chunk.type === 'token') && chunk.content) {
+              accumulatedContent += chunk.content;
               setLocalState((prev) => ({
                 ...prev,
                 streamingContent: prev.streamingContent + chunk.content,
               }));
+              
+              // Trigger scroll after content update
+              setTimeout(() => {
+                const messagesEnd = document.querySelector('[data-messages-end]');
+                if (messagesEnd) {
+                  messagesEnd.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'end' 
+                  });
+                }
+              }, 10);
             } else if (chunk.type === 'error') {
               setLocalState((prev) => ({
                 ...prev,
@@ -312,13 +355,25 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
 
             // End streaming on completion
             if (chunk.type === 'done' || chunk.type === 'response_saved' || chunk.type === 'stream_end') {
+              // Save AI response to localStorage immediately using the correct session ID
+              if (accumulatedContent && activeSessionId) {
+                const aiMessage = localChatCache.saveMessageLocally(activeSessionId, {
+                  session_id: activeSessionId,
+                  content: accumulatedContent,
+                  message_type: 'ai_response',
+                  role: 'assistant',
+                  created_at: new Date().toISOString(),
+                });
+                console.log('AI response saved to localStorage with session ID:', activeSessionId, aiMessage);
+              }
+
               setLocalState((prev) => ({
                 ...prev,
                 isStreaming: false,
                 isChatting: false,
               }));
 
-              // Invalidate queries to refresh messages
+              // Invalidate queries to refresh messages from localStorage
               queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
               if (sessionId) {
                 queryClient.invalidateQueries({
@@ -326,6 +381,14 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
                 });
               }
               queryClient.invalidateQueries({ queryKey: aiChatKeys.sessions() });
+              
+              // Clear streaming content after messages are refreshed from localStorage
+              setTimeout(() => {
+                setLocalState((prev) => ({
+                  ...prev,
+                  streamingContent: '',
+                }));
+              }, 500); // Shorter delay since we're using localStorage
             }
           },
           newController.signal
@@ -340,6 +403,7 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
             streamingError: error.message || 'Failed to stream response',
             isStreaming: false,
             isChatting: false,
+            streamingContent: '', // Clear content on error
           }));
         }
       } finally {

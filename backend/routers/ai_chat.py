@@ -117,7 +117,7 @@ async def chat_with_ai(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/chat/stream")
+@router.post("/stream")
 async def chat_with_ai_stream(
     request: AIChatRequest,
     current_user: Dict[str, Any] = Depends(get_current_user_with_token)

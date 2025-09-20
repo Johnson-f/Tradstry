@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
+import { localChatCache } from "@/lib/services/local-chat-cache";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -59,14 +60,20 @@ const formatMessageTime = (timestamp: string): string => {
 
 // Components
 const ChatMessage = ({ message }: { message: Message }) => {
-  const isUser = message.role === "user";
+  // Check for both 'user' role and 'user_question' message type
+  const isUser = message.role === "user" || message.message_type === "user_question";
+  
+  // Debug logging to see what we're getting
+  console.log('ChatMessage:', { role: message.role, message_type: message.message_type, isUser, content: message.content.substring(0, 50) + '...' });
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={cn(
-          "max-w-[80%] rounded-lg px-4 py-3",
-          isUser ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-100",
+          "max-w-[80%] rounded-lg px-4 py-3 mb-2",
+          isUser 
+            ? "bg-blue-600 text-white ml-4" 
+            : "bg-gray-700 text-gray-100 mr-4",
         )}
       >
         <p className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -74,6 +81,10 @@ const ChatMessage = ({ message }: { message: Message }) => {
         </p>
         <p className="text-xs opacity-70 mt-2">
           {formatMessageTime(message.created_at)}
+          {/* Debug info */}
+          <span className="ml-2 text-xs opacity-50">
+            ({message.role}/{message.message_type})
+          </span>
         </p>
       </div>
     </div>
@@ -93,11 +104,19 @@ const LoadingMessage = () => (
 
 const StreamingMessage = ({ content }: { content: string }) => (
   <div className="flex justify-start">
-    <div className="bg-gray-700 rounded-lg px-4 py-3 max-w-[80%]">
+    <div className="bg-gray-700 rounded-lg px-4 py-3 max-w-[80%] mr-4">
       <p className="text-sm leading-relaxed whitespace-pre-wrap text-gray-100">
         {content}
-        <span className="inline-block w-2 h-5 bg-blue-500 ml-1 animate-pulse" />
+        <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse" />
       </p>
+      <div className="flex items-center mt-2 text-xs text-gray-400">
+        <div className="flex space-x-1">
+          <div className="w-1 h-1 bg-orange-500 rounded-full animate-bounce"></div>
+          <div className="w-1 h-1 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+          <div className="w-1 h-1 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+        </div>
+        <span className="ml-2">AI is typing...</span>
+      </div>
     </div>
   </div>
 );
@@ -151,10 +170,15 @@ export default function EmbeddedAIChat({
   const [isExpanded] = useState(defaultExpanded);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isMinimizing, setIsMinimizing] = useState(false);
+  const [userScrolled, setUserScrolled] = useState(false);
+  const [lastScrollHeight, setLastScrollHeight] = useState(0);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const autoScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hooks
   const router = useRouter();
@@ -175,14 +199,106 @@ export default function EmbeddedAIChat({
     messagesLimit: MESSAGES_LIMIT,
   });
 
-  // Effects
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  // Enhanced scrolling function
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth", force: boolean = false) => {
+    // Don't auto-scroll if user has manually scrolled up, unless forced
+    if (!force && userScrolled && !isStreaming) {
+      return;
+    }
 
+    if (messagesEndRef.current) {
+      // Clear any existing timeout
+      if (autoScrollTimeoutRef.current) {
+        clearTimeout(autoScrollTimeoutRef.current);
+      }
+
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ 
+            behavior, 
+            block: "end",
+            inline: "nearest" 
+          });
+        }
+      });
+    }
+  }, [userScrolled, isStreaming]);
+
+  // Detect user scroll to disable auto-scroll temporarily
+  const handleScroll = useCallback(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollArea;
+    const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
+    
+    // Update user scrolled state
+    if (!isAtBottom && !isStreaming) {
+      setUserScrolled(true);
+    } else if (isAtBottom) {
+      setUserScrolled(false);
+    }
+
+    setLastScrollHeight(scrollHeight);
+  }, [isStreaming]);
+
+  // Enhanced auto-scroll during streaming with better throttling
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isChatting, isStreaming, streamingContent, scrollToBottom]);
+    if (isStreaming && streamingContent) {
+      // Clear any existing timeout
+      if (autoScrollTimeoutRef.current) {
+        clearTimeout(autoScrollTimeoutRef.current);
+      }
+
+      // Use a shorter throttle during streaming for more responsive scrolling
+      autoScrollTimeoutRef.current = setTimeout(() => {
+        scrollToBottom("smooth", true); // Force scroll during streaming
+      }, 16); // ~60fps for smooth streaming
+
+      return () => {
+        if (autoScrollTimeoutRef.current) {
+          clearTimeout(autoScrollTimeoutRef.current);
+        }
+      };
+    }
+  }, [streamingContent, isStreaming, scrollToBottom]);
+
+  // Auto-scroll when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      setUserScrolled(false); // Reset user scroll state when streaming starts
+      scrollToBottom("smooth", true);
+    }
+  }, [isStreaming, scrollToBottom]);
+
+  // Regular scroll for message updates (non-streaming)
+  useEffect(() => {
+    if (!isStreaming && !userScrolled) {
+      scrollToBottom("auto");
+    }
+  }, [messages, isChatting, isStreaming, userScrolled, scrollToBottom]);
+
+  // Handle content height changes during streaming
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea || !isStreaming) return;
+
+    const observer = new ResizeObserver(() => {
+      if (isStreaming && !userScrolled) {
+        scrollToBottom("smooth", true);
+      }
+    });
+
+    // Observe the messages container for height changes
+    if (messagesContainerRef.current) {
+      observer.observe(messagesContainerRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [isStreaming, userScrolled, scrollToBottom]);
 
   // Focus input when component mounts
   useEffect(() => {
@@ -190,6 +306,15 @@ export default function EmbeddedAIChat({
       inputRef.current.focus();
     }
   }, [isChatting]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoScrollTimeoutRef.current) {
+        clearTimeout(autoScrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handlers
   const handleSendMessage = useCallback(
@@ -201,6 +326,9 @@ export default function EmbeddedAIChat({
       }
 
       try {
+        // Reset scroll state when sending a new message
+        setUserScrolled(false);
+
         const request: ChatRequest = {
           message: textToSend,
           context_limit: CONTEXT_LIMIT,
@@ -210,30 +338,47 @@ export default function EmbeddedAIChat({
           request.session_id = currentSessionId;
         }
 
-        // Use streaming API
+        // Clear the input immediately - message goes directly to chat page
+        setMessage("");
+        
+        // Start minimizing animation for new chats (when no current session)
+        if (!currentSessionId) {
+          setIsMinimizing(true);
+        }
+
+        // For existing sessions, redirect immediately without waiting
+        if (currentSessionId) {
+          console.log('Existing session, redirecting to continue conversation:', currentSessionId);
+          router.push(`/protected/chat/${currentSessionId}`);
+          return;
+        }
+
+        // For new chats, use streaming API just to get the session ID, then redirect
         await chatWithAIStream(request, (chunk) => {
-          // Handle streaming chunks
-          if (chunk.type === 'response_saved' && chunk.session_id) {
-            // Set session ID if it's a new chat
-            if (!currentSessionId) {
-              setCurrentSessionId(chunk.session_id);
-            }
+          // Redirect immediately when we get session info for new chats
+          if (chunk.type === 'session_info' && chunk.session_id && !currentSessionId) {
+            console.log('New chat session info received, redirecting immediately to:', chunk.session_id);
+            
+            // Save user message to localStorage so it appears immediately on the chat page
+            localChatCache.saveMessageLocally(chunk.session_id, {
+              session_id: chunk.session_id,
+              content: textToSend,
+              message_type: 'user_question',
+              role: 'user',
+              created_at: new Date().toISOString(),
+            });
+            
+            // Set session ID for state management
+            setCurrentSessionId(chunk.session_id);
 
-            // Navigate to the full chat page with the session ID
-            const sessionId = currentSessionId || chunk.session_id;
-            if (sessionId) {
-              // Start minimizing animation
-              setIsMinimizing(true);
-
-              // Navigate to full chat immediately (animation handled by CSS)
-              router.push(`/protected/chat/${sessionId}`);
-            }
+            // Redirect immediately - the AI response will stream on the chat page
+            router.push(`/protected/chat/${chunk.session_id}`);
+            return;
           }
         });
-
-        setMessage("");
       } catch (error) {
         console.error("Failed to send message:", error);
+        setIsMinimizing(false); // Reset minimizing state on error
         // Error is handled by the streaming hook
       }
     },
@@ -260,6 +405,7 @@ export default function EmbeddedAIChat({
   const handleNewChat = useCallback(() => {
     setCurrentSessionId(null);
     setMessage("");
+    setUserScrolled(false);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -270,7 +416,7 @@ export default function EmbeddedAIChat({
   }, [router]);
 
   const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       if (value.length <= MAX_MESSAGE_LENGTH) {
         setMessage(value);
@@ -299,20 +445,42 @@ export default function EmbeddedAIChat({
       {/* Main Chat Area */}
       <main className="px-6 pb-8">
         {/* Messages */}
-        {hasMessages && (
+        {(hasMessages || isChatting || isStreaming || streamingContent) && (
           <section className="mb-6" aria-label="Chat messages">
-            <ScrollArea className="h-[650px] px-6">
-              <div className="space-y-4 py-4">
+            <ScrollArea 
+              className="h-[650px] px-6" 
+              ref={scrollAreaRef}
+              onScrollCapture={handleScroll}
+            >
+              <div className="space-y-4 py-4" ref={messagesContainerRef}>
                 {messages.map((msg) => (
                   <ChatMessage key={msg.id} message={msg} />
                 ))}
-                {isChatting && !isStreaming && <LoadingMessage />}
-                {isStreaming && streamingContent && (
+                {isChatting && !isStreaming && !streamingContent && <LoadingMessage />}
+                {(isStreaming || streamingContent) && (
                   <StreamingMessage content={streamingContent} />
                 )}
-                <div ref={messagesEndRef} />
+                {/* Invisible div to mark the end of messages */}
+                <div ref={messagesEndRef} className="h-1" data-messages-end />
               </div>
             </ScrollArea>
+            
+            {/* Show scroll indicator when user has scrolled up during streaming */}
+            {userScrolled && isStreaming && (
+              <div className="flex justify-center mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUserScrolled(false);
+                    scrollToBottom("smooth", true);
+                  }}
+                  className="bg-orange-500/20 border-orange-500/30 text-orange-300 hover:bg-orange-500/30 text-xs"
+                >
+                  New messages ↓
+                </Button>
+              </div>
+            )}
           </section>
         )}
 

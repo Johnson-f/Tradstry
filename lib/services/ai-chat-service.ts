@@ -56,16 +56,20 @@ export interface ChatMessageDeleteResponse {
 
 // Streaming chat response chunk types
 export interface ChatStreamChunk {
-  type: 'thinking' | 'content' | 'error' | 'done' | 'response_saved' | 'stream_end';
+  type: 'thinking' | 'content' | 'token' | 'error' | 'done' | 'response_saved' | 'stream_end' | 'session_info';
   content?: string;
   message?: string;
   session_id?: string;
   ai_message_id?: string;
   user_message_id?: string;
+  status?: string;
   metadata?: {
     thinking_time?: number;
     response_time?: number;
     token_count?: number;
+    version_used?: string;
+    processing_time_ms?: number;
+    confidence_score?: number;
   };
 }
 
@@ -116,7 +120,15 @@ export class AIChatService {
     }
     const queryString = queryParams.toString();
     const url = queryString ? `${this.baseUrl}/sessions?${queryString}` : `${this.baseUrl}/sessions`;
-    const response = await apiClient.get(url);
+    const response = await apiClient.get<{
+      session_id: string;
+      message_count: number;
+      first_message: string;
+      last_message: string;
+      first_message_at: string;
+      last_message_at: string;
+      total_usage_count: number;
+    }[]>(url);
     
     // Transform backend response to match frontend interface
     return response.map((session: {
@@ -149,7 +161,14 @@ export class AIChatService {
     }
     const queryString = queryParams.toString();
     const url = queryString ? `${this.baseUrl}/sessions/${sessionId}/messages?${queryString}` : `${this.baseUrl}/sessions/${sessionId}/messages`;
-    const response = await apiClient.get(url);
+    const response = await apiClient.get<{
+      id: string;
+      session_id: string;
+      content: string;
+      message_type: string;
+      created_at: string;
+      updated_at?: string;
+    }[]>(url);
     
     // Transform backend response to match frontend interface
     return response.map((message: {
@@ -182,7 +201,7 @@ export class AIChatService {
     signal?: AbortSignal
   ): Promise<void> {
     const authToken = await apiClient.getAuthToken();
-    const response = await fetch(`${apiClient.baseURL}${this.baseUrl}/stream`, {
+    const response = await fetch(`${apiClient.baseURL}/api${this.baseUrl}/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
