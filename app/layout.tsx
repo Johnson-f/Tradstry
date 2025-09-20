@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
-import { ThemeProvider } from "next-themes";
 import { Providers } from "./providers";
 import "./globals.css";
-
-import { Toaster } from "sonner";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -14,6 +11,38 @@ export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Tradistry",
   description: "",
+  icons: {
+    icon: [
+      {
+        url: '/icon.png',
+        sizes: '32x32',
+        type: 'image/png',
+      },
+      {
+        url: '/icon.png',
+        sizes: '64x64',
+        type: 'image/png',
+      },
+      {
+        url: '/icon.png',
+        sizes: '128x128',
+        type: 'image/png',
+      },
+      {
+        url: '/favicon.ico',
+        sizes: '48x48',
+        type: 'image/x-icon',
+      },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      {
+        url: '/icon.png',
+        sizes: '180x180',
+        type: 'image/png',
+      },
+    ],
+  },
 };
 
 const geistSans = Geist({
@@ -30,17 +59,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
-        <Providers>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            {children}
-            <Toaster position="top-right" duration={5000} />
-          </ThemeProvider>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
