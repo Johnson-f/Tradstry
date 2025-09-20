@@ -289,7 +289,7 @@ class AIOrchestrator:
                             base_url="https://openrouter.ai/api/v1",
                             temperature=0.7,
                             max_tokens=4096,
-                            streaming=False,  # Set to True if you want streaming
+                            streaming=True,  # Enable streaming for better UX
                             default_headers={
                                 "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", ""),
                                 "X-Title": os.getenv("OPENROUTER_X_TITLE", ""),
@@ -1116,6 +1116,279 @@ Provide:
         except Exception as llm_error:
             logger.error(f"Legacy chat LLM generation failed: {str(llm_error)}")
             return self._get_fallback_response({"question": user_message})
+
+    async def process_chat_message_stream(self, user: Dict[str, Any], session_id: str,
+                                        user_message: str, context_limit: int = 10):
+        """
+        Process a chat message with streaming response support for real-time token generation.
+
+        Args:
+            user: User object with authentication information
+            session_id: Chat session identifier  
+            user_message: User's message
+            context_limit: Number of previous messages to include as context
+
+        Yields:
+            Stream of response chunks as they're generated
+        """
+        from fastapi import HTTPException
+        from typing import AsyncGenerator
+        
+        user_id = user.get("user_id", "unknown")
+        
+        try:
+            logger.info(f"Processing streaming chat message for user {user_id}", extra={
+                "user_id": user_id,
+                "session_id": session_id,
+                "message_preview": user_message[:100],
+                "message_length": len(user_message),
+                "context_limit": context_limit,
+                "streaming": True
+            })
+            
+            start_time = datetime.now()
+
+            # Validate token before proceeding
+            if not self._validate_token(user.get("access_token", "")):
+                yield {"error": "Invalid or expired authentication token"}
+                return
+
+            # Check if LLM is available before proceeding
+            if self.llm is None:
+                yield {"error": "LLM is not available. Please check your OPENROUTER_API_KEY and try again."}
+                return
+
+            # Handle session creation if session_id is None
+            if not session_id:
+                session_id = str(uuid.uuid4())
+                logger.info(f"Created new session with ID: {session_id}")
+
+            # Get recent chat history for context
+            try:
+                chat_history = await self.chat_service.get_session_messages(
+                    session_id, user["access_token"], limit=context_limit
+                )
+            except Exception as e:
+                logger.error(f"Error getting chat history: {str(e)}")
+                chat_history = []
+
+            # Format chat history
+            history_text = self._format_chat_history(chat_history)
+
+            # Get relevant trading context using vector search
+            try:
+                trading_context = await self._get_relevant_trading_context(
+                    user["access_token"], user_message
+                )
+            except Exception as e:
+                logger.error(f"Error getting trading context: {str(e)}")
+                trading_context = {"message": "Trading context unavailable"}
+
+            # Generate embedding for the user message
+            try:
+                user_embedding = self.embedding_service.generate_embedding(user_message)
+            except Exception as e:
+                logger.error(f"Error generating user embedding: {str(e)}")
+                user_embedding = None
+
+            # Save user message
+            try:
+                user_msg_data = AIChatMessageCreate(
+                    session_id=session_id,
+                    message_type=MessageType.USER_QUESTION,
+                    content=user_message,
+                    context_data={"embedding": user_embedding if user_embedding else []},
+                    source_type=SourceType.EXTERNAL_AI
+                )
+
+                await self.chat_service.create_message(user_msg_data, user["access_token"])
+            except Exception as e:
+                logger.error(f"Error saving user message: {str(e)}")
+
+            # Yield session info first
+            yield {
+                "type": "session_info",
+                "session_id": session_id,
+                "status": "processing"
+            }
+
+            # Generate streaming AI response
+            full_response = ""
+            async for chunk in self._generate_streaming_response(trading_context, user_message, history_text, user_id, session_id):
+                if chunk.get("type") == "error":
+                    yield chunk
+                    return
+                elif chunk.get("type") == "token":
+                    full_response += chunk.get("content", "")
+                    yield chunk
+                elif chunk.get("type") == "done":
+                    yield chunk
+                    break
+
+            # Calculate processing time
+            processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+
+            # Generate embedding for AI response
+            try:
+                ai_embedding = self.embedding_service.generate_embedding(full_response)
+            except Exception as e:
+                logger.error(f"Error generating AI embedding: {str(e)}")
+                ai_embedding = None
+
+            # Save AI response
+            try:
+                ai_msg_data = AIChatMessageCreate(
+                    session_id=session_id,
+                    message_type=MessageType.AI_RESPONSE,
+                    content=full_response,
+                    context_data={
+                        "embedding": ai_embedding if ai_embedding else [],
+                        "context_used": trading_context,
+                        "processing_time_ms": processing_time,
+                        "streaming": True
+                    },
+                    model_used=self.current_llm_model,
+                    confidence_score=0.8,
+                    source_type=SourceType.EXTERNAL_AI
+                )
+
+                saved_response = await self.chat_service.create_message(ai_msg_data, user["access_token"])
+                
+                # Yield final response info
+                yield {
+                    "type": "response_saved",
+                    "message_id": saved_response.get("id"),
+                    "processing_time_ms": processing_time
+                }
+            except Exception as e:
+                logger.error(f"Error saving AI response: {str(e)}")
+                yield {
+                    "type": "warning", 
+                    "message": "Response generated but not saved to history"
+                }
+
+        except Exception as e:
+            logger.error(f"Error processing streaming chat message: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            yield {
+                "type": "error",
+                "message": f"Failed to process chat message: {str(e)}"
+            }
+
+    async def _generate_streaming_response(self, trading_context: Dict[str, Any], 
+                                         user_message: str, history_text: str,
+                                         user_id: str, session_id: str):
+        """Generate streaming AI response using advanced prompt service or fallback."""
+        try:
+            # Use advanced prompt service if available
+            if self.prompt_enabled and self.prompt_service:
+                logger.info("Using advanced prompt service for streaming chat response", extra={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "prompt_type": PromptType.CHAT
+                })
+                
+                try:
+                    input_data = {
+                        "context": json.dumps(trading_context, indent=2),
+                        "question": user_message,
+                        "chat_history": history_text
+                    }
+                    
+                    # Use the new streaming prompt service
+                    async for chunk in self.prompt_service.execute_prompt_stream(
+                        prompt_type=PromptType.CHAT,
+                        input_data=input_data,
+                        llm=self.llm,
+                        strategy=PromptStrategy.BEST_PERFORMANCE,
+                        user_id=user_id
+                    ):
+                        yield chunk
+                        if chunk.get("type") == "done":
+                            return
+                    
+                    return
+                        
+                except Exception as prompt_error:
+                    logger.error(f"Advanced streaming prompt failed, falling back to legacy: {str(prompt_error)}")
+            
+            # Fallback to legacy streaming approach
+            logger.info("Using legacy streaming prompt system")
+            prompt_input = {
+                "context": json.dumps(trading_context, indent=2),
+                "question": user_message,
+                "chat_history": history_text
+            }
+            
+            formatted_prompt = self._format_prompt_manually(prompt_input)
+            async for chunk in self._stream_llm_response(formatted_prompt):
+                yield chunk
+                
+        except Exception as e:
+            logger.error(f"Error generating streaming response: {str(e)}")
+            yield {
+                "type": "error",
+                "message": f"Failed to generate streaming response: {str(e)}"
+            }
+
+    async def _stream_llm_response(self, formatted_prompt: str):
+        """Stream response from LLM token by token with fallback support."""
+        try:
+            if self.llm is None:
+                yield {
+                    "type": "error",
+                    "message": "LLM not available"
+                }
+                return
+            
+            # Try streaming first
+            try:
+                stream_started = False
+                async for chunk in self.llm.astream(formatted_prompt):
+                    stream_started = True
+                    if hasattr(chunk, 'content') and chunk.content:
+                        yield {
+                            "type": "token",
+                            "content": chunk.content
+                        }
+                        
+                yield {
+                    "type": "done",
+                    "message": "Streaming response complete"
+                }
+                
+            except Exception as stream_error:
+                logger.warning(f"Streaming failed, attempting fallback to non-streaming: {str(stream_error)}")
+                
+                # If streaming fails, fall back to regular invoke
+                try:
+                    response = self.llm.invoke(formatted_prompt)
+                    response_content = response.content if hasattr(response, 'content') else str(response)
+                    
+                    # Yield the complete response as a single token
+                    yield {
+                        "type": "token",
+                        "content": response_content
+                    }
+                    
+                    yield {
+                        "type": "done",
+                        "message": "Response complete (fallback mode)"
+                    }
+                    
+                except Exception as fallback_error:
+                    logger.error(f"Both streaming and fallback failed: {str(fallback_error)}")
+                    yield {
+                        "type": "error",
+                        "message": f"Both streaming and fallback failed: {str(fallback_error)}"
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Critical error in LLM streaming: {str(e)}")
+            yield {
+                "type": "error", 
+                "message": f"Critical streaming error: {str(e)}"
+            }
 
     async def generate_insights(self, user: Dict[str, Any], insight_types: List[InsightType],
                               time_range: str = "30d", min_confidence: float = 0.7) -> List[Dict[str, Any]]:

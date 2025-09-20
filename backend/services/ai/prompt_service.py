@@ -156,6 +156,119 @@ class PromptService:
             logger.error(f"Prompt execution failed: {prompt_type} - {str(e)}")
             return execution_result
     
+    async def execute_prompt_stream(
+        self,
+        prompt_type: PromptType,
+        input_data: Dict[str, Any],
+        llm,
+        strategy: PromptStrategy = PromptStrategy.BEST_PERFORMANCE,
+        user_id: Optional[str] = None
+    ):
+        """
+        Execute a prompt with streaming response support.
+        
+        Args:
+            prompt_type: Type of prompt to execute
+            input_data: Data to fill prompt template
+            llm: Language model to use for generation
+            strategy: Strategy for prompt selection
+            user_id: User identifier for A/B testing
+            
+        Yields:
+            Stream of token chunks as they're generated
+        """
+        start_time = datetime.now()
+        full_response = ""
+        
+        try:
+            # Select prompt version based on strategy
+            version = self._select_prompt_version(prompt_type, strategy, user_id)
+            if not version:
+                yield {
+                    "type": "error",
+                    "message": f"No suitable version found for {prompt_type}"
+                }
+                return
+            
+            # Get prompt template
+            prompt_template = self.registry.get_prompt(prompt_type, version)
+            if not prompt_template:
+                yield {
+                    "type": "error", 
+                    "message": f"Failed to get prompt template for {prompt_type} {version}"
+                }
+                return
+            
+            # Enhance input data with dynamic context
+            enhanced_input = await self._enhance_input_data(prompt_type, input_data)
+            
+            # Format the prompt
+            formatted_prompt = prompt_template.format(**enhanced_input)
+            
+            # Stream response from LLM
+            async for chunk in llm.astream(formatted_prompt):
+                if hasattr(chunk, 'content') and chunk.content:
+                    full_response += chunk.content
+                    yield {
+                        "type": "token",
+                        "content": chunk.content
+                    }
+            
+            processing_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            # Update performance metrics for success
+            self.registry.update_prompt_performance(
+                prompt_type, version, True, processing_time
+            )
+            
+            # Create execution result for history
+            execution_result = PromptExecutionResult(
+                content=full_response,
+                prompt_type=prompt_type,
+                version_used=version,
+                processing_time_ms=processing_time,
+                success=True,
+                confidence_score=self._calculate_confidence_score(full_response, prompt_type),
+                metadata={
+                    "input_variables": list(enhanced_input.keys()),
+                    "template_length": len(prompt_template.template),
+                    "strategy_used": strategy,
+                    "user_id": user_id,
+                    "streaming": True
+                }
+            )
+            
+            # Store execution history
+            self.execution_history.append(execution_result)
+            
+            # Yield completion signal
+            yield {
+                "type": "done",
+                "message": "Streaming complete",
+                "metadata": {
+                    "version_used": version.value,
+                    "processing_time_ms": processing_time,
+                    "confidence_score": execution_result.confidence_score
+                }
+            }
+            
+            logger.info(f"Streaming prompt executed successfully: {prompt_type} {version} ({processing_time:.2f}ms)")
+            
+        except Exception as e:
+            processing_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            # Update performance metrics for failure
+            if 'version' in locals():
+                self.registry.update_prompt_performance(
+                    prompt_type, version, False, processing_time
+                )
+            
+            logger.error(f"Streaming prompt execution failed: {prompt_type} - {str(e)}")
+            yield {
+                "type": "error",
+                "message": f"Streaming execution failed: {str(e)}"
+            }
+    
     def _select_prompt_version(
         self,
         prompt_type: PromptType,

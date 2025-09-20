@@ -1,14 +1,14 @@
 "use client";
-
-import { useEffect, useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Send, MessageCircle, ChevronRight } from "lucide-react";
+import { Loader2, Send, MessageCircle, ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 export default function ChatPage() {
@@ -23,23 +23,28 @@ export default function ChatPage() {
     isChatting,
     chatWithAI,
     refetchMessages,
-  } = useAIChat({ 
-    sessionId: chatId && chatId !== "new" && chatId !== "undefined" ? chatId : undefined 
+  } = useAIChat({
+    sessionId: chatId && chatId !== "new" && chatId !== "undefined" ? chatId : undefined
   });
 
   const [message, setMessage] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Constants
+  const CONTEXT_LIMIT = 10;
+  const MAX_MESSAGE_LENGTH = 4000;
 
   const clearError = () => {
     refetchMessages();
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
+  const handleSendMessage = useCallback(async () => {
+    if (!message.trim() || message.trim().length > MAX_MESSAGE_LENGTH) return;
 
     try {
       const request: { message: string; context_limit: number; session_id?: string } = {
         message: message.trim(),
-        context_limit: 10,
+        context_limit: CONTEXT_LIMIT,
       };
 
       // Only include session_id for existing chats, not new ones
@@ -52,14 +57,35 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Failed to send message:", err);
     }
-  };
+  }, [message, chatId, chatWithAI]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    if (value.length <= MAX_MESSAGE_LENGTH) {
+      setMessage(value);
+    }
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    // This would navigate to a new chat
+    window.location.href = "/protected/chat/new";
+  }, []);
+
+  // Focus input when component mounts
+  useEffect(() => {
+    if (inputRef.current && !isChatting) {
+      inputRef.current.focus();
+    }
+  }, [isChatting]);
+
+  const canSendMessage = !isChatting && message.trim().length > 0;
 
   if (loading && !messages.length) {
     return (
@@ -148,7 +174,7 @@ export default function ChatPage() {
                 </div>
               ))
             )}
-            {chatWithAI.isPending && (
+            {isChatting && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-lg px-4 py-2 max-w-[70%]">
                   <div className="flex items-center gap-2">
@@ -163,27 +189,57 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input */}
-      <div className="border-t bg-background px-4 py-4 flex-shrink-0">
-        <div className="flex gap-2">
-          <Input
-            placeholder="Type your message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            disabled={chatWithAI.isPending}
-            className="flex-1"
-          />
-          <Button
-            onClick={handleSendMessage}
-            disabled={!message.trim() || chatWithAI.isPending}
-            size="icon"
-          >
-            {chatWithAI.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+      <div className=" px-4  flex-shrink-0">
+        <div className="relative bg-gray-900 rounded-2xl border border-gray-600  transition-all duration-200 max-w-2xl mx-auto">
+          <ScrollArea className="h-[100px]">
+            <Textarea
+              ref={inputRef}
+              placeholder="How can I help you today?"
+              value={message}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyPress}
+              disabled={isChatting}
+              maxLength={MAX_MESSAGE_LENGTH}
+              className="bg-transparent border-0 text-white placeholder:text-gray-300 px-6 py-5 text-base rounded-2xl focus:ring-0 focus-visible:ring-0 resize-none font-medium"
+              aria-label="Type your message"
+              rows={6}
+            />
+          </ScrollArea>
+
+          {/* Character count */}
+          {message.length > MAX_MESSAGE_LENGTH * 0.8 && (
+            <div className="absolute right-24 bottom-4 text-xs text-gray-400">
+              {message.length}/{MAX_MESSAGE_LENGTH}
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="absolute right-6 bottom-5 flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleNewChat}
+              disabled={isChatting}
+              className="h-10 w-10 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-all duration-200"
+              aria-label="Start new chat"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+
+            <Button
+              size="icon"
+              onClick={handleSendMessage}
+              disabled={!canSendMessage}
+              className="h-10 w-10 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 rounded-full transition-all duration-200 shadow-md hover:shadow-lg"
+              aria-label="Send message"
+            >
+              {isChatting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
