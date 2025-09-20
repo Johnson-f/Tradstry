@@ -9,6 +9,7 @@ import type {
   AIChatRequest,
   AIChatResponse,
   ChatMessageDeleteResponse,
+  ChatStreamChunk,
 } from "@/lib/services/ai-chat-service";
 
 // Query keys for TanStack Query
@@ -32,6 +33,9 @@ export const aiChatKeys = {
 interface UseAIChatState {
   currentSession: AIChatSession | null;
   isChatting: boolean;
+  isStreaming: boolean;
+  streamingContent: string;
+  streamingError: string | null;
 }
 
 interface UseAIChatReturn extends UseAIChatState {
@@ -90,6 +94,13 @@ interface UseAIChatReturn extends UseAIChatState {
     error: Error | null;
   };
 
+  // Streaming functionality
+  chatWithAIStream: (
+    request: AIChatRequest,
+    onChunk?: (chunk: ChatStreamChunk) => void
+  ) => Promise<void>;
+  cancelStream: () => void;
+
   // Query functions
   refetchSessions: () => void;
   refetchMessages: () => void;
@@ -117,6 +128,9 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
   const [localState, setLocalState] = useState<UseAIChatState>({
     currentSession: null,
     isChatting: false,
+    isStreaming: false,
+    streamingContent: '',
+    streamingError: null,
   });
 
   const setCurrentSession = useCallback((session: AIChatSession | null) => {
@@ -250,6 +264,103 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
     [],
   );
 
+  // Streaming functionality
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  const chatWithAIStream = useCallback(
+    async (
+      request: AIChatRequest,
+      onChunk?: (chunk: ChatStreamChunk) => void
+    ): Promise<void> => {
+      // Cancel any existing stream
+      if (abortController) {
+        abortController.abort();
+      }
+
+      const newController = new AbortController();
+      setAbortController(newController);
+
+      setLocalState((prev) => ({
+        ...prev,
+        isStreaming: true,
+        streamingContent: '',
+        streamingError: null,
+        isChatting: true,
+      }));
+
+      try {
+        await aiChatService.chatWithAIStream(
+          request,
+          (chunk: ChatStreamChunk) => {
+            // Update streaming content based on chunk type
+            if (chunk.type === 'content' && chunk.content) {
+              setLocalState((prev) => ({
+                ...prev,
+                streamingContent: prev.streamingContent + chunk.content,
+              }));
+            } else if (chunk.type === 'error') {
+              setLocalState((prev) => ({
+                ...prev,
+                streamingError: chunk.message || 'Streaming error occurred',
+              }));
+            }
+
+            // Call custom onChunk handler if provided
+            if (onChunk) {
+              onChunk(chunk);
+            }
+
+            // End streaming on completion
+            if (chunk.type === 'done' || chunk.type === 'response_saved' || chunk.type === 'stream_end') {
+              setLocalState((prev) => ({
+                ...prev,
+                isStreaming: false,
+                isChatting: false,
+              }));
+
+              // Invalidate queries to refresh messages
+              queryClient.invalidateQueries({ queryKey: aiChatKeys.messages() });
+              if (sessionId) {
+                queryClient.invalidateQueries({
+                  queryKey: aiChatKeys.sessionMessages(sessionId, messagesLimit),
+                });
+              }
+              queryClient.invalidateQueries({ queryKey: aiChatKeys.sessions() });
+            }
+          },
+          newController.signal
+        );
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          // Stream was cancelled, don't show error
+          console.log('Stream cancelled');
+        } else {
+          setLocalState((prev) => ({
+            ...prev,
+            streamingError: error.message || 'Failed to stream response',
+            isStreaming: false,
+            isChatting: false,
+          }));
+        }
+      } finally {
+        setAbortController(null);
+      }
+    },
+    [abortController, sessionId, messagesLimit, queryClient]
+  );
+
+  const cancelStream = useCallback(() => {
+    if (abortController) {
+      abortController.abort();
+      setLocalState((prev) => ({
+        ...prev,
+        isStreaming: false,
+        isChatting: false,
+        streamingContent: '',
+      }));
+    }
+  }, [abortController]);
+
   return {
     ...localState,
     // Query states
@@ -293,6 +404,9 @@ export function useAIChat(params: UseAIChatParams = {}): UseAIChatReturn {
       isPending: chatWithAIMutation.isPending,
       error: chatWithAIMutation.error,
     },
+    // Streaming functionality
+    chatWithAIStream,
+    cancelStream,
     // Query functions
     refetchSessions,
     refetchMessages,

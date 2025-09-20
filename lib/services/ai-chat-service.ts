@@ -54,6 +54,21 @@ export interface ChatMessageDeleteResponse {
   message: string;
 }
 
+// Streaming chat response chunk types
+export interface ChatStreamChunk {
+  type: 'thinking' | 'content' | 'error' | 'done' | 'response_saved' | 'stream_end';
+  content?: string;
+  message?: string;
+  session_id?: string;
+  ai_message_id?: string;
+  user_message_id?: string;
+  metadata?: {
+    thinking_time?: number;
+    response_time?: number;
+    token_count?: number;
+  };
+}
+
 export class AIChatService {
   private baseUrl = '/ai/chat';
 
@@ -158,6 +173,69 @@ export class AIChatService {
   // Send a message to AI and get a response
   async chatWithAI(request: AIChatRequest): Promise<AIChatResponse> {
     return apiClient.post(`${this.baseUrl}/chat`, request);
+  }
+
+  // Send a message to AI and get a streaming response
+  async chatWithAIStream(
+    request: AIChatRequest,
+    onChunk: (chunk: ChatStreamChunk) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const authToken = await apiClient.getAuthToken();
+    const response = await fetch(`${apiClient.baseURL}${this.baseUrl}/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+      body: JSON.stringify(request),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('ReadableStream not supported');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+          
+          if (line.startsWith('data: ')) {
+            try {
+              const data = line.slice(6); // Remove 'data: ' prefix
+              const chunk: ChatStreamChunk = JSON.parse(data);
+              onChunk(chunk);
+              
+              // Break on stream end or error
+              if (chunk.type === 'stream_end' || chunk.type === 'error') {
+                return;
+              }
+            } catch (error) {
+              console.error('Error parsing SSE data:', error, 'Line:', line);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   // Update an existing chat message

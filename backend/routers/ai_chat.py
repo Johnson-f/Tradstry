@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
+from fastapi.responses import StreamingResponse
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import json
+import asyncio
 from services.user_service import UserService
 from utils.auth import get_user_with_token_retry
 from services.ai.ai_chat_service import AIChatService
@@ -113,6 +116,61 @@ async def chat_with_ai(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/chat/stream")
+async def chat_with_ai_stream(
+    request: AIChatRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_token)
+):
+    """Send a message to AI and get a streaming response with Server-Sent Events."""
+    
+    async def generate_stream():
+        """Generate Server-Sent Events stream for chat response."""
+        try:
+            orchestrator = AIOrchestrator()
+            
+            # Stream the chat response
+            async for chunk in orchestrator.process_chat_message_stream(
+                user=current_user,
+                session_id=request.session_id,
+                user_message=request.message,
+                context_limit=request.context_limit or 10
+            ):
+                # Format as Server-Sent Events
+                chunk_data = json.dumps(chunk, ensure_ascii=False)
+                yield f"data: {chunk_data}\n\n"
+                
+                # Add small delay to prevent overwhelming the client
+                await asyncio.sleep(0.01)
+                
+                # End stream on error or completion
+                if chunk.get("type") in ["error", "done", "response_saved"]:
+                    break
+                    
+        except Exception as e:
+            # Send error as final chunk
+            error_chunk = {
+                "type": "error",
+                "message": f"Streaming error: {str(e)}"
+            }
+            error_data = json.dumps(error_chunk, ensure_ascii=False)
+            yield f"data: {error_data}\n\n"
+        
+        finally:
+            # Send final event to close the stream
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+        }
+    )
 
 @router.put("/messages/{message_id}", response_model=dict)
 async def update_message(

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from enum import Enum
 
 class MessageType(str, Enum):
@@ -142,3 +142,35 @@ class ChatMessageDeleteResponse(BaseModel):
     content_preview: str
     deleted_at: datetime
     operation_type: str
+
+# Streaming-specific models
+class StreamChunkType(str, Enum):
+    """Types of streaming chunks."""
+    SESSION_INFO = "session_info"
+    TOKEN = "token"
+    DONE = "done"
+    ERROR = "error"
+    WARNING = "warning"
+    RESPONSE_SAVED = "response_saved"
+    STREAM_END = "stream_end"
+
+class StreamChunk(BaseModel):
+    """Model for streaming chat response chunks."""
+    type: StreamChunkType
+    content: Optional[str] = Field(default=None, description="Token content for type='token'")
+    session_id: Optional[str] = Field(default=None, description="Session ID for session_info")
+    status: Optional[str] = Field(default=None, description="Status for session_info")
+    message: Optional[str] = Field(default=None, description="Message for done/error/warning")
+    message_id: Optional[str] = Field(default=None, description="Message ID for response_saved")
+    processing_time_ms: Optional[int] = Field(default=None, description="Processing time")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata")
+
+class StreamingChatResponse(BaseModel):
+    """Model for complete streaming chat response."""
+    session_id: str
+    chunks: List[StreamChunk]
+    total_processing_time_ms: int
+    full_content: str
+    model_used: str
+    success: bool
+    error_message: Optional[str] = None

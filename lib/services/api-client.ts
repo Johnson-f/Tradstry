@@ -158,6 +158,22 @@ class ApiClient {
     if (error) throw error;
     return data.session;
   }
+
+  // Get base URL for direct fetch usage (streaming)
+  get baseURL(): string {
+    return this.axiosInstance.defaults.baseURL || '';
+  }
+
+  // Get auth token for direct fetch usage (streaming)
+  async getAuthToken(): Promise<string | null> {
+    try {
+      const { data: { session } } = await this.supabase.auth.getSession();
+      return session?.access_token || null;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance
