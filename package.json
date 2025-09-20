@@ -65,7 +65,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
-    "@tanstack/react-query": "^5.84.2",
+    "@tanstack/react-query": "^5.89.0",
     "@tanstack/react-query-devtools": "^5.84.2",
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.11.0",
@@ -103,7 +103,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@types/node": "^20",
+    "@types/node": "^24.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.20",
