@@ -723,7 +723,7 @@ Provide:
         Returns:
             Dictionary containing the generated report and metadata
         """
-        user_id = user.get("user_id", "unknown")
+        user_id = user.get("id", "unknown")
         
         try:
             logger.info(f"Starting daily report generation for user {user_id}", extra={
@@ -922,7 +922,7 @@ Provide:
         Returns:
             Dictionary containing AI response and metadata
         """
-        user_id = user.get("user_id", "unknown")
+        user_id = user.get("id", "unknown")
         
         try:
             logger.info(f"Processing chat message for user {user_id}", extra={
@@ -1134,7 +1134,7 @@ Provide:
         from fastapi import HTTPException
         from typing import AsyncGenerator
         
-        user_id = user.get("user_id", "unknown")
+        user_id = user.get("id", "unknown")
         
         try:
             logger.info(f"Processing streaming chat message for user {user_id}", extra={
@@ -1257,6 +1257,7 @@ Provide:
                 # Yield final response info
                 yield {
                     "type": "response_saved",
+                    "session_id": session_id,
                     "message_id": saved_response.get("id"),
                     "processing_time_ms": processing_time
                 }
