@@ -7,7 +7,7 @@ from .ai.ai_chat_service import AIChatService
 from .ai.ai_insights_service import AIInsightsService
 from .ai.ai_reports_service import AIReportsService
 from .ai.ai_embedding_service import AIEmbeddingService
-from .ai.ai_orchestrator_service import AIOrchestrator
+from .ai.orchestrator import AIOrchestrator
 from .ai.rag_vector_service import RAGVectorService
 from .ai.rag_retriever_service import RAGRetrieverService
 
