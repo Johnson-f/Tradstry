@@ -7,7 +7,7 @@ import asyncio
 from services.user_service import UserService
 from utils.auth import get_user_with_token_retry
 from services.ai.ai_chat_service import AIChatService
-from services.ai.ai_orchestrator_service import AIOrchestrator
+from services.ai.orchestrator import AIOrchestrator
 from models.ai_chat import (
     AIChatMessageCreate, AIChatMessageUpdate, AIChatMessageResponse,
     AIChatSessionResponse, ChatMessageDeleteResponse, AIChatRequest

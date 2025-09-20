@@ -4,7 +4,7 @@ from datetime import datetime
 from services.user_service import UserService
 from utils.auth import get_user_with_token_retry
 from services.ai.ai_reports_service import AIReportsService
-from services.ai.ai_orchestrator_service import AIOrchestrator
+from services.ai.orchestrator import AIOrchestrator
 from models.ai_reports import (
     AIReportCreate, AIReportUpdate, AIReportResponse, 
     AIReportGenerateRequest, DeleteResponse
