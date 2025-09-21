@@ -13,6 +13,7 @@ from .ai_context_manager import AIContextManager
 from .ai_content_processor import AIContentProcessor
 from .ai_health_mointor import AIHealthMonitor
 
+from ..trade_embeddings_service import TradeEmbeddingsService
 from models.ai_insights import InsightType
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,10 @@ class AIOrchestrator:
             # Initialize health monitoring
             self.health_monitor = AIHealthMonitor()
             
-            logger.info("AI Orchestrator initialization completed successfully")
+            # Initialize trade embeddings service for RAG-enhanced context
+            self.trade_embeddings = TradeEmbeddingsService()
+            
+            logger.info("AI Orchestrator initialization completed successfully (with trade embeddings support)")
             
         except Exception as e:
             logger.error(f"Error initializing AI Orchestrator: {str(e)}")
@@ -109,17 +113,56 @@ class AIOrchestrator:
     # Chat Processing Methods
     async def process_chat_message(self, user: Dict[str, Any], session_id: str,
                                  user_message: str, context_limit: int = 10) -> Dict[str, Any]:
-        """Process a chat message with enhanced context."""
-        logger.info("Orchestrator: Processing chat message")
+        """Process a chat message with enhanced trade context."""
+        logger.info("Orchestrator: Processing chat message with trade embeddings context")
         try:
+            # Step 1: Extract symbols from user query
+            symbols = await self.trade_embeddings.extract_symbols_from_query(user_message)
+            logger.info(f"Extracted symbols from query: {symbols}")
+            
+            # Step 2: Get trade-specific context
+            trade_context = ""
+            user_token = self.auth_validator.extract_access_token(user)
+            
+            if user_token:
+                # Search for relevant trade context
+                trade_results = await self.trade_embeddings.search_user_trade_context(
+                    query=user_message,
+                    user_token=user_token,
+                    symbol=symbols[0] if symbols else None,  # Use first symbol if available
+                    limit=3
+                )
+                
+                # Format context for LLM
+                if trade_results:
+                    trade_context = await self.trade_embeddings.format_context_for_llm(
+                        trade_results, max_context_length=1500
+                    )
+                    logger.info(f"Added {len(trade_results)} trade context results to chat")
+            
+            # Step 3: Process chat with enhanced context
+            # Pass trade context to chat processor via context manager
+            if trade_context and hasattr(self.context_manager, 'set_additional_context'):
+                self.context_manager.set_additional_context(trade_context)
+            
             result = await self.chat_processor.process_chat_message(
                 user, session_id, user_message, context_limit
             )
             
-            # Index the AI response in RAG system for future context
+            # Step 4: Enhance result with trade context metadata
+            if trade_context:
+                result['trade_context_used'] = True
+                result['symbols_detected'] = symbols
+                result['context_sources'] = len(trade_results) if 'trade_results' in locals() else 0
+            else:
+                result['trade_context_used'] = False
+                result['symbols_detected'] = symbols
+                result['context_sources'] = 0
+            
+            # Step 5: Index the AI response in RAG system for future context
             if result.get("response") and self.context_manager:
                 await self.context_manager.index_ai_generated_content(
-                    self.auth_validator.extract_access_token(user),
+                    user_token,
                     result["response"],
                     "chat_response"
                 )
@@ -127,17 +170,61 @@ class AIOrchestrator:
             return result
         except Exception as e:
             logger.error(f"Error in orchestrator chat processing: {str(e)}")
-            raise
+            # Fallback to standard processing without trade context
+            try:
+                return await self.chat_processor.process_chat_message(
+                    user, session_id, user_message, context_limit
+                )
+            except Exception as fallback_error:
+                logger.error(f"Fallback chat processing also failed: {str(fallback_error)}")
+                raise
 
     async def process_chat_message_stream(self, user: Dict[str, Any], session_id: str,
                                         user_message: str, context_limit: int = 10) -> AsyncGenerator:
-        """Process a chat message with streaming response."""
-        logger.info("Orchestrator: Processing streaming chat message")
+        """Process a chat message with streaming response and trade context."""
+        logger.info("Orchestrator: Processing streaming chat message with trade embeddings context")
         try:
+            # Get trade context before streaming (same as non-streaming)
+            symbols = await self.trade_embeddings.extract_symbols_from_query(user_message)
+            trade_context = ""
+            user_token = self.auth_validator.extract_access_token(user)
+            
+            if user_token:
+                trade_results = await self.trade_embeddings.search_user_trade_context(
+                    query=user_message,
+                    user_token=user_token,
+                    symbol=symbols[0] if symbols else None,
+                    limit=3
+                )
+                
+                if trade_results:
+                    trade_context = await self.trade_embeddings.format_context_for_llm(
+                        trade_results, max_context_length=1500
+                    )
+                    logger.info(f"Added {len(trade_results)} trade context results to streaming chat")
+            
+            # Pass trade context to stream handler
+            if trade_context and hasattr(self.context_manager, 'set_additional_context'):
+                self.context_manager.set_additional_context(trade_context)
+            
             full_response = ""
+            first_chunk = True
+            
             async for chunk in self.stream_handler.process_chat_message_stream(
                 user, session_id, user_message, context_limit
             ):
+                # Add trade context metadata to first chunk
+                if first_chunk and trade_context:
+                    chunk['trade_context_used'] = True
+                    chunk['symbols_detected'] = symbols
+                    chunk['context_sources'] = len(trade_results) if 'trade_results' in locals() else 0
+                    first_chunk = False
+                elif first_chunk:
+                    chunk['trade_context_used'] = False
+                    chunk['symbols_detected'] = symbols
+                    chunk['context_sources'] = 0
+                    first_chunk = False
+                    
                 if chunk.get("type") == "token":
                     full_response += chunk.get("content", "")
                 yield chunk
@@ -145,8 +232,8 @@ class AIOrchestrator:
             # Index the complete streaming response in RAG system
             if full_response and self.context_manager:
                 await self.context_manager.index_ai_generated_content(
-                    self.auth_validator.extract_access_token(user),
-                    {"content": full_response, "session_id": session_id},
+                    user_token,
+                    {"content": full_response, "session_id": session_id, "had_trade_context": bool(trade_context)},
                     "streaming_chat_response"
                 )
                 
@@ -366,3 +453,100 @@ class AIOrchestrator:
                 "error": str(e),
                 "status": "error"
             }
+
+    # Trade Embeddings Methods
+    async def trigger_trade_data_embedding(self, user: Dict[str, Any], 
+                                         table_name: str, record_id: str) -> Dict[str, Any]:
+        """
+        Trigger embedding generation for a trade data record.
+        
+        Args:
+            user: User object containing authentication info
+            table_name: Source table name (stocks, options, notes, etc.)
+            record_id: ID of the record to embed
+            
+        Returns:
+            Dictionary containing embedding result
+        """
+        try:
+            user_token = self.auth_validator.extract_access_token(user)
+            return await self.trade_embeddings.trigger_embedding_for_trade_data(
+                table_name, record_id, user_token
+            )
+        except Exception as e:
+            logger.error(f"Error triggering trade data embedding: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
+    async def search_trade_context(self, user: Dict[str, Any], query: str, 
+                                 symbol: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search user's trade history for relevant context.
+        
+        Args:
+            user: User object containing authentication info
+            query: Search query describing what context to find
+            symbol: Optional symbol filter
+            limit: Maximum number of results
+            
+        Returns:
+            List of search results
+        """
+        try:
+            user_token = self.auth_validator.extract_access_token(user)
+            results = await self.trade_embeddings.search_user_trade_context(
+                query, user_token, symbol, limit
+            )
+            
+            # Convert SearchResult objects to dictionaries for API response
+            return [
+                {
+                    'content': result.content,
+                    'similarity_score': result.similarity_score,
+                    'metadata': result.metadata,
+                    'document_type': result.document_type
+                }
+                for result in results
+            ]
+        except Exception as e:
+            logger.error(f"Error searching trade context: {str(e)}")
+            return []
+    
+    async def get_embeddings_analytics(self, user: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get analytics and statistics about user's trade embeddings.
+        
+        Args:
+            user: User object containing authentication info
+            
+        Returns:
+            Dictionary containing embedding analytics
+        """
+        try:
+            user_token = self.auth_validator.extract_access_token(user)
+            return await self.trade_embeddings.get_embeddings_dashboard_data(user_token)
+        except Exception as e:
+            logger.error(f"Error getting embeddings analytics: {str(e)}")
+            return {'error': str(e)}
+    
+    async def batch_embed_user_data(self, user: Dict[str, Any], 
+                                  table_names: Optional[List[str]] = None,
+                                  limit_per_table: int = 100) -> Dict[str, Any]:
+        """
+        Batch embed existing trade data for a user.
+        
+        Args:
+            user: User object containing authentication info
+            table_names: List of table names to process (default: all supported tables)
+            limit_per_table: Maximum records to process per table
+            
+        Returns:
+            Dictionary containing batch processing results
+        """
+        try:
+            user_token = self.auth_validator.extract_access_token(user)
+            return await self.trade_embeddings.batch_embed_existing_data(
+                user_token, table_names, limit_per_table
+            )
+        except Exception as e:
+            logger.error(f"Error in batch embedding process: {str(e)}")
+            return {'success': False, 'error': str(e)}
