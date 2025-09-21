@@ -10,8 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { PlusIcon, BrainIcon, FileTextIcon, TrendingUpIcon, AlertTriangleIcon, RefreshCwIcon } from 'lucide-react';
-import { ReportGenerationDialog } from './report-generation-dialog';
+import { PlusIcon, BrainIcon, FileTextIcon, TrendingUpIcon, AlertTriangleIcon } from 'lucide-react';
 import { ReportDetailsDialog } from './report-details-dialog';
 import { InsightsManagement } from './insights-management';
 import type { AIReport } from '@/lib/services/ai-reports-service';
@@ -19,7 +18,6 @@ import type { AIInsight } from '@/lib/services/ai-insights-service';
 
 export function AIReportsDashboard() {
   const [selectedReport, setSelectedReport] = useState<AIReport | null>(null);
-  const [isGenerationDialogOpen, setIsGenerationDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   const {
@@ -28,8 +26,6 @@ export function AIReportsDashboard() {
     reportsError,
     tradingContext,
     tradingContextLoading,
-    generateReport,
-    refetchReports,
   } = useAIReports();
 
   const {
@@ -39,8 +35,6 @@ export function AIReportsDashboard() {
     actionableInsights,
     actionableInsightsLoading,
     actionableInsightsError,
-    refetchPriorityInsights,
-    refetchActionableInsights,
   } = useAIInsights({ priorityLimit: 5, actionableLimit: 10 });
 
   const handleReportClick = (report: AIReport) => {
@@ -49,35 +43,16 @@ export function AIReportsDashboard() {
   };
 
   const handleGenerateReport = () => {
-    setIsGenerationDialogOpen(true);
-  };
-
-  const handleRefresh = () => {
-    refetchReports();
-    refetchPriorityInsights();
-    refetchActionableInsights();
+    // This will be handled by the parent page component
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">AI Reports & Insights</h2>
-          <p className="text-muted-foreground">
-            AI-powered analysis of your trading performance and market insights
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRefresh}>
-            <RefreshCwIcon className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={handleGenerateReport}>
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Generate Report
-          </Button>
-        </div>
+      {/* Description */}
+      <div>
+        <p className="text-muted-foreground">
+          AI-powered analysis of your trading performance and market insights
+        </p>
       </div>
 
       {/* Key Metrics Cards */}
@@ -344,14 +319,7 @@ export function AIReportsDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialogs */}
-      <ReportGenerationDialog
-        open={isGenerationDialogOpen}
-        onOpenChange={setIsGenerationDialogOpen}
-        onGenerate={generateReport.mutate}
-        isGenerating={generateReport.isPending}
-      />
-
+      {/* Report Details Dialog */}
       <ReportDetailsDialog
         open={isDetailsDialogOpen}
         onOpenChange={setIsDetailsDialogOpen}
