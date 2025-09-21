@@ -258,14 +258,17 @@ class AIOrchestrator:
         """Get information about stable models organized by tier."""
         return self.model_manager.get_stable_models_info()
 
-    # Conversation Management Methods
+    # Conversation Management Methods - Deprecated
+    # Conversation history is now managed by AIChatService for persistence
     def clear_conversation_history(self):
-        """Clear the conversation history."""
-        self.llm_handler.clear_conversation_history()
+        """Deprecated: Conversation history is now managed by AIChatService."""
+        logger.warning("clear_conversation_history called on AIOrchestrator - this is deprecated. Use AIChatService instead.")
+        pass
 
     def add_to_conversation_history(self, message: str, role: str = "user"):
-        """Add a message to conversation history."""
-        self.llm_handler.add_to_conversation_history(message, role)
+        """Deprecated: Conversation history is now managed by AIChatService."""
+        logger.warning("add_to_conversation_history called on AIOrchestrator - this is deprecated. Use AIChatService instead.")
+        pass
 
     # Testing and Status Methods
     async def test_streaming_connection(self, user: Dict[str, Any]) -> Dict[str, Any]:

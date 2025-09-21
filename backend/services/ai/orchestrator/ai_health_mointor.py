@@ -183,7 +183,7 @@ class AIHealthMonitor:
                 "llm_available": is_available,
                 "llm_initialized": llm_status.get("llm_initialized", False),
                 "current_model": llm_status.get("current_model"),
-                "conversation_history_length": llm_status.get("conversation_history_length", 0),
+                "conversation_history_mode": llm_status.get("conversation_history_mode", "persistent_via_chat_service"),
                 "issues": issues
             }
 
