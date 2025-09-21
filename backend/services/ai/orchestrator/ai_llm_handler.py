@@ -23,12 +23,11 @@ class AILLMHandler:
         self.model_manager = model_manager
         self._llm = None
         self._llm_initialized = False
-        self._conversation_history = []  # Simple list to track conversation
         
         # Legacy prompts for fallback (when prompt service is unavailable)
         self.trading_prompts = self._initialize_legacy_prompts()
         
-        logger.info("AI LLM Handler initialized")
+        logger.info("AI LLM Handler initialized - using persistent chat history via AIChatService")
 
     def _initialize_llm_with_fallback(self) -> Optional[ChatOpenAI]:
         """Initialize LLM with automatic fallback to OpenRouter compatible models."""
@@ -402,30 +401,22 @@ Provide:
                 "message": f"Critical streaming error: {str(e)}"
             }
 
+    # Conversation history methods removed - now handled by AIChatService for persistence
+    # These methods are deprecated and should not be used
     def clear_conversation_history(self):
-        """Clear the conversation history."""
-        self._conversation_history = []
-        logger.info("Conversation history cleared")
+        """Deprecated: Conversation history is now managed by AIChatService."""
+        logger.warning("clear_conversation_history called on AILLMHandler - this is deprecated. Use AIChatService instead.")
+        pass
 
     def add_to_conversation_history(self, message: str, role: str = "user"):
-        """Add a message to conversation history."""
-        try:
-            self._conversation_history.append({
-                "role": role,
-                "content": message,
-                "timestamp": time.time()
-            })
-
-            # Keep only last 10 messages to avoid memory issues
-            if len(self._conversation_history) > 10:
-                self._conversation_history = self._conversation_history[-10:]
-
-        except Exception as e:
-            logger.error(f"Error adding to conversation history: {str(e)}")
+        """Deprecated: Conversation history is now managed by AIChatService."""
+        logger.warning("add_to_conversation_history called on AILLMHandler - this is deprecated. Use AIChatService instead.")
+        pass
 
     def get_conversation_history(self) -> list:
-        """Get current conversation history."""
-        return self._conversation_history.copy()
+        """Deprecated: Conversation history is now managed by AIChatService."""
+        logger.warning("get_conversation_history called on AILLMHandler - this is deprecated. Use AIChatService instead.")
+        return []
 
     def get_llm_status(self) -> dict:
         """Get current LLM status and information."""
@@ -433,6 +424,6 @@ Provide:
             "llm_available": self.llm is not None,
             "llm_initialized": self._llm_initialized,
             "current_model": self.model_manager.current_llm_model,
-            "conversation_history_length": len(self._conversation_history),
+            "conversation_history_mode": "persistent_via_chat_service",
             "can_reinitialize": True
         }

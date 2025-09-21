@@ -8,6 +8,8 @@ and performance tracking for the prompt registry system.
 import json
 import logging
 import asyncio
+import hashlib
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
@@ -48,6 +50,7 @@ class PromptExecutionResult:
 class PromptService:
     """
     Service for managing prompt execution, composition, and optimization.
+    Includes LLM-powered confidence scoring for enhanced quality control.
     
     Features:
     - Dynamic prompt selection based on performance metrics
@@ -59,8 +62,12 @@ class PromptService:
     def __init__(self):
         self.registry = get_prompt_registry()
         self.execution_history: List[PromptExecutionResult] = []
-        self._a_b_test_assignments: Dict[str, PromptVersion] = {}
-        logger.info("Prompt service initialized with advanced composition capabilities")
+        self.user_assignments: Dict[str, PromptVersion] = {}  # For A/B testing
+        self.confidence_cache: Dict[str, float] = {}  # Cache for LLM confidence scores
+        self.llm_confidence_enabled = os.getenv('LLM_CONFIDENCE_SCORING_ENABLED', 'true').lower() == 'true'
+        self.confidence_cache_size = int(os.getenv('LLM_CONFIDENCE_CACHE_SIZE', '1000'))
+        
+        logger.info("Advanced Prompt Service initialized with LLM-powered confidence scoring and advanced composition capabilities")
     
     async def execute_prompt(
         self,
@@ -115,7 +122,7 @@ class PromptService:
                 version_used=version,
                 processing_time_ms=processing_time,
                 success=True,
-                confidence_score=self._calculate_confidence_score(content, prompt_type),
+                confidence_score=await self._calculate_confidence_score(content, prompt_type, enhanced_input, llm),
                 metadata={
                     "input_variables": list(enhanced_input.keys()),
                     "template_length": len(prompt_template.template),
@@ -228,7 +235,7 @@ class PromptService:
                 version_used=version,
                 processing_time_ms=processing_time,
                 success=True,
-                confidence_score=self._calculate_confidence_score(full_response, prompt_type),
+                confidence_score=await self._calculate_confidence_score(full_response, prompt_type, enhanced_input, llm),
                 metadata={
                     "input_variables": list(enhanced_input.keys()),
                     "template_length": len(prompt_template.template),
@@ -471,11 +478,170 @@ class PromptService:
         """Calculate statistical significance of patterns (placeholder)."""
         return 0.85  # Placeholder confidence level
     
-    def _calculate_confidence_score(self, content: str, prompt_type: PromptType) -> float:
-        """Calculate confidence score based on content quality indicators."""
+    async def _calculate_confidence_score(self, content: str, prompt_type: PromptType, 
+                                        input_data: Dict[str, Any] = None, 
+                                        llm = None) -> float:
+        """Calculate confidence score using LLM self-evaluation with heuristic fallback."""
         if not content:
             return 0.0
         
+        # Try LLM-powered confidence scoring first
+        if self.llm_confidence_enabled and llm is not None:
+            try:
+                llm_score = await self._llm_confidence_evaluation(content, prompt_type, input_data, llm)
+                if llm_score is not None:
+                    logger.debug(f"LLM confidence score: {llm_score} for {prompt_type.value}")
+                    return llm_score
+            except Exception as e:
+                logger.warning(f"LLM confidence scoring failed, falling back to heuristics: {str(e)}")
+        
+        # Fallback to heuristic scoring
+        return self._heuristic_confidence_score(content, prompt_type)
+    
+    async def _llm_confidence_evaluation(self, content: str, prompt_type: PromptType, 
+                                       input_data: Dict[str, Any], llm) -> Optional[float]:
+        """Use LLM to evaluate its own response quality and confidence."""
+        try:
+            # Create cache key to avoid redundant evaluations
+            cache_key = hashlib.md5(f"{content[:200]}{prompt_type.value}".encode()).hexdigest()
+            if cache_key in self.confidence_cache:
+                return self.confidence_cache[cache_key]
+            
+            # Get appropriate evaluation prompt
+            evaluation_prompt = self._get_confidence_evaluation_prompt(prompt_type)
+            
+            # Prepare context for evaluation
+            context_info = ""
+            if input_data:
+                # Include relevant context without overwhelming the evaluator
+                context_items = []
+                for key, value in input_data.items():
+                    if key in ['question', 'trading_data', 'date_range', 'insight_type']:
+                        context_items.append(f"{key}: {str(value)[:200]}..." if len(str(value)) > 200 else f"{key}: {value}")
+                context_info = "\n".join(context_items)
+            
+            # Format the evaluation prompt
+            evaluation_input = {
+                "response_content": content,
+                "context_information": context_info or "No specific context provided",
+                "response_type": prompt_type.value.replace('_', ' ').title()
+            }
+            
+            # Execute evaluation (quick, lightweight call)
+            evaluation_result = llm.invoke(evaluation_prompt.format(**evaluation_input))
+            
+            # Extract confidence score from LLM response
+            confidence_score = self._extract_confidence_score(evaluation_result.content if hasattr(evaluation_result, 'content') else str(evaluation_result))
+            
+            # Cache the result
+            if confidence_score is not None:
+                self.confidence_cache[cache_key] = confidence_score
+                # Limit cache size
+                if len(self.confidence_cache) > self.confidence_cache_size:
+                    # Remove oldest entries (simple FIFO)
+                    oldest_keys = list(self.confidence_cache.keys())[:100]
+                    for key in oldest_keys:
+                        del self.confidence_cache[key]
+            
+            return confidence_score
+            
+        except Exception as e:
+            logger.error(f"Error in LLM confidence evaluation: {str(e)}")
+            return None
+    
+    def _get_confidence_evaluation_prompt(self, prompt_type: PromptType) -> PromptTemplate:
+        """Get specialized confidence evaluation prompt for each response type."""
+        
+        base_template = """You are an expert AI response evaluator. Your task is to assess the quality and confidence of an AI-generated response.
+
+Response Type: {response_type}
+Original Context: {context_information}
+
+AI Response to Evaluate:
+{response_content}
+
+Please evaluate this response on the following criteria:
+1. Accuracy and relevance to the context
+2. Completeness of the information provided
+3. Clarity and coherence of the response
+4. Actionability (if applicable)
+5. Professional quality
+
+"""
+        
+        if prompt_type == PromptType.DAILY_REPORT:
+            specific_criteria = """For trading reports, also consider:
+- Presence of key sections (Performance, Insights, Risk Analysis, Recommendations)
+- Use of specific financial data and metrics
+- Professional trading terminology
+- Actionable trading insights
+"""
+        elif prompt_type == PromptType.CHAT:
+            specific_criteria = """For chat responses, also consider:
+- Conversational tone and engagement
+- Helpfulness and relevance to user question
+- Empathy and understanding of trading context
+- Clear and accessible explanations
+"""
+        elif prompt_type == PromptType.INSIGHT:
+            specific_criteria = """For insights, also consider:
+- Depth of analysis and pattern recognition
+- Statistical significance of observations
+- Practical applicability to trading decisions
+- Risk awareness and balanced perspective
+"""
+        else:
+            specific_criteria = """Consider the specific requirements and expectations for this type of response.
+"""
+        
+        evaluation_instruction = """Based on your evaluation, provide a confidence score from 1-10 where:
+- 1-3: Poor quality, significant issues with accuracy, relevance, or completeness
+- 4-6: Adequate quality, meets basic requirements but has room for improvement
+- 7-8: Good quality, well-structured and informative with minor areas for enhancement
+- 9-10: Excellent quality, comprehensive, accurate, and highly valuable
+
+Respond with ONLY the numerical score (1-10), followed by a brief one-sentence explanation.
+Example: "8 - Well-structured response with comprehensive analysis but could include more specific actionable recommendations."
+"""
+        
+        full_template = base_template + specific_criteria + evaluation_instruction
+        
+        return PromptTemplate(
+            input_variables=["response_content", "context_information", "response_type"],
+            template=full_template
+        )
+    
+    def _extract_confidence_score(self, evaluation_response: str) -> Optional[float]:
+        """Extract numerical confidence score from LLM evaluation response."""
+        try:
+            # Look for patterns like "8", "7.5", "9 -", etc.
+            import re
+            
+            # First, try to find a number at the start of the response
+            score_match = re.search(r'^(\d+(?:\.\d+)?)', evaluation_response.strip())
+            if score_match:
+                score = float(score_match.group(1))
+                # Convert 1-10 scale to 0-1 scale
+                return min(max(score / 10.0, 0.0), 1.0)
+            
+            # Fallback: look for any number in the response
+            numbers = re.findall(r'\b(\d+(?:\.\d+)?)\b', evaluation_response)
+            if numbers:
+                # Take the first number that looks like a score (1-10 range)
+                for num_str in numbers:
+                    num = float(num_str)
+                    if 1 <= num <= 10:
+                        return min(max(num / 10.0, 0.0), 1.0)
+            
+            logger.warning(f"Could not extract confidence score from: {evaluation_response[:100]}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting confidence score: {str(e)}")
+            return None
+    
+    def _heuristic_confidence_score(self, content: str, prompt_type: PromptType) -> float:
+        """Original heuristic-based confidence scoring as fallback."""
         # Basic quality indicators
         score = 0.5  # Base score
         
@@ -507,6 +673,35 @@ class PromptService:
                 score += 0.05
         
         return min(score, 1.0)  # Cap at 1.0
+    
+    def get_confidence_scoring_status(self) -> Dict[str, Any]:
+        """Get status information about confidence scoring system."""
+        return {
+            "llm_confidence_enabled": self.llm_confidence_enabled,
+            "confidence_cache_size": len(self.confidence_cache),
+            "confidence_cache_limit": self.confidence_cache_size,
+            "cache_hit_rate": self._calculate_cache_hit_rate(),
+            "scoring_mode": "llm_powered" if self.llm_confidence_enabled else "heuristic_only"
+        }
+    
+    def _calculate_cache_hit_rate(self) -> float:
+        """Calculate cache hit rate for confidence scoring (simplified)."""
+        # This is a simplified calculation - in production you might want more sophisticated tracking
+        if len(self.confidence_cache) == 0:
+            return 0.0
+        return min(len(self.confidence_cache) / max(len(self.execution_history), 1), 1.0)
+    
+    def toggle_llm_confidence_scoring(self, enabled: bool) -> None:
+        """Toggle LLM confidence scoring on/off."""
+        self.llm_confidence_enabled = enabled
+        logger.info(f"LLM confidence scoring {'enabled' if enabled else 'disabled'}")
+    
+    def clear_confidence_cache(self) -> int:
+        """Clear the confidence scoring cache and return number of entries cleared."""
+        cache_size = len(self.confidence_cache)
+        self.confidence_cache.clear()
+        logger.info(f"Cleared {cache_size} entries from confidence cache")
+        return cache_size
     
     def get_execution_analytics(self, hours_back: int = 24) -> Dict[str, Any]:
         """Get analytics on prompt execution performance."""
