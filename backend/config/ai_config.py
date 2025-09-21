@@ -81,7 +81,7 @@ class AISettings(BaseSettings):
     }
 
     # Model parameters
-    LLM_MAX_LENGTH: int = 2048
+    LLM_MAX_LENGTH: int = 3000
     LLM_TEMPERATURE: float = 0.7
 
     # Embedding parameter
