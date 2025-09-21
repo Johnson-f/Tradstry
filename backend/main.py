@@ -8,6 +8,8 @@ from routers import analytics, setups_router, notes_router, images, trade_notes_
 from routers import ai_reports, ai_chat, ai_insights
 from routers.stocks import router as stocks_router
 from routers.options import router as options_router
+from services.redis_client import init_redis, close_redis, get_redis_health
+from services.cache_service import get_cache_stats
 import logging
 
 # Load environment variables from .env file
@@ -46,6 +48,10 @@ app.include_router(ai_insights.router, prefix=get_settings().API_PREFIX)
 async def startup_event():
     """Initialize services on app startup."""
     try:
+        # Initialize Redis connection
+        await init_redis()
+        logger.info("Redis initialized successfully")
+        
         logger.info("FastAPI app started successfully")
     except Exception as e:
         logger.error(f"Failed to start app services: {e}")
@@ -54,6 +60,10 @@ async def startup_event():
 async def shutdown_event():
     """Clean up services on app shutdown."""
     try:
+        # Close Redis connections
+        await close_redis()
+        logger.info("Redis connections closed successfully")
+        
         logger.info("FastAPI app shutdown complete")
     except Exception as e:
         logger.error(f"Error during app shutdown: {e}")
@@ -79,6 +89,20 @@ async def root():
 @app.get(f"{get_settings().API_PREFIX}/health")
 async def health_check():
     return {"status": "healthy", "version": get_settings().VERSION}
+
+# Redis health check endpoint
+@app.get(f"{get_settings().API_PREFIX}/health/redis")
+async def redis_health_check():
+    """Check Redis connection health and get basic stats."""
+    redis_health = await get_redis_health()
+    return redis_health
+
+# Cache statistics endpoint
+@app.get(f"{get_settings().API_PREFIX}/health/cache")
+async def cache_stats():
+    """Get comprehensive cache statistics."""
+    cache_stats = await get_cache_stats()
+    return cache_stats
 
 # Example protected route
 @app.get(f"{get_settings().API_PREFIX}/protected")
