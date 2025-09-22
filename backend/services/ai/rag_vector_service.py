@@ -19,16 +19,15 @@ from .ai_embedding_service import AIEmbeddingService
 logger = logging.getLogger(__name__)
 
 class DocumentType(Enum):
-    TRADE_ENTRY = "trade_entry"
-    TRADE_NOTE = "trade_note" 
+    """Unified content types for trade_embeddings table"""
+    TRADE_DATA = "trade_data"
+    STOCK_TRADE = "stock_trade"
+    OPTIONS_TRADE = "options_trade"
+    TRADING_NOTE = "trading_note"
+    TRADING_SETUP = "trading_setup"
     AI_REPORT = "ai_report"
     AI_INSIGHT = "ai_insight"
     MARKET_NEWS = "market_news"
-    # New trade embedding types
-    STOCK_TRADE = "stock_trade"
-    OPTIONS_TRADE = "options_trade"
-    TRADING_SETUP = "trading_setup"
-    TRADING_NOTE = "trading_note"
     TAG = "tag"
     TEMPLATE = "template"
 
@@ -54,94 +53,63 @@ class RAGVectorService:
         
     async def index_document(self, user_token: str, doc_type: DocumentType, 
                            title: str, content: str, metadata: Dict = None) -> str:
-        """Index a document for vector search"""
+        """Index a document in the unified trade_embeddings table"""
         try:
             user_id = await self._get_user_id_from_token(user_token)
-            embedding = self.embedding_service.generate_embedding(f"{title}\n{content}")
             
-            # Route to appropriate table based on document type with correct parameter names
-            if doc_type in [DocumentType.TRADE_ENTRY, DocumentType.TRADE_NOTE]:
-                doc_data = {
-                    'p_user_id': user_id,
-                    'p_document_type': doc_type.value,
-                    'p_source_table': metadata.get('source_table', 'unknown'),
-                    'p_source_id': metadata.get('source_id'),
-                    'p_title': title,
-                    'p_content': content,
-                    'p_content_embedding': embedding,
-                    'p_symbol': metadata.get('symbol'),
-                    'p_trade_date': metadata.get('trade_date'),
-                    'p_trade_type': metadata.get('trade_type'),
-                    'p_action': metadata.get('action'),
-                    'p_pnl': metadata.get('pnl'),
-                    'p_tags': metadata.get('tags', []),
-                    'p_confidence_score': metadata.get('confidence_score', 0.0),
-                    'p_chunk_index': metadata.get('chunk_index', 0),
-                    'p_total_chunks': metadata.get('total_chunks', 1)
-                }
-                result = await self._call_sql_function('upsert_rag_trade_document', doc_data, user_token)
-                
-            elif doc_type in [DocumentType.AI_REPORT, DocumentType.AI_INSIGHT]:
-                doc_data = {
-                    'p_user_id': user_id,
-                    'p_document_type': doc_type.value,
-                    'p_title': title,
-                    'p_content': content,
-                    'p_content_embedding': embedding,
-                    'p_source_table': metadata.get('source_table', 'ai_reports'),
-                    'p_source_id': metadata.get('source_id'),
-                    'p_insight_types': metadata.get('insight_types', []),
-                    'p_model_used': metadata.get('model_used'),
-                    'p_generation_date': metadata.get('generation_date'),
-                    'p_confidence_score': metadata.get('confidence_score'),
-                    'p_time_horizon': metadata.get('time_horizon'),
-                    'p_actionability_score': metadata.get('actionability_score')
-                }
-                result = await self._call_sql_function('upsert_rag_ai_document', doc_data, user_token)
-                
-            else:  # Market documents
-                doc_data = {
-                    'p_user_id': user_id,
-                    'p_document_type': doc_type.value,
-                    'p_title': title,
-                    'p_content': content,
-                    'p_content_embedding': embedding,
-                    'p_source': metadata.get('source'),
-                    'p_source_id': metadata.get('source_id'),
-                    'p_symbols': metadata.get('symbols', []),
-                    'p_categories': metadata.get('categories', []),
-                    'p_sector': metadata.get('sector'),
-                    'p_market_cap_range': metadata.get('market_cap_range'),
-                    'p_publication_date': metadata.get('publication_date'),
-                    'p_sentiment_score': metadata.get('sentiment_score'),
-                    'p_relevance_score': metadata.get('relevance_score'),
-                    'p_expires_at': metadata.get('expires_at')
-                }
-                result = await self._call_sql_function('upsert_rag_market_document', doc_data, user_token)
+            # Generate embedding for the content
+            full_content = f"{title}\n{content}" if title else content
+            embedding_vectors = self.embedding_service.generate_embeddings_batch([full_content])
+            if not embedding_vectors:
+                logger.error("Failed to generate embedding for document")
+                return None
             
-            # Extract ID from result - handle different response formats
+            embedding = embedding_vectors[0]
+            
+            # Prepare metadata with defaults
+            if metadata is None:
+                metadata = {}
+            
+            # Create content hash to prevent duplicates
+            import hashlib
+            content_hash = hashlib.md5(full_content.encode()).hexdigest()
+            
+            # Prepare unified document data for trade_embeddings table
+            doc_data = {
+                'p_user_id': user_id,
+                'p_source_table': metadata.get('source_table', 'manual'),
+                'p_source_id': str(metadata.get('source_id', '')),
+                'p_content_text': full_content,
+                'p_embedding_vector': f"[{','.join(map(str, embedding))}]",
+                'p_metadata': metadata,
+                'p_content_hash': content_hash,
+                'p_symbol': metadata.get('symbol'),
+                'p_trade_date': metadata.get('trade_date'),
+                'p_content_type': doc_type.value,
+                'p_relevance_score': metadata.get('relevance_score', 1.0)
+            }
+            
+            logger.info(f"Indexing document with type {doc_type.value} for user {user_id[:8]}...")
+            
+            # Call unified upsert function for trade_embeddings table
+            result = await self._call_sql_function('upsert_trade_embedding', doc_data, user_token)
+            
+            # Extract ID from result
             if result:
-                # Case 1: Result is a response object with 'data' attribute
                 if hasattr(result, 'data') and result.data:
                     if isinstance(result.data, list) and len(result.data) > 0:
                         return str(result.data[0].get('id'))
                     elif hasattr(result.data, 'get'):
                         return str(result.data.get('id'))
-                
-                # Case 2: Result is a direct list
                 elif isinstance(result, list) and len(result) > 0:
                     return str(result[0].get('id'))
-                
-                # Case 3: Result is a direct dictionary
                 elif hasattr(result, 'get'):
                     return str(result.get('id'))
-                
-                # Case 4: Log unexpected format for debugging
                 else:
-                    logger.warning(f"Unexpected result format from SQL function: {result}")
+                    logger.warning(f"Unexpected result format: {result}")
                     return None
             else:
-                logger.warning("No result returned from SQL function")
+                logger.warning("No result returned from upsert_trade_embedding")
                 return None
             
         except Exception as e:
@@ -149,73 +117,27 @@ class RAGVectorService:
             raise
             
     async def semantic_search(self, user_token: str, query: str, 
-                            limit: int = 5) -> List[SearchResult]:
-        """Perform semantic search across all indexes"""
+                            limit: int = 5, 
+                            content_types: List[str] = None,
+                            symbol: str = None,
+                            similarity_threshold: float = 0.7) -> List[SearchResult]:
+        """Perform semantic search using unified trade_embeddings table"""
         try:
-            user_id = await self._get_user_id_from_token(user_token)
-            query_embedding = self.embedding_service.generate_embedding(query)
-            
-            search_params = {
-                'p_user_id': user_id,
-                'p_query_embedding': query_embedding,
-                'p_similarity_threshold': 0.7,
-                'p_limit_count': limit
-            }
-            
-            results = await self._call_sql_function('semantic_search_all', search_params, user_token)
-            
-            # Handle the response format (Supabase returns response object with 'data' attribute)
-            search_results = []
-            if results:
-                # Extract data from Supabase response
-                data_list = []
-                if hasattr(results, 'data') and results.data is not None:
-                    data_list = results.data if isinstance(results.data, list) else [results.data]
-                elif isinstance(results, list):
-                    data_list = results
-                else:
-                    logger.warning(f"Unexpected results format: {type(results)}")
-                    data_list = []
-                
-                for r in data_list:
-                    # Handle different response formats - r could be dict, object, or tuple
-                    try:
-                        if isinstance(r, dict):
-                            # Standard dictionary response
-                            content = r.get('content', '')
-                            similarity_score = float(r.get('similarity_score', 0.0))
-                            metadata = r.get('metadata', {})
-                            document_type = r.get('document_type', '')
-                        elif hasattr(r, '__dict__'):
-                            # Object with attributes
-                            content = getattr(r, 'content', '')
-                            similarity_score = float(getattr(r, 'similarity_score', 0.0))
-                            metadata = getattr(r, 'metadata', {})
-                            document_type = getattr(r, 'document_type', '')
-                        elif isinstance(r, (list, tuple)) and len(r) >= 4:
-                            # Tuple/list response (id, content, document_type, similarity_score, metadata, source_table, created_at)
-                            content = str(r[1]) if len(r) > 1 else ''
-                            similarity_score = float(r[3]) if len(r) > 3 else 0.0
-                            metadata = r[4] if len(r) > 4 and isinstance(r[4], dict) else {}
-                            document_type = str(r[2]) if len(r) > 2 else ''
-                        else:
-                            logger.warning(f"Unexpected row format: {type(r)} - {r}")
-                            continue
-                        
-                        search_results.append(SearchResult(
-                            content=content,
-                            similarity_score=similarity_score,
-                            metadata=metadata,
-                            document_type=document_type
-                        ))
-                    except Exception as row_error:
-                        logger.error(f"Error processing search result row: {row_error}")
-                        continue
-            
-            return search_results
+            # Use the more comprehensive search_trade_embeddings method for better content type handling
+            return await self.search_trade_embeddings(
+                user_token=user_token,
+                query=query,
+                symbol=symbol,
+                content_type=content_types[0] if content_types and len(content_types) == 1 else None,
+                source_tables=None,
+                date_from=None,
+                date_to=None,
+                similarity_threshold=similarity_threshold,
+                limit=limit
+            )
             
         except Exception as e:
-            logger.error(f"Error in semantic search: {str(e)}")
+            logger.error(f"Error in unified semantic search: {str(e)}")
             return []
     
     async def _get_user_id_from_token(self, access_token: str) -> str:
@@ -242,7 +164,8 @@ class RAGVectorService:
         except Exception as e:
             raise Exception(f"Authentication failed: {str(e)}")
 
-    # Trade Embeddings Methods
+    # Unified Trade Embeddings Methods (Single Table Approach)
+    # Note: Using trade_embeddings table only - eliminated multi-table RAG approach
     
     async def search_trade_embeddings(
         self, 
@@ -289,8 +212,8 @@ class RAGVectorService:
             
             logger.info(f"Searching trade embeddings for user {user_id[:8]}... with query: {query[:50]}...")
             
-            # Call the database search function
-            response = self.supabase.rpc('search_trade_embeddings_by_similarity', {
+            # Log all search parameters for debugging
+            search_params = {
                 'p_query_vector': vector_string,
                 'p_user_id': user_id,
                 'p_symbol': symbol,
@@ -298,12 +221,37 @@ class RAGVectorService:
                 'p_source_tables': source_tables,
                 'p_date_from': date_from,
                 'p_date_to': date_to,
+                'p_min_relevance_score': 0.0,  # Add missing parameter
                 'p_similarity_threshold': similarity_threshold,
                 'p_limit': limit
-            }).execute()
+            }
+            
+            logger.info(f"Search parameters: {search_params}")
+            
+            # Call the database search function with all required parameters
+            response = self.supabase.rpc('search_trade_embeddings_by_similarity', search_params).execute()
             
             if response.data is None:
                 logger.warning("No trade embedding results returned from database")
+                
+                # Debug: Check if there are any embeddings at all for this user
+                try:
+                    count_response = self.supabase.table('trade_embeddings').select('id', count='exact').eq('user_id', user_id).execute()
+                    total_count = count_response.count if hasattr(count_response, 'count') else 0
+                    logger.info(f"Debug: User {user_id[:8]} has {total_count} total trade embeddings in database")
+                    
+                    if total_count == 0:
+                        logger.warning("Debug: No trade embeddings found for this user. User needs to index some trading data first.")
+                    else:
+                        # Check embedding dimensions
+                        sample_response = self.supabase.table('trade_embeddings').select('embedding_vector').eq('user_id', user_id).limit(1).execute()
+                        if sample_response.data:
+                            sample_vector = sample_response.data[0].get('embedding_vector')
+                            logger.info(f"Debug: Sample embedding vector type: {type(sample_vector)}")
+                        
+                except Exception as debug_error:
+                    logger.error(f"Debug query failed: {debug_error}")
+                
                 return []
                 
             results = []
@@ -409,6 +357,10 @@ class RAGVectorService:
             return []
     
     async def get_trade_embeddings_stats(self, user_token: str) -> Dict[str, Any]:
+        """
+        Get comprehensive statistics for user's trade embeddings
+        Uses unified trade_embeddings table approach
+        """
         """
         Get statistics about user's trade embeddings
         

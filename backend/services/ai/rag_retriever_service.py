@@ -87,34 +87,38 @@ class RAGRetrieverService:
         self, 
         user_token: str, 
         query: str, 
-        context_types: List[str] = None,
+        content_types: List[str] = None,
         time_range_days: int = 30,
         max_documents: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Get contextually relevant documents for a query
+        Get contextually relevant documents for a query using unified embedding table
         
         Args:
             user_token: User authentication token
             query: User's query or question
-            context_types: Types of context to include ['trades', 'insights', 'reports']
+            content_types: Content types to include ['trade_data', 'ai_report', 'ai_insight', etc.]
             time_range_days: How far back to look for relevant context
             max_documents: Maximum number of documents to return
         """
         try:
             logger.info(f"Getting contextual documents for query: '{query[:100]}...'")
             
-            if context_types is None:
-                context_types = ['trades', 'insights', 'reports']
+            if content_types is None:
+                content_types = ['trade_data', 'stock_trade', 'options_trade', 'ai_report', 'ai_insight']
             
-            # Perform semantic search
+            # Perform unified semantic search
             search_results = await self.vector_service.semantic_search(
-                user_token, query, limit=max_documents * 2  # Get more than needed for filtering
+                user_token, 
+                query, 
+                limit=max_documents * 2,  # Get more than needed for filtering
+                content_types=content_types,
+                similarity_threshold=0.6  # Lower threshold for more inclusive results
             )
             
             # Filter and rank results
             filtered_results = self._filter_and_rank_results(
-                search_results, context_types, time_range_days
+                search_results, content_types, time_range_days
             )
             
             # Convert to context format
@@ -140,28 +144,42 @@ class RAGRetrieverService:
         self, 
         user_token: str, 
         symbol: str, 
-        context_types: List[str] = None
+        content_types: List[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get context specific to a trading symbol"""
+        """Get context specific to a trading symbol using unified embedding table"""
         try:
             query = f"trades and analysis for {symbol} stock symbol trading"
             
-            results = await self.vector_service.semantic_search(user_token, query, limit=15)
+            if content_types is None:
+                content_types = ['trade_data', 'stock_trade', 'options_trade', 'trading_note']
             
-            # Filter for symbol-specific content
+            # Use the unified search with symbol filtering
+            results = await self.vector_service.semantic_search(
+                user_token, 
+                query, 
+                limit=15,
+                content_types=content_types,
+                symbol=symbol,  # Direct symbol filtering in the unified table
+                similarity_threshold=0.6
+            )
+            
+            # Additional symbol relevance calculation
             symbol_results = []
             for result in results:
-                if self._is_symbol_relevant(result, symbol):
-                    symbol_results.append({
-                        'content': result.content,
-                        'document_type': result.document_type,
-                        'similarity_score': result.similarity_score,
-                        'metadata': result.metadata,
-                        'symbol_relevance': self._calculate_symbol_relevance(result, symbol)
-                    })
+                symbol_relevance = self._calculate_symbol_relevance(result, symbol)
+                symbol_results.append({
+                    'content': result.content,
+                    'document_type': result.document_type,
+                    'similarity_score': result.similarity_score,
+                    'metadata': result.metadata,
+                    'symbol_relevance': symbol_relevance
+                })
             
-            # Sort by symbol relevance
-            symbol_results.sort(key=lambda x: x['symbol_relevance'], reverse=True)
+            # Sort by combined similarity and symbol relevance
+            symbol_results.sort(
+                key=lambda x: (x['similarity_score'] + x['symbol_relevance']) / 2, 
+                reverse=True
+            )
             
             return symbol_results[:10]
             
@@ -174,7 +192,7 @@ class RAGRetrieverService:
         user_token: str, 
         trade_data: Dict[str, Any]
     ) -> Optional[str]:
-        """Index new trade data for future retrieval"""
+        """Index new trade data using unified embedding table"""
         try:
             # Extract relevant information
             symbol = trade_data.get('symbol', '')
@@ -182,6 +200,7 @@ class RAGRetrieverService:
             date = trade_data.get('date', '')
             pnl = trade_data.get('pnl', 0)
             notes = trade_data.get('notes', '')
+            trade_type = trade_data.get('trade_type', 'stock')
             
             # Create content for indexing
             title = f"{action} {symbol} - {date}"
@@ -190,23 +209,36 @@ Trade: {action} {symbol}
 Date: {date}
 P&L: ${pnl}
 Notes: {notes}
-Trade Type: {trade_data.get('trade_type', 'stock')}
+Trade Type: {trade_type}
 Quantity: {trade_data.get('quantity', 0)}
 Price: ${trade_data.get('price', 0)}
 """
             
+            # Determine document type based on trade type
+            if trade_type.lower() == 'stock':
+                doc_type = DocumentType.STOCK_TRADE
+            elif trade_type.lower() in ['option', 'options']:
+                doc_type = DocumentType.OPTIONS_TRADE
+            else:
+                doc_type = DocumentType.TRADE_DATA
+            
             metadata = {
+                'source_table': 'stocks' if trade_type.lower() == 'stock' else 'options',
+                'source_id': trade_data.get('id', ''),
                 'symbol': symbol,
+                'trade_date': date,
                 'action': action,
-                'date': date,
                 'pnl': pnl,
-                'trade_type': trade_data.get('trade_type', 'stock')
+                'trade_type': trade_type,
+                'quantity': trade_data.get('quantity', 0),
+                'price': trade_data.get('price', 0),
+                'relevance_score': 1.0
             }
             
-            # Index the trade
+            # Index using unified table approach
             doc_id = await self.vector_service.index_document(
                 user_token, 
-                DocumentType.TRADE_ENTRY, 
+                doc_type, 
                 title, 
                 content.strip(), 
                 metadata
@@ -222,10 +254,10 @@ Price: ${trade_data.get('price', 0)}
     async def index_ai_content(
         self, 
         user_token: str, 
-        ai_content: Any,  # Changed from Dict[str, Any] to Any to handle both dicts and objects
+        ai_content: Any,
         content_type: str = "ai_report"
     ) -> Optional[str]:
-        """Index AI-generated content for future retrieval"""
+        """Index AI-generated content using unified embedding table"""
         try:
             # Handle both dictionary and object types (e.g., Pydantic models)
             if hasattr(ai_content, '__dict__') and not isinstance(ai_content, dict):
@@ -249,23 +281,23 @@ Price: ${trade_data.get('price', 0)}
                 logger.warning("No content provided for AI indexing")
                 return None
             
-            # Determine document type
+            # Determine document type based on content type
             doc_type = DocumentType.AI_REPORT if content_type == "ai_report" else DocumentType.AI_INSIGHT
             
-            # Prepare metadata with correct structure for SQL function
+            # Prepare metadata for unified table
             metadata = {
                 'source_table': 'ai_reports',
-                'source_id': source_id,
+                'source_id': str(source_id) if source_id else '',
                 'model_used': model_used,
                 'confidence_score': confidence_score,
                 'generation_date': datetime.now().date().isoformat(),
-                'content_type': content_type,
-                'insight_types': [report_type.value] if report_type else [],
-                'time_horizon': 'short_term',  # Default value
-                'actionability_score': confidence_score  # Use confidence as actionability
+                'insight_types': [report_type.value] if report_type and hasattr(report_type, 'value') else [],
+                'time_horizon': 'short_term',
+                'actionability_score': confidence_score,
+                'relevance_score': confidence_score
             }
             
-            # Index the AI content
+            # Index using unified table approach
             doc_id = await self.vector_service.index_document(
                 user_token, doc_type, title, content, metadata
             )
@@ -284,7 +316,7 @@ Price: ${trade_data.get('price', 0)}
     def _filter_and_rank_results(
         self, 
         results: List[SearchResult], 
-        context_types: List[str], 
+        content_types: List[str], 
         time_range_days: int
     ) -> List[SearchResult]:
         """Filter and rank search results by relevance and recency"""
@@ -292,12 +324,14 @@ Price: ${trade_data.get('price', 0)}
         cutoff_date = datetime.now() - timedelta(days=time_range_days)
         
         for result in results:
-            # Check if document type matches requested context
-            if not self._matches_context_type(result.document_type, context_types):
+            # Check if document type matches requested content types
+            if not self._matches_content_type(result.document_type, content_types):
                 continue
                 
             # Check recency if date available
-            doc_date = result.metadata.get('date') or result.metadata.get('created_at')
+            doc_date = (result.metadata.get('trade_date') or 
+                       result.metadata.get('created_at') or 
+                       result.metadata.get('date'))
             if doc_date and isinstance(doc_date, str):
                 try:
                     doc_datetime = datetime.fromisoformat(doc_date.replace('Z', '+00:00'))
@@ -308,21 +342,31 @@ Price: ${trade_data.get('price', 0)}
             
             filtered.append(result)
         
-        # Sort by similarity score
-        filtered.sort(key=lambda x: x.similarity_score, reverse=True)
+        # Sort by similarity score and relevance score combined
+        filtered.sort(key=lambda x: (
+            x.similarity_score + 
+            x.metadata.get('relevance_score', 0.0)
+        ) / 2, reverse=True)
         return filtered
     
-    def _matches_context_type(self, document_type: str, context_types: List[str]) -> bool:
-        """Check if document type matches requested context types"""
-        type_mapping = {
-            'trades': ['trade_entry', 'trade_note'],
+    def _matches_content_type(self, document_type: str, content_types: List[str]) -> bool:
+        """Check if document type matches requested content types for unified table"""
+        # Direct match with unified content types
+        if document_type in content_types:
+            return True
+            
+        # Legacy context type mapping for backward compatibility
+        legacy_mapping = {
+            'trades': ['trade_data', 'stock_trade', 'options_trade'],
             'insights': ['ai_insight'],
             'reports': ['ai_report'],
-            'market': ['market_news']
+            'market': ['market_news'],
+            'notes': ['trading_note'],
+            'setups': ['trading_setup']
         }
         
-        for context_type in context_types:
-            if document_type in type_mapping.get(context_type, []):
+        for content_type in content_types:
+            if document_type in legacy_mapping.get(content_type, []):
                 return True
         return False
     
@@ -330,6 +374,7 @@ Price: ${trade_data.get('price', 0)}
         """Generate explanation for why this document is relevant"""
         explanations = []
         
+        # Similarity score explanation
         if result.similarity_score > 0.9:
             explanations.append("Very high semantic similarity to your question")
         elif result.similarity_score > 0.8:
@@ -337,24 +382,42 @@ Price: ${trade_data.get('price', 0)}
         elif result.similarity_score > 0.7:
             explanations.append("Good semantic similarity to your question")
         
-        if result.document_type == 'trade_entry':
-            explanations.append("Contains specific trade execution details")
-        elif result.document_type == 'ai_insight':
-            explanations.append("Contains AI-generated trading insights")
-        elif result.document_type == 'ai_report':
-            explanations.append("Contains comprehensive trading analysis")
+        # Content type specific explanations
+        content_type_explanations = {
+            'trade_data': "Contains general trade data and information",
+            'stock_trade': "Contains stock trading execution details",
+            'options_trade': "Contains options trading execution details",
+            'trading_note': "Contains personal trading notes and observations",
+            'trading_setup': "Contains trading setup and strategy information",
+            'ai_insight': "Contains AI-generated trading insights",
+            'ai_report': "Contains comprehensive AI trading analysis",
+            'market_news': "Contains relevant market news and updates"
+        }
+        
+        if result.document_type in content_type_explanations:
+            explanations.append(content_type_explanations[result.document_type])
+        
+        # Symbol-specific relevance
+        if result.metadata.get('symbol'):
+            explanations.append(f"Related to {result.metadata['symbol']} trading")
         
         return "; ".join(explanations) if explanations else "Contextually relevant"
     
     def _is_symbol_relevant(self, result: SearchResult, symbol: str) -> bool:
-        """Check if result is relevant to a specific symbol"""
+        """Check if result is relevant to a specific symbol using unified table fields"""
         symbol_lower = symbol.lower()
         
-        # Check metadata
+        # Check direct symbol field in metadata
         if result.metadata.get('symbol', '').lower() == symbol_lower:
             return True
+        
+        # Check nested metadata for symbol information
+        nested_metadata = result.metadata.get('metadata', {})
+        if isinstance(nested_metadata, dict):
+            if nested_metadata.get('symbol', '').lower() == symbol_lower:
+                return True
             
-        # Check content
+        # Check content for symbol mention
         if symbol_lower in result.content.lower():
             return True
             

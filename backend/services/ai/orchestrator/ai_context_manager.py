@@ -53,7 +53,7 @@ class AIContextManager:
             context_documents = await self.rag_service.get_contextual_documents(
                 access_token, 
                 query, 
-                context_types=['trades', 'insights', 'reports'],
+                content_types=['trades', 'insights', 'reports'],  # Fixed parameter name
                 time_range_days=30,
                 max_documents=8
             )
@@ -310,29 +310,27 @@ class AIContextManager:
             return None
 
     async def get_symbol_specific_context(self, access_token: str, symbol: str, 
-                                        context_types: List[str] = None) -> List[Dict[str, Any]]:
+                                        content_types: List[str] = None) -> List[Dict[str, Any]]:
         """
         Get context specific to a trading symbol.
         
         Args:
             access_token: User access token
             symbol: Trading symbol (e.g., 'AAPL')
-            context_types: Types of context to retrieve
+            content_types: Types of content to retrieve
             
         Returns:
             List of relevant context documents
         """
+        if not self.rag_enabled or self.rag_service is None:
+            logger.warning("RAG service not available for symbol context")
+            return []
+        
+        content_types = content_types or ['trades', 'insights', 'reports']
+        
         try:
-            logger.info(f"Getting symbol-specific context for: {symbol}")
-            
-            if not self.rag_enabled or self.rag_service is None:
-                logger.warning("RAG service not available for symbol context")
-                return []
-            
-            context_types = context_types or ['trades', 'insights', 'reports']
-            
             symbol_contexts = await self.rag_service.get_trade_specific_context(
-                access_token, symbol, context_types
+                access_token, symbol, content_types
             )
             
             logger.info(f"Retrieved {len(symbol_contexts)} symbol-specific contexts for {symbol}")
