@@ -101,7 +101,11 @@ class AIEmbeddingService:
                 return self._generate_fallback_embedding(cleaned_text)
                 
         except Exception as e:
-            logger.error(f"Error generating embedding for text: {str(e)}")
+            # Check if it's a rate limit/billing issue
+            if "rate limits" in str(e) or "payment method" in str(e):
+                logger.warning(f"Voyage AI rate limit reached, using fallback embeddings: {str(e)}")
+            else:
+                logger.error(f"Error generating embedding for text: {str(e)}")
             # Use fallback embedding generation
             return self._generate_fallback_embedding(text)
     
@@ -147,7 +151,11 @@ class AIEmbeddingService:
             return all_embeddings
             
         except Exception as e:
-            logger.error(f"Error generating batch embeddings: {str(e)}")
+            # Check if it's a rate limit/billing issue
+            if "rate limits" in str(e) or "payment method" in str(e):
+                logger.warning(f"Voyage AI rate limit reached for batch, using fallback embeddings: {str(e)}")
+            else:
+                logger.error(f"Error generating batch embeddings: {str(e)}")
             # Use fallback embeddings for all texts
             return [self._generate_fallback_embedding(text) for text in texts]
     

@@ -21,13 +21,29 @@ class PromptType(str, Enum):
     RISK_ANALYSIS = "risk_analysis"
     PERFORMANCE_SUMMARY = "performance_summary"
     MARKET_ANALYSIS = "market_analysis"
+    SYSTEM_CONTEXT = "system_context"
+    PSYCHOLOGY_COACHING = "psychology_coaching"
+    RISK_OPTIMIZATION = "risk_optimization"
+    STRATEGY_OPTIMIZATION = "strategy_optimization"
+    MARKET_INTELLIGENCE = "market_intelligence"
+    PERFORMANCE_ATTRIBUTION = "performance_attribution"
+    EDUCATIONAL_CONTENT = "educational_content"
+    META_PROMPTS = "meta_prompts"
 
 
 class PromptVersion(str, Enum):
     V1_BASELINE = "v1_baseline"
     V2_ENHANCED = "v2_enhanced"
+    V2_ADAPTIVE = "v2_adaptive"
     V3_FEW_SHOT = "v3_few_shot"
+    V3_THERAPEUTIC = "v3_therapeutic"
+    V3_QUANTITATIVE = "v3_quantitative"
+    V3_SYSTEMATIC = "v3_systematic"
+    V3_INSTITUTIONAL = "v3_institutional"
+    V3_COMPREHENSIVE = "v3_comprehensive"
     V4_OPTIMIZED = "v4_optimized"
+    V4_ADVANCED = "v4_advanced"
+    V4_CONTEXTUAL = "v4_contextual"
 
 
 @dataclass
@@ -129,6 +145,12 @@ class PromptRegistry:
             if prompt_type not in self.prompts:
                 self.prompts[prompt_type] = {}
             
+            # Special handling for system_context which has metadata structure instead of versions
+            if prompt_type_name == "system_context":
+                # Skip processing system_context as it's not a versioned prompt
+                logger.debug(f"Skipping system_context as it contains metadata, not prompt versions")
+                continue
+            
             for version_name, version_config in versions.items():
                 version = self._get_prompt_version_from_name(version_name)
                 if not version:
@@ -170,7 +192,15 @@ class PromptRegistry:
             'insight': PromptType.INSIGHT,
             'risk_analysis': PromptType.RISK_ANALYSIS,
             'performance_summary': PromptType.PERFORMANCE_SUMMARY,
-            'market_analysis': PromptType.MARKET_ANALYSIS
+            'market_analysis': PromptType.MARKET_ANALYSIS,
+            'system_context': PromptType.SYSTEM_CONTEXT,
+            'psychology_coaching': PromptType.PSYCHOLOGY_COACHING,
+            'risk_optimization': PromptType.RISK_OPTIMIZATION,
+            'strategy_optimization': PromptType.STRATEGY_OPTIMIZATION,
+            'market_intelligence': PromptType.MARKET_INTELLIGENCE,
+            'performance_attribution': PromptType.PERFORMANCE_ATTRIBUTION,
+            'educational_content': PromptType.EDUCATIONAL_CONTENT,
+            'meta_prompts': PromptType.META_PROMPTS
         }
         return name_mapping.get(name)
     
@@ -179,8 +209,17 @@ class PromptRegistry:
         name_mapping = {
             'v1_baseline': PromptVersion.V1_BASELINE,
             'v2_enhanced': PromptVersion.V2_ENHANCED,
+            'v2_adaptive': PromptVersion.V2_ADAPTIVE,
             'v3_few_shot': PromptVersion.V3_FEW_SHOT,
-            'v4_optimized': PromptVersion.V4_OPTIMIZED
+            'v3_therapeutic': PromptVersion.V3_THERAPEUTIC,
+            'v3_quantitative': PromptVersion.V3_QUANTITATIVE,
+            'v3_systematic': PromptVersion.V3_SYSTEMATIC,
+            'v3_institutional': PromptVersion.V3_INSTITUTIONAL,
+            'v3_comprehensive': PromptVersion.V3_COMPREHENSIVE,
+            'v4_optimized': PromptVersion.V4_OPTIMIZED,
+            'v4_advanced': PromptVersion.V4_ADVANCED,
+            'v4_contextual': PromptVersion.V4_CONTEXTUAL,
+            'prompt_optimization': PromptVersion.V4_OPTIMIZED  # Special case for meta_prompts
         }
         return name_mapping.get(name)
     
