@@ -383,9 +383,40 @@ class PromptService:
         enhanced_data = input_data.copy()
         
         # Add few-shot examples if template expects them
-        examples = self.registry.get_few_shot_examples(prompt_type, limit=2)
-        for i, example in enumerate(examples, 1):
-            enhanced_data[f"example_{i}"] = example.expected_output
+        # Get up to 5 examples to handle templates that might expect example_1, example_2, example_3, etc.
+        examples = self.registry.get_few_shot_examples(prompt_type, limit=5)
+        
+        # Always add placeholders for example_1, example_2, example_3 to prevent KeyError
+        for i in range(1, 4):  # example_1, example_2, example_3
+            if i <= len(examples):
+                enhanced_data[f"example_{i}"] = examples[i-1].expected_output
+            else:
+                # Add default placeholder if not enough examples available
+                enhanced_data[f"example_{i}"] = f"[Example {i} not available - using contextual guidance instead]"
+        
+        # Add default values for common template variables to prevent KeyErrors
+        template_defaults = {
+            # Chat template variables
+            'account_status': enhanced_data.get('account_status', 'Account information not available'),
+            'recent_performance': enhanced_data.get('recent_performance', 'Performance data not available'), 
+            'current_positions': enhanced_data.get('current_positions', 'Position data not available'),
+            'market_environment': enhanced_data.get('market_environment', 'Market data not available'),
+            'chat_history': enhanced_data.get('chat_history', 'No previous conversation'),
+            'question': enhanced_data.get('question', enhanced_data.get('user_message', 'No specific question provided')),
+            
+            # Daily report template variables
+            'trading_data': enhanced_data.get('trading_data', 'Trading data not available'),
+            'market_context': enhanced_data.get('market_context', 'Market context not available'),
+            
+            # General variables
+            'context': enhanced_data.get('context', 'Context not available'),
+            'user_message': enhanced_data.get('user_message', enhanced_data.get('question', 'No message provided'))
+        }
+        
+        # Only add defaults for missing keys to avoid overwriting existing data
+        for key, default_value in template_defaults.items():
+            if key not in enhanced_data:
+                enhanced_data[key] = default_value
         
         # Add contextual enhancements based on prompt type
         if prompt_type == PromptType.DAILY_REPORT:

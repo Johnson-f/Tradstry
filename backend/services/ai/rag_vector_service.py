@@ -277,7 +277,7 @@ class RAGVectorService:
             user_id = await self._get_user_id_from_token(user_token)
             
             # Generate query embedding using existing embedding service
-            query_embedding = await self.embedding_service.generate_embeddings([query])
+            query_embedding = self.embedding_service.generate_embeddings_batch([query])
             query_vector = query_embedding[0] if query_embedding else []
             
             if not query_vector:
@@ -360,7 +360,7 @@ class RAGVectorService:
             user_id = await self._get_user_id_from_token(user_token)
             
             # Generate query embedding
-            query_embedding = await self.embedding_service.generate_embeddings([query])
+            query_embedding = self.embedding_service.generate_embeddings_batch([query])
             query_vector = query_embedding[0] if query_embedding else []
             
             if not query_vector:

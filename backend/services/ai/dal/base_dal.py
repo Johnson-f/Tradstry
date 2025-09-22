@@ -46,41 +46,82 @@ class BaseDAL(ABC):
             self.logger.error(f"Authentication failed: {str(e)}")
             raise Exception(f"Authentication failed: {str(e)}")
     
-    async def call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str) -> Any:
+    async def call_sql_function(self, function_name: str, params: Dict[str, Any], access_token: str, max_retries: int = 3) -> Any:
         """
-        Execute SQL function with authentication and logging.
+        Execute SQL function with authentication, logging, and retry logic.
         
         Args:
             function_name: Name of the SQL function to call
             params: Parameters to pass to the function
             access_token: User authentication token
+            max_retries: Maximum number of retry attempts for transient errors
             
         Returns:
             Any: Function result
             
         Raises:
-            Exception: If database operation fails
+            Exception: If database operation fails after all retries
         """
-        try:
-            self.logger.debug(f"Calling SQL function: {function_name}", extra={
-                "function_name": function_name,
-                "param_count": len(params),
-                "has_access_token": bool(access_token)
-            })
-            
-            result = await self.auth_service.safe_rpc_call(function_name, params, access_token)
-            
-            self.logger.debug(f"SQL function {function_name} completed successfully", extra={
-                "function_name": function_name,
-                "result_type": type(result).__name__,
-                "has_data": hasattr(result, 'data') and bool(result.data)
-            })
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Database operation failed for {function_name}: {str(e)}")
-            raise Exception(f"Database operation failed: {str(e)}")
+        import asyncio
+        
+        for attempt in range(max_retries + 1):
+            try:
+                self.logger.debug(f"Calling SQL function: {function_name} (attempt {attempt + 1})", extra={
+                    "function_name": function_name,
+                    "param_count": len(params),
+                    "has_access_token": bool(access_token),
+                    "attempt": attempt + 1,
+                    "max_retries": max_retries
+                })
+                
+                result = await self.auth_service.safe_rpc_call(function_name, params, access_token)
+                
+                self.logger.debug(f"SQL function {function_name} completed successfully", extra={
+                    "function_name": function_name,
+                    "result_type": type(result).__name__,
+                    "has_data": hasattr(result, 'data') and bool(result.data),
+                    "attempt": attempt + 1
+                })
+                
+                return result
+                
+            except Exception as e:
+                error_msg = str(e)
+                is_transient_error = any(phrase in error_msg.lower() for phrase in [
+                    'ssl', 'handshake', 'timeout', 'connection', 'network', 'temporary', 'unavailable'
+                ])
+                
+                if attempt < max_retries and is_transient_error:
+                    # Wait with exponential backoff for transient errors
+                    wait_time = (2 ** attempt) * 0.5  # 0.5s, 1s, 2s
+                    self.logger.warning(f"Transient database error for {function_name} (attempt {attempt + 1}/{max_retries + 1}): {error_msg}. Retrying in {wait_time}s...", extra={
+                        "function_name": function_name,
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries,
+                        "wait_time": wait_time,
+                        "error_type": "transient",
+                        "error_message": error_msg
+                    })
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    # Log error and re-raise (either non-transient or max retries reached)
+                    if is_transient_error:
+                        self.logger.error(f"Database operation failed for {function_name} after {max_retries + 1} attempts: {error_msg}", extra={
+                            "function_name": function_name,
+                            "total_attempts": attempt + 1,
+                            "error_type": "transient_exhausted"
+                        })
+                    else:
+                        self.logger.error(f"Database operation failed for {function_name}: {error_msg}", extra={
+                            "function_name": function_name,
+                            "attempt": attempt + 1,
+                            "error_type": "non_transient"
+                        })
+                    raise Exception(f"Database operation failed: {error_msg}")
+        
+        # This should never be reached, but added for completeness
+        raise Exception(f"Database operation failed: Maximum retries exceeded")
     
     def extract_response_data(self, response: Any) -> List[Dict[str, Any]]:
         """
