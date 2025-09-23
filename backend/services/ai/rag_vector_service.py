@@ -80,9 +80,8 @@ class RAGVectorService:
                 'p_source_table': metadata.get('source_table', 'manual'),
                 'p_source_id': str(metadata.get('source_id', '')),
                 'p_content_text': full_content,
-                'p_embedding_vector': f"[{','.join(map(str, embedding))}]",
+                'p_embedding_vector': embedding,  # Pass as array, not string
                 'p_metadata': metadata,
-                'p_content_hash': content_hash,
                 'p_symbol': metadata.get('symbol'),
                 'p_trade_date': metadata.get('trade_date'),
                 'p_content_type': doc_type.value,
@@ -207,14 +206,14 @@ class RAGVectorService:
                 logger.error("Failed to generate query embedding")
                 return []
                 
-            # Format embedding vector for PostgreSQL
-            vector_string = f"[{','.join(map(str, query_vector))}]"
+            # Use query_vector directly as array for Supabase RPC
+            # Supabase will handle the vector format conversion
             
             logger.info(f"Searching trade embeddings for user {user_id[:8]}... with query: {query[:50]}...")
             
             # Log all search parameters for debugging
             search_params = {
-                'p_query_vector': vector_string,
+                'p_query_vector': query_vector,
                 'p_user_id': user_id,
                 'p_symbol': symbol,
                 'p_content_type': content_type,
@@ -313,15 +312,13 @@ class RAGVectorService:
             
             if not query_vector:
                 return []
-                
-            vector_string = f"[{','.join(map(str, query_vector))}]"
             
             logger.info(f"Searching similar trades for symbol {symbol}")
             
             # Call the specialized symbol search function
             response = self.supabase.rpc('get_similar_trades_for_symbol', {
                 'p_symbol': symbol,
-                'p_query_vector': vector_string,
+                'p_query_vector': query_vector,
                 'p_user_id': user_id,
                 'p_limit': limit
             }).execute()

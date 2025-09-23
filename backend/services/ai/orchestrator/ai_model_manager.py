@@ -32,38 +32,23 @@ class AIModelManager:
         })
 
     def _get_stable_models(self) -> List[Dict[str, str]]:
-        """Get list of free models available on OpenRouter, organized by tier."""
+        """Get list of free models available on OpenRouter, organized by provider and tier."""
         return [
-            # Tier 1: HIGH PERFORMANCE - Latest and most capable free models
-            {"name": "GPT-OSS 120B", "model": "openai/gpt-oss-120b", "tier": 1, "provider": "OpenAI"},
-            {"name": "DeepSeek Coder", "model": "deepseek/deepseek-coder", "tier": 1, "provider": "DeepSeek"},
-            {"name": "DeepSeek Chat", "model": "deepseek/deepseek-chat", "tier": 1, "provider": "DeepSeek"},
-            {"name": "Kimi Dev 72B", "model": "moonshotai/kimi-dev-72b", "tier": 1, "provider": "MoonshotAI"},
-            {"name": "DeepSeek R1", "model": "deepseek/deepseek-r1", "tier": 1, "provider": "DeepSeek"},
+            # X-AI Provider - Tier 1: HIGH PERFORMANCE
+            {"name": "Grok 4 Fast", "model": "x-ai/grok-4-fast:free", "tier": 1, "provider": "X-AI"},
 
-            # Tier 2: BALANCED PERFORMANCE - Good performance and reliability
-            {"name": "GPT-OSS 20B", "model": "openai/gpt-oss-20b", "tier": 2, "provider": "OpenAI"},
-            {"name": "GLM 4.5 Air", "model": "z-ai/glm-4.5-air", "tier": 2, "provider": "Z-AI"},
-            {"name": "Qwen3 Coder", "model": "qwen/qwen3-coder", "tier": 2, "provider": "Qwen"},
-            {"name": "Kimi K2", "model": "moonshotai/kimi-k2", "tier": 2, "provider": "MoonshotAI"},
-            {"name": "Hunyuan A13B", "model": "tencent/hunyuan-a13b-instruct", "tier": 2, "provider": "Tencent"},
-            {"name": "Mistral Small 3.2 24B", "model": "mistralai/mistral-small-3.2-24b-instruct", "tier": 2, "provider": "Mistral"},
-            {"name": "Devstral Small 2505", "model": "mistralai/devstral-small-2505", "tier": 2, "provider": "Mistral"},
-            {"name": "Llama 3.3 8B", "model": "meta-llama/llama-3.3-8b-instruct", "tier": 2, "provider": "Meta"},
-            {"name": "Sarvam M", "model": "sarvamai/sarvam-m", "tier": 2, "provider": "SarvamAI"},
+            # NVIDIA Provider - Tier 1: HIGH PERFORMANCE  
+            {"name": "Nemotron Nano 9B V2", "model": "nvidia/nemotron-nano-9b-v2:free", "tier": 1, "provider": "NVIDIA"},
 
-            # Tier 3: SPECIALIZED - Coder and reasoning models
-            {"name": "DeepSeek R1T2 Chimera", "model": "tngtech/deepseek-r1t2-chimera", "tier": 3, "provider": "TNG Tech"},
-            {"name": "DeepSeek R1 0528 Qwen3 8B", "model": "deepseek/deepseek-r1-0528-qwen3-8b", "tier": 3, "provider": "DeepSeek"},
-            {"name": "DeepSeek R1T Chimera", "model": "tngtech/deepseek-r1t-chimera", "tier": 3, "provider": "TNG Tech"},
-            {"name": "Dolphin Mistral 24B Venice", "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition", "tier": 3, "provider": "Cognitive Computations"},
+            # Qwen Provider - Tier 1: SPECIALIZED CODING
+            {"name": "Qwen3 Coder", "model": "qwen/qwen3-coder:free", "tier": 1, "provider": "Qwen"},
+            {"name": "Qwen3 235B A22B", "model": "qwen/qwen3-235b-a22b:free", "tier": 1, "provider": "Qwen"},
 
-            # Tier 4: QWEN SERIES - Various sizes for different use cases
-            {"name": "Qwen3 235B A22B", "model": "qwen/qwen3-235b-a22b", "tier": 4, "provider": "Qwen"},
-            {"name": "Qwen3 30B A3B", "model": "qwen/qwen3-30b-a3b", "tier": 4, "provider": "Qwen"},
-            {"name": "Qwen3 14B", "model": "qwen/qwen3-14b", "tier": 4, "provider": "Qwen"},
-            {"name": "Qwen3 8B", "model": "qwen/qwen3-8b", "tier": 4, "provider": "Qwen"},
-            {"name": "Qwen3 4B", "model": "qwen/qwen3-4b", "tier": 4, "provider": "Qwen"}
+            # Cognitive Computations Provider - Tier 2: SPECIALIZED
+            {"name": "Dolphin Mistral 24B Venice", "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", "tier": 2, "provider": "Cognitive Computations"},
+
+            # Microsoft Provider - Tier 2: REASONING
+            {"name": "MAI DS R1", "model": "microsoft/mai-ds-r1:free", "tier": 2, "provider": "Microsoft"}
         ]
 
     def _get_default_stable_model(self) -> str:
@@ -74,22 +59,31 @@ class AIModelManager:
             return tier_1_models[0]["model"]
         
         # Fallback to any available model
-        return self.stable_models[0]["model"] if self.stable_models else "openai/gpt-4o-mini"
+        return self.stable_models[0]["model"] if self.stable_models else "x-ai/grok-4-fast:free"
 
     def _check_model_task_compatibility(self, repo_id: str, task: str = "text-generation") -> bool:
         """
         Check if a model supports the specified task on FREE PLAN.
         
         Args:
-            repo_id: Hugging Face model repository ID
+            repo_id: Model repository ID (OpenRouter format)
             task: Task type to check
             
         Returns:
             True if compatible, False otherwise
         """
         try:
-            # Models known to work with text-generation on free plan
+            # Models known to work with text-generation on free plan (OpenRouter format)
             free_plan_compatible = {
+                # New stable models
+                "x-ai/grok-4-fast:free",
+                "nvidia/nemotron-nano-9b-v2:free",
+                "qwen/qwen3-coder:free",
+                "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                "qwen/qwen3-235b-a22b:free",
+                "microsoft/mai-ds-r1:free",
+                
+                # Legacy compatibility models
                 "openai-community/gpt2",
                 "openai-community/gpt2-medium", 
                 "openai-community/gpt2-large",
@@ -256,9 +250,9 @@ class AIModelManager:
         # Original fallback logic for other model types
         fallback_options = {
             'llm': [
-                'microsoft/DialoGPT-medium',
-                'google/flan-t5-base', 
-                'microsoft/DialoGPT-small'
+                'nvidia/nemotron-nano-9b-v2:free',
+                'qwen/qwen3-coder:free',
+                'microsoft/mai-ds-r1:free'
             ],
             'embedding': [
                 'sentence-transformers/all-MiniLM-L6-v2',
@@ -282,7 +276,7 @@ class AIModelManager:
         Switch to a stable model from the specified tier.
         
         Args:
-            tier: Model tier (1-4, where 1 is most stable)
+            tier: Model tier (1-2, where 1 is most stable)
             
         Returns:
             True if successfully switched, False otherwise
@@ -322,8 +316,8 @@ class AIModelManager:
         """
         logger.info("Attempting automatic model recovery...")
         
-        # Try each tier in order
-        for tier in range(1, 5):
+        # Try each tier in order (1-2)
+        for tier in range(1, 3):
             if self.switch_to_stable_model(tier):
                 logger.info(f"Recovery successful with tier {tier} model: {self.current_llm_model}")
                 return True

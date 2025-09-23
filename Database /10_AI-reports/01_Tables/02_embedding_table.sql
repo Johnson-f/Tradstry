@@ -93,3 +93,35 @@ CREATE TRIGGER update_trade_embeddings_timestamps
 -- Grant necessary permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.trade_embeddings TO authenticated;
 GRANT USAGE ON SCHEMA public TO authenticated;
+
+
+-- Update version
+-- Fix trade_embeddings source_table constraint to include AI-generated content
+-- This addresses the constraint violation error when indexing AI reports and insights
+
+-- Drop the existing constraint
+ALTER TABLE public.trade_embeddings 
+DROP CONSTRAINT IF EXISTS trade_embeddings_source_table_check;
+
+-- Add the updated constraint with additional allowed values
+ALTER TABLE public.trade_embeddings 
+ADD CONSTRAINT trade_embeddings_source_table_check 
+CHECK (source_table IN (
+    'stocks', 
+    'options', 
+    'setups', 
+    'notes', 
+    'tags', 
+    'templates', 
+    'trade_notes',
+    'ai_reports',      -- For AI-generated reports
+    'ai_insights',     -- For AI-generated insights
+    'ai_content',      -- For general AI-generated content
+    'market_data',     -- For market research and news
+    'user_content',    -- For user-generated content
+    'manual'           -- For manually added content (default fallback)
+));
+
+-- Add comment explaining the constraint
+COMMENT ON CONSTRAINT trade_embeddings_source_table_check ON public.trade_embeddings 
+IS 'Ensures source_table contains only valid table names including AI-generated content types';

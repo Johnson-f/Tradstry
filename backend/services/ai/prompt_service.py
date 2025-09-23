@@ -394,12 +394,13 @@ class PromptService:
                 # Add default placeholder if not enough examples available
                 enhanced_data[f"example_{i}"] = f"[Example {i} not available - using contextual guidance instead]"
         
-        # Add default values for common template variables to prevent KeyErrors
+        # Add default values for template variables to prevent KeyError
         template_defaults = {
             # Chat template variables
             'account_status': enhanced_data.get('account_status', 'Account information not available'),
             'recent_performance': enhanced_data.get('recent_performance', 'Performance data not available'), 
             'current_positions': enhanced_data.get('current_positions', 'Position data not available'),
+            'market_data': enhanced_data.get('market_data', 'Market data not available'),
             'market_environment': enhanced_data.get('market_environment', 'Market data not available'),
             'chat_history': enhanced_data.get('chat_history', 'No previous conversation'),
             'question': enhanced_data.get('question', enhanced_data.get('user_message', 'No specific question provided')),
