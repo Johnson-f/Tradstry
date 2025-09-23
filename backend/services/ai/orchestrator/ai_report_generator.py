@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from models.ai_reports import ReportType, AIReportCreate
 from services.ai.ai_reports_service import AIReportsService
-from services.ai.prompt_service import PromptService, PromptStrategy
+from ..prompt_service import PromptService, PromptStrategy
 from config.prompt_registry import PromptType, PromptVersion
 from langchain_core.output_parsers import StrOutputParser
 
@@ -23,7 +23,7 @@ class AIReportGenerator:
         self.llm_handler = llm_handler
         self.auth_validator = auth_validator
         self.reports_service = AIReportsService()
-        
+
         # Initialize advanced prompt management
         try:
             logger.info("Initializing advanced prompt management for reports...")
@@ -35,7 +35,7 @@ class AIReportGenerator:
             self.prompt_service = None
             self.prompt_enabled = False
             logger.info("Continuing with legacy prompt system for reports")
-        
+
         logger.info("AI Report Generator initialized")
 
     async def generate_daily_report(self, user: Dict[str, Any], time_range: str = "1d",
@@ -54,7 +54,7 @@ class AIReportGenerator:
             Dictionary containing the generated report and metadata
         """
         user_id = self.auth_validator.extract_user_id(user)
-        
+
         try:
             logger.info(f"Starting daily report generation for user {user_id}", extra={
                 "user_id": user_id,
@@ -63,7 +63,7 @@ class AIReportGenerator:
                 "custom_end_date": custom_end_date,
                 "prompt_enabled": self.prompt_enabled
             })
-            
+
             start_time = datetime.now()
 
             # Validate authentication before proceeding
@@ -79,7 +79,7 @@ class AIReportGenerator:
                 "user_id": user_id,
                 "time_range": time_range
             })
-            
+
             try:
                 access_token = self.auth_validator.extract_access_token(user)
                 trading_context = await self.reports_service.get_trading_context(
@@ -103,14 +103,38 @@ class AIReportGenerator:
                     "user_id": user_id,
                     "prompt_type": PromptType.DAILY_REPORT
                 })
-                
+
                 try:
                     # Use advanced prompt service with few-shot learning
-                    input_data = {
-                        "trading_data": json.dumps(trading_context, indent=2),
-                        "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                    # Map trading context to expected prompt variables
+                    daily_summary = trading_context.get('daily_summary', {})
+                    trade_notes = trading_context.get('trade_notes', [])
+                    
+                    # Extract account metrics from daily summary
+                    account_metrics = {
+                        "balance": daily_summary.get('account_balance', 'N/A'),
+                        "total_pnl": daily_summary.get('total_pnl', 'N/A'),
+                        "win_rate": daily_summary.get('win_rate', 'N/A'),
+                        "trade_count": daily_summary.get('trade_count', 'N/A'),
+                        "avg_win": daily_summary.get('avg_win', 'N/A'),
+                        "avg_loss": daily_summary.get('avg_loss', 'N/A')
                     }
                     
+                    # Extract position data from trade notes and daily summary
+                    position_data = {
+                        "open_positions": daily_summary.get('open_positions', []),
+                        "recent_trades": trade_notes[:10] if trade_notes else [],
+                        "position_count": len(daily_summary.get('open_positions', [])),
+                        "total_exposure": daily_summary.get('total_exposure', 'N/A')
+                    }
+                    
+                    input_data = {
+                        "trading_data": json.dumps(trading_context, indent=2),
+                        "account_metrics": json.dumps(account_metrics, indent=2),
+                        "position_data": json.dumps(position_data, indent=2),
+                        "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
+                    }
+
                     execution_result = await self.prompt_service.execute_prompt(
                         prompt_type=PromptType.DAILY_REPORT,
                         input_data=input_data,
@@ -118,7 +142,7 @@ class AIReportGenerator:
                         strategy=PromptStrategy.ADAPTIVE,
                         user_id=user_id
                     )
-                    
+
                     if execution_result.success:
                         report_content = execution_result.content
                         logger.info("Advanced prompt execution successful", extra={
@@ -129,7 +153,7 @@ class AIReportGenerator:
                         })
                     else:
                         raise Exception(f"Prompt execution failed: {execution_result.error_message}")
-                        
+
                 except Exception as prompt_error:
                     logger.error(f"Advanced prompt service failed, falling back to legacy: {str(prompt_error)}", extra={
                         "user_id": user_id,
@@ -152,7 +176,7 @@ class AIReportGenerator:
                 report_content = report_content.content
             elif not isinstance(report_content, str):
                 report_content = str(report_content)
-                
+
             logger.debug("Report content validated successfully", extra={
                 "user_id": user_id,
                 "content_length": len(report_content),
@@ -207,20 +231,20 @@ class AIReportGenerator:
             })
             raise Exception(f"Failed to generate daily report: {str(e)}")
 
-    async def _generate_report_legacy(self, trading_context: Dict[str, Any], 
+    async def _generate_report_legacy(self, trading_context: Dict[str, Any],
                                     custom_start_date: Optional[datetime] = None,
                                     custom_end_date: Optional[datetime] = None) -> str:
         """Generate report using legacy prompt system as fallback."""
         try:
             chain = self.llm_handler.trading_prompts["daily_report"] | self.llm_handler.llm | StrOutputParser()
-            
+
             report_content = self.llm_handler.safe_chain_invoke(chain, {
                 "trading_data": json.dumps(trading_context, indent=2),
                 "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
             })
-            
+
             return report_content
-                
+
         except Exception as llm_error:
             logger.error(f"Legacy LLM generation failed: {str(llm_error)}")
             return self.llm_handler.get_fallback_response({
@@ -264,7 +288,7 @@ class AIReportGenerator:
             "count": len(insights_list[:5]),
             "extracted_at": datetime.now().isoformat()
         }
-        
+
         recommendations_dict = {
             "items": recommendations_list[:5],
             "count": len(recommendations_list[:5]),
@@ -273,20 +297,20 @@ class AIReportGenerator:
 
         return insights_dict, recommendations_dict
 
-    async def generate_performance_summary(self, user: Dict[str, Any], 
+    async def generate_performance_summary(self, user: Dict[str, Any],
                                          time_range: str = "30d") -> Dict[str, Any]:
         """
         Generate a performance summary report for the specified time range.
-        
+
         Args:
             user: User object with authentication information
             time_range: Time range for analysis
-            
+
         Returns:
             Dictionary containing the performance summary
         """
         user_id = self.auth_validator.extract_user_id(user)
-        
+
         try:
             logger.info(f"Generating performance summary for user {user_id}", extra={
                 "user_id": user_id,
@@ -309,7 +333,7 @@ class AIReportGenerator:
                     "trading_data": json.dumps(trading_context, indent=2),
                     "time_range": time_range
                 }
-                
+
                 execution_result = await self.prompt_service.execute_prompt(
                     prompt_type=PromptType.PERFORMANCE_SUMMARY,
                     input_data=input_data,
@@ -317,7 +341,7 @@ class AIReportGenerator:
                     strategy=PromptStrategy.BEST_PERFORMANCE,
                     user_id=user_id
                 )
-                
+
                 if execution_result.success:
                     summary_content = execution_result.content
                 else:
@@ -340,7 +364,7 @@ class AIReportGenerator:
             })
             raise Exception(f"Failed to generate performance summary: {str(e)}")
 
-    async def _generate_performance_summary_legacy(self, trading_context: Dict[str, Any], 
+    async def _generate_performance_summary_legacy(self, trading_context: Dict[str, Any],
                                                  time_range: str) -> str:
         """Generate performance summary using legacy approach."""
         try:
@@ -363,28 +387,28 @@ class AIReportGenerator:
 
             response = self.llm_handler.llm.invoke(prompt_text)
             return response.content if hasattr(response, 'content') else str(response)
-                
+
         except Exception as e:
             logger.error(f"Legacy performance summary generation failed: {str(e)}")
             return f"Performance summary for {time_range}: Unable to generate detailed analysis due to technical issues. Please review your trading metrics manually."
 
-    async def get_reports(self, user: Dict[str, Any], 
+    async def get_reports(self, user: Dict[str, Any],
                          report_type: Optional[str] = None,
                          limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
         """
         Retrieve generated reports for a user.
-        
+
         Args:
             user: User object with authentication information
             report_type: Optional filter by report type
             limit: Maximum number of reports to return
             offset: Offset for pagination
-            
+
         Returns:
             List of report dictionaries
         """
         user_id = self.auth_validator.extract_user_id(user)
-        
+
         try:
             logger.info(f"Retrieving reports for user {user_id}", extra={
                 "user_id": user_id,
@@ -401,7 +425,7 @@ class AIReportGenerator:
             reports = await self.reports_service.get_reports(
                 access_token, report_type, limit, offset
             )
-            
+
             logger.info(f"Retrieved {len(reports)} reports for user {user_id}")
             return reports
 

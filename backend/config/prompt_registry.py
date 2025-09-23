@@ -44,6 +44,7 @@ class PromptVersion(str, Enum):
     V4_OPTIMIZED = "v4_optimized"
     V4_ADVANCED = "v4_advanced"
     V4_CONTEXTUAL = "v4_contextual"
+    V5_MILITARY = "v5_military"
 
 
 @dataclass
@@ -219,6 +220,7 @@ class PromptRegistry:
             'v4_optimized': PromptVersion.V4_OPTIMIZED,
             'v4_advanced': PromptVersion.V4_ADVANCED,
             'v4_contextual': PromptVersion.V4_CONTEXTUAL,
+            'v5_military': PromptVersion.V5_MILITARY,
             'prompt_optimization': PromptVersion.V4_OPTIMIZED  # Special case for meta_prompts
         }
         return name_mapping.get(name)
