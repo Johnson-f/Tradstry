@@ -287,18 +287,19 @@ class AIReportsService:
             
             tasks = [
                 self.dal.get_daily_ai_summary(user_id, access_token, summary_time_range, custom_start_date, custom_end_date),
-                self.dal.get_trading_context(user_id, access_token)  # Get all trade notes without filters
+                self._get_embeddings_based_trading_context(user_id, access_token, time_range, custom_start_date, custom_end_date)
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Process results
             daily_summary = results[0] if not isinstance(results[0], Exception) else {}
-            trade_notes = results[1] if not isinstance(results[1], Exception) else []
+            embeddings_context = results[1] if not isinstance(results[1], Exception) else []
             
             context = {
                 "daily_summary": daily_summary,
-                "trade_notes": trade_notes,
+                "embeddings_context": embeddings_context,
+                "trade_notes": embeddings_context,  # For backward compatibility
                 "user_id": user_id,
                 "time_range": time_range,
                 "custom_start_date": custom_start_date.isoformat() if custom_start_date else None,
@@ -308,7 +309,7 @@ class AIReportsService:
             
             self.logger.info("Trading context retrieved successfully", extra={
                 "context_keys": list(context.keys()),
-                "trade_notes_count": len(trade_notes),
+                "embeddings_context_count": len(embeddings_context),
                 "user_id": user_id
             })
             
@@ -317,6 +318,36 @@ class AIReportsService:
         except Exception as e:
             self.logger.error(f"Error getting trading context: {str(e)}")
             raise Exception(f"Error getting trading context: {str(e)}")
+
+    async def _get_embeddings_based_trading_context(self, user_id: str, access_token: str, time_range: str, 
+                                                   custom_start_date: Optional[datetime] = None, 
+                                                   custom_end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        """Get enhanced trading context using embeddings."""
+        try:
+            # Check embeddings exist
+            stats = await self.dal.get_trade_embeddings_stats(user_id, access_token)
+            if not stats or stats.get('total_embeddings', 0) == 0:
+                return await self.dal.get_trading_context(user_id, access_token)
+            
+            # Get from multiple sources
+            all_context = []
+            for source in ['stocks', 'options', 'trade_notes', 'notes']:
+                embeddings = await self.dal.get_trade_embeddings_by_source(source, user_id, access_token)
+                for emb in embeddings[:3]:  # Top 3 per source
+                    all_context.append({
+                        'content': emb.get('content_text', ''),
+                        'symbol': emb.get('symbol'),
+                        'trade_date': emb.get('trade_date'),
+                        'source_table': source,
+                        'metadata': emb.get('metadata', {}),
+                        'relevance_score': emb.get('relevance_score', 0.0)
+                    })
+            
+            return all_context[:15]
+            
+        except Exception as e:
+            self.logger.warning(f"Embeddings failed: {str(e)}")
+            return await self.dal.get_trading_context(user_id, access_token)
 
     def _validate_report_data(self, report_data: AIReportCreate):
         """Validate report data before processing."""

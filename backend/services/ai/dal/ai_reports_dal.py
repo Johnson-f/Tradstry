@@ -217,3 +217,52 @@ class AIReportsDAL(BaseDAL):
         if result and isinstance(result, dict) and 'data' in result:
             return result['data'] if isinstance(result['data'], list) else []
         return []
+
+    async def get_trade_embeddings_stats(self, user_id: str, access_token: str) -> Dict[str, Any]:
+        """Get trade embeddings statistics for a user."""
+        params = {'p_user_id': user_id}
+        response = await self.call_sql_function('get_trade_embeddings_stats', params, access_token)
+        return self.extract_single_response(response) or {}
+
+    async def get_trade_embeddings_by_source(self, source_table: str, user_id: str, access_token: str, source_id: str = None) -> List[Dict[str, Any]]:
+        """Get trade embeddings for a specific source."""
+        params = {
+            'p_source_table': source_table,
+            'p_source_id': source_id,
+            'p_user_id': user_id
+        }
+        response = await self.call_sql_function('get_trade_embeddings_by_source', params, access_token)
+        return self.extract_response_data(response)
+
+    async def search_trade_embeddings_by_similarity(self, query_vector: List[float], user_id: str, access_token: str,
+                                                   symbol: str = None, content_type: str = None, 
+                                                   source_tables: List[str] = None, date_from: str = None,
+                                                   date_to: str = None, min_relevance_score: float = 0.0,
+                                                   similarity_threshold: float = 0.7, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search trade embeddings by similarity."""
+        params = {
+            'p_query_vector': query_vector,
+            'p_user_id': user_id,
+            'p_symbol': symbol,
+            'p_content_type': content_type,
+            'p_source_tables': source_tables,
+            'p_date_from': date_from,
+            'p_date_to': date_to,
+            'p_min_relevance_score': min_relevance_score,
+            'p_similarity_threshold': similarity_threshold,
+            'p_limit': limit
+        }
+        response = await self.call_sql_function('search_trade_embeddings_by_similarity', params, access_token)
+        return self.extract_response_data(response)
+
+    async def get_similar_trades_for_symbol(self, symbol: str, query_vector: List[float], user_id: str, 
+                                          access_token: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get similar trades for a specific symbol."""
+        params = {
+            'p_symbol': symbol,
+            'p_query_vector': query_vector,
+            'p_user_id': user_id,
+            'p_limit': limit
+        }
+        response = await self.call_sql_function('get_similar_trades_for_symbol', params, access_token)
+        return self.extract_response_data(response)

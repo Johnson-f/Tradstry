@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, LoaderIcon } from 'lucide-react';
+import { CalendarIcon, LoaderIcon, CheckCircle, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import type { AIReportGenerateRequest } from '@/lib/services/ai-reports-service';
 
 interface ReportGenerationDialogProps {
@@ -18,6 +17,8 @@ interface ReportGenerationDialogProps {
   onOpenChange: (open: boolean) => void;
   onGenerate: (request: AIReportGenerateRequest) => void;
   isGenerating: boolean;
+  error?: string | null; // Add error prop for error handling
+  onSuccess?: () => void; // Callback when report generation succeeds
 }
 
 const TIME_RANGE_OPTIONS = [
@@ -39,12 +40,64 @@ export function ReportGenerationDialog({
   open, 
   onOpenChange, 
   onGenerate, 
-  isGenerating 
+  isGenerating,
+  error,
+  onSuccess 
 }: ReportGenerationDialogProps) {
   const [reportType, setReportType] = useState<string>('daily');
   const [timeRange, setTimeRange] = useState<string>('30d');
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
+  const [prevIsGenerating, setPrevIsGenerating] = useState<boolean>(false);
+
+  // Monitor when generation completes and show success notification
+  useEffect(() => {
+    if (prevIsGenerating && !isGenerating && open) {
+      if (error) {
+        // Report generation failed
+        toast.error("AI Report Generation Failed", {
+          description: error,
+          duration: 6000,
+          icon: <AlertCircle className="h-4 w-4" />,
+          action: {
+            label: "Try Again",
+            onClick: () => {
+              // Reset form and keep dialog open for retry
+              setReportType('daily');
+              setTimeRange('30d');
+              setStartDate(undefined);
+              setEndDate(undefined);
+            },
+          },
+        });
+      } else {
+        // Report generation succeeded
+        toast.success("AI Report Generated Successfully!", {
+          description: `Your ${reportType} report has been created and saved.`,
+          duration: 5000,
+          icon: <CheckCircle className="h-4 w-4" />,
+          action: {
+            label: "View Reports",
+            onClick: () => {
+              // Navigate to reports page or trigger reports view
+              window.location.href = '/ai-reports';
+            },
+          },
+        });
+
+        // Call success callback if provided
+        if (onSuccess) {
+          onSuccess();
+        }
+
+        // Auto-close dialog after a short delay to show the toast
+        setTimeout(() => {
+          handleClose();
+        }, 1500);
+      }
+    }
+    setPrevIsGenerating(isGenerating);
+  }, [isGenerating, prevIsGenerating, open, reportType, error, onSuccess]);
 
   const handleGenerate = () => {
     const request: AIReportGenerateRequest = {
@@ -95,7 +148,7 @@ export function ReportGenerationDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="report-type">Report Type</Label>
-            <Select value={reportType} onValueChange={setReportType}>
+            <Select value={reportType} onValueChange={setReportType} disabled={isGenerating}>
               <SelectTrigger>
                 <SelectValue placeholder="Select report type" />
               </SelectTrigger>
@@ -111,7 +164,7 @@ export function ReportGenerationDialog({
 
           <div className="space-y-2">
             <Label htmlFor="time-range">Time Range</Label>
-            <Select value={timeRange} onValueChange={setTimeRange}>
+            <Select value={timeRange} onValueChange={setTimeRange} disabled={isGenerating}>
               <SelectTrigger>
                 <SelectValue placeholder="Select time range" />
               </SelectTrigger>
@@ -137,6 +190,7 @@ export function ReportGenerationDialog({
                         "w-full justify-start text-left font-normal",
                         !startDate && "text-muted-foreground"
                       )}
+                      disabled={isGenerating}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {startDate ? format(startDate, "PPP") : "Pick a date"}
@@ -164,6 +218,7 @@ export function ReportGenerationDialog({
                         "w-full justify-start text-left font-normal",
                         !endDate && "text-muted-foreground"
                       )}
+                      disabled={isGenerating}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {endDate ? format(endDate, "PPP") : "Pick a date"}
@@ -188,6 +243,15 @@ export function ReportGenerationDialog({
               <LoaderIcon className="h-6 w-6 animate-spin mr-2" />
               <span className="text-sm text-muted-foreground">
                 Generating your AI report... This may take a few minutes.
+              </span>
+            </div>
+          )}
+
+          {error && !isGenerating && (
+            <div className="flex items-center justify-center py-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              <AlertCircle className="h-4 w-4 text-destructive mr-2" />
+              <span className="text-sm text-destructive">
+                {error}
               </span>
             </div>
           )}

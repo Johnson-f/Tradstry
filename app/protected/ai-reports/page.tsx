@@ -8,6 +8,7 @@ import { PlusIcon, RefreshCwIcon } from 'lucide-react';
 import { useAIReports } from '@/hooks/use-ai-reports';
 import { useAIInsights } from '@/hooks/use-ai-insights';
 import { ReportGenerationDialog } from '@/components/ai-reports/report-generation-dialog';
+import { toast } from 'sonner';
 
 export default function AireportsPage() {
   const [isGenerationDialogOpen, setIsGenerationDialogOpen] = useState(false);
@@ -24,6 +25,18 @@ export default function AireportsPage() {
 
   const handleGenerateReport = () => {
     setIsGenerationDialogOpen(true);
+  };
+
+  const handleReportSuccess = () => {
+    // Refresh data when report generation succeeds
+    refetchReports();
+    refetchPriorityInsights();
+    refetchActionableInsights();
+
+    toast.success("Dashboard Updated", {
+      description: "Latest reports and insights have been loaded.",
+      duration: 3000,
+    });
   };
 
   const handleRefresh = () => {
@@ -50,7 +63,7 @@ export default function AireportsPage() {
           </div>
         </div>
       </div>
-      
+
       {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
@@ -66,6 +79,8 @@ export default function AireportsPage() {
         onOpenChange={setIsGenerationDialogOpen}
         onGenerate={generateReport.mutate}
         isGenerating={generateReport.isPending}
+        error={generateReport.error?.message || null}
+        onSuccess={handleReportSuccess}
       />
     </div>
   );
