@@ -106,30 +106,57 @@ class AIReportGenerator:
 
                 try:
                     # Use advanced prompt service with few-shot learning
-                    # Map trading context to expected prompt variables
+                    # Map trading context to expected prompt variables using actual Supabase function structure
                     daily_summary = trading_context.get('daily_summary', {})
                     trade_notes = trading_context.get('trade_notes', [])
                     
-                    # Extract account metrics from daily summary
+                    # Extract ONLY the fields that actually exist in get_daily_ai_summary
+                    core_metrics = daily_summary.get('core_performance_metrics', {})
+                    pnl_analysis = daily_summary.get('profit_loss_analysis', {})
+                    behavior_metrics = daily_summary.get('trading_behavior_metrics', {})
+                    streak_analysis = daily_summary.get('streak_analysis', {})
+                    cost_analysis = daily_summary.get('cost_analysis', {})
+                    directional_performance = daily_summary.get('directional_performance', {})
+                    
+                    # Account metrics - using ONLY available fields
                     account_metrics = {
-                        "balance": daily_summary.get('account_balance', 'N/A'),
-                        "total_pnl": daily_summary.get('total_pnl', 'N/A'),
-                        "win_rate": daily_summary.get('win_rate', 'N/A'),
-                        "trade_count": daily_summary.get('trade_count', 'N/A'),
-                        "avg_win": daily_summary.get('avg_win', 'N/A'),
-                        "avg_loss": daily_summary.get('avg_loss', 'N/A')
+                        "profit_factor": core_metrics.get('profit_factor'),
+                        "win_rate_percentage": core_metrics.get('win_rate_percentage'),
+                        "loss_rate_percentage": core_metrics.get('loss_rate_percentage'),
+                        "trade_expectancy": core_metrics.get('trade_expectancy'),
+                        "risk_reward_ratio": core_metrics.get('risk_reward_ratio'),
+                        "biggest_winner": pnl_analysis.get('biggest_winner'),
+                        "biggest_loser": pnl_analysis.get('biggest_loser'),
+                        "average_gain": pnl_analysis.get('average_gain'),
+                        "average_loss": pnl_analysis.get('average_loss'),
+                        "longest_winning_streak": streak_analysis.get('longest_winning_streak'),
+                        "longest_losing_streak": streak_analysis.get('longest_losing_streak'),
+                        "total_commissions_paid": cost_analysis.get('total_commissions_paid'),
+                        "average_commission_per_trade": cost_analysis.get('average_commission_per_trade')
                     }
                     
-                    # Extract position data from trade notes and daily summary
+                    # Position data - using ONLY available fields
+                    top_symbols = daily_summary.get('top_symbols_performance', [])
+                    trading_frequency = daily_summary.get('symbol_trading_frequency', [])
+                    frequency_patterns = daily_summary.get('trading_frequency_patterns', [])
+                    
                     position_data = {
-                        "open_positions": daily_summary.get('open_positions', []),
-                        "recent_trades": trade_notes[:10] if trade_notes else [],
-                        "position_count": len(daily_summary.get('open_positions', [])),
-                        "total_exposure": daily_summary.get('total_exposure', 'N/A')
+                        "recent_trade_notes": trade_notes[:10] if trade_notes else [],
+                        "top_symbols_performance": top_symbols,
+                        "symbol_trading_frequency": trading_frequency,
+                        "trading_frequency_patterns": frequency_patterns,
+                        "trading_behavior_metrics": {
+                            "average_hold_time_winners_hours": behavior_metrics.get('average_hold_time_winners_hours'),
+                            "average_hold_time_losers_hours": behavior_metrics.get('average_hold_time_losers_hours'),
+                            "average_trade_duration_hours": behavior_metrics.get('average_trade_duration_hours'),
+                            "average_position_size": behavior_metrics.get('average_position_size'),
+                            "trade_size_consistency": behavior_metrics.get('trade_size_consistency')
+                        },
+                        "directional_performance": directional_performance,
+                        "cost_analysis": cost_analysis
                     }
                     
                     input_data = {
-                        "trading_data": json.dumps(trading_context, indent=2),
                         "account_metrics": json.dumps(account_metrics, indent=2),
                         "position_data": json.dumps(position_data, indent=2),
                         "date_range": f"{custom_start_date or 'N/A'} to {custom_end_date or 'N/A'}"
