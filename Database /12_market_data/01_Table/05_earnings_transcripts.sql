@@ -27,18 +27,6 @@ CREATE TABLE IF NOT EXISTS earnings_transcripts (
     transcripts_id INTEGER,             -- Original API transcript ID
     retrieved_at TIMESTAMP,             -- When data was retrieved from API
 
-    -- Analysis fields (computed/enhanced data)
-    overall_sentiment DECIMAL(3,2),     -- -1.0 to 1.0 sentiment score
-    confidence_score DECIMAL(3,2),      -- Confidence in sentiment analysis
-    key_themes TEXT[],                  -- Array of key themes discussed
-    risk_factors TEXT[],                -- Array of risk factors mentioned
-
-    -- Financial results summary (extracted from transcript)
-    reported_eps DECIMAL(10,4),
-    reported_revenue BIGINT,
-    guidance_eps DECIMAL(10,4),         -- Next year EPS guidance
-    guidance_revenue BIGINT,            -- Next year revenue guidance
-
     -- Audit info
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -51,8 +39,6 @@ CREATE TABLE IF NOT EXISTS earnings_transcripts (
 CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_symbol ON earnings_transcripts (symbol);
 CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_date ON earnings_transcripts (date DESC);
 CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_period ON earnings_transcripts (year, quarter);
-CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_source ON earnings_transcripts (source);
-CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_sentiment ON earnings_transcripts (overall_sentiment);
 CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_symbol_date ON earnings_transcripts (symbol, date DESC);
 CREATE INDEX IF NOT EXISTS idx_earnings_transcripts_retrieved_at ON earnings_transcripts (retrieved_at DESC);
 
