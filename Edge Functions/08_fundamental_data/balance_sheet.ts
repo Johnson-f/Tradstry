@@ -1,19 +1,19 @@
 /**
- * Supabase Edge Function: Quarterly Balance Sheet Data Fetcher
+ * Supabase Edge Function: Sequential Balance Sheet Data Fetcher
  * 
- * This Edge Function fetches quarterly balance sheet data from 
- * finance-query.onrender.com API for all stocks in the stock_quotes table.
- * It processes and saves quarterly data in wide format to prevent duplicates.
- * 
- * API Endpoint: https://finance-query.onrender.com/v1/financials/{symbol}?statement=balance&frequency=quarter
+ * This Edge Function fetches balance sheet data in a specific sequence:
+ * 1. First: Quarterly data for all stocks (last 5 years including current year)
+ * 2. Then: Annual data for all stocks (last 5 years including current year)
  * 
  * Features:
- * - Fetches ONLY quarterly balance sheets for symbols from stock_quotes table
- * - Comprehensive quarterly data fetching (past 6 years = 24 quarters)
- * - Prevents duplicate quarter fetching with intelligent existence checks
- * - Validates and processes financial data in wide format
- * - Handles API rate limiting and errors gracefully
- * - Smart logic: only fetches missing quarters to avoid redundant API calls
+ * - AUTOMATIC BATCHING: Intelligently finds and processes the next batch of stocks that need updating.
+ * - RETRY MECHANISM: Retries failed fetches once to improve resilience against transient API errors.
+ * - Sequential processing: All quarterly first, then all annual within the batch.
+ * - 5-year coverage based on fiscal date year, not fixed calendar dates.
+ * - Smart duplicate prevention - never fetches the same data twice.
+ * - Validates and processes financial data in wide format.
+ * - Handles API rate limiting and errors gracefully.
+ * - Comprehensive progress tracking and reporting.
  */
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
@@ -40,10 +40,10 @@ interface BalanceSheetAPIResponse {
   };
 }
 
-// Database record matching the wide table schema (quarterly only)
-interface QuarterlyBalanceSheetRecord {
+// Database record matching the wide table schema
+interface BalanceSheetRecord {
   symbol: string;
-  frequency: 'quarterly'; // Always quarterly
+  frequency: 'quarterly' | 'annual';
   fiscal_date: string;
   
   // Assets
@@ -128,10 +128,25 @@ interface QuarterlyBalanceSheetRecord {
 
 interface ProcessingResult {
   symbol: string;
-  status: 'success' | 'error' | 'exists' | 'no_data';
+  frequency: 'quarterly' | 'annual';
+  status: 'success' | 'error' | 'skipped' | 'no_data';
   message?: string;
-  records_processed?: number;
-  quarters_fetched?: number;
+  records_saved?: number;
+  periods_found?: number;
+  duplicate_periods_skipped?: number;
+}
+
+interface ProcessingSummary {
+  phase: 'quarterly' | 'annual' | 'completed';
+  symbols_processed: number;
+  symbols_successful: number;
+  symbols_skipped: number;
+  symbols_with_errors: number;
+  symbols_no_data: number;
+  total_records_saved: number;
+  total_periods_found: number;
+  duplicate_periods_skipped: number;
+  processing_time_seconds: number;
 }
 
 /**
@@ -244,240 +259,70 @@ function getColumnNameFromBreakdown(breakdown: string): string | null {
 function extractFiscalDates(statement: { [key: string]: FinancialDataPoint }): string[] {
   const firstItem = Object.values(statement)[0];
   if (!firstItem) return [];
+
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   
-  // Get all keys except 'Breakdown'
-  return Object.keys(firstItem).filter(key => key !== 'Breakdown').sort().reverse();
+  // Get all keys that are valid dates and not 'Breakdown'
+  return Object.keys(firstItem)
+    .filter(key => key !== 'Breakdown' && dateRegex.test(key))
+    .sort().reverse();
 }
 
 /**
- * Generate list of quarters for the past N years, prioritizing recent quarters
+ * Get existing fiscal dates for a symbol and frequency to prevent duplicates
  */
-function generateHistoricalQuarters(years: number = 6): Array<{ quarter: string; year: number; fiscalDate: string }> {
-  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-  const currentYear = new Date().getFullYear();
-  const result = [];
-  
-  for (let year = currentYear; year >= currentYear - years + 1; year--) {
-    for (const quarter of quarters) {
-      const fiscalDate = getQuarterEndDate(quarter, year);
-      result.push({ quarter, year, fiscalDate });
-    }
-  }
-  
-  return result; // Return in reverse chronological order (newest first for priority fetching)
-}
-
-/**
- * Get recent quarters that should be checked for updates (last 5 years)
- */
-function getRecentQuarters(): Array<{ quarter: string; year: number; fiscalDate: string }> {
-  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-  const currentYear = new Date().getFullYear();
-  const result = [];
-  
-  // Get last 5 years of quarters
-  for (let year = currentYear; year >= currentYear - 4; year--) {
-    for (const quarter of quarters) {
-      const fiscalDate = getQuarterEndDate(quarter, year);
-      result.push({ quarter, year, fiscalDate });
-    }
-  }
-  
-  return result; // Recent quarters in reverse chronological order
-}
-
-/**
- * Get approximate fiscal quarter end date
- */
-function getQuarterEndDate(quarter: string, year: number): string {
-  const quarterEndMap: { [key: string]: string } = {
-    'Q1': `${year}-03-31`,
-    'Q2': `${year}-06-30`, 
-    'Q3': `${year}-09-30`,
-    'Q4': `${year}-12-31`
-  };
-  
-  return quarterEndMap[quarter] || `${year}-12-31`;
-}
-
-/**
- * Filter API records to match expected quarters, with flexible date matching for latest reports
- */
-function filterRecordsForExpectedQuarters(
-  records: QuarterlyBalanceSheetRecord[],
-  expectedQuarters: Array<{ quarter: string; year: number; fiscalDate: string }>,
-  isRecentData: boolean = false
-): QuarterlyBalanceSheetRecord[] {
-  if (expectedQuarters.length === 0) return records;
-  
-  const expectedDates = new Set(expectedQuarters.map(q => q.fiscalDate));
-  
-  return records.filter(record => {
-    // Direct match
-    if (expectedDates.has(record.fiscal_date)) {
-      return true;
-    }
-    
-    // For recent data, be more flexible with date matching
-    if (isRecentData) {
-      return Array.from(expectedDates).some(date => {
-        const recordDate = new Date(record.fiscal_date);
-        const expectedDate = new Date(date);
-        const diffDays = Math.abs(recordDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24);
-        return diffDays <= 30; // Allow 30 days difference for recent data
-      });
-    }
-    
-    // For historical data, be less flexible
-    return Array.from(expectedDates).some(date => {
-      const recordDate = new Date(record.fiscal_date);
-      const expectedDate = new Date(date);
-      const diffDays = Math.abs(recordDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24);
-      return diffDays <= 7; // Allow 7 days difference for historical data
-    });
-  });
-}
-
-/**
- * Check which quarterly fiscal dates already exist in database
- */
-async function getExistingQuarterlyDates(
+async function getExistingFiscalDates(
   supabase: SupabaseClient,
-  symbol: string
+  symbol: string,
+  frequency: 'quarterly' | 'annual'
 ): Promise<Set<string>> {
   try {
     const { data, error } = await supabase
       .from('balance_sheet')
       .select('fiscal_date')
       .eq('symbol', symbol)
-      .eq('frequency', 'quarterly')
+      .eq('frequency', frequency)
       .eq('data_provider', 'finance-query-api');
     
     if (error) {
-      console.error(`Error fetching existing quarterly dates for ${symbol}:`, error);
+      console.error(`Error fetching existing ${frequency} dates for ${symbol}:`, error);
       return new Set();
     }
     
     return new Set(data?.map((row: { fiscal_date: string }) => row.fiscal_date) || []);
   } catch (error) {
-    console.error(`Error in getExistingQuarterlyDates for ${symbol}:`, error);
+    console.error(`Error in getExistingFiscalDates for ${symbol} ${frequency}:`, error);
     return new Set();
   }
 }
 
 /**
- * Get missing quarters that need to be fetched, prioritizing recent quarters
+ * Fetch balance sheet data from API
  */
-async function getMissingQuarters(
-  supabase: SupabaseClient,
+async function fetchBalanceSheetData(
   symbol: string,
-  prioritizeRecent: boolean = true
-): Promise<Array<{ quarter: string; year: number; fiscalDate: string }>> {
-  const historicalQuarters = generateHistoricalQuarters(6);
-  const existingDates = await getExistingQuarterlyDates(supabase, symbol);
-  
-  let missingQuarters = historicalQuarters.filter(q => !existingDates.has(q.fiscalDate));
-  
-  // If prioritizing recent, check if we need to refresh recent quarters
-  if (prioritizeRecent) {
-    const recentQuarters = getRecentQuarters();
-    const missingRecentQuarters = recentQuarters.filter(q => !existingDates.has(q.fiscalDate));
-    
-    // If we have recent missing quarters, prioritize them
-    if (missingRecentQuarters.length > 0) {
-      console.log(`${symbol}: Prioritizing ${missingRecentQuarters.length} recent quarters`);
-      return missingRecentQuarters;
-    }
-    
-    // If no recent quarters are missing, check if we should refresh the most recent existing ones
-    // This handles cases where companies report updated/restated data
-    const mostRecentExisting = Array.from(existingDates)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-      .slice(0, 4); // Check last 4 quarters
-      
-    if (mostRecentExisting.length > 0) {
-      const shouldRefreshRecent = await shouldRefreshRecentData(supabase, symbol, mostRecentExisting[0]);
-      if (shouldRefreshRecent) {
-        // Add the most recent quarters for refresh
-        const quartersToRefresh = recentQuarters.filter(q => 
-          mostRecentExisting.includes(q.fiscalDate)
-        ).slice(0, 2); // Refresh last 2 quarters
-        
-        console.log(`${symbol}: Adding ${quartersToRefresh.length} recent quarters for refresh`);
-        missingQuarters = [...quartersToRefresh, ...missingQuarters];
-      }
-    }
-  }
-  
-  console.log(`${symbol}: ${existingDates.size} quarters exist, ${missingQuarters.length} to fetch out of ${historicalQuarters.length} total`);
-  
-  return missingQuarters;
-}
-
-/**
- * Check if recent data should be refreshed (older than 7 days)
- */
-async function shouldRefreshRecentData(
-  supabase: SupabaseClient,
-  symbol: string,
-  mostRecentFiscalDate: string
-): Promise<boolean> {
+  frequency: 'quarterly' | 'annual'
+): Promise<BalanceSheetRecord[] | null> {
   try {
-    const { data, error } = await supabase
-      .from('balance_sheet')
-      .select('created_at')
-      .eq('symbol', symbol)
-      .eq('frequency', 'quarterly')
-      .eq('fiscal_date', mostRecentFiscalDate)
-      .eq('data_provider', 'finance-query-api')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const apiFrequency = frequency === 'quarterly' ? 'quarterly' : 'annual';
+    const url = `https://finance-query.onrender.com/v1/financials/${symbol}?statement=balance&frequency=${apiFrequency}`;
     
-    if (error || !data || data.length === 0) {
-      return true; // Refresh if we can't determine when it was last updated
-    }
-    
-    const lastUpdated = new Date(data[0].created_at);
-    const daysSinceUpdate = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
-    
-    // Refresh if data is older than 7 days
-    const shouldRefresh = daysSinceUpdate > 7;
-    
-    if (shouldRefresh) {
-      console.log(`${symbol}: Recent data is ${Math.floor(daysSinceUpdate)} days old, refreshing`);
-    }
-    
-    return shouldRefresh;
-  } catch (error) {
-    console.error(`Error checking refresh need for ${symbol}:`, error);
-    return false;
-  }
-}
-
-/**
- * Fetch quarterly balance sheet from finance-query API
- */
-async function fetchQuarterlyBalanceSheet(
-  symbol: string
-): Promise<QuarterlyBalanceSheetRecord[] | null> {
-  try {
-    const url = `https://finance-query.onrender.com/v1/financials/${symbol}?statement=balance&frequency=quarterly`;
-    console.log(`Fetching quarterly balance sheet for ${symbol} from: ${url}`);
+    console.log(`Fetching ${frequency} balance sheet for ${symbol}...`);
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Tradistry-QuarterlyFetcher/1.0'
+        'User-Agent': 'Tradistry-SequentialBalanceSheetFetcher/1.0'
       }
     });
     
     if (!response.ok) {
       if (response.status === 404) {
-        console.log(`No quarterly balance sheet found for ${symbol}`);
+        console.log(`No ${frequency} balance sheet found for ${symbol}`);
         return null;
       }
-      console.error(`API error for ${symbol}: ${response.status} ${response.statusText}`);
+      console.error(`API error for ${symbol} ${frequency}: ${response.status} ${response.statusText}`);
       return null;
     }
     
@@ -485,74 +330,115 @@ async function fetchQuarterlyBalanceSheet(
     
     // Validate required fields
     if (!data || !data.statement || typeof data.statement !== 'object') {
-      console.log(`Invalid quarterly balance sheet data for ${symbol}`);
+      console.log(`Invalid ${frequency} balance sheet data for ${symbol}`);
       return null;
     }
     
     // Extract fiscal dates from the first item
     const fiscalDates = extractFiscalDates(data.statement);
     if (fiscalDates.length === 0) {
-      console.log(`No fiscal dates found for ${symbol} quarterly data`);
+      console.log(`No fiscal dates found for ${symbol} ${frequency} data`);
       return null;
     }
     
-    console.log(`Processing ${symbol} quarterly data with ${fiscalDates.length} fiscal periods`);
+    console.log(`Found ${fiscalDates.length} ${frequency} periods for ${symbol} from API.`);
     
-    // Transform API data to wide-format database records (one record per fiscal date)
-    const records: QuarterlyBalanceSheetRecord[] = [];
+    // Transform API data to wide-format database records
+    const records: BalanceSheetRecord[] = [];
     
     for (const fiscalDate of fiscalDates) {
-      const record: QuarterlyBalanceSheetRecord = {
+      const record: BalanceSheetRecord = {
         symbol: symbol.toUpperCase(),
-        frequency: 'quarterly',
+        frequency: frequency,
         fiscal_date: fiscalDate,
         data_provider: 'finance-query-api'
       };
-      
+      let hasAnyData = false;
+
       // Process each breakdown item and map to appropriate column
       for (const [itemKey, item] of Object.entries(data.statement)) {
         const breakdown = item.Breakdown;
         if (!breakdown) continue;
         
         const columnName = getColumnNameFromBreakdown(breakdown);
-        if (!columnName) {
-          // Uncomment for debugging unmapped fields
-          // console.log(`Unmapped breakdown: "${breakdown}" - skipping`);
-          continue;
-        }
+        if (!columnName) continue;
         
         const valueStr = item[fiscalDate];
         const value = parseFinancialValue(valueStr);
         
-        // Dynamically assign value to the appropriate column
+        if (value !== null) {
+            hasAnyData = true;
+        }
         (record as any)[columnName] = value;
       }
-      
-      records.push(record);
+
+      // Only add the record if it contains at least one piece of financial data.
+      // This prevents validation errors for records that are just empty shells.
+      if (hasAnyData) {
+        records.push(record);
+      } else {
+        console.log(`🟡 Skipping fiscal date ${fiscalDate} for ${symbol} ${frequency} because it contained no valid financial data.`);
+      }
     }
     
-    console.log(`Transformed ${records.length} quarterly records for ${symbol}`);
     return records;
     
   } catch (error) {
-    console.error(`Error fetching quarterly balance sheet for ${symbol}:`, error);
+    console.error(`Error fetching ${frequency} balance sheet for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Save quarterly balance sheet records to database
+ * Filter records to only include target years and prevent duplicates
  */
-async function saveQuarterlyBalanceSheetData(
+function filterTargetRecords(
+  records: BalanceSheetRecord[], 
+  startYear: number,
+  endYear: number,
+  existingPeriods: Set<string>
+): { recordsToSave: BalanceSheetRecord[]; duplicatesSkipped: number } {
+  const recordsToSave: BalanceSheetRecord[] = [];
+  let duplicatesSkipped = 0;
+  
+  for (const record of records) {
+    // Ensure fiscal_date is valid before parsing
+    if (!record.fiscal_date || typeof record.fiscal_date !== 'string') {
+        continue;
+    }
+      
+    const recordYear = new Date(record.fiscal_date).getFullYear();
+
+    // Check if the record is within our target year range
+    if (recordYear < startYear || recordYear > endYear) {
+      continue; // Skip periods outside our target year range
+    }
+    
+    // Check if we already have this data (duplicate prevention)
+    if (existingPeriods.has(record.fiscal_date)) {
+      duplicatesSkipped++;
+      continue;
+    }
+    
+    recordsToSave.push(record);
+  }
+  
+  return { recordsToSave, duplicatesSkipped };
+}
+
+/**
+ * Save balance sheet records to database with duplicate prevention
+ */
+async function saveBalanceSheetRecords(
   supabase: SupabaseClient,
-  records: QuarterlyBalanceSheetRecord[]
+  records: BalanceSheetRecord[]
 ): Promise<{ success: boolean; savedCount: number }> {
   if (records.length === 0) return { success: true, savedCount: 0 };
   
   try {
-    // Insert records in smaller batches since each record has many columns
-    const batchSize = 8;
-    let successfulInserts = 0;
+    // Use smaller batches for complex records
+    const batchSize = 5;
+    let totalSaved = 0;
     
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
@@ -561,79 +447,44 @@ async function saveQuarterlyBalanceSheetData(
         .from('balance_sheet')
         .upsert(batch, {
           onConflict: 'symbol,frequency,fiscal_date,data_provider',
-          ignoreDuplicates: false
+          ignoreDuplicates: false // Always update to ensure we have latest data
         })
         .select('id');
       
       if (error) {
-        console.error(`Error saving quarterly balance sheet batch for ${records[0].symbol}:`, error);
-        console.error(`Batch size: ${batch.length}, First record fiscal_date: ${batch[0]?.fiscal_date}`);
+        console.error(`Error saving ${records[0].frequency} batch for ${records[0].symbol}:`, error);
         continue;
       }
       
-      if (data) {
-        successfulInserts += data.length;
-        console.log(`Successfully saved batch of ${data.length} quarterly records for ${records[0].symbol}`);
-      }
+      const batchSavedCount = data?.length || 0;
+      totalSaved += batchSavedCount;
+      
+      console.log(`Saved ${batchSavedCount}/${batch.length} ${records[0].frequency} records for ${records[0].symbol}`);
     }
     
-    console.log(`Successfully saved ${successfulInserts} out of ${records.length} quarterly records for ${records[0].symbol}`);
-    return { success: successfulInserts > 0, savedCount: successfulInserts };
+    console.log(`✅ Total saved: ${totalSaved}/${records.length} ${records[0].frequency} records for ${records[0].symbol}`);
+    return { success: totalSaved > 0, savedCount: totalSaved };
+    
   } catch (error) {
-    console.error(`Error in saveQuarterlyBalanceSheetData:`, error);
+    console.error(`Error in saveBalanceSheetRecords:`, error);
     return { success: false, savedCount: 0 };
   }
 }
 
 /**
- * Get active symbols from stock_quotes table
+ * Validate balance sheet records before saving
  */
-async function getActiveSymbolsFromStockQuotes(supabase: SupabaseClient): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('stock_quotes')
-      .select('symbol')
-      .order('symbol');
-    
-    if (error) {
-      console.error('Error fetching symbols from stock_quotes:', error);
-      return [];
-    }
-    
-    if (!data || data.length === 0) {
-      console.log('No symbols found in stock_quotes table');
-      return [];
-    }
-    
-    // Get unique symbols and filter out any invalid ones
-    const symbols = data.map((row: { symbol: string }) => row.symbol);
-    const uniqueSymbols = [...new Set(symbols)]
-      .filter((symbol): symbol is string => typeof symbol === 'string' && symbol.length > 0 && symbol.length <= 10) // Basic symbol validation
-      .map(symbol => symbol.toUpperCase());
-      
-    console.log(`Found ${uniqueSymbols.length} active symbols in stock_quotes table`);
-    
-    return uniqueSymbols;
-  } catch (error) {
-    console.error('Error in getActiveSymbolsFromStockQuotes:', error);
-    return [];
-  }
-}
-
-/**
- * Validate quarterly balance sheet records
- */
-function validateQuarterlyRecords(records: QuarterlyBalanceSheetRecord[]): { isValid: boolean; error?: string } {
+function validateBalanceSheetRecords(records: BalanceSheetRecord[]): { isValid: boolean; error?: string } {
   if (!Array.isArray(records) || records.length === 0) {
-    return { isValid: false, error: 'No quarterly records to validate' };
+    return { isValid: false, error: 'No records to validate' };
   }
   
   for (const record of records) {
-    if (!record.symbol || record.frequency !== 'quarterly' || !record.fiscal_date || !record.data_provider) {
-      return { isValid: false, error: 'Missing required fields in quarterly record' };
+    if (!record.symbol || !['quarterly', 'annual'].includes(record.frequency) || !record.fiscal_date || !record.data_provider) {
+      return { isValid: false, error: 'Missing required fields in record' };
     }
     
-    // Validate fiscal_date format (should be YYYY-MM-DD)
+    // Validate fiscal_date format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(record.fiscal_date)) {
       return { isValid: false, error: `Invalid fiscal_date format: ${record.fiscal_date}` };
@@ -645,12 +496,12 @@ function validateQuarterlyRecords(records: QuarterlyBalanceSheetRecord[]): { isV
       key !== 'frequency' && 
       key !== 'fiscal_date' && 
       key !== 'data_provider' && 
-      record[key as keyof QuarterlyBalanceSheetRecord] !== null &&
-      record[key as keyof QuarterlyBalanceSheetRecord] !== undefined
+      record[key as keyof BalanceSheetRecord] !== null &&
+      record[key as keyof BalanceSheetRecord] !== undefined
     );
     
     if (!hasFinancialData) {
-      return { isValid: false, error: 'Quarterly record contains no financial data' };
+      return { isValid: false, error: 'Record contains no financial data' };
     }
   }
   
@@ -658,122 +509,291 @@ function validateQuarterlyRecords(records: QuarterlyBalanceSheetRecord[]): { isV
 }
 
 /**
- * Process quarterly balance sheet for a specific symbol with latest data priority
+ * Process balance sheet data for a single symbol and frequency
  */
-async function processQuarterlyBalanceSheet(
+async function processSymbolBalanceSheet(
   supabase: SupabaseClient,
   symbol: string,
-  options: {
-    forceRefresh?: boolean;
-    prioritizeRecent?: boolean;
-    fetchOnlyRecent?: boolean;
-  } = {}
+  frequency: 'quarterly' | 'annual',
+  startYear: number,
+  endYear: number
 ): Promise<ProcessingResult> {
   try {
-    const { forceRefresh = false, prioritizeRecent = true, fetchOnlyRecent = false } = options;
+    console.log(`
+📊 Processing ${symbol} (${frequency})...`);
     
-    console.log(`Processing quarterly balance sheet for ${symbol}...`);
+    // Get existing data to identify duplicates in the API response
+    const existingPeriods = await getExistingFiscalDates(supabase, symbol, frequency);
     
-    // Determine what quarters to fetch
-    let quartersToFetch: Array<{ quarter: string; year: number; fiscalDate: string }> = [];
+    console.log(`🎯 ${symbol} ${frequency}: Checking for new data for years ${startYear}-${endYear}. ${existingPeriods.size} periods already exist in the database.`);
     
-    if (forceRefresh) {
-      quartersToFetch = generateHistoricalQuarters(6);
-      console.log(`${symbol}: Force refresh - fetching all ${quartersToFetch.length} quarters`);
-    } else if (fetchOnlyRecent) {
-      quartersToFetch = getRecentQuarters();
-      const existingDates = await getExistingQuarterlyDates(supabase, symbol);
-      quartersToFetch = quartersToFetch.filter(q => !existingDates.has(q.fiscalDate));
-      console.log(`${symbol}: Fetching only recent missing quarters: ${quartersToFetch.length}`);
-    } else {
-      quartersToFetch = await getMissingQuarters(supabase, symbol, prioritizeRecent);
-    }
-    
-    if (quartersToFetch.length === 0) {
+    // Always fetch data from API to ensure data is up-to-date
+    const apiRecords = await fetchBalanceSheetData(symbol, frequency);
+    if (!apiRecords) {
+      console.log(`🟡 ${symbol} ${frequency}: API did not return any data.`);
       return {
         symbol,
-        status: 'exists',
-        message: 'All quarterly data is up to date',
-        quarters_fetched: 0
-      };
-    }
-    
-    // Fetch quarterly data from API
-    const records = await fetchQuarterlyBalanceSheet(symbol);
-    if (!records) {
-      return {
-        symbol,
+        frequency,
         status: 'no_data',
-        message: 'No quarterly balance sheet data available from API'
+        message: `No ${frequency} balance sheet data available from API`,
+        records_saved: 0,
+        periods_found: 0,
+        duplicate_periods_skipped: 0
       };
     }
     
-    // Determine if we're dealing with recent data
-    const currentYear = new Date().getFullYear();
-    const hasRecentQuarters = quartersToFetch.some(q => q.year >= currentYear - 1);
+    console.log(`ℹ️ ${symbol} ${frequency}: API returned ${apiRecords.length} periods. Now filtering...`);
     
-    // Filter records to only include the quarters we want to fetch
-    const recordsToSave = filterRecordsForExpectedQuarters(
-      records, 
-      quartersToFetch, 
-      hasRecentQuarters
+    // Filter to only include records for target years and identify duplicates
+    const { recordsToSave, duplicatesSkipped } = filterTargetRecords(
+      apiRecords, 
+      startYear,
+      endYear,
+      existingPeriods
     );
     
-    console.log(`${symbol}: Filtered ${records.length} API records to ${recordsToSave.length} target records`);
-    
     if (recordsToSave.length === 0) {
+      const reason = apiRecords.length > 0 ? 
+        `all ${apiRecords.length} records returned by API were either duplicates (${duplicatesSkipped}) or outside the target year range.` :
+        `the API returned no records.`;
+      console.log(`🟡 ${symbol} ${frequency}: No new records to save. Reason: ${reason}`);
       return {
         symbol,
-        status: 'no_data',
-        message: 'No matching quarterly periods found in API response'
+        frequency,
+        status: 'skipped',
+        message: `No new ${frequency} periods to save because ${reason}`,
+        records_saved: 0,
+        periods_found: apiRecords.length,
+        duplicate_periods_skipped: duplicatesSkipped
       };
     }
     
-    // Validate records
-    const validation = validateQuarterlyRecords(recordsToSave);
+    console.log(`ℹ️ ${symbol} ${frequency}: After filtering, ${recordsToSave.length} records will be saved.`);
+
+    // Validate records before saving
+    const validation = validateBalanceSheetRecords(recordsToSave);
     if (!validation.isValid) {
+      console.error(`🔴 ${symbol} ${frequency}: Data validation failed: ${validation.error}`);
       return {
         symbol,
+        frequency,
         status: 'error',
-        message: `Invalid quarterly data: ${validation.error}`
+        message: `Invalid ${frequency} data: ${validation.error}`,
+        records_saved: 0,
+        periods_found: apiRecords.length,
+        duplicate_periods_skipped: duplicatesSkipped
       };
     }
     
-    // Save to database
-    const { success, savedCount } = await saveQuarterlyBalanceSheetData(supabase, recordsToSave);
-    if (!success) {
+    // Save to database using upsert
+    const { success, savedCount } = await saveBalanceSheetRecords(supabase, recordsToSave);
+    if (!success && savedCount < recordsToSave.length) {
+      console.error(`🔴 ${symbol} ${frequency}: Failed to save all records to database.`);
       return {
         symbol,
+        frequency,
         status: 'error',
-        message: 'Failed to save quarterly data to database'
+        message: `Failed to save all ${frequency} records to database`,
+        records_saved: savedCount,
+        periods_found: apiRecords.length,
+        duplicate_periods_skipped: duplicatesSkipped
       };
     }
     
-    // Log the fiscal dates that were saved
-    const savedDates = recordsToSave.map(r => r.fiscal_date).sort().reverse();
-    console.log(`${symbol}: Saved quarters for dates: ${savedDates.slice(0, 4).join(', ')}`);
+    console.log(`✅ ${symbol} ${frequency}: Saved/updated ${savedCount} periods`);
     
     return {
       symbol,
+      frequency,
       status: 'success',
-      records_processed: savedCount,
-      quarters_fetched: savedCount,
-      message: hasRecentQuarters ? 'Recent quarterly data updated' : 'Historical quarterly data updated'
+      message: `Successfully saved/updated ${savedCount} ${frequency} periods`,
+      records_saved: savedCount,
+      periods_found: apiRecords.length,
+      duplicate_periods_skipped: duplicatesSkipped
     };
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`Error processing quarterly balance sheet for ${symbol}:`, error);
+    console.error(`❌ Error processing ${symbol} ${frequency}:`, error);
+    
     return {
       symbol,
+      frequency,
       status: 'error',
-      message: errorMessage
+      message: errorMessage,
+      records_saved: 0,
+      periods_found: 0,
+      duplicate_periods_skipped: 0
     };
   }
 }
 
 /**
- * Main Edge Function handler - Focused on quarterly balance sheet data fetching
+ * Process all symbols for a specific frequency sequentially
+ */
+async function processFrequencyPhase(
+  supabase: SupabaseClient,
+  symbols: string[],
+  frequency: 'quarterly' | 'annual',
+  startYear: number,
+  endYear: number
+): Promise<{ results: ProcessingResult[]; summary: ProcessingSummary }> {
+  const startTime = Date.now();
+  const symbolsToProcess = symbols;
+  const results: ProcessingResult[] = [];
+  
+  console.log(`
+🚀 Starting ${frequency.toUpperCase()} PHASE for ${symbolsToProcess.length} symbols`);
+  console.log(`📅 Target Years: ${startYear} - ${endYear}`);
+  
+  let processedCount = 0;
+  let successCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+  let noDataCount = 0;
+  let totalRecordsSaved = 0;
+  let totalPeriodsFound = 0;
+  let totalDuplicatesSkipped = 0;
+  
+  // Process symbols one by one with rate limiting
+  for (const symbol of symbolsToProcess) {
+    let result = await processSymbolBalanceSheet(supabase, symbol, frequency, startYear, endYear);
+
+    // If the first attempt fails (e.g., transient network error or API hiccup), retry once.
+    if (result.status === 'error' || result.status === 'no_data') {
+        console.log(`⚠️ Initial fetch for ${symbol} ${frequency} failed with status: ${result.status}. Retrying in 3 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        result = await processSymbolBalanceSheet(supabase, symbol, frequency, startYear, endYear);
+        if (result.status === 'success') {
+            console.log(`✅ Retry for ${symbol} ${frequency} was successful.`);
+        }
+    }
+
+    results.push(result);
+    
+    // Update counters
+    processedCount++;
+    totalRecordsSaved += result.records_saved || 0;
+    totalPeriodsFound += result.periods_found || 0;
+    totalDuplicatesSkipped += result.duplicate_periods_skipped || 0;
+    
+    switch (result.status) {
+      case 'success': successCount++; break;
+      case 'skipped': skippedCount++; break;
+      case 'error': errorCount++; break;
+      case 'no_data': noDataCount++; break;
+    }
+    
+    // Progress logging
+    if (processedCount % 10 === 0 || processedCount === symbolsToProcess.length) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      console.log(`
+📈 ${frequency.toUpperCase()} PROGRESS: ${processedCount}/${symbolsToProcess.length} symbols`);
+      console.log(`   ✅ Success: ${successCount} | ⏭️ Skipped: ${skippedCount} | ❌ Error: ${errorCount} | 📭 No Data: ${noDataCount}`);
+      console.log(`   💾 Records Saved: ${totalRecordsSaved} | ⏰ Elapsed: ${elapsed.toFixed(1)}s`);
+    }
+    
+    // Rate limiting - wait between symbols
+    if (processedCount < symbolsToProcess.length) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+    }
+  }
+  
+  const processingTimeSeconds = (Date.now() - startTime) / 1000;
+  
+  const summary: ProcessingSummary = {
+    phase: frequency,
+    symbols_processed: processedCount,
+    symbols_successful: successCount,
+    symbols_skipped: skippedCount,
+    symbols_with_errors: errorCount,
+    symbols_no_data: noDataCount,
+    total_records_saved: totalRecordsSaved,
+    total_periods_found: totalPeriodsFound,
+    duplicate_periods_skipped: totalDuplicatesSkipped,
+    processing_time_seconds: processingTimeSeconds
+  };
+  
+  console.log(`
+🎉 ${frequency.toUpperCase()} PHASE COMPLETED in ${processingTimeSeconds.toFixed(1)}s`);
+  console.log(`   📊 ${successCount}/${processedCount} symbols processed successfully`);
+  console.log(`   💾 ${totalRecordsSaved} new records saved`);
+  console.log(`   ⏭️ ${totalDuplicatesSkipped} duplicates prevented`);
+  
+  return { results, summary };
+}
+
+/**
+ * Get active symbols from stock_quotes table
+ */
+async function getActiveSymbols(supabase: SupabaseClient): Promise<string[]> {
+  try {
+    console.log('🔍 Fetching all symbols from stock_quotes table using pagination...');
+    const allSymbols = new Set<string>();
+    const pageSize = 1000;
+    let page = 0;
+    let hasMore = true;
+
+    while(hasMore) {
+        const { data, error } = await supabase
+            .from('stock_quotes')
+            .select('symbol')
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) {
+            console.error(`Error fetching symbols from stock_quotes (page ${page}):`, error);
+            break; 
+        }
+
+        if (data && data.length > 0) {
+            data.forEach(row => {
+                if (row.symbol) {
+                    allSymbols.add(row.symbol);
+                }
+            });
+            if (data.length < pageSize) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    
+    if (allSymbols.size === 0) {
+      console.log('No symbols found in stock_quotes table');
+      return [];
+    }
+    
+    const uniqueSymbols = [...allSymbols];
+
+    // Filter out invalid symbols and log them
+    const validationRegex = /^[A-Z0-9.-]+$/;
+    const validSymbols = uniqueSymbols
+      .filter((symbol): symbol is string => {
+        const isValid = typeof symbol === 'string' && 
+                        symbol.length > 0 && 
+                        symbol.length <= 10 &&
+                        validationRegex.test(symbol.toUpperCase());
+        if (!isValid) {
+            console.log(`⚠️ Filtering out invalid symbol: "${symbol}"`);
+        }
+        return isValid;
+      })
+      .map(symbol => symbol.toUpperCase());
+      
+    console.log(`✅ Found ${validSymbols.length} valid symbols in stock_quotes table after pagination and filtering.`);
+    
+    return validSymbols;
+  } catch (error) {
+    console.error('Error in getActiveSymbols:', error);
+    return [];
+  }
+}
+
+/**
+ * Main Edge Function handler - Sequential processing: Quarterly first, then Annual
  */
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -788,37 +808,38 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
     
-    console.log('Starting quarterly balance sheet data fetch...');
+    console.log(`
+🚀 STARTING SEQUENTIAL BALANCE SHEET FETCHER`);
+    console.log(`📅 Time: ${getCurrentTimestamp()}`);
+    console.log(`🎯 Strategy: Automatic batch processing to avoid timeouts. Quarterly First → Then Annual.`);
     
-    // Parse request body for specific parameters
+    // Parse request parameters
     let requestedSymbols: string[] | null = null;
-    let forceRefresh: boolean = false;
     let maxSymbols: number | null = null;
-    let prioritizeRecent: boolean = true;
-    let fetchOnlyRecent: boolean = false;
+    let skipQuarterly: boolean = false;
+    let skipAnnual: boolean = false;
     
     if (req.method === 'POST') {
       try {
         const body = await req.json();
         requestedSymbols = body.symbols;
-        forceRefresh = body.forceRefresh || false;
         maxSymbols = body.maxSymbols;
-        prioritizeRecent = body.prioritizeRecent !== false; // Default to true
-        fetchOnlyRecent = body.fetchOnlyRecent || false;
+        skipQuarterly = body.skipQuarterly || false;
+        skipAnnual = body.skipAnnual || false;
       } catch {
-        // Continue with default behavior if request body parsing fails
+        // Continue with defaults if parsing fails
       }
     }
     
-    // Get symbols to process from stock_quotes table
-    const allSymbols = requestedSymbols || await getActiveSymbolsFromStockQuotes(supabaseClient);
+    // Get symbols to process
+    const allSymbols = await getActiveSymbols(supabaseClient);
     
     if (allSymbols.length === 0) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: 'No symbols found in stock_quotes table to process',
-          processed: 0
+          message: 'No symbols found to process',
+          timestamp: getCurrentTimestamp()
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -826,104 +847,182 @@ Deno.serve(async (req) => {
         }
       );
     }
-    
-    // Limit number of symbols if specified
-    const symbolsToProcess = maxSymbols ? allSymbols.slice(0, maxSymbols) : allSymbols;
-    
-    console.log(`Processing ${symbolsToProcess.length} symbols for quarterly balance sheet data (out of ${allSymbols.length} total)`);
-    
-    let processedCount = 0;
-    let successCount = 0;
-    let existsCount = 0;
-    let errorCount = 0;
-    let noDataCount = 0;
-    let totalQuartersFetched = 0;
-    const results: ProcessingResult[] = [];
-    
-    // Process symbols in small batches to respect API rate limits
-    const batchSize = 1; // Process one at a time for quarterly data to avoid overwhelming the API
-    
-    for (let i = 0; i < symbolsToProcess.length; i += batchSize) {
-      const batch = symbolsToProcess.slice(i, i + batchSize);
-      
-      try {
-        console.log(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(symbolsToProcess.length / batchSize)}`);
-        
-        // Process each symbol in the batch
-        for (const symbol of batch) {
-          const result = await processQuarterlyBalanceSheet(supabaseClient, symbol, {
-            forceRefresh,
-            prioritizeRecent,
-            fetchOnlyRecent
-          });
-          
-          results.push(result);
-          processedCount++;
-          
-          switch (result.status) {
-            case 'success':
-              successCount++;
-              totalQuartersFetched += result.quarters_fetched || 0;
-              break;
-            case 'exists':
-              existsCount++;
-              break;
-            case 'error':
-              errorCount++;
-              break;
-            case 'no_data':
-              noDataCount++;
-              break;
-          }
-          
-          // Log progress every 10 symbols
-          if (processedCount % 10 === 0) {
-            console.log(`Progress: ${processedCount}/${symbolsToProcess.length} symbols processed`);
-          }
+
+    // --- AUTOMATIC BATCHING LOGIC ---
+    let symbolsToProcess: string[];
+    let remainingSymbolsForNextRun: string[] = [];
+
+    // Case 1: User provides a specific list of symbols to process.
+    if (requestedSymbols && requestedSymbols.length > 0) {
+        console.log(`Processing a specific list of ${requestedSymbols.length} symbols provided by the user.`);
+        symbolsToProcess = maxSymbols ? requestedSymbols.slice(0, maxSymbols) : requestedSymbols;
+    } 
+    // Case 2: User does not provide a list. Automatically determine the next batch.
+    else {
+        console.log("No specific symbols requested. Automatically determining next batch...");
+
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentlyUpdated, error: fetchError } = await supabaseClient
+            .from('balance_sheet')
+            .select('symbol')
+            .in('symbol', allSymbols)
+            .gt('updated_at', twentyFourHoursAgo);
+
+        if (fetchError) {
+            console.error("Warning: Could not fetch recently updated symbols. Processing first batch as fallback.", fetchError.message);
         }
+
+        const recentlyUpdatedSymbols = new Set(recentlyUpdated?.map(r => r.symbol) || []);
+        const symbolsNeedingUpdate = allSymbols.filter(s => !recentlyUpdatedSymbols.has(s));
         
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        errorCount += batch.length;
-        console.error(`Error processing batch:`, error);
+        console.log(`Found ${allSymbols.length} total symbols. ${recentlyUpdatedSymbols.size} are up-to-date. ${symbolsNeedingUpdate.length} may need processing.`);
+
+        const BATCH_SIZE = 3;
+        const limit = maxSymbols ? maxSymbols : BATCH_SIZE;
         
-        for (const symbol of batch) {
-          results.push({
-            symbol,
-            status: 'error',
-            message: `Batch processing error: ${errorMessage}`
-          });
-          processedCount++;
-        }
-      }
-      
-      // Delay between symbols to respect API rate limits (quarterly data is more intensive)
-      if (i + batchSize < symbolsToProcess.length) {
-        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
-      }
+        symbolsToProcess = symbolsNeedingUpdate.slice(0, limit);
+        remainingSymbolsForNextRun = symbolsNeedingUpdate.slice(limit);
     }
     
+    if (symbolsToProcess.length === 0) {
+        console.log('✅ All symbols appear to be up-to-date. Nothing to process in this run.');
+        return new Response(JSON.stringify({ success: true, message: 'All symbols are up-to-date.' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+        });
+    }
+
+    console.log(`
+📈 Processing ${symbolsToProcess.length} symbols in this batch: [${symbolsToProcess.join(', ')}]`);
+    if (remainingSymbolsForNextRun.length > 0) {
+        console.log(`💡 ${remainingSymbolsForNextRun.length} more symbols will be processed in subsequent runs.`);
+    }
+    // --- END BATCHING LOGIC ---
+    
+    // Define target year range (last 5 years including current year)
+    const endYear = new Date().getFullYear();
+    const startYear = endYear - 4;
+    
+    console.log(`📊 Target Year Range: ${startYear} - ${endYear}`);
+    
+    const overallStartTime = Date.now();
+    const results: ProcessingResult[] = [];
+    const summaries: ProcessingSummary[] = [];
+    
+    // PHASE 1: QUARTERLY DATA
+    if (!skipQuarterly) {
+      console.log(`
+${'='.repeat(60)}`);
+      console.log(`🔄 PHASE 1: QUARTERLY DATA PROCESSING`);
+      console.log(`${'='.repeat(60)}`);
+      
+      const quarterlyPhase = await processFrequencyPhase(
+        supabaseClient,
+        symbolsToProcess,
+        'quarterly',
+        startYear,
+        endYear
+      );
+      
+      results.push(...quarterlyPhase.results);
+      summaries.push(quarterlyPhase.summary);
+    } else {
+      console.log(`
+⏭️ SKIPPING QUARTERLY PHASE (skipQuarterly = true)`);
+    }
+    
+    // PHASE 2: ANNUAL DATA
+    if (!skipAnnual) {
+      console.log(`
+${'='.repeat(60)}`);
+      console.log(`🔄 PHASE 2: ANNUAL DATA PROCESSING`);
+      console.log(`${'='.repeat(60)}`);
+      
+      const annualPhase = await processFrequencyPhase(
+        supabaseClient,
+        symbolsToProcess,
+        'annual',
+        startYear,
+        endYear
+      );
+      
+      results.push(...annualPhase.results);
+      summaries.push(annualPhase.summary);
+    } else {
+      console.log(`
+⏭️ SKIPPING ANNUAL PHASE (skipAnnual = true)`);
+    }
+    
+    // Calculate overall statistics
+    const overallProcessingTime = (Date.now() - overallStartTime) / 1000;
+    const quarterlyResults = results.filter(r => r.frequency === 'quarterly');
+    const annualResults = results.filter(r => r.frequency === 'annual');
+    
+    const totalRecordsSaved = summaries.reduce((sum, s) => sum + s.total_records_saved, 0);
+    const totalDuplicatesSkipped = summaries.reduce((sum, s) => sum + s.duplicate_periods_skipped, 0);
+    const totalSuccessful = summaries.reduce((sum, s) => sum + s.symbols_successful, 0);
+    const totalErrors = summaries.reduce((sum, s) => sum + s.symbols_with_errors, 0);
+    
+    console.log(`
+${'='.repeat(60)}`);
+    console.log(`🎉 SEQUENTIAL PROCESSING COMPLETED`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`⏰ Total Time: ${overallProcessingTime.toFixed(1)} seconds`);
+    console.log(`💾 Records Saved: ${totalRecordsSaved}`);
+    console.log(`⏭️ Duplicates Prevented: ${totalDuplicatesSkipped}`);
+    console.log(`✅ Successful: ${totalSuccessful} | ❌ Errors: ${totalErrors}`);
+    
+    // Build comprehensive response
     const response = {
       success: true,
-      message: 'Quarterly balance sheet data fetch completed',
-      summary: {
-        total_symbols_available: allSymbols.length,
-        symbols_processed: processedCount,
-        successful: successCount,
-        already_exists: existsCount,
-        no_data: noDataCount,
-        errors: errorCount,
-        total_quarters_fetched: totalQuartersFetched,
-        force_refresh: forceRefresh,
-        prioritize_recent: prioritizeRecent,
-        fetch_only_recent: fetchOnlyRecent,
-        timestamp: getCurrentTimestamp()
+      message: 'Sequential balance sheet data fetch completed for the batch.',
+      processing_strategy: 'automatic_batching',
+      overall_summary: {
+        total_symbols_in_system: allSymbols.length,
+        symbols_processed_in_batch: symbolsToProcess.length,
+        symbols_remaining_for_future_runs: remainingSymbolsForNextRun.length,
+        total_processing_time_seconds: overallProcessingTime,
+        total_records_saved: totalRecordsSaved,
+        total_duplicates_prevented: totalDuplicatesSkipped,
+        total_successful_operations: totalSuccessful,
+        total_errors: totalErrors,
+        phases_completed: summaries.length,
+        target_coverage: {
+          start_year: startYear,
+          end_year: endYear
+        },
       },
-      results: results.slice(-50) // Show last 50 results to avoid large responses
+      phase_summaries: summaries.map(summary => ({
+        ...summary,
+        success_rate: summary.symbols_processed > 0 ? 
+          ((summary.symbols_successful / summary.symbols_processed) * 100).toFixed(1) + '%' : '0%',
+        avg_processing_time_per_symbol: summary.symbols_processed > 0 ?
+          (summary.processing_time_seconds / summary.symbols_processed).toFixed(2) + 's' : '0s'
+      })),
+      detailed_results: {
+        quarterly: {
+          count: quarterlyResults.length,
+          successful: quarterlyResults.filter(r => r.status === 'success').length,
+          skipped: quarterlyResults.filter(r => r.status === 'skipped').length,
+          errors: quarterlyResults.filter(r => r.status === 'error').length,
+          no_data: quarterlyResults.filter(r => r.status === 'no_data').length,
+          records_saved: quarterlyResults.reduce((sum, r) => sum + (r.records_saved || 0), 0)
+        },
+        annual: {
+          count: annualResults.length,
+          successful: annualResults.filter(r => r.status === 'success').length,
+          skipped: annualResults.filter(r => r.status === 'skipped').length,
+          errors: annualResults.filter(r => r.status === 'error').length,
+          no_data: annualResults.filter(r => r.status === 'no_data').length,
+          records_saved: annualResults.reduce((sum, r) => sum + (r.records_saved || 0), 0)
+        }
+      },
+      sample_results: results.slice(-20), // Last 20 results for debugging
+      timestamp: getCurrentTimestamp(),
     };
     
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify(response, null, 2),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -931,14 +1030,14 @@ Deno.serve(async (req) => {
     );
     
   } catch (error) {
-    console.error('Error in main handler:', error);
+    console.error('❌ Error in main handler:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     
     return new Response(
       JSON.stringify({
         success: false,
         error: errorMessage,
-        message: 'Failed to process quarterly balance sheet data',
+        message: 'Failed to process sequential balance sheet data fetch',
         timestamp: getCurrentTimestamp()
       }),
       { 
