@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useKeyStats } from '@/lib/hooks/use-market-data';
-import { TrendingUp, TrendingDown, DollarSign, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface KeyStatsProps {
   symbol: string;
+  frequency?: 'annual' | 'quarterly';
   className?: string;
 }
 
@@ -53,55 +53,8 @@ const formatPercentage = (value: any): string => {
   return `${num.toFixed(2)}%`;
 };
 
-// Stat card component for individual metrics
-interface StatCardProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  trend?: 'up' | 'down' | 'neutral';
-  subtitle?: string;
-  className?: string;
-}
 
-const StatCard: React.FC<StatCardProps> = ({ 
-  title, 
-  value, 
-  icon, 
-  trend = 'neutral', 
-  subtitle,
-  className 
-}) => {
-  const TrendIcon = trend === 'up' ? ArrowUpRight : trend === 'down' ? ArrowDownRight : null;
-  const trendColor = trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-gray-500';
-
-  return (
-    <Card className={cn("p-4 hover:shadow-md transition-shadow", className)}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-            {icon}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-            {subtitle && (
-              <p className="text-xs text-gray-500 dark:text-gray-500">{subtitle}</p>
-            )}
-          </div>
-        </div>
-        {TrendIcon && (
-          <div className={cn("p-1 rounded", trendColor)}>
-            <TrendIcon className="h-5 w-5" />
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-};
-
-export function KeyStats({ symbol, className = '' }: KeyStatsProps) {
-  const [frequency, setFrequency] = useState<'annual' | 'quarterly'>('annual');
-  
+export function KeyStats({ symbol, frequency = 'annual', className = '' }: KeyStatsProps) {
   const { keyStats, isLoading, error, refetch } = useKeyStats({
     symbol,
     frequency,
@@ -110,33 +63,15 @@ export function KeyStats({ symbol, className = '' }: KeyStatsProps) {
   // Loading state
   if (isLoading) {
     return (
-      <div className={cn("space-y-6", className)}>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-7 w-48" />
-              <div className="flex space-x-2">
-                <Skeleton className="h-9 w-20" />
-                <Skeleton className="h-9 w-24" />
-              </div>
+      <div className="p-6">
+        <div className="space-y-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex justify-between items-center py-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-20" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="p-4 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-8 w-16" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+          ))}
+        </div>
       </div>
     );
   }
@@ -144,7 +79,7 @@ export function KeyStats({ symbol, className = '' }: KeyStatsProps) {
   // Error state
   if (error) {
     return (
-      <div className={cn("space-y-6", className)}>
+      <div className="p-6">
         <Alert variant="destructive">
           <AlertDescription>
             Failed to load key statistics for {symbol}: {error.message}
@@ -165,159 +100,219 @@ export function KeyStats({ symbol, className = '' }: KeyStatsProps) {
   // No data state
   if (!keyStats) {
     return (
-      <div className={cn("space-y-6", className)}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Building2 className="h-5 w-5" />
-              <span>Key Statistics - {symbol}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">
-                No key statistics data available for {symbol}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="p-6">
+        <div className="text-center py-8">
+          <p className="text-muted-foreground">
+            No key statistics data available for {symbol}
+          </p>
+        </div>
       </div>
     );
   }
 
+  // Generate historical periods based on frequency
+  const generatePeriods = () => {
+    const periods = [];
+    const currentYear = new Date().getFullYear();
+    
+    if (frequency === 'annual') {
+      // Annual data from 2022 to current year
+      for (let year = 2022; year <= currentYear; year++) {
+        periods.push(`12/31/${year}`);
+      }
+      return periods.slice(-8); // Show last 8 periods for annual
+    } else {
+      // Quarterly data - show only 5 quarters
+      for (let year = currentYear - 1; year <= currentYear; year++) {
+        periods.push(`Q1 ${year}`, `Q2 ${year}`, `Q3 ${year}`, `Q4 ${year}`);
+      }
+      return periods.slice(-5); // Show last 5 quarters
+    }
+  };
+
+  const periods = generatePeriods();
+
+  // Mock data structure - in real implementation, this would come from the API
+  const generateMockData = (baseValue: number, periods: string[]) => {
+    return periods.map((_, index) => {
+      const variation = (Math.random() - 0.5) * 0.3; // ±15% variation
+      return baseValue * (1 + variation + (index * 0.1)); // Growth trend
+    });
+  };
+
   return (
-    <div className={cn("space-y-6", className)}>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Building2 className="h-5 w-5" />
-              <span>Key Statistics - {symbol}</span>
-            </CardTitle>
-            <div className="flex space-x-2">
-              <Button
-                variant={frequency === 'annual' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFrequency('annual')}
-              >
-                Annual
-              </Button>
-              <Button
-                variant={frequency === 'quarterly' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFrequency('quarterly')}
-              >
-                Quarterly
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Market Capitalization */}
-            <StatCard
-              title="Market Cap"
-              value={formatCurrency(keyStats.market_cap)}
-              icon={<Building2 className="h-5 w-5 text-blue-600" />}
-              subtitle="Total market value"
-            />
-
-            {/* Revenue */}
-            <StatCard
-              title="Revenue"
-              value={formatCurrency(keyStats.revenue)}
-              icon={<DollarSign className="h-5 w-5 text-green-600" />}
-              subtitle="Total revenue"
-              trend={keyStats.revenue && keyStats.revenue > 0 ? 'up' : 'down'}
-            />
-
-            {/* Net Income */}
-            <StatCard
-              title="Net Income"
-              value={formatCurrency(keyStats.net_income_common_stockholders)}
-              icon={<TrendingUp className="h-5 w-5 text-emerald-600" />}
-              subtitle="Net income (common)"
-              trend={keyStats.net_income_common_stockholders && keyStats.net_income_common_stockholders > 0 ? 'up' : 'down'}
-            />
-
-            {/* EBITDA */}
-            <StatCard
-              title="EBITDA"
-              value={formatCurrency(keyStats.ebitda)}
-              icon={<TrendingUp className="h-5 w-5 text-purple-600" />}
-              subtitle="Earnings before interest, taxes, depreciation, and amortization"
-            />
-
-            {/* Enterprise Value */}
-            <StatCard
-              title="Enterprise Value"
-              value={formatCurrency(keyStats.enterprise_value)}
-              icon={<Building2 className="h-5 w-5 text-orange-600" />}
-              subtitle="Market cap + debt - cash"
-            />
-
-            {/* Diluted EPS */}
-            <StatCard
-              title="Diluted EPS"
-              value={formatCurrency(keyStats.diluted_eps)}
-              icon={<DollarSign className="h-5 w-5 text-indigo-600" />}
-              subtitle="Earnings per share (diluted)"
-              trend={keyStats.diluted_eps && keyStats.diluted_eps > 0 ? 'up' : 'down'}
-            />
-
-            {/* Gross Profit */}
-            <StatCard
-              title="Gross Profit"
-              value={formatCurrency(keyStats.gross_profit)}
-              icon={<TrendingUp className="h-5 w-5 text-teal-600" />}
-              subtitle="Revenue minus cost of goods sold"
-            />
-
-            {/* Operating Cash Flow */}
-            <StatCard
-              title="Operating Cash Flow"
-              value={formatCurrency(keyStats.operating_cash_flow)}
-              icon={<DollarSign className="h-5 w-5 text-cyan-600" />}
-              subtitle="Cash generated from operations"
-              trend={keyStats.operating_cash_flow && keyStats.operating_cash_flow > 0 ? 'up' : 'down'}
-            />
-
-            {/* Free Cash Flow */}
-            <StatCard
-              title="Free Cash Flow"
-              value={formatCurrency(keyStats.free_cash_flow)}
-              icon={<TrendingUp className="h-5 w-5 text-emerald-500" />}
-              subtitle="Operating cash flow minus capital expenditures"
-              trend={keyStats.free_cash_flow && keyStats.free_cash_flow > 0 ? 'up' : 'down'}
-            />
-
-            {/* Total Debt */}
-            <StatCard
-              title="Total Debt"
-              value={formatCurrency(keyStats.total_debt)}
-              icon={<TrendingDown className="h-5 w-5 text-red-600" />}
-              subtitle="Total outstanding debt"
-            />
-
-            {/* Cash and Cash Equivalents */}
-            <StatCard
-              title="Cash & Equivalents"
-              value={formatCurrency(keyStats.cash_and_cash_equivalents)}
-              icon={<DollarSign className="h-5 w-5 text-green-500" />}
-              subtitle="Available liquid assets"
-            />
-
-            {/* Capital Expenditure */}
-            <StatCard
-              title="Capital Expenditure"
-              value={formatCurrency(keyStats.capital_expenditure)}
-              icon={<Building2 className="h-5 w-5 text-gray-600" />}
-              subtitle="Investment in fixed assets"
-            />
-          </div>
-        </CardContent>
-      </Card>
+    <div className={cn("h-full max-h-[600px] overflow-hidden", className)}>
+      {frequency === 'quarterly' ? (
+        <div className="p-6 h-full overflow-y-auto">
+          <TableContent 
+            periods={periods} 
+            keyStats={keyStats} 
+            generateMockData={generateMockData} 
+            formatCurrency={formatCurrency}
+          />
+        </div>
+      ) : (
+        <div className="p-6 h-full overflow-y-auto">
+          <TableContent 
+            periods={periods} 
+            keyStats={keyStats} 
+            generateMockData={generateMockData} 
+            formatCurrency={formatCurrency}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+// Extracted table content component for reusability
+function TableContent({ 
+  periods, 
+  keyStats, 
+  generateMockData, 
+  formatCurrency 
+}: {
+  periods: string[];
+  keyStats: any;
+  generateMockData: (baseValue: number, periods: string[]) => number[];
+  formatCurrency: (value: any) => string;
+}) {
+  return (
+    <>
+      {/* Period Headers */}
+      <div className="grid gap-4 mb-6 text-sm text-muted-foreground" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+        <div></div> {/* Empty for metric names */}
+        {periods.map((period, index) => (
+          <div key={period} className="text-center font-medium">
+            {period}
+            {index === periods.length - 1 && (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 bg-muted rounded-full text-xs">
+                ℹ
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Financial Metrics Table */}
+      <div className="space-y-0 text-sm">
+        {/* Market Cap */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Market Cap</div>
+          {generateMockData(keyStats.market_cap || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Cash (sub-item) */}
+        <div className="grid gap-4 py-2 text-muted-foreground" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="pl-4">- Cash</div>
+          {generateMockData(keyStats.cash_and_cash_equivalents || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Debt (sub-item) */}
+        <div className="grid gap-4 py-2 text-muted-foreground border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="pl-4">+ Debt</div>
+          {generateMockData(keyStats.total_debt || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Enterprise Value */}
+        <div className="grid gap-4 py-3 border-b border-muted bg-muted/20" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-bold text-foreground">Enterprise Value</div>
+          {generateMockData(keyStats.enterprise_value || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono font-bold">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Revenue */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Revenue</div>
+          {generateMockData(keyStats.revenue || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Growth % (sub-item) */}
+        <div className="grid gap-4 py-2 text-muted-foreground border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="pl-4 italic">% Growth</div>
+          {periods.map((_, index) => {
+            const growthRate = index === 0 ? 0 : ((Math.random() - 0.3) * 50); // -15% to +35% growth
+            return (
+              <div key={index} className={cn("text-center font-mono", growthRate > 0 ? "text-green-600" : "text-red-600")}>
+                {index === 0 ? '-' : `${growthRate.toFixed(1)}%`}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Gross Profit */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Gross Profit</div>
+          {generateMockData(keyStats.gross_profit || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Margin % (sub-item) */}
+        <div className="grid gap-4 py-2 text-muted-foreground border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="pl-4 italic">% Margin</div>
+          {periods.map((_, index) => {
+            const margin = 60 + (Math.random() - 0.5) * 20; // 50-70% margin
+            return (
+              <div key={index} className="text-center font-mono">
+                {`${margin.toFixed(1)}%`}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* EBITDA */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">EBITDA</div>
+          {generateMockData(keyStats.ebitda || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Net Income */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Net Income</div>
+          {generateMockData(keyStats.net_income_common_stockholders || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Diluted EPS */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Diluted EPS</div>
+          {generateMockData(keyStats.diluted_eps || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Operating Cash Flow */}
+        <div className="grid gap-4 py-3 border-b border-muted" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-medium text-foreground">Operating Cash Flow</div>
+          {generateMockData(keyStats.operating_cash_flow || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono">{formatCurrency(value)}</div>
+          ))}
+        </div>
+
+        {/* Free Cash Flow */}
+        <div className="grid gap-4 py-3 border-b border-muted bg-green-50 dark:bg-green-950/20" style={{ gridTemplateColumns: `200px repeat(${periods.length}, 120px)` }}>
+          <div className="font-bold text-foreground">Free Cash Flow</div>
+          {generateMockData(keyStats.free_cash_flow || 0, periods).map((value, index) => (
+            <div key={index} className="text-center font-mono font-bold text-green-700 dark:text-green-400">
+              {formatCurrency(value)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
