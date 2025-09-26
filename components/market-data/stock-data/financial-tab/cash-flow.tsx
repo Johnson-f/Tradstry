@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 interface CashFlowProps {
   symbol: string;
+  frequency?: 'annual' | 'quarterly';
   className?: string;
 }
 
@@ -52,8 +53,7 @@ const getTrendIndicator = (value: any) => {
   );
 };
 
-export function CashFlow({ symbol, className = '' }: CashFlowProps) {
-  const [frequency, setFrequency] = useState<'annual' | 'quarterly'>('annual');
+export function CashFlow({ symbol, frequency = 'annual', className = '' }: CashFlowProps) {
   const [limit, setLimit] = useState(4);
   
   const { cashFlow, isLoading, error, refetch } = useCashFlow({

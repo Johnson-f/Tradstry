@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 interface IncomeStatementProps {
   symbol: string;
+  frequency?: 'annual' | 'quarterly';
   className?: string;
 }
 
@@ -63,8 +64,7 @@ const getTrendIndicator = (value: any) => {
   );
 };
 
-export function IncomeStatement({ symbol, className = '' }: IncomeStatementProps) {
-  const [frequency, setFrequency] = useState<'annual' | 'quarterly'>('annual');
+export function IncomeStatement({ symbol, frequency = 'annual', className = '' }: IncomeStatementProps) {
   const [limit, setLimit] = useState(4);
   
   const { incomeStatement, isLoading, error, refetch } = useIncomeStatement({

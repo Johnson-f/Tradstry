@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 interface BalanceSheetProps {
   symbol: string;
+  frequency?: 'annual' | 'quarterly';
   className?: string;
 }
 
@@ -41,8 +42,7 @@ const formatDate = (dateString: string): string => {
   });
 };
 
-export function BalanceSheet({ symbol, className = '' }: BalanceSheetProps) {
-  const [frequency, setFrequency] = useState<'annual' | 'quarterly'>('annual');
+export function BalanceSheet({ symbol, frequency = 'annual', className = '' }: BalanceSheetProps) {
   const [limit, setLimit] = useState(4);
   
   const { balanceSheet, isLoading, error, refetch } = useBalanceSheet({
