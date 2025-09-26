@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FinancialTabHolder } from './holder-tab';
 
 interface FinancialTabProps {
   symbol: string;
@@ -10,18 +10,10 @@ interface FinancialTabProps {
 
 export function FinancialTab({ symbol, className = '' }: FinancialTabProps) {
   return (
-    <div className={`space-y-6 ${className}`}>
-      <Card>
-        <CardHeader>
-          <CardTitle>Financial Data for {symbol}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Financial statements and analysis will be displayed here.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+    <FinancialTabHolder 
+      symbol={symbol} 
+      className={className}
+    />
   );
 }
 
