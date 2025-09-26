@@ -4,6 +4,8 @@
 -- Stores OHLCV data by INTERVAL ONLY - ranges are calculated dynamically
 -- Eliminates duplicate data by storing each interval once and querying by time ranges
 
+DROP TABLE historical_prices CASCADE;
+
 CREATE TABLE IF NOT EXISTS historical_prices (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,

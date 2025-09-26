@@ -19,11 +19,11 @@ CREATE TABLE IF NOT EXISTS company_info (
     logo VARCHAR(500),  -- URL to company logo
 
     -- Real-time price data
-    price DECIMAL(15,4),  -- Current stock price
-    pre_market_price DECIMAL(15,4),  -- Pre-market trading price
-    after_hours_price DECIMAL(15,4),  -- After-hours trading price
-    change DECIMAL(15,4),  -- Price change from previous close
-    percent_change DECIMAL(8,4),  -- Percentage change from previous close
+    price DECIMAL(15,4),  -- Current stock price (remove)
+    pre_market_price DECIMAL(15,4),  -- Pre-market trading price (remove)
+    after_hours_price DECIMAL(15,4),  -- After-hours trading price (remove)
+    change DECIMAL(15,4),  -- Price change from previous close (remove)
+    percent_change DECIMAL(8,4),  -- Percentage change from previous close (remove)
     open DECIMAL(15,4),  -- Opening price
     high DECIMAL(15,4),  -- Day's high price
     low DECIMAL(15,4),  -- Day's low price

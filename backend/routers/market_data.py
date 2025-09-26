@@ -757,13 +757,14 @@ async def get_earnings_calendar_logos_batch(
 @router.get("/historical/{symbol}", response_model=List[HistoricalPrice])
 async def get_historical_prices(
     symbol: str,
-    time_range: str = Query(..., description="Time range (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max)"),
-    time_interval: str = Query(..., description="Time interval (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)"),
+    time_range: str = Query(..., description="Time range (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max) - calculated dynamically"),
+    time_interval: str = Query(..., description="Time interval (5m, 15m, 30m, 1h, 1d, 1wk, 1mo) - stored intervals only"),
     data_provider: Optional[str] = Query(None, description="Data provider filter"),
     limit: Optional[int] = Query(1000, ge=1, le=10000, description="Maximum number of records to return"),
     token: str = Depends(get_token)
 ):
-    """Get historical price data for a symbol with specific range and interval."""
+    """Get historical price data with NEW ARCHITECTURE: range calculated dynamically from intervals.
+    No duplicate storage - massive space savings."""
     validated_symbol = validate_symbol(symbol)
     service = MarketDataService()
     request = HistoricalPriceRequest(
@@ -782,7 +783,7 @@ async def get_historical_prices_summary(
     symbol: str,
     token: str = Depends(get_token)
 ):
-    """Get all available range/interval combinations for a specific symbol."""
+    """Get all available intervals for a specific symbol (no ranges stored - calculated dynamically)."""
     validated_symbol = validate_symbol(symbol)
     service = MarketDataService()
     request = HistoricalPriceSummaryRequest(symbol=validated_symbol)
@@ -807,19 +808,17 @@ async def get_latest_historical_prices(
 @router.get("/historical/{symbol}/range", response_model=List[HistoricalPriceRange])
 async def get_historical_price_range(
     symbol: str,
-    time_range: str = Query(..., description="Time range (1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max)"),
-    time_interval: str = Query(..., description="Time interval (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)"),
+    time_interval: str = Query(..., description="Time interval (5m, 15m, 30m, 1h, 1d, 1wk, 1mo) - stored intervals only"),
     start_date: datetime = Query(..., description="Start date for the range query"),
     end_date: datetime = Query(..., description="End date for the range query"),
     data_provider: Optional[str] = Query(None, description="Data provider filter"),
     token: str = Depends(get_token)
 ):
-    """Get historical prices within a specific date range for analysis."""
+    """Get historical prices within a specific date range - NO time_range parameter needed."""
     validated_symbol = validate_symbol(symbol)
     service = MarketDataService()
     request = HistoricalPriceRangeRequest(
         symbol=validated_symbol,
-        time_range=time_range,
         time_interval=time_interval,
         start_date=start_date,
         end_date=end_date,

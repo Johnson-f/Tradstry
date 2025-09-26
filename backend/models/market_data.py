@@ -665,13 +665,12 @@ class SymbolSaveResponse(BaseModel):
 # =====================================================
 
 class HistoricalPrice(BaseModel):
-    id: int
+    id: int  # Matches SERIAL (INTEGER) in database
     symbol: str
     exchange_id: Optional[int] = None
     timestamp_utc: datetime
     date_only: date
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -686,8 +685,7 @@ class HistoricalPrice(BaseModel):
 
 
 class HistoricalPriceSummary(BaseModel):
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     data_count: int
     earliest_date: datetime
     latest_date: datetime
@@ -696,8 +694,7 @@ class HistoricalPriceSummary(BaseModel):
 
 class LatestHistoricalPrice(BaseModel):
     timestamp_utc: datetime
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -740,8 +737,7 @@ class LatestHistoricalPriceRequest(BaseModel):
 
 class HistoricalPriceRangeRequest(BaseModel):
     symbol: str
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     start_date: datetime
     end_date: datetime
     data_provider: Optional[str] = None

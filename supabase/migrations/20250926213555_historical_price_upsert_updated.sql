@@ -1,3 +1,12 @@
+-- ----------------------------------------------------------------------------
+-- Function: upsert_historical_price
+-- Redesigned for interval-only storage - NO time_range parameter
+-- Stores data by interval only, ranges calculated dynamically by query logic
+-- Eliminates duplicate data storage across different ranges
+-- ----------------------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS upsert_historical_price CASCADE;
+
 CREATE OR REPLACE FUNCTION upsert_historical_price(
     p_symbol TEXT,
     p_timestamp_utc TIMESTAMP,
