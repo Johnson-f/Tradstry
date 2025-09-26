@@ -5,6 +5,14 @@
 -- Eliminates massive data duplication by storing intervals only
 -- ----------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS get_historical_prices CASCADE;
+
+DROP FUNCTION IF EXISTS get_historical_prices_by_symbol CASCADE;
+
+DROP FUNCTION IF EXISTS get_latest_historical_prices CASCADE;
+
+DROP FUNCTION IF EXISTS get_historical_price_range CASCADE;
+
 CREATE OR REPLACE FUNCTION get_historical_prices(
     p_symbol TEXT,
     p_time_range TEXT,
@@ -12,7 +20,7 @@ CREATE OR REPLACE FUNCTION get_historical_prices(
     p_data_provider TEXT DEFAULT NULL,
     p_limit INTEGER DEFAULT 1000
 ) RETURNS TABLE (
-    id INTEGER,
+    id BIGINT,
     symbol VARCHAR(20),
     exchange_id INTEGER,
     timestamp_utc TIMESTAMP,

@@ -1,5 +1,9 @@
 "use client";
 
+// Historical Data Tab - Updated for new interval-only architecture
+// Supports intervals: 5m, 15m, 30m, 1h, 1d, 1wk, 1mo
+// Ranges are calculated dynamically on the backend
+
 import React, { useState, useMemo } from 'react';
 import { useHistoricalPrices } from '@/lib/hooks/use-market-data';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,9 +13,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 
-// Time range configurations
+// Time range configurations - Updated for new architecture
 type TimeRange = '1d' | '5d' | '1mo' | '6mo' | 'ytd' | '1y' | '5y' | 'max';
-type TimeInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1wk' | '1mo';
+type TimeInterval = '5m' | '15m' | '30m' | '1h' | '1d' | '1wk' | '1mo'; // NEW: Only supported intervals
 
 interface TimeRangeConfig {
   label: string;
@@ -25,18 +29,16 @@ const TIME_RANGES: TimeRangeConfig[] = [
     label: '1D',
     range: '1d',
     availableIntervals: [
-      { value: '1m', label: '1 minute' },
       { value: '5m', label: '5 minutes' },
       { value: '15m', label: '15 minutes' },
       { value: '30m', label: '30 minutes' },
     ],
-    defaultInterval: '1m',
+    defaultInterval: '5m', // Changed from 1m to 5m
   },
   {
     label: '5D',
     range: '5d',
     availableIntervals: [
-      { value: '5m', label: '5 minutes' },
       { value: '15m', label: '15 minutes' },
       { value: '30m', label: '30 minutes' },
       { value: '1h', label: '1 hour' },
@@ -47,30 +49,26 @@ const TIME_RANGES: TimeRangeConfig[] = [
     label: '1M',
     range: '1mo',
     availableIntervals: [
-      { value: '30m', label: '30 minutes' },
       { value: '1h', label: '1 hour' },
-      { value: '4h', label: '4 hours' },
       { value: '1d', label: '1 day' },
     ],
-    defaultInterval: '1h',
+    defaultInterval: '1h', // Removed 4h (not supported)
   },
   {
     label: '6M',
     range: '6mo',
     availableIntervals: [
-      { value: '1h', label: '1 hour' },
       { value: '1d', label: '1 day' },
-      { value: '1mo', label: '1 month' },
+      { value: '1wk', label: '1 week' },
     ],
-    defaultInterval: '1d',
+    defaultInterval: '1d', // Removed 1h for longer ranges
   },
   {
     label: 'YTD',
     range: 'ytd',
     availableIntervals: [
-      { value: '1h', label: '1 hour' },
       { value: '1d', label: '1 day' },
-      { value: '1mo', label: '1 month' },
+      { value: '1wk', label: '1 week' },
     ],
     defaultInterval: '1d',
   },
@@ -78,8 +76,8 @@ const TIME_RANGES: TimeRangeConfig[] = [
     label: '1Y',
     range: '1y',
     availableIntervals: [
-      { value: '1h', label: '1 hour' },
       { value: '1d', label: '1 day' },
+      { value: '1wk', label: '1 week' },
       { value: '1mo', label: '1 month' },
     ],
     defaultInterval: '1d',
@@ -88,10 +86,10 @@ const TIME_RANGES: TimeRangeConfig[] = [
     label: '5Y',
     range: '5y',
     availableIntervals: [
-      { value: '1d', label: '1 day' },
+      { value: '1wk', label: '1 week' },
       { value: '1mo', label: '1 month' },
     ],
-    defaultInterval: '1d',
+    defaultInterval: '1wk', // Changed from 1d to 1wk for better data coverage
   },
   {
     label: 'MAX',
@@ -142,16 +140,14 @@ export function HistoricalDataTab({ symbol, className = '' }: HistoricalDataTabP
       .sort((a, b) => b.date.getTime() - a.date.getTime()); // Most recent first
   }, [historicalPrices]);
 
-  // Format date based on interval
+  // Format date based on interval - Updated for new architecture
   const formatDate = (date: Date): string => {
     switch (selectedInterval) {
-      case '1m':
       case '5m':
       case '15m':
       case '30m':
         return format(date, 'MMM d, yyyy, hh:mm a');
       case '1h':
-      case '4h':
         return format(date, 'MMM d, yyyy, hh:mm a');
       case '1d':
         return format(date, 'MMM d, yyyy');

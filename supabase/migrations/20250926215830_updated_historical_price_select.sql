@@ -4,6 +4,13 @@
 -- Ranges are calculated dynamically based on timestamps - no duplicate storage
 -- Eliminates massive data duplication by storing intervals only
 -- ----------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS get_historical_prices CASCADE;
+
+DROP FUNCTION IF EXISTS get_historical_prices_by_symbol CASCADE;
+
+DROP FUNCTION IF EXISTS get_latest_historical_prices CASCADE;
+
+DROP FUNCTION IF EXISTS get_historical_price_range CASCADE;
 
 CREATE OR REPLACE FUNCTION get_historical_prices(
     p_symbol TEXT,

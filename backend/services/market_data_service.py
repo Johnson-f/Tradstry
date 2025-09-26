@@ -888,7 +888,8 @@ class MarketDataService:
         request: HistoricalPriceRequest, 
         access_token: str = None
     ) -> List[HistoricalPrice]:
-        """Get historical price data with range/interval filtering."""
+        """Get historical price data with NEW ARCHITECTURE: 
+        Range calculated dynamically from intervals - massive storage savings."""
         async def operation(client=None):
             if client is None:
                 client = await self.get_authenticated_client(access_token)
@@ -912,7 +913,7 @@ class MarketDataService:
         request: HistoricalPriceSummaryRequest, 
         access_token: str = None
     ) -> List[HistoricalPriceSummary]:
-        """Get all available range/interval combinations for a specific symbol."""
+        """Get all available intervals for a specific symbol (no ranges stored - calculated dynamically)."""
         async def operation(client=None):
             if client is None:
                 client = await self.get_authenticated_client(access_token)
@@ -951,14 +952,13 @@ class MarketDataService:
         request: HistoricalPriceRangeRequest, 
         access_token: str = None
     ) -> List[HistoricalPriceRange]:
-        """Get historical prices within a specific date range for analysis."""
+        """Get historical prices within a specific date range - NO time_range parameter needed."""
         async def operation(client=None):
             if client is None:
                 client = await self.get_authenticated_client(access_token)
             
             params = {
                 'p_symbol': request.symbol.upper(),
-                'p_time_range': request.time_range,
                 'p_time_interval': request.time_interval,
                 'p_start_date': request.start_date.isoformat(),
                 'p_end_date': request.end_date.isoformat(),
