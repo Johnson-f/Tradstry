@@ -22,7 +22,9 @@ from models.market_data import (
     Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, 
     AddWatchlistItemRequest, DeleteWatchlistItemRequest, WatchlistResponse, DeleteResponse,
     # Stock peers models
-    StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest
+    StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest,
+    # Financial Statements
+    IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStats, KeyStatsRequest
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -1049,6 +1051,86 @@ async def clear_watchlist(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear watchlist: {str(e)}")
+
+
+# =====================================================
+# FINANCIAL STATEMENTS ENDPOINTS
+# =====================================================
+
+@router.get("/financials/income-statement/{symbol}", response_model=List[IncomeStatement])
+async def get_income_statement(
+    symbol: str,
+    frequency: str = Query(..., description="Frequency of the report (annual or quarterly)"),
+    limit: int = Query(10, description="Number of periods to return"),
+    token: str = Depends(get_token)
+):
+    """Get income statement data for a stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        request = FinancialStatementRequest(symbol=validated_symbol, frequency=frequency, limit=limit)
+        result = await service.get_income_statement(request, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get income statement: {str(e)}")
+
+@router.get("/financials/balance-sheet/{symbol}", response_model=List[BalanceSheet])
+async def get_balance_sheet(
+    symbol: str,
+    frequency: str = Query(..., description="Frequency of the report (annual or quarterly)"),
+    limit: int = Query(10, description="Number of periods to return"),
+    token: str = Depends(get_token)
+):
+    """Get balance sheet data for a stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        request = FinancialStatementRequest(symbol=validated_symbol, frequency=frequency, limit=limit)
+        result = await service.get_balance_sheet(request, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get balance sheet: {str(e)}")
+
+@router.get("/financials/cash-flow/{symbol}", response_model=List[CashFlow])
+async def get_cash_flow(
+    symbol: str,
+    frequency: str = Query(..., description="Frequency of the report (annual or quarterly)"),
+    limit: int = Query(10, description="Number of periods to return"),
+    token: str = Depends(get_token)
+):
+    """Get cash flow data for a stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        request = FinancialStatementRequest(symbol=validated_symbol, frequency=frequency, limit=limit)
+        result = await service.get_cash_flow(request, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get cash flow: {str(e)}")
+
+@router.get("/financials/key-stats/{symbol}", response_model=Optional[KeyStats])
+async def get_key_stats(
+    symbol: str,
+    frequency: str = Query("annual", description="Frequency of the report (annual or quarterly)"),
+    token: str = Depends(get_token)
+):
+    """Get key stats for a stock."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = MarketDataService()
+        request = KeyStatsRequest(symbol=validated_symbol, frequency=frequency)
+        result = await service.get_key_stats(request, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get key stats: {str(e)}")
 
 
 # =====================================================

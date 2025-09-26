@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest, KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -1255,6 +1255,78 @@ export function usePeersPaginated(
     total: paginatedData?.total ?? 0,
     offset: paginatedData?.offset ?? 0,
     limit: paginatedData?.limit ?? 10,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// FINANCIAL STATEMENTS HOOKS
+// =====================================================
+
+export function useKeyStats(params: KeyStatsRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['financials', 'key-stats', params.symbol, params.frequency],
+    queryFn: () => marketDataService.getKeyStats(params),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!params.symbol,
+  });
+
+  return {
+    keyStats: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useIncomeStatement(params: FinancialStatementRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['financials', 'income-statement', params.symbol, params.frequency, params.limit],
+    queryFn: () => marketDataService.getIncomeStatement(params),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!params.symbol,
+  });
+
+  return {
+    incomeStatement: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useBalanceSheet(params: FinancialStatementRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['financials', 'balance-sheet', params.symbol, params.frequency, params.limit],
+    queryFn: () => marketDataService.getBalanceSheet(params),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!params.symbol,
+  });
+
+  return {
+    balanceSheet: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useCashFlow(params: FinancialStatementRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['financials', 'cash-flow', params.symbol, params.frequency, params.limit],
+    queryFn: () => marketDataService.getCashFlow(params),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!params.symbol,
+  });
+
+  return {
+    cashFlow: data ?? [],
     isLoading,
     error: error as Error | null,
     refetch,

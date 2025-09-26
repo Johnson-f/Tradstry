@@ -208,6 +208,12 @@ export const apiConfig = {
         comparison: (symbol: string) => `/market-data/peers/${symbol}/comparison`,
         paginated: (symbol: string) => `/market-data/peers/${symbol}/paginated`,
       },
+      financials: {
+        keyStats: (symbol: string) => `/market-data/financials/key-stats/${symbol}`,
+        incomeStatement: (symbol: string) => `/market-data/financials/income-statement/${symbol}`,
+        balanceSheet: (symbol: string) => `/market-data/financials/balance-sheet/${symbol}`,
+        cashFlow: (symbol: string) => `/market-data/financials/cash-flow/${symbol}`,
+      },
     },
     // AI Summary endpoints (Static - Production)
     aiSummary: {

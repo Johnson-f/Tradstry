@@ -25,7 +25,8 @@ from .market_data import (
     PriceMovement, TopMover, EarningsRequest, CompanySearchRequest,
     CompanySectorRequest, CompanySearchTermRequest, MarketNewsRequest,
     FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest, NewsSearchRequest,
-    StockQuoteRequest, FundamentalRequest, PriceMovementRequest, TopMoversRequest
+    StockQuoteRequest, FundamentalRequest, PriceMovementRequest, TopMoversRequest,
+    IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest
 )
 
 from .trade_notes import (
@@ -58,7 +59,9 @@ __all__ = [
     'CompanySearchRequest', 'CompanySectorRequest', 'CompanySearchTermRequest',
     'MarketNewsRequest', 'FilteredNewsRequest', 'SymbolNewsRequest', 
     'NewsStatsRequest', 'NewsSearchRequest', 'StockQuoteRequest', 
-    'FundamentalRequest', 'PriceMovementRequest', 'TopMoversRequest'
+    'FundamentalRequest', 'PriceMovementRequest', 'TopMoversRequest',
+    'IncomeStatement', 'BalanceSheet', 'CashFlow', 'FinancialStatementRequest',
+    'KeyStats', 'KeyStatsRequest'
 
     # Trade Note models
     'TradeNoteBase', 'TradeNoteCreate', 'TradeNoteUpdate', 'TradeNoteInDB',

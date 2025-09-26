@@ -64,6 +64,12 @@ import type {
   PeerComparison,
   StockPeersRequest,
   PeersPaginatedRequest,
+  FinancialStatementRequest,
+  KeyStatsRequest,
+  KeyStats,
+  IncomeStatement,
+  BalanceSheet,
+  CashFlow,
 } from "@/lib/types/market-data";
 
 // Raw API response type for market movers (strings that need to be transformed to numbers)
@@ -680,6 +686,38 @@ class MarketDataService {
   async getHealthCheck(): Promise<MarketDataHealth> {
     return apiClient.get<MarketDataHealth>(
       apiConfig.endpoints.marketData.health
+    );
+  }
+
+  // =====================================================
+  // FINANCIAL STATEMENTS ENDPOINTS
+  // =====================================================
+
+  async getKeyStats(params: KeyStatsRequest): Promise<KeyStats | null> {
+    return apiClient.get<KeyStats | null>(
+      apiConfig.endpoints.marketData.financials.keyStats(params.symbol),
+      { params: { frequency: params.frequency } }
+    );
+  }
+
+  async getIncomeStatement(params: FinancialStatementRequest): Promise<IncomeStatement[]> {
+    return apiClient.get<IncomeStatement[]>(
+      apiConfig.endpoints.marketData.financials.incomeStatement(params.symbol),
+      { params: { frequency: params.frequency, limit: params.limit } }
+    );
+  }
+
+  async getBalanceSheet(params: FinancialStatementRequest): Promise<BalanceSheet[]> {
+    return apiClient.get<BalanceSheet[]>(
+      apiConfig.endpoints.marketData.financials.balanceSheet(params.symbol),
+      { params: { frequency: params.frequency, limit: params.limit } }
+    );
+  }
+
+  async getCashFlow(params: FinancialStatementRequest): Promise<CashFlow[]> {
+    return apiClient.get<CashFlow[]>(
+      apiConfig.endpoints.marketData.financials.cashFlow(params.symbol),
+      { params: { frequency: params.frequency, limit: params.limit } }
     );
   }
 }
