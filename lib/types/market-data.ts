@@ -721,3 +721,213 @@ export interface PeersPaginatedRequest {
   sort_column?: string;
   sort_direction?: string;
 }
+
+// =====================================================
+// FINANCIAL STATEMENTS TYPES
+// =====================================================
+
+export interface FinancialStatementRequest {
+  symbol: string;
+  frequency: 'annual' | 'quarterly';
+  limit?: number;
+}
+
+export interface KeyStatsRequest {
+  symbol: string;
+  frequency?: 'annual' | 'quarterly';
+}
+
+export interface KeyStats {
+  market_cap?: number;
+  cash_and_cash_equivalents?: number;
+  total_debt?: number;
+  enterprise_value?: number;
+  revenue?: number;
+  gross_profit?: number;
+  ebitda?: number;
+  net_income_common_stockholders?: number;
+  diluted_eps?: number;
+  operating_cash_flow?: number;
+  capital_expenditure?: number;
+  free_cash_flow?: number;
+}
+
+export interface IncomeStatement {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  total_revenue?: number;
+  operating_revenue?: number;
+  cost_of_revenue?: number;
+  gross_profit?: number;
+  reconciled_cost_of_revenue?: number;
+  operating_expense?: number;
+  selling_general_and_administrative?: number;
+  research_and_development?: number;
+  total_expenses?: number;
+  reconciled_depreciation?: number;
+  operating_income?: number;
+  total_operating_income_as_reported?: number;
+  net_non_operating_interest_income_expense?: number;
+  non_operating_interest_income?: number;
+  non_operating_interest_expense?: number;
+  other_income_expense?: number;
+  other_non_operating_income_expenses?: number;
+  pretax_income?: number;
+  net_income_common_stockholders?: number;
+  net_income_attributable_to_parent_shareholders?: number;
+  net_income_including_non_controlling_interests?: number;
+  net_income_continuous_operations?: number;
+  diluted_ni_available_to_common_stockholders?: number;
+  net_income_from_continuing_discontinued_operation?: number;
+  net_income_from_continuing_operation_net_minority_interest?: number;
+  normalized_income?: number;
+  interest_income?: number;
+  interest_expense?: number;
+  net_interest_income?: number;
+  basic_eps?: number;
+  diluted_eps?: number;
+  basic_average_shares?: number;
+  diluted_average_shares?: number;
+  ebit?: number;
+  ebitda?: number;
+  normalized_ebitda?: number;
+  tax_provision?: number;
+  tax_rate_for_calcs?: number;
+  tax_effect_of_unusual_items?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BalanceSheet {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  total_assets?: number;
+  total_current_assets?: number;
+  cash_cash_equivalents_and_short_term_investments?: number;
+  cash_and_cash_equivalents?: number;
+  cash?: number;
+  cash_equivalents?: number;
+  other_short_term_investments?: number;
+  receivables?: number;
+  accounts_receivable?: number;
+  other_receivables?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  total_non_current_assets?: number;
+  net_ppe?: number;
+  gross_ppe?: number;
+  properties?: number;
+  land_and_improvements?: number;
+  machinery_furniture_equipment?: number;
+  other_properties?: number;
+  leases?: number;
+  accumulated_depreciation?: number;
+  investments_and_advances?: number;
+  investment_in_financial_assets?: number;
+  available_for_sale_securities?: number;
+  other_investments?: number;
+  non_current_deferred_assets?: number;
+  non_current_deferred_taxes_assets?: number;
+  other_non_current_assets?: number;
+  net_tangible_assets?: number;
+  tangible_book_value?: number;
+  total_liabilities?: number;
+  total_current_liabilities?: number;
+  payables_and_accrued_expenses?: number;
+  payables?: number;
+  accounts_payable?: number;
+  total_tax_payable?: number;
+  income_tax_payable?: number;
+  current_debt_and_capital_lease_obligation?: number;
+  current_debt?: number;
+  commercial_paper?: number;
+  other_current_borrowings?: number;
+  current_capital_lease_obligation?: number;
+  current_deferred_liabilities?: number;
+  current_deferred_revenue?: number;
+  other_current_liabilities?: number;
+  total_non_current_liabilities?: number;
+  long_term_debt_and_capital_lease_obligation?: number;
+  long_term_debt?: number;
+  long_term_capital_lease_obligation?: number;
+  trade_and_other_payables_non_current?: number;
+  other_non_current_liabilities?: number;
+  capital_lease_obligations?: number;
+  total_debt?: number;
+  net_debt?: number;
+  total_equity?: number;
+  stockholders_equity?: number;
+  capital_stock?: number;
+  common_stock?: number;
+  retained_earnings?: number;
+  gains_losses_not_affecting_retained_earnings?: number;
+  other_equity_adjustments?: number;
+  common_stock_equity?: number;
+  shares_issued?: number;
+  ordinary_shares_number?: number;
+  treasury_shares_number?: number;
+  working_capital?: number;
+  invested_capital?: number;
+  total_capitalization?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CashFlow {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  operating_cash_flow?: number;
+  net_income_from_continuing_operations?: number;
+  depreciation_and_amortization?: number;
+  deferred_income_tax?: number;
+  stock_based_compensation?: number;
+  other_non_cash_items?: number;
+  change_in_working_capital?: number;
+  change_in_receivables?: number;
+  change_in_inventory?: number;
+  change_in_payables_and_accrued_expense?: number;
+  change_in_other_current_assets?: number;
+  change_in_other_current_liabilities?: number;
+  change_in_other_working_capital?: number;
+  investing_cash_flow?: number;
+  net_investment_purchase_and_sale?: number;
+  purchase_of_investment?: number;
+  sale_of_investment?: number;
+  net_ppe_purchase_and_sale?: number;
+  purchase_of_ppe?: number;
+  net_business_purchase_and_sale?: number;
+  purchase_of_business?: number;
+  net_other_investing_changes?: number;
+  capital_expenditure?: number;
+  financing_cash_flow?: number;
+  net_issuance_payments_of_debt?: number;
+  net_long_term_debt_issuance?: number;
+  long_term_debt_issuance?: number;
+  long_term_debt_payments?: number;
+  net_short_term_debt_issuance?: number;
+  short_term_debt_issuance?: number;
+  short_term_debt_payments?: number;
+  net_common_stock_issuance?: number;
+  common_stock_issuance?: number;
+  common_stock_payments?: number;
+  cash_dividends_paid?: number;
+  net_other_financing_charges?: number;
+  issuance_of_capital_stock?: number;
+  issuance_of_debt?: number;
+  repayment_of_debt?: number;
+  repurchase_of_capital_stock?: number;
+  end_cash_position?: number;
+  changes_in_cash?: number;
+  beginning_cash_position?: number;
+  free_cash_flow?: number;
+  income_tax_paid_supplemental_data?: number;
+  interest_paid_supplemental_data?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
