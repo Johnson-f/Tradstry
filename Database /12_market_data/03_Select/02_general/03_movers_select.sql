@@ -1,4 +1,7 @@
--- 1. GET TOP GAINERS
+-- REDESIGNED MARKET MOVERS SELECT FUNCTIONS - NO PRICE DATA
+-- Functions return symbols and rankings only - use stock_quotes for real-time prices
+
+-- 1. GET TOP GAINERS (symbols and rankings only)
 
 -- Get top gainers for a specific date
 CREATE OR REPLACE FUNCTION get_top_gainers(
@@ -8,9 +11,7 @@ CREATE OR REPLACE FUNCTION get_top_gainers(
 RETURNS TABLE (
     symbol VARCHAR(20),
     name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    rank_position INTEGER,
     fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
 LANGUAGE plpgsql
@@ -20,21 +21,18 @@ BEGIN
     SELECT 
         m.symbol,
         m.name,
-        m.price,
-        m.change,
-        m.percent_change,
+        m.rank_position,
         m.fetch_timestamp
     FROM market_movers m
     WHERE m.mover_type = 'gainer'
       AND m.data_date = p_data_date
-      AND m.percent_change > 0
-    ORDER BY m.percent_change DESC
+    ORDER BY m.rank_position ASC NULLS LAST
     LIMIT p_limit;
 END;
 $$;
 
 
--- 2. GET TOP LOSERS
+-- 2. GET TOP LOSERS (symbols and rankings only)
 
 -- Get top losers for a specific date
 CREATE OR REPLACE FUNCTION get_top_losers(
@@ -44,9 +42,7 @@ CREATE OR REPLACE FUNCTION get_top_losers(
 RETURNS TABLE (
     symbol VARCHAR(20),
     name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    rank_position INTEGER,
     fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
 LANGUAGE plpgsql
@@ -56,20 +52,17 @@ BEGIN
     SELECT 
         m.symbol,
         m.name,
-        m.price,
-        m.change,
-        m.percent_change,
+        m.rank_position,
         m.fetch_timestamp
     FROM market_movers m
     WHERE m.mover_type = 'loser'
       AND m.data_date = p_data_date
-      AND m.percent_change < 0
-    ORDER BY m.percent_change ASC
+    ORDER BY m.rank_position ASC NULLS LAST
     LIMIT p_limit;
 END;
 $$;
 
--- 3. GET MOST ACTIVE STOCKS
+-- 3. GET MOST ACTIVE STOCKS (symbols and rankings only)
 
 -- Get most active stocks for a specific date
 CREATE OR REPLACE FUNCTION get_most_active(
@@ -79,9 +72,7 @@ CREATE OR REPLACE FUNCTION get_most_active(
 RETURNS TABLE (
     symbol VARCHAR(20),
     name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    rank_position INTEGER,
     fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
 LANGUAGE plpgsql
@@ -91,43 +82,40 @@ BEGIN
     SELECT 
         m.symbol,
         m.name,
-        m.price,
-        m.change,
-        m.percent_change,
+        m.rank_position,
         m.fetch_timestamp
     FROM market_movers m
     WHERE m.mover_type = 'active'
       AND m.data_date = p_data_date
-    ORDER BY ABS(m.change) DESC -- Sort by absolute change for actives
+    ORDER BY m.rank_position ASC NULLS LAST
     LIMIT p_limit;
 END;
 $$;
 
 
--- USUAGE EXAMPLE 
+-- REDESIGNED USAGE EXAMPLES - SYMBOLS AND RANKINGS ONLY
 
 /*
--- Get top 10 gainers for today
+-- Get top 10 gainers for today (symbols and rankings)
+SELECT * FROM get_top_gainers();
 
-
--- Get top 15 losers for a specific date
+-- Get top 15 losers for a specific date (symbols and rankings)
 SELECT * FROM get_top_losers('2024-01-15', 15);
 
--- Get most active stocks
+-- Get most active stocks (symbols and rankings)
 SELECT * FROM get_most_active();
 
--- Get all gainers for today
-SELECT * FROM get_market_movers_by_type('gainer');
+-- To get actual prices, join with stock_quotes table:
+SELECT 
+    mm.symbol, 
+    mm.name, 
+    mm.rank_position,
+    sq.price, 
+    sq.change, 
+    sq.percent_change
+FROM get_top_gainers() mm
+LEFT JOIN stock_quotes sq ON mm.symbol = sq.symbol;
 
--- Get market mover data for AAPL
-SELECT * FROM get_market_mover_by_symbol('AAPL');
-
--- Get summary of all market movers
-SELECT * FROM get_market_movers_summary();
-
--- Get paginated results (page 2, 10 items per page)
-SELECT * FROM get_market_movers_paginated('gainer', CURRENT_DATE, 10, 10, 'percent_change', 'DESC');
-
--- Get all market movers sorted by symbol
-SELECT * FROM get_market_movers_paginated(NULL, CURRENT_DATE, 0, 100, 'symbol', 'ASC');
+-- Get all movers for a symbol across different categories
+SELECT * FROM market_movers WHERE symbol = 'AAPL' AND data_date = CURRENT_DATE;
 */

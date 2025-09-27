@@ -464,20 +464,18 @@ class TopMover(BaseModel):
 # =====================================================
 
 class MarketMover(BaseModel):
+    """REDESIGNED: Market mover without price data - use stock_quotes for real-time prices"""
     symbol: str
     name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    rank_position: Optional[int] = None
     fetch_timestamp: Optional[datetime] = None
 
 
 class MarketMoverWithLogo(BaseModel):
+    """REDESIGNED: Market mover with logo but without price data"""
     symbol: str
     name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    rank_position: Optional[int] = None
     fetch_timestamp: Optional[datetime] = None
     logo: Optional[str] = None
 
