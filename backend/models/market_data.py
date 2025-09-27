@@ -208,18 +208,13 @@ class NewsSearch(BaseModel):
 # =====================================================
 
 class StockQuote(BaseModel):
-    symbol: str
+    """REDESIGNED: Stock quote without price data - use external APIs for real-time prices"""
+    symbol: str  # Ticker symbol stored as TEXT (not number)
     quote_date: date
-    previous_close: Optional[Decimal] = None
-    open_price: Optional[Decimal] = None
-    high_price: Optional[Decimal] = None
-    low_price: Optional[Decimal] = None
-    current_price: Optional[Decimal] = None
-    volume: Optional[int] = None
-    price_change: Optional[Decimal] = None
-    price_change_percent: Optional[Decimal] = None
     quote_timestamp: Optional[datetime] = None
     data_provider: Optional[str] = None
+    exchange_id: Optional[int] = None
+    # REMOVED: All price fields - frontend gets prices from external APIs
 
 
 class FundamentalData(BaseModel):
@@ -589,7 +584,8 @@ class QuoteResponse(BaseModel):
 
 
 class StockQuoteRequest(BaseModel):
-    symbol: str
+    """REDESIGNED: Request for stock symbol metadata (no price data)"""
+    symbol: str  # Ticker symbol as TEXT (not number)
     quote_date: Optional[date] = None
     data_provider: Optional[str] = None
 
@@ -814,15 +810,16 @@ class Watchlist(BaseModel):
 
 
 class WatchlistItem(BaseModel):
+    """REDESIGNED: Watchlist item without price data - use stock_quotes for real-time prices"""
     id: int
-    symbol: str
+    symbol: str  # Ticker symbol stored as TEXT (not number)
     company_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     added_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class WatchlistWithItems(BaseModel):
+    """REDESIGNED: Watchlist with items (no price data included)"""
     id: int
     name: str
     created_at: datetime
@@ -839,11 +836,10 @@ class CreateWatchlistRequest(BaseModel):
 
 
 class AddWatchlistItemRequest(BaseModel):
+    """REDESIGNED: Add watchlist item request without price data"""
     watchlist_id: int
-    symbol: str
+    symbol: str  # Ticker symbol as TEXT (not number)
     company_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
 
 
 class DeleteWatchlistItemRequest(BaseModel):
@@ -873,30 +869,25 @@ class DeleteResponse(BaseModel):
 # =====================================================
 
 class StockPeer(BaseModel):
+    """REDESIGNED: Stock peer without price data - use stock_quotes for real-time prices"""
     peer_symbol: str
     peer_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     logo: Optional[str] = None
     fetch_timestamp: Optional[datetime] = None
 
 
 class PeerComparison(BaseModel):
+    """REDESIGNED: Peer comparison metadata - frontend joins with stock_quotes for prices"""
     symbol: str
     name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     logo: Optional[str] = None
-    is_main_stock: bool
-    peer_rank: Optional[int] = None
+    is_main_stock: Optional[bool] = None
+    fetch_timestamp: Optional[datetime] = None
 
 
 class StockPeersRequest(BaseModel):
     symbol: str
     data_date: Optional[date] = None
-    limit: Optional[int] = 20
 
 
 class PeersPaginatedRequest(BaseModel):
@@ -904,5 +895,5 @@ class PeersPaginatedRequest(BaseModel):
     data_date: Optional[date] = None
     offset: Optional[int] = 0
     limit: Optional[int] = 20
-    sort_column: Optional[str] = "percent_change"
-    sort_direction: Optional[str] = "DESC"
+    sort_column: Optional[str] = "symbol"  # Changed from percent_change to symbol
+    sort_direction: Optional[str] = "ASC"  # Changed from DESC to ASC

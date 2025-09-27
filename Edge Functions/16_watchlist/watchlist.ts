@@ -7,59 +7,86 @@ const corsHeaders = {
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   };
 
+// REDESIGNED: Watchlist item without price data
 interface WatchlistItem {
   id: number;
+  symbol: string;  // Ticker symbol as TEXT (not number)
+  company_name?: string;
+  // REMOVED: price, percent_change (use stock_quotes for real-time prices)
+}
+
+// Interface for company metadata fetching
+interface CompanyMetadata {
   symbol: string;
   company_name?: string;
-  price?: number;
-  percent_change?: number;
+  source: 'finnhub' | 'alpha_vantage';
 }
 
-interface AlphaVantageQuote {
-  "01. symbol": string;
-  "02. open": string;
-  "03. high": string;
-  "04. low": string;
-  "05. price": string;
-  "06. volume": string;
-  "07. latest trading day": string;
-  "08. previous close": string;
-  "09. change": string;
-  "10. change percent": string;
-}
-
-interface AlphaVantageResponse {
-  "Global Quote": AlphaVantageQuote;
-  "Error Message"?: string;
-  "Note"?: string;
-}
-
-interface FinnhubQuote {
-  c: number;  // Current price
-  d: number;  // Change
-  dp: number; // Percent change
-  h: number;  // High price of the day
-  l: number;  // Low price of the day
-  o: number;  // Open price of the day
-  pc: number; // Previous close price
-  t: number;  // Timestamp
-}
-
-interface StockQuoteData {
-  price: number;
-  percent_change: number;
-  company_name?: string;
-  source: 'alphavantage' | 'finnhub';
-}
-
+// Interface for Alpha Vantage company overview (for company names only)
 interface AlphaVantageOverviewResponse {
   Symbol: string;
   Name: string;
-  Description: string;
-  [key: string]: any;
+  Description?: string;
 }
 
+// Interface for Finnhub company profile (for company names only)  
 interface FinnhubCompanyProfile {
+  ticker: string;
+  name: string;
+  country?: string;
+  currency?: string;
+  exchange?: string;
+}
+
+/**
+ * Validate ticker symbol format and ensure proper text storage
+ */
+function validateAndFormatSymbol(symbol: string): string | null {
+  if (!symbol) return null;
+  
+  // Ensure symbol is stored as TEXT (not number) and properly formatted
+  const symbolText = symbol.toString().toUpperCase().trim();
+  
+  // Validate that symbol looks like a ticker (letters/digits, reasonable length)
+  if (!/^[A-Z0-9._-]{1,20}$/.test(symbolText)) {
+    console.warn(`Invalid ticker symbol format: ${symbolText}`);
+    return null;
+  }
+  
+  return symbolText;
+}
+
+/**
+ * Fetch company name from Alpha Vantage
+ */
+async function fetchAlphaVantageCompanyName(symbol: string, apiKey: string): Promise<string | null> {
+  try {
+    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${apiKey}`;
+    const response = await fetch(url);
+    const data: AlphaVantageOverviewResponse = await response.json();
+    
+    return data.Name || null;
+  } catch (error) {
+    console.error(`Alpha Vantage company name error for ${symbol}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetch company name from Finnhub  
+ */
+async function fetchFinnhubCompanyName(symbol: string, apiKey: string): Promise<string | null> {
+  try {
+    const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${apiKey}`;
+    const response = await fetch(url);
+    const data: FinnhubCompanyProfile = await response.json();
+    
+    return data.name || null;
+  } catch (error) {
+    console.error(`Finnhub company name error for ${symbol}:`, error);
+    return null;
+  }
+}
   country: string;
   currency: string;
   exchange: string;

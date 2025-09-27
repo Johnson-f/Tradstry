@@ -29,20 +29,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
 };
 
-// Types for stock quote data
+// REDESIGNED: Stock quote metadata without price data
 interface StockQuote {
-  symbol: string;
+  symbol: string;  // Ticker symbol as TEXT (not number)
   exchange_id?: number;
-  price?: number;
-  change_amount?: number;
-  change_percent?: number;
-  volume?: number;
-  open_price?: number;
-  high_price?: number;
-  low_price?: number;
-  previous_close?: number;
   quote_timestamp: string; // ISO timestamp
   data_provider: string;
+  // REMOVED: All price fields - use external APIs for real-time prices
 }
 
 interface ProviderConfig {

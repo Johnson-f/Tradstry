@@ -1,6 +1,5 @@
--- =====================================================
 -- WATCHLIST TABLE
--- =====================================================
+
 -- This table stores user-created watchlists.
 -- Each user can have multiple watchlists to organize stocks.
 
@@ -22,19 +21,17 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_user_id_name ON watchlist(user_id, name
 -- Add table comment
 COMMENT ON TABLE watchlist IS 'Stores user-created watchlists for organizing stocks.';
 
--- =====================================================
--- WATCHLIST ITEMS TABLE
--- =====================================================
+-- WATCHLIST ITEMS TABLE - REDESIGNED: NO PRICE DATA
+
 -- This table stores the individual stocks within each watchlist.
+-- REMOVED: price, percent_change (use stock_quotes for real-time prices)
 
 CREATE TABLE IF NOT EXISTS watchlist_items (
     id SERIAL PRIMARY KEY,
     watchlist_id INTEGER NOT NULL REFERENCES watchlist(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    symbol VARCHAR(20) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,  -- Ticker symbol stored as TEXT (not number)
     company_name VARCHAR(255),
-    price DECIMAL(15, 4),
-    percent_change DECIMAL(8, 4),
     added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
@@ -50,12 +47,13 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_items_watchlist_id_symbol ON watchlist_
 
 
 -- Add table comment
-COMMENT ON TABLE watchlist_items IS 'Stores the individual stocks that belong to each watchlist.';
+COMMENT ON TABLE watchlist_items IS 'Stores the individual stocks that belong to each watchlist - REDESIGNED: no price data, ticker symbols as text.';
+COMMENT ON COLUMN watchlist_items.symbol IS 'Stock ticker symbol (stored as TEXT, not number)';
+COMMENT ON COLUMN watchlist_items.company_name IS 'Company name for display purposes';
 
 
--- =====================================================
+
 -- RLS (ROW LEVEL SECURITY) POLICIES
--- =====================================================
 
 -- Enable RLS for both tables
 ALTER TABLE watchlist ENABLE ROW LEVEL SECURITY;
@@ -81,3 +79,46 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON watchlist_items TO authenticated;
 
 GRANT USAGE, SELECT ON SEQUENCE watchlist_id_seq TO authenticated;
 GRANT USAGE, SELECT ON SEQUENCE watchlist_items_id_seq TO authenticated;
+
+
+
+-- WATCHLIST ITEMS TABLE MIGRATION
+
+-- Add missing updated_at column to existing watchlist_items table
+-- Add the updated_at column if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'watchlist_items' 
+        AND column_name = 'updated_at'
+    ) THEN
+        ALTER TABLE watchlist_items 
+        ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        
+        -- Update existing records to have the current timestamp
+        UPDATE watchlist_items 
+        SET updated_at = COALESCE(added_at, CURRENT_TIMESTAMP) 
+        WHERE updated_at IS NULL;
+        
+        RAISE NOTICE 'Added updated_at column to watchlist_items table';
+    ELSE
+        RAISE NOTICE 'updated_at column already exists in watchlist_items table';
+    END IF;
+END $$;
+
+-- Create a trigger to automatically update the updated_at column
+CREATE OR REPLACE FUNCTION update_watchlist_items_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop the trigger if it exists and create it
+DROP TRIGGER IF EXISTS trigger_update_watchlist_items_updated_at ON watchlist_items;
+CREATE TRIGGER trigger_update_watchlist_items_updated_at
+    BEFORE UPDATE ON watchlist_items
+    FOR EACH ROW
+    EXECUTE FUNCTION update_watchlist_items_updated_at();

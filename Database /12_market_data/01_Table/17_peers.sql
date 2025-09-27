@@ -1,33 +1,29 @@
 -- =====================================================
--- STOCK PEERS TABLE
+-- STOCK PEERS TABLE - REDESIGNED: NO PRICE DATA
 -- =====================================================
 -- Table to store stock peers data (companies in similar sectors/industries)
+-- REMOVED: price, change, percent_change (use stock_quotes for real-time prices)
 -- Data source: finance-query.onrender.com API endpoints
 
 CREATE TABLE IF NOT EXISTS stock_peers (
     id SERIAL PRIMARY KEY,
     
-    -- Stock identification
+    -- Stock identification (ticker symbols stored as text, not numbers)
     symbol VARCHAR(20) NOT NULL,
     name VARCHAR(255),
     
-    -- Price data (remove)
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4), -- Store as decimal (e.g., 1.76 for 1.76%)
-    
-    -- Logo/branding
+    -- Logo/branding (kept for UI display)
     logo VARCHAR(500), -- URL to company logo
     
-    -- Peer relationship
+    -- Peer relationship tracking
     peer_of VARCHAR(20) NOT NULL, -- The symbol this is a peer of
     
-    -- Data tracking
+    -- Data tracking and metadata
     data_provider VARCHAR(50) DEFAULT 'finance_query',
     fetch_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     data_date DATE DEFAULT CURRENT_DATE,
     
-    -- Metadata
+    -- Audit timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
@@ -49,8 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_stock_peers_peer_of_date ON stock_peers(peer_of, 
 CREATE INDEX IF NOT EXISTS idx_stock_peers_symbol_peer ON stock_peers(symbol, peer_of);
 CREATE INDEX IF NOT EXISTS idx_stock_peers_fetch_timestamp ON stock_peers(fetch_timestamp);
 
--- Performance index for sorting by price change
-CREATE INDEX IF NOT EXISTS idx_stock_peers_percent_change ON stock_peers(percent_change DESC);
+-- Performance index for peer lookups (no price sorting needed)
+CREATE INDEX IF NOT EXISTS idx_stock_peers_logo ON stock_peers(logo) WHERE logo IS NOT NULL;
 
 -- =====================================================
 -- CONSTRAINTS AND TRIGGERS
@@ -154,14 +150,20 @@ IMPLEMENTATION NOTES:
 -- SAMPLE USAGE QUERIES
 -- =====================================================
 
--- Get all peers for a specific stock (e.g., AAPL)
--- SELECT * FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE ORDER BY percent_change DESC;
+-- Get all peers for a specific stock (e.g., AAPL) - symbols and names only
+-- SELECT symbol, name, logo FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE ORDER BY symbol;
 
--- Get peers with positive performance
--- SELECT * FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE AND percent_change > 0 ORDER BY percent_change DESC;
+-- Get peers with logos for UI display
+-- SELECT symbol, name, logo FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE AND logo IS NOT NULL ORDER BY name;
 
--- Get top performing peers
--- SELECT * FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE ORDER BY percent_change DESC LIMIT 5;
+-- Get all peer symbols for price lookup in stock_quotes
+-- SELECT symbol FROM stock_peers WHERE peer_of = 'AAPL' AND data_date = CURRENT_DATE;
 
 -- Get all peer relationships for multiple stocks
--- SELECT * FROM stock_peers WHERE peer_of IN ('AAPL', 'MSFT', 'GOOGL') AND data_date = CURRENT_DATE ORDER BY peer_of, percent_change DESC;
+-- SELECT peer_of, symbol, name, logo FROM stock_peers WHERE peer_of IN ('AAPL', 'MSFT', 'GOOGL') AND data_date = CURRENT_DATE ORDER BY peer_of, symbol;
+
+-- Join with stock_quotes for real-time prices
+-- SELECT sp.symbol, sp.name, sp.logo, sq.price, sq.change, sq.percent_change 
+-- FROM stock_peers sp 
+-- LEFT JOIN stock_quotes sq ON sp.symbol = sq.symbol 
+-- WHERE sp.peer_of = 'AAPL' AND sp.data_date = CURRENT_DATE;

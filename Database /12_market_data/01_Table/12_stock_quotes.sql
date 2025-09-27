@@ -1,30 +1,20 @@
--- Stock Quotes Table - GLOBAL SHARED DATA
--- This table stores market data accessible to ALL users
+-- STOCK QUOTES TABLE - REDESIGNED: NO PRICE DATA
+-- This table stores stock symbol metadata and tracking information
 -- NO user ownership - data is shared across the entire platform
--- Stores real-time and historical stock quote data from market data providers
+-- REMOVED: All price-related fields (use external APIs for real-time prices)
 
 CREATE TABLE IF NOT EXISTS stock_quotes (
     id SERIAL PRIMARY KEY,
-    symbol VARCHAR(20) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,  -- Ticker symbol stored as TEXT (not number)
     exchange_id INTEGER REFERENCES exchanges(id),
 
-    -- Core market data (shared globally)
-    price DECIMAL(15,4),
-    change_amount DECIMAL(15,4),
-    change_percent DECIMAL(7,4),
-    volume BIGINT,
-    open_price DECIMAL(15,4),
-    high_price DECIMAL(15,4),
-    low_price DECIMAL(15,4),
-    previous_close DECIMAL(15,4),
-
-    -- Metadata
+    -- Metadata only (no price data)
     quote_timestamp TIMESTAMP NOT NULL,
     data_provider VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    -- Ensure one quote per symbol per timestamp per provider
+    -- Ensure one tracking record per symbol per timestamp per provider
     UNIQUE(symbol, quote_timestamp, data_provider)
 );
 
@@ -34,20 +24,13 @@ CREATE INDEX IF NOT EXISTS idx_stock_quotes_provider ON stock_quotes (data_provi
 CREATE INDEX IF NOT EXISTS idx_stock_quotes_timestamp ON stock_quotes (quote_timestamp DESC);
 
 -- Add table comment
-COMMENT ON TABLE stock_quotes IS 'Real-time and historical stock quote data from multiple market data providers';
+COMMENT ON TABLE stock_quotes IS 'Stock symbol metadata and tracking information - REDESIGNED: no price data, ticker symbols as text';
 
 -- Add column comments
-COMMENT ON COLUMN stock_quotes.symbol IS 'Stock ticker symbol (e.g., AAPL, GOOGL)';
-COMMENT ON COLUMN stock_quotes.exchange_id IS 'Foreign key to exchanges table';
-COMMENT ON COLUMN stock_quotes.price IS 'Current/last traded price';
-COMMENT ON COLUMN stock_quotes.change_amount IS 'Price change from previous close';
-COMMENT ON COLUMN stock_quotes.change_percent IS 'Percentage change from previous close';
-COMMENT ON COLUMN stock_quotes.volume IS 'Trading volume for the period';
-COMMENT ON COLUMN stock_quotes.open_price IS 'Opening price for the trading period';
-COMMENT ON COLUMN stock_quotes.high_price IS 'Highest price during the period';
-COMMENT ON COLUMN stock_quotes.low_price IS 'Lowest price during the period';
-COMMENT ON COLUMN stock_quotes.previous_close IS 'Previous trading session close price';
-COMMENT ON COLUMN stock_quotes.quote_timestamp IS 'Timestamp when this quote was captured';
+COMMENT ON COLUMN stock_quotes.symbol IS 'Stock ticker symbol stored as TEXT (not number) - e.g., AAPL, GOOGL';
+COMMENT ON COLUMN stock_quotes.quote_timestamp IS 'Timestamp when this symbol was tracked/updated';
+COMMENT ON COLUMN stock_quotes.data_provider IS 'Data provider source for symbol validation';
+COMMENT ON COLUMN stock_quotes.exchange_id IS 'Reference to exchange where symbol is traded';
 COMMENT ON COLUMN stock_quotes.data_provider IS 'Market data provider (alpha_vantage, finnhub, polygon, etc.)';
 
 -- =====================================================

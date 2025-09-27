@@ -1,5 +1,6 @@
 -- =====================================================
--- WATCHLIST SELECT FUNCTIONS
+-- REDESIGNED WATCHLIST SELECT FUNCTIONS - NO PRICE DATA
+-- Functions return symbols and metadata only - use stock_quotes for real-time prices
 -- =====================================================
 
 -- Get all watchlists for the authenticated user
@@ -15,21 +16,36 @@ AS $$
     ORDER BY w.name;
 $$;
 
--- Get all items in a specific watchlist (only if user owns the watchlist)
+-- Get all items in a specific watchlist - REDESIGNED: NO PRICE DATA
+-- (only if user owns the watchlist)
 CREATE OR REPLACE FUNCTION get_watchlist_items(p_watchlist_id INTEGER)
 RETURNS TABLE (
     id INTEGER,
     symbol VARCHAR(20),
     company_name VARCHAR(255),
-    price DECIMAL(15, 4),
-    percent_change DECIMAL(8, 4),
-    added_at TIMESTAMPTZ
+    added_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
 )
 LANGUAGE SQL
 SECURITY DEFINER
 SET search_path = public
 AS $$
-    SELECT wi.id, wi.symbol, wi.company_name, wi.price, wi.percent_change, wi.added_at
+    SELECT wi.id, wi.symbol, wi.company_name, wi.added_at, wi.updated_at
+    FROM watchlist_items wi
+    INNER JOIN watchlist w ON wi.watchlist_id = w.id
+    WHERE wi.watchlist_id = p_watchlist_id
+    AND w.user_id = auth.uid()
+    ORDER BY wi.symbol;
+$$;
+
+-- Get watchlist item symbols only (for batch price lookups)
+CREATE OR REPLACE FUNCTION get_watchlist_symbols(p_watchlist_id INTEGER)
+RETURNS TABLE (symbol VARCHAR(20))
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT wi.symbol
     FROM watchlist_items wi
     INNER JOIN watchlist w ON wi.watchlist_id = w.id
     WHERE wi.watchlist_id = p_watchlist_id

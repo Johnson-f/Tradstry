@@ -1,6 +1,7 @@
 -- =====================================================
--- STOCK QUOTES FUNCTION
--- Fetches stock quote data from stock_quotes table
+-- REDESIGNED STOCK QUOTES FUNCTION - NO PRICE DATA
+-- Fetches stock symbol metadata and tracking information only
+-- Use external APIs for real-time prices
 -- =====================================================
 
 CREATE OR REPLACE FUNCTION get_stock_quotes(
@@ -11,32 +12,18 @@ CREATE OR REPLACE FUNCTION get_stock_quotes(
 RETURNS TABLE (
     symbol VARCHAR(20),
     quote_date DATE,
-    previous_close DECIMAL(15,4),
-    open_price DECIMAL(15,4),
-    high_price DECIMAL(15,4),
-    low_price DECIMAL(15,4),
-    current_price DECIMAL(15,4),
-    volume BIGINT,
-    price_change DECIMAL(15,4),
-    price_change_percent DECIMAL(7,4),
     quote_timestamp TIMESTAMP,
-    data_provider VARCHAR(50)
+    data_provider VARCHAR(50),
+    exchange_id INTEGER
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         UPPER(p_symbol)::VARCHAR(20) as symbol,
         p_quote_date as quote_date,
-        sq.previous_close,
-        sq.open_price,
-        sq.high_price,
-        sq.low_price,
-        sq.price as current_price,
-        sq.volume,
-        sq.change_amount as price_change,
-        sq.change_percent as price_change_percent,
         sq.quote_timestamp,
-        sq.data_provider
+        sq.data_provider,
+        sq.exchange_id
     FROM stock_quotes sq
     WHERE sq.symbol = UPPER(p_symbol)
     AND DATE(sq.quote_timestamp) = p_quote_date
@@ -99,28 +86,36 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================
--- USAGE EXAMPLES
+-- REDESIGNED USAGE EXAMPLES - NO PRICE DATA
 -- =====================================================
 
 /*
--- Get stock quotes for Apple on a specific date
+-- Get stock symbol metadata for Apple on a specific date (NO PRICE DATA)
 SELECT * FROM get_stock_quotes('AAPL', '2024-01-15');
 
--- Get current day stock quotes
+-- Get current day stock tracking info
 SELECT * FROM get_stock_quotes('MSFT');
 
--- Get quotes from a specific provider
+-- Get tracking info from a specific provider
 SELECT * FROM get_stock_quotes('GOOGL', CURRENT_DATE, 'alpha_vantage');
 
--- Get fundamental data for Apple
+-- Get all tracked symbols for batch price lookups
+SELECT * FROM get_tracked_symbols();
+
+-- Get tracked symbols from specific provider
+SELECT * FROM get_tracked_symbols('alpha_vantage', 500);
+
+-- Get fundamental data for Apple (unchanged)
 SELECT * FROM get_fundamental_data('AAPL');
 
 -- Get fundamental data from a specific provider
 SELECT * FROM get_fundamental_data('MSFT', 'fmp');
 
--- Combine both functions in a single query
+-- Combine symbol metadata with fundamental data (NO PRICE DATA)
 SELECT 
-    sq.*,
+    sq.symbol,
+    sq.quote_timestamp,
+    sq.data_provider,
     fd.pe_ratio,
     fd.market_cap,
     fd.dividend_yield,
@@ -128,4 +123,9 @@ SELECT
     fd.fundamental_period
 FROM get_stock_quotes('AAPL', '2024-01-15') sq
 FULL OUTER JOIN get_fundamental_data('AAPL') fd ON sq.symbol = fd.symbol;
+
+-- Frontend usage pattern: Get symbols → fetch prices from external APIs
+-- 1. Get tracked symbols: SELECT * FROM get_tracked_symbols();
+-- 2. Frontend calls external API for real-time prices using the symbols
+-- 3. Frontend combines symbol metadata with real-time prices from APIs
 */
