@@ -1,7 +1,8 @@
--- Company Information Table - GLOBAL SHARED DATA
+-- Company Information Table - REDESIGNED: SELECTIVE REAL-TIME DATA
 -- This table stores company information accessible to ALL users
 -- NO user ownership - data is shared across the entire platform
--- Stores fundamental company data from market data providers
+-- Stores selective price data: REMOVED price, pre_market_price, after_hours_price, change, percent_change
+-- KEPT: open, high, low, volume, avg_volume, year_high, year_low
 
 CREATE TABLE IF NOT EXISTS company_info (
     id SERIAL PRIMARY KEY,
@@ -18,12 +19,7 @@ CREATE TABLE IF NOT EXISTS company_info (
     employees INTEGER,
     logo VARCHAR(500),  -- URL to company logo
 
-    -- Real-time price data
-    price DECIMAL(15,4),  -- Current stock price (remove)
-    pre_market_price DECIMAL(15,4),  -- Pre-market trading price (remove)
-    after_hours_price DECIMAL(15,4),  -- After-hours trading price (remove)
-    change DECIMAL(15,4),  -- Price change from previous close (remove)
-    percent_change DECIMAL(8,4),  -- Percentage change from previous close (remove)
+    -- Daily price data (kept for trading analysis)
     open DECIMAL(15,4),  -- Opening price
     high DECIMAL(15,4),  -- Day's high price
     low DECIMAL(15,4),  -- Day's low price
@@ -79,15 +75,15 @@ CREATE TABLE IF NOT EXISTS company_info (
     UNIQUE(symbol, data_provider)
 );
 
--- Create indexes separately (PostgreSQL style)
+-- Create indexes separately (PostgreSQL style) - Updated for selective real-time data
 CREATE INDEX IF NOT EXISTS idx_company_info_symbol ON company_info (symbol);
 CREATE INDEX IF NOT EXISTS idx_company_info_sector ON company_info (sector);
 CREATE INDEX IF NOT EXISTS idx_company_info_industry ON company_info (industry);
 CREATE INDEX IF NOT EXISTS idx_company_info_market_cap ON company_info (market_cap DESC);
 CREATE INDEX IF NOT EXISTS idx_company_info_provider ON company_info (data_provider);
 CREATE INDEX IF NOT EXISTS idx_company_info_sector_industry ON company_info (sector, industry);
-CREATE INDEX IF NOT EXISTS idx_company_info_price ON company_info (price DESC);
-CREATE INDEX IF NOT EXISTS idx_company_info_volume ON company_info (volume DESC);
+-- Removed: idx_company_info_price (no longer exists)
+CREATE INDEX IF NOT EXISTS idx_company_info_volume ON company_info (volume DESC);  -- RESTORED
 CREATE INDEX IF NOT EXISTS idx_company_info_pe_ratio ON company_info (pe_ratio);
 CREATE INDEX IF NOT EXISTS idx_company_info_yield ON company_info (yield DESC);
 CREATE INDEX IF NOT EXISTS idx_company_info_ytd_return ON company_info (ytd_return DESC);
@@ -96,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_company_info_earnings_date ON company_info (earni
 CREATE INDEX IF NOT EXISTS idx_company_info_ex_dividend ON company_info (ex_dividend);
 
 -- Add table comment
-COMMENT ON TABLE company_info IS 'Comprehensive company information including real-time prices, financial metrics, dividends, and performance returns from multiple market data providers';
+COMMENT ON TABLE company_info IS 'Company information with selective price data - REMOVED: price, pre_market_price, after_hours_price, change, percent_change - KEPT: open, high, low, volume, avg_volume';
 
 -- Add column comments
 COMMENT ON COLUMN company_info.symbol IS 'Stock ticker symbol';
@@ -110,12 +106,7 @@ COMMENT ON COLUMN company_info.about IS 'Company business description and overvi
 COMMENT ON COLUMN company_info.employees IS 'Number of employees';
 COMMENT ON COLUMN company_info.logo IS 'URL to company logo image';
 
--- Real-time price data comments
-COMMENT ON COLUMN company_info.price IS 'Current stock price';
-COMMENT ON COLUMN company_info.pre_market_price IS 'Pre-market trading price';
-COMMENT ON COLUMN company_info.after_hours_price IS 'After-hours trading price';
-COMMENT ON COLUMN company_info.change IS 'Price change from previous close';
-COMMENT ON COLUMN company_info.percent_change IS 'Percentage change from previous close';
+-- Daily price data comments (kept for trading analysis)
 COMMENT ON COLUMN company_info.open IS 'Opening price for current/last trading day';
 COMMENT ON COLUMN company_info.high IS 'Highest price for current/last trading day';
 COMMENT ON COLUMN company_info.low IS 'Lowest price for current/last trading day';
