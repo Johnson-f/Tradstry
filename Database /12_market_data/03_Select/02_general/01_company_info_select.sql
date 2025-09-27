@@ -1,7 +1,7 @@
--- COMPANY_INFO SELECT FUNCTIONS
--- Functions to retrieve company information data
+-- COMPANY_INFO SELECT FUNCTIONS - SELECTIVE REAL-TIME DATA
+-- Functions retrieve selective price data (NO current price, change, percent_change)
 
--- 1. GET COMPANY INFO BY SYMBOL
+-- 1. GET COMPANY INFO BY SYMBOL - WITH DAILY PRICE DATA
 CREATE OR REPLACE FUNCTION get_company_info_by_symbol(
     p_symbol VARCHAR(20),
     p_data_provider VARCHAR(50) DEFAULT NULL
@@ -19,12 +19,7 @@ RETURNS TABLE (
     employees INTEGER,
     logo VARCHAR(500),
 
-    -- Real-time price data
-    price DECIMAL(15,4),
-    pre_market_price DECIMAL(15,4),
-    after_hours_price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    -- Daily price data (kept for trading analysis)
     open DECIMAL(15,4),
     high DECIMAL(15,4),
     low DECIMAL(15,4),
@@ -81,8 +76,7 @@ BEGIN
             ci.id, ci.symbol, ci.exchange_id, ci.name, ci.company_name,
             ci.exchange, ci.sector, ci.industry, ci.about, ci.employees, ci.logo,
 
-            -- Real-time price data
-            ci.price, ci.pre_market_price, ci.after_hours_price, ci.change, ci.percent_change,
+            -- Daily price data (kept for trading analysis)
             ci.open, ci.high, ci.low, ci.year_high, ci.year_low,
 
             -- Volume and trading metrics
@@ -115,8 +109,7 @@ BEGIN
             ci.id, ci.symbol, ci.exchange_id, ci.name, ci.company_name,
             ci.exchange, ci.sector, ci.industry, ci.about, ci.employees, ci.logo,
 
-            -- Real-time price data
-            ci.price, ci.pre_market_price, ci.after_hours_price, ci.change, ci.percent_change,
+            -- Daily price data (kept for trading analysis)
             ci.open, ci.high, ci.low, ci.year_high, ci.year_low,
 
             -- Volume and trading metrics
@@ -149,7 +142,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 2. GET COMPANIES BY SECTOR AND/OR INDUSTRY
+-- 2. GET COMPANIES BY SECTOR AND/OR INDUSTRY - WITH SELECTIVE PRICE DATA
 
 CREATE OR REPLACE FUNCTION get_companies_by_sector_industry(
     p_sector VARCHAR(100) DEFAULT NULL,
@@ -166,10 +159,10 @@ RETURNS TABLE (
     sector VARCHAR(100),
     industry VARCHAR(100),
     market_cap BIGINT,
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    high DECIMAL(15,4),
+    low DECIMAL(15,4),
     volume BIGINT,
+    avg_volume BIGINT,
     pe_ratio DECIMAL(10,2),
     yield DECIMAL(7,4),
     ytd_return DECIMAL(8,4),
@@ -181,8 +174,8 @@ BEGIN
     RETURN QUERY
     SELECT
         ci.id, ci.symbol, ci.name, ci.company_name, ci.exchange,
-        ci.sector, ci.industry, ci.market_cap, ci.price, ci.change, ci.percent_change,
-        ci.volume, ci.pe_ratio, ci.yield, ci.ytd_return, ci.year_return,
+        ci.sector, ci.industry, ci.market_cap, ci.high, ci.low, ci.volume, ci.avg_volume,
+        ci.pe_ratio, ci.yield, ci.ytd_return, ci.year_return,
         ci.data_provider, ci.updated_at
     FROM company_info ci
     WHERE (p_sector IS NULL OR ci.sector = p_sector)
@@ -193,7 +186,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 3. SEARCH COMPANIES BY NAME OR SYMBOL
+-- 3. SEARCH COMPANIES BY NAME OR SYMBOL - WITH SELECTIVE PRICE DATA
 
 CREATE OR REPLACE FUNCTION search_companies(
     p_search_term VARCHAR(255),
@@ -208,9 +201,9 @@ RETURNS TABLE (
     sector VARCHAR(100),
     industry VARCHAR(100),
     market_cap BIGINT,
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    high DECIMAL(15,4),
+    low DECIMAL(15,4),
+    volume BIGINT,
     pe_ratio DECIMAL(10,2),
     yield DECIMAL(7,4),
     data_provider VARCHAR(50)
@@ -219,7 +212,7 @@ BEGIN
     RETURN QUERY
     SELECT
         ci.id, ci.symbol, ci.name, ci.company_name, ci.exchange,
-        ci.sector, ci.industry, ci.market_cap, ci.price, ci.change, ci.percent_change,
+        ci.sector, ci.industry, ci.market_cap, ci.high, ci.low, ci.volume,
         ci.pe_ratio, ci.yield, ci.data_provider
     FROM company_info ci
     WHERE
@@ -238,7 +231,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Get company info by multiple symbols (for quotes)
+-- Get company info by multiple symbols (for quotes) - WITH SELECTIVE PRICE DATA
 CREATE OR REPLACE FUNCTION get_company_info_by_symbols(
     p_symbols TEXT[] DEFAULT NULL,
     p_data_provider VARCHAR(50) DEFAULT NULL
@@ -256,12 +249,7 @@ RETURNS TABLE (
     employees INTEGER,
     logo VARCHAR(500),
 
-    -- Real-time price data
-    price DECIMAL(15,4),
-    pre_market_price DECIMAL(15,4),
-    after_hours_price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
+    -- Daily price data (kept for trading analysis)
     open DECIMAL(15,4),
     high DECIMAL(15,4),
     low DECIMAL(15,4),
@@ -329,9 +317,7 @@ BEGIN
     SELECT
         ci.id, ci.symbol, ci.exchange_id, ci.name, ci.company_name, ci.exchange,
         ci.sector, ci.industry, ci.about, ci.employees, ci.logo,
-        ci.price, ci.pre_market_price, ci.after_hours_price, ci.change, ci.percent_change,
-        ci.open, ci.high, ci.low, ci.year_high, ci.year_low,
-        ci.volume, ci.avg_volume,
+        ci.open, ci.high, ci.low, ci.year_high, ci.year_low, ci.volume, ci.avg_volume,
         ci.market_cap, ci.beta, ci.pe_ratio, ci.eps,
         ci.dividend, ci.yield, ci.ex_dividend, ci.last_dividend,
         ci.net_assets, ci.nav, ci.expense_ratio,
@@ -350,7 +336,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- USAGE EXAMPLES
+-- USAGE EXAMPLES - SELECTIVE REAL-TIME DATA
 /*
 -- Get specific company by symbol
 SELECT * FROM get_company_info_by_symbol('AAPL');
@@ -358,8 +344,8 @@ SELECT * FROM get_company_info_by_symbol('AAPL');
 -- Search for companies
 SELECT * FROM search_companies('Apple', 10);
 
--- Get quotes for multiple symbols
-SELECT symbol, name, price, change, percent_change, high, low, volume, market_cap, logo
+-- Get selective price info for multiple symbols (NO current price, change, percent_change)
+SELECT symbol, name, open, high, low, volume, year_high, year_low, avg_volume, market_cap, pe_ratio, logo
 FROM get_company_info_by_symbols(ARRAY['AAPL', 'GOOGL', 'MSFT']);
 */
 -- Get basic company info

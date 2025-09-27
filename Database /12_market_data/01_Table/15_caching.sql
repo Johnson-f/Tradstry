@@ -3,12 +3,14 @@
 -- NO user ownership - data is shared across the entire platform
 -- Stores OHLC (Open, High, Low, Close) and volume data for quick access
 
+-- Eliminate this table 
+
 CREATE TABLE IF NOT EXISTS caching (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
     exchange_id INTEGER REFERENCES exchanges(id),
 
-    -- Core OHLC data (shared globally)
+    -- Core OHLC data (shared globally) 
     open DECIMAL(15,4),
     high DECIMAL(15,4),
     low DECIMAL(15,4),

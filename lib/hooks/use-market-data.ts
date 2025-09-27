@@ -694,7 +694,7 @@ export function useActives(count: number = 25) {
 }
 
 // =====================================================
-// SYMBOL HISTORICAL DATA HOOK
+// SYMBOL HISTORICAL DATA HOOK - very import hook
 // =====================================================
 
 export function useSymbolHistoricalData(symbol: string, enabled: boolean = true) {

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS stock_peers (
     symbol VARCHAR(20) NOT NULL,
     name VARCHAR(255),
     
-    -- Price data
+    -- Price data (remove)
     price DECIMAL(15,4),
     change DECIMAL(15,4),
     percent_change DECIMAL(8,4), -- Store as decimal (e.g., 1.76 for 1.76%)

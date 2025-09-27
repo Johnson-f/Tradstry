@@ -45,6 +45,8 @@ class DailyEarningsSummary(BaseModel):
 # =====================================================
 
 class CompanyInfo(BaseModel):
+    """REDESIGNED: Selective real-time data - REMOVED: price, pre_market_price, after_hours_price, change, percent_change
+    KEPT: open, high, low, volume, avg_volume, year_high, year_low"""
     id: int
     symbol: str
     exchange_id: Optional[int] = None
@@ -57,12 +59,7 @@ class CompanyInfo(BaseModel):
     employees: Optional[int] = None
     logo: Optional[str] = None
     
-    # Real-time price data
-    price: Optional[Decimal] = None
-    pre_market_price: Optional[Decimal] = None
-    after_hours_price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    # Daily price data (kept for trading analysis)
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -114,6 +111,7 @@ class CompanyInfo(BaseModel):
 
 
 class CompanyBasic(BaseModel):
+    """REDESIGNED: Basic company info with selective price data - NO current price, change, percent_change"""
     id: int
     symbol: str
     name: Optional[str] = None
@@ -122,10 +120,10 @@ class CompanyBasic(BaseModel):
     sector: Optional[str] = None
     industry: Optional[str] = None
     market_cap: Optional[int] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
-    volume: Optional[int] = None
+    high: Optional[Decimal] = None  # Day's high
+    low: Optional[Decimal] = None   # Day's low
+    volume: Optional[int] = None    # Current day's volume
+    avg_volume: Optional[int] = None
     pe_ratio: Optional[Decimal] = None
     yield_: Optional[Decimal] = Field(None, alias="yield")  # yield is a Python keyword
     ytd_return: Optional[Decimal] = None
