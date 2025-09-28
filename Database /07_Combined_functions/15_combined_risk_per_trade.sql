@@ -8,7 +8,7 @@ RETURNS TABLE (
     asset_type TEXT,
     average_risk_per_trade NUMERIC
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
