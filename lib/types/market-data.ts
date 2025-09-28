@@ -157,21 +157,38 @@ export interface NewsSearch {
 
 // =====================================================
 // STOCK METRICS TYPES
-// =====================================================
-
 export interface StockQuote {
   symbol: string;
   quote_date: string;
   previous_close?: number;
-  open_price?: number;
-  high_price?: number;
-  low_price?: number;
-  current_price?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
   volume?: number;
-  price_change?: number;
-  price_change_percent?: number;
-  quote_timestamp?: string;
+  adj_close?: number;
   data_provider?: string;
+}
+
+export interface StockQuoteWithPrices {
+  // Database metadata
+  symbol: string;
+  quote_date: string;
+  previous_close?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  adj_close?: number;
+  data_provider?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: number;
+  after_hours_price?: number;
+  change?: number;
+  percent_change?: string;
+  logo?: string;
 }
 
 export interface FundamentalData {
@@ -367,7 +384,19 @@ export interface MarketMoverWithLogo {
   price?: number;
   change?: number;
   percent_change?: number;
-  fetch_timestamp?: string;
+  changePercent?: number;
+  logo?: string;
+}
+
+export interface MarketMoverWithPrices {
+  symbol: string;
+  name?: string;
+  rank_position?: number;
+  // Real-time price data from finance-query API
+  price?: number;
+  after_hours_price?: number;
+  change?: number;
+  percent_change?: string;
   logo?: string;
 }
 
@@ -644,6 +673,30 @@ export interface WatchlistWithItems {
   items: WatchlistItem[];
 }
 
+export interface WatchlistItemWithPrices {
+  // Database metadata
+  id: number;
+  symbol: string;
+  company_name?: string;
+  added_at: string;
+  updated_at?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: number;
+  after_hours_price?: number;
+  change?: number;
+  percent_change?: string;
+  logo?: string;
+}
+
+export interface WatchlistWithItemsAndPrices {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  items: WatchlistItemWithPrices[];
+}
+
 // =====================================================
 // WATCHLIST REQUEST TYPES
 // =====================================================
@@ -694,6 +747,20 @@ export interface StockPeer {
   percent_change?: number;
   logo?: string;
   fetch_timestamp?: string;
+}
+
+export interface StockPeerWithPrices {
+  // Database metadata
+  peer_symbol: string;
+  peer_name?: string;
+  logo?: string;
+  fetch_timestamp?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: number;
+  after_hours_price?: number;
+  change?: number;
+  percent_change?: string;
 }
 
 export interface PeerComparison {
@@ -930,4 +997,34 @@ export interface CashFlow {
   data_provider?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+// =====================================================
+// ENHANCED CACHE TYPES
+// =====================================================
+
+export interface HistoricalDataRequest {
+  symbols: string[];
+  range_param?: string;
+  interval?: string;
+}
+
+export interface HistoricalDataResponse {
+  success: boolean;
+  message: string;
+  requested_symbols: string[];
+  total_symbols: number;
+  processed_symbols: number;
+  failed_symbols: number;
+  failed_symbol_list: string[];
+  fetched_data_points: number;
+  range: string;
+  interval: string;
+  data: Record<string, any>;
+}
+
+export interface SingleSymbolDataRequest {
+  symbol: string;
+  range_param?: string;
+  interval?: string;
 }

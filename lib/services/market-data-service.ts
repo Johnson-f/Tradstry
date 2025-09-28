@@ -27,14 +27,11 @@ import type {
   MarketDataHealth,
   HistoricalData,
   QuoteData,
-  MarketMover,
-  MarketMoverWithLogo,
   CompanyLogo,
   EarningsCalendarLogo,
   MarketMoversRequest,
   CompanyLogosRequest,
   EarningsCalendarLogosRequest,
-  MarketMoversOverview,
   SymbolCheckResponse,
   SymbolSaveRequest,
   SymbolSaveResponse,
@@ -52,24 +49,27 @@ import type {
   SymbolSearchRequest,
   SymbolSearchResponse,
   QuoteResponse,
-  Watchlist,
-  WatchlistItem,
-  WatchlistWithItems,
   CreateWatchlistRequest,
   AddWatchlistItemRequest,
   DeleteWatchlistItemRequest,
   WatchlistResponse,
   DeleteResponse,
-  StockPeer,
-  PeerComparison,
   StockPeersRequest,
-  PeersPaginatedRequest,
   FinancialStatementRequest,
   KeyStatsRequest,
   KeyStats,
   IncomeStatement,
   BalanceSheet,
   CashFlow,
+  // Enhanced types with real-time prices
+  StockQuoteWithPrices,
+  MarketMoverWithPrices,
+  StockPeerWithPrices,
+  WatchlistItemWithPrices,
+  WatchlistWithItemsAndPrices,
+  HistoricalDataRequest,
+  HistoricalDataResponse,
+  SingleSymbolDataRequest,
 } from "@/lib/types/market-data";
 
 // Raw API response type for market movers (strings that need to be transformed to numbers)
@@ -213,6 +213,12 @@ class MarketDataService {
     );
   }
 
+  async getStockQuotesWithPrices(symbol: string): Promise<StockQuoteWithPrices | null> {
+    return apiClient.get<StockQuoteWithPrices | null>(
+      apiConfig.endpoints.marketData.stocks.quotesWithPrices(symbol),
+    );
+  }
+
   async getFundamentalData(
     params: FundamentalRequest,
   ): Promise<FundamentalData | null> {
@@ -339,101 +345,37 @@ class MarketDataService {
   }
 
   // =====================================================
-  // MARKET MOVERS ENDPOINTS (NEW BACKEND INTEGRATION)
+  // ENHANCED MARKET MOVERS ENDPOINTS WITH REAL-TIME PRICES
   // =====================================================
 
-  async getTopGainers(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    const data = await apiClient.get<RawMarketMover[]>(
-      apiConfig.endpoints.marketData.movers.gainers,
-      { params },
-    );
-
-    // Transform string values to numbers
-    return data.map((item: RawMarketMover) => ({
-      symbol: item.symbol,
-      name: item.name,
-      price: parseFloat(item.price) || 0,
-      change: parseFloat(item.change) || 0,
-      percent_change: parseFloat(item.percent_change) || 0,
-      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
-      fetch_timestamp: item.fetch_timestamp,
-      logo: item.logo,
-    }));
-  }
-
-  async getTopLosers(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    const data = await apiClient.get<RawMarketMover[]>(
-      apiConfig.endpoints.marketData.movers.losers,
-      { params },
-    );
-
-    // Transform string values to numbers
-    return data.map((item: RawMarketMover) => ({
-      symbol: item.symbol,
-      name: item.name,
-      price: parseFloat(item.price) || 0,
-      change: parseFloat(item.change) || 0,
-      percent_change: parseFloat(item.percent_change) || 0,
-      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
-      fetch_timestamp: item.fetch_timestamp,
-      logo: item.logo,
-    }));
-  }
-
-  async getMostActive(params?: MarketMoversRequest): Promise<MarketMover[]> {
-    const data = await apiClient.get<RawMarketMover[]>(
-      apiConfig.endpoints.marketData.movers.mostActive,
-      { params },
-    );
-
-    // Transform string values to numbers
-    return data.map((item: RawMarketMover) => ({
-      symbol: item.symbol,
-      name: item.name,
-      price: parseFloat(item.price) || 0,
-      change: parseFloat(item.change) || 0,
-      percent_change: parseFloat(item.percent_change) || 0,
-      changePercent: parseFloat(item.percent_change) || 0, // Legacy field
-      fetch_timestamp: item.fetch_timestamp,
-      logo: item.logo,
-    }));
-  }
-
-  async getTopGainersWithLogos(
-    params?: MarketMoversRequest,
-  ): Promise<MarketMoverWithLogo[]> {
-    return apiClient.get<MarketMoverWithLogo[]>(
-      apiConfig.endpoints.marketData.movers.gainersWithLogos,
+  async getTopGainersWithPrices(params?: MarketMoversRequest): Promise<MarketMoverWithPrices[]> {
+    return apiClient.get<MarketMoverWithPrices[]>(
+      apiConfig.endpoints.marketData.movers.gainersWithPrices,
       { params },
     );
   }
 
-  async getTopLosersWithLogos(
-    params?: MarketMoversRequest,
-  ): Promise<MarketMoverWithLogo[]> {
-    return apiClient.get<MarketMoverWithLogo[]>(
-      apiConfig.endpoints.marketData.movers.losersWithLogos,
+  async getTopLosersWithPrices(params?: MarketMoversRequest): Promise<MarketMoverWithPrices[]> {
+    return apiClient.get<MarketMoverWithPrices[]>(
+      apiConfig.endpoints.marketData.movers.losersWithPrices,
       { params },
     );
   }
 
-  async getMostActiveWithLogos(
-    params?: MarketMoversRequest,
-  ): Promise<MarketMoverWithLogo[]> {
-    return apiClient.get<MarketMoverWithLogo[]>(
-      apiConfig.endpoints.marketData.movers.mostActiveWithLogos,
+  async getMostActiveWithPrices(params?: MarketMoversRequest): Promise<MarketMoverWithPrices[]> {
+    return apiClient.get<MarketMoverWithPrices[]>(
+      apiConfig.endpoints.marketData.movers.mostActiveWithPrices,
       { params },
     );
   }
 
-  async getMarketMoversOverview(
-    params?: MarketMoversRequest,
-  ): Promise<MarketMoversOverview> {
-    return apiClient.get<MarketMoversOverview>(
-      apiConfig.endpoints.marketData.movers.overview,
+  async getMarketMoversOverviewWithPrices(params?: MarketMoversRequest): Promise<Record<string, any>> {
+    return apiClient.get<Record<string, any>>(
+      apiConfig.endpoints.marketData.movers.overviewWithPrices,
       { params },
     );
   }
+
 
   // =====================================================
   // COMPANY LOGOS ENDPOINTS
@@ -455,102 +397,6 @@ class MarketDataService {
     );
   }
 
-  // =====================================================
-  // LEGACY MARKET MOVERS ENDPOINTS (EXTERNAL API)
-  // =====================================================
-
-  async getGainers(count: number = 25): Promise<MarketMover[]> {
-    const response = await fetch(
-      `https://finance-query.onrender.com/v1/gainers?count=${count}`,
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch gainers data");
-    }
-
-    const data = await response.json();
-
-    // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(
-      data as Record<string, ExternalMoverData>,
-    ).map(([symbol, moverData]) => ({
-      symbol,
-      name: moverData.name || symbol,
-      price: parseFloat(String(moverData.price)) || 0,
-      change: parseFloat(String(moverData.change)) || 0,
-      percent_change:
-        parseFloat(
-          String(
-            moverData.changePercent ||
-              moverData.percentChange ||
-              moverData.change_percent ||
-              moverData.percent_change,
-          ),
-        ) || 0,
-      changePercent:
-        parseFloat(
-          String(
-            moverData.changePercent ||
-              moverData.percentChange ||
-              moverData.change_percent ||
-              moverData.percent_change,
-          ),
-        ) || 0,
-    }));
-    return transformed;
-  }
-
-  async getLosers(count: number = 25): Promise<MarketMover[]> {
-    const response = await fetch(
-      `https://finance-query.onrender.com/v1/losers?count=${count}`,
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch losers data");
-    }
-
-    const data = await response.json();
-
-    // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(
-      data as Record<string, ExternalMoverData>,
-    ).map(([symbol, moverData]) => ({
-      symbol,
-      name: moverData.name || symbol,
-      price: parseFloat(String(moverData.price)) || 0,
-      change: parseFloat(String(moverData.change)) || 0,
-      percent_change: parseFloat(String(moverData.changePercent)) || 0,
-      changePercent: parseFloat(String(moverData.changePercent)) || 0, // Add legacy field
-    }));
-
-    return transformed;
-  }
-
-  async getActives(count: number = 25): Promise<MarketMover[]> {
-    const response = await fetch(
-      `https://finance-query.onrender.com/v1/actives?count=${count}`,
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch actives data");
-    }
-
-    const data = await response.json();
-
-    // Transform the response to match our MarketMover interface
-    const transformed = Object.entries(
-      data as Record<string, ExternalMoverData>,
-    ).map(([symbol, moverData]) => ({
-      symbol,
-      name: moverData.name || symbol,
-      price: parseFloat(String(moverData.price)) || 0,
-      change: parseFloat(String(moverData.change)) || 0,
-      percent_change: parseFloat(String(moverData.changePercent)) || 0,
-      changePercent: parseFloat(String(moverData.changePercent)) || 0, // Add legacy field
-    }));
-
-    return transformed;
-  }
 
   // =====================================================
   // CACHING ENDPOINTS (replace with direct API calls)
@@ -654,17 +500,6 @@ class MarketDataService {
   // WATCHLIST ENDPOINTS
   // =====================================================
 
-  async getWatchlists(): Promise<Watchlist[]> {
-    return apiClient.get<Watchlist[]>(
-      apiConfig.endpoints.marketData.watchlists.base,
-    );
-  }
-
-  async getWatchlistById(id: number): Promise<WatchlistWithItems | null> {
-    return apiClient.get<WatchlistWithItems | null>(
-      apiConfig.endpoints.marketData.watchlists.byId(id),
-    );
-  }
 
   async createWatchlist(
     data: CreateWatchlistRequest,
@@ -677,13 +512,7 @@ class MarketDataService {
 
   async deleteWatchlist(id: number): Promise<DeleteResponse> {
     return apiClient.delete<DeleteResponse>(
-      apiConfig.endpoints.marketData.watchlists.byId(id),
-    );
-  }
-
-  async getWatchlistItems(id: number): Promise<WatchlistItem[]> {
-    return apiClient.get<WatchlistItem[]>(
-      apiConfig.endpoints.marketData.watchlists.items(id),
+      `${apiConfig.endpoints.marketData.watchlists.base}/${id}`,
     );
   }
 
@@ -720,64 +549,42 @@ class MarketDataService {
     );
   }
 
+  // Enhanced watchlist methods with real-time prices
+  async getWatchlistsWithPrices(): Promise<WatchlistWithItemsAndPrices[]> {
+    return apiClient.get<WatchlistWithItemsAndPrices[]>(
+      apiConfig.endpoints.marketData.watchlists.withPrices,
+    );
+  }
+
+  async getWatchlistByIdWithPrices(id: number): Promise<WatchlistWithItemsAndPrices | null> {
+    return apiClient.get<WatchlistWithItemsAndPrices | null>(
+      apiConfig.endpoints.marketData.watchlists.byIdWithPrices(id),
+    );
+  }
+
+  async getWatchlistItemsWithPrices(id: number): Promise<WatchlistItemWithPrices[]> {
+    return apiClient.get<WatchlistItemWithPrices[]>(
+      apiConfig.endpoints.marketData.watchlists.itemsWithPrices(id),
+    );
+  }
+
   // =====================================================
   // STOCK PEERS ENDPOINTS
   // =====================================================
 
-  async getStockPeers(params: StockPeersRequest): Promise<StockPeer[]> {
-    return apiClient.get<StockPeer[]>(
-      apiConfig.endpoints.marketData.peers.base(params.symbol),
+  // Enhanced stock peers methods with real-time prices
+  async getStockPeersWithPrices(params: StockPeersRequest): Promise<StockPeerWithPrices[]> {
+    return apiClient.get<StockPeerWithPrices[]>(
+      apiConfig.endpoints.marketData.peers.withPrices(params.symbol),
       { params: { data_date: params.data_date, limit: params.limit } },
     );
   }
 
-  async getTopPerformingPeers(params: StockPeersRequest): Promise<StockPeer[]> {
-    return apiClient.get<StockPeer[]>(
-      apiConfig.endpoints.marketData.peers.topPerformers(params.symbol),
+  async getTopPerformingPeersWithPrices(params: StockPeersRequest): Promise<StockPeerWithPrices[]> {
+    return apiClient.get<StockPeerWithPrices[]>(
+      apiConfig.endpoints.marketData.peers.topPerformersWithPrices(params.symbol),
       { params: { data_date: params.data_date, limit: params.limit } },
     );
-  }
-
-  async getWorstPerformingPeers(
-    params: StockPeersRequest,
-  ): Promise<StockPeer[]> {
-    return apiClient.get<StockPeer[]>(
-      apiConfig.endpoints.marketData.peers.worstPerformers(params.symbol),
-      { params: { data_date: params.data_date, limit: params.limit } },
-    );
-  }
-
-  async getPeerComparison(
-    params: StockPeersRequest,
-  ): Promise<PeerComparison[]> {
-    return apiClient.get<PeerComparison[]>(
-      apiConfig.endpoints.marketData.peers.comparison(params.symbol),
-      { params: { data_date: params.data_date, limit: params.limit } },
-    );
-  }
-
-  async getPeersPaginated(
-    params: PeersPaginatedRequest,
-  ): Promise<{
-    peers: StockPeer[];
-    total: number;
-    offset: number;
-    limit: number;
-  }> {
-    return apiClient.get<{
-      peers: StockPeer[];
-      total: number;
-      offset: number;
-      limit: number;
-    }>(apiConfig.endpoints.marketData.peers.paginated(params.symbol), {
-      params: {
-        data_date: params.data_date,
-        offset: params.offset,
-        limit: params.limit,
-        sort_column: params.sort_column,
-        sort_direction: params.sort_direction,
-      },
-    });
   }
 
   // =====================================================
@@ -787,6 +594,31 @@ class MarketDataService {
   async getHealthCheck(): Promise<MarketDataHealth> {
     return apiClient.get<MarketDataHealth>(
       apiConfig.endpoints.marketData.health,
+    );
+  }
+
+  // =====================================================
+  // ENHANCED CACHE ENDPOINTS
+  // =====================================================
+
+  async fetchHistoricalDataForSymbols(request: HistoricalDataRequest): Promise<HistoricalDataResponse> {
+    return apiClient.post<HistoricalDataResponse>(
+      apiConfig.endpoints.marketData.cache.historicalData,
+      request,
+    );
+  }
+
+  async fetchSingleSymbolData(request: SingleSymbolDataRequest): Promise<Record<string, any> | null> {
+    return apiClient.post<Record<string, any> | null>(
+      apiConfig.endpoints.marketData.cache.singleSymbol,
+      request,
+    );
+  }
+
+  async getSymbolHistoricalSummary(symbol: string, periodType: string = "5m"): Promise<Record<string, any> | null> {
+    return apiClient.get<Record<string, any> | null>(
+      apiConfig.endpoints.marketData.cache.historicalSummary(symbol),
+      { params: { period_type: periodType } },
     );
   }
 

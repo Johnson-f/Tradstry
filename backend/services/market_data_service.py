@@ -27,8 +27,10 @@ from .market_data.price_movement_service import PriceMovementService
 # Import all the request/response models that are used in the public methods
 from models.market_data import (
     DailyEarningsSummary, CompanyInfo, CompanyBasic, MarketNews, FinanceNews,
-    NewsStats, NewsSearch, StockQuote, FundamentalData, PriceMovement, TopMover,
-    MarketMover, MarketMoverWithLogo, CompanyLogo, EarningsCalendarLogo,
+    NewsStats, NewsSearch, StockQuote, StockQuoteWithPrices, FundamentalData, PriceMovement, TopMover,
+    MarketMover, MarketMoverWithLogo, MarketMoverWithPrices, StockPeerWithPrices, 
+    WatchlistItemWithPrices, WatchlistWithItemsAndPrices, CompanyLogo, EarningsCalendarLogo,
+    HistoricalDataRequest, HistoricalDataResponse, SingleSymbolDataRequest,
     HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange,
     EarningsRequest, CompanySearchRequest, CompanySectorRequest, CompanySearchTermRequest,
     MarketNewsRequest, FilteredNewsRequest, SymbolNewsRequest, NewsStatsRequest,
@@ -276,10 +278,72 @@ class MarketDataService:
             'gainers': [mover.dict() for mover in gainers],
             'losers': [mover.dict() for mover in losers],
             'most_active': [mover.dict() for mover in most_active],
-            'data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
-            'limit_per_category': request.limit,
-            'timestamp': datetime.now().isoformat()
+            'summary': {
+                'total_gainers': len(gainers),
+                'total_losers': len(losers),
+                'total_most_active': len(most_active),
+                'data_date': request.data_date or date.today()
+            }
         }
+
+    # =====================================================
+    # MARKET MOVERS WITH REAL-TIME PRICES
+    # =====================================================
+    
+    async def get_top_gainers_with_prices(self, request: MarketMoversRequest, access_token: str = None) -> List[MarketMoverWithPrices]:
+        return await self.movers.get_top_gainers_with_prices(request, access_token)
+
+    async def get_top_losers_with_prices(self, request: MarketMoversRequest, access_token: str = None) -> List[MarketMoverWithPrices]:
+        return await self.movers.get_top_losers_with_prices(request, access_token)
+
+    async def get_most_active_with_prices(self, request: MarketMoversRequest, access_token: str = None) -> List[MarketMoverWithPrices]:
+        return await self.movers.get_most_active_with_prices(request, access_token)
+
+    async def get_market_movers_overview_with_prices(self, request: MarketMoversRequest, access_token: str = None) -> Dict[str, Any]:
+        return await self.movers.get_market_movers_overview_with_prices(request, access_token)
+
+    # =====================================================
+    # STOCK QUOTES WITH REAL-TIME PRICES
+    # =====================================================
+    
+    async def get_stock_quotes_with_prices(self, symbol: str, access_token: str = None) -> Optional[StockQuoteWithPrices]:
+        return await self.quotes.get_stock_quotes_with_prices(symbol, access_token)
+
+    # =====================================================
+    # STOCK PEERS WITH REAL-TIME PRICES
+    # =====================================================
+    
+    async def get_stock_peers_with_prices(self, symbol: str, data_date: date = None, limit: int = 20, access_token: str = None) -> List[StockPeerWithPrices]:
+        return await self.peers.get_stock_peers_with_prices(symbol, data_date, limit, access_token)
+
+    async def get_top_performing_peers_with_prices(self, symbol: str, data_date: date = None, limit: int = 10, access_token: str = None) -> List[StockPeerWithPrices]:
+        return await self.peers.get_top_performing_peers_with_prices(symbol, data_date, limit, access_token)
+
+    # =====================================================
+    # WATCHLISTS WITH REAL-TIME PRICES
+    # =====================================================
+    
+    async def get_watchlist_items_with_prices(self, watchlist_id: int, access_token: str = None) -> List[WatchlistItemWithPrices]:
+        return await self.watchlist.get_watchlist_items_with_prices(watchlist_id, access_token)
+
+    async def get_watchlist_with_items_and_prices(self, watchlist_id: int, access_token: str = None) -> Optional[WatchlistWithItemsAndPrices]:
+        return await self.watchlist.get_watchlist_with_items_and_prices(watchlist_id, access_token)
+
+    async def get_user_watchlists_with_prices(self, access_token: str = None) -> List[WatchlistWithItemsAndPrices]:
+        return await self.watchlist.get_user_watchlists_with_prices(access_token)
+
+    # =====================================================
+    # ENHANCED CACHE METHODS
+    # =====================================================
+    
+    async def fetch_historical_data_for_symbols(self, symbols: List[str], range_param: str = "1d", interval: str = "5m", access_token: str = None) -> Dict[str, Any]:
+        return await self.cache.fetch_historical_data_for_symbols(symbols, range_param, interval, access_token)
+
+    async def fetch_single_symbol_data(self, symbol: str, range_param: str = "1d", interval: str = "5m", access_token: str = None) -> Optional[Dict[str, Any]]:
+        return await self.cache.fetch_single_symbol_data(symbol, range_param, interval, access_token)
+
+    async def get_symbol_historical_summary(self, symbol: str, period_type: str = "5m", access_token: str = None) -> Optional[Dict[str, Any]]:
+        return await self.cache.get_symbol_historical_summary(symbol, period_type, access_token)
 
     async def get_symbol_historical_overview(self, symbol: str, access_token: str = None) -> Dict[str, Any]:
         summary_request = HistoricalPriceSummaryRequest(symbol=symbol)
