@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS public.trade_setups (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- Ensure only one of stock_id or option_id is set
     CONSTRAINT chk_trade_type CHECK (
-        (stock_id IS NOT NULL AND option_id IS NULL) OR 
+        (stock_id IS NOT NULL AND option_id IS NULL) OR
         (stock_id IS NULL AND option_id IS NOT NULL)
     )
 );
@@ -45,11 +45,11 @@ CREATE INDEX IF NOT EXISTS idx_trade_setups_setup ON public.trade_setups(setup_i
 CREATE INDEX IF NOT EXISTS idx_trade_setups_user ON public.trade_setups(user_id);
 
 -- Ensure a trade can only be associated once per setup (supports ON CONFLICT)
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_stock_setup 
-  ON public.trade_setups(stock_id, setup_id) 
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_stock_setup
+  ON public.trade_setups(stock_id, setup_id)
   WHERE stock_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_option_setup 
-  ON public.trade_setups(option_id, setup_id) 
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trade_setups_option_setup
+  ON public.trade_setups(option_id, setup_id)
   WHERE option_id IS NOT NULL;
 
 -- Enable Row Level Security
@@ -84,7 +84,11 @@ CREATE POLICY "Users can delete own trade_setups" ON public.trade_setups
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_modified_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
