@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMover, MarketMoverWithLogo, MarketMoversOverview, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, Watchlist, WatchlistItem, WatchlistWithItems, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeer, PeerComparison, StockPeersRequest, PeersPaginatedRequest, KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMoverWithPrices, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, WatchlistItemWithPrices, WatchlistWithItemsAndPrices, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeerWithPrices, StockPeersRequest, KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest, StockQuoteWithPrices, HistoricalDataRequest, HistoricalDataResponse, SingleSymbolDataRequest } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -306,6 +306,29 @@ export function useStockQuotes(symbol: string, quoteDate?: string, dataProvider?
 
   return {
     stockQuote: stockQuote ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useStockQuotesWithPrices(symbol: string) {
+  const {
+    data: stockQuoteWithPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['quotes-with-prices', symbol],
+    queryFn: () => marketDataService.getStockQuotesWithPrices(symbol),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!symbol,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+  });
+
+  return {
+    stockQuoteWithPrices: stockQuoteWithPrices ?? null,
     isLoading,
     error: error as Error | null,
     refetch,
@@ -627,71 +650,6 @@ export function useMajorIndicesData(limit: number = 100) {
   };
 }
 
-export function useGainers(count: number = 25) {
-  const {
-    data: gainers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'gainers', count],
-    queryFn: () => marketDataService.getGainers(count),
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
-  });
-
-  return {
-    gainers: gainers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useLosers(count: number = 25) {
-  const {
-    data: losers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'losers', count],
-    queryFn: () => marketDataService.getLosers(count),
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
-  });
-
-  return {
-    losers: losers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useActives(count: number = 25) {
-  const {
-    data: actives,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'actives', count],
-    queryFn: () => marketDataService.getActives(count),
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
-  });
-
-  return {
-    actives: actives ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
 
 // =====================================================
 // SYMBOL HISTORICAL DATA HOOK - very import hook
@@ -736,21 +694,23 @@ export function useSymbolHistoricalData(symbol: string, enabled: boolean = true)
   };
 }
 
+
 // =====================================================
-// NEW MARKET MOVERS HOOKS (BACKEND INTEGRATION)
+// ENHANCED MARKET MOVERS HOOKS WITH REAL-TIME PRICES
 // =====================================================
 
-export function useTopGainers(params?: MarketMoversRequest) {
+export function useTopGainersWithPrices(params?: MarketMoversRequest) {
   const {
     data: gainers,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['market-movers', 'gainers', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getTopGainers(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: ['market-movers', 'gainers-with-prices', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopGainersWithPrices(params),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
   return {
@@ -761,17 +721,18 @@ export function useTopGainers(params?: MarketMoversRequest) {
   };
 }
 
-export function useTopLosers(params?: MarketMoversRequest) {
+export function useTopLosersWithPrices(params?: MarketMoversRequest) {
   const {
     data: losers,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['market-movers', 'losers', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getTopLosers(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: ['market-movers', 'losers-with-prices', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getTopLosersWithPrices(params),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
   return {
@@ -782,17 +743,18 @@ export function useTopLosers(params?: MarketMoversRequest) {
   };
 }
 
-export function useMostActive(params?: MarketMoversRequest) {
+export function useMostActiveWithPrices(params?: MarketMoversRequest) {
   const {
     data: mostActive,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['market-movers', 'most-active', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getMostActive(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: ['market-movers', 'most-active-with-prices', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getMostActiveWithPrices(params),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
   return {
@@ -803,80 +765,18 @@ export function useMostActive(params?: MarketMoversRequest) {
   };
 }
 
-export function useTopGainersWithLogos(params?: MarketMoversRequest) {
-  const {
-    data: gainers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'gainers-with-logos', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getTopGainersWithLogos(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
-  });
-
-  return {
-    gainers: gainers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useTopLosersWithLogos(params?: MarketMoversRequest) {
-  const {
-    data: losers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'losers-with-logos', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getTopLosersWithLogos(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
-  });
-
-  return {
-    losers: losers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useMostActiveWithLogos(params?: MarketMoversRequest) {
-  const {
-    data: mostActive,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['market-movers', 'most-active-with-logos', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getMostActiveWithLogos(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
-  });
-
-  return {
-    mostActive: mostActive ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useMarketMoversOverview(params?: MarketMoversRequest) {
+export function useMarketMoversOverviewWithPrices(params?: MarketMoversRequest) {
   const {
     data: overview,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['market-movers', 'overview', params?.data_date, params?.limit],
-    queryFn: () => marketDataService.getMarketMoversOverview(params),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: ['market-movers', 'overview-with-prices', params?.data_date, params?.limit],
+    queryFn: () => marketDataService.getMarketMoversOverviewWithPrices(params),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
   return {
@@ -1046,215 +946,201 @@ export function useSymbolHistoricalOverview(symbol: string) {
 }
 
 // =====================================================
-// WATCHLIST HOOKS
+// ENHANCED WATCHLIST HOOKS WITH REAL-TIME PRICES
 // =====================================================
 
-export function useWatchlists() {
+// Enhanced watchlist hooks with real-time prices
+export function useWatchlistsWithPrices() {
   const {
-    data: watchlists,
+    data: watchlistsWithPrices,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['watchlists'],
-    queryFn: () => marketDataService.getWatchlists(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
+    queryKey: ['watchlists-with-prices'],
+    queryFn: () => marketDataService.getWatchlistsWithPrices(),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
   return {
-    watchlists: watchlists ?? [],
+    watchlistsWithPrices: watchlistsWithPrices ?? [],
     isLoading,
     error: error as Error | null,
     refetch,
   };
 }
 
-export function useWatchlistById(id: number) {
+export function useWatchlistByIdWithPrices(id: number) {
   const {
-    data: watchlist,
+    data: watchlistWithPrices,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['watchlist', id],
-    queryFn: () => marketDataService.getWatchlistById(id),
+    queryKey: ['watchlist-with-prices', id],
+    queryFn: () => marketDataService.getWatchlistByIdWithPrices(id),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!id,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+  });
+
+  return {
+    watchlistWithPrices: watchlistWithPrices ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useWatchlistItemsWithPrices(id: number) {
+  const {
+    data: itemsWithPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['watchlist-items-with-prices', id],
+    queryFn: () => marketDataService.getWatchlistItemsWithPrices(id),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!id,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+  });
+
+  return {
+    itemsWithPrices: itemsWithPrices ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// ENHANCED STOCK PEERS HOOKS WITH REAL-TIME PRICES  
+// =====================================================
+
+// Enhanced stock peers hooks with real-time prices
+export function useStockPeersWithPrices(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: peersWithPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['stock-peers-with-prices', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getStockPeersWithPrices({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!symbol,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+  });
+
+  return {
+    peersWithPrices: peersWithPrices ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopPerformingPeersWithPrices(symbol: string, dataDate?: string, limit?: number) {
+  const {
+    data: topPeersWithPrices,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['top-performing-peers-with-prices', symbol, dataDate, limit],
+    queryFn: () => marketDataService.getTopPerformingPeersWithPrices({
+      symbol,
+      data_date: dataDate,
+      limit,
+    }),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!symbol,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+  });
+
+  return {
+    topPeersWithPrices: topPeersWithPrices ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// ENHANCED CACHE HOOKS
+// =====================================================
+
+export function useFetchHistoricalDataForSymbols(request: HistoricalDataRequest, enabled: boolean = true) {
+  const {
+    data: historicalDataResponse,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['historical-data-batch', request.symbols, request.range_param, request.interval],
+    queryFn: () => marketDataService.fetchHistoricalDataForSymbols(request),
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    enabled: !!id,
+    enabled: enabled && request.symbols.length > 0,
   });
 
   return {
-    watchlist: watchlist ?? null,
+    historicalDataResponse: historicalDataResponse ?? null,
     isLoading,
     error: error as Error | null,
     refetch,
   };
 }
 
-export function useWatchlistItems(id: number) {
+export function useFetchSingleSymbolData(request: SingleSymbolDataRequest, enabled: boolean = true) {
   const {
-    data: items,
+    data: singleSymbolData,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['watchlist-items', id],
-    queryFn: () => marketDataService.getWatchlistItems(id),
-    staleTime: 1 * 60 * 1000, // 1 minute
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    enabled: !!id,
+    queryKey: ['single-symbol-data', request.symbol, request.range_param, request.interval],
+    queryFn: () => marketDataService.fetchSingleSymbolData(request),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: enabled && !!request.symbol,
   });
 
   return {
-    items: items ?? [],
+    singleSymbolData: singleSymbolData ?? null,
     isLoading,
     error: error as Error | null,
     refetch,
   };
 }
 
-// =====================================================
-// STOCK PEERS HOOKS
-// =====================================================
-
-export function useStockPeers(symbol: string, dataDate?: string, limit?: number) {
+export function useSymbolHistoricalSummary(symbol: string, periodType: string = "5m") {
   const {
-    data: peers,
+    data: historicalSummary,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['stock-peers', symbol, dataDate, limit],
-    queryFn: () => marketDataService.getStockPeers({
-      symbol,
-      data_date: dataDate,
-      limit,
-    }),
+    queryKey: ['symbol-historical-summary', symbol, periodType],
+    queryFn: () => marketDataService.getSymbolHistoricalSummary(symbol, periodType),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 15 * 60 * 1000, // 15 minutes
     enabled: !!symbol,
   });
 
   return {
-    peers: peers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useTopPerformingPeers(symbol: string, dataDate?: string, limit?: number) {
-  const {
-    data: topPeers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['top-performing-peers', symbol, dataDate, limit],
-    queryFn: () => marketDataService.getTopPerformingPeers({
-      symbol,
-      data_date: dataDate,
-      limit,
-    }),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-    enabled: !!symbol,
-  });
-
-  return {
-    topPeers: topPeers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function useWorstPerformingPeers(symbol: string, dataDate?: string, limit?: number) {
-  const {
-    data: worstPeers,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['worst-performing-peers', symbol, dataDate, limit],
-    queryFn: () => marketDataService.getWorstPerformingPeers({
-      symbol,
-      data_date: dataDate,
-      limit,
-    }),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-    enabled: !!symbol,
-  });
-
-  return {
-    worstPeers: worstPeers ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function usePeerComparison(symbol: string, dataDate?: string, limit?: number) {
-  const {
-    data: comparison,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['peer-comparison', symbol, dataDate, limit],
-    queryFn: () => marketDataService.getPeerComparison({
-      symbol,
-      data_date: dataDate,
-      limit,
-    }),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-    enabled: !!symbol,
-  });
-
-  return {
-    comparison: comparison ?? [],
-    isLoading,
-    error: error as Error | null,
-    refetch,
-  };
-}
-
-export function usePeersPaginated(
-  symbol: string,
-  dataDate?: string,
-  offset?: number,
-  limit?: number,
-  sortColumn?: string,
-  sortDirection?: string
-) {
-  const {
-    data: paginatedData,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['peers-paginated', symbol, dataDate, offset, limit, sortColumn, sortDirection],
-    queryFn: () => marketDataService.getPeersPaginated({
-      symbol,
-      data_date: dataDate,
-      offset,
-      limit,
-      sort_column: sortColumn,
-      sort_direction: sortDirection,
-    }),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-    enabled: !!symbol,
-  });
-
-  return {
-    peers: paginatedData?.peers ?? [],
-    total: paginatedData?.total ?? 0,
-    offset: paginatedData?.offset ?? 0,
-    limit: paginatedData?.limit ?? 10,
+    historicalSummary: historicalSummary ?? null,
     isLoading,
     error: error as Error | null,
     refetch,

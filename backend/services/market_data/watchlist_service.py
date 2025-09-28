@@ -1,8 +1,14 @@
 # backend/services/market_data/watchlist_service.py
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from decimal import Decimal
+import httpx
+import asyncio
 from .base_service import BaseMarketDataService
-from models.market_data import Watchlist, WatchlistItem, WatchlistWithItems
+from models.market_data import (
+    Watchlist, WatchlistItem, WatchlistItemWithPrices, 
+    WatchlistWithItems, WatchlistWithItemsAndPrices
+)
 
 class WatchlistService(BaseMarketDataService):
     """Service for user watchlist operations."""
@@ -114,3 +120,123 @@ class WatchlistService(BaseMarketDataService):
         
         items = await self.get_watchlist_items(watchlist_id, access_token)
         return WatchlistWithItems(**watchlist.dict(), items=items)
+
+    async def _fetch_real_time_prices(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch real-time prices from finance-query API for given symbols."""
+        if not symbols:
+            return {}
+
+        try:
+            # Build the API URL with symbols
+            symbols_param = ",".join(symbols)
+            api_url = f"https://finance-query.onrender.com/v1/simple-quotes"
+            params = {"symbols": symbols_param}
+            
+            print(f"Fetching real-time prices for {len(symbols)} watchlist symbols: {symbols}")
+            
+            # Make HTTP request to finance-query API
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(api_url, params=params)
+                
+                if response.status_code != 200:
+                    print(f"API request failed: {response.status_code}")
+                    return {}
+                
+                data = response.json()
+                
+                if not data or not isinstance(data, list):
+                    print("No data returned from API")
+                    return {}
+                
+                # Convert list to dictionary keyed by symbol
+                price_data = {}
+                for item in data:
+                    if isinstance(item, dict) and 'symbol' in item:
+                        symbol = item['symbol'].upper()
+                        price_data[symbol] = {
+                            'price': self._safe_decimal(item.get('price')),
+                            'after_hours_price': self._safe_decimal(item.get('afterHoursPrice')),
+                            'change': self._safe_decimal(item.get('change')),
+                            'percent_change': item.get('percentChange'),
+                            'logo': item.get('logo'),
+                            'name': item.get('name')
+                        }
+                
+                print(f"Successfully fetched prices for {len(price_data)} watchlist symbols")
+                return price_data
+                
+        except httpx.RequestError as e:
+            print(f"HTTP request error: {e}")
+            return {}
+        except Exception as e:
+            print(f"Unexpected error fetching prices: {e}")
+            return {}
+
+    def _safe_decimal(self, value: Any) -> Optional[Decimal]:
+        """Safely convert string/number to Decimal."""
+        if value is None:
+            return None
+        try:
+            # Remove any non-numeric characters except decimal point and minus sign
+            if isinstance(value, str):
+                cleaned_value = value.replace('%', '').replace('$', '').replace(',', '').strip()
+                if cleaned_value == '' or cleaned_value == '-':
+                    return None
+                return Decimal(cleaned_value)
+            return Decimal(str(value))
+        except (ValueError, TypeError, Exception):
+            return None
+
+    async def get_watchlist_items_with_prices(self, watchlist_id: int, access_token: str = None) -> List[WatchlistItemWithPrices]:
+        """Get watchlist items with real-time prices from finance-query API."""
+        # First get the basic watchlist items from database
+        items = await self.get_watchlist_items(watchlist_id, access_token)
+        if not items:
+            return []
+
+        # Extract symbols and fetch real-time prices
+        symbols = [item.symbol for item in items]
+        price_data = await self._fetch_real_time_prices(symbols)
+        
+        # Combine item data with price data
+        result = []
+        for item in items:
+            symbol_upper = item.symbol.upper()
+            prices = price_data.get(symbol_upper, {})
+            
+            result.append(WatchlistItemWithPrices(
+                id=item.id,
+                symbol=item.symbol,
+                company_name=item.company_name,
+                added_at=item.added_at,
+                updated_at=item.updated_at,
+                name=prices.get('name') or item.company_name,
+                price=prices.get('price'),
+                after_hours_price=prices.get('after_hours_price'),
+                change=prices.get('change'),
+                percent_change=prices.get('percent_change'),
+                logo=prices.get('logo')
+            ))
+        
+        return result
+
+    async def get_watchlist_with_items_and_prices(self, watchlist_id: int, access_token: str = None) -> Optional[WatchlistWithItemsAndPrices]:
+        """Get a watchlist with all its items enriched with real-time prices."""
+        watchlists = await self.get_user_watchlists(access_token)
+        watchlist = next((w for w in watchlists if w.id == watchlist_id), None)
+        if not watchlist:
+            return None
+        
+        items_with_prices = await self.get_watchlist_items_with_prices(watchlist_id, access_token)
+        return WatchlistWithItemsAndPrices(**watchlist.dict(), items=items_with_prices)
+
+    async def get_user_watchlists_with_prices(self, access_token: str = None) -> List[WatchlistWithItemsAndPrices]:
+        """Get all user watchlists with items enriched with real-time prices."""
+        watchlists = await self.get_user_watchlists(access_token)
+        result = []
+        
+        for watchlist in watchlists:
+            items_with_prices = await self.get_watchlist_items_with_prices(watchlist.id, access_token)
+            result.append(WatchlistWithItemsAndPrices(**watchlist.dict(), items=items_with_prices))
+        
+        return result

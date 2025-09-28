@@ -13,12 +13,17 @@ from models.market_data import (
     FinanceNews,
     NewsStats,
     NewsSearch,
-    StockQuote,
     FundamentalData,
     PriceMovement,
     TopMover,
-    MarketMover,
-    MarketMoverWithLogo,
+    MarketMoverWithPrices,
+    StockQuoteWithPrices,
+    StockPeerWithPrices,
+    WatchlistItemWithPrices,
+    WatchlistWithItemsAndPrices,
+    HistoricalDataRequest,
+    HistoricalDataResponse,
+    SingleSymbolDataRequest,
     CompanyLogo,
     EarningsCalendarLogo,
     HistoricalPrice,
@@ -56,19 +61,11 @@ from models.market_data import (
     SymbolSearchResponse,
     QuoteRequest,
     QuoteResponse,
-    # Watchlist models
-    Watchlist,
-    WatchlistItem,
-    WatchlistWithItems,
     CreateWatchlistRequest,
     AddWatchlistItemRequest,
     DeleteWatchlistItemRequest,
     WatchlistResponse,
     DeleteResponse,
-    # Stock peers models
-    StockPeer,
-    PeerComparison,
-    StockPeersRequest,
     PeersPaginatedRequest,
     # Financial Statements
     IncomeStatement,
@@ -350,29 +347,6 @@ async def search_symbol_news(
 # =====================================================
 
 
-@router.get("/quotes/{symbol}", response_model=Optional[StockQuote])
-async def get_stock_quotes(
-    symbol: str,
-    quote_date: Optional[date] = Query(
-        None, description="Quote date (defaults to today)"
-    ),
-    data_provider: Optional[str] = Query(None, description="Data provider filter"),
-    token: str = Depends(get_token),
-):
-    """Get stock quote data."""
-    try:
-        service = MarketDataService()
-        request = StockQuoteRequest(
-            symbol=symbol, quote_date=quote_date, data_provider=data_provider
-        )
-        result = await service.get_stock_quotes(request, token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get stock quotes: {str(e)}"
-        )
-
-
 @router.get("/stock/{symbol}/combined", response_model=Dict[str, Any])
 async def get_combined_stock_data(
     symbol: str,
@@ -522,7 +496,6 @@ async def health_check():
             "news/symbol/{symbol}/latest",
             "news/symbol/{symbol}/stats",
             "news/symbol/{symbol}/search",
-            "quotes/{symbol}",
             "fundamentals/{symbol}",
             "stock/{symbol}/combined",
             "movements/significant",
@@ -532,17 +505,19 @@ async def health_check():
             "symbols/save",
             "cache/symbol/{symbol}",
             "cache/major-indices",
-            "cache/spy",
-            "cache/qqq",
-            "cache/dia",
-            "cache/vix",
-            "movers/gainers",
-            "movers/losers",
-            "movers/most-active",
-            "movers/gainers-with-logos",
-            "movers/losers-with-logos",
-            "movers/most-active-with-logos",
-            "movers/overview",
+            "cache/historical-data",
+            "cache/single-symbol",
+            "cache/{symbol}/historical-summary",
+            "movers/gainers-with-prices",
+            "movers/losers-with-prices", 
+            "movers/most-active-with-prices",
+            "movers/overview-with-prices",
+            "quotes/{symbol}/with-prices",
+            "peers/{symbol}/with-prices",
+            "peers/{symbol}/top-performing/with-prices",
+            "watchlists/{watchlist_id}/items/with-prices",
+            "watchlists/{watchlist_id}/with-prices",
+            "watchlists/with-prices",
             "logos/batch",
             "logos/earnings-calendar-batch",
         ],
@@ -550,152 +525,208 @@ async def health_check():
 
 
 # =====================================================
-# MARKET MOVERS ENDPOINTS
+# MARKET MOVERS WITH REAL-TIME PRICES ENDPOINTS - newly created endpoints
 # =====================================================
 
 
-@router.get("/movers/gainers", response_model=List[MarketMover])
-async def get_top_gainers(
+@router.get("/movers/gainers-with-prices", response_model=List[MarketMoverWithPrices])
+async def get_top_gainers_with_prices(
     data_date: Optional[date] = Query(
         None, description="Date for market movers (defaults to today)"
     ),
     limit: int = Query(10, description="Maximum number of results"),
     token: str = Depends(get_token),
 ):
-    """Get top gainers for a specific date."""
+    """Get top gainers with real-time prices from finance-query API."""
     try:
         service = MarketDataService()
         request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_top_gainers(request, token)
+        result = await service.get_top_gainers_with_prices(request, token)
         return result
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get top gainers: {str(e)}"
+            status_code=500, detail=f"Failed to get top gainers with prices: {str(e)}"
         )
 
 
-@router.get("/movers/losers", response_model=List[MarketMover])
-async def get_top_losers(
+@router.get("/movers/losers-with-prices", response_model=List[MarketMoverWithPrices])
+async def get_top_losers_with_prices(
     data_date: Optional[date] = Query(
         None, description="Date for market movers (defaults to today)"
     ),
     limit: int = Query(10, description="Maximum number of results"),
     token: str = Depends(get_token),
 ):
-    """Get top losers for a specific date."""
+    """Get top losers with real-time prices from finance-query API."""
     try:
         service = MarketDataService()
         request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_top_losers(request, token)
+        result = await service.get_top_losers_with_prices(request, token)
         return result
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get top losers: {str(e)}"
+            status_code=500, detail=f"Failed to get top losers with prices: {str(e)}"
         )
 
 
-@router.get("/movers/most-active", response_model=List[MarketMover])
-async def get_most_active(
+@router.get("/movers/most-active-with-prices", response_model=List[MarketMoverWithPrices])
+async def get_most_active_with_prices(
     data_date: Optional[date] = Query(
         None, description="Date for market movers (defaults to today)"
     ),
     limit: int = Query(10, description="Maximum number of results"),
     token: str = Depends(get_token),
 ):
-    """Get most active stocks for a specific date."""
+    """Get most active stocks with real-time prices from finance-query API."""
     try:
         service = MarketDataService()
         request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_most_active(request, token)
+        result = await service.get_most_active_with_prices(request, token)
         return result
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get most active stocks: {str(e)}"
+            status_code=500, detail=f"Failed to get most active with prices: {str(e)}"
         )
 
 
-@router.get("/movers/gainers-with-logos", response_model=List[MarketMoverWithLogo])
-async def get_top_gainers_with_logos(
-    data_date: Optional[date] = Query(
-        None, description="Date for market movers (defaults to today)"
-    ),
-    limit: int = Query(10, description="Maximum number of results"),
-    token: str = Depends(get_token),
-):
-    """Get top gainers with company logos."""
-    try:
-        service = MarketDataService()
-        request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_top_gainers_with_logos(request, token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get top gainers with logos: {str(e)}"
-        )
-
-
-@router.get("/movers/losers-with-logos", response_model=List[MarketMoverWithLogo])
-async def get_top_losers_with_logos(
-    data_date: Optional[date] = Query(
-        None, description="Date for market movers (defaults to today)"
-    ),
-    limit: int = Query(10, description="Maximum number of results"),
-    token: str = Depends(get_token),
-):
-    """Get top losers with company logos."""
-    try:
-        service = MarketDataService()
-        request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_top_losers_with_logos(request, token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get top losers with logos: {str(e)}"
-        )
-
-
-@router.get("/movers/most-active-with-logos", response_model=List[MarketMoverWithLogo])
-async def get_most_active_with_logos(
-    data_date: Optional[date] = Query(
-        None, description="Date for market movers (defaults to today)"
-    ),
-    limit: int = Query(10, description="Maximum number of results"),
-    token: str = Depends(get_token),
-):
-    """Get most active stocks with company logos."""
-    try:
-        service = MarketDataService()
-        request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_most_active_with_logos(request, token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get most active stocks with logos: {str(e)}",
-        )
-
-
-@router.get("/movers/overview", response_model=Dict[str, Any])
-async def get_market_movers_overview(
+@router.get("/movers/overview-with-prices", response_model=Dict[str, Any])
+async def get_market_movers_overview_with_prices(
     data_date: Optional[date] = Query(
         None, description="Date for market movers (defaults to today)"
     ),
     limit: int = Query(10, description="Maximum number of results per category"),
     token: str = Depends(get_token),
 ):
-    """Get comprehensive market movers overview with logos (gainers, losers, most active)."""
+    """Get comprehensive market movers overview with real-time prices."""
     try:
         service = MarketDataService()
         request = MarketMoversRequest(data_date=data_date, limit=limit)
-        result = await service.get_market_movers_overview(request, token)
+        result = await service.get_market_movers_overview_with_prices(request, token)
         return result
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get market movers overview: {str(e)}"
+            status_code=500, detail=f"Failed to get market movers overview with prices: {str(e)}"
         )
 
 
 # =====================================================
+# STOCK QUOTES WITH REAL-TIME PRICES ENDPOINTS
+# =====================================================
+
+
+@router.get("/quotes/{symbol}/with-prices", response_model=Optional[StockQuoteWithPrices])
+async def get_stock_quotes_with_prices(
+    symbol: str,
+    token: str = Depends(get_token),
+):
+    """
+    Get stock quote with real-time prices.
+    Flow: Check database → If not exists, fetch from API & store → Return with prices
+    """
+    try:
+        service = MarketDataService()
+        result = await service.get_stock_quotes_with_prices(symbol, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock quote with prices: {str(e)}"
+        )
+
+
+# =====================================================
+# STOCK PEERS WITH REAL-TIME PRICES ENDPOINTS
+# =====================================================
+
+
+@router.get("/peers/{symbol}/with-prices", response_model=List[StockPeerWithPrices])
+async def get_stock_peers_with_prices(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Data date (defaults to today)"),
+    limit: int = Query(20, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get stock peers with real-time prices from finance-query API."""
+    try:
+        service = MarketDataService()
+        result = await service.get_stock_peers_with_prices(symbol, data_date, limit, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock peers with prices: {str(e)}"
+        )
+
+
+@router.get("/peers/{symbol}/top-performing/with-prices", response_model=List[StockPeerWithPrices])
+async def get_top_performing_peers_with_prices(
+    symbol: str,
+    data_date: Optional[date] = Query(None, description="Data date (defaults to today)"),
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get top performing peers with real-time prices from finance-query API."""
+    try:
+        service = MarketDataService()
+        result = await service.get_top_performing_peers_with_prices(symbol, data_date, limit, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get top performing peers with prices: {str(e)}"
+        )
+
+
+# =====================================================
+# WATCHLISTS WITH REAL-TIME PRICES ENDPOINTS
+# =====================================================
+
+
+@router.get("/watchlists/{watchlist_id}/items/with-prices", response_model=List[WatchlistItemWithPrices])
+async def get_watchlist_items_with_prices(
+    watchlist_id: int,
+    token: str = Depends(get_token),
+):
+    """Get watchlist items with real-time prices from finance-query API."""
+    try:
+        service = MarketDataService()
+        result = await service.get_watchlist_items_with_prices(watchlist_id, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get watchlist items with prices: {str(e)}"
+        )
+
+
+@router.get("/watchlists/{watchlist_id}/with-prices", response_model=Optional[WatchlistWithItemsAndPrices])
+async def get_watchlist_with_items_and_prices(
+    watchlist_id: int,
+    token: str = Depends(get_token),
+):
+    """Get watchlist with items enriched with real-time prices."""
+    try:
+        service = MarketDataService()
+        result = await service.get_watchlist_with_items_and_prices(watchlist_id, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get watchlist with items and prices: {str(e)}"
+        )
+
+
+@router.get("/watchlists/with-prices", response_model=List[WatchlistWithItemsAndPrices])
+async def get_user_watchlists_with_prices(
+    token: str = Depends(get_token),
+):
+    """Get all user watchlists with items enriched with real-time prices."""
+    try:
+        service = MarketDataService()
+        result = await service.get_user_watchlists_with_prices(token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get user watchlists with prices: {str(e)}"
+        )
+
+
+# =====================================================  
 # COMPANY LOGOS ENDPOINTS
 # =====================================================
 
@@ -772,92 +803,75 @@ async def get_major_indices_data(
         )
 
 
-@router.get("/cache/spy", response_model=Optional[CachedSymbolData])
-async def get_spy_data(
-    limit: int = Query(100, description="Maximum number of data points to return"),
-    period_type: str = Query("1min", description="Time period type"),
-    data_provider: str = Query("finance_query", description="Data provider filter"),
+# =====================================================
+# ENHANCED CACHE ENDPOINTS - REDESIGNED
+# =====================================================
+
+
+@router.post("/cache/historical-data", response_model=HistoricalDataResponse)
+async def fetch_historical_data_for_symbols(
+    request: HistoricalDataRequest,
     token: str = Depends(get_token),
 ):
-    """Get cached SPY (S&P 500 ETF) data."""
+    """Fetch historical data for multiple symbols from finance-query API."""
     try:
         service = MarketDataService()
-        request = CacheDataRequest(
-            symbol="SPY",
-            limit=limit,
-            period_type=period_type,
-            data_provider=data_provider,
+        result = await service.fetch_historical_data_for_symbols(
+            symbols=request.symbols,
+            range_param=request.range_param,
+            interval=request.interval,
+            access_token=token
         )
-        result = await service.get_cached_symbol_data(request, token)
-        return result
+        return HistoricalDataResponse(**result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get SPY data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch historical data: {str(e)}"
+        )
 
 
-@router.get("/cache/qqq", response_model=Optional[CachedSymbolData])
-async def get_qqq_data(
-    limit: int = Query(100, description="Maximum number of data points to return"),
-    period_type: str = Query("1min", description="Time period type"),
-    data_provider: str = Query("finance_query", description="Data provider filter"),
+@router.post("/cache/single-symbol", response_model=Optional[Dict[str, Any]])
+async def fetch_single_symbol_data(
+    request: SingleSymbolDataRequest,
     token: str = Depends(get_token),
 ):
-    """Get cached QQQ (Nasdaq-100 ETF) data."""
+    """Fetch historical data for a single symbol from finance-query API."""
     try:
         service = MarketDataService()
-        request = CacheDataRequest(
-            symbol="QQQ",
-            limit=limit,
-            period_type=period_type,
-            data_provider=data_provider,
+        result = await service.fetch_single_symbol_data(
+            symbol=request.symbol,
+            range_param=request.range_param,
+            interval=request.interval,
+            access_token=token
         )
-        result = await service.get_cached_symbol_data(request, token)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get QQQ data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch single symbol data: {str(e)}"
+        )
 
 
-@router.get("/cache/dia", response_model=Optional[CachedSymbolData])
-async def get_dia_data(
-    limit: int = Query(100, description="Maximum number of data points to return"),
-    period_type: str = Query("1min", description="Time period type"),
-    data_provider: str = Query("finance_query", description="Data provider filter"),
+@router.get("/cache/{symbol}/historical-summary", response_model=Optional[Dict[str, Any]])
+async def get_symbol_historical_summary(
+    symbol: str,
+    period_type: str = Query("5m", description="Time period type"),
     token: str = Depends(get_token),
 ):
-    """Get cached DIA (Dow Jones Industrial Average ETF) data."""
+    """Get historical data summary for a symbol from finance-query API."""
     try:
+        validated_symbol = validate_symbol(symbol)
         service = MarketDataService()
-        request = CacheDataRequest(
-            symbol="DIA",
-            limit=limit,
+        result = await service.get_symbol_historical_summary(
+            symbol=validated_symbol,
             period_type=period_type,
-            data_provider=data_provider,
+            access_token=token
         )
-        result = await service.get_cached_symbol_data(request, token)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get DIA data: {str(e)}")
-
-
-@router.get("/cache/vix", response_model=Optional[CachedSymbolData])
-async def get_vix_data(
-    limit: int = Query(100, description="Maximum number of data points to return"),
-    period_type: str = Query("1min", description="Time period type"),
-    data_provider: str = Query("finance_query", description="Data provider filter"),
-    token: str = Depends(get_token),
-):
-    """Get cached VIX (fear & greed index) data."""
-    try:
-        service = MarketDataService()
-        request = CacheDataRequest(
-            symbol="VIX",
-            limit=limit,
-            period_type=period_type,
-            data_provider=data_provider,
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get historical summary: {str(e)}"
         )
-        result = await service.get_cached_symbol_data(request, token)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get VIX data: {str(e)}")
 
 
 @router.post(
@@ -1020,49 +1034,6 @@ async def get_quotes(
 # =====================================================
 # WATCHLIST ENDPOINTS
 # =====================================================
-
-
-@router.get("/watchlists", response_model=List[Watchlist])
-async def get_user_watchlists(token: str = Depends(get_token)):
-    """Get all watchlists for the authenticated user."""
-    try:
-        service = MarketDataService()
-        result = await service.get_user_watchlists(token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get watchlists: {str(e)}"
-        )
-
-
-@router.get("/watchlists/{watchlist_id}", response_model=Optional[WatchlistWithItems])
-async def get_watchlist_with_items(watchlist_id: int, token: str = Depends(get_token)):
-    """Get a watchlist with all its items."""
-    try:
-        service = MarketDataService()
-        result = await service.get_watchlist_with_items(watchlist_id, token)
-        if not result:
-            raise HTTPException(status_code=404, detail="Watchlist not found")
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get watchlist: {str(e)}"
-        )
-
-
-@router.get("/watchlists/{watchlist_id}/items", response_model=List[WatchlistItem])
-async def get_watchlist_items(watchlist_id: int, token: str = Depends(get_token)):
-    """Get all items in a specific watchlist."""
-    try:
-        service = MarketDataService()
-        result = await service.get_watchlist_items(watchlist_id, token)
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get watchlist items: {str(e)}"
-        )
 
 
 @router.post("/watchlists", response_model=WatchlistResponse)
@@ -1306,137 +1277,3 @@ async def get_key_stats(
         )
 
 
-# =====================================================
-# STOCK PEERS ENDPOINTS
-# =====================================================
-
-
-@router.get("/peers/{symbol}", response_model=List[StockPeer])
-async def get_stock_peers(
-    symbol: str,
-    data_date: Optional[date] = Query(
-        None, description="Date for peer data (defaults to today)"
-    ),
-    limit: int = Query(20, description="Maximum number of peers to return"),
-    token: str = Depends(get_token),
-):
-    """Get all peers for a specific stock symbol."""
-    try:
-        validated_symbol = validate_symbol(symbol)
-        service = MarketDataService()
-        result = await service.get_stock_peers(
-            validated_symbol, data_date, limit, token
-        )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get stock peers: {str(e)}"
-        )
-
-
-@router.get("/peers/{symbol}/top-performers", response_model=List[StockPeer])
-async def get_top_performing_peers(
-    symbol: str,
-    data_date: Optional[date] = Query(
-        None, description="Date for peer data (defaults to today)"
-    ),
-    limit: int = Query(10, description="Maximum number of peers to return"),
-    token: str = Depends(get_token),
-):
-    """Get top performing peers for a specific stock."""
-    try:
-        validated_symbol = validate_symbol(symbol)
-        service = MarketDataService()
-        result = await service.get_top_performing_peers(
-            validated_symbol, data_date, limit, token
-        )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get top performing peers: {str(e)}"
-        )
-
-
-@router.get("/peers/{symbol}/worst-performers", response_model=List[StockPeer])
-async def get_worst_performing_peers(
-    symbol: str,
-    data_date: Optional[date] = Query(
-        None, description="Date for peer data (defaults to today)"
-    ),
-    limit: int = Query(10, description="Maximum number of peers to return"),
-    token: str = Depends(get_token),
-):
-    """Get worst performing peers for a specific stock."""
-    try:
-        validated_symbol = validate_symbol(symbol)
-        service = MarketDataService()
-        result = await service.get_worst_performing_peers(
-            validated_symbol, data_date, limit, token
-        )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get worst performing peers: {str(e)}"
-        )
-
-
-@router.get("/peers/{symbol}/comparison", response_model=List[PeerComparison])
-async def get_peer_comparison(
-    symbol: str,
-    data_date: Optional[date] = Query(
-        None, description="Date for peer data (defaults to today)"
-    ),
-    token: str = Depends(get_token),
-):
-    """Get peer comparison with the main stock data."""
-    try:
-        validated_symbol = validate_symbol(symbol)
-        service = MarketDataService()
-        result = await service.get_peer_comparison(validated_symbol, data_date, token)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get peer comparison: {str(e)}"
-        )
-
-
-@router.get("/peers/{symbol}/paginated", response_model=List[StockPeer])
-async def get_peers_paginated(
-    symbol: str,
-    data_date: Optional[date] = Query(
-        None, description="Date for peer data (defaults to today)"
-    ),
-    offset: int = Query(0, description="Offset for pagination"),
-    limit: int = Query(20, description="Maximum number of peers to return"),
-    sort_column: str = Query("percent_change", description="Column to sort by"),
-    sort_direction: str = Query("DESC", description="Sort direction (ASC or DESC)"),
-    token: str = Depends(get_token),
-):
-    """Get paginated peer results with sorting options."""
-    try:
-        validated_symbol = validate_symbol(symbol)
-        service = MarketDataService()
-        result = await service.get_peers_paginated(
-            symbol=validated_symbol,
-            data_date=data_date,
-            offset=offset,
-            limit=limit,
-            sort_column=sort_column,
-            sort_direction=sort_direction,
-            access_token=token,
-        )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get paginated peers: {str(e)}"
-        )

@@ -217,6 +217,23 @@ class StockQuote(BaseModel):
     # REMOVED: All price fields - frontend gets prices from external APIs
 
 
+class StockQuoteWithPrices(BaseModel):
+    """Stock quote enriched with real-time price data from finance-query API"""
+    # Database metadata
+    symbol: str
+    quote_date: date
+    quote_timestamp: Optional[datetime] = None
+    data_provider: Optional[str] = None
+    exchange_id: Optional[int] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
+
+
 class FundamentalData(BaseModel):
     symbol: str
     pe_ratio: Optional[Decimal] = None
@@ -459,15 +476,29 @@ class TopMover(BaseModel):
 # =====================================================
 
 class MarketMover(BaseModel):
-    """REDESIGNED: Market mover without price data - use stock_quotes for real-time prices"""
+    """Market mover with ranking data only - use for basic display"""
     symbol: str
     name: Optional[str] = None
     rank_position: Optional[int] = None
     fetch_timestamp: Optional[datetime] = None
 
 
+class MarketMoverWithPrices(BaseModel):
+    """Market mover enriched with real-time price data from finance-query API"""
+    symbol: str
+    name: Optional[str] = None
+    rank_position: Optional[int] = None
+    fetch_timestamp: Optional[datetime] = None
+    # Real-time price data from finance-query API
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
+
+
 class MarketMoverWithLogo(BaseModel):
-    """REDESIGNED: Market mover with logo but without price data"""
+    """Market mover with logo but without price data - legacy compatibility"""
     symbol: str
     name: Optional[str] = None
     rank_position: Optional[int] = None
@@ -780,6 +811,35 @@ class CacheDataRequest(BaseModel):
     data_provider: Optional[str] = "finance_query"
 
 
+class HistoricalDataRequest(BaseModel):
+    """Request for fetching historical data for multiple symbols"""
+    symbols: List[str]
+    range_param: Optional[str] = "1d"
+    interval: Optional[str] = "5m"
+
+
+class HistoricalDataResponse(BaseModel):
+    """Response for historical data fetching"""
+    success: bool
+    message: str
+    requested_symbols: List[str]
+    total_symbols: int
+    processed_symbols: int
+    failed_symbols: int
+    failed_symbol_list: List[str]
+    fetched_data_points: int
+    range: str
+    interval: str
+    data: Dict[str, Any]
+
+
+class SingleSymbolDataRequest(BaseModel):
+    """Request for fetching historical data for a single symbol"""
+    symbol: str
+    range_param: Optional[str] = "1d"
+    interval: Optional[str] = "5m"
+
+
 class MarketMoversRequest(BaseModel):
     data_date: Optional[date] = None
     limit: Optional[int] = 10
@@ -818,6 +878,23 @@ class WatchlistItem(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class WatchlistItemWithPrices(BaseModel):
+    """Watchlist item enriched with real-time price data from finance-query API"""
+    # Database metadata
+    id: int
+    symbol: str
+    company_name: Optional[str] = None
+    added_at: datetime
+    updated_at: Optional[datetime] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None  # Updated name from API
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
+
+
 class WatchlistWithItems(BaseModel):
     """REDESIGNED: Watchlist with items (no price data included)"""
     id: int
@@ -825,6 +902,15 @@ class WatchlistWithItems(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[WatchlistItem] = []
+
+
+class WatchlistWithItemsAndPrices(BaseModel):
+    """Watchlist with items enriched with real-time price data"""
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    items: List[WatchlistItemWithPrices] = []
 
 
 # =====================================================
@@ -874,6 +960,21 @@ class StockPeer(BaseModel):
     peer_name: Optional[str] = None
     logo: Optional[str] = None
     fetch_timestamp: Optional[datetime] = None
+
+
+class StockPeerWithPrices(BaseModel):
+    """Stock peer enriched with real-time price data from finance-query API"""
+    # Database metadata
+    peer_symbol: str
+    peer_name: Optional[str] = None
+    logo: Optional[str] = None
+    fetch_timestamp: Optional[datetime] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None  # Updated name from API
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
 
 
 class PeerComparison(BaseModel):

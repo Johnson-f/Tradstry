@@ -92,3 +92,15 @@ dependencies = [
     "yfinance>=0.2.65",
     "zstandard==0.25.0",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), Pycodestyle (E, W), isort (I), and flake8-unused-arguments (ARG)
+select = ["E", "F", "W", "I", "ARG"]
+ignore = ["E501"] # Ignore line length errors, as black handles it.
+
+# Allow unused arguments in specific methods for FastAPI
+# where the argument is required for dependency injection.
+dummy-variable-rgx = "^(_|unused_)"
