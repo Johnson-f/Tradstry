@@ -35,12 +35,12 @@ class CacheService(BaseMarketDataService):
     async def get_major_indices_data(
         self,
         limit: int = 100,
-        period_type: str = "1min",
+        period_type: str = "5m",
         data_provider: str = "finance_query",
         access_token: str = None
     ) -> MajorIndicesResponse:
-        """Fetch fresh data for major indices (SPY, QQQ, DIA, VIX) from finance-query API."""
-        indices_symbols = ['SPY', 'QQQ', 'DIA', 'VIX']
+        """Fetch fresh data for major indices (SPY, QQQ, DIA) from finance-query API."""
+        indices_symbols = ['SPY', 'QQQ', 'DIA']
         indices_data = {}
         total_data_points = 0
 
@@ -61,7 +61,7 @@ class CacheService(BaseMarketDataService):
             spy=indices_data.get('spy'),
             qqq=indices_data.get('qqq'),
             dia=indices_data.get('dia'),
-            vix=indices_data.get('vix'),
+            vix=None,  # VIX removed from indices
             timestamp=datetime.now(),
             total_data_points=total_data_points
         )

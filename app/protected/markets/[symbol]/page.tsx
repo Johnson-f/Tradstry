@@ -251,11 +251,11 @@ export default function StockSymbolPage() {
                 {[...Array(6)].map((_, i) => (
                   <Card key={i}>
                     <CardHeader className="animate-pulse">
-                      <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
                     </CardHeader>
                     <CardContent className="animate-pulse">
-                      <div className="h-8 bg-gray-300 rounded w-3/4 mb-2"></div>
-                      <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+                      <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
                     </CardContent>
                   </Card>
                 ))}
@@ -266,8 +266,8 @@ export default function StockSymbolPage() {
               <Card>
                 <CardContent className="p-6">
                   <div className="text-center">
-                    <h3 className="text-lg font-semibold text-red-500 mb-2">Error</h3>
-                    <p className="text-gray-600">{error}</p>
+                    <h3 className="text-lg font-semibold text-red-500 dark:text-red-400 mb-2">Error</h3>
+                    <p className="text-gray-600 dark:text-gray-400">{error}</p>
                     <Button 
                       onClick={() => window.location.reload()} 
                       className="mt-4"
@@ -286,7 +286,7 @@ export default function StockSymbolPage() {
                   {/* Company Logo */}
                   <div className="flex-shrink-0">
                     {logos.length > 0 && logos[0]?.logo ? (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden  flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                         <img
                           src={logos[0].logo}
                           alt={`${symbol} logo`}
@@ -310,10 +310,10 @@ export default function StockSymbolPage() {
                   
                   {/* Company Name */}
                   <div className="flex-1">
-                    <h1 className="text-2xl font-semibold text-white">
+                    <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
                       {stockData.companyInfo?.name || stockData.quote.name || `${symbol} Limited`}
                     </h1>
-                    <p className="text-slate-400 text-sm mt-1">
+                    <p className="text-gray-600 dark:text-slate-400 text-sm mt-1">
                       {symbol} • Stock Exchange
                     </p>
                   </div>

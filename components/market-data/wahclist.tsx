@@ -7,10 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useWatchlists, useWatchlistById } from "@/lib/hooks/use-market-data";
+import { useWatchlistsWithPrices, useWatchlistByIdWithPrices } from "@/lib/hooks/use-market-data";
 import { marketDataService } from "@/lib/services/market-data-service";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, X, TrendingUp, TrendingDown, Star } from "lucide-react";
+
+// Convert price from backend (string or number) to number for calculations
+const parsePrice = (price: string | number | undefined | null): number => {
+  if (typeof price === 'number') return isNaN(price) ? 0 : price;
+  if (typeof price === 'string') return parseFloat(price) || 0;
+  return 0;
+};
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useRealtimeWatchlists, useRealtimeWatchlistItems } from "@/lib/hooks/useRealtimeUpdates";
@@ -26,8 +33,8 @@ export function Watchlist({ className }: WatchlistProps) {
   const [isAddingItem, setIsAddingItem] = useState(false);
 
   const queryClient = useQueryClient();
-  const { watchlists, isLoading: watchlistsLoading, refetch: refetchWatchlists } = useWatchlists();
-  const { watchlist, isLoading: watchlistLoading, refetch: refetchWatchlist } = useWatchlistById(selectedWatchlistId || 0);
+  const { watchlistsWithPrices: watchlists, isLoading: watchlistsLoading, refetch: refetchWatchlists } = useWatchlistsWithPrices();
+  const { watchlistWithPrices: watchlist, isLoading: watchlistLoading, refetch: refetchWatchlist } = useWatchlistByIdWithPrices(selectedWatchlistId || 0);
 
   // Enable realtime updates
   useRealtimeWatchlists(queryClient);
@@ -65,8 +72,8 @@ export function Watchlist({ className }: WatchlistProps) {
         setIsAddItemDialogOpen(false);
         refetchWatchlist();
         // Invalidate watchlist queries to refresh data
-        queryClient.invalidateQueries({ queryKey: ['watchlist', selectedWatchlistId] });
-        queryClient.invalidateQueries({ queryKey: ['watchlist-items', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-with-prices', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-items-with-prices', selectedWatchlistId] });
       }
     } catch (error) {
       toast.error("Failed to add symbol to watchlist");
@@ -83,8 +90,8 @@ export function Watchlist({ className }: WatchlistProps) {
         toast.success("Symbol removed from watchlist");
         refetchWatchlist();
         // Invalidate watchlist queries to refresh data
-        queryClient.invalidateQueries({ queryKey: ['watchlist', selectedWatchlistId] });
-        queryClient.invalidateQueries({ queryKey: ['watchlist-items', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-with-prices', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-items-with-prices', selectedWatchlistId] });
       }
     } catch (error) {
       toast.error("Failed to remove symbol from watchlist");
@@ -100,8 +107,8 @@ export function Watchlist({ className }: WatchlistProps) {
       if (response.success) {
         toast.success("Watchlist cleared successfully");
         refetchWatchlist();
-        queryClient.invalidateQueries({ queryKey: ['watchlist', selectedWatchlistId] });
-        queryClient.invalidateQueries({ queryKey: ['watchlist-items', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-with-prices', selectedWatchlistId] });
+        queryClient.invalidateQueries({ queryKey: ['watchlist-items-with-prices', selectedWatchlistId] });
       }
     } catch (error) {
       toast.error("Failed to clear watchlist");
@@ -265,23 +272,34 @@ export function Watchlist({ className }: WatchlistProps) {
                         <div className="text-right">
                           {item.price && (
                             <div className="font-medium text-sm">
-                              ${typeof item.price === 'number' ? item.price.toFixed(2) : parseFloat(item.price).toFixed(2)}
+                              ${(() => {
+                                const priceValue = parsePrice(item.price);
+                                return priceValue === 0 ? 'N/A' : priceValue.toFixed(2);
+                              })()}
                             </div>
                           )}
                           {item.percent_change !== undefined && item.percent_change !== null && (
-                            <div className={cn(
-                              "flex items-center justify-end space-x-1 text-xs",
-                              item.percent_change >= 0 ? "text-green-600" : "text-red-600"
-                            )}>
-                              {item.percent_change >= 0 ? (
-                                <TrendingUp className="h-3 w-3" />
-                              ) : (
-                                <TrendingDown className="h-3 w-3" />
-                              )}
-                              <span>
-                                {item.percent_change >= 0 ? '+' : ''}{typeof item.percent_change === 'number' ? item.percent_change.toFixed(2) : parseFloat(item.percent_change).toFixed(2)}%
-                              </span>
-                            </div>
+                            (() => {
+                              // Parse percent_change string (e.g., "2.45%") to number
+                              const percentChangeStr = item.percent_change?.toString() ?? '0';
+                              const numPercentChange = parseFloat(percentChangeStr.replace('%', '')) || 0;
+                              
+                              return (
+                                <div className={cn(
+                                  "flex items-center justify-end space-x-1 text-xs",
+                                  numPercentChange >= 0 ? "text-green-600" : "text-red-600"
+                                )}>
+                                  {numPercentChange >= 0 ? (
+                                    <TrendingUp className="h-3 w-3" />
+                                  ) : (
+                                    <TrendingDown className="h-3 w-3" />
+                                  )}
+                                  <span>
+                                    {numPercentChange >= 0 ? '+' : ''}{numPercentChange.toFixed(2)}%
+                                  </span>
+                                </div>
+                              );
+                            })()
                           )}
                         </div>
                         <Button

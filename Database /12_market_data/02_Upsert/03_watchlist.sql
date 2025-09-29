@@ -19,12 +19,13 @@ AS $$
 $$;
 
 -- Upsert a watchlist item (only if user owns the watchlist)
+-- REDESIGNED: Removed price parameters - use stock_quotes for real-time prices
 CREATE OR REPLACE FUNCTION upsert_watchlist_item(
     p_watchlist_id INTEGER,
     p_symbol VARCHAR(20),
     p_company_name VARCHAR(255),
-    p_price DECIMAL(15, 4),
-    p_percent_change DECIMAL(8, 4)
+    p_price DECIMAL(15, 4) DEFAULT NULL,  -- Keep for backward compatibility but ignore
+    p_percent_change DECIMAL(8, 4) DEFAULT NULL  -- Keep for backward compatibility but ignore
 )
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -48,12 +49,11 @@ BEGIN
         RAISE EXCEPTION 'Access denied: You do not own this watchlist';
     END IF;
     
-    INSERT INTO watchlist_items (watchlist_id, user_id, symbol, company_name, price, percent_change)
-    VALUES (p_watchlist_id, auth.uid(), p_symbol, p_company_name, p_price, p_percent_change)
+    -- REDESIGNED: Only store symbol and company_name, no price data
+    INSERT INTO watchlist_items (watchlist_id, user_id, symbol, company_name)
+    VALUES (p_watchlist_id, auth.uid(), p_symbol, p_company_name)
     ON CONFLICT (watchlist_id, symbol) DO UPDATE
     SET company_name = p_company_name,
-        price = p_price,
-        percent_change = p_percent_change,
         updated_at = CURRENT_TIMESTAMP
     RETURNING id INTO v_item_id;
 

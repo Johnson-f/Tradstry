@@ -60,32 +60,79 @@ serve(async (req) => {
         }
 
         const data = await response.json()
-        console.log(`Received ${endpoint.type} data:`, Object.keys(data).length, 'items')
+        console.log(`Received ${endpoint.type} data structure:`, typeof data, Array.isArray(data) ? `array with ${data.length} items` : `object with keys: ${Object.keys(data)}`)
+        console.log(`Sample data:`, data[0] || Object.values(data)[0])
 
         // Transform API response to our format - REDESIGNED: NO PRICE DATA
-        const transformedData: MoverData[] = Object.entries(data).map(([symbol, moverData]: [string, {
-          name?: string;
-          price?: string | number;
-          change?: string | number;
-          percentChange?: string;
-        }], index) => {
-          // Ensure symbol is stored as TEXT (not number) and properly formatted
-          const symbolText = symbol.toString().toUpperCase().trim()
-          
-          // Validate that symbol looks like a ticker (letters/digits, reasonable length)
-          if (!/^[A-Z0-9._-]{1,20}$/.test(symbolText)) {
-            console.warn(`Invalid ticker symbol format: ${symbolText}`)
-          }
+        let transformedData: MoverData[] = []
+        
+        if (Array.isArray(data)) {
+          // If data is an array of objects with symbol field
+          transformedData = data.map((moverData: {
+            symbol?: string;
+            name?: string;
+            price?: string | number;
+            change?: string | number;
+            percentChange?: string;
+          }, index) => {
+            // Extract symbol from the object
+            const symbolText = (moverData.symbol || '').toString().toUpperCase().trim()
+            
+            // Validate that symbol looks like a ticker (letters/digits, reasonable length)
+            if (!/^[A-Z0-9._-]{1,20}$/.test(symbolText)) {
+              console.warn(`Invalid ticker symbol format: ${symbolText}`)
+            }
 
-          return {
-            symbol: symbolText,  // Store as TEXT ticker symbol
-            name: moverData.name || symbolText,
-            rank_position: index + 1,  // Position in leaderboard (1st, 2nd, etc.)
-            mover_type: endpoint.type
+            return {
+              symbol: symbolText,  // Store as TEXT ticker symbol
+              name: moverData.name || symbolText,
+              rank_position: index + 1,  // Position in leaderboard (1st, 2nd, etc.)
+              mover_type: endpoint.type
+            }
+          })
+        } else if (typeof data === 'object' && data !== null) {
+          // If data is an object with symbol keys
+          transformedData = Object.entries(data).map(([symbol, moverData]: [string, {
+            name?: string;
+            price?: string | number;
+            change?: string | number;
+            percentChange?: string;
+          }], index) => {
+            // Ensure symbol is stored as TEXT (not number) and properly formatted
+            const symbolText = symbol.toString().toUpperCase().trim()
+            
+            // Validate that symbol looks like a ticker (letters/digits, reasonable length)
+            if (!/^[A-Z0-9._-]{1,20}$/.test(symbolText)) {
+              console.warn(`Invalid ticker symbol format: ${symbolText}`)
+            }
+
+            return {
+              symbol: symbolText,  // Store as TEXT ticker symbol
+              name: moverData.name || symbolText,
+              rank_position: index + 1,  // Position in leaderboard (1st, 2nd, etc.)
+              mover_type: endpoint.type
+            }
+          })
+        } else {
+          console.error(`Unexpected data format for ${endpoint.type}:`, typeof data)
+          continue
+        }
+
+        // Filter out invalid symbols before adding to our data
+        const validData = transformedData.filter(item => {
+          if (!item.symbol || item.symbol.length === 0) {
+            console.warn(`Skipping entry with empty symbol:`, item)
+            return false
           }
+          if (/^\d+$/.test(item.symbol)) {
+            console.warn(`Skipping numeric symbol: ${item.symbol}`)
+            return false
+          }
+          return true
         })
-
-        allMoversData.push(...transformedData)
+        
+        console.log(`Filtered ${transformedData.length} items to ${validData.length} valid entries for ${endpoint.type}`)
+        allMoversData.push(...validData)
 
       } catch (error) {
         console.error(`Error fetching ${endpoint.type} data:`, error)

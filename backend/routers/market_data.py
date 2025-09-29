@@ -785,7 +785,7 @@ async def get_cached_symbol_data(
 async def get_major_indices_data(
     limit: int = Query(100, description="Maximum number of data points per symbol"),
     period_type: str = Query(
-        "1min", description="Time period type (1min, 5min, 1hour, 1day, etc.)"
+        "5m", description="Time period type (1m, 5m, 15m, 30m, 1h, 1d, etc.)"
     ),
     data_provider: str = Query("finance_query", description="Data provider filter"),
     token: str = Depends(get_token),
@@ -1059,22 +1059,21 @@ async def create_watchlist(
 async def add_watchlist_item(
     request: AddWatchlistItemRequest, token: str = Depends(get_token)
 ):
-    """Add an item to a watchlist."""
+    """Add an item to a watchlist (REDESIGNED: no price data, use stock_quotes for real-time prices)."""
     try:
         service = MarketDataService()
+        # REDESIGNED: No longer passing price/percent_change - removed from table schema
         item_id = await service.add_watchlist_item(
             watchlist_id=request.watchlist_id,
             symbol=request.symbol,
             company_name=request.company_name,
-            price=float(request.price) if request.price else None,
-            percent_change=float(request.percent_change)
-            if request.percent_change
-            else None,
+            price=None,  # Kept for backward compatibility but ignored by SQL function
+            percent_change=None,  # Kept for backward compatibility but ignored by SQL function
             access_token=token,
         )
         return WatchlistResponse(
             success=True,
-            message="Item added to watchlist successfully",
+            message=f"Symbol {request.symbol} successfully added to watchlist. Real-time prices available via API.",
             watchlist_id=item_id,
         )
     except Exception as e:
