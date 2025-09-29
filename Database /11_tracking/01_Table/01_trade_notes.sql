@@ -125,7 +125,7 @@ ADD COLUMN phase trade_phase;
 
 -- Add a column to link to an image (e.g., a chart screenshot)
 ALTER TABLE public.trade_notes
-ADD COLUMN image_id INTEGER;
+ADD COLUMN image_id UUID;
 
 -- Add a foreign key constraint to the images table
 -- This assumes you have a 'public.images' table with an 'id' primary key

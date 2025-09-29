@@ -5,6 +5,7 @@ CREATE OR REPLACE FUNCTION public.delete_trade_note(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_user_id UUID := auth.uid();

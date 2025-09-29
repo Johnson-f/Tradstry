@@ -46,14 +46,7 @@ CREATE TABLE IF NOT EXISTS public.holders (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     
     -- Constraints
-    CONSTRAINT unique_institutional_holder UNIQUE (symbol, holder_type, holder_name, date_reported) 
-        WHERE holder_type IN ('institutional', 'mutualfund'),
-    CONSTRAINT unique_insider_transaction UNIQUE (symbol, holder_type, holder_name, date_reported, transaction_type, shares, value)
-        WHERE holder_type = 'insider_transactions',
-    CONSTRAINT unique_insider_roster UNIQUE (symbol, holder_type, holder_name)
-        WHERE holder_type = 'insider_roster',
-    CONSTRAINT unique_insider_purchases UNIQUE (symbol, holder_type, summary_period)
-        WHERE holder_type = 'insider_purchases'
+    CONSTRAINT chk_holder_type CHECK (holder_type IN ('institutional', 'mutualfund', 'insider_transactions', 'insider_purchases', 'insider_roster'))
 );
 
 -- =============================================
