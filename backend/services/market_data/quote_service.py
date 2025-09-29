@@ -13,6 +13,7 @@ from .symbol_registry_cache import (
     notify_symbol_added,
     get_tracked_symbols
 )
+from .price_cache_service import get_cached_price, get_cached_prices
 from models.market_data import (
     StockQuote, StockQuoteWithPrices, StockQuoteRequest, QuoteRequest, QuoteResponse, QuoteResult
 )
@@ -64,16 +65,15 @@ class QuoteService(BaseMarketDataService):
         Get stock quote with real-time prices. 
         Flow: Check database → If not exists, fetch from API & store → Return with prices
         """
-        symbol = symbol.upper().strip()
         print(f"Fetching stock quote with prices for: {symbol}")
         
         # Step 1: Check if symbol exists in database
         existing_quote = await self._check_symbol_in_database(symbol, access_token)
         
-        # Step 2: If symbol doesn't exist, fetch from API and store
+        # Step 2: If symbol doesn't exist, fetch from cache/API and store it
         if not existing_quote:
-            print(f"Symbol {symbol} not found in database. Fetching from API...")
-            api_data = await self._fetch_from_finance_query_api(symbol)
+            print(f"Symbol {symbol} not found in database, fetching from cache/API...")
+            api_data = await get_cached_price(symbol)
             
             if api_data:
                 # Store symbol in database
@@ -94,9 +94,9 @@ class QuoteService(BaseMarketDataService):
                 print(f"No data found for {symbol} from API")
                 return None
         
-        # Step 3: Get real-time prices and combine with database data
+        # Step 3: Get real-time prices from cache and combine with database data
         if existing_quote:
-            api_data = await self._fetch_from_finance_query_api(symbol)
+            api_data = await get_cached_price(symbol)
             if api_data:
                 return self._combine_database_and_api_data(existing_quote, api_data)
             else:

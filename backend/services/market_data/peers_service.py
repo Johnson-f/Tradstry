@@ -12,6 +12,7 @@ from .symbol_registry_cache import (
     SymbolSource,
     get_all_symbols_for_updates
 )
+from .price_cache_service import get_cached_prices
 from models.market_data import StockPeer, StockPeerWithPrices, PeerComparison
 
 logger = logging.getLogger(__name__)
@@ -183,12 +184,16 @@ class PeersService(BaseMarketDataService):
         """Get stock peers with real-time prices from finance-query API."""
         # First get the basic peers data from database
         peers = await self.get_stock_peers(symbol, data_date, limit, access_token)
+        logger.info(f"📊 Retrieved {len(peers)} peers for {symbol} from database")
         if not peers:
+            logger.warning(f"No peers found for {symbol} in database")
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [peer.peer_symbol for peer in peers]
-        price_data = await self._fetch_real_time_prices(symbols)
+        logger.info(f"💰 Fetching prices for {len(symbols)} peer symbols: {symbols}")
+        price_data = await get_cached_prices(symbols)
+        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine peer data with price data
         result = []
@@ -223,9 +228,9 @@ class PeersService(BaseMarketDataService):
         if not peers:
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [peer.peer_symbol for peer in peers]
-        price_data = await self._fetch_real_time_prices(symbols)
+        price_data = await get_cached_prices(symbols)
         
         # Combine peer data with price data
         result = []
@@ -297,8 +302,8 @@ class PeersService(BaseMarketDataService):
             
             logger.info(f"Fetching prices for {len(symbols)} cached peer symbols")
             
-            # Batch fetch prices
-            prices = await self._fetch_real_time_prices(symbols)
+            # Batch fetch prices from cache
+            prices = await get_cached_prices(symbols)
             
             logger.info(f"✅ Fetched prices for {len(prices)} peer symbols")
             return prices

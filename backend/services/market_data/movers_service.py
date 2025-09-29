@@ -8,14 +8,19 @@ import asyncio
 import logging
 from supabase import Client
 from .base_service import BaseMarketDataService
-from .logo_service import LogoService
 from .symbol_registry_cache import (
     symbol_registry,
     SymbolSource,
-    get_mover_symbols
+    get_all_symbols_for_updates
 )
+from .price_cache_service import get_cached_prices
+from .logo_service import LogoService
 from models.market_data import (
-    MarketMover, MarketMoverWithLogo, MarketMoverWithPrices, MarketMoversRequest, CompanyLogosRequest
+    MarketMover, 
+    MarketMoverWithPrices, 
+    MarketMoverWithLogo,
+    MarketMoversRequest, 
+    CompanyLogosRequest
 )
 
 logger = logging.getLogger(__name__)
@@ -33,14 +38,22 @@ class MoversService(BaseMarketDataService):
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get top gainers for a specific date."""
+        """Get top gainers for a specific date (falls back to latest available date)."""
         async def operation(client):
+            target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
-                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_data_date': target_date,
                 'p_limit': request.limit
             }
             response = client.rpc('get_top_gainers', params).execute()
-            return [MarketMover(**item) for item in response.data] if response.data else []
+            
+            # If no data for target date, try getting the most recent data
+            if not response.data:
+                logger.info(f"No gainers for {target_date}, fetching latest available data")
+                latest_response = client.rpc('get_top_gainers_latest', {'p_limit': request.limit}).execute()
+                return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
+            
+            return [MarketMover(**item) for item in response.data]
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -49,14 +62,22 @@ class MoversService(BaseMarketDataService):
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get top losers for a specific date."""
+        """Get top losers for a specific date (falls back to latest available date)."""
         async def operation(client):
+            target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
-                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_data_date': target_date,
                 'p_limit': request.limit
             }
             response = client.rpc('get_top_losers', params).execute()
-            return [MarketMover(**item) for item in response.data] if response.data else []
+            
+            # If no data for target date, try getting the most recent data
+            if not response.data:
+                logger.info(f"No losers for {target_date}, fetching latest available data")
+                latest_response = client.rpc('get_top_losers_latest', {'p_limit': request.limit}).execute()
+                return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
+            
+            return [MarketMover(**item) for item in response.data]
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -65,14 +86,22 @@ class MoversService(BaseMarketDataService):
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get most active stocks for a specific date."""
+        """Get most active stocks for a specific date (falls back to latest available date)."""
         async def operation(client):
+            target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
-                'p_data_date': request.data_date.isoformat() if request.data_date else date.today().isoformat(),
+                'p_data_date': target_date,
                 'p_limit': request.limit
             }
             response = client.rpc('get_most_active', params).execute()
-            return [MarketMover(**item) for item in response.data] if response.data else []
+            
+            # If no data for target date, try getting the most recent data
+            if not response.data:
+                logger.info(f"No active stocks for {target_date}, fetching latest available data")
+                latest_response = client.rpc('get_most_active_latest', {'p_limit': request.limit}).execute()
+                return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
+            
+            return [MarketMover(**item) for item in response.data]
         
         return await self._execute_with_retry(operation, access_token)
 
@@ -213,12 +242,16 @@ class MoversService(BaseMarketDataService):
         """Get top gainers with real-time prices from finance-query API."""
         # First get the basic gainers data from database
         gainers = await self.get_top_gainers(request, access_token)
+        logger.info(f"📊 Retrieved {len(gainers)} gainers from database")
         if not gainers:
+            logger.warning("No gainers found in database")
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [gainer.symbol for gainer in gainers]
-        price_data = await self._fetch_real_time_prices(symbols)
+        logger.info(f"💰 Fetching prices for {len(symbols)} gainer symbols: {symbols}")
+        price_data = await get_cached_prices(symbols)
+        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -248,12 +281,16 @@ class MoversService(BaseMarketDataService):
         """Get top losers with real-time prices from finance-query API."""
         # First get the basic losers data from database
         losers = await self.get_top_losers(request, access_token)
+        logger.info(f"📊 Retrieved {len(losers)} losers from database")
         if not losers:
+            logger.warning("No losers found in database")
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [loser.symbol for loser in losers]
-        price_data = await self._fetch_real_time_prices(symbols)
+        logger.info(f"💰 Fetching prices for {len(symbols)} loser symbols: {symbols}")
+        price_data = await get_cached_prices(symbols)
+        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -283,12 +320,16 @@ class MoversService(BaseMarketDataService):
         """Get most active stocks with real-time prices from finance-query API."""
         # First get the basic most active data from database
         most_active = await self.get_most_active(request, access_token)
+        logger.info(f"📊 Retrieved {len(most_active)} most active stocks from database")
         if not most_active:
+            logger.warning("No most active stocks found in database")
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [stock.symbol for stock in most_active]
-        price_data = await self._fetch_real_time_prices(symbols)
+        logger.info(f"💰 Fetching prices for {len(symbols)} active symbols: {symbols}")
+        price_data = await get_cached_prices(symbols)
+        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -412,8 +453,8 @@ class MoversService(BaseMarketDataService):
             
             logger.info(f"Fetching prices for {len(symbols)} cached mover symbols")
             
-            # Batch fetch prices
-            prices = await self._fetch_real_time_prices(symbols)
+            # Batch fetch prices from cache
+            prices = await get_cached_prices(symbols)
             
             logger.info(f"✅ Fetched prices for {len(prices)} mover symbols")
             return prices
