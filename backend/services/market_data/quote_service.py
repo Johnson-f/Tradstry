@@ -5,13 +5,26 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 import httpx
 import asyncio
+import logging
 from .base_service import BaseMarketDataService
+from .symbol_registry_cache import (
+    symbol_registry,
+    SymbolSource,
+    notify_symbol_added,
+    get_tracked_symbols
+)
 from models.market_data import (
     StockQuote, StockQuoteWithPrices, StockQuoteRequest, QuoteRequest, QuoteResponse, QuoteResult
 )
 
+logger = logging.getLogger(__name__)
+
 class QuoteService(BaseMarketDataService):
-    """Service for stock quote and metric operations."""
+    """Service for stock quote and metric operations with cache integration."""
+    
+    def __init__(self, supabase=None):
+        super().__init__(supabase)
+        self.cache_enabled = True  # Feature flag for cache
 
     async def get_stock_quotes(
         self, 
@@ -68,6 +81,13 @@ class QuoteService(BaseMarketDataService):
                 if stored_quote:
                     existing_quote = stored_quote
                     print(f"Successfully stored {symbol} in database")
+                    
+                    # Notify cache that new symbol was added
+                    try:
+                        await notify_symbol_added("stock_quotes", symbol)
+                        logger.info(f"Cache updated: Added {symbol} to stock_quotes")
+                    except Exception as cache_error:
+                        logger.warning(f"Failed to update cache for {symbol}: {cache_error}")
                 else:
                     print(f"Failed to store {symbol} in database")
             else:
@@ -194,11 +214,111 @@ class QuoteService(BaseMarketDataService):
                         exchange_id=data.get('exchange_id')
                     )
                 return None
-                
             except Exception as e:
-                print(f"Error storing {symbol} in database: {e}")
+                print(f"Error storing symbol: {e}")
                 return None
         
+        return await self._execute_with_retry(operation, access_token)
+    
+    # ========================
+    # Cache-Powered Batch Operations
+    # ========================
+    
+    async def get_all_tracked_symbols(self) -> List[str]:
+        """
+        Get all symbols from stock_quotes using cache.
+        
+        Uses cache for fast lookup (1-5ms) instead of database query (100-300ms).
+        Falls back to database if cache unavailable.
+        """
+        if not self.cache_enabled:
+            return await self._get_symbols_from_database()
+        
+        try:
+            # Try cache first (fast!)
+            symbols = await get_tracked_symbols()
+            
+            if symbols:
+                logger.debug(f"Cache hit: Retrieved {len(symbols)} symbols from stock_quotes")
+                return symbols
+            
+            logger.warning("Cache returned empty, falling back to database")
+            return await self._get_symbols_from_database()
+            
+        except Exception as e:
+            logger.error(f"Cache lookup failed: {e}. Falling back to database")
+            return await self._get_symbols_from_database()
+    
+    async def batch_update_all_tracked_prices(
+        self,
+        access_token: str = None
+    ) -> Dict[str, Any]:
+        """
+        Update prices for all tracked symbols using cache.
+        
+        This is MUCH more efficient than querying database for symbols.
+        Uses cached symbol list for instant lookups.
+        """
+        logger.info("Starting batch price update for all tracked symbols")
+        start_time = datetime.now()
+        
+        try:
+            # Get all symbols from cache (fast!)
+            symbols = await self.get_all_tracked_symbols()
+            
+            if not symbols:
+                logger.warning("No symbols to update")
+                return {
+                    "success": False,
+                    "message": "No symbols found",
+                    "symbols_updated": 0
+                }
+            
+            logger.info(f"Fetching prices for {len(symbols)} cached symbols")
+            
+            # Batch fetch prices from API
+            request = QuoteRequest(symbols=symbols)
+            results = await self.get_batch_quotes(request)
+            
+            elapsed = (datetime.now() - start_time).total_seconds()
+            logger.info(
+                f"✅ Batch update complete: {results.total} symbols updated in {elapsed:.2f}s"
+            )
+            
+            return {
+                "success": True,
+                "symbols_requested": len(symbols),
+                "symbols_updated": results.total,
+                "elapsed_seconds": elapsed,
+                "source": "cache"
+            }
+            
+        except Exception as e:
+            logger.error(f"Batch update failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _get_symbols_from_database(self, access_token: str = None) -> List[str]:
+        """
+        Fallback: Get symbols from database when cache unavailable.
+        Only used when cache fails.
+        """
+        logger.warning("Using database fallback for symbol lookup")
+        
+        try:
+            async def operation(client):
+                response = client.table('stock_quotes').select('symbol').execute()
+                return [row['symbol'] for row in response.data] if response.data else []
+            
+            symbols = await self._execute_with_retry(operation, access_token)
+            logger.info(f"Fetched {len(symbols)} symbols from database (fallback)")
+            return symbols
+            
+        except Exception as e:
+            logger.error(f"Database fallback failed: {e}")
+            return []       
         return await self._execute_with_retry(operation, access_token)
 
     def _combine_database_and_api_data(

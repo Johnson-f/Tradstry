@@ -5,13 +5,23 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import httpx
 import asyncio
+import logging
 from .base_service import BaseMarketDataService
+from services.redis_client import redis_service
 from models.market_data import (
     CacheData, CachedSymbolData, MajorIndicesResponse, CacheDataRequest
 )
 
+logger = logging.getLogger(__name__)
+
 class CacheService(BaseMarketDataService):
-    """Service for retrieving cached market data."""
+    """Service for retrieving cached market data with Redis caching."""
+    
+    def __init__(self, supabase=None):
+        super().__init__(supabase)
+        self.redis = redis_service
+        self.cache_namespace = "historical_data"
+        self.cache_enabled = True  # Feature flag
 
     async def get_cached_symbol_data(
         self,
@@ -138,13 +148,26 @@ class CacheService(BaseMarketDataService):
         interval: str = "5m",
         access_token: str = None
     ) -> Optional[Dict[str, Any]]:
-        """Fetch historical data for a single symbol (most common use case)."""
+        """Fetch historical data for a single symbol with Redis caching."""
         
         if not symbol or not symbol.strip():
             return None
         
         cleaned_symbol = symbol.upper().strip()
-        print(f"Fetching historical data for symbol: {cleaned_symbol}")
+        cache_key = f"historical:{cleaned_symbol}:{range_param}:{interval}"
+        
+        # Try cache first if enabled
+        if self.cache_enabled:
+            try:
+                cached = await self.redis.get(cache_key, namespace=self.cache_namespace)
+                if cached:
+                    logger.info(f"Cache HIT: {cache_key}")
+                    return cached
+            except Exception as e:
+                logger.warning(f"Cache read error: {e}")
+        
+        # Cache miss - fetch from API
+        logger.info(f"Cache MISS: Fetching historical data for {cleaned_symbol}")
         
         result = await self._fetch_symbol_historical_data(
             cleaned_symbol, 
@@ -154,9 +177,18 @@ class CacheService(BaseMarketDataService):
         )
         
         if result:
-            print(f"Successfully fetched {result.get('data_points_fetched', 0)} data points for {cleaned_symbol}")
+            logger.info(f"Successfully fetched {result.get('data_points_fetched', 0)} data points for {cleaned_symbol}")
+            
+            # Cache the result with progressive TTL
+            if self.cache_enabled:
+                ttl = self._get_ttl_for_range(range_param)
+                try:
+                    await self.redis.set(cache_key, result, ttl, namespace=self.cache_namespace)
+                    logger.info(f"Cache SET: {cache_key} (TTL: {ttl}s)")
+                except Exception as e:
+                    logger.warning(f"Cache write error: {e}")
         else:
-            print(f"Failed to fetch data for {cleaned_symbol}")
+            logger.warning(f"Failed to fetch data for {cleaned_symbol}")
         
         return result
     
@@ -322,3 +354,113 @@ class CacheService(BaseMarketDataService):
             return (latest - earliest).days
         except (AttributeError, TypeError):
             return 0
+    
+    # ========================
+    # Cache Management
+    # ========================
+    
+    def _get_ttl_for_range(self, range_param: str) -> int:
+        """Get TTL (Time To Live) for cache based on data range.
+        
+        Older data = longer cache (changes less frequently)
+        Recent data = shorter cache (changes more often)
+        """
+        ttl_map = {
+            "1d": 300,      # 5 minutes
+            "5d": 1800,     # 30 minutes
+            "1mo": 3600,    # 1 hour
+            "3mo": 7200,    # 2 hours
+            "6mo": 14400,   # 4 hours
+            "1y": 86400,    # 24 hours
+            "2y": 86400,    # 24 hours
+            "5y": 172800,   # 48 hours
+            "max": 259200   # 72 hours
+        }
+        return ttl_map.get(range_param, 3600)  # Default: 1 hour
+    
+    async def invalidate_symbol_cache(
+        self,
+        symbol: str,
+        range_param: str = None,
+        interval: str = None
+    ) -> int:
+        """Manually invalidate cached historical data for a symbol.
+        
+        Args:
+            symbol: Stock symbol
+            range_param: Specific range to invalidate (None = all ranges)
+            interval: Specific interval to invalidate (None = all intervals)
+        
+        Returns:
+            Number of cache keys deleted
+        """
+        symbol = symbol.upper().strip()
+        deleted = 0
+        
+        try:
+            if range_param and interval:
+                # Invalidate specific cache key
+                cache_key = f"historical:{symbol}:{range_param}:{interval}"
+                success = await self.redis.delete(cache_key, namespace=self.cache_namespace)
+                if success:
+                    deleted = 1
+                    logger.info(f"Invalidated cache: {cache_key}")
+            else:
+                # Invalidate all caches for this symbol
+                pattern = f"historical:{symbol}:*"
+                keys = await self.redis.get_all_keys(pattern, namespace=self.cache_namespace)
+                
+                if keys:
+                    for key in keys:
+                        if await self.redis.delete(key, namespace=self.cache_namespace):
+                            deleted += 1
+                    
+                    logger.info(f"Invalidated {deleted} cache keys for {symbol}")
+            
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"Failed to invalidate cache for {symbol}: {e}")
+            return 0
+    
+    async def clear_all_historical_cache(self) -> int:
+        """Clear all historical data cache.
+        Use with caution - only for maintenance or debugging.
+        """
+        try:
+            pattern = "historical:*"
+            keys = await self.redis.get_all_keys(pattern, namespace=self.cache_namespace)
+            
+            if keys:
+                deleted = 0
+                for key in keys:
+                    if await self.redis.delete(key, namespace=self.cache_namespace):
+                        deleted += 1
+                
+                logger.info(f"Cleared {deleted} historical cache keys")
+                return deleted
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Failed to clear historical cache: {e}")
+            return 0
+    
+    async def get_cache_stats(self) -> Dict[str, Any]:
+        """Get statistics about the historical data cache."""
+        try:
+            pattern = "historical:*"
+            keys = await self.redis.get_all_keys(pattern, namespace=self.cache_namespace)
+            
+            return {
+                "total_cached_items": len(keys) if keys else 0,
+                "namespace": self.cache_namespace,
+                "cache_enabled": self.cache_enabled
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get cache stats: {e}")
+            return {
+                "error": str(e),
+                "cache_enabled": self.cache_enabled
+            }

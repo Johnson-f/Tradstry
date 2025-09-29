@@ -5,11 +5,23 @@ from datetime import date
 from decimal import Decimal
 import httpx
 import asyncio
+import logging
 from .base_service import BaseMarketDataService
+from .symbol_registry_cache import (
+    symbol_registry,
+    SymbolSource,
+    get_all_symbols_for_updates
+)
 from models.market_data import StockPeer, StockPeerWithPrices, PeerComparison
 
+logger = logging.getLogger(__name__)
+
 class PeersService(BaseMarketDataService):
-    """Service for stock peers operations."""
+    """Service for stock peers operations with cache integration."""
+    
+    def __init__(self, supabase=None):
+        super().__init__(supabase)
+        self.cache_enabled = True  # Feature flag for cache
 
     async def get_stock_peers(
         self, symbol: str, data_date: date = None, limit: int = 20, access_token: str = None
@@ -234,3 +246,88 @@ class PeersService(BaseMarketDataService):
             ))
         
         return result
+    
+    # ========================
+    # Cache-Powered Operations
+    # ========================
+    
+    async def get_all_peer_symbols_from_cache(self) -> List[str]:
+        """
+        Get all peer symbols using cache.
+        
+        Fast lookup (1-5ms) instead of database query (100-300ms).
+        Includes both main symbols and peer symbols.
+        """
+        if not self.cache_enabled:
+            return await self._get_peer_symbols_from_database()
+        
+        try:
+            # Get from cache (fast!)
+            symbols = await symbol_registry.get_symbols_by_source(SymbolSource.STOCK_PEERS)
+            
+            if symbols:
+                logger.debug(f"Cache hit: Retrieved {len(symbols)} peer symbols")
+                return symbols
+            
+            logger.warning("Cache returned empty, falling back to database")
+            return await self._get_peer_symbols_from_database()
+            
+        except Exception as e:
+            logger.error(f"Cache lookup failed: {e}. Falling back to database")
+            return await self._get_peer_symbols_from_database()
+    
+    async def batch_fetch_peer_prices(
+        self,
+        access_token: str = None
+    ) -> Dict[str, Any]:
+        """
+        Batch fetch prices for all peer symbols using cache.
+        
+        More efficient than querying database for symbols.
+        """
+        logger.info("Fetching prices for cached peer symbols")
+        
+        try:
+            # Get symbols from cache
+            symbols = await self.get_all_peer_symbols_from_cache()
+            
+            if not symbols:
+                logger.warning("No peer symbols to fetch prices for")
+                return {}
+            
+            logger.info(f"Fetching prices for {len(symbols)} cached peer symbols")
+            
+            # Batch fetch prices
+            prices = await self._fetch_real_time_prices(symbols)
+            
+            logger.info(f"✅ Fetched prices for {len(prices)} peer symbols")
+            return prices
+            
+        except Exception as e:
+            logger.error(f"Batch price fetch failed: {e}")
+            return {}
+    
+    async def _get_peer_symbols_from_database(self, access_token: str = None) -> List[str]:
+        """
+        Fallback: Get peer symbols from database when cache unavailable.
+        """
+        logger.warning("Using database fallback for peer symbol lookup")
+        
+        try:
+            async def operation(client):
+                # stock_peers table has 'symbol' and 'peer_name' (not peer_symbol)
+                response = client.table('stock_peers').select('symbol').execute()
+                symbols = set()
+                if response.data:
+                    for row in response.data:
+                        if row.get('symbol'):
+                            symbols.add(row['symbol'])
+                return list(symbols)
+            
+            symbols = await self._execute_with_retry(operation, access_token)
+            logger.info(f"Fetched {len(symbols)} peer symbols from database (fallback)")
+            return symbols
+            
+        except Exception as e:
+            logger.error(f"Database fallback failed: {e}")
+            return []

@@ -4,14 +4,27 @@ from typing import List, Optional, Dict, Any
 from decimal import Decimal
 import httpx
 import asyncio
+import logging
 from .base_service import BaseMarketDataService
+from .symbol_registry_cache import (
+    symbol_registry,
+    SymbolSource,
+    notify_symbol_added,
+    get_watchlist_symbols
+)
 from models.market_data import (
     Watchlist, WatchlistItem, WatchlistItemWithPrices, 
     WatchlistWithItems, WatchlistWithItemsAndPrices
 )
 
+logger = logging.getLogger(__name__)
+
 class WatchlistService(BaseMarketDataService):
-    """Service for user watchlist operations."""
+    """Service for user watchlist operations with cache integration."""
+    
+    def __init__(self, supabase=None):
+        super().__init__(supabase)
+        self.cache_enabled = True  # Feature flag for cache
 
     async def get_user_watchlists(self, access_token: str = None) -> List[Watchlist]:
         """Get all watchlists for the authenticated user."""
@@ -60,9 +73,20 @@ class WatchlistService(BaseMarketDataService):
             response = client.rpc('upsert_watchlist_item', params).execute()
             if response.data is not None:
                 if isinstance(response.data, int):
-                    return response.data
+                    result = response.data
                 elif isinstance(response.data, list) and len(response.data) > 0:
-                    return response.data[0]
+                    result = response.data[0]
+                else:
+                    raise Exception("Failed to add item to watchlist")
+                
+                # Notify cache that new symbol was added
+                try:
+                    await notify_symbol_added("watchlist_items", symbol.upper())
+                    logger.info(f"Cache updated: Added {symbol} to watchlist_items")
+                except Exception as cache_error:
+                    logger.warning(f"Failed to update cache for {symbol}: {cache_error}")
+                
+                return result
             raise Exception("Failed to add item to watchlist")
         
         return await self._execute_with_retry(operation, access_token)

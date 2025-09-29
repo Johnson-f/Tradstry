@@ -5,19 +5,28 @@ from datetime import date
 from decimal import Decimal
 import httpx
 import asyncio
+import logging
 from supabase import Client
 from .base_service import BaseMarketDataService
 from .logo_service import LogoService
+from .symbol_registry_cache import (
+    symbol_registry,
+    SymbolSource,
+    get_mover_symbols
+)
 from models.market_data import (
     MarketMover, MarketMoverWithLogo, MarketMoverWithPrices, MarketMoversRequest, CompanyLogosRequest
 )
 
+logger = logging.getLogger(__name__)
+
 class MoversService(BaseMarketDataService):
-    """Service for market movers (gainers, losers, active)."""
+    """Service for market movers (gainers, losers, active) with cache integration."""
 
     def __init__(self, supabase: Client = None, logo_service: LogoService = None):
         super().__init__(supabase)
         self.logo_service = logo_service or LogoService(self.supabase)
+        self.cache_enabled = True  # Feature flag for cache
 
     async def get_top_gainers(
         self, 
@@ -340,7 +349,95 @@ class MoversService(BaseMarketDataService):
                     "includes_real_time_prices": True
                 }
             }
+        except Exception as e:
+            print(f"Error in get_all_movers_with_prices: {e}")
+            return {
+                "gainers": [],
+                "losers": [],
+                "most_active": [],
+                "summary": {
+                    "total_gainers": 0,
+                    "total_losers": 0,
+                    "total_most_active": 0,
+                    "error": str(e)
+                }
+            }
+    
+    # ========================
+    # Cache-Powered Operations
+    # ========================
+    
+    async def get_all_mover_symbols_from_cache(self) -> List[str]:
+        """
+        Get all market mover symbols using cache.
+        
+        Fast lookup (1-5ms) instead of database query (100-300ms).
+        """
+        if not self.cache_enabled:
+            return await self._get_mover_symbols_from_database()
+        
+        try:
+            # Get from cache (fast!)
+            symbols = await get_mover_symbols()
+            
+            if symbols:
+                logger.debug(f"Cache hit: Retrieved {len(symbols)} mover symbols")
+                return symbols
+            
+            logger.warning("Cache returned empty, falling back to database")
+            return await self._get_mover_symbols_from_database()
             
         except Exception as e:
-            print(f"Error in market movers overview: {e}")
+            logger.error(f"Cache lookup failed: {e}. Falling back to database")
+            return await self._get_mover_symbols_from_database()
+    
+    async def batch_fetch_mover_prices(
+        self,
+        access_token: str = None
+    ) -> Dict[str, Any]:
+        """
+        Batch fetch prices for all market mover symbols using cache.
+        
+        More efficient than querying database for symbols.
+        """
+        logger.info("Fetching prices for cached mover symbols")
+        
+        try:
+            # Get symbols from cache
+            symbols = await self.get_all_mover_symbols_from_cache()
+            
+            if not symbols:
+                logger.warning("No mover symbols to fetch prices for")
+                return {}
+            
+            logger.info(f"Fetching prices for {len(symbols)} cached mover symbols")
+            
+            # Batch fetch prices
+            prices = await self._fetch_real_time_prices(symbols)
+            
+            logger.info(f"✅ Fetched prices for {len(prices)} mover symbols")
+            return prices
+            
+        except Exception as e:
+            logger.error(f"Batch price fetch failed: {e}")
+            return {}
+    
+    async def _get_mover_symbols_from_database(self, access_token: str = None) -> List[str]:
+        """
+        Fallback: Get mover symbols from database when cache unavailable.
+        """
+        logger.warning("Using database fallback for mover symbol lookup")
+        
+        try:
+            async def operation(client):
+                response = client.table('market_movers').select('symbol').execute()
+                return list(set([row['symbol'] for row in response.data])) if response.data else []
+            
+            symbols = await self._execute_with_retry(operation, access_token)
+            logger.info(f"Fetched {len(symbols)} mover symbols from database (fallback)")
+            return symbols
+            
+        except Exception as e:
+            logger.error(f"Database fallback failed: {e}")
+            return []
             raise
