@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { useCompanyInfo, useStockQuotes } from '@/lib/hooks/use-market-data';
+import { useCompanyInfo, useStockQuotesWithPrices } from '@/lib/hooks/use-market-data';
 import { TrendingUp, TrendingDown, Sun, Moon, Clock } from 'lucide-react';
 
 interface PriceCardProps {
@@ -165,7 +165,7 @@ const ExtendedHoursPrice: React.FC<ExtendedHoursPriceProps> = ({
 // Compact price card skeleton
 const PriceCardSkeleton: React.FC = () => (
   <div className="flex gap-4">
-    <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+    <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 px-4 py-3">
       <CardContent className="p-0">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
@@ -186,7 +186,7 @@ export const PriceCard: React.FC<PriceCardProps> = ({
   const [marketHours, setMarketHours] = useState<MarketHours>(getMarketHours());
   
   const { companyInfo } = useCompanyInfo(symbol, dataProvider);
-  const { stockQuote, isLoading, error } = useStockQuotes(symbol, undefined, dataProvider);
+  const { stockQuoteWithPrices, isLoading, error } = useStockQuotesWithPrices(symbol);
 
   // Update market hours every minute
   useEffect(() => {
@@ -204,7 +204,7 @@ export const PriceCard: React.FC<PriceCardProps> = ({
 
   if (error) {
     return (
-      <div className="text-red-400 text-sm">
+      <div className="text-red-600 dark:text-red-400 text-sm">
         Failed to load price data: {error.message}
       </div>
     );
@@ -214,34 +214,44 @@ export const PriceCard: React.FC<PriceCardProps> = ({
     return <PriceCardSkeleton />;
   }
 
-  if (!stockQuote) {
+  if (!stockQuoteWithPrices) {
     return (
-      <div className="text-gray-400 text-sm">
+      <div className="text-gray-500 dark:text-gray-400 text-sm">
         No price data available for {symbol}
       </div>
     );
   }
 
-  const currentPrice = stockQuote.current_price || 0;
-  const priceChange = stockQuote.price_change || 0;
-  const priceChangePercent = stockQuote.price_change_percent || 0;
+  // Debug: Log the API response
+  console.log('Stock Quote Data:', stockQuoteWithPrices);
+
+  // Parse price data (API returns Decimal as string or number)
+  const parsePrice = (value: string | number | undefined | null): number => {
+    if (typeof value === 'number') return isNaN(value) ? 0 : value;
+    if (typeof value === 'string') return parseFloat(value) || 0;
+    return 0;
+  };
+
+  const currentPrice = parsePrice(stockQuoteWithPrices.price);
+  const priceChange = parsePrice(stockQuoteWithPrices.change);
+  const priceChangePercent = parsePrice(stockQuoteWithPrices.percent_change);
   const isPositive = priceChangePercent >= 0;
 
   return (
     <div className="flex gap-4">
       {/* Main Price Card */}
-      <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+      <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 px-4 py-3">
         <CardContent className="p-0">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <div className="text-2xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {formatPrice(currentPrice)}
               </div>
               
               <div className={`flex items-center gap-2 text-sm font-medium ${
                 isPositive 
-                  ? 'text-cyan-400' 
-                  : 'text-red-400'
+                  ? 'text-green-600 dark:text-cyan-400' 
+                  : 'text-red-600 dark:text-red-400'
               }`}>
                 <span>{formatChange(priceChange)}</span>
                 <span>↗ {formatPercentChange(priceChangePercent)}</span>
@@ -250,7 +260,7 @@ export const PriceCard: React.FC<PriceCardProps> = ({
             
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <SessionIcon session={marketHours.session} />
-              <span>At close: {formatTimestamp(stockQuote.quote_timestamp)}</span>
+              <span>At close: {formatTimestamp(stockQuoteWithPrices.quote_timestamp)}</span>
             </div>
           </div>
         </CardContent>
@@ -258,23 +268,23 @@ export const PriceCard: React.FC<PriceCardProps> = ({
 
       {/* Extended Hours Card */}
       {showExtendedHours && (
-        <Card className="bg-gray-900 border-gray-800 px-4 py-3">
+        <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 px-4 py-3">
           <CardContent className="p-0">
             <div className="space-y-1">
               <div className="flex items-center gap-3">
-                <div className="text-2xl font-bold text-white">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
                   {formatPrice(currentPrice * 1.0139)}
                 </div>
                 
-                <div className="flex items-center gap-2 text-sm font-medium text-cyan-400">
+                <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-cyan-400">
                   <span>+${(0.58).toFixed(2)}</span>
                   <span>↗ +1.39%</span>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 <Moon className="w-3 h-3 text-blue-400" />
-                <span>After hours: {formatTimestamp(stockQuote.quote_timestamp)}</span>
+                <span>After hours: {formatTimestamp(stockQuoteWithPrices.quote_timestamp)}</span>
               </div>
             </div>
           </CardContent>

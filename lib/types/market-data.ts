@@ -184,9 +184,9 @@ export interface StockQuoteWithPrices {
   data_provider?: string;
   // Real-time price data from finance-query API
   name?: string;
-  price?: number;
-  after_hours_price?: number;
-  change?: number;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
   percent_change?: string;
   logo?: string;
 }
@@ -392,10 +392,11 @@ export interface MarketMoverWithPrices {
   symbol: string;
   name?: string;
   rank_position?: number;
+  fetch_timestamp?: string;
   // Real-time price data from finance-query API
-  price?: number;
-  after_hours_price?: number;
-  change?: number;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
   percent_change?: string;
   logo?: string;
 }
@@ -682,9 +683,9 @@ export interface WatchlistItemWithPrices {
   updated_at?: string;
   // Real-time price data from finance-query API
   name?: string;
-  price?: number;
-  after_hours_price?: number;
-  change?: number;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
   percent_change?: string;
   logo?: string;
 }
@@ -757,9 +758,9 @@ export interface StockPeerWithPrices {
   fetch_timestamp?: string;
   // Real-time price data from finance-query API
   name?: string;
-  price?: number;
-  after_hours_price?: number;
-  change?: number;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
   percent_change?: string;
 }
 

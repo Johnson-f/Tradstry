@@ -63,9 +63,9 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, formatter }) => {
   const displayValue = formatter ? formatter(value) : (value?.toString() || 'N/A');
   
   return (
-    <div className="flex justify-between items-center py-3 border-b border-gray-700/30 last:border-b-0">
-      <span className="text-gray-400 font-medium text-sm">{label}</span>
-      <span className="text-gray-200 font-medium text-sm text-right max-w-[60%] truncate">
+    <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700/30 last:border-b-0">
+      <span className="text-gray-600 dark:text-gray-400 font-medium text-sm">{label}</span>
+      <span className="text-gray-900 dark:text-gray-200 font-medium text-sm text-right max-w-[60%] truncate">
         {displayValue}
       </span>
     </div>
@@ -78,16 +78,16 @@ const CompanyInfoSkeleton: React.FC = () => (
     <div className="space-y-3">
       {Array.from({ length: 8 }).map((_, index) => (
         <div key={index} className="flex justify-between items-center py-3">
-          <Skeleton className="w-24 h-4 bg-gray-700" />
-          <Skeleton className="w-20 h-4 bg-gray-700" />
+          <Skeleton className="w-24 h-4" />
+          <Skeleton className="w-20 h-4" />
         </div>
       ))}
     </div>
     
-    <div className="space-y-2 pt-4 border-t border-gray-700/30">
-      <Skeleton className="w-full h-4 bg-gray-700" />
-      <Skeleton className="w-full h-4 bg-gray-700" />
-      <Skeleton className="w-3/4 h-4 bg-gray-700" />
+    <div className="space-y-2 pt-4 border-t border-gray-200 dark:border-gray-700/30">
+      <Skeleton className="w-full h-4" />
+      <Skeleton className="w-full h-4" />
+      <Skeleton className="w-3/4 h-4" />
     </div>
   </div>
 );
@@ -149,7 +149,7 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
     : description.slice(0, 200) + '...';
 
   return (
-    <Card className="w-full bg-gray-800/50 border-gray-700/50 backdrop-blur-sm shadow-xl">
+    <Card className="w-full bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 backdrop-blur-sm">
       <CardContent className="space-y-0">
         {/* Company Details Grid */}
         <div className="space-y-0">
@@ -192,22 +192,18 @@ export const CompanyInfoCard: React.FC<CompanyInfoCardProps> = ({
             label="Exchange" 
             value={companyInfo.exchange}
           />
-           <InfoRow 
-            label="About" 
-            value={companyInfo.about}
-          />
         </div>
 
         {/* About Section */}
         {description && (
-          <div className="pt-6 border-t border-gray-700/30 space-y-3">
-            <p className="text-gray-300 text-sm leading-relaxed">
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-700/30 space-y-3">
+            <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
               {displayDescription}
             </p>
             {shouldTruncate && (
               <button
                 onClick={() => setShowFullDescription(!showFullDescription)}
-                className="text-gray-400 text-sm hover:text-gray-300 transition-colors font-medium"
+                className="text-gray-600 dark:text-gray-400 text-sm hover:text-gray-900 dark:hover:text-gray-300 transition-colors font-medium"
               >
                 {showFullDescription ? 'Read Less' : 'Read More'}
               </button>

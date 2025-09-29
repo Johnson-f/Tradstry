@@ -205,22 +205,22 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
 
 // Loading skeleton for cards
 const IndexCardSkeleton: React.FC = () => (
-  <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] flex flex-col">
+  <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] flex flex-col bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
     <CardHeader className="pb-1 px-4 pt-3">
       <div className="flex items-start justify-between mb-1">
         <div>
-          <Skeleton className="w-16 h-4 mb-1" />
-          <Skeleton className="w-12 h-3" />
+          <Skeleton className="w-16 h-4 mb-1 bg-gray-200 dark:bg-gray-700" />
+          <Skeleton className="w-12 h-3 bg-gray-200 dark:bg-gray-700" />
         </div>
         <div className="text-right">
-          <Skeleton className="w-16 h-5 rounded-full mb-1" />
-          <Skeleton className="w-8 h-3" />
+          <Skeleton className="w-16 h-5 rounded-full mb-1 bg-gray-200 dark:bg-gray-700" />
+          <Skeleton className="w-8 h-3 bg-gray-200 dark:bg-gray-700" />
         </div>
       </div>
     </CardHeader>
     <CardContent className="flex-1 pt-0 px-4 pb-3">
-      <Skeleton className="w-full h-[60px] rounded mb-2" />
-      <Skeleton className="w-20 h-5" />
+      <Skeleton className="w-full h-[60px] rounded mb-2 bg-gray-200 dark:bg-gray-700" />
+      <Skeleton className="w-20 h-5 bg-gray-200 dark:bg-gray-700" />
     </CardContent>
   </Card>
 );

@@ -1,9 +1,10 @@
--- SIGNIFICANT PRICE MOVEMENTS WITH NEWS
--- REDESIGNED: Uses historical_prices table (stock_quotes no longer stores price data)
--- Functions to detect stock price movements ±3% and retrieve related news
+-- =====================================================
+-- MIGRATION: Update price movements functions to use historical_prices
+-- =====================================================
+-- This migration updates price movement functions to query historical_prices
+-- instead of stock_quotes (which was redesigned to only store metadata)
 
--- 1. GET SIGNIFICANT PRICE MOVEMENTS WITH NEWS
-
+-- Function 1: Get significant price movements with news
 CREATE OR REPLACE FUNCTION get_significant_price_movements_with_news(
     p_symbol VARCHAR(20) DEFAULT NULL,
     p_days_back INTEGER DEFAULT 30,
@@ -127,9 +128,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 2. GET TOP MOVERS WITH NEWS TODAY
--- REDESIGNED: Uses historical_prices table (stock_quotes no longer stores price data)
-
+-- Function 2: Get today's top movers with news
 CREATE OR REPLACE FUNCTION get_top_movers_with_news_today(
     p_limit INTEGER DEFAULT 20,
     p_min_change_percent DECIMAL(7,4) DEFAULT 3.0
@@ -243,37 +242,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Add comments
+COMMENT ON FUNCTION get_significant_price_movements_with_news IS 'REDESIGNED: Queries historical_prices table for daily price movements (stock_quotes no longer stores price data)';
+COMMENT ON FUNCTION get_top_movers_with_news_today IS 'REDESIGNED: Queries historical_prices table for today''s price movers (stock_quotes no longer stores price data)';
 
--- USAGE EXAMPLES
-/*
--- Get significant movements with related news for Apple
-SELECT * FROM get_significant_price_movements_with_news('AAPL', 30, 3.0, 20);
-
--- Get all significant movements across all stocks
-SELECT * FROM get_significant_price_movements_with_news(NULL, 7, 3.0, 50);
-
--- Get daily summary for today
-SELECT * FROM get_daily_significant_movements_summary(CURRENT_DATE, 3.0);
-
--- Get Tesla's movement history with news correlation
-SELECT * FROM get_symbol_movement_history_with_news('TSLA', 90, 3.0);
-
--- Get today's top movers with news
-SELECT * FROM get_top_movers_with_news_today(15, 3.0);
-
--- Example formatted query for significant movements
-SELECT 
-    symbol,
-    movement_date,
-    CONCAT(
-        CASE WHEN movement_type = 'SURGE' THEN '📈 +' ELSE '📉 ' END,
-        ROUND(price_change_percent, 2), '%'
-    ) as movement,
-    CONCAT('$', ROUND(close_price, 2)) as price,
-    CASE 
-        WHEN news_title IS NOT NULL THEN LEFT(news_title, 80) || '...'
-        ELSE 'No related news found'
-    END as related_news
-FROM get_significant_price_movements_with_news('AAPL', 14, 3.0, 10)
-ORDER BY movement_date DESC;
-*/
+-- Migration complete
+SELECT 'Price movement functions successfully migrated to use historical_prices table' AS status;

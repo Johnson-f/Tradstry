@@ -27,7 +27,17 @@ class QuoteService(BaseMarketDataService):
             }
             response = client.rpc('get_stock_quotes', params).execute()
             if response.data and len(response.data) > 0:
-                return StockQuote(**response.data[0])
+                data = response.data[0]
+                
+                # Parse quote_timestamp if it's a string
+                if 'quote_timestamp' in data and isinstance(data['quote_timestamp'], str):
+                    data['quote_timestamp'] = datetime.fromisoformat(data['quote_timestamp'].replace('Z', '+00:00'))
+                
+                # Parse quote_date if it's a string
+                if 'quote_date' in data and isinstance(data['quote_date'], str):
+                    data['quote_date'] = date.fromisoformat(data['quote_date'])
+                
+                return StockQuote(**data)
             return None
         
         return await self._execute_with_retry(operation, access_token)
@@ -93,10 +103,21 @@ class QuoteService(BaseMarketDataService):
             
             if response.data and len(response.data) > 0:
                 data = response.data[0]
+                
+                # Parse quote_timestamp (comes as string from database)
+                quote_timestamp_str = data.get('quote_timestamp')
+                if quote_timestamp_str:
+                    if isinstance(quote_timestamp_str, str):
+                        quote_timestamp = datetime.fromisoformat(quote_timestamp_str.replace('Z', '+00:00'))
+                    else:
+                        quote_timestamp = quote_timestamp_str
+                else:
+                    quote_timestamp = datetime.now(timezone.utc)
+                
                 return StockQuote(
                     symbol=data['symbol'],
-                    quote_date=data.get('quote_timestamp', datetime.now()).date(),
-                    quote_timestamp=data.get('quote_timestamp'),
+                    quote_date=quote_timestamp.date(),
+                    quote_timestamp=quote_timestamp,
                     data_provider=data.get('data_provider'),
                     exchange_id=data.get('exchange_id')
                 )
@@ -129,7 +150,10 @@ class QuoteService(BaseMarketDataService):
                     return None
                 
                 # Return the first (and should be only) result
-                return data[0] if isinstance(data[0], dict) else None
+                result = data[0] if isinstance(data[0], dict) else None
+                if result:
+                    print(f"API data for {symbol}: {result}")
+                return result
                 
         except httpx.RequestError as e:
             print(f"HTTP request error for {symbol}: {e}")
@@ -183,7 +207,10 @@ class QuoteService(BaseMarketDataService):
         api_data: Dict[str, Any]
     ) -> StockQuoteWithPrices:
         """Combine database metadata with real-time API data."""
-        return StockQuoteWithPrices(
+        print(f"Combining data for {db_quote.symbol}")
+        print(f"API data keys: {list(api_data.keys())}")
+        
+        result = StockQuoteWithPrices(
             # Database metadata
             symbol=db_quote.symbol,
             quote_date=db_quote.quote_date,
@@ -198,6 +225,9 @@ class QuoteService(BaseMarketDataService):
             percent_change=api_data.get('percentChange'),
             logo=api_data.get('logo')
         )
+        
+        print(f"Combined result - price: {result.price}, change: {result.change}, percent_change: {result.percent_change}")
+        return result
 
     def _safe_decimal(self, value: Any) -> Optional[Decimal]:
         """Safely convert string/number to Decimal."""

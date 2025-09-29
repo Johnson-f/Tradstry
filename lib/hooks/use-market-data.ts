@@ -7,6 +7,7 @@ import type { IndexData, HistoricalDataPoint, MarketMoverWithPrices, MarketMover
 
 // =====================================================
 // EARNINGS HOOKS
+
 // =====================================================
 
 export function useDailyEarningsSummary(targetDate?: string) {
