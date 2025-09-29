@@ -5,12 +5,12 @@ from config import get_settings, Settings
 from database import get_supabase
 from supabase import Client
 from routers import analytics, setups_router, notes_router, images, trade_notes_router, market_data_router
-from routers import ai_reports, ai_chat, ai_insights, symbol_cache_health
+from routers import ai_reports, ai_chat, ai_insights, symbol_cache_health, price_cache_health
 from routers.stocks import router as stocks_router
 from routers.options import router as options_router
 from services.redis_client import init_redis, close_redis, get_redis_health
 from services.cache_service import get_cache_stats
-from services.market_data.startup_handler import register_symbol_cache_lifecycle
+from services.market_data.startup_handler import register_all_cache_lifecycles
 import logging
 
 # Load environment variables from .env file
@@ -45,8 +45,9 @@ app.include_router(ai_reports.router, prefix=get_settings().API_PREFIX)
 app.include_router(ai_chat.router, prefix=get_settings().API_PREFIX)
 app.include_router(ai_insights.router, prefix=get_settings().API_PREFIX)
 
-# Symbol Cache Health router
+# Cache Health routers
 app.include_router(symbol_cache_health.router, prefix=get_settings().API_PREFIX)
+app.include_router(price_cache_health.router, prefix=get_settings().API_PREFIX)
 
 @app.on_event("startup")
 async def startup_event():
@@ -60,8 +61,8 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start app services: {e}")
 
-# Register Symbol Registry Cache lifecycle
-register_symbol_cache_lifecycle(app)
+# Register all cache lifecycles (Symbol Registry + Price Cache)
+register_all_cache_lifecycles(app)
 
 @app.on_event("shutdown")
 async def shutdown_event():

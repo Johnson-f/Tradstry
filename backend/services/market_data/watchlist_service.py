@@ -12,6 +12,7 @@ from .symbol_registry_cache import (
     notify_symbol_added,
     get_watchlist_symbols
 )
+from .price_cache_service import get_cached_prices
 from models.market_data import (
     Watchlist, WatchlistItem, WatchlistItemWithPrices, 
     WatchlistWithItems, WatchlistWithItemsAndPrices
@@ -218,9 +219,9 @@ class WatchlistService(BaseMarketDataService):
         if not items:
             return []
 
-        # Extract symbols and fetch real-time prices
+        # Extract symbols and fetch real-time prices from cache
         symbols = [item.symbol for item in items]
-        price_data = await self._fetch_real_time_prices(symbols)
+        price_data = await get_cached_prices(symbols)
         
         # Combine item data with price data
         result = []
