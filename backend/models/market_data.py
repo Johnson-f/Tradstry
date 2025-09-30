@@ -45,6 +45,8 @@ class DailyEarningsSummary(BaseModel):
 # =====================================================
 
 class CompanyInfo(BaseModel):
+    """REDESIGNED: Selective real-time data - REMOVED: price, pre_market_price, after_hours_price, change, percent_change
+    KEPT: open, high, low, volume, avg_volume, year_high, year_low"""
     id: int
     symbol: str
     exchange_id: Optional[int] = None
@@ -57,12 +59,7 @@ class CompanyInfo(BaseModel):
     employees: Optional[int] = None
     logo: Optional[str] = None
     
-    # Real-time price data
-    price: Optional[Decimal] = None
-    pre_market_price: Optional[Decimal] = None
-    after_hours_price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    # Daily price data (kept for trading analysis)
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -114,6 +111,7 @@ class CompanyInfo(BaseModel):
 
 
 class CompanyBasic(BaseModel):
+    """REDESIGNED: Basic company info with selective price data - NO current price, change, percent_change"""
     id: int
     symbol: str
     name: Optional[str] = None
@@ -122,10 +120,10 @@ class CompanyBasic(BaseModel):
     sector: Optional[str] = None
     industry: Optional[str] = None
     market_cap: Optional[int] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
-    volume: Optional[int] = None
+    high: Optional[Decimal] = None  # Day's high
+    low: Optional[Decimal] = None   # Day's low
+    volume: Optional[int] = None    # Current day's volume
+    avg_volume: Optional[int] = None
     pe_ratio: Optional[Decimal] = None
     yield_: Optional[Decimal] = Field(None, alias="yield")  # yield is a Python keyword
     ytd_return: Optional[Decimal] = None
@@ -210,18 +208,30 @@ class NewsSearch(BaseModel):
 # =====================================================
 
 class StockQuote(BaseModel):
-    symbol: str
+    """REDESIGNED: Stock quote without price data - use external APIs for real-time prices"""
+    symbol: str  # Ticker symbol stored as TEXT (not number)
     quote_date: date
-    previous_close: Optional[Decimal] = None
-    open_price: Optional[Decimal] = None
-    high_price: Optional[Decimal] = None
-    low_price: Optional[Decimal] = None
-    current_price: Optional[Decimal] = None
-    volume: Optional[int] = None
-    price_change: Optional[Decimal] = None
-    price_change_percent: Optional[Decimal] = None
     quote_timestamp: Optional[datetime] = None
     data_provider: Optional[str] = None
+    exchange_id: Optional[int] = None
+    # REMOVED: All price fields - frontend gets prices from external APIs
+
+
+class StockQuoteWithPrices(BaseModel):
+    """Stock quote enriched with real-time price data from finance-query API"""
+    # Database metadata
+    symbol: str
+    quote_date: date
+    quote_timestamp: Optional[datetime] = None
+    data_provider: Optional[str] = None
+    exchange_id: Optional[int] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
 
 
 class FundamentalData(BaseModel):
@@ -237,6 +247,189 @@ class FundamentalData(BaseModel):
     period_end_date: Optional[date] = None
     data_provider: Optional[str] = None
     updated_at: Optional[datetime] = None
+
+
+# =====================================================
+# FINANCIAL STATEMENTS MODELS
+# =====================================================
+
+class IncomeStatement(BaseModel):
+    symbol: str
+    frequency: str
+    fiscal_date: date
+    total_revenue: Optional[Decimal] = None
+    operating_revenue: Optional[Decimal] = None
+    cost_of_revenue: Optional[Decimal] = None
+    gross_profit: Optional[Decimal] = None
+    reconciled_cost_of_revenue: Optional[Decimal] = None
+    operating_expense: Optional[Decimal] = None
+    selling_general_and_administrative: Optional[Decimal] = None
+    research_and_development: Optional[Decimal] = None
+    total_expenses: Optional[Decimal] = None
+    reconciled_depreciation: Optional[Decimal] = None
+    operating_income: Optional[Decimal] = None
+    total_operating_income_as_reported: Optional[Decimal] = None
+    net_non_operating_interest_income_expense: Optional[Decimal] = None
+    non_operating_interest_income: Optional[Decimal] = None
+    non_operating_interest_expense: Optional[Decimal] = None
+    other_income_expense: Optional[Decimal] = None
+    other_non_operating_income_expenses: Optional[Decimal] = None
+    pretax_income: Optional[Decimal] = None
+    net_income_common_stockholders: Optional[Decimal] = None
+    net_income_attributable_to_parent_shareholders: Optional[Decimal] = None
+    net_income_including_non_controlling_interests: Optional[Decimal] = None
+    net_income_continuous_operations: Optional[Decimal] = None
+    diluted_ni_available_to_common_stockholders: Optional[Decimal] = None
+    net_income_from_continuing_discontinued_operation: Optional[Decimal] = None
+    net_income_from_continuing_operation_net_minority_interest: Optional[Decimal] = None
+    normalized_income: Optional[Decimal] = None
+    interest_income: Optional[Decimal] = None
+    interest_expense: Optional[Decimal] = None
+    net_interest_income: Optional[Decimal] = None
+    basic_eps: Optional[Decimal] = None
+    diluted_eps: Optional[Decimal] = None
+    basic_average_shares: Optional[int] = None
+    diluted_average_shares: Optional[int] = None
+    ebit: Optional[Decimal] = None
+    ebitda: Optional[Decimal] = None
+    normalized_ebitda: Optional[Decimal] = None
+    tax_provision: Optional[Decimal] = None
+    tax_rate_for_calcs: Optional[Decimal] = None
+    tax_effect_of_unusual_items: Optional[Decimal] = None
+    data_provider: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class BalanceSheet(BaseModel):
+    symbol: str
+    frequency: str
+    fiscal_date: date
+    total_assets: Optional[Decimal] = None
+    total_current_assets: Optional[Decimal] = None
+    cash_cash_equivalents_and_short_term_investments: Optional[Decimal] = None
+    cash_and_cash_equivalents: Optional[Decimal] = None
+    cash: Optional[Decimal] = None
+    cash_equivalents: Optional[Decimal] = None
+    other_short_term_investments: Optional[Decimal] = None
+    receivables: Optional[Decimal] = None
+    accounts_receivable: Optional[Decimal] = None
+    other_receivables: Optional[Decimal] = None
+    inventory: Optional[Decimal] = None
+    other_current_assets: Optional[Decimal] = None
+    total_non_current_assets: Optional[Decimal] = None
+    net_ppe: Optional[Decimal] = None
+    gross_ppe: Optional[Decimal] = None
+    properties: Optional[Decimal] = None
+    land_and_improvements: Optional[Decimal] = None
+    machinery_furniture_equipment: Optional[Decimal] = None
+    other_properties: Optional[Decimal] = None
+    leases: Optional[Decimal] = None
+    accumulated_depreciation: Optional[Decimal] = None
+    investments_and_advances: Optional[Decimal] = None
+    investment_in_financial_assets: Optional[Decimal] = None
+    available_for_sale_securities: Optional[Decimal] = None
+    other_investments: Optional[Decimal] = None
+    non_current_deferred_assets: Optional[Decimal] = None
+    non_current_deferred_taxes_assets: Optional[Decimal] = None
+    other_non_current_assets: Optional[Decimal] = None
+    net_tangible_assets: Optional[Decimal] = None
+    tangible_book_value: Optional[Decimal] = None
+    total_liabilities: Optional[Decimal] = None
+    total_current_liabilities: Optional[Decimal] = None
+    payables_and_accrued_expenses: Optional[Decimal] = None
+    payables: Optional[Decimal] = None
+    accounts_payable: Optional[Decimal] = None
+    total_tax_payable: Optional[Decimal] = None
+    income_tax_payable: Optional[Decimal] = None
+    current_debt_and_capital_lease_obligation: Optional[Decimal] = None
+    current_debt: Optional[Decimal] = None
+    commercial_paper: Optional[Decimal] = None
+    other_current_borrowings: Optional[Decimal] = None
+    current_capital_lease_obligation: Optional[Decimal] = None
+    current_deferred_liabilities: Optional[Decimal] = None
+    current_deferred_revenue: Optional[Decimal] = None
+    other_current_liabilities: Optional[Decimal] = None
+    total_non_current_liabilities: Optional[Decimal] = None
+    long_term_debt_and_capital_lease_obligation: Optional[Decimal] = None
+    long_term_debt: Optional[Decimal] = None
+    long_term_capital_lease_obligation: Optional[Decimal] = None
+    trade_and_other_payables_non_current: Optional[Decimal] = None
+    other_non_current_liabilities: Optional[Decimal] = None
+    capital_lease_obligations: Optional[Decimal] = None
+    total_debt: Optional[Decimal] = None
+    net_debt: Optional[Decimal] = None
+    total_equity: Optional[Decimal] = None
+    stockholders_equity: Optional[Decimal] = None
+    capital_stock: Optional[Decimal] = None
+    common_stock: Optional[Decimal] = None
+    retained_earnings: Optional[Decimal] = None
+    gains_losses_not_affecting_retained_earnings: Optional[Decimal] = None
+    other_equity_adjustments: Optional[Decimal] = None
+    common_stock_equity: Optional[Decimal] = None
+    shares_issued: Optional[int] = None
+    ordinary_shares_number: Optional[int] = None
+    treasury_shares_number: Optional[int] = None
+    working_capital: Optional[Decimal] = None
+    invested_capital: Optional[Decimal] = None
+    total_capitalization: Optional[Decimal] = None
+    data_provider: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class CashFlow(BaseModel):
+    symbol: str
+    frequency: str
+    fiscal_date: date
+    operating_cash_flow: Optional[Decimal] = None
+    net_income_from_continuing_operations: Optional[Decimal] = None
+    depreciation_and_amortization: Optional[Decimal] = None
+    deferred_income_tax: Optional[Decimal] = None
+    stock_based_compensation: Optional[Decimal] = None
+    other_non_cash_items: Optional[Decimal] = None
+    change_in_working_capital: Optional[Decimal] = None
+    change_in_receivables: Optional[Decimal] = None
+    change_in_inventory: Optional[Decimal] = None
+    change_in_payables_and_accrued_expense: Optional[Decimal] = None
+    change_in_other_current_assets: Optional[Decimal] = None
+    change_in_other_current_liabilities: Optional[Decimal] = None
+    change_in_other_working_capital: Optional[Decimal] = None
+    investing_cash_flow: Optional[Decimal] = None
+    net_investment_purchase_and_sale: Optional[Decimal] = None
+    purchase_of_investment: Optional[Decimal] = None
+    sale_of_investment: Optional[Decimal] = None
+    net_ppe_purchase_and_sale: Optional[Decimal] = None
+    purchase_of_ppe: Optional[Decimal] = None
+    net_business_purchase_and_sale: Optional[Decimal] = None
+    purchase_of_business: Optional[Decimal] = None
+    net_other_investing_changes: Optional[Decimal] = None
+    capital_expenditure: Optional[Decimal] = None
+    financing_cash_flow: Optional[Decimal] = None
+    net_issuance_payments_of_debt: Optional[Decimal] = None
+    net_long_term_debt_issuance: Optional[Decimal] = None
+    long_term_debt_issuance: Optional[Decimal] = None
+    long_term_debt_payments: Optional[Decimal] = None
+    net_short_term_debt_issuance: Optional[Decimal] = None
+    short_term_debt_issuance: Optional[Decimal] = None
+    short_term_debt_payments: Optional[Decimal] = None
+    net_common_stock_issuance: Optional[Decimal] = None
+    common_stock_issuance: Optional[Decimal] = None
+    common_stock_payments: Optional[Decimal] = None
+    cash_dividends_paid: Optional[Decimal] = None
+    net_other_financing_charges: Optional[Decimal] = None
+    issuance_of_capital_stock: Optional[Decimal] = None
+    issuance_of_debt: Optional[Decimal] = None
+    repayment_of_debt: Optional[Decimal] = None
+    repurchase_of_capital_stock: Optional[Decimal] = None
+    end_cash_position: Optional[Decimal] = None
+    changes_in_cash: Optional[Decimal] = None
+    beginning_cash_position: Optional[Decimal] = None
+    free_cash_flow: Optional[Decimal] = None
+    income_tax_paid_supplemental_data: Optional[Decimal] = None
+    interest_paid_supplemental_data: Optional[Decimal] = None
+    data_provider: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
 
 
 # =====================================================
@@ -283,20 +476,32 @@ class TopMover(BaseModel):
 # =====================================================
 
 class MarketMover(BaseModel):
+    """Market mover with ranking data only - use for basic display"""
     symbol: str
     name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    rank_position: Optional[int] = None
     fetch_timestamp: Optional[datetime] = None
 
 
-class MarketMoverWithLogo(BaseModel):
+class MarketMoverWithPrices(BaseModel):
+    """Market mover enriched with real-time price data from finance-query API"""
     symbol: str
     name: Optional[str] = None
+    rank_position: Optional[int] = None
+    fetch_timestamp: Optional[datetime] = None
+    # Real-time price data from finance-query API
     price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
     change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
+
+
+class MarketMoverWithLogo(BaseModel):
+    """Market mover with logo but without price data - legacy compatibility"""
+    symbol: str
+    name: Optional[str] = None
+    rank_position: Optional[int] = None
     fetch_timestamp: Optional[datetime] = None
     logo: Optional[str] = None
 
@@ -410,7 +615,8 @@ class QuoteResponse(BaseModel):
 
 
 class StockQuoteRequest(BaseModel):
-    symbol: str
+    """REDESIGNED: Request for stock symbol metadata (no price data)"""
+    symbol: str  # Ticker symbol as TEXT (not number)
     quote_date: Optional[date] = None
     data_provider: Optional[str] = None
 
@@ -431,6 +637,30 @@ class PriceMovementRequest(BaseModel):
 class TopMoversRequest(BaseModel):
     limit: Optional[int] = 20
     min_change_percent: Optional[Decimal] = 3.0
+
+
+class FinancialStatementRequest(BaseModel):
+    symbol: str
+    frequency: str
+    limit: Optional[int] = 10
+
+class KeyStats(BaseModel):
+    market_cap: Optional[int] = None
+    cash_and_cash_equivalents: Optional[Decimal] = None
+    total_debt: Optional[Decimal] = None
+    enterprise_value: Optional[Decimal] = None
+    revenue: Optional[Decimal] = None
+    gross_profit: Optional[Decimal] = None
+    ebitda: Optional[Decimal] = None
+    net_income_common_stockholders: Optional[Decimal] = None
+    diluted_eps: Optional[Decimal] = None
+    operating_cash_flow: Optional[Decimal] = None
+    capital_expenditure: Optional[Decimal] = None
+    free_cash_flow: Optional[Decimal] = None
+
+class KeyStatsRequest(BaseModel):
+    symbol: str
+    frequency: str = 'annual'
 
 
 # =====================================================
@@ -458,13 +688,12 @@ class SymbolSaveResponse(BaseModel):
 # =====================================================
 
 class HistoricalPrice(BaseModel):
-    id: int
+    id: int  # Matches SERIAL (INTEGER) in database
     symbol: str
     exchange_id: Optional[int] = None
     timestamp_utc: datetime
     date_only: date
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -479,8 +708,7 @@ class HistoricalPrice(BaseModel):
 
 
 class HistoricalPriceSummary(BaseModel):
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     data_count: int
     earliest_date: datetime
     latest_date: datetime
@@ -489,8 +717,7 @@ class HistoricalPriceSummary(BaseModel):
 
 class LatestHistoricalPrice(BaseModel):
     timestamp_utc: datetime
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     open: Optional[Decimal] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
@@ -533,8 +760,7 @@ class LatestHistoricalPriceRequest(BaseModel):
 
 class HistoricalPriceRangeRequest(BaseModel):
     symbol: str
-    time_range: str
-    time_interval: str
+    time_interval: str  # Removed time_range - intervals only
     start_date: datetime
     end_date: datetime
     data_provider: Optional[str] = None
@@ -585,6 +811,35 @@ class CacheDataRequest(BaseModel):
     data_provider: Optional[str] = "finance_query"
 
 
+class HistoricalDataRequest(BaseModel):
+    """Request for fetching historical data for multiple symbols"""
+    symbols: List[str]
+    range_param: Optional[str] = "1d"
+    interval: Optional[str] = "5m"
+
+
+class HistoricalDataResponse(BaseModel):
+    """Response for historical data fetching"""
+    success: bool
+    message: str
+    requested_symbols: List[str]
+    total_symbols: int
+    processed_symbols: int
+    failed_symbols: int
+    failed_symbol_list: List[str]
+    fetched_data_points: int
+    range: str
+    interval: str
+    data: Dict[str, Any]
+
+
+class SingleSymbolDataRequest(BaseModel):
+    """Request for fetching historical data for a single symbol"""
+    symbol: str
+    range_param: Optional[str] = "1d"
+    interval: Optional[str] = "5m"
+
+
 class MarketMoversRequest(BaseModel):
     data_date: Optional[date] = None
     limit: Optional[int] = 10
@@ -615,20 +870,47 @@ class Watchlist(BaseModel):
 
 
 class WatchlistItem(BaseModel):
+    """REDESIGNED: Watchlist item without price data - use stock_quotes for real-time prices"""
+    id: int
+    symbol: str  # Ticker symbol stored as TEXT (not number)
+    company_name: Optional[str] = None
+    added_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class WatchlistItemWithPrices(BaseModel):
+    """Watchlist item enriched with real-time price data from finance-query API"""
+    # Database metadata
     id: int
     symbol: str
     company_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     added_at: datetime
+    updated_at: Optional[datetime] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None  # Updated name from API
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+    logo: Optional[str] = None
 
 
 class WatchlistWithItems(BaseModel):
+    """REDESIGNED: Watchlist with items (no price data included)"""
     id: int
     name: str
     created_at: datetime
     updated_at: datetime
     items: List[WatchlistItem] = []
+
+
+class WatchlistWithItemsAndPrices(BaseModel):
+    """Watchlist with items enriched with real-time price data"""
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    items: List[WatchlistItemWithPrices] = []
 
 
 # =====================================================
@@ -640,11 +922,10 @@ class CreateWatchlistRequest(BaseModel):
 
 
 class AddWatchlistItemRequest(BaseModel):
+    """REDESIGNED: Add watchlist item request without price data"""
     watchlist_id: int
-    symbol: str
+    symbol: str  # Ticker symbol as TEXT (not number)
     company_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
 
 
 class DeleteWatchlistItemRequest(BaseModel):
@@ -670,34 +951,318 @@ class DeleteResponse(BaseModel):
 
 
 # =====================================================
+# HOLDERS DATA MODELS
+# =====================================================
+
+class HolderData(BaseModel):
+    """Base holder data model."""
+    id: int
+    symbol: str
+    holder_type: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InstitutionalHolder(BaseModel):
+    """Institutional holder model."""
+    id: int
+    symbol: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MutualFundHolder(BaseModel):
+    """Mutual fund holder model."""
+    id: int
+    symbol: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderTransaction(BaseModel):
+    """Insider transaction model."""
+    id: int
+    symbol: str
+    holder_name: str
+    insider_position: Optional[str] = None
+    transaction_type: Optional[str] = None
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    ownership_type: Optional[str] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderPurchasesSummary(BaseModel):
+    """Insider purchases summary model."""
+    id: int
+    symbol: str
+    summary_period: Optional[str] = None
+    purchases_shares: Optional[int] = None
+    purchases_transactions: Optional[int] = None
+    sales_shares: Optional[int] = None
+    sales_transactions: Optional[int] = None
+    net_shares: Optional[int] = None
+    net_transactions: Optional[int] = None
+    total_insider_shares: Optional[int] = None
+    net_percent_insider_shares: Optional[Decimal] = None
+    buy_percent_insider_shares: Optional[Decimal] = None
+    sell_percent_insider_shares: Optional[Decimal] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderRoster(BaseModel):
+    """Insider roster model."""
+    id: int
+    symbol: str
+    holder_name: str
+    insider_position: Optional[str] = None
+    most_recent_transaction: Optional[str] = None
+    latest_transaction_date: Optional[datetime] = None
+    shares_owned_directly: Optional[int] = None
+    shares_owned_indirectly: Optional[int] = None
+    position_direct_date: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class HolderStatistics(BaseModel):
+    """Holder statistics model."""
+    holder_type: str
+    total_holders: int
+    total_shares: Optional[int] = None
+    total_value: Optional[int] = None
+    avg_shares: Optional[Decimal] = None
+    avg_value: Optional[Decimal] = None
+    last_reported: Optional[datetime] = None
+
+
+class HolderSearchResult(BaseModel):
+    """Holder search result model."""
+    id: int
+    symbol: str
+    holder_type: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+
+
+class HolderParticipant(BaseModel):
+    """Holder participant model for unique participants."""
+    participant_name: str
+    appearance_count: int
+    symbols: List[str]
+    latest_appearance: Optional[datetime] = None
+
+
+# =====================================================
+# EARNINGS TRANSCRIPTS MODELS
+# =====================================================
+
+class EarningsTranscript(BaseModel):
+    """Full earnings transcript model."""
+    id: int
+    symbol: str
+    exchange_id: Optional[int] = None
+    quarter: str
+    year: int
+    date: datetime
+    transcript: str
+    participants: List[str]  # JSONB array converted to list
+    transcript_length: Optional[int] = None
+    transcript_language: Optional[str] = None
+    source: Optional[str] = None
+    transcripts_id: Optional[int] = None
+    retrieved_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class EarningsTranscriptMetadata(BaseModel):
+    """Earnings transcript metadata without full text."""
+    id: int
+    symbol: str
+    quarter: str
+    year: int
+    date: datetime
+    transcript_length: Optional[int] = None
+    participants_count: Optional[int] = None
+    transcript_language: Optional[str] = None
+    source: Optional[str] = None
+    retrieved_at: Optional[datetime] = None
+
+
+class TranscriptSearchResult(BaseModel):
+    """Earnings transcript search result."""
+    id: int
+    symbol: str
+    quarter: str
+    year: int
+    date: datetime
+    transcript_snippet: Optional[str] = None
+    transcript_length: Optional[int] = None
+    participants: List[str]
+    source: Optional[str] = None
+
+
+class TranscriptStatistics(BaseModel):
+    """Transcript statistics model."""
+    symbol: str
+    total_transcripts: int
+    avg_transcript_length: Optional[Decimal] = None
+    min_date: Optional[datetime] = None
+    max_date: Optional[datetime] = None
+    years_covered: Optional[List[int]] = None
+    quarters_available: Optional[List[str]] = None
+
+
+class TranscriptParticipant(BaseModel):
+    """Unique transcript participant model."""
+    participant_name: str
+    appearance_count: int
+    symbols: List[str]
+    latest_appearance: Optional[datetime] = None
+
+
+class TranscriptQuarter(BaseModel):
+    """Transcript count by quarter model."""
+    year: int
+    quarter: str
+    transcript_count: int
+    avg_length: Optional[Decimal] = None
+    symbols_count: int
+
+
+# =====================================================
+# HOLDERS & TRANSCRIPTS REQUEST MODELS
+# =====================================================
+
+class HoldersRequest(BaseModel):
+    """Base holders request model."""
+    symbol: str
+    holder_type: Optional[str] = None
+    limit: Optional[int] = 50
+
+
+class InsiderTransactionsRequest(BaseModel):
+    """Insider transactions request model."""
+    symbol: str
+    transaction_type: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    limit: Optional[int] = 100
+
+
+class HoldersSearchRequest(BaseModel):
+    """Holders search request model."""
+    name_pattern: str
+    holder_type: Optional[str] = None
+    limit: Optional[int] = 50
+
+
+class HoldersPaginatedRequest(BaseModel):
+    """Holders paginated request model."""
+    symbol: Optional[str] = None
+    holder_type: Optional[str] = None
+    offset: Optional[int] = 0
+    limit: Optional[int] = 50
+    sort_column: Optional[str] = "shares"
+    sort_direction: Optional[str] = "DESC"
+
+
+class TranscriptsRequest(BaseModel):
+    """Base transcripts request model."""
+    symbol: str
+    limit: Optional[int] = 10
+
+
+class TranscriptSearchRequest(BaseModel):
+    """Transcript search request model."""
+    search_text: str
+    symbol: Optional[str] = None
+    limit: Optional[int] = 20
+
+
+class TranscriptsByDateRequest(BaseModel):
+    """Transcripts by date request model."""
+    start_date: datetime
+    end_date: datetime
+    symbol: Optional[str] = None
+    limit: Optional[int] = 100
+
+
+class TranscriptsPaginatedRequest(BaseModel):
+    """Transcripts paginated request model."""
+    symbol: Optional[str] = None
+    year: Optional[int] = None
+    quarter: Optional[str] = None
+    offset: Optional[int] = 0
+    limit: Optional[int] = 20
+    sort_column: Optional[str] = "date"
+    sort_direction: Optional[str] = "DESC"
+
+
+# =====================================================
 # STOCK PEERS MODELS
 # =====================================================
 
 class StockPeer(BaseModel):
+    """REDESIGNED: Stock peer without price data - use stock_quotes for real-time prices"""
     peer_symbol: str
     peer_name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     logo: Optional[str] = None
     fetch_timestamp: Optional[datetime] = None
 
 
+class StockPeerWithPrices(BaseModel):
+    """Stock peer enriched with real-time price data from finance-query API"""
+    # Database metadata
+    peer_symbol: str
+    peer_name: Optional[str] = None
+    logo: Optional[str] = None
+    fetch_timestamp: Optional[datetime] = None
+    # Real-time price data from finance-query API
+    name: Optional[str] = None  # Updated name from API
+    price: Optional[Decimal] = None
+    after_hours_price: Optional[Decimal] = None
+    change: Optional[Decimal] = None
+    percent_change: Optional[str] = None
+
+
 class PeerComparison(BaseModel):
+    """REDESIGNED: Peer comparison metadata - frontend joins with stock_quotes for prices"""
     symbol: str
     name: Optional[str] = None
-    price: Optional[Decimal] = None
-    change: Optional[Decimal] = None
-    percent_change: Optional[Decimal] = None
     logo: Optional[str] = None
-    is_main_stock: bool
-    peer_rank: Optional[int] = None
+    is_main_stock: Optional[bool] = None
+    fetch_timestamp: Optional[datetime] = None
 
 
 class StockPeersRequest(BaseModel):
     symbol: str
     data_date: Optional[date] = None
-    limit: Optional[int] = 20
 
 
 class PeersPaginatedRequest(BaseModel):
@@ -705,5 +1270,5 @@ class PeersPaginatedRequest(BaseModel):
     data_date: Optional[date] = None
     offset: Optional[int] = 0
     limit: Optional[int] = 20
-    sort_column: Optional[str] = "percent_change"
-    sort_direction: Optional[str] = "DESC"
+    sort_column: Optional[str] = "symbol"  # Changed from percent_change to symbol
+    sort_direction: Optional[str] = "ASC"  # Changed from DESC to ASC

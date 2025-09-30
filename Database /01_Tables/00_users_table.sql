@@ -12,16 +12,19 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage own profile" ON public.users
     FOR ALL USING (auth.uid() = id);
 
-
 -- Create a function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO public.users (id, email, created_at)
   VALUES (new.id, new.email, new.created_at);
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Create trigger on auth.users table
 CREATE OR REPLACE TRIGGER on_auth_user_created
@@ -30,12 +33,16 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS trigger AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Trigger to automatically update updated_at timestamp
 CREATE TRIGGER update_users_updated_at
@@ -43,13 +50,13 @@ CREATE TRIGGER update_users_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
-
-
--- More functions that i ran 
-CREATE OR REPLACE FUNCTION auth_uid() 
-RETURNS uuid 
-LANGUAGE sql 
-STABLE 
+-- More functions that i ran
+CREATE OR REPLACE FUNCTION auth_uid()
+RETURNS uuid
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
 AS $$
   SELECT auth.uid();
 $$;

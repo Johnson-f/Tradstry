@@ -8,11 +8,12 @@ CREATE OR REPLACE FUNCTION public.upsert_trade_note(
   p_tags TEXT[] DEFAULT NULL,
   p_rating INTEGER DEFAULT NULL,
   p_phase trade_phase DEFAULT NULL,
-  p_image_id INTEGER DEFAULT NULL
+  p_image_id UUID DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_user_id UUID := auth.uid();
@@ -111,11 +112,11 @@ END;
 $$;
 
 -- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION public.upsert_trade_note(INTEGER, trade_note_type, VARCHAR, TEXT, INTEGER, TEXT[], INTEGER, trade_phase, INTEGER)
+GRANT EXECUTE ON FUNCTION public.upsert_trade_note(INTEGER, trade_note_type, VARCHAR, TEXT, INTEGER, TEXT[], INTEGER, trade_phase, UUID)
 TO authenticated;
 
 -- Add a comment for the function
-COMMENT ON FUNCTION public.upsert_trade_note(INTEGER, trade_note_type, VARCHAR, TEXT, INTEGER, TEXT[], INTEGER, trade_phase, INTEGER) IS 'Upsert function for trade_notes table.
+COMMENT ON FUNCTION public.upsert_trade_note(INTEGER, trade_note_type, VARCHAR, TEXT, INTEGER, TEXT[], INTEGER, trade_phase, UUID) IS 'Upsert function for trade_notes table.
 Automatically uses the authenticated user''s ID.
 
 Parameters:
@@ -127,6 +128,6 @@ Parameters:
 - p_tags: Array of tags (optional)
 - p_rating: Integer rating from 1-5 (optional)
 - p_phase: Trade phase (''planning'', ''execution'', ''reflection'') (optional)
-- p_image_id: ID of a linked image (optional)
+- p_image_id: UUID of a linked image (optional)
 
 Returns JSON with success status, action performed, and note ID.';

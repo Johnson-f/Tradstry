@@ -273,7 +273,9 @@ class RedisService:
 
     def _build_key(self, key: str, namespace: Optional[str] = None) -> str:
         """Build Redis key with prefix and optional namespace."""
-        parts = [self.settings.REDIS_KEY_PREFIX]
+        # Use getattr with default to handle missing REDIS_KEY_PREFIX
+        prefix = getattr(self.settings, 'REDIS_KEY_PREFIX', 'tradistry')
+        parts = [prefix]
         if namespace:
             parts.append(namespace)
         parts.append(key)
@@ -445,7 +447,8 @@ class RedisService:
 
         try:
             keys = await self.client.keys(search_pattern)
-            return [key.replace(f"{self.settings.REDIS_KEY_PREFIX}:", "") for key in keys]
+            prefix = getattr(self.settings, 'REDIS_KEY_PREFIX', 'tradistry')
+            return [key.replace(f"{prefix}:", "") for key in keys]
 
         except RedisError as e:
             logger.error(

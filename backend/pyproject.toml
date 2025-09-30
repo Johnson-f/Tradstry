@@ -3,7 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "annotated-types==0.7.0",
     "anyio==4.10.0",
@@ -19,6 +19,7 @@ dependencies = [
     "distro==1.9.0",
     "fastapi==0.116.1",
     "fastapi-limiter>=0.1.6",
+    "finnhub-python>=2.4.25",
     "google-genai>=1.37.0",
     "gotrue>=2.12.4",
     "greenlet==3.2.4",
@@ -39,6 +40,7 @@ dependencies = [
     "langchain-text-splitters==0.3.11",
     "langsmith==0.4.28",
     "llama-index>=0.12.52",
+    "lxml>=6.0.2",
     "mypy==1.18.1",
     "mypy-extensions==1.1.0",
     "numpy==2.3.3",
@@ -92,3 +94,15 @@ dependencies = [
     "yfinance>=0.2.65",
     "zstandard==0.25.0",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), Pycodestyle (E, W), isort (I), and flake8-unused-arguments (ARG)
+select = ["E", "F", "W", "I", "ARG"]
+ignore = ["E501"] # Ignore line length errors, as black handles it.
+
+# Allow unused arguments in specific methods for FastAPI
+# where the argument is required for dependency injection.
+dummy-variable-rgx = "^(_|unused_)"

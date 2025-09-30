@@ -1,4 +1,5 @@
 -- SIGNIFICANT PRICE MOVEMENTS WITH NEWS
+-- REDESIGNED: Uses historical_prices table (stock_quotes no longer stores price data)
 -- Functions to detect stock price movements ±3% and retrieve related news
 
 -- 1. GET SIGNIFICANT PRICE MOVEMENTS WITH NEWS
@@ -35,33 +36,39 @@ BEGIN
     RETURN QUERY
     WITH significant_movements AS (
         SELECT 
-            sq.symbol,
-            DATE(sq.quote_timestamp) as movement_date,
-            sq.change_percent as price_change_percent,
-            sq.change_amount as price_change_amount,
-            sq.open_price,
-            sq.price as close_price,
-            sq.high_price,
-            sq.low_price,
-            sq.volume,
+            hp.symbol,
+            hp.date_only as movement_date,
+            -- Calculate percent change from open to close
             CASE 
-                WHEN sq.change_percent >= p_min_change_percent THEN 'SURGE'::VARCHAR(10)
-                WHEN sq.change_percent <= -p_min_change_percent THEN 'DROP'::VARCHAR(10)
+                WHEN hp.open > 0 THEN ((hp.close - hp.open) / hp.open * 100)::DECIMAL(7,4)
+                ELSE 0::DECIMAL(7,4)
+            END as price_change_percent,
+            (hp.close - hp.open)::DECIMAL(15,4) as price_change_amount,
+            hp.open as open_price,
+            hp.close as close_price,
+            hp.high as high_price,
+            hp.low as low_price,
+            hp.volume,
+            CASE 
+                WHEN hp.open > 0 AND ((hp.close - hp.open) / hp.open * 100) >= p_min_change_percent THEN 'SURGE'::VARCHAR(10)
+                WHEN hp.open > 0 AND ((hp.close - hp.open) / hp.open * 100) <= -p_min_change_percent THEN 'DROP'::VARCHAR(10)
             END as movement_type,
-            sq.quote_timestamp,
+            hp.timestamp_utc as quote_timestamp,
             ROW_NUMBER() OVER (
-                PARTITION BY sq.symbol, DATE(sq.quote_timestamp) 
-                ORDER BY ABS(sq.change_percent) DESC
+                PARTITION BY hp.symbol, hp.date_only 
+                ORDER BY ABS((hp.close - hp.open) / NULLIF(hp.open, 0) * 100) DESC
             ) as rn
-        FROM stock_quotes sq
+        FROM historical_prices hp
         WHERE 
-            (p_symbol IS NULL OR sq.symbol = UPPER(p_symbol))
-            AND sq.quote_timestamp >= CURRENT_TIMESTAMP - (p_days_back || ' days')::INTERVAL
+            hp.time_interval = '1d'  -- Daily data only
+            AND (p_symbol IS NULL OR hp.symbol = UPPER(p_symbol))
+            AND hp.timestamp_utc >= CURRENT_TIMESTAMP - (p_days_back || ' days')::INTERVAL
+            AND hp.open > 0  -- Ensure valid open price for percent calculation
             AND (
-                sq.change_percent >= p_min_change_percent 
-                OR sq.change_percent <= -p_min_change_percent
+                ((hp.close - hp.open) / hp.open * 100) >= p_min_change_percent 
+                OR ((hp.close - hp.open) / hp.open * 100) <= -p_min_change_percent
             )
-            AND (p_data_provider IS NULL OR sq.data_provider = p_data_provider)
+            AND (p_data_provider IS NULL OR hp.data_provider = p_data_provider)
     ),
     movement_news AS (
         SELECT 
@@ -121,6 +128,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- 2. GET TOP MOVERS WITH NEWS TODAY
+-- REDESIGNED: Uses historical_prices table (stock_quotes no longer stores price data)
 
 CREATE OR REPLACE FUNCTION get_top_movers_with_news_today(
     p_limit INTEGER DEFAULT 20,
@@ -142,26 +150,32 @@ BEGIN
     RETURN QUERY
     WITH todays_movers AS (
         SELECT 
-            sq.symbol,
-            sq.change_percent as price_change_percent,
-            sq.change_amount as price_change_amount,
-            sq.price as current_price,
-            sq.volume,
+            hp.symbol,
+            -- Calculate percent change from open to close
             CASE 
-                WHEN sq.change_percent >= p_min_change_percent THEN 'SURGE'::VARCHAR(10)
-                WHEN sq.change_percent <= -p_min_change_percent THEN 'DROP'::VARCHAR(10)
+                WHEN hp.open > 0 THEN ((hp.close - hp.open) / hp.open * 100)::DECIMAL(7,4)
+                ELSE 0::DECIMAL(7,4)
+            END as price_change_percent,
+            (hp.close - hp.open)::DECIMAL(15,4) as price_change_amount,
+            hp.close as current_price,
+            hp.volume,
+            CASE 
+                WHEN hp.open > 0 AND ((hp.close - hp.open) / hp.open * 100) >= p_min_change_percent THEN 'SURGE'::VARCHAR(10)
+                WHEN hp.open > 0 AND ((hp.close - hp.open) / hp.open * 100) <= -p_min_change_percent THEN 'DROP'::VARCHAR(10)
             END as movement_type,
-            sq.quote_timestamp,
+            hp.timestamp_utc as quote_timestamp,
             ROW_NUMBER() OVER (
-                PARTITION BY sq.symbol 
-                ORDER BY sq.quote_timestamp DESC
+                PARTITION BY hp.symbol 
+                ORDER BY hp.timestamp_utc DESC
             ) as rn
-        FROM stock_quotes sq
+        FROM historical_prices hp
         WHERE 
-            DATE(sq.quote_timestamp) = CURRENT_DATE
+            hp.time_interval = '1d'  -- Daily data only
+            AND hp.date_only = CURRENT_DATE
+            AND hp.open > 0  -- Ensure valid open price for percent calculation
             AND (
-                sq.change_percent >= p_min_change_percent 
-                OR sq.change_percent <= -p_min_change_percent
+                ((hp.close - hp.open) / hp.open * 100) >= p_min_change_percent 
+                OR ((hp.close - hp.open) / hp.open * 100) <= -p_min_change_percent
             )
     ),
     latest_movers AS (

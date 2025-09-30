@@ -121,7 +121,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_weekly_trading_metrics() TO authenticated;
 
 -- Add a comment to the function
-COMMENT ON FUNCTION public.get_weekly_trading_metrics IS 'Returns weekly trading metrics from both stocks and options for the authenticated user for the current week (Sunday to Saturday).
+COMMENT ON FUNCTION public.get_weekly_trading_metrics IS 'Returns weekly trading metrics from both stocks and options for the authenticated user for the current week (Sunday to Saturday)'.
 
-Example usage:
-SELECT * FROM get_weekly_trading_metrics();';
+--Example usage:
+--SELECT * FROM get_weekly_trading_metrics();';

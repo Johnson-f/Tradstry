@@ -1,12 +1,17 @@
 /**
- * Supabase Edge Function: Company Quotes Fetcher
+ * Supabase Edge Function: Company Info Fetcher - REDESIGNED
  * 
- * This Edge Function fetches stock symbols from the stock_quotes table,
- * retrieves comprehensive company data from the finance-query API,
- * and updates the company_info table with the latest information.
+ * FUNDAMENTAL DATA ONLY - NO real-time prices
+ * Fetches stock symbols from the stock_quotes table,
+ * retrieves FUNDAMENTAL company data from the finance-query API,
+ * and updates the company_info table with non-price information.
  * 
- * Designed to run every 10 minutes to keep company data fresh.
- * Updates existing records instead of creating duplicates.
+ * Real-time prices should come from stock_quotes or historical_prices tables.
+ * Designed to run less frequently (daily) since fundamental data changes slowly.
+ * 
+ * TRIGGER POLICY: MANUAL/CRON ONLY - Does not auto-trigger
+ * - Only executes when manually invoked or triggered by scheduled cron jobs
+ * - No database triggers or automatic execution
  */
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
@@ -49,10 +54,12 @@ interface FinanceQuoteResponse {
   netAssets?: string;
   nav?: string;
   category?: string;
+  expenseRatio?: string;
   
   // Common optional fields
   about?: string;
   employees?: string;
+  eps?: string;
   fiveDaysReturn?: string;
   oneMonthReturn?: string;
   threeMonthReturn?: string;
@@ -64,11 +71,15 @@ interface FinanceQuoteResponse {
   tenYearReturn?: string;
   maxReturn?: string;
   logo?: string;
+  ipoDate?: string;
+  currency?: string;
+  fiscalYearEnd?: string;
 }
 
-// Interface for company info data to be saved
+// Interface for company info data to be saved - MATCHES DATABASE SCHEMA EXACTLY
 interface CompanyInfoData {
   symbol: string;
+  exchange_id?: number;
   name?: string;
   company_name?: string;
   exchange?: string;
@@ -77,26 +88,39 @@ interface CompanyInfoData {
   about?: string;
   employees?: number;
   logo?: string;
-  price?: number;
-  change?: number;
-  percent_change?: number;
+  
+  // Daily price data (kept for trading analysis)
   open?: number;
   high?: number;
   low?: number;
   year_high?: number;
   year_low?: number;
+  
+  // Volume and trading metrics
   volume?: number;
   avg_volume?: number;
+  
+  // Financial ratios and metrics
   market_cap?: number;
   beta?: number;
   pe_ratio?: number;
+  eps?: number;  // NEW: Earnings per share
+  
+  // Dividend information
   dividend?: number;
   yield?: number;
   ex_dividend?: string;
   last_dividend?: number;
+  
+  // Fund-specific metrics
   net_assets?: number;
   nav?: number;
+  expense_ratio?: number;  // NEW: Annual expense ratio
+  
+  // Corporate events
   earnings_date?: string;
+  
+  // Performance returns
   five_day_return?: number;
   one_month_return?: number;
   three_month_return?: number;
@@ -106,6 +130,12 @@ interface CompanyInfoData {
   five_year_return?: number;
   ten_year_return?: number;
   max_return?: number;
+  
+  // Additional metadata (NEW)
+  ipo_date?: string;
+  currency?: string;
+  fiscal_year_end?: string;
+  
   data_provider: string;
 }
 
@@ -129,6 +159,36 @@ function parsePercentage(percentStr: string): number | undefined {
   
   // Clamp to prevent DECIMAL(8,4) overflow (max value: 9999.9999)
   return Math.max(-9999.9999, Math.min(9999.9999, parsed));
+}
+
+/**
+ * Parse decimal with specific precision limits to match database constraints
+ */
+function parseDecimalWithPrecision(value: string | number | undefined, maxDigits: number, decimals: number): number | undefined {
+  if (!value) return undefined;
+  
+  const parsed = parseFloat(value.toString());
+  if (isNaN(parsed)) return undefined;
+  
+  // Calculate max value based on precision (e.g., DECIMAL(15,4) max is 99999999999.9999)
+  const maxValue = Math.pow(10, maxDigits - decimals) - Math.pow(10, -decimals);
+  const minValue = -maxValue;
+  
+  // Clamp and round to specified decimal places
+  const clamped = Math.max(minValue, Math.min(maxValue, parsed));
+  return Math.round(clamped * Math.pow(10, decimals)) / Math.pow(10, decimals);
+}
+
+/**
+ * Parse string with length validation to match VARCHAR constraints
+ */
+function parseStringWithLength(value: string | undefined, maxLength: number): string | undefined {
+  if (!value) return undefined;
+  
+  const trimmed = value.toString().trim();
+  if (trimmed.length === 0) return undefined;
+  
+  return trimmed.length > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 }
 
 /**
@@ -177,54 +237,65 @@ function transformToCompanyInfo(apiData: FinanceQuoteResponse): CompanyInfoData 
   try {
     return {
       symbol: apiData.symbol,
-      name: apiData.name || undefined,
-      company_name: apiData.name || undefined,
-      sector: apiData.sector || undefined,
-      industry: apiData.industry || undefined,
-      about: apiData.about || undefined,
+      
+      // String fields with VARCHAR length constraints
+      name: parseStringWithLength(apiData.name, 255),
+      company_name: parseStringWithLength(apiData.name, 255), // Often same as name
+      exchange: parseStringWithLength(apiData.exchange, 50),
+      sector: parseStringWithLength(apiData.sector, 100),
+      industry: parseStringWithLength(apiData.industry, 100),
+      about: apiData.about || undefined, // TEXT field - no length limit
+      logo: parseStringWithLength(apiData.logo, 500),
+      
+      // Integer fields
       employees: apiData.employees ? parseInt(apiData.employees) : undefined,
-      logo: apiData.logo || undefined,
       
-      // Price data
-      price: parseFloat(apiData.price) || undefined,
-      change: parseFloat(apiData.change.replace(/[+]/g, '')) || undefined,
-      percent_change: parsePercentage(apiData.percentChange),
-      open: parseFloat(apiData.open) || undefined,
-      high: parseFloat(apiData.high) || undefined,
-      low: parseFloat(apiData.low) || undefined,
-      year_high: parseFloat(apiData.yearHigh) || undefined,
-      year_low: parseFloat(apiData.yearLow) || undefined,
+      // Daily price data - DECIMAL(15,4)
+      open: parseDecimalWithPrecision(apiData.open, 15, 4),
+      high: parseDecimalWithPrecision(apiData.high, 15, 4),
+      low: parseDecimalWithPrecision(apiData.low, 15, 4),
+      year_high: parseDecimalWithPrecision(apiData.yearHigh, 15, 4),
+      year_low: parseDecimalWithPrecision(apiData.yearLow, 15, 4),
       
-      // Volume and market data (ensure integers for BIGINT fields)
+      // Volume and trading metrics - BIGINT
       volume: parseNumberWithSuffix(apiData.volume?.toString()),
       avg_volume: parseNumberWithSuffix(apiData.avgVolume?.toString()),
-      market_cap: apiData.marketCap ? parseNumberWithSuffix(apiData.marketCap) : (apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined),
-      beta: apiData.beta ? parseFloat(apiData.beta) : undefined,
-      pe_ratio: apiData.pe ? parseFloat(apiData.pe) : undefined,
       
-      // Dividend data (for stocks)
-      dividend: apiData.dividend ? parseFloat(apiData.dividend) : undefined,
-      yield: apiData.yield ? parsePercentage(apiData.yield) : undefined,
+      // Financial ratios and metrics
+      market_cap: apiData.marketCap ? parseNumberWithSuffix(apiData.marketCap) : (apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined), // BIGINT
+      beta: parseDecimalWithPrecision(apiData.beta, 8, 4), // DECIMAL(8,4)
+      pe_ratio: parseDecimalWithPrecision(apiData.pe, 10, 2), // DECIMAL(10,2)
+      eps: parseDecimalWithPrecision(apiData.eps, 10, 4), // DECIMAL(10,4)
+      
+      // Dividend information
+      dividend: parseDecimalWithPrecision(apiData.dividend, 10, 4), // DECIMAL(10,4)
+      yield: parseDecimalWithPrecision(apiData.yield?.replace('%', ''), 7, 4), // DECIMAL(7,4)
       ex_dividend: apiData.exDividend ? parseDate(apiData.exDividend) : undefined,
-      last_dividend: apiData.lastDividend ? parseFloat(apiData.lastDividend) : undefined,
+      last_dividend: parseDecimalWithPrecision(apiData.lastDividend, 10, 4), // DECIMAL(10,4)
       
-      // ETF-specific data (ensure integer for BIGINT field)
-      net_assets: apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined,
-      nav: apiData.nav ? parseFloat(apiData.nav) : undefined,
+      // Fund-specific metrics
+      net_assets: apiData.netAssets ? parseNumberWithSuffix(apiData.netAssets) : undefined, // BIGINT
+      nav: parseDecimalWithPrecision(apiData.nav, 15, 4), // DECIMAL(15,4)
+      expense_ratio: parseDecimalWithPrecision(apiData.expenseRatio?.replace('%', ''), 7, 4), // DECIMAL(7,4)
       
       // Dates
       earnings_date: apiData.earningsDate ? parseDate(apiData.earningsDate) : undefined,
+      ipo_date: apiData.ipoDate ? parseDate(apiData.ipoDate) : undefined,
       
-      // Performance returns
-      five_day_return: apiData.fiveDaysReturn ? parsePercentage(apiData.fiveDaysReturn) : undefined,
-      one_month_return: apiData.oneMonthReturn ? parsePercentage(apiData.oneMonthReturn) : undefined,
-      three_month_return: apiData.threeMonthReturn ? parsePercentage(apiData.threeMonthReturn) : undefined,
-      six_month_return: apiData.sixMonthReturn ? parsePercentage(apiData.sixMonthReturn) : undefined,
-      ytd_return: apiData.ytdReturn ? parsePercentage(apiData.ytdReturn) : undefined,
-      year_return: apiData.yearReturn ? parsePercentage(apiData.yearReturn) : undefined,
-      five_year_return: apiData.fiveYearReturn ? parsePercentage(apiData.fiveYearReturn) : undefined,
-      ten_year_return: apiData.tenYearReturn ? parsePercentage(apiData.tenYearReturn) : undefined,
-      max_return: apiData.maxReturn ? parsePercentage(apiData.maxReturn) : undefined,
+      // Additional metadata
+      currency: parseStringWithLength(apiData.currency || 'USD', 3), // VARCHAR(3)
+      fiscal_year_end: parseStringWithLength(apiData.fiscalYearEnd, 10), // VARCHAR(10)
+      
+      // Performance returns - all DECIMAL(8,4)
+      five_day_return: parseDecimalWithPrecision(apiData.fiveDaysReturn?.replace('%', ''), 8, 4),
+      one_month_return: parseDecimalWithPrecision(apiData.oneMonthReturn?.replace('%', ''), 8, 4),
+      three_month_return: parseDecimalWithPrecision(apiData.threeMonthReturn?.replace('%', ''), 8, 4),
+      six_month_return: parseDecimalWithPrecision(apiData.sixMonthReturn?.replace('%', ''), 8, 4),
+      ytd_return: parseDecimalWithPrecision(apiData.ytdReturn?.replace('%', ''), 8, 4),
+      year_return: parseDecimalWithPrecision(apiData.yearReturn?.replace('%', ''), 8, 4),
+      five_year_return: parseDecimalWithPrecision(apiData.fiveYearReturn?.replace('%', ''), 8, 4),
+      ten_year_return: parseDecimalWithPrecision(apiData.tenYearReturn?.replace('%', ''), 8, 4),
+      max_return: parseDecimalWithPrecision(apiData.maxReturn?.replace('%', ''), 8, 4),
       
       data_provider: 'finance-query'
     };
@@ -341,27 +412,96 @@ async function saveCompanyInfoData(supabase: SupabaseClient, companyData: Compan
 
 /**
  * Validate company data for basic sanity checks
+ * Enhanced validation for new database fields
  */
 function validateCompanyData(company: CompanyInfoData): boolean {
   // Basic validation checks
   if (!company.symbol) return false;
   
   // Check if prices are reasonable (not negative)
-  if (company.price !== undefined && company.price < 0) return false;
   if (company.open !== undefined && company.open < 0) return false;
   if (company.high !== undefined && company.high < 0) return false;
   if (company.low !== undefined && company.low < 0) return false;
+  if (company.year_high !== undefined && company.year_high < 0) return false;
+  if (company.year_low !== undefined && company.year_low < 0) return false;
   if (company.volume !== undefined && company.volume < 0) return false;
-  if (company.market_cap !== undefined && company.market_cap < 0) return false;
+  if (company.avg_volume !== undefined && company.avg_volume < 0) return false;
   
   // Check if high >= low (if both exist)
   if (company.high !== undefined && company.low !== undefined && company.high < company.low) return false;
+  
+  // Check if year_high >= year_low (if both exist)
+  if (company.year_high !== undefined && company.year_low !== undefined && company.year_high < company.year_low) return false;
+  
+  // Check financial metrics
+  if (company.dividend !== undefined && company.dividend < 0) return false;
+  if (company.eps !== undefined && isNaN(company.eps)) return false;
+  if (company.pe_ratio !== undefined && company.pe_ratio < 0) return false;
+  if (company.beta !== undefined && isNaN(company.beta)) return false;
+  if (company.market_cap !== undefined && company.market_cap < 0) return false;
+  if (company.net_assets !== undefined && company.net_assets < 0) return false;
+  if (company.nav !== undefined && company.nav < 0) return false;
+  if (company.expense_ratio !== undefined && (company.expense_ratio < 0 || company.expense_ratio > 100)) return false;
+  
+  // Validate string length constraints (matching VARCHAR limits)
+  if (company.name && company.name.length > 255) return false;
+  if (company.company_name && company.company_name.length > 255) return false;
+  if (company.exchange && company.exchange.length > 50) return false;
+  if (company.sector && company.sector.length > 100) return false;
+  if (company.industry && company.industry.length > 100) return false;
+  if (company.logo && company.logo.length > 500) return false;
+  
+  // Validate currency format (3-letter ISO code)
+  if (company.currency && (!/^[A-Z]{3}$/.test(company.currency) || company.currency.length !== 3)) return false;
+  
+  // Validate fiscal year end format (VARCHAR(10) - could be MM-DD or other formats)
+  if (company.fiscal_year_end && company.fiscal_year_end.length > 10) return false;
+  
+  // Validate employee count (INTEGER constraint)
+  if (company.employees !== undefined && (company.employees < 0 || !Number.isInteger(company.employees))) return false;
+  
+  // Validate decimal precision constraints
+  // DECIMAL(15,4) fields: open, high, low, year_high, year_low, nav
+  const decimal15_4_fields = ['open', 'high', 'low', 'year_high', 'year_low', 'nav'] as const;
+  for (const field of decimal15_4_fields) {
+    const value = company[field];
+    if (value !== undefined && (Math.abs(value) >= 100000000000 || !Number.isFinite(value))) return false;
+  }
+  
+  // DECIMAL(10,4) fields: eps, dividend, last_dividend
+  const decimal10_4_fields = ['eps', 'dividend', 'last_dividend'] as const;
+  for (const field of decimal10_4_fields) {
+    const value = company[field];
+    if (value !== undefined && (Math.abs(value) >= 1000000 || !Number.isFinite(value))) return false;
+  }
+  
+  // DECIMAL(10,2) fields: pe_ratio
+  if (company.pe_ratio !== undefined && (Math.abs(company.pe_ratio) >= 100000000 || !Number.isFinite(company.pe_ratio))) return false;
+  
+  // DECIMAL(8,4) fields: beta and all performance returns
+  const decimal8_4_fields = ['beta', 'five_day_return', 'one_month_return', 'three_month_return', 'six_month_return', 'ytd_return', 'year_return', 'five_year_return', 'ten_year_return', 'max_return'] as const;
+  for (const field of decimal8_4_fields) {
+    const value = company[field];
+    if (value !== undefined && (Math.abs(value) >= 10000 || !Number.isFinite(value))) return false;
+  }
+  
+  // DECIMAL(7,4) fields: yield, expense_ratio
+  const decimal7_4_fields = ['yield', 'expense_ratio'] as const;
+  for (const field of decimal7_4_fields) {
+    const value = company[field];
+    if (value !== undefined && (Math.abs(value) >= 1000 || !Number.isFinite(value))) return false;
+  }
   
   return true;
 }
 
 /**
- * Main Edge Function handler
+ * Main Edge Function Handler
+ * 
+ * EXECUTION POLICY: MANUAL/CRON ONLY
+ * - Does not auto-trigger from database changes
+ * - Only executes when manually invoked or via scheduled cron jobs
+ * - Supports both GET and POST methods for flexibility
  */
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -376,7 +516,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
     
-    console.log('Starting company quotes fetch...');
+    console.log('Starting company quotes fetch - MANUAL/CRON EXECUTION ONLY...');
     
     // Parse request body for any specific symbols (optional)
     let requestedSymbols: string[] | null = null;
@@ -384,9 +524,13 @@ Deno.serve(async (req) => {
       try {
         const body = await req.json();
         requestedSymbols = body.symbols;
+        console.log(`Manual execution with ${requestedSymbols?.length || 0} requested symbols`);
       } catch {
         // Continue with existing symbols if request body parsing fails
+        console.log('No specific symbols requested, using all symbols from stock_quotes');
       }
+    } else {
+      console.log('GET request - processing all symbols from stock_quotes table');
     }
     
     // Get symbols to process
@@ -453,10 +597,17 @@ Deno.serve(async (req) => {
               batchResults.push({
                 symbol: transformed.symbol,
                 status: 'success',
-                price: transformed.price,
-                change: transformed.change,
-                percent_change: transformed.percent_change,
-                market_cap: transformed.market_cap
+                open: transformed.open,
+                high: transformed.high,
+                low: transformed.low,
+                volume: transformed.volume,
+                year_high: transformed.year_high,
+                year_low: transformed.year_low,
+                avg_volume: transformed.avg_volume,
+                market_cap: transformed.market_cap,
+                eps: transformed.eps,
+                pe_ratio: transformed.pe_ratio,
+                currency: transformed.currency
               });
             } else {
               batchResults.push({

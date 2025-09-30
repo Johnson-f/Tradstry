@@ -1,10 +1,9 @@
 -- =====================================================
--- STOCK PEERS SELECT FUNCTIONS
+-- REDESIGNED STOCK PEERS SELECT FUNCTIONS - NO PRICE DATA
+-- Functions return symbols and metadata only - use stock_quotes for real-time prices
 -- =====================================================
--- Functions to retrieve stock peer data with various filtering and sorting options
 
--- 1. GET PEERS FOR A SPECIFIC STOCK
-
+-- 1. GET PEERS FOR A SPECIFIC STOCK (symbols and metadata only)
 -- Get all peers for a specific stock symbol
 CREATE OR REPLACE FUNCTION get_stock_peers(
     p_symbol VARCHAR(20),
@@ -14,9 +13,6 @@ CREATE OR REPLACE FUNCTION get_stock_peers(
 RETURNS TABLE (
     peer_symbol VARCHAR(20),
     peer_name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
     logo VARCHAR(500),
     fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
@@ -27,23 +23,20 @@ BEGIN
     SELECT 
         p.symbol,
         p.name,
-        p.price,
-        p.change,
-        p.percent_change,
         p.logo,
         p.fetch_timestamp
     FROM stock_peers p
     WHERE p.peer_of = UPPER(p_symbol)
       AND p.data_date = p_data_date
-    ORDER BY p.percent_change DESC
+    ORDER BY p.symbol ASC
     LIMIT p_limit;
 END;
 $$;
 
--- 2. GET TOP PERFORMING PEERS
+-- 2. GET PEERS WITH LOGOS (for UI display)
 
--- Get top performing peers for a specific stock
-CREATE OR REPLACE FUNCTION get_top_performing_peers(
+-- Get peers with company logos for UI display
+CREATE OR REPLACE FUNCTION get_peers_with_logos(
     p_symbol VARCHAR(20),
     p_data_date DATE DEFAULT CURRENT_DATE,
     p_limit INTEGER DEFAULT 10
@@ -51,10 +44,8 @@ CREATE OR REPLACE FUNCTION get_top_performing_peers(
 RETURNS TABLE (
     peer_symbol VARCHAR(20),
     peer_name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
-    logo VARCHAR(500)
+    logo VARCHAR(500),
+    fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
 LANGUAGE plpgsql
 AS $$
@@ -63,139 +54,105 @@ BEGIN
     SELECT 
         p.symbol,
         p.name,
-        p.price,
-        p.change,
-        p.percent_change,
-        p.logo
+        p.logo,
+        p.fetch_timestamp
     FROM stock_peers p
     WHERE p.peer_of = UPPER(p_symbol)
       AND p.data_date = p_data_date
-      AND p.percent_change > 0
-    ORDER BY p.percent_change DESC
+      AND p.logo IS NOT NULL
+    ORDER BY p.name ASC
     LIMIT p_limit;
 END;
 $$;
 
--- 3. GET WORST PERFORMING PEERS
+-- 3. GET PEER SYMBOLS ONLY (for batch price lookups)
 
--- Get worst performing peers for a specific stock
-CREATE OR REPLACE FUNCTION get_worst_performing_peers(
+-- Get just peer symbols for efficient batch price lookups
+CREATE OR REPLACE FUNCTION get_peer_symbols(
     p_symbol VARCHAR(20),
-    p_data_date DATE DEFAULT CURRENT_DATE,
-    p_limit INTEGER DEFAULT 10
+    p_data_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS TABLE (
-    peer_symbol VARCHAR(20),
-    peer_name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
-    logo VARCHAR(500)
+    peer_symbol VARCHAR(20)
 ) 
 LANGUAGE plpgsql
 AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        p.symbol,
-        p.name,
-        p.price,
-        p.change,
-        p.percent_change,
-        p.logo
+        p.symbol
     FROM stock_peers p
     WHERE p.peer_of = UPPER(p_symbol)
       AND p.data_date = p_data_date
-      AND p.percent_change < 0
-    ORDER BY p.percent_change ASC
-    LIMIT p_limit;
+    ORDER BY p.symbol ASC;
 END;
 $$;
 
--- 4. GET PEER COMPARISON DATA
+-- 4. GET PEER METADATA FOR COMPARISON (no price data)
 
--- Get peer comparison with the main stock data
-CREATE OR REPLACE FUNCTION get_peer_comparison(
+-- Get peer metadata for comparison - frontend joins with stock_quotes for prices
+CREATE OR REPLACE FUNCTION get_peer_comparison_metadata(
     p_symbol VARCHAR(20),
     p_data_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS TABLE (
     symbol VARCHAR(20),
     name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
     logo VARCHAR(500),
     is_main_stock BOOLEAN,
-    peer_rank INTEGER
+    fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
 LANGUAGE plpgsql
 AS $$
 BEGIN
     RETURN QUERY
     WITH peer_data AS (
-        -- Get peer data
+        -- Get peer metadata only
         SELECT 
             p.symbol,
             p.name,
-            p.price,
-            p.change,
-            p.percent_change,
             p.logo,
             FALSE as is_main_stock,
-            ROW_NUMBER() OVER (ORDER BY p.percent_change DESC) as peer_rank
+            p.fetch_timestamp
         FROM stock_peers p
         WHERE p.peer_of = UPPER(p_symbol)
           AND p.data_date = p_data_date
         
         UNION ALL
         
-        -- Get main stock data from company_info (try multiple providers)
+        -- Get main stock metadata from company_info
         SELECT 
             c.symbol,
             c.name,
-            c.price,
-            c.change,
-            c.percent_change,
             c.logo,
             TRUE as is_main_stock,
-            0 as peer_rank
+            c.updated_at as fetch_timestamp
         FROM company_info c
         WHERE c.symbol = UPPER(p_symbol)
-          AND c.data_provider IN ('finance-query', 'yahoo_finance', 'finnhub')
-        ORDER BY 
-            CASE c.data_provider 
-                WHEN 'finance-query' THEN 1
-                WHEN 'yahoo_finance' THEN 2
-                WHEN 'finnhub' THEN 3
-                ELSE 4
-            END
+        ORDER BY c.updated_at DESC
         LIMIT 1
     )
     SELECT * FROM peer_data
-    ORDER BY is_main_stock DESC, peer_rank ASC;
+    ORDER BY is_main_stock DESC, symbol ASC;
 END;
 $$;
 
 
 
--- 7. GET PAGINATED PEERS
+-- 5. GET PAGINATED PEERS (redesigned without price data)
 
--- Get paginated peer results with sorting options
+-- Get paginated peer results with metadata-based sorting
 CREATE OR REPLACE FUNCTION get_peers_paginated(
     p_symbol VARCHAR(20),
     p_data_date DATE DEFAULT CURRENT_DATE,
     p_offset INTEGER DEFAULT 0,
     p_limit INTEGER DEFAULT 20,
-    p_sort_column VARCHAR(50) DEFAULT 'percent_change',
-    p_sort_direction VARCHAR(4) DEFAULT 'DESC'
+    p_sort_column VARCHAR(50) DEFAULT 'symbol',
+    p_sort_direction VARCHAR(4) DEFAULT 'ASC'
 )
 RETURNS TABLE (
     peer_symbol VARCHAR(20),
     peer_name VARCHAR(255),
-    price DECIMAL(15,4),
-    change DECIMAL(15,4),
-    percent_change DECIMAL(8,4),
     logo VARCHAR(500),
     fetch_timestamp TIMESTAMP WITH TIME ZONE
 ) 
@@ -204,14 +161,11 @@ AS $$
 DECLARE
     query_text TEXT;
 BEGIN
-    -- Build dynamic query with sorting
+    -- Build dynamic query with sorting (metadata fields only)
     query_text := format('
         SELECT 
             p.symbol,
             p.name,
-            p.price,
-            p.change,
-            p.percent_change,
             p.logo,
             p.fetch_timestamp
         FROM stock_peers p
@@ -229,16 +183,36 @@ END;
 $$;
 
 -- =====================================================
--- USAGE EXAMPLES
+-- REDESIGNED USAGE EXAMPLES - NO PRICE DATA
 -- =====================================================
 
 /*
--- Get all peers for AAPL
+-- Get all peers for AAPL (symbols and metadata only)
 SELECT * FROM get_stock_peers('AAPL');
 
--- Get paginated results (page 2, 10 items per page, sorted by price)
-SELECT * FROM get_peers_paginated('AAPL', CURRENT_DATE, 10, 10, 'price', 'DESC');
+-- Get peers with logos for UI display
+SELECT * FROM get_peers_with_logos('AAPL');
 
--- Get peers sorted by symbol name
+-- Get just peer symbols for batch price lookup
+SELECT * FROM get_peer_symbols('AAPL');
+
+-- Get peer comparison metadata (join with stock_quotes for prices)
+SELECT * FROM get_peer_comparison_metadata('AAPL');
+
+-- Get paginated results (sorted by symbol name)
 SELECT * FROM get_peers_paginated('AAPL', CURRENT_DATE, 0, 20, 'symbol', 'ASC');
+
+-- Example: Frontend joins peers with stock_quotes for real-time prices
+WITH peers AS (
+    SELECT * FROM get_stock_peers('AAPL')
+)
+SELECT 
+    p.peer_symbol,
+    p.peer_name,
+    p.logo,
+    sq.price,
+    sq.change,
+    sq.percent_change
+FROM peers p
+LEFT JOIN stock_quotes sq ON p.peer_symbol = sq.symbol;
 */

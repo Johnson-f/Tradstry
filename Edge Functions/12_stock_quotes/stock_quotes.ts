@@ -1,23 +1,15 @@
 /**
- * Supabase Edge Function: Stock Quotes Multi-Provider Fetcher
+ * Supabase Edge Function: Stock Quotes Symbol Tracker
  * 
- * This Edge Function fetches real-time stock quotes from 12 different market data providers,
- * combines the data to create comprehensive quote records with deduplication,
- * and saves them to the database.
+ * This Edge Function tracks stock symbol metadata and maintains symbol registry
+ * without storing price data. Price data is fetched from external APIs in real-time.
  * 
- * Providers used for stock quotes:
- * 1. Financial Modeling Prep (FMP)
- * 2. Alpha Vantage
- * 3. Finnhub
- * 4. Polygon
- * 5. Twelve Data
- * 6. Tiingo
- * 7. Yahoo Finance
- * 8. API Ninjas
- * 9. Fiscal AI (if available)
- * 10. FRED (for indices/ETFs)
- * 11. Currents API (auxiliary data)
- * 12. NewsAPI (for sentiment correlation)
+ * Providers used for symbol validation:
+ * 1. Alpha Vantage
+ * 2. Finnhub
+ * 3. Polygon
+ * 4. Twelve Data
+ * 5. Tiingo
  */
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
@@ -29,20 +21,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
 };
 
-// Types for stock quote data
+// REDESIGNED: Stock quote metadata without price data
 interface StockQuote {
-  symbol: string;
+  symbol: string;  // Ticker symbol as TEXT (not number)
   exchange_id?: number;
-  price?: number;
-  change_amount?: number;
-  change_percent?: number;
-  volume?: number;
-  open_price?: number;
-  high_price?: number;
-  low_price?: number;
-  previous_close?: number;
   quote_timestamp: string; // ISO timestamp
   data_provider: string;
+  // NO PRICE FIELDS - use external APIs for real-time prices
 }
 
 interface ProviderConfig {
@@ -57,24 +42,14 @@ interface ProviderConfig {
   rateLimit: number; // requests per minute
 }
 
-// Provider configurations for stock quotes
+// Provider configurations for symbol validation
 const PROVIDERS: Record<string, ProviderConfig> = {
-  fmp: {
-    name: 'Financial Modeling Prep',
-    apiKey: Deno.env.get('FMP_API_KEY') || '',
-    baseUrl: 'https://financialmodelingprep.com/api/v3',
-    endpoints: {
-      quote: '/quote',
-      quotes: '/quote',
-    },
-    rateLimit: 300 // 300 per day for free tier
-  },
   alpha_vantage: {
     name: 'Alpha Vantage',
     apiKey: Deno.env.get('ALPHA_VANTAGE_API_KEY') || '',
     baseUrl: 'https://www.alphavantage.co/query',
     endpoints: {
-      quote: '?function=GLOBAL_QUOTE',
+      quote: '?function=SYMBOL_SEARCH',
     },
     rateLimit: 5 // 5 per minute for free tier
   },
@@ -83,17 +58,16 @@ const PROVIDERS: Record<string, ProviderConfig> = {
     apiKey: Deno.env.get('FINNHUB_API_KEY') || '',
     baseUrl: 'https://finnhub.io/api/v1',
     endpoints: {
-      quote: '/quote',
+      quote: '/search',
     },
     rateLimit: 30 // 30 per second for free tier
   },
   polygon: {
     name: 'Polygon',
     apiKey: Deno.env.get('POLYGON_API_KEY') || '',
-    baseUrl: 'https://api.polygon.io/v2',
+    baseUrl: 'https://api.polygon.io/v3',
     endpoints: {
-      quote: '/aggs/ticker',
-      realtime: '/last/nbbo',
+      quote: '/reference/tickers',
     },
     rateLimit: 5 // 5 per minute for free tier
   },
@@ -102,37 +76,18 @@ const PROVIDERS: Record<string, ProviderConfig> = {
     apiKey: Deno.env.get('TWELVE_DATA_API_KEY') || '',
     baseUrl: 'https://api.twelvedata.com',
     endpoints: {
-      quote: '/quote',
-      realtime: '/price',
+      quote: '/symbol_search',
     },
     rateLimit: 8 // 8 per minute for free tier
   },
   tiingo: {
     name: 'Tiingo',
     apiKey: Deno.env.get('TIINGO_API_KEY') || '',
-    baseUrl: 'https://api.tiingo.com/iex',
+    baseUrl: 'https://api.tiingo.com/tiingo/utilities',
     endpoints: {
-      quote: '',
+      quote: '/search',
     },
     rateLimit: 500 // 500 per hour for free tier
-  },
-  yahoo_finance: {
-    name: 'Yahoo Finance',
-    apiKey: '', // No API key required for basic access
-    baseUrl: 'https://query1.finance.yahoo.com/v8/finance/chart',
-    endpoints: {
-      quote: '',
-    },
-    rateLimit: 1000 // Conservative estimate
-  },
-  api_ninjas: {
-    name: 'API Ninjas',
-    apiKey: Deno.env.get('API_NINJAS_KEY') || '',
-    baseUrl: 'https://api.api-ninjas.com/v1',
-    endpoints: {
-      quote: '/stockprice',
-    },
-    rateLimit: 10000 // 10k per month for free tier
   }
 };
 
@@ -144,125 +99,79 @@ function getCurrentTimestamp(): string {
 }
 
 /**
- * Fetch stock quote from Financial Modeling Prep
+ * Validate symbol from Alpha Vantage
  */
-async function fetchFromFMP(symbol: string): Promise<StockQuote | null> {
-  const config = PROVIDERS.fmp;
-  if (!config.apiKey) return null;
-  
-  try {
-    const url = `${config.baseUrl}${config.endpoints.quote}/${symbol}?apikey=${config.apiKey}`;
-    const response = await fetch(url);
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) return null;
-    
-    const quote = data[0];
-    return {
-      symbol: symbol,
-      price: quote.price ? parseFloat(quote.price) : undefined,
-      change_amount: quote.change ? parseFloat(quote.change) : undefined,
-      change_percent: quote.changesPercentage ? parseFloat(quote.changesPercentage) : undefined,
-      volume: quote.volume ? parseInt(quote.volume) : undefined,
-      open_price: quote.open ? parseFloat(quote.open) : undefined,
-      high_price: quote.dayHigh ? parseFloat(quote.dayHigh) : undefined,
-      low_price: quote.dayLow ? parseFloat(quote.dayLow) : undefined,
-      previous_close: quote.previousClose ? parseFloat(quote.previousClose) : undefined,
-      quote_timestamp: getCurrentTimestamp(),
-      data_provider: 'fmp'
-    };
-  } catch (error) {
-    console.error(`FMP quote fetch error for ${symbol}:`, error);
-    return null;
-  }
-}
-
-/**
- * Fetch stock quote from Alpha Vantage
- */
-async function fetchFromAlphaVantage(symbol: string): Promise<StockQuote | null> {
+async function validateFromAlphaVantage(symbol: string): Promise<StockQuote | null> {
   const config = PROVIDERS.alpha_vantage;
   if (!config.apiKey) return null;
   
   try {
-    const url = `${config.baseUrl}${config.endpoints.quote}&symbol=${symbol}&apikey=${config.apiKey}`;
+    const url = `${config.baseUrl}${config.endpoints.quote}&keywords=${symbol}&apikey=${config.apiKey}`;
     const response = await fetch(url);
     
     if (!response.ok) return null;
     
     const data = await response.json();
-    if (data.Note || data['Error Message'] || !data['Global Quote']) return null;
+    if (data.Note || data['Error Message'] || !data.bestMatches) return null;
     
-    const quote = data['Global Quote'];
+    // Check if symbol exists in search results
+    const matches = data.bestMatches;
+    const symbolMatch = matches.find((match: any) => match['1. symbol'] === symbol);
+    
+    if (!symbolMatch) return null;
+    
     return {
       symbol: symbol,
-      price: parseFloat(quote['05. price']),
-      change_amount: parseFloat(quote['09. change']),
-      change_percent: parseFloat(quote['10. change percent'].replace('%', '')),
-      volume: parseInt(quote['06. volume']),
-      open_price: parseFloat(quote['02. open']),
-      high_price: parseFloat(quote['03. high']),
-      low_price: parseFloat(quote['04. low']),
-      previous_close: parseFloat(quote['08. previous close']),
       quote_timestamp: getCurrentTimestamp(),
       data_provider: 'alpha_vantage'
     };
   } catch (error) {
-    console.error(`Alpha Vantage quote fetch error for ${symbol}:`, error);
+    console.error(`Alpha Vantage symbol validation error for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Fetch stock quote from Finnhub
+ * Validate symbol from Finnhub
  */
-async function fetchFromFinnhub(symbol: string): Promise<StockQuote | null> {
+async function validateFromFinnhub(symbol: string): Promise<StockQuote | null> {
   const config = PROVIDERS.finnhub;
   if (!config.apiKey) return null;
   
   try {
-    const url = `${config.baseUrl}${config.endpoints.quote}?symbol=${symbol}&token=${config.apiKey}`;
+    const url = `${config.baseUrl}${config.endpoints.quote}?q=${symbol}&token=${config.apiKey}`;
     const response = await fetch(url);
     
     if (!response.ok) return null;
     
     const data = await response.json();
-    if (!data.c) return null; // No current price
+    if (!data.result || !Array.isArray(data.result) || data.result.length === 0) return null;
+    
+    // Check if exact symbol match exists
+    const symbolMatch = data.result.find((result: any) => result.symbol === symbol);
+    
+    if (!symbolMatch) return null;
     
     return {
       symbol: symbol,
-      price: data.c, // current price
-      change_amount: data.d, // change
-      change_percent: data.dp, // percent change
-      open_price: data.o, // open price
-      high_price: data.h, // high price
-      low_price: data.l, // low price
-      previous_close: data.pc, // previous close
       quote_timestamp: getCurrentTimestamp(),
       data_provider: 'finnhub'
     };
   } catch (error) {
-    console.error(`Finnhub quote fetch error for ${symbol}:`, error);
+    console.error(`Finnhub symbol validation error for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Fetch stock quote from Polygon
+ * Validate symbol from Polygon
  */
-async function fetchFromPolygon(symbol: string): Promise<StockQuote | null> {
+async function validateFromPolygon(symbol: string): Promise<StockQuote | null> {
   const config = PROVIDERS.polygon;
   if (!config.apiKey) return null;
   
   try {
-    // Get yesterday's date for the aggregates endpoint
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = yesterday.toISOString().split('T')[0];
-    
-    const url = `${config.baseUrl}${config.endpoints.quote}/${symbol}/range/1/day/${dateStr}/${dateStr}?adjusted=true&sort=desc&limit=1&apikey=${config.apiKey}`;
+    const url = `${config.baseUrl}${config.endpoints.quote}?ticker=${symbol}&apikey=${config.apiKey}`;
     const response = await fetch(url);
     
     if (!response.ok) return null;
@@ -270,27 +179,26 @@ async function fetchFromPolygon(symbol: string): Promise<StockQuote | null> {
     const data = await response.json();
     if (!data.results || !Array.isArray(data.results) || data.results.length === 0) return null;
     
-    const quote = data.results[0];
+    // Check if symbol exists in results
+    const symbolMatch = data.results.find((result: any) => result.ticker === symbol);
+    
+    if (!symbolMatch) return null;
+    
     return {
       symbol: symbol,
-      price: quote.c, // close price (latest)
-      open_price: quote.o, // open price
-      high_price: quote.h, // high price  
-      low_price: quote.l, // low price
-      volume: quote.v, // volume
       quote_timestamp: getCurrentTimestamp(),
       data_provider: 'polygon'
     };
   } catch (error) {
-    console.error(`Polygon quote fetch error for ${symbol}:`, error);
+    console.error(`Polygon symbol validation error for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Fetch stock quote from Twelve Data
+ * Validate symbol from Twelve Data
  */
-async function fetchFromTwelveData(symbol: string): Promise<StockQuote | null> {
+async function validateFromTwelveData(symbol: string): Promise<StockQuote | null> {
   const config = PROVIDERS.twelve_data;
   if (!config.apiKey) return null;
   
@@ -301,36 +209,33 @@ async function fetchFromTwelveData(symbol: string): Promise<StockQuote | null> {
     if (!response.ok) return null;
     
     const data = await response.json();
-    if (!data.close) return null;
+    if (!data.data || !Array.isArray(data.data) || data.data.length === 0) return null;
+    
+    // Check if symbol exists in search results
+    const symbolMatch = data.data.find((result: any) => result.symbol === symbol);
+    
+    if (!symbolMatch) return null;
     
     return {
       symbol: symbol,
-      price: parseFloat(data.close),
-      change_amount: data.change ? parseFloat(data.change) : undefined,
-      change_percent: data.percent_change ? parseFloat(data.percent_change) : undefined,
-      volume: data.volume ? parseInt(data.volume) : undefined,
-      open_price: data.open ? parseFloat(data.open) : undefined,
-      high_price: data.high ? parseFloat(data.high) : undefined,
-      low_price: data.low ? parseFloat(data.low) : undefined,
-      previous_close: data.previous_close ? parseFloat(data.previous_close) : undefined,
       quote_timestamp: getCurrentTimestamp(),
       data_provider: 'twelve_data'
     };
   } catch (error) {
-    console.error(`Twelve Data quote fetch error for ${symbol}:`, error);
+    console.error(`Twelve Data symbol validation error for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Fetch stock quote from Tiingo
+ * Validate symbol from Tiingo
  */
-async function fetchFromTiingo(symbol: string): Promise<StockQuote | null> {
+async function validateFromTiingo(symbol: string): Promise<StockQuote | null> {
   const config = PROVIDERS.tiingo;
   if (!config.apiKey) return null;
   
   try {
-    const url = `${config.baseUrl}/${symbol}?token=${config.apiKey}`;
+    const url = `${config.baseUrl}${config.endpoints.quote}?query=${symbol}&token=${config.apiKey}`;
     const response = await fetch(url);
     
     if (!response.ok) return null;
@@ -338,114 +243,38 @@ async function fetchFromTiingo(symbol: string): Promise<StockQuote | null> {
     const data = await response.json();
     if (!Array.isArray(data) || data.length === 0) return null;
     
-    const quote = data[0];
+    // Check if exact symbol match exists
+    const symbolMatch = data.find((result: any) => result.ticker === symbol);
+    
+    if (!symbolMatch) return null;
+    
     return {
       symbol: symbol,
-      price: quote.last,
-      change_amount: quote.last && quote.prevClose ? quote.last - quote.prevClose : undefined,
-      volume: quote.volume,
-      open_price: quote.open,
-      high_price: quote.high,
-      low_price: quote.low,
-      previous_close: quote.prevClose,
-      quote_timestamp: quote.timestamp ? new Date(quote.timestamp).toISOString() : getCurrentTimestamp(),
+      quote_timestamp: getCurrentTimestamp(),
       data_provider: 'tiingo'
     };
   } catch (error) {
-    console.error(`Tiingo quote fetch error for ${symbol}:`, error);
+    console.error(`Tiingo symbol validation error for ${symbol}:`, error);
     return null;
   }
 }
 
-/**
- * Fetch stock quote from Yahoo Finance
- */
-async function fetchFromYahooFinance(symbol: string): Promise<StockQuote | null> {
-  const config = PROVIDERS.yahoo_finance;
-  
-  try {
-    const url = `${config.baseUrl}/${symbol}?interval=1d&range=1d`;
-    const response = await fetch(url);
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (!data.chart || !data.chart.result || !data.chart.result[0]) return null;
-    
-    const result = data.chart.result[0];
-    const meta = result.meta;
-    
-    return {
-      symbol: symbol,
-      price: meta.regularMarketPrice,
-      change_amount: meta.regularMarketPrice && meta.previousClose ? 
-        meta.regularMarketPrice - meta.previousClose : undefined,
-      change_percent: meta.regularMarketPrice && meta.previousClose ? 
-        ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100 : undefined,
-      volume: meta.regularMarketVolume,
-      open_price: meta.regularMarketOpen,
-      high_price: meta.regularMarketDayHigh,
-      low_price: meta.regularMarketDayLow,
-      previous_close: meta.previousClose,
-      quote_timestamp: getCurrentTimestamp(),
-      data_provider: 'yahoo_finance'
-    };
-  } catch (error) {
-    console.error(`Yahoo Finance quote fetch error for ${symbol}:`, error);
-    return null;
-  }
-}
 
 /**
- * Fetch stock quote from API Ninjas
+ * Combine symbol validation results from multiple providers
  */
-async function fetchFromAPINinjas(symbol: string): Promise<StockQuote | null> {
-  const config = PROVIDERS.api_ninjas;
-  if (!config.apiKey) return null;
-  
-  try {
-    const url = `${config.baseUrl}${config.endpoints.quote}?ticker=${symbol}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Api-Key': config.apiKey
-      }
-    });
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (!data || !data.price) return null;
-    
-    return {
-      symbol: symbol,
-      price: data.price,
-      quote_timestamp: getCurrentTimestamp(),
-      data_provider: 'api_ninjas'
-    };
-  } catch (error) {
-    console.error(`API Ninjas quote fetch error for ${symbol}:`, error);
-    return null;
-  }
-}
-
-/**
- * Combine and deduplicate stock quote data from multiple providers
- */
-function combineQuoteData(dataArray: (StockQuote | null)[]): StockQuote | null {
+function combineValidationData(dataArray: (StockQuote | null)[]): StockQuote | null {
   const validData = dataArray.filter(quote => quote !== null) as StockQuote[];
   
   if (validData.length === 0) return null;
   
-  // Provider priority for quote data (highest to lowest)
+  // Provider priority for symbol validation (highest to lowest)
   const providerPriority = {
-    'finnhub': 8,        // Best for real-time quotes
-    'alpha_vantage': 7,  // Reliable with good volume data
-    'fmp': 6,            // Good comprehensive data
-    'twelve_data': 5,    // Decent real-time data
-    'tiingo': 4,         // Good for IEX data
-    'polygon': 3,        // Good but often delayed for free tier
-    'yahoo_finance': 2,  // Free but less reliable
-    'api_ninjas': 1      // Basic price only
+    'finnhub': 5,        // Best for symbol search
+    'alpha_vantage': 4,  // Good symbol search
+    'polygon': 3,        // Good ticker reference
+    'twelve_data': 2,    // Decent symbol search
+    'tiingo': 1          // Basic symbol search
   };
   
   // Sort by provider priority (highest first)
@@ -455,65 +284,19 @@ function combineQuoteData(dataArray: (StockQuote | null)[]): StockQuote | null {
     return bPriority - aPriority;
   });
   
-  // Start with the highest priority quote as base
-  const baseQuote = validData[0];
+  // Use the highest priority validation result
+  const baseValidation = validData[0];
   const combined: StockQuote = {
-    symbol: baseQuote.symbol,
+    symbol: baseValidation.symbol,
     quote_timestamp: getCurrentTimestamp(),
     data_provider: validData.map(q => q.data_provider).join(', ')
   };
   
-  // Merge data from all providers, preferring higher priority sources
-  for (const quote of validData) {
-    // Use the most reliable price (prefer real-time providers)
-    if (!combined.price && quote.price !== undefined) {
-      combined.price = quote.price;
+  // Use exchange_id from any provider that has it
+  for (const validation of validData) {
+    if (!combined.exchange_id && validation.exchange_id !== undefined) {
+      combined.exchange_id = validation.exchange_id;
     }
-    
-    // Use change data from the same provider that gave us the price if possible
-    if (!combined.change_amount && quote.change_amount !== undefined) {
-      combined.change_amount = quote.change_amount;
-    }
-    
-    if (!combined.change_percent && quote.change_percent !== undefined) {
-      combined.change_percent = quote.change_percent;
-    }
-    
-    // Volume data (prefer providers with comprehensive volume)
-    if (!combined.volume && quote.volume !== undefined) {
-      combined.volume = quote.volume;
-    }
-    
-    // OHLC data for the day
-    if (!combined.open_price && quote.open_price !== undefined) {
-      combined.open_price = quote.open_price;
-    }
-    
-    if (!combined.high_price && quote.high_price !== undefined) {
-      combined.high_price = quote.high_price;
-    }
-    
-    if (!combined.low_price && quote.low_price !== undefined) {
-      combined.low_price = quote.low_price;
-    }
-    
-    if (!combined.previous_close && quote.previous_close !== undefined) {
-      combined.previous_close = quote.previous_close;
-    }
-    
-    // Exchange ID from any source
-    if (!combined.exchange_id && quote.exchange_id !== undefined) {
-      combined.exchange_id = quote.exchange_id;
-    }
-  }
-  
-  // Calculate missing change data if we have price and previous_close
-  if (combined.price && combined.previous_close && !combined.change_amount) {
-    combined.change_amount = combined.price - combined.previous_close;
-  }
-  
-  if (combined.price && combined.previous_close && !combined.change_percent) {
-    combined.change_percent = ((combined.price - combined.previous_close) / combined.previous_close) * 100;
   }
   
   return combined;
@@ -546,126 +329,94 @@ async function getExistingSymbols(supabase: SupabaseClient): Promise<string[]> {
 }
 
 /**
- * Save stock quote data to the database using SQL upsert function
+ * Save/update stock symbol metadata to the database
  */
-async function saveStockQuoteData(supabase: SupabaseClient, quoteData: StockQuote[]): Promise<boolean> {
-  if (quoteData.length === 0) return true;
+async function saveStockSymbolData(supabase: SupabaseClient, symbolData: StockQuote[]): Promise<boolean> {
+  if (symbolData.length === 0) return true;
   
   try {
-    // Get existing records with their timestamps and data providers to preserve the conflict key
-    const { data: existingRecords, error: checkError } = await supabase
-      .from('stock_quotes')
-      .select('symbol, quote_timestamp, data_provider')
-      .in('symbol', quoteData.map(q => q.symbol));
-    
-    if (checkError) {
-      console.error(`Error checking existing records:`, checkError);
-      return false;
-    }
-    
-    if (!existingRecords || existingRecords.length === 0) {
-      console.log('No existing records found to update');
-      return false;
-    }
-    
-    // Create a map of existing records by symbol for quick lookup
-    const existingRecordsMap = new Map<string, {quote_timestamp: string, data_provider: string}>();
-    existingRecords.forEach((record: {symbol: string, quote_timestamp: string, data_provider: string}) => {
-      // Use the most recent record for each symbol
-      if (!existingRecordsMap.has(record.symbol)) {
-        existingRecordsMap.set(record.symbol, {
-          quote_timestamp: record.quote_timestamp,
-          data_provider: record.data_provider
-        });
-      }
-    });
-    
-    // Filter quote data to only include symbols that already exist
-    const filteredQuoteData = quoteData.filter(quote => existingRecordsMap.has(quote.symbol));
-    
-    if (filteredQuoteData.length === 0) {
-      console.log('No valid symbols to update after filtering');
-      return false;
-    }
-    
-    // Use SQL upsert function for each quote with existing timestamp and provider
+    // Use direct insert/update for symbol metadata (no pricing data)
     let successfulUpdates = 0;
-    for (const quote of filteredQuoteData) {
+    
+    for (const symbol of symbolData) {
       try {
-        const existingRecord = existingRecordsMap.get(quote.symbol)!;
+        // Check if symbol already exists
+        const { data: existingRecord } = await supabase
+          .from('stock_quotes')
+          .select('id')
+          .eq('symbol', symbol.symbol)
+          .single();
         
-        const { data, error } = await supabase.rpc('upsert_stock_quote', {
-          p_symbol: quote.symbol,
-          p_quote_timestamp: existingRecord.quote_timestamp, // Use existing timestamp
-          p_data_provider: existingRecord.data_provider, // Use existing provider
-          p_exchange_code: null,
-          p_exchange_name: null,
-          p_exchange_country: null,
-          p_exchange_timezone: null,
-          p_price: quote.price,
-          p_change_amount: quote.change_amount,
-          p_change_percent: quote.change_percent,
-          p_volume: quote.volume,
-          p_open_price: quote.open_price,
-          p_high_price: quote.high_price,
-          p_low_price: quote.low_price,
-          p_previous_close: quote.previous_close
-        });
-        
-        if (error) {
-          console.error(`Error upserting quote data for ${quote.symbol}:`, error);
+        if (existingRecord) {
+          // Update existing record with new metadata
+          const { error: updateError } = await supabase
+            .from('stock_quotes')
+            .update({
+              quote_timestamp: symbol.quote_timestamp,
+              data_provider: symbol.data_provider,
+              updated_at: getCurrentTimestamp()
+            })
+            .eq('symbol', symbol.symbol);
+          
+          if (updateError) {
+            console.error(`Error updating symbol ${symbol.symbol}:`, updateError);
+          } else {
+            successfulUpdates++;
+            console.log(`Successfully updated symbol metadata for ${symbol.symbol}`);
+          }
         } else {
-          successfulUpdates++;
-          console.log(`Successfully updated ${quote.symbol} with ID: ${data}`);
+          // Insert new symbol record
+          const { error: insertError } = await supabase
+            .from('stock_quotes')
+            .insert({
+              symbol: symbol.symbol,
+              exchange_id: symbol.exchange_id,
+              quote_timestamp: symbol.quote_timestamp,
+              data_provider: symbol.data_provider
+            });
+          
+          if (insertError) {
+            console.error(`Error inserting symbol ${symbol.symbol}:`, insertError);
+          } else {
+            successfulUpdates++;
+            console.log(`Successfully inserted new symbol ${symbol.symbol}`);
+          }
         }
-      } catch (upsertError) {
-        console.error(`Error upserting symbol ${quote.symbol}:`, upsertError);
+      } catch (symbolError) {
+        console.error(`Error processing symbol ${symbol.symbol}:`, symbolError);
       }
     }
     
     if (successfulUpdates === 0) {
-      console.log('No records were successfully updated');
+      console.log('No records were successfully processed');
       return false;
     }
     
-    console.log(`Successfully updated ${successfulUpdates} out of ${filteredQuoteData.length} quote records`);
+    console.log(`Successfully processed ${successfulUpdates} out of ${symbolData.length} symbol records`);
     return true;
   } catch (error) {
-    console.error(`Error in saveStockQuoteData:`, error);
+    console.error(`Error in saveStockSymbolData:`, error);
     return false;
   }
 }
 
 /**
- * Validate quote data for basic sanity checks
+ * Validate symbol data for basic sanity checks
  */
-function validateQuoteData(quote: StockQuote): boolean {
+function validateSymbolData(symbolData: StockQuote): boolean {
   // Basic validation checks
-  if (!quote.symbol || !quote.quote_timestamp) return false;
+  if (!symbolData.symbol || !symbolData.quote_timestamp) return false;
+  
+  // Validate ticker symbol format (letters, numbers, dots, hyphens only)
+  const symbolRegex = /^[A-Z0-9._-]{1,20}$/;
+  if (!symbolRegex.test(symbolData.symbol)) return false;
   
   // Check if timestamp is valid
-  const timestamp = new Date(quote.quote_timestamp);
+  const timestamp = new Date(symbolData.quote_timestamp);
   if (isNaN(timestamp.getTime())) return false;
   
-  // Check if prices are reasonable (not negative)
-  if (quote.price !== undefined && quote.price < 0) return false;
-  if (quote.open_price !== undefined && quote.open_price < 0) return false;
-  if (quote.high_price !== undefined && quote.high_price < 0) return false;
-  if (quote.low_price !== undefined && quote.low_price < 0) return false;
-  if (quote.previous_close !== undefined && quote.previous_close < 0) return false;
-  if (quote.volume !== undefined && quote.volume < 0) return false;
-  
-  // Check if high >= low (if both exist)
-  if (quote.high_price !== undefined && quote.low_price !== undefined && quote.high_price < quote.low_price) return false;
-  
-  // Check if OHLC prices are within reasonable range of each other
-  const prices = [quote.open_price, quote.high_price, quote.low_price, quote.price, quote.previous_close]
-    .filter(p => p !== undefined);
-  if (prices.length > 1) {
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    if (maxPrice / minPrice > 5) return false; // Reject if price range is more than 5x
-  }
+  // Validate data provider is specified
+  if (!symbolData.data_provider || symbolData.data_provider.length === 0) return false;
   
   return true;
 }
@@ -686,7 +437,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
     
-    console.log('Starting stock quotes multi-provider fetch...');
+    console.log('Starting stock symbol validation and tracking...');
     
     // Parse request body for any specific symbols (optional)
     let requestedSymbols: string[] | null = null;
@@ -735,18 +486,15 @@ Deno.serve(async (req) => {
         // Process each symbol individually
         for (const symbol of batch) {
           try {
-            console.log(`Fetching quote data for ${symbol}...`);
+            console.log(`Validating symbol ${symbol}...`);
             
-            // Fetch data from all available providers for this symbol
+            // Validate symbol from available providers
             const providerPromises = [
-              fetchFromFinnhub(symbol),
-              fetchFromAlphaVantage(symbol),
-              fetchFromFMP(symbol),
-              fetchFromTwelveData(symbol),
-              fetchFromTiingo(symbol),
-              fetchFromPolygon(symbol),
-              fetchFromYahooFinance(symbol),
-              fetchFromAPINinjas(symbol),
+              validateFromFinnhub(symbol),
+              validateFromAlphaVantage(symbol),
+              validateFromPolygon(symbol),
+              validateFromTwelveData(symbol),
+              validateFromTiingo(symbol),
             ];
             
             const providerResults = await Promise.allSettled(providerPromises);
@@ -757,10 +505,10 @@ Deno.serve(async (req) => {
               .filter(result => result !== null);
             
             if (validResults.length > 0) {
-              const combinedQuote = combineQuoteData(validResults);
+              const combinedValidation = combineValidationData(validResults);
               
-              if (combinedQuote && validateQuoteData(combinedQuote)) {
-                const saved = await saveStockQuoteData(supabaseClient, [combinedQuote]);
+              if (combinedValidation && validateSymbolData(combinedValidation)) {
+                const saved = await saveStockSymbolData(supabaseClient, [combinedValidation]);
                 
                 if (saved) {
                   successCount++;
@@ -768,11 +516,9 @@ Deno.serve(async (req) => {
                   results.push({
                     symbol,
                     status: 'success',
-                    price: combinedQuote.price,
-                    change: combinedQuote.change_amount,
-                    change_percent: combinedQuote.change_percent,
                     providers_used: validResults.length,
-                    data_sources: combinedQuote.data_provider
+                    data_sources: combinedValidation.data_provider,
+                    last_updated: combinedValidation.quote_timestamp
                   });
                 } else {
                   errorCount++;
@@ -787,7 +533,7 @@ Deno.serve(async (req) => {
                 results.push({
                   symbol,
                   status: 'error',
-                  message: 'No valid quote data after validation'
+                  message: 'Invalid symbol data after validation'
                 });
               }
             } else {
@@ -835,7 +581,7 @@ Deno.serve(async (req) => {
     
     const response = {
       success: true,
-      message: 'Stock quotes multi-provider fetch completed',
+      message: 'Stock symbol validation and tracking completed',
       summary: {
         total_symbols: symbolsToProcess.length,
         processed: processedCount,
@@ -862,7 +608,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: error.message,
-        message: 'Internal server error in stock quotes fetch'
+        message: 'Internal server error in stock symbol validation'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
