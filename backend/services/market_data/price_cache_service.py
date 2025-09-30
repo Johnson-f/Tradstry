@@ -142,21 +142,18 @@ class PriceCacheService:
             
             if is_stale:
                 # Serve stale data immediately, refresh in background
-                logger.info(f"🔄 Serving stale data for {symbol}, triggering background refresh")
                 asyncio.create_task(self._background_refresh(symbol))
                 return cached_data
             else:
                 # Fresh data, return immediately
-                logger.debug(f"💰 Cache HIT (fresh): {symbol}")
                 return cached_data
         
-        logger.debug(f"❌ Cache MISS: {symbol} - no data at all")
+        # No cached data available
         
         # Step 2: Check if request already in-flight (request coalescing)
         future_to_wait = None
         async with self._request_lock:
             if symbol in self._in_flight_requests:
-                logger.debug(f"⏳ Request in-flight for {symbol}, waiting...")
                 # Capture the future reference BEFORE releasing the lock
                 future_to_wait = self._in_flight_requests[symbol]
             else:
@@ -228,7 +225,6 @@ class PriceCacheService:
                 
                 if is_stale:
                     # Serve stale data, mark for background refresh
-                    logger.debug(f"🔄 Serving stale data for {symbol} in batch (age: {stale_age:.1f}s)")
                     results[symbol] = cached
                     symbols_to_refresh.append(symbol)
                 else:
@@ -240,7 +236,6 @@ class PriceCacheService:
         
         # Trigger background refresh for stale symbols (non-blocking)
         if symbols_to_refresh:
-            logger.info(f"🔄 Triggering background refresh for {len(symbols_to_refresh)} stale symbols: {symbols_to_refresh[:5]}{'...' if len(symbols_to_refresh) > 5 else ''}")
             for symbol in symbols_to_refresh:
                 asyncio.create_task(self._background_refresh(symbol))
         
@@ -250,10 +245,7 @@ class PriceCacheService:
         hit_rate = (cache_hits / len(symbols) * 100) if symbols else 0
         
         if not symbols_to_fetch:
-            logger.info(f"✅ 100% Cache HIT: All {len(symbols)} symbols served from cache")
             return results
-        
-        logger.info(f"📊 Cache Performance: {cache_hits} hits, {initial_cache_misses} misses ({hit_rate:.1f}% hit rate)")
         
         # Step 2: Check for in-flight requests (request coalescing)
         # Store future references BEFORE releasing the lock to prevent race conditions
@@ -275,8 +267,6 @@ class PriceCacheService:
         
         # Step 3: Wait for in-flight requests
         if symbols_in_flight:
-            logger.info(f"⏳ Waiting for {len(symbols_in_flight)} in-flight requests: {symbols_in_flight[:5]}{'...' if len(symbols_in_flight) > 5 else ''}")
-            
             for symbol in symbols_in_flight:
                 try:
                     # Use the future reference we captured while holding the lock
@@ -293,8 +283,6 @@ class PriceCacheService:
         
         # Step 4: Fetch symbols that aren't cached and aren't in-flight
         if truly_needed:
-            logger.info(f"📡 Fetching {len(truly_needed)} symbols from API (coalesced)")
-            
             try:
                 fetched_data = await self._fetch_from_api(truly_needed)
                 
@@ -332,14 +320,6 @@ class PriceCacheService:
         
         # Calculate final statistics
         coalesced_count = len(symbols_in_flight)
-        fetched_count = len(truly_needed)
-        total_count = len(results)
-        
-        logger.info(
-            f"✅ Batch complete: {cache_hits} from cache + {coalesced_count} coalesced + "
-            f"{fetched_count} fetched = {total_count} total"
-        )
-        
         return results
     
     # ========================
@@ -360,15 +340,12 @@ class PriceCacheService:
         cache_key = f"price:{symbol}"
         
         try:
-            logger.debug(f"🔍 Looking up {symbol} in cache (key: {cache_key}, allow_stale: {allow_stale})")
             data = await self.redis.get(cache_key, namespace=self.cache_namespace)
             
             if data is None:
-                logger.debug(f"❌ Cache MISS for {symbol} - key not found in Redis")
                 return None
             
             if data:
-                logger.debug(f"✅ Found data for {symbol} in Redis")
                 # Check if data is still fresh (within TTL)
                 timestamp = data.get('cached_at')
                 if timestamp:
@@ -378,16 +355,13 @@ class PriceCacheService:
                     if age > self.ttl:
                         if allow_stale:
                             # Return stale data with flag
-                            logger.info(f"🔄 Serving STALE data for {symbol} (age: {age:.1f}s, TTL: {self.ttl}s) - will revalidate")
                             data['is_stale'] = True
                             data['stale_age'] = age
                             return data
                         else:
                             # Strict mode: reject expired data
-                            logger.debug(f"⏰ Cache expired for {symbol} (age: {age:.1f}s, TTL: {self.ttl}s)")
                             return None
                     
-                    logger.debug(f"✅ Cache HIT for {symbol} (age: {age:.1f}s)")
                     data['is_stale'] = False
                 
                 return data
@@ -411,7 +385,6 @@ class PriceCacheService:
             }
             
             # Store with TTL + buffer (125 seconds to handle edge cases)
-            logger.info(f"💾 Attempting to cache {symbol} with TTL {self.ttl + 5}s")
             success = await self.redis.set(
                 cache_key,
                 cache_data,
@@ -419,16 +392,8 @@ class PriceCacheService:
                 namespace=self.cache_namespace
             )
             
-            if success:
-                logger.info(f"✅ Successfully cached {symbol} (TTL: {self.ttl}s)")
-                # Verify it was actually stored
-                verify = await self._get_from_cache(symbol)
-                if verify:
-                    logger.info(f"✅ Verified {symbol} is in cache")
-                else:
-                    logger.error(f"❌ Cache verification FAILED for {symbol} - data not retrievable!")
-            else:
-                logger.error(f"❌ Cache storage FAILED for {symbol} - redis.set returned False")
+            if not success:
+                logger.error(f"Cache storage failed for {symbol}")
             
             return success
             
@@ -442,8 +407,6 @@ class PriceCacheService:
         
         try:
             success = await self.redis.delete(cache_key, namespace=self.cache_namespace)
-            if success:
-                logger.info(f"♻️ Invalidated cache for {symbol}")
             return success
             
         except Exception as e:
@@ -458,12 +421,9 @@ class PriceCacheService:
         It fetches fresh data and updates the cache without blocking the response.
         """
         try:
-            logger.info(f"🔄 Background refresh started for {symbol}")
-            
             # Check if already in-flight to avoid duplicate refreshes
             async with self._request_lock:
                 if symbol in self._in_flight_requests:
-                    logger.debug(f"⏭️ Background refresh skipped for {symbol} - already in-flight")
                     return
                 # Create future to prevent duplicate background refreshes
                 future = asyncio.Future()
@@ -477,10 +437,8 @@ class PriceCacheService:
                 # Update cache with fresh data
                 if result:
                     await self._store_in_cache(symbol, result)
-                    logger.info(f"✅ Background refresh completed for {symbol}")
                     future.set_result(result)
                 else:
-                    logger.warning(f"⚠️ Background refresh: No data returned for {symbol}")
                     future.set_result(None)
                     
             except Exception as e:

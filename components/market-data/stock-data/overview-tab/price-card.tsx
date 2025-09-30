@@ -254,7 +254,7 @@ export const PriceCard: React.FC<PriceCardProps> = ({
                   : 'text-red-600 dark:text-red-400'
               }`}>
                 <span>{formatChange(priceChange)}</span>
-                <span>↗ {formatPercentChange(priceChangePercent)}</span>
+                <span>{isPositive ? '↗' : '↘'} {formatPercentChange(priceChangePercent)}</span>
               </div>
             </div>
             

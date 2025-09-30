@@ -3,7 +3,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMoverWithPrices, MarketMoversRequest, CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, SymbolHistoricalOverview, WatchlistItemWithPrices, WatchlistWithItemsAndPrices, CreateWatchlistRequest, AddWatchlistItemRequest, StockPeerWithPrices, StockPeersRequest, KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest, StockQuoteWithPrices, HistoricalDataRequest, HistoricalDataResponse, SingleSymbolDataRequest } from "@/lib/types/market-data";
+import type { IndexData, HistoricalDataPoint, MarketMoverWithPrices, MarketMoversRequest, 
+  CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, 
+  HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, 
+  HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, 
+  SymbolHistoricalOverview, WatchlistItemWithPrices, WatchlistWithItemsAndPrices, 
+  CreateWatchlistRequest, AddWatchlistItemRequest, StockPeerWithPrices, StockPeersRequest, 
+  KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest, 
+  StockQuoteWithPrices, HistoricalDataRequest, HistoricalDataResponse, SingleSymbolDataRequest, 
+  HolderData, InstitutionalHolder, MutualFundHolder, InsiderTransaction, InsiderPurchasesSummary,
+  InsiderRoster, HolderStatistics, HolderSearchResult, HolderParticipant, EarningsTranscript, 
+  EarningsTranscriptMetadata, TranscriptSearchResult, TranscriptStatistics, TranscriptParticipant, 
+  TranscriptQuarter, HoldersRequest, InsiderTransactionsRequest, HoldersSearchRequest, 
+  HoldersPaginatedRequest, TranscriptsRequest, TranscriptSearchRequest, TranscriptsByDateRequest, 
+  TranscriptsPaginatedRequest } from "@/lib/types/market-data";
 
 // =====================================================
 // EARNINGS HOOKS
@@ -1214,6 +1227,420 @@ export function useCashFlow(params: FinancialStatementRequest) {
 
   return {
     cashFlow: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// HOLDERS DATA HOOKS
+// =====================================================
+
+export function useInstitutionalHolders(symbol: string, dateReported?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'institutional', symbol, dateReported, limit],
+    queryFn: () => marketDataService.getInstitutionalHolders(symbol, dateReported, limit),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!symbol,
+  });
+
+  return {
+    institutionalHolders: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useMutualFundHolders(symbol: string, dateReported?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'mutual-fund', symbol, dateReported, limit],
+    queryFn: () => marketDataService.getMutualFundHolders(symbol, dateReported, limit),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!symbol,
+  });
+
+  return {
+    mutualFundHolders: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useInsiderTransactions(
+  symbol: string, 
+  transactionType?: string, 
+  startDate?: string, 
+  endDate?: string, 
+  limit?: number
+) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'insider-transactions', symbol, transactionType, startDate, endDate, limit],
+    queryFn: () => marketDataService.getInsiderTransactions(symbol, transactionType, startDate, endDate, limit),
+    staleTime: 15 * 60 * 1000, // 15 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!symbol,
+  });
+
+  return {
+    insiderTransactions: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useInsiderPurchasesSummary(symbol: string, summaryPeriod?: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'insider-purchases', symbol, summaryPeriod],
+    queryFn: () => marketDataService.getInsiderPurchasesSummary(symbol, summaryPeriod),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!symbol,
+  });
+
+  return {
+    insiderPurchasesSummary: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useInsiderRoster(symbol: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'insider-roster', symbol, limit],
+    queryFn: () => marketDataService.getInsiderRoster(symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!symbol,
+  });
+
+  return {
+    insiderRoster: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useAllHolders(symbol: string, holderType?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'all', symbol, holderType, limit],
+    queryFn: () => marketDataService.getAllHolders(symbol, holderType, limit),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!symbol,
+  });
+
+  return {
+    allHolders: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTopInstitutionalHolders(orderBy?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'top-institutional', orderBy, limit],
+    queryFn: () => marketDataService.getTopInstitutionalHolders(orderBy, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  return {
+    topInstitutionalHolders: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useRecentInsiderTransactions(transactionType?: string, daysBack?: number, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'recent-insider-transactions', transactionType, daysBack, limit],
+    queryFn: () => marketDataService.getRecentInsiderTransactions(transactionType, daysBack, limit),
+    staleTime: 15 * 60 * 1000, // 15 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+  });
+
+  return {
+    recentInsiderTransactions: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useHolderStatistics(symbol: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'statistics', symbol],
+    queryFn: () => marketDataService.getHolderStatistics(symbol),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!symbol,
+  });
+
+  return {
+    holderStatistics: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useSearchHoldersByName(namePattern: string, holderType?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'search', namePattern, holderType, limit],
+    queryFn: () => marketDataService.searchHoldersByName(namePattern, holderType, limit),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!namePattern && namePattern.length > 2,
+  });
+
+  return {
+    holderSearchResults: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useHoldersPaginated(params: HoldersPaginatedRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['holders', 'paginated', params.symbol, params.holder_type, params.offset, params.limit, params.sort_column, params.sort_direction],
+    queryFn: () => marketDataService.getHoldersPaginated(params),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+  });
+
+  return {
+    holdersPaginated: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+// =====================================================
+// EARNINGS TRANSCRIPTS HOOKS
+// =====================================================
+
+export function useEarningsTranscripts(symbol: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'earnings', symbol, limit],
+    queryFn: () => marketDataService.getEarningsTranscripts(symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!symbol,
+  });
+
+  return {
+    earningsTranscripts: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useEarningsTranscriptByPeriod(symbol: string, year: number, quarter: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'by-period', symbol, year, quarter],
+    queryFn: () => marketDataService.getEarningsTranscriptByPeriod(symbol, year, quarter),
+    staleTime: 24 * 60 * 60 * 1000, // 24 hours
+    gcTime: 7 * 24 * 60 * 60 * 1000, // 7 days
+    enabled: !!symbol && !!year && !!quarter,
+  });
+
+  return {
+    earningsTranscript: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useLatestEarningsTranscript(symbol: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'latest', symbol],
+    queryFn: () => marketDataService.getLatestEarningsTranscript(symbol),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!symbol,
+  });
+
+  return {
+    latestEarningsTranscript: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useRecentEarningsTranscripts(daysBack?: number, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'recent', daysBack, limit],
+    queryFn: () => marketDataService.getRecentEarningsTranscripts(daysBack, limit),
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+  });
+
+  return {
+    recentEarningsTranscripts: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useSearchEarningsTranscripts(searchText: string, symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'search', searchText, symbol, limit],
+    queryFn: () => marketDataService.searchEarningsTranscripts(searchText, symbol, limit),
+    staleTime: 15 * 60 * 1000, // 15 minutes
+    gcTime: 60 * 60 * 1000, // 1 hour
+    enabled: !!searchText && searchText.length > 2,
+  });
+
+  return {
+    transcriptSearchResults: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptsByParticipant(participantName: string, symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'by-participant', participantName, symbol, limit],
+    queryFn: () => marketDataService.getTranscriptsByParticipant(participantName, symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!participantName,
+  });
+
+  return {
+    transcriptsByParticipant: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptsByDateRange(startDate: string, endDate: string, symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'by-date-range', startDate, endDate, symbol, limit],
+    queryFn: () => marketDataService.getTranscriptsByDateRange(startDate, endDate, symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!startDate && !!endDate,
+  });
+
+  return {
+    transcriptsByDateRange: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptsByYear(year: number, symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'by-year', year, symbol, limit],
+    queryFn: () => marketDataService.getTranscriptsByYear(year, symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!year,
+  });
+
+  return {
+    transcriptsByYear: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptStatistics(symbol: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'statistics', symbol],
+    queryFn: () => marketDataService.getTranscriptStatistics(symbol),
+    staleTime: 2 * 60 * 60 * 1000, // 2 hours
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: !!symbol,
+  });
+
+  return {
+    transcriptStatistics: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptMetadata(symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'metadata', symbol, limit],
+    queryFn: () => marketDataService.getTranscriptMetadata(symbol, limit),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  return {
+    transcriptMetadata: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptsPaginated(params: TranscriptsPaginatedRequest) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'paginated', params.symbol, params.year, params.quarter, params.offset, params.limit, params.sort_column, params.sort_direction],
+    queryFn: () => marketDataService.getTranscriptsPaginated(params),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  return {
+    transcriptsPaginated: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useUniqueTranscriptParticipants(symbol?: string, limit?: number) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'participants', symbol, limit],
+    queryFn: () => marketDataService.getUniqueTranscriptParticipants(symbol, limit),
+    staleTime: 2 * 60 * 60 * 1000, // 2 hours
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  return {
+    transcriptParticipants: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+export function useTranscriptCountByQuarter(symbol?: string) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['transcripts', 'count-by-quarter', symbol],
+    queryFn: () => marketDataService.getTranscriptCountByQuarter(symbol),
+    staleTime: 2 * 60 * 60 * 1000, // 2 hours
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  return {
+    transcriptCountByQuarter: data ?? [],
     isLoading,
     error: error as Error | null,
     refetch,

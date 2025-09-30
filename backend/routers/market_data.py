@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from services.market_data_service import MarketDataService
+from services.market_data.holders_transcripts_service import HoldersTranscriptsService
 from models.market_data import (
     DailyEarningsSummary,
     CompanyInfo,
@@ -74,6 +75,32 @@ from models.market_data import (
     FinancialStatementRequest,
     KeyStats,
     KeyStatsRequest,
+    # Holders Models
+    HolderData,
+    InstitutionalHolder,
+    MutualFundHolder,
+    InsiderTransaction,
+    InsiderPurchasesSummary,
+    InsiderRoster,
+    HolderStatistics,
+    HolderSearchResult,
+    HolderParticipant,
+    # Earnings Transcripts Models
+    EarningsTranscript,
+    EarningsTranscriptMetadata,
+    TranscriptSearchResult,
+    TranscriptStatistics,
+    TranscriptParticipant,
+    TranscriptQuarter,
+    # Request Models
+    HoldersRequest,
+    InsiderTransactionsRequest,
+    HoldersSearchRequest,
+    HoldersPaginatedRequest,
+    TranscriptsRequest,
+    TranscriptSearchRequest,
+    TranscriptsByDateRequest,
+    TranscriptsPaginatedRequest,
 )
 
 router = APIRouter(prefix="/market-data", tags=["Market Data"])
@@ -1273,6 +1300,525 @@ async def get_key_stats(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get key stats: {str(e)}"
+        )
+
+
+# =====================================================
+# HOLDERS DATA ENDPOINTS
+# =====================================================
+
+
+@router.get("/holders/{symbol}/institutional", response_model=List[InstitutionalHolder])
+async def get_institutional_holders(
+    symbol: str,
+    date_reported: Optional[datetime] = Query(None, description="Specific date reported"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get institutional holders for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_institutional_holders(
+            validated_symbol, date_reported, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get institutional holders: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/mutualfund", response_model=List[MutualFundHolder])
+async def get_mutualfund_holders(
+    symbol: str,
+    date_reported: Optional[datetime] = Query(None, description="Specific date reported"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get mutual fund holders for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_mutualfund_holders(
+            validated_symbol, date_reported, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get mutual fund holders: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/insider-transactions", response_model=List[InsiderTransaction])
+async def get_insider_transactions(
+    symbol: str,
+    transaction_type: Optional[str] = Query(None, description="Transaction type filter"),
+    start_date: Optional[datetime] = Query(None, description="Start date for filtering"),
+    end_date: Optional[datetime] = Query(None, description="End date for filtering"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get insider transactions for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_insider_transactions(
+            validated_symbol, transaction_type, start_date, end_date, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get insider transactions: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/insider-purchases", response_model=List[InsiderPurchasesSummary])
+async def get_insider_purchases_summary(
+    symbol: str,
+    summary_period: Optional[str] = Query(None, description="Summary period filter"),
+    token: str = Depends(get_token),
+):
+    """Get insider purchases summary for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_insider_purchases_summary(
+            validated_symbol, summary_period, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get insider purchases summary: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/insider-roster", response_model=List[InsiderRoster])
+async def get_insider_roster(
+    symbol: str,
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get insider roster for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_insider_roster(validated_symbol, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get insider roster: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/all", response_model=List[HolderData])
+async def get_all_holders(
+    symbol: str,
+    holder_type: Optional[str] = Query(None, description="Holder type filter"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get all holder types for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_all_holders(validated_symbol, holder_type, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get all holders: {str(e)}"
+        )
+
+
+@router.get("/holders/top-institutional", response_model=List[InstitutionalHolder])
+async def get_top_institutional_holders(
+    order_by: str = Query('shares', description="Order by shares or value"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get top institutional holders across all symbols."""
+    try:
+        service = HoldersTranscriptsService()
+        result = await service.get_top_institutional_holders(order_by, limit, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get top institutional holders: {str(e)}"
+        )
+
+
+@router.get("/holders/recent-insider-transactions", response_model=List[InsiderTransaction])
+async def get_recent_insider_transactions(
+    transaction_type: Optional[str] = Query(None, description="Transaction type filter"),
+    days_back: int = Query(30, description="Number of days to look back"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get recent insider transactions across all symbols."""
+    try:
+        service = HoldersTranscriptsService()
+        result = await service.get_recent_insider_transactions(
+            transaction_type, days_back, limit, token
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get recent insider transactions: {str(e)}"
+        )
+
+
+@router.get("/holders/{symbol}/statistics", response_model=List[HolderStatistics])
+async def get_holder_statistics(
+    symbol: str,
+    token: str = Depends(get_token),
+):
+    """Get holder statistics for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_holder_statistics(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get holder statistics: {str(e)}"
+        )
+
+
+@router.get("/holders/search", response_model=List[HolderSearchResult])
+async def search_holders_by_name(
+    name_pattern: str = Query(..., description="Name pattern to search for"),
+    holder_type: Optional[str] = Query(None, description="Holder type filter"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Search holders by name pattern."""
+    try:
+        service = HoldersTranscriptsService()
+        result = await service.search_holders_by_name(name_pattern, holder_type, limit, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to search holders: {str(e)}"
+        )
+
+
+@router.get("/holders/paginated", response_model=List[HolderData])
+async def get_holders_paginated(
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    holder_type: Optional[str] = Query(None, description="Holder type filter"),
+    offset: int = Query(0, description="Offset for pagination"),
+    limit: int = Query(50, description="Maximum number of results"),
+    sort_column: str = Query('shares', description="Column to sort by"),
+    sort_direction: str = Query('DESC', description="Sort direction (ASC/DESC)"),
+    token: str = Depends(get_token),
+):
+    """Get paginated holders with flexible sorting."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_holders_paginated(
+            validated_symbol, holder_type, offset, limit, sort_column, sort_direction, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get paginated holders: {str(e)}"
+        )
+
+
+# =====================================================
+# EARNINGS TRANSCRIPTS ENDPOINTS
+# =====================================================
+
+
+@router.get("/transcripts/{symbol}", response_model=List[EarningsTranscript])
+async def get_earnings_transcripts(
+    symbol: str,
+    limit: int = Query(10, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get earnings transcripts for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_earnings_transcripts(validated_symbol, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get earnings transcripts: {str(e)}"
+        )
+
+
+@router.get("/transcripts/{symbol}/{year}/{quarter}", response_model=Optional[EarningsTranscript])
+async def get_earnings_transcript_by_period(
+    symbol: str,
+    year: int,
+    quarter: str,
+    token: str = Depends(get_token),
+):
+    """Get specific earnings transcript by period."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_earnings_transcript_by_period(
+            validated_symbol, year, quarter, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get earnings transcript: {str(e)}"
+        )
+
+
+@router.get("/transcripts/{symbol}/latest", response_model=Optional[EarningsTranscript])
+async def get_latest_earnings_transcript(
+    symbol: str,
+    token: str = Depends(get_token),
+):
+    """Get latest earnings transcript for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_latest_earnings_transcript(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get latest earnings transcript: {str(e)}"
+        )
+
+
+@router.get("/transcripts/recent", response_model=List[EarningsTranscriptMetadata])
+async def get_recent_earnings_transcripts(
+    days_back: int = Query(90, description="Number of days to look back"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get recent earnings transcripts across all symbols."""
+    try:
+        service = HoldersTranscriptsService()
+        result = await service.get_recent_earnings_transcripts(days_back, limit, token)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get recent earnings transcripts: {str(e)}"
+        )
+
+
+@router.get("/transcripts/search", response_model=List[TranscriptSearchResult])
+async def search_earnings_transcripts(
+    search_text: str = Query(..., description="Text to search for in transcripts"),
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(20, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Search transcripts by text content."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.search_earnings_transcripts(
+            search_text, validated_symbol, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to search earnings transcripts: {str(e)}"
+        )
+
+
+@router.get("/transcripts/by-participant", response_model=List[EarningsTranscriptMetadata])
+async def get_transcripts_by_participant(
+    participant_name: str = Query(..., description="Participant name to search for"),
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(20, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get transcripts by participant."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcripts_by_participant(
+            participant_name, validated_symbol, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcripts by participant: {str(e)}"
+        )
+
+
+@router.get("/transcripts/by-date-range", response_model=List[EarningsTranscriptMetadata])
+async def get_transcripts_by_date_range(
+    start_date: datetime = Query(..., description="Start date for range"),
+    end_date: datetime = Query(..., description="End date for range"),
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get transcripts by date range."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcripts_by_date_range(
+            start_date, end_date, validated_symbol, limit, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcripts by date range: {str(e)}"
+        )
+
+
+@router.get("/transcripts/by-year/{year}", response_model=List[EarningsTranscriptMetadata])
+async def get_transcripts_by_year(
+    year: int,
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get transcripts by year."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcripts_by_year(year, validated_symbol, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcripts by year: {str(e)}"
+        )
+
+
+@router.get("/transcripts/{symbol}/statistics", response_model=Optional[TranscriptStatistics])
+async def get_transcript_statistics(
+    symbol: str,
+    token: str = Depends(get_token),
+):
+    """Get transcript statistics for a symbol."""
+    try:
+        validated_symbol = validate_symbol(symbol)
+        service = HoldersTranscriptsService()
+        result = await service.get_transcript_statistics(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcript statistics: {str(e)}"
+        )
+
+
+@router.get("/transcripts/metadata", response_model=List[EarningsTranscriptMetadata])
+async def get_transcript_metadata(
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(50, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get transcript metadata without full text."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcript_metadata(validated_symbol, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcript metadata: {str(e)}"
+        )
+
+
+@router.get("/transcripts/paginated", response_model=List[EarningsTranscriptMetadata])
+async def get_transcripts_paginated(
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    year: Optional[int] = Query(None, description="Year filter"),
+    quarter: Optional[str] = Query(None, description="Quarter filter"),
+    offset: int = Query(0, description="Offset for pagination"),
+    limit: int = Query(20, description="Maximum number of results"),
+    sort_column: str = Query('date', description="Column to sort by"),
+    sort_direction: str = Query('DESC', description="Sort direction (ASC/DESC)"),
+    token: str = Depends(get_token),
+):
+    """Get paginated transcripts with flexible sorting."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcripts_paginated(
+            validated_symbol, year, quarter, offset, limit, sort_column, sort_direction, token
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get paginated transcripts: {str(e)}"
+        )
+
+
+@router.get("/transcripts/participants", response_model=List[TranscriptParticipant])
+async def get_unique_participants(
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    limit: int = Query(100, description="Maximum number of results"),
+    token: str = Depends(get_token),
+):
+    """Get unique participants across transcripts."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_unique_participants(validated_symbol, limit, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get unique participants: {str(e)}"
+        )
+
+
+@router.get("/transcripts/count-by-quarter", response_model=List[TranscriptQuarter])
+async def get_transcript_count_by_quarter(
+    symbol: Optional[str] = Query(None, description="Symbol filter"),
+    token: str = Depends(get_token),
+):
+    """Get transcript count by quarter."""
+    try:
+        validated_symbol = validate_symbol(symbol) if symbol else None
+        service = HoldersTranscriptsService()
+        result = await service.get_transcript_count_by_quarter(validated_symbol, token)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transcript count by quarter: {str(e)}"
         )
 
 

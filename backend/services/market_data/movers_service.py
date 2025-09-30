@@ -63,10 +63,7 @@ class MoversService(BaseMarketDataService):
             )
             
             if cached_movers:
-                logger.info(f"💰 Cache HIT: Retrieved {len(cached_movers)} gainers from Redis")
                 return [MarketMover(**item) for item in cached_movers]
-            
-            logger.info(f"📊 Cache MISS: Querying database for gainers")
         
         # Cache miss - query database
         async def operation(client):
@@ -118,10 +115,7 @@ class MoversService(BaseMarketDataService):
             )
             
             if cached_movers:
-                logger.info(f"💰 Cache HIT: retrieved {len(cached_movers)} losers from Redis")
                 return [MarketMover(**item) for item in cached_movers]
-            
-            logger.info(f"📊 Cache MISS: Querying database for losers")
         
         # Cache miss - query database
         async def operation(client):
@@ -174,10 +168,7 @@ class MoversService(BaseMarketDataService):
             )
             
             if cached_movers:
-                logger.info(f"💰 Cache HIT: Retrieved {len(cached_movers)} most active stocks from Redis")
                 return [MarketMover(**item) for item in cached_movers]
-            
-            logger.info(f"📊 Cache MISS: Querying database for most active")
         
         # Cache miss - query database
         async def operation(client):
@@ -348,16 +339,12 @@ class MoversService(BaseMarketDataService):
         """Get top gainers with real-time prices from finance-query API."""
         # Get gainers (from cache or database)
         gainers = await self.get_top_gainers(request, access_token)
-        logger.info(f"📊 Retrieved {len(gainers)} gainers")
         if not gainers:
-            logger.warning("No gainers found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
         symbols = [gainer.symbol for gainer in gainers]
-        logger.info(f"💰 Fetching prices for {len(symbols)} gainer symbols: {symbols}")
         price_data = await get_cached_prices(symbols)
-        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -387,16 +374,12 @@ class MoversService(BaseMarketDataService):
         """Get top losers with real-time prices from finance-query API."""
         # Get losers (from cache or database)
         losers = await self.get_top_losers(request, access_token)
-        logger.info(f"📊 Retrieved {len(losers)} losers")
         if not losers:
-            logger.warning("No losers found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
         symbols = [loser.symbol for loser in losers]
-        logger.info(f"💰 Fetching prices for {len(symbols)} loser symbols: {symbols}")
         price_data = await get_cached_prices(symbols)
-        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -426,16 +409,12 @@ class MoversService(BaseMarketDataService):
         """Get most active stocks with real-time prices from finance-query API."""
         # Get most active (from cache or database)
         most_active = await self.get_most_active(request, access_token)
-        logger.info(f"📊 Retrieved {len(most_active)} most active stocks")
         if not most_active:
-            logger.warning("No most active stocks found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
         symbols = [stock.symbol for stock in most_active]
-        logger.info(f"💰 Fetching prices for {len(symbols)} active symbols: {symbols}")
         price_data = await get_cached_prices(symbols)
-        logger.info(f"✅ Received price data for {len(price_data)} symbols")
         
         # Combine ranking data with price data
         result = []
@@ -529,10 +508,7 @@ class MoversService(BaseMarketDataService):
             symbols = await get_mover_symbols()
             
             if symbols:
-                logger.info(f"✅ Cache HIT: Retrieved {len(symbols)} mover symbols from Redis")
                 return symbols
-            
-            logger.warning("⚠️ Cache MISS: Symbol registry returned empty, falling back to database")
             return await self._get_mover_symbols_from_database()
             
         except Exception as e:
@@ -562,8 +538,6 @@ class MoversService(BaseMarketDataService):
             
             # Batch fetch prices from cache
             prices = await get_cached_prices(symbols)
-            
-            logger.info(f"✅ Fetched prices for {len(prices)} mover symbols")
             return prices
             
         except Exception as e:
@@ -585,7 +559,6 @@ class MoversService(BaseMarketDataService):
                 return list(set([row['symbol'] for row in response.data])) if response.data else []
             
             symbols = await self._execute_with_retry(operation, access_token)
-            logger.info(f"📊 Fetched {len(symbols)} mover symbols from database (fallback took ~100-300ms)")
             return symbols
             
         except Exception as e:
