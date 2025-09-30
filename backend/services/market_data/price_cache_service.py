@@ -3,11 +3,12 @@
 """
 Real-time Price Data Cache Service
 
-Caches stock price data (price, change, percent_change) for 30 seconds to prevent
+Caches stock price data (price, change, percent_change) for 120 seconds to prevent
 excessive API calls when multiple users request the same symbol.
 
 Features:
-- 30-second TTL for price data
+- 120-second TTL for price data (2 minutes)
+- Stale-while-revalidate: Serve stale data immediately, refresh in background
 - Request coalescing (prevents duplicate API calls)
 - Automatic cache refresh for popular symbols
 - Batch fetching support
@@ -15,8 +16,15 @@ Features:
 
 Performance:
 - If 1,000 users request AAPL simultaneously, only 1 API call is made
-- Subsequent requests within 30 seconds are served from cache (sub-5ms)
+- Subsequent requests within 120 seconds are served from cache (sub-5ms)
+- Expired data served immediately with background refresh (zero wait time)
 - Reduces API costs by 90-95%
+
+Stale-While-Revalidate Pattern:
+- Fresh data (< 120s old): Served immediately from cache
+- Stale data (> 120s old): Served immediately, refreshed in background
+- No data: Fetched synchronously (user waits once)
+- Result: Always fast responses, cache stays fresh
 """
 
 import asyncio
@@ -56,7 +64,7 @@ class PriceCacheService:
             self.redis = redis_service
             self.settings = get_settings()
             self.cache_namespace = "price_data"
-            self.ttl = 30  # 30 seconds
+            self.ttl = 120  # 120 seconds (2 minutes)
             
             # Request deduplication: Track in-flight API requests
             self._in_flight_requests: Dict[str, asyncio.Future] = {}
@@ -126,28 +134,43 @@ class PriceCacheService:
         # Track popularity for auto-refresh
         self._popular_symbols[symbol] += 1
         
-        # Step 1: Try cache first
-        cached_data = await self._get_from_cache(symbol)
+        # Step 1: Try cache first with stale-while-revalidate
+        cached_data = await self._get_from_cache(symbol, allow_stale=True)
         if cached_data:
-            logger.debug(f"💰 Cache HIT: {symbol}")
-            return cached_data
+            is_stale = cached_data.pop('is_stale', False)
+            stale_age = cached_data.pop('stale_age', 0)
+            
+            if is_stale:
+                # Serve stale data immediately, refresh in background
+                logger.info(f"🔄 Serving stale data for {symbol}, triggering background refresh")
+                asyncio.create_task(self._background_refresh(symbol))
+                return cached_data
+            else:
+                # Fresh data, return immediately
+                logger.debug(f"💰 Cache HIT (fresh): {symbol}")
+                return cached_data
         
-        logger.debug(f"❌ Cache MISS: {symbol}")
+        logger.debug(f"❌ Cache MISS: {symbol} - no data at all")
         
         # Step 2: Check if request already in-flight (request coalescing)
+        future_to_wait = None
         async with self._request_lock:
             if symbol in self._in_flight_requests:
                 logger.debug(f"⏳ Request in-flight for {symbol}, waiting...")
-                # Wait for the existing request to complete
-                try:
-                    return await self._in_flight_requests[symbol]
-                except Exception as e:
-                    logger.error(f"In-flight request failed for {symbol}: {e}")
-                    return None
-            
-            # Step 3: Create new in-flight request
-            future = asyncio.Future()
-            self._in_flight_requests[symbol] = future
+                # Capture the future reference BEFORE releasing the lock
+                future_to_wait = self._in_flight_requests[symbol]
+            else:
+                # Step 3: Create new in-flight request
+                future = asyncio.Future()
+                self._in_flight_requests[symbol] = future
+        
+        # If another request is already fetching this symbol, wait for it (outside lock!)
+        if future_to_wait:
+            try:
+                return await future_to_wait
+            except Exception as e:
+                logger.error(f"In-flight request failed for {symbol}: {e}")
+                return None
         
         try:
             # Step 4: Fetch from API
@@ -175,7 +198,9 @@ class PriceCacheService:
     
     async def get_prices_batch(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """
-        Get price data for multiple symbols (optimized batch fetch).
+        Get price data for multiple symbols (optimized batch fetch with request coalescing).
+        
+        Prevents duplicate API calls when concurrent requests ask for the same symbols.
         
         Args:
             symbols: List of stock symbols
@@ -186,32 +211,134 @@ class PriceCacheService:
         symbols = [s.upper().strip() for s in symbols]
         results = {}
         symbols_to_fetch = []
+        symbols_in_flight = []
         
         # Track popularity
         for symbol in symbols:
             self._popular_symbols[symbol] += 1
         
-        # Step 1: Check cache for all symbols
+        # Step 1: Check cache for all symbols with stale-while-revalidate
+        symbols_to_refresh = []  # Stale symbols to refresh in background
+        
         for symbol in symbols:
-            cached = await self._get_from_cache(symbol)
+            cached = await self._get_from_cache(symbol, allow_stale=True)
             if cached:
-                results[symbol] = cached
+                is_stale = cached.pop('is_stale', False)
+                stale_age = cached.pop('stale_age', 0)
+                
+                if is_stale:
+                    # Serve stale data, mark for background refresh
+                    logger.debug(f"🔄 Serving stale data for {symbol} in batch (age: {stale_age:.1f}s)")
+                    results[symbol] = cached
+                    symbols_to_refresh.append(symbol)
+                else:
+                    # Fresh data
+                    results[symbol] = cached
             else:
+                # No data at all, must fetch
                 symbols_to_fetch.append(symbol)
         
+        # Trigger background refresh for stale symbols (non-blocking)
+        if symbols_to_refresh:
+            logger.info(f"🔄 Triggering background refresh for {len(symbols_to_refresh)} stale symbols: {symbols_to_refresh[:5]}{'...' if len(symbols_to_refresh) > 5 else ''}")
+            for symbol in symbols_to_refresh:
+                asyncio.create_task(self._background_refresh(symbol))
+        
+        # Always log cache performance
+        cache_hits = len(results)
+        initial_cache_misses = len(symbols_to_fetch)
+        hit_rate = (cache_hits / len(symbols) * 100) if symbols else 0
+        
         if not symbols_to_fetch:
-            logger.info(f"✅ All {len(symbols)} symbols served from cache")
+            logger.info(f"✅ 100% Cache HIT: All {len(symbols)} symbols served from cache")
             return results
         
-        logger.info(f"📡 Cache miss for {len(symbols_to_fetch)}/{len(symbols)} symbols, fetching from API")
+        logger.info(f"📊 Cache Performance: {cache_hits} hits, {initial_cache_misses} misses ({hit_rate:.1f}% hit rate)")
         
-        # Step 2: Fetch missing symbols from API (in batches)
-        fetched_data = await self._fetch_from_api(symbols_to_fetch)
+        # Step 2: Check for in-flight requests (request coalescing)
+        # Store future references BEFORE releasing the lock to prevent race conditions
+        futures_to_wait = {}
         
-        # Step 3: Cache and merge results
-        for symbol, data in fetched_data.items():
-            await self._store_in_cache(symbol, data)
-            results[symbol] = data
+        async with self._request_lock:
+            # Separate symbols into those already being fetched and those needing new requests
+            truly_needed = []
+            
+            for symbol in symbols_to_fetch:
+                if symbol in self._in_flight_requests:
+                    symbols_in_flight.append(symbol)
+                    # Store a reference to the future BEFORE releasing the lock
+                    futures_to_wait[symbol] = self._in_flight_requests[symbol]
+                else:
+                    truly_needed.append(symbol)
+                    # Create future for this symbol to coordinate concurrent requests
+                    self._in_flight_requests[symbol] = asyncio.Future()
+        
+        # Step 3: Wait for in-flight requests
+        if symbols_in_flight:
+            logger.info(f"⏳ Waiting for {len(symbols_in_flight)} in-flight requests: {symbols_in_flight[:5]}{'...' if len(symbols_in_flight) > 5 else ''}")
+            
+            for symbol in symbols_in_flight:
+                try:
+                    # Use the future reference we captured while holding the lock
+                    # This prevents race conditions where the future is removed from the dict
+                    future = futures_to_wait.get(symbol)
+                    if future:
+                        data = await future
+                        if data:
+                            results[symbol] = data
+                    else:
+                        logger.warning(f"No future found for {symbol} (should not happen)")
+                except Exception as e:
+                    logger.error(f"In-flight request failed for {symbol}: {e}")
+        
+        # Step 4: Fetch symbols that aren't cached and aren't in-flight
+        if truly_needed:
+            logger.info(f"📡 Fetching {len(truly_needed)} symbols from API (coalesced)")
+            
+            try:
+                fetched_data = await self._fetch_from_api(truly_needed)
+                
+                # Step 5: Cache results and complete futures
+                for symbol in truly_needed:
+                    data = fetched_data.get(symbol)
+                    
+                    if data:
+                        # Cache the data
+                        await self._store_in_cache(symbol, data)
+                        results[symbol] = data
+                    
+                    # Complete the future for this symbol (notify waiting requests)
+                    # Important: Set result even if data is None so waiting requests don't hang
+                    async with self._request_lock:
+                        if symbol in self._in_flight_requests:
+                            future = self._in_flight_requests[symbol]
+                            if not future.done():
+                                try:
+                                    future.set_result(data)  # data could be None if API didn't return it
+                                except Exception as future_error:
+                                    logger.error(f"Failed to set future result for {symbol}: {future_error}")
+                            self._in_flight_requests.pop(symbol, None)
+                
+            except Exception as e:
+                logger.error(f"Batch fetch failed: {e}")
+                # Complete futures with None on error
+                async with self._request_lock:
+                    for symbol in truly_needed:
+                        if symbol in self._in_flight_requests:
+                            future = self._in_flight_requests[symbol]
+                            if not future.done():
+                                future.set_exception(e)
+                            self._in_flight_requests.pop(symbol, None)
+        
+        # Calculate final statistics
+        coalesced_count = len(symbols_in_flight)
+        fetched_count = len(truly_needed)
+        total_count = len(results)
+        
+        logger.info(
+            f"✅ Batch complete: {cache_hits} from cache + {coalesced_count} coalesced + "
+            f"{fetched_count} fetched = {total_count} total"
+        )
         
         return results
     
@@ -219,13 +346,29 @@ class PriceCacheService:
     # Cache Storage Operations
     # ========================
     
-    async def _get_from_cache(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get price data from Redis cache."""
+    async def _get_from_cache(self, symbol: str, allow_stale: bool = False) -> Optional[Dict[str, Any]]:
+        """
+        Get price data from Redis cache.
+        
+        Args:
+            symbol: Stock symbol to fetch
+            allow_stale: If True, return expired data (for stale-while-revalidate)
+        
+        Returns:
+            Cached data dict with 'is_stale' flag if allow_stale=True
+        """
         cache_key = f"price:{symbol}"
         
         try:
+            logger.debug(f"🔍 Looking up {symbol} in cache (key: {cache_key}, allow_stale: {allow_stale})")
             data = await self.redis.get(cache_key, namespace=self.cache_namespace)
+            
+            if data is None:
+                logger.debug(f"❌ Cache MISS for {symbol} - key not found in Redis")
+                return None
+            
             if data:
+                logger.debug(f"✅ Found data for {symbol} in Redis")
                 # Check if data is still fresh (within TTL)
                 timestamp = data.get('cached_at')
                 if timestamp:
@@ -233,15 +376,26 @@ class PriceCacheService:
                     age = (datetime.now() - cached_time).total_seconds()
                     
                     if age > self.ttl:
-                        logger.debug(f"Cache expired for {symbol} (age: {age:.1f}s)")
-                        return None
+                        if allow_stale:
+                            # Return stale data with flag
+                            logger.info(f"🔄 Serving STALE data for {symbol} (age: {age:.1f}s, TTL: {self.ttl}s) - will revalidate")
+                            data['is_stale'] = True
+                            data['stale_age'] = age
+                            return data
+                        else:
+                            # Strict mode: reject expired data
+                            logger.debug(f"⏰ Cache expired for {symbol} (age: {age:.1f}s, TTL: {self.ttl}s)")
+                            return None
+                    
+                    logger.debug(f"✅ Cache HIT for {symbol} (age: {age:.1f}s)")
+                    data['is_stale'] = False
                 
                 return data
             
             return None
             
         except Exception as e:
-            logger.error(f"Cache read error for {symbol}: {e}")
+            logger.error(f"❌ Cache read error for {symbol}: {e}", exc_info=True)
             return None
     
     async def _store_in_cache(self, symbol: str, data: Dict[str, Any]) -> bool:
@@ -256,7 +410,8 @@ class PriceCacheService:
                 'ttl': self.ttl
             }
             
-            # Store with TTL + buffer (35 seconds to handle edge cases)
+            # Store with TTL + buffer (125 seconds to handle edge cases)
+            logger.info(f"💾 Attempting to cache {symbol} with TTL {self.ttl + 5}s")
             success = await self.redis.set(
                 cache_key,
                 cache_data,
@@ -265,12 +420,20 @@ class PriceCacheService:
             )
             
             if success:
-                logger.debug(f"✅ Cached {symbol} (TTL: {self.ttl}s)")
+                logger.info(f"✅ Successfully cached {symbol} (TTL: {self.ttl}s)")
+                # Verify it was actually stored
+                verify = await self._get_from_cache(symbol)
+                if verify:
+                    logger.info(f"✅ Verified {symbol} is in cache")
+                else:
+                    logger.error(f"❌ Cache verification FAILED for {symbol} - data not retrievable!")
+            else:
+                logger.error(f"❌ Cache storage FAILED for {symbol} - redis.set returned False")
             
             return success
             
         except Exception as e:
-            logger.error(f"Cache write error for {symbol}: {e}")
+            logger.error(f"❌ Cache write error for {symbol}: {e}", exc_info=True)
             return False
     
     async def invalidate_symbol(self, symbol: str) -> bool:
@@ -286,6 +449,50 @@ class PriceCacheService:
         except Exception as e:
             logger.error(f"Failed to invalidate {symbol}: {e}")
             return False
+    
+    async def _background_refresh(self, symbol: str):
+        """
+        Background task to refresh stale cache data.
+        
+        This is called when stale data is served to the user.
+        It fetches fresh data and updates the cache without blocking the response.
+        """
+        try:
+            logger.info(f"🔄 Background refresh started for {symbol}")
+            
+            # Check if already in-flight to avoid duplicate refreshes
+            async with self._request_lock:
+                if symbol in self._in_flight_requests:
+                    logger.debug(f"⏭️ Background refresh skipped for {symbol} - already in-flight")
+                    return
+                # Create future to prevent duplicate background refreshes
+                future = asyncio.Future()
+                self._in_flight_requests[symbol] = future
+            
+            try:
+                # Fetch fresh data from API
+                data = await self._fetch_from_api([symbol])
+                result = data.get(symbol) if data else None
+                
+                # Update cache with fresh data
+                if result:
+                    await self._store_in_cache(symbol, result)
+                    logger.info(f"✅ Background refresh completed for {symbol}")
+                    future.set_result(result)
+                else:
+                    logger.warning(f"⚠️ Background refresh: No data returned for {symbol}")
+                    future.set_result(None)
+                    
+            except Exception as e:
+                logger.error(f"❌ Background refresh failed for {symbol}: {e}")
+                future.set_exception(e)
+            finally:
+                # Clean up in-flight tracker
+                async with self._request_lock:
+                    self._in_flight_requests.pop(symbol, None)
+                    
+        except Exception as e:
+            logger.error(f"❌ Background refresh error for {symbol}: {e}", exc_info=True)
     
     # ========================
     # External API Integration
@@ -361,13 +568,13 @@ class PriceCacheService:
         Background task that automatically refreshes popular symbols.
         
         Refreshes symbols that have been requested more than 3 times
-        in the last refresh cycle (30 seconds).
+        in the last refresh cycle (120 seconds).
         """
-        logger.info("🔄 Auto-refresh loop started (interval: 30s)")
+        logger.info("🔄 Auto-refresh loop started (interval: 120s)")
         
         while self._is_running:
             try:
-                await asyncio.sleep(30)  # Wait 30 seconds
+                await asyncio.sleep(120)  # Wait 120 seconds (2 minutes)
                 
                 if not self._popular_symbols:
                     continue
