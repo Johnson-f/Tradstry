@@ -67,7 +67,7 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
 
   const { data_points } = cachedData;
   
-  // Prepare chart data from cached data points - modify the chart rendering here
+  // Prepare chart data from cached data points
   const chartData = data_points.slice(-60).reverse().map(point => ({
     time: new Date(point.period_start).toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -78,32 +78,21 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
     timestamp: new Date(point.period_start).getTime()
   }));
 
-  // Calculate daily performance - current price vs opening price of the day
+  // Calculate daily performance from the data points
+  // Sort data points chronologically
   const sortedPoints = [...data_points].sort((a, b) => 
     new Date(a.period_start).getTime() - new Date(b.period_start).getTime()
   );
   
-  const currentPoint = sortedPoints[sortedPoints.length - 1]; // Most recent point
+  // Get the first point's open price (market open)
+  const firstPoint = sortedPoints[0];
+  const openingPrice = firstPoint.open || firstPoint.adjclose || 0;
+  
+  // Get the most recent point's close price (current price)
+  const currentPoint = sortedPoints[sortedPoints.length - 1];
   const currentPrice = currentPoint.adjclose || currentPoint.open || 0;
   
-  // Find today's opening price - first data point of today
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  
-  // Get opening price from today's first data point or use the open price from current point
-  let openingPrice = currentPoint.open || currentPrice;
-  
-  // Try to find the actual opening from today's data
-  const todayPoints = sortedPoints.filter(point => {
-    const pointDate = new Date(point.period_start);
-    return pointDate >= todayStart;
-  });
-  
-  if (todayPoints.length > 0) {
-    openingPrice = todayPoints[0].open || todayPoints[0].adjclose || openingPrice;
-  }
-  
-  // Calculate daily change and percentage
+  // Calculate change from opening to current price
   const dailyChange = currentPrice - openingPrice;
   const dailyChangePercent = openingPrice !== 0 ? (dailyChange / openingPrice) * 100 : 0;
 
@@ -205,23 +194,29 @@ const IndexCard: React.FC<IndexCardProps> = ({ symbol, cachedData }) => {
 
 // Loading skeleton for cards
 const IndexCardSkeleton: React.FC = () => (
-  <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] flex flex-col bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-    <CardHeader className="pb-1 px-4 pt-3">
-      <div className="flex items-start justify-between mb-1">
+  <Card className="w-full min-w-[280px] max-w-[320px] h-[140px] relative overflow-hidden">
+    {/* Background chart skeleton */}
+    <div className="absolute inset-0 bg-gradient-to-br from-muted/20 to-muted/5">
+      <Skeleton className="w-full h-full opacity-30" />
+    </div>
+    
+    {/* Overlay content skeleton */}
+    <div className="relative z-10 px-4 pt-3 pb-3 h-full flex flex-col justify-between">
+      {/* Top row */}
+      <div className="flex items-start justify-between">
         <div>
-          <Skeleton className="w-16 h-4 mb-1 bg-gray-200 dark:bg-gray-700" />
-          <Skeleton className="w-12 h-3 bg-gray-200 dark:bg-gray-700" />
+          <Skeleton className="w-12 h-4 mb-1" />
+          <Skeleton className="w-16 h-3" />
         </div>
-        <div className="text-right">
-          <Skeleton className="w-16 h-5 rounded-full mb-1 bg-gray-200 dark:bg-gray-700" />
-          <Skeleton className="w-8 h-3 bg-gray-200 dark:bg-gray-700" />
-        </div>
+        <Skeleton className="w-16 h-6 rounded-full" />
       </div>
-    </CardHeader>
-    <CardContent className="flex-1 pt-0 px-4 pb-3">
-      <Skeleton className="w-full h-[60px] rounded mb-2 bg-gray-200 dark:bg-gray-700" />
-      <Skeleton className="w-20 h-5 bg-gray-200 dark:bg-gray-700" />
-    </CardContent>
+      
+      {/* Bottom row */}
+      <div className="flex items-end justify-between">
+        <Skeleton className="w-20 h-6" />
+        <Skeleton className="w-12 h-5" />
+      </div>
+    </div>
   </Card>
 );
 

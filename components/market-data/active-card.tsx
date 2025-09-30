@@ -198,14 +198,6 @@ export const ActiveCard: React.FC = () => {
   const { losers, isLoading: losersLoading, error: losersError } = useTopLosersWithPrices({ limit: 25 });
   const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActiveWithPrices({ limit: 25 });
 
-  // Debug logging
-  console.log('DEBUG - Gainers:', { gainers, gainersLoading, gainersError });
-  console.log('DEBUG - First gainer object:', gainers[0]);
-  console.log('DEBUG - Losers:', { losers, losersLoading, losersError });
-  console.log('DEBUG - First loser object:', losers[0]);
-  console.log('DEBUG - Actives:', { actives, activesLoading, activesError });
-  console.log('DEBUG - First active object:', actives[0]);
-
   const getTabIcon = (tab: string) => {
     switch (tab) {
       case 'gainers':

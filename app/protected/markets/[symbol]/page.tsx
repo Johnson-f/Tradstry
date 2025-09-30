@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, ChevronRight, Plus, Star } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -247,18 +248,53 @@ export default function StockSymbolPage() {
         <ScrollArea className="h-full">
           <div className="p-8">
             {isLoading && (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {[...Array(6)].map((_, i) => (
-                  <Card key={i}>
-                    <CardHeader className="animate-pulse">
-                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                    </CardHeader>
-                    <CardContent className="animate-pulse">
-                      <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-6">
+                {/* Header Skeleton */}
+                <div className="flex items-center gap-4 pt-6 pl-6">
+                  <Skeleton className="w-12 h-12 rounded-lg" />
+                  <div className="flex-1">
+                    <Skeleton className="h-6 w-32 mb-2" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                </div>
+
+                {/* Stats Cards Skeleton */}
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                  {[...Array(4)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader className="pb-3">
+                        <Skeleton className="h-4 w-24" />
+                      </CardHeader>
+                      <CardContent>
+                        <Skeleton className="h-8 w-28 mb-2" />
+                        <Skeleton className="h-4 w-20" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Large Content Card Skeleton */}
+                <Card>
+                  <CardContent className="p-6">
+                    <Skeleton className="h-[400px] w-full" />
+                  </CardContent>
+                </Card>
+
+                {/* Additional Info Cards */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {[...Array(2)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader>
+                        <Skeleton className="h-5 w-32" />
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <Skeleton className="h-4 w-4/6" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -71,6 +71,32 @@ import type {
   HistoricalDataRequest,
   HistoricalDataResponse,
   SingleSymbolDataRequest,
+  // Holders Types
+  HolderData,
+  InstitutionalHolder,
+  MutualFundHolder,
+  InsiderTransaction,
+  InsiderPurchasesSummary,
+  InsiderRoster,
+  HolderStatistics,
+  HolderSearchResult,
+  HolderParticipant,
+  // Earnings Transcripts Types
+  EarningsTranscript,
+  EarningsTranscriptMetadata,
+  TranscriptSearchResult,
+  TranscriptStatistics,
+  TranscriptParticipant,
+  TranscriptQuarter,
+  // Request Types
+  HoldersRequest,
+  InsiderTransactionsRequest,
+  HoldersSearchRequest,
+  HoldersPaginatedRequest,
+  TranscriptsRequest,
+  TranscriptSearchRequest,
+  TranscriptsByDateRequest,
+  TranscriptsPaginatedRequest,
 } from "@/lib/types/market-data";
 
 // Raw API response type for market movers (strings that need to be transformed to numbers)
@@ -656,6 +682,352 @@ class MarketDataService {
     return apiClient.get<CashFlow[]>(
       apiConfig.endpoints.marketData.financials.cashFlow(params.symbol),
       { params: { frequency: params.frequency, limit: params.limit } },
+    );
+  }
+
+  // =====================================================
+  // HOLDERS DATA ENDPOINTS
+  // =====================================================
+
+  async getInstitutionalHolders(
+    symbol: string,
+    dateReported?: string,
+    limit?: number,
+  ): Promise<InstitutionalHolder[]> {
+    return apiClient.get<InstitutionalHolder[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/institutional`,
+      { 
+        params: { 
+          date_reported: dateReported,
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async getMutualFundHolders(
+    symbol: string,
+    dateReported?: string,
+    limit?: number,
+  ): Promise<MutualFundHolder[]> {
+    return apiClient.get<MutualFundHolder[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/mutualfund`,
+      { 
+        params: { 
+          date_reported: dateReported,
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async getInsiderTransactions(
+    symbol: string,
+    transactionType?: string,
+    startDate?: string,
+    endDate?: string,
+    limit?: number,
+  ): Promise<InsiderTransaction[]> {
+    return apiClient.get<InsiderTransaction[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/insider-transactions`,
+      { 
+        params: { 
+          transaction_type: transactionType,
+          start_date: startDate,
+          end_date: endDate,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getInsiderPurchasesSummary(
+    symbol: string,
+    summaryPeriod?: string,
+  ): Promise<InsiderPurchasesSummary[]> {
+    return apiClient.get<InsiderPurchasesSummary[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/insider-purchases`,
+      { 
+        params: { 
+          summary_period: summaryPeriod,
+        } 
+      },
+    );
+  }
+
+  async getInsiderRoster(
+    symbol: string,
+    limit?: number,
+  ): Promise<InsiderRoster[]> {
+    return apiClient.get<InsiderRoster[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/insider-roster`,
+      { 
+        params: { 
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getAllHolders(
+    symbol: string,
+    holderType?: string,
+    limit?: number,
+  ): Promise<HolderData[]> {
+    return apiClient.get<HolderData[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/all`,
+      { 
+        params: { 
+          holder_type: holderType,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getTopInstitutionalHolders(
+    orderBy?: string,
+    limit?: number,
+  ): Promise<InstitutionalHolder[]> {
+    return apiClient.get<InstitutionalHolder[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/top-institutional`,
+      { 
+        params: { 
+          order_by: orderBy || 'shares',
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async getRecentInsiderTransactions(
+    transactionType?: string,
+    daysBack?: number,
+    limit?: number,
+  ): Promise<InsiderTransaction[]> {
+    return apiClient.get<InsiderTransaction[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/recent-insider-transactions`,
+      { 
+        params: { 
+          transaction_type: transactionType,
+          days_back: daysBack || 30,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getHolderStatistics(
+    symbol: string,
+  ): Promise<HolderStatistics[]> {
+    return apiClient.get<HolderStatistics[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/${symbol}/statistics`,
+    );
+  }
+
+  async searchHoldersByName(
+    namePattern: string,
+    holderType?: string,
+    limit?: number,
+  ): Promise<HolderSearchResult[]> {
+    return apiClient.get<HolderSearchResult[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/search`,
+      { 
+        params: { 
+          name_pattern: namePattern,
+          holder_type: holderType,
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async getHoldersPaginated(
+    params: HoldersPaginatedRequest,
+  ): Promise<HolderData[]> {
+    return apiClient.get<HolderData[]>(
+      `${apiConfig.endpoints.marketData.base}/holders/paginated`,
+      { params },
+    );
+  }
+
+  // =====================================================
+  // EARNINGS TRANSCRIPTS ENDPOINTS
+  // =====================================================
+
+  async getEarningsTranscripts(
+    symbol: string,
+    limit?: number,
+  ): Promise<EarningsTranscript[]> {
+    return apiClient.get<EarningsTranscript[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/${symbol}`,
+      { 
+        params: { 
+          limit: limit || 10,
+        } 
+      },
+    );
+  }
+
+  async getEarningsTranscriptByPeriod(
+    symbol: string,
+    year: number,
+    quarter: string,
+  ): Promise<EarningsTranscript | null> {
+    return apiClient.get<EarningsTranscript | null>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/${symbol}/${year}/${quarter}`,
+    );
+  }
+
+  async getLatestEarningsTranscript(
+    symbol: string,
+  ): Promise<EarningsTranscript | null> {
+    return apiClient.get<EarningsTranscript | null>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/${symbol}/latest`,
+    );
+  }
+
+  async getRecentEarningsTranscripts(
+    daysBack?: number,
+    limit?: number,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/recent`,
+      { 
+        params: { 
+          days_back: daysBack || 90,
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async searchEarningsTranscripts(
+    searchText: string,
+    symbol?: string,
+    limit?: number,
+  ): Promise<TranscriptSearchResult[]> {
+    return apiClient.get<TranscriptSearchResult[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/search`,
+      { 
+        params: { 
+          search_text: searchText,
+          symbol: symbol,
+          limit: limit || 20,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptsByParticipant(
+    participantName: string,
+    symbol?: string,
+    limit?: number,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/by-participant`,
+      { 
+        params: { 
+          participant_name: participantName,
+          symbol: symbol,
+          limit: limit || 20,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptsByDateRange(
+    startDate: string,
+    endDate: string,
+    symbol?: string,
+    limit?: number,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/by-date-range`,
+      { 
+        params: { 
+          start_date: startDate,
+          end_date: endDate,
+          symbol: symbol,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptsByYear(
+    year: number,
+    symbol?: string,
+    limit?: number,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/by-year/${year}`,
+      { 
+        params: { 
+          symbol: symbol,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptStatistics(
+    symbol: string,
+  ): Promise<TranscriptStatistics | null> {
+    return apiClient.get<TranscriptStatistics | null>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/${symbol}/statistics`,
+    );
+  }
+
+  async getTranscriptMetadata(
+    symbol?: string,
+    limit?: number,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/metadata`,
+      { 
+        params: { 
+          symbol: symbol,
+          limit: limit || 50,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptsPaginated(
+    params: TranscriptsPaginatedRequest,
+  ): Promise<EarningsTranscriptMetadata[]> {
+    return apiClient.get<EarningsTranscriptMetadata[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/paginated`,
+      { params },
+    );
+  }
+
+  async getUniqueTranscriptParticipants(
+    symbol?: string,
+    limit?: number,
+  ): Promise<TranscriptParticipant[]> {
+    return apiClient.get<TranscriptParticipant[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/participants`,
+      { 
+        params: { 
+          symbol: symbol,
+          limit: limit || 100,
+        } 
+      },
+    );
+  }
+
+  async getTranscriptCountByQuarter(
+    symbol?: string,
+  ): Promise<TranscriptQuarter[]> {
+    return apiClient.get<TranscriptQuarter[]>(
+      `${apiConfig.endpoints.marketData.base}/transcripts/count-by-quarter`,
+      { 
+        params: { 
+          symbol: symbol,
+        } 
+      },
     );
   }
 }

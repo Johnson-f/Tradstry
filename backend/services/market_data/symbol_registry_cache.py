@@ -68,10 +68,7 @@ class SymbolRegistryCache(BaseMarketDataService):
     async def initialize(self):
         """Initialize the symbol registry cache and start auto-refresh."""
         if self._is_initialized:
-            logger.info("Symbol registry cache already initialized")
             return
-        
-        logger.info("Initializing symbol registry cache...")
         
         # Initial cache population
         await self.refresh_all_symbols()
@@ -79,8 +76,6 @@ class SymbolRegistryCache(BaseMarketDataService):
         # Start background auto-refresh task
         self._refresh_task = asyncio.create_task(self._auto_refresh_loop())
         self._is_initialized = True
-        
-        logger.info("Symbol registry cache initialized successfully")
     
     async def shutdown(self):
         """Gracefully shutdown the cache service."""
@@ -90,28 +85,21 @@ class SymbolRegistryCache(BaseMarketDataService):
                 await self._refresh_task
             except asyncio.CancelledError:
                 pass
-        
-        logger.info("Symbol registry cache shutdown complete")
     
-    # ========================
     # Auto-Refresh Loop
     # ========================
     
     async def _auto_refresh_loop(self):
         """Background task that refreshes the cache every 2 hours."""
-        logger.info(f"Starting auto-refresh loop (interval: {self.refresh_interval}s / 2 hours)")
-        
         while True:
             try:
-                # Wait for refresh interval
+                # Wait for the refresh interval
                 await asyncio.sleep(self.refresh_interval)
                 
                 # Refresh all symbol caches
-                logger.info("Auto-refresh triggered - refreshing all symbol caches")
                 await self.refresh_all_symbols()
                 
             except asyncio.CancelledError:
-                logger.info("Auto-refresh loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Error in auto-refresh loop: {e}")
@@ -127,7 +115,6 @@ class SymbolRegistryCache(BaseMarketDataService):
         Refresh all symbol caches from database.
         Called on initialization and every 2 hours.
         """
-        logger.info("Refreshing all symbol caches from database")
         start_time = datetime.now()
         
         try:
@@ -154,12 +141,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             # Update master registry metadata
             await self._update_registry_metadata()
             
-            elapsed = (datetime.now() - start_time).total_seconds()
-            logger.info(
-                f"Symbol cache refresh complete: {successful} sources updated, "
-                f"{failed} failed, took {elapsed:.2f}s"
-            )
-            
             return {"success": True, "updated": successful, "failed": failed}
             
         except Exception as e:
@@ -176,8 +157,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.STOCK_QUOTES, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.STOCK_QUOTES}")
             return len(symbols)
             
         except Exception as e:
@@ -193,8 +172,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.MARKET_MOVERS, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.MARKET_MOVERS}")
             return len(symbols)
             
         except Exception as e:
@@ -210,8 +187,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.WATCHLIST_ITEMS, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.WATCHLIST_ITEMS}")
             return len(symbols)
             
         except Exception as e:
@@ -227,8 +202,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.COMPANY_INFO, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.COMPANY_INFO}")
             return len(symbols)
             
         except Exception as e:
@@ -250,8 +223,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.STOCK_PEERS, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.STOCK_PEERS}")
             return len(symbols)
             
         except Exception as e:
@@ -267,8 +238,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.DIVIDEND_DATA, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.DIVIDEND_DATA}")
             return len(symbols)
             
         except Exception as e:
@@ -284,8 +253,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.EARNINGS_CALENDAR, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.EARNINGS_CALENDAR}")
             return len(symbols)
             
         except Exception as e:
@@ -305,7 +272,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             bs_symbols = await self._execute_with_retry(balance_sheet_op, access_token)
             await self._cache_symbols(SymbolSource.BALANCE_SHEET, list(bs_symbols))
             total_symbols += len(bs_symbols)
-            logger.info(f"Cached {len(bs_symbols)} symbols from balance_sheet")
             
             # Income Statement
             async def income_op(client):
@@ -315,7 +281,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             is_symbols = await self._execute_with_retry(income_op, access_token)
             await self._cache_symbols(SymbolSource.INCOME_STATEMENT, list(is_symbols))
             total_symbols += len(is_symbols)
-            logger.info(f"Cached {len(is_symbols)} symbols from income_statement")
             
             # Cash Flow
             async def cash_flow_op(client):
@@ -325,7 +290,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             cf_symbols = await self._execute_with_retry(cash_flow_op, access_token)
             await self._cache_symbols(SymbolSource.CASH_FLOW, list(cf_symbols))
             total_symbols += len(cf_symbols)
-            logger.info(f"Cached {len(cf_symbols)} symbols from cash_flow")
             
             return total_symbols
             
@@ -342,8 +306,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             
             symbols = await self._execute_with_retry(operation, access_token)
             await self._cache_symbols(SymbolSource.HOLDERS, list(symbols))
-            
-            logger.info(f"Cached {len(symbols)} symbols from {SymbolSource.HOLDERS}")
             return len(symbols)
         except Exception as e:
             logger.error(f"Failed to refresh {SymbolSource.HOLDERS}: {e}")
@@ -353,7 +315,6 @@ class SymbolRegistryCache(BaseMarketDataService):
         """Refresh finance_news symbol cache."""
         # finance_news table doesn't have a 'symbol' column
         # Skip this table entirely to avoid 400 Bad Request errors
-        logger.info("Skipping finance_news - table does not have symbol column")
         
         # Cache empty list to maintain consistent structure
         await self._cache_symbols(SymbolSource.FINANCE_NEWS, [])
@@ -431,7 +392,6 @@ class SymbolRegistryCache(BaseMarketDataService):
                 default=[]
             )
             
-            logger.debug(f"Cache lookup for {source.value}: {len(symbols)} symbols")
             return symbols
             
         except Exception as e:
@@ -447,7 +407,6 @@ class SymbolRegistryCache(BaseMarketDataService):
                 symbols = await self.get_symbols_by_source(source)
                 all_symbols.update(symbols)
             
-            logger.info(f"Retrieved {len(all_symbols)} unique symbols across all sources")
             return all_symbols
             
         except Exception as e:
@@ -519,7 +478,6 @@ class SymbolRegistryCache(BaseMarketDataService):
         Event handler: Called when a new symbol is added to a table.
         Immediately updates the cache for that source.
         """
-        logger.info(f"New symbol added: {symbol} to {source.value}")
         
         try:
             # Get current cached symbols
@@ -529,7 +487,6 @@ class SymbolRegistryCache(BaseMarketDataService):
             if symbol.upper() not in [s.upper() for s in symbols]:
                 symbols.append(symbol.upper())
                 await self._cache_symbols(source, symbols)
-                logger.info(f"Cache updated: Added {symbol} to {source.value}")
             else:
                 logger.debug(f"Symbol {symbol} already in cache for {source.value}")
                 

@@ -1029,3 +1029,254 @@ export interface SingleSymbolDataRequest {
   range_param?: string;
   interval?: string;
 }
+
+// =====================================================
+// HOLDERS DATA TYPES
+// =====================================================
+
+export interface HolderData {
+  id: number;
+  symbol: string;
+  holder_type: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InstitutionalHolder {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MutualFundHolder {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderTransaction {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  insider_position?: string;
+  transaction_type?: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  ownership_type?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderPurchasesSummary {
+  id: number;
+  symbol: string;
+  summary_period?: string;
+  purchases_shares?: number;
+  purchases_transactions?: number;
+  sales_shares?: number;
+  sales_transactions?: number;
+  net_shares?: number;
+  net_transactions?: number;
+  total_insider_shares?: number;
+  net_percent_insider_shares?: string | number;
+  buy_percent_insider_shares?: string | number;
+  sell_percent_insider_shares?: string | number;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderRoster {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  insider_position?: string;
+  most_recent_transaction?: string;
+  latest_transaction_date?: string;
+  shares_owned_directly?: number;
+  shares_owned_indirectly?: number;
+  position_direct_date?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface HolderStatistics {
+  holder_type: string;
+  total_holders: number;
+  total_shares?: number;
+  total_value?: number;
+  avg_shares?: string | number;
+  avg_value?: string | number;
+  last_reported?: string;
+}
+
+export interface HolderSearchResult {
+  id: number;
+  symbol: string;
+  holder_type: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+}
+
+export interface HolderParticipant {
+  participant_name: string;
+  appearance_count: number;
+  symbols: string[];
+  latest_appearance?: string;
+}
+
+// =====================================================
+// EARNINGS TRANSCRIPTS TYPES
+// =====================================================
+
+export interface EarningsTranscript {
+  id: number;
+  symbol: string;
+  exchange_id?: number;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript: string;
+  participants: string[];
+  transcript_length?: number;
+  transcript_language?: string;
+  source?: string;
+  transcripts_id?: number;
+  retrieved_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EarningsTranscriptMetadata {
+  id: number;
+  symbol: string;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript_length?: number;
+  participants_count?: number;
+  transcript_language?: string;
+  source?: string;
+  retrieved_at?: string;
+}
+
+export interface TranscriptSearchResult {
+  id: number;
+  symbol: string;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript_snippet?: string;
+  transcript_length?: number;
+  participants: string[];
+  source?: string;
+}
+
+export interface TranscriptStatistics {
+  symbol: string;
+  total_transcripts: number;
+  avg_transcript_length?: string | number;
+  min_date?: string;
+  max_date?: string;
+  years_covered?: number[];
+  quarters_available?: string[];
+}
+
+export interface TranscriptParticipant {
+  participant_name: string;
+  appearance_count: number;
+  symbols: string[];
+  latest_appearance?: string;
+}
+
+export interface TranscriptQuarter {
+  year: number;
+  quarter: string;
+  transcript_count: number;
+  avg_length?: string | number;
+  symbols_count: number;
+}
+
+// =====================================================
+// HOLDERS & TRANSCRIPTS REQUEST TYPES
+// =====================================================
+
+export interface HoldersRequest {
+  symbol: string;
+  holder_type?: string;
+  limit?: number;
+}
+
+export interface InsiderTransactionsRequest {
+  symbol: string;
+  transaction_type?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}
+
+export interface HoldersSearchRequest {
+  name_pattern: string;
+  holder_type?: string;
+  limit?: number;
+}
+
+export interface HoldersPaginatedRequest {
+  symbol?: string;
+  holder_type?: string;
+  offset?: number;
+  limit?: number;
+  sort_column?: string;
+  sort_direction?: string;
+}
+
+export interface TranscriptsRequest {
+  symbol: string;
+  limit?: number;
+}
+
+export interface TranscriptSearchRequest {
+  search_text: string;
+  symbol?: string;
+  limit?: number;
+}
+
+export interface TranscriptsByDateRequest {
+  start_date: string;
+  end_date: string;
+  symbol?: string;
+  limit?: number;
+}
+
+export interface TranscriptsPaginatedRequest {
+  symbol?: string;
+  year?: number;
+  quarter?: string;
+  offset?: number;
+  limit?: number;
+  sort_column?: string;
+  sort_direction?: string;
+}

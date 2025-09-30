@@ -40,6 +40,7 @@ dependencies = [
     "langchain-text-splitters==0.3.11",
     "langsmith==0.4.28",
     "llama-index>=0.12.52",
+    "lxml>=6.0.2",
     "mypy==1.18.1",
     "mypy-extensions==1.1.0",
     "numpy==2.3.3",

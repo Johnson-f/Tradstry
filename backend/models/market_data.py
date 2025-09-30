@@ -951,6 +951,280 @@ class DeleteResponse(BaseModel):
 
 
 # =====================================================
+# HOLDERS DATA MODELS
+# =====================================================
+
+class HolderData(BaseModel):
+    """Base holder data model."""
+    id: int
+    symbol: str
+    holder_type: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InstitutionalHolder(BaseModel):
+    """Institutional holder model."""
+    id: int
+    symbol: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MutualFundHolder(BaseModel):
+    """Mutual fund holder model."""
+    id: int
+    symbol: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderTransaction(BaseModel):
+    """Insider transaction model."""
+    id: int
+    symbol: str
+    holder_name: str
+    insider_position: Optional[str] = None
+    transaction_type: Optional[str] = None
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    ownership_type: Optional[str] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderPurchasesSummary(BaseModel):
+    """Insider purchases summary model."""
+    id: int
+    symbol: str
+    summary_period: Optional[str] = None
+    purchases_shares: Optional[int] = None
+    purchases_transactions: Optional[int] = None
+    sales_shares: Optional[int] = None
+    sales_transactions: Optional[int] = None
+    net_shares: Optional[int] = None
+    net_transactions: Optional[int] = None
+    total_insider_shares: Optional[int] = None
+    net_percent_insider_shares: Optional[Decimal] = None
+    buy_percent_insider_shares: Optional[Decimal] = None
+    sell_percent_insider_shares: Optional[Decimal] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InsiderRoster(BaseModel):
+    """Insider roster model."""
+    id: int
+    symbol: str
+    holder_name: str
+    insider_position: Optional[str] = None
+    most_recent_transaction: Optional[str] = None
+    latest_transaction_date: Optional[datetime] = None
+    shares_owned_directly: Optional[int] = None
+    shares_owned_indirectly: Optional[int] = None
+    position_direct_date: Optional[datetime] = None
+    data_source: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class HolderStatistics(BaseModel):
+    """Holder statistics model."""
+    holder_type: str
+    total_holders: int
+    total_shares: Optional[int] = None
+    total_value: Optional[int] = None
+    avg_shares: Optional[Decimal] = None
+    avg_value: Optional[Decimal] = None
+    last_reported: Optional[datetime] = None
+
+
+class HolderSearchResult(BaseModel):
+    """Holder search result model."""
+    id: int
+    symbol: str
+    holder_type: str
+    holder_name: str
+    shares: Optional[int] = None
+    value: Optional[int] = None
+    date_reported: Optional[datetime] = None
+    data_source: Optional[str] = None
+
+
+class HolderParticipant(BaseModel):
+    """Holder participant model for unique participants."""
+    participant_name: str
+    appearance_count: int
+    symbols: List[str]
+    latest_appearance: Optional[datetime] = None
+
+
+# =====================================================
+# EARNINGS TRANSCRIPTS MODELS
+# =====================================================
+
+class EarningsTranscript(BaseModel):
+    """Full earnings transcript model."""
+    id: int
+    symbol: str
+    exchange_id: Optional[int] = None
+    quarter: str
+    year: int
+    date: datetime
+    transcript: str
+    participants: List[str]  # JSONB array converted to list
+    transcript_length: Optional[int] = None
+    transcript_language: Optional[str] = None
+    source: Optional[str] = None
+    transcripts_id: Optional[int] = None
+    retrieved_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class EarningsTranscriptMetadata(BaseModel):
+    """Earnings transcript metadata without full text."""
+    id: int
+    symbol: str
+    quarter: str
+    year: int
+    date: datetime
+    transcript_length: Optional[int] = None
+    participants_count: Optional[int] = None
+    transcript_language: Optional[str] = None
+    source: Optional[str] = None
+    retrieved_at: Optional[datetime] = None
+
+
+class TranscriptSearchResult(BaseModel):
+    """Earnings transcript search result."""
+    id: int
+    symbol: str
+    quarter: str
+    year: int
+    date: datetime
+    transcript_snippet: Optional[str] = None
+    transcript_length: Optional[int] = None
+    participants: List[str]
+    source: Optional[str] = None
+
+
+class TranscriptStatistics(BaseModel):
+    """Transcript statistics model."""
+    symbol: str
+    total_transcripts: int
+    avg_transcript_length: Optional[Decimal] = None
+    min_date: Optional[datetime] = None
+    max_date: Optional[datetime] = None
+    years_covered: Optional[List[int]] = None
+    quarters_available: Optional[List[str]] = None
+
+
+class TranscriptParticipant(BaseModel):
+    """Unique transcript participant model."""
+    participant_name: str
+    appearance_count: int
+    symbols: List[str]
+    latest_appearance: Optional[datetime] = None
+
+
+class TranscriptQuarter(BaseModel):
+    """Transcript count by quarter model."""
+    year: int
+    quarter: str
+    transcript_count: int
+    avg_length: Optional[Decimal] = None
+    symbols_count: int
+
+
+# =====================================================
+# HOLDERS & TRANSCRIPTS REQUEST MODELS
+# =====================================================
+
+class HoldersRequest(BaseModel):
+    """Base holders request model."""
+    symbol: str
+    holder_type: Optional[str] = None
+    limit: Optional[int] = 50
+
+
+class InsiderTransactionsRequest(BaseModel):
+    """Insider transactions request model."""
+    symbol: str
+    transaction_type: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    limit: Optional[int] = 100
+
+
+class HoldersSearchRequest(BaseModel):
+    """Holders search request model."""
+    name_pattern: str
+    holder_type: Optional[str] = None
+    limit: Optional[int] = 50
+
+
+class HoldersPaginatedRequest(BaseModel):
+    """Holders paginated request model."""
+    symbol: Optional[str] = None
+    holder_type: Optional[str] = None
+    offset: Optional[int] = 0
+    limit: Optional[int] = 50
+    sort_column: Optional[str] = "shares"
+    sort_direction: Optional[str] = "DESC"
+
+
+class TranscriptsRequest(BaseModel):
+    """Base transcripts request model."""
+    symbol: str
+    limit: Optional[int] = 10
+
+
+class TranscriptSearchRequest(BaseModel):
+    """Transcript search request model."""
+    search_text: str
+    symbol: Optional[str] = None
+    limit: Optional[int] = 20
+
+
+class TranscriptsByDateRequest(BaseModel):
+    """Transcripts by date request model."""
+    start_date: datetime
+    end_date: datetime
+    symbol: Optional[str] = None
+    limit: Optional[int] = 100
+
+
+class TranscriptsPaginatedRequest(BaseModel):
+    """Transcripts paginated request model."""
+    symbol: Optional[str] = None
+    year: Optional[int] = None
+    quarter: Optional[str] = None
+    offset: Optional[int] = 0
+    limit: Optional[int] = 20
+    sort_column: Optional[str] = "date"
+    sort_direction: Optional[str] = "DESC"
+
+
+# =====================================================
 # STOCK PEERS MODELS
 # =====================================================
 

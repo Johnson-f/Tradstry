@@ -141,14 +141,10 @@ class MoversCacheService:
                     age = (datetime.now() - cached_time).total_seconds()
                     
                     if age > self.ttl:
-                        logger.debug(f"⏰ Cache expired for {mover_type.value} (age: {age:.1f}s)")
                         return None
-                    
-                    logger.info(f"💰 Cache HIT: {mover_type.value} (age: {age:.1f}s, limit: {limit})")
                 
                 return cached_data.get('movers', [])
             
-            logger.info(f"❌ Cache MISS: {mover_type.value} (limit: {limit})")
             return None
             
         except Exception as e:
@@ -181,27 +177,23 @@ class MoversCacheService:
                 'movers': movers,
                 'mover_type': mover_type.value,
                 'limit': limit,
-                'data_date': data_date.isoformat() if data_date else None,
                 'cached_at': datetime.now().isoformat(),
                 'ttl': self.ttl,
                 'count': len(movers)
             }
             
-            logger.info(f"💾 Caching {len(movers)} {mover_type.value} (TTL: {self.ttl}s)")
-            
             success = await self.redis.set(
                 cache_key,
                 cache_data,
-                ttl=self.ttl + 60,  # Extra buffer
+                ttl=self.ttl,
                 namespace=self.cache_namespace
             )
             
-            if success:
-                logger.info(f"✅ Successfully cached {mover_type.value}")
-            else:
-                logger.error(f"❌ Failed to cache {mover_type.value}")
+            if not success:
+                logger.error(f"Failed to cache {mover_type.value}")
+                return False
             
-            return success
+            return True
             
         except Exception as e:
             logger.error(f"❌ Cache write error for {mover_type.value}: {e}")
@@ -224,11 +216,9 @@ class MoversCacheService:
                 # Invalidate specific cache
                 cache_key = self._build_cache_key(mover_type, limit)
                 await self.redis.delete(cache_key, namespace=self.cache_namespace)
-                logger.info(f"♻️ Invalidated cache for {mover_type.value} (limit: {limit})")
             else:
                 # Invalidate all movers cache
-                deleted = await self.redis.clear_namespace(self.cache_namespace)
-                logger.info(f"♻️ Invalidated all movers cache ({deleted} keys deleted)")
+                await self.redis.clear_namespace(self.cache_namespace)
                 
         except Exception as e:
             logger.error(f"Failed to invalidate movers cache: {e}")
@@ -248,13 +238,9 @@ class MoversCacheService:
         
         Every 4 minutes (before 5-minute TTL expires).
         """
-        logger.info(f"🔄 Movers auto-refresh loop started (interval: {self.refresh_interval}s)")
-        
         while self._is_running:
             try:
                 await asyncio.sleep(self.refresh_interval)
-                
-                logger.info("🔄 Auto-refresh triggered for market movers")
                 
                 # Import here to avoid circular dependency
                 from .movers_service import MoversService
@@ -288,10 +274,7 @@ class MoversCacheService:
                     active_data = [m.dict() for m in results[2]]
                     await self.cache_movers(MoverType.MOST_ACTIVE, active_data, limit=25)
                 
-                logger.info("✅ Auto-refresh complete for market movers")
-                
             except asyncio.CancelledError:
-                logger.info("Movers auto-refresh loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Error in movers auto-refresh loop: {e}")
@@ -339,7 +322,6 @@ class MoversCacheService:
         """Clear all movers cache (use with caution)."""
         try:
             deleted = await self.redis.clear_namespace(self.cache_namespace)
-            logger.info(f"🗑️ Cleared {deleted} movers cache entries")
             return deleted
             
         except Exception as e:
