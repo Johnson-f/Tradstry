@@ -146,6 +146,7 @@ export const apiConfig = {
       // Stock metrics endpoints
       stocks: {
         quotes: (symbol: string) => `/market-data/quotes/${symbol}`,
+        quotesWithPrices: (symbol: string) => `/market-data/quotes/${symbol}/with-prices`,
         fundamentals: (symbol: string) => `/market-data/fundamentals/${symbol}`,
         combined: (symbol: string) => `/market-data/stock/${symbol}/combined`,
       },
@@ -165,15 +166,12 @@ export const apiConfig = {
       search: "/market-data/search",
       // Quotes endpoint
       quotes: "/market-data/quotes",
-      // Market movers endpoints
+      // Market movers endpoints - enhanced with real-time prices
       movers: {
-        gainers: "/market-data/movers/gainers",
-        losers: "/market-data/movers/losers",
-        mostActive: "/market-data/movers/most-active",
-        gainersWithLogos: "/market-data/movers/gainers-with-logos",
-        losersWithLogos: "/market-data/movers/losers-with-logos",
-        mostActiveWithLogos: "/market-data/movers/most-active-with-logos",
-        overview: "/market-data/movers/overview",
+        gainersWithPrices: "/market-data/movers/gainers-with-prices",
+        losersWithPrices: "/market-data/movers/losers-with-prices",
+        mostActiveWithPrices: "/market-data/movers/most-active-with-prices",
+        overviewWithPrices: "/market-data/movers/overview-with-prices",
       },
       // Company logos endpoints
       logos: {
@@ -190,23 +188,37 @@ export const apiConfig = {
       },
       // Health check
       health: "/market-data/health",
-      // Watchlist endpoints
+      // Watchlist endpoints - enhanced with real-time prices
       watchlists: {
+        // Enhanced endpoints with real-time prices  
+        withPrices: "/market-data/watchlists/with-prices",
+        byIdWithPrices: (id: number) => `/market-data/watchlists/${id}/with-prices`,
+        itemsWithPrices: (id: number) => `/market-data/watchlists/${id}/items/with-prices`,
+        // CRUD operations (still needed)
         base: "/market-data/watchlists",
-        byId: (id: number) => `/market-data/watchlists/${id}`,
-        items: (id: number) => `/market-data/watchlists/${id}/items`,
         addItem: "/market-data/watchlists/items",
         deleteItem: (itemId: number) => `/market-data/watchlists/items/${itemId}`,
         deleteBySymbol: (watchlistId: number, symbol: string) => `/market-data/watchlists/${watchlistId}/items/${symbol}`,
         clear: (id: number) => `/market-data/watchlists/${id}/clear`,
       },
-      // Stock peers endpoints
+      // Stock peers endpoints - enhanced with real-time prices
       peers: {
-        base: (symbol: string) => `/market-data/peers/${symbol}`,
-        topPerformers: (symbol: string) => `/market-data/peers/${symbol}/top-performers`,
-        worstPerformers: (symbol: string) => `/market-data/peers/${symbol}/worst-performers`,
-        comparison: (symbol: string) => `/market-data/peers/${symbol}/comparison`,
-        paginated: (symbol: string) => `/market-data/peers/${symbol}/paginated`,
+        withPrices: (symbol: string) => `/market-data/peers/${symbol}/with-prices`,
+        topPerformersWithPrices: (symbol: string) => `/market-data/peers/${symbol}/top-performing/with-prices`,
+      },
+      // Enhanced cache endpoints
+      cache: {
+        symbol: (symbol: string) => `/market-data/cache/symbol/${symbol}`,
+        majorIndices: "/market-data/cache/major-indices",
+        historicalData: "/market-data/cache/historical-data",
+        singleSymbol: "/market-data/cache/single-symbol",
+        historicalSummary: (symbol: string) => `/market-data/cache/${symbol}/historical-summary`,
+      },
+      financials: {
+        keyStats: (symbol: string) => `/market-data/financials/key-stats/${symbol}`,
+        incomeStatement: (symbol: string) => `/market-data/financials/income-statement/${symbol}`,
+        balanceSheet: (symbol: string) => `/market-data/financials/balance-sheet/${symbol}`,
+        cashFlow: (symbol: string) => `/market-data/financials/cash-flow/${symbol}`,
       },
     },
     // AI Summary endpoints (Static - Production)

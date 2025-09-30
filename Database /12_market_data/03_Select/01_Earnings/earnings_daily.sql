@@ -37,51 +37,27 @@ BEGIN
         WHERE ec.earnings_date = target_date
             AND ec.status IN ('scheduled', 'confirmed')
     ),
-    reported_earnings AS (
-        -- Get companies that have reported earnings on the target date
-        SELECT 
-            ed.reported_date,
-            ed.symbol,
-            ed.fiscal_year,
-            ed.fiscal_quarter,
-            ed.eps,
-            ed.eps_estimated,
-            ed.eps_surprise_percent,
-            ed.revenue,
-            ed.revenue_estimated,
-            ed.revenue_surprise_percent,
-            ed.eps_beat_miss_met,
-            ed.revenue_beat_miss_met
-        FROM earnings_data ed
-        WHERE ed.reported_date = target_date
-    ),
     combined_data AS (
-        -- Combine scheduled and reported earnings
+        -- Use only scheduled earnings (earnings_data table deleted)
         SELECT 
             target_date as earnings_date,
-            COALESCE(se.symbol, re.symbol) as symbol,
-            COALESCE(se.fiscal_year, re.fiscal_year) as fiscal_year,
-            COALESCE(se.fiscal_quarter, re.fiscal_quarter) as fiscal_quarter,
+            se.symbol,
+            se.fiscal_year,
+            se.fiscal_quarter,
             se.time_of_day,
             se.status,
             se.sector,
             se.industry,
             se.eps_estimated as scheduled_eps_estimate,
             se.revenue_estimated as scheduled_revenue_estimate,
-            re.eps as actual_eps,
-            re.eps_surprise_percent,
-            re.revenue as actual_revenue,
-            re.revenue_surprise_percent,
-            re.eps_beat_miss_met,
-            re.revenue_beat_miss_met,
-            CASE 
-                WHEN re.symbol IS NOT NULL THEN 'reported'
-                WHEN se.symbol IS NOT NULL THEN 'scheduled'
-            END as report_status
+            NULL::NUMERIC as actual_eps,
+            NULL::NUMERIC as eps_surprise_percent,
+            NULL::BIGINT as actual_revenue,
+            NULL::NUMERIC as revenue_surprise_percent,
+            NULL::TEXT as eps_beat_miss_met,
+            NULL::TEXT as revenue_beat_miss_met,
+            'scheduled' as report_status
         FROM scheduled_earnings se
-        FULL OUTER JOIN reported_earnings re ON se.symbol = re.symbol 
-            AND se.fiscal_year = re.fiscal_year 
-            AND se.fiscal_quarter = re.fiscal_quarter
     ),
     stock_news AS (
         -- Get recent news for stocks appearing in earnings data using finance_news_stocks relationship table

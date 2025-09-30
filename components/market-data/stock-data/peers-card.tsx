@@ -1,18 +1,24 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { useStockPeers, usePeerComparison } from "@/lib/hooks/use-market-data";
+import { useStockPeersWithPrices } from "@/lib/hooks/use-market-data";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { useSymbolNavigation } from "@/lib/hooks/use-symbol-navigation";
+
+// Convert price from backend (string or number) to number for calculations
+const parsePrice = (price: string | number | undefined | null): number => {
+  if (typeof price === 'number') return isNaN(price) ? 0 : price;
+  if (typeof price === 'string') return parseFloat(price) || 0;
+  return 0;
+};
 
 interface PeersCardProps {
   symbol: string;
   dataDate?: string;
   limit?: number;
-  showComparison?: boolean;
   className?: string;
 }
 
@@ -20,13 +26,16 @@ export function PeersCard({
   symbol, 
   dataDate, 
   limit = 10, 
-  showComparison = false,
   className 
 }: PeersCardProps) {
-  const { peers, isLoading, error } = useStockPeers(symbol, dataDate, limit);
-  const { comparison } = usePeerComparison(symbol, dataDate, limit);
+  const { peersWithPrices, isLoading, error } = useStockPeersWithPrices(symbol, dataDate, limit);
+  const { navigateToSymbol } = useSymbolNavigation();
 
-  const displayData = showComparison ? comparison : peers;
+  const displayData = peersWithPrices;
+  
+  const handlePeerClick = (peerSymbol: string) => {
+    navigateToSymbol(peerSymbol);
+  };
 
   if (error) {
     return (
@@ -75,16 +84,19 @@ export function PeersCard({
             </div>
           ) : (
             displayData.map((peer, index) => {
-              const peerSymbol = showComparison ? peer.symbol : peer.peer_symbol;
-              const peerName = showComparison ? peer.name : peer.peer_name;
+              // Using StockPeerWithPrices structure
+              const peerSymbol = peer.peer_symbol;
+              const peerName = peer.name || peer.peer_name; // Prefer API name over stored name
               const price = peer.price;
               const percentChange = peer.percent_change;
               const logo = peer.logo;
-              const isMainStock = showComparison ? peer.is_main_stock : false;
 
               return (
                 <div key={peerSymbol || index}>
-                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                  <div 
+                    onClick={() => handlePeerClick(peerSymbol)}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center space-x-3">
                       {/* Company Logo */}
                       <div className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
@@ -109,16 +121,9 @@ export function PeersCard({
 
                       {/* Company Info */}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium text-sm truncate">
-                            {peerName || peerSymbol}
-                          </h4>
-                          {isMainStock && (
-                            <Badge variant="secondary" className="text-xs">
-                              Main
-                            </Badge>
-                          )}
-                        </div>
+                        <h4 className="font-medium text-sm truncate">
+                          {peerName || peerSymbol}
+                        </h4>
                         <p className="text-xs text-muted-foreground">
                           {peerSymbol} • NASDAQ
                         </p>
@@ -129,15 +134,15 @@ export function PeersCard({
                     <div className="text-right">
                       <div className="font-medium text-sm">
                         {(() => {
-                          if (price === undefined || price === null) return 'N/A';
-                          const numPrice = typeof price === 'number' ? price : parseFloat(String(price));
-                          return isNaN(numPrice) ? 'N/A' : `$${numPrice.toFixed(2)}`;
+                          const priceValue = parsePrice(price);
+                          return priceValue === 0 ? 'N/A' : `$${priceValue.toFixed(2)}`;
                         })()}
                       </div>
                       {percentChange !== undefined && percentChange !== null && (
                         (() => {
-                          const numPercentChange = typeof percentChange === 'number' ? percentChange : parseFloat(String(percentChange));
-                          if (isNaN(numPercentChange)) return null;
+                          // Parse percent_change string (e.g., "2.45%") to number
+                          const percentChangeStr = percentChange?.toString() ?? '0';
+                          const numPercentChange = parseFloat(percentChangeStr.replace('%', '')) || 0;
                           
                           return (
                             <div className={cn(

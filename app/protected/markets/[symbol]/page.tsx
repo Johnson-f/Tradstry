@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, ChevronRight, Plus, Star } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -247,18 +248,53 @@ export default function StockSymbolPage() {
         <ScrollArea className="h-full">
           <div className="p-8">
             {isLoading && (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {[...Array(6)].map((_, i) => (
-                  <Card key={i}>
-                    <CardHeader className="animate-pulse">
-                      <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-                    </CardHeader>
-                    <CardContent className="animate-pulse">
-                      <div className="h-8 bg-gray-300 rounded w-3/4 mb-2"></div>
-                      <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-6">
+                {/* Header Skeleton */}
+                <div className="flex items-center gap-4 pt-6 pl-6">
+                  <Skeleton className="w-12 h-12 rounded-lg" />
+                  <div className="flex-1">
+                    <Skeleton className="h-6 w-32 mb-2" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                </div>
+
+                {/* Stats Cards Skeleton */}
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                  {[...Array(4)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader className="pb-3">
+                        <Skeleton className="h-4 w-24" />
+                      </CardHeader>
+                      <CardContent>
+                        <Skeleton className="h-8 w-28 mb-2" />
+                        <Skeleton className="h-4 w-20" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Large Content Card Skeleton */}
+                <Card>
+                  <CardContent className="p-6">
+                    <Skeleton className="h-[400px] w-full" />
+                  </CardContent>
+                </Card>
+
+                {/* Additional Info Cards */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {[...Array(2)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader>
+                        <Skeleton className="h-5 w-32" />
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <Skeleton className="h-4 w-4/6" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -266,8 +302,8 @@ export default function StockSymbolPage() {
               <Card>
                 <CardContent className="p-6">
                   <div className="text-center">
-                    <h3 className="text-lg font-semibold text-red-500 mb-2">Error</h3>
-                    <p className="text-gray-600">{error}</p>
+                    <h3 className="text-lg font-semibold text-red-500 dark:text-red-400 mb-2">Error</h3>
+                    <p className="text-gray-600 dark:text-gray-400">{error}</p>
                     <Button 
                       onClick={() => window.location.reload()} 
                       className="mt-4"
@@ -286,7 +322,7 @@ export default function StockSymbolPage() {
                   {/* Company Logo */}
                   <div className="flex-shrink-0">
                     {logos.length > 0 && logos[0]?.logo ? (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden  flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                         <img
                           src={logos[0].logo}
                           alt={`${symbol} logo`}
@@ -310,10 +346,10 @@ export default function StockSymbolPage() {
                   
                   {/* Company Name */}
                   <div className="flex-1">
-                    <h1 className="text-2xl font-semibold text-white">
+                    <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
                       {stockData.companyInfo?.name || stockData.quote.name || `${symbol} Limited`}
                     </h1>
-                    <p className="text-slate-400 text-sm mt-1">
+                    <p className="text-gray-600 dark:text-slate-400 text-sm mt-1">
                       {symbol} • Stock Exchange
                     </p>
                   </div>

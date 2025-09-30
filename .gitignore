@@ -62,3 +62,4 @@ backend/test_connection.py
 # Rust backend
 rust-backend/target/
 
+.vscode

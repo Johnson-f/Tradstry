@@ -157,21 +157,38 @@ export interface NewsSearch {
 
 // =====================================================
 // STOCK METRICS TYPES
-// =====================================================
-
 export interface StockQuote {
   symbol: string;
   quote_date: string;
   previous_close?: number;
-  open_price?: number;
-  high_price?: number;
-  low_price?: number;
-  current_price?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
   volume?: number;
-  price_change?: number;
-  price_change_percent?: number;
-  quote_timestamp?: string;
+  adj_close?: number;
   data_provider?: string;
+}
+
+export interface StockQuoteWithPrices {
+  // Database metadata
+  symbol: string;
+  quote_date: string;
+  previous_close?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  adj_close?: number;
+  data_provider?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
+  percent_change?: string;
+  logo?: string;
 }
 
 export interface FundamentalData {
@@ -367,7 +384,20 @@ export interface MarketMoverWithLogo {
   price?: number;
   change?: number;
   percent_change?: number;
+  changePercent?: number;
+  logo?: string;
+}
+
+export interface MarketMoverWithPrices {
+  symbol: string;
+  name?: string;
+  rank_position?: number;
   fetch_timestamp?: string;
+  // Real-time price data from finance-query API
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
+  percent_change?: string;
   logo?: string;
 }
 
@@ -644,6 +674,30 @@ export interface WatchlistWithItems {
   items: WatchlistItem[];
 }
 
+export interface WatchlistItemWithPrices {
+  // Database metadata
+  id: number;
+  symbol: string;
+  company_name?: string;
+  added_at: string;
+  updated_at?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
+  percent_change?: string;
+  logo?: string;
+}
+
+export interface WatchlistWithItemsAndPrices {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  items: WatchlistItemWithPrices[];
+}
+
 // =====================================================
 // WATCHLIST REQUEST TYPES
 // =====================================================
@@ -696,6 +750,20 @@ export interface StockPeer {
   fetch_timestamp?: string;
 }
 
+export interface StockPeerWithPrices {
+  // Database metadata
+  peer_symbol: string;
+  peer_name?: string;
+  logo?: string;
+  fetch_timestamp?: string;
+  // Real-time price data from finance-query API
+  name?: string;
+  price?: string | number; // Backend returns Decimal as string for precision
+  after_hours_price?: string | number;
+  change?: string | number;
+  percent_change?: string;
+}
+
 export interface PeerComparison {
   symbol: string;
   name?: string;
@@ -716,6 +784,497 @@ export interface StockPeersRequest {
 export interface PeersPaginatedRequest {
   symbol: string;
   data_date?: string;
+  offset?: number;
+  limit?: number;
+  sort_column?: string;
+  sort_direction?: string;
+}
+
+// =====================================================
+// FINANCIAL STATEMENTS TYPES
+// =====================================================
+
+export interface FinancialStatementRequest {
+  symbol: string;
+  frequency: 'annual' | 'quarterly';
+  limit?: number;
+}
+
+export interface KeyStatsRequest {
+  symbol: string;
+  frequency?: 'annual' | 'quarterly';
+}
+
+export interface KeyStats {
+  market_cap?: number;
+  cash_and_cash_equivalents?: number;
+  total_debt?: number;
+  enterprise_value?: number;
+  revenue?: number;
+  gross_profit?: number;
+  ebitda?: number;
+  net_income_common_stockholders?: number;
+  diluted_eps?: number;
+  operating_cash_flow?: number;
+  capital_expenditure?: number;
+  free_cash_flow?: number;
+}
+
+export interface IncomeStatement {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  total_revenue?: number;
+  operating_revenue?: number;
+  cost_of_revenue?: number;
+  gross_profit?: number;
+  reconciled_cost_of_revenue?: number;
+  operating_expense?: number;
+  selling_general_and_administrative?: number;
+  research_and_development?: number;
+  total_expenses?: number;
+  reconciled_depreciation?: number;
+  operating_income?: number;
+  total_operating_income_as_reported?: number;
+  net_non_operating_interest_income_expense?: number;
+  non_operating_interest_income?: number;
+  non_operating_interest_expense?: number;
+  other_income_expense?: number;
+  other_non_operating_income_expenses?: number;
+  pretax_income?: number;
+  net_income_common_stockholders?: number;
+  net_income_attributable_to_parent_shareholders?: number;
+  net_income_including_non_controlling_interests?: number;
+  net_income_continuous_operations?: number;
+  diluted_ni_available_to_common_stockholders?: number;
+  net_income_from_continuing_discontinued_operation?: number;
+  net_income_from_continuing_operation_net_minority_interest?: number;
+  normalized_income?: number;
+  interest_income?: number;
+  interest_expense?: number;
+  net_interest_income?: number;
+  basic_eps?: number;
+  diluted_eps?: number;
+  basic_average_shares?: number;
+  diluted_average_shares?: number;
+  ebit?: number;
+  ebitda?: number;
+  normalized_ebitda?: number;
+  tax_provision?: number;
+  tax_rate_for_calcs?: number;
+  tax_effect_of_unusual_items?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BalanceSheet {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  total_assets?: number;
+  total_current_assets?: number;
+  cash_cash_equivalents_and_short_term_investments?: number;
+  cash_and_cash_equivalents?: number;
+  cash?: number;
+  cash_equivalents?: number;
+  other_short_term_investments?: number;
+  receivables?: number;
+  accounts_receivable?: number;
+  other_receivables?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  total_non_current_assets?: number;
+  net_ppe?: number;
+  gross_ppe?: number;
+  properties?: number;
+  land_and_improvements?: number;
+  machinery_furniture_equipment?: number;
+  other_properties?: number;
+  leases?: number;
+  accumulated_depreciation?: number;
+  investments_and_advances?: number;
+  investment_in_financial_assets?: number;
+  available_for_sale_securities?: number;
+  other_investments?: number;
+  non_current_deferred_assets?: number;
+  non_current_deferred_taxes_assets?: number;
+  other_non_current_assets?: number;
+  net_tangible_assets?: number;
+  tangible_book_value?: number;
+  total_liabilities?: number;
+  total_current_liabilities?: number;
+  payables_and_accrued_expenses?: number;
+  payables?: number;
+  accounts_payable?: number;
+  total_tax_payable?: number;
+  income_tax_payable?: number;
+  current_debt_and_capital_lease_obligation?: number;
+  current_debt?: number;
+  commercial_paper?: number;
+  other_current_borrowings?: number;
+  current_capital_lease_obligation?: number;
+  current_deferred_liabilities?: number;
+  current_deferred_revenue?: number;
+  other_current_liabilities?: number;
+  total_non_current_liabilities?: number;
+  long_term_debt_and_capital_lease_obligation?: number;
+  long_term_debt?: number;
+  long_term_capital_lease_obligation?: number;
+  trade_and_other_payables_non_current?: number;
+  other_non_current_liabilities?: number;
+  capital_lease_obligations?: number;
+  total_debt?: number;
+  net_debt?: number;
+  total_equity?: number;
+  stockholders_equity?: number;
+  capital_stock?: number;
+  common_stock?: number;
+  retained_earnings?: number;
+  gains_losses_not_affecting_retained_earnings?: number;
+  other_equity_adjustments?: number;
+  common_stock_equity?: number;
+  shares_issued?: number;
+  ordinary_shares_number?: number;
+  treasury_shares_number?: number;
+  working_capital?: number;
+  invested_capital?: number;
+  total_capitalization?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CashFlow {
+  symbol: string;
+  frequency: string;
+  fiscal_date: string;
+  operating_cash_flow?: number;
+  net_income_from_continuing_operations?: number;
+  depreciation_and_amortization?: number;
+  deferred_income_tax?: number;
+  stock_based_compensation?: number;
+  other_non_cash_items?: number;
+  change_in_working_capital?: number;
+  change_in_receivables?: number;
+  change_in_inventory?: number;
+  change_in_payables_and_accrued_expense?: number;
+  change_in_other_current_assets?: number;
+  change_in_other_current_liabilities?: number;
+  change_in_other_working_capital?: number;
+  investing_cash_flow?: number;
+  net_investment_purchase_and_sale?: number;
+  purchase_of_investment?: number;
+  sale_of_investment?: number;
+  net_ppe_purchase_and_sale?: number;
+  purchase_of_ppe?: number;
+  net_business_purchase_and_sale?: number;
+  purchase_of_business?: number;
+  net_other_investing_changes?: number;
+  capital_expenditure?: number;
+  financing_cash_flow?: number;
+  net_issuance_payments_of_debt?: number;
+  net_long_term_debt_issuance?: number;
+  long_term_debt_issuance?: number;
+  long_term_debt_payments?: number;
+  net_short_term_debt_issuance?: number;
+  short_term_debt_issuance?: number;
+  short_term_debt_payments?: number;
+  net_common_stock_issuance?: number;
+  common_stock_issuance?: number;
+  common_stock_payments?: number;
+  cash_dividends_paid?: number;
+  net_other_financing_charges?: number;
+  issuance_of_capital_stock?: number;
+  issuance_of_debt?: number;
+  repayment_of_debt?: number;
+  repurchase_of_capital_stock?: number;
+  end_cash_position?: number;
+  changes_in_cash?: number;
+  beginning_cash_position?: number;
+  free_cash_flow?: number;
+  income_tax_paid_supplemental_data?: number;
+  interest_paid_supplemental_data?: number;
+  data_provider?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// =====================================================
+// ENHANCED CACHE TYPES
+// =====================================================
+
+export interface HistoricalDataRequest {
+  symbols: string[];
+  range_param?: string;
+  interval?: string;
+}
+
+export interface HistoricalDataResponse {
+  success: boolean;
+  message: string;
+  requested_symbols: string[];
+  total_symbols: number;
+  processed_symbols: number;
+  failed_symbols: number;
+  failed_symbol_list: string[];
+  fetched_data_points: number;
+  range: string;
+  interval: string;
+  data: Record<string, any>;
+}
+
+export interface SingleSymbolDataRequest {
+  symbol: string;
+  range_param?: string;
+  interval?: string;
+}
+
+// =====================================================
+// HOLDERS DATA TYPES
+// =====================================================
+
+export interface HolderData {
+  id: number;
+  symbol: string;
+  holder_type: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InstitutionalHolder {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MutualFundHolder {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderTransaction {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  insider_position?: string;
+  transaction_type?: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  ownership_type?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderPurchasesSummary {
+  id: number;
+  symbol: string;
+  summary_period?: string;
+  purchases_shares?: number;
+  purchases_transactions?: number;
+  sales_shares?: number;
+  sales_transactions?: number;
+  net_shares?: number;
+  net_transactions?: number;
+  total_insider_shares?: number;
+  net_percent_insider_shares?: string | number;
+  buy_percent_insider_shares?: string | number;
+  sell_percent_insider_shares?: string | number;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InsiderRoster {
+  id: number;
+  symbol: string;
+  holder_name: string;
+  insider_position?: string;
+  most_recent_transaction?: string;
+  latest_transaction_date?: string;
+  shares_owned_directly?: number;
+  shares_owned_indirectly?: number;
+  position_direct_date?: string;
+  data_source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface HolderStatistics {
+  holder_type: string;
+  total_holders: number;
+  total_shares?: number;
+  total_value?: number;
+  avg_shares?: string | number;
+  avg_value?: string | number;
+  last_reported?: string;
+}
+
+export interface HolderSearchResult {
+  id: number;
+  symbol: string;
+  holder_type: string;
+  holder_name: string;
+  shares?: number;
+  value?: number;
+  date_reported?: string;
+  data_source?: string;
+}
+
+export interface HolderParticipant {
+  participant_name: string;
+  appearance_count: number;
+  symbols: string[];
+  latest_appearance?: string;
+}
+
+// =====================================================
+// EARNINGS TRANSCRIPTS TYPES
+// =====================================================
+
+export interface EarningsTranscript {
+  id: number;
+  symbol: string;
+  exchange_id?: number;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript: string;
+  participants: string[];
+  transcript_length?: number;
+  transcript_language?: string;
+  source?: string;
+  transcripts_id?: number;
+  retrieved_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EarningsTranscriptMetadata {
+  id: number;
+  symbol: string;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript_length?: number;
+  participants_count?: number;
+  transcript_language?: string;
+  source?: string;
+  retrieved_at?: string;
+}
+
+export interface TranscriptSearchResult {
+  id: number;
+  symbol: string;
+  quarter: string;
+  year: number;
+  date: string;
+  transcript_snippet?: string;
+  transcript_length?: number;
+  participants: string[];
+  source?: string;
+}
+
+export interface TranscriptStatistics {
+  symbol: string;
+  total_transcripts: number;
+  avg_transcript_length?: string | number;
+  min_date?: string;
+  max_date?: string;
+  years_covered?: number[];
+  quarters_available?: string[];
+}
+
+export interface TranscriptParticipant {
+  participant_name: string;
+  appearance_count: number;
+  symbols: string[];
+  latest_appearance?: string;
+}
+
+export interface TranscriptQuarter {
+  year: number;
+  quarter: string;
+  transcript_count: number;
+  avg_length?: string | number;
+  symbols_count: number;
+}
+
+// =====================================================
+// HOLDERS & TRANSCRIPTS REQUEST TYPES
+// =====================================================
+
+export interface HoldersRequest {
+  symbol: string;
+  holder_type?: string;
+  limit?: number;
+}
+
+export interface InsiderTransactionsRequest {
+  symbol: string;
+  transaction_type?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}
+
+export interface HoldersSearchRequest {
+  name_pattern: string;
+  holder_type?: string;
+  limit?: number;
+}
+
+export interface HoldersPaginatedRequest {
+  symbol?: string;
+  holder_type?: string;
+  offset?: number;
+  limit?: number;
+  sort_column?: string;
+  sort_direction?: string;
+}
+
+export interface TranscriptsRequest {
+  symbol: string;
+  limit?: number;
+}
+
+export interface TranscriptSearchRequest {
+  search_text: string;
+  symbol?: string;
+  limit?: number;
+}
+
+export interface TranscriptsByDateRequest {
+  start_date: string;
+  end_date: string;
+  symbol?: string;
+  limit?: number;
+}
+
+export interface TranscriptsPaginatedRequest {
+  symbol?: string;
+  year?: number;
+  quarter?: string;
   offset?: number;
   limit?: number;
   sort_column?: string;

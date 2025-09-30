@@ -1,15 +1,6 @@
--- ----------------------------------------------------------------------------
--- Function: upsert_historical_price
--- Updated to match the new historical_prices table structure with timestamp support
--- Supports both intraday (with specific timestamps) and daily data (using date midnight)
--- ----------------------------------------------------------------------------
-
--- Tested 
-
 CREATE OR REPLACE FUNCTION upsert_historical_price(
     p_symbol TEXT,
     p_timestamp_utc TIMESTAMP,
-    p_time_range TEXT,
     p_time_interval TEXT,
     p_data_provider TEXT,
     
@@ -33,13 +24,9 @@ DECLARE
     v_id BIGINT;
     v_exchange_id INTEGER;
 BEGIN
-    -- Step 1: Validate time_range and time_interval parameters
-    IF p_time_range NOT IN ('1d', '5d', '1mo', '3mo', '6mo', 'ytd', '1y', '2y', '5y', '10y', 'max') THEN
-        RAISE EXCEPTION 'Invalid time_range: %. Must be one of: 1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max', p_time_range;
-    END IF;
-
-    IF p_time_interval NOT IN ('1m', '5m', '15m', '30m', '1h', '1d', '1wk', '1mo') THEN
-        RAISE EXCEPTION 'Invalid time_interval: %. Must be one of: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo', p_time_interval;
+    -- Step 1: Validate time_interval parameter only
+    IF p_time_interval NOT IN ('5m', '15m', '30m', '1h', '1d', '1wk', '1mo') THEN
+        RAISE EXCEPTION 'Invalid time_interval: %. Must be one of: 5m, 15m, 30m, 1h, 1d, 1wk, 1mo', p_time_interval;
     END IF;
 
     -- Step 2: Handle exchange upsert if exchange data is provided
@@ -52,20 +39,20 @@ BEGIN
         ) INTO v_exchange_id;
     END IF;
 
-    -- Step 3: Insert/update historical price data
+    -- Step 3: Insert/update historical price data (interval-only storage)
     INSERT INTO historical_prices (
-        symbol, exchange_id, timestamp_utc, time_range, time_interval,
+        symbol, exchange_id, timestamp_utc, time_interval,
         open, high, low, close, adjusted_close, volume, 
         dividend, split_ratio, data_provider,
         created_at, updated_at
     )
     VALUES (
-        p_symbol, v_exchange_id, p_timestamp_utc, p_time_range, p_time_interval,
+        p_symbol, v_exchange_id, p_timestamp_utc, p_time_interval,
         p_open, p_high, p_low, p_close, p_adjusted_close, p_volume, 
         COALESCE(p_dividend, 0), COALESCE(p_split_ratio, 1.0), p_data_provider,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
-    ON CONFLICT (symbol, timestamp_utc, time_range, time_interval, data_provider) DO UPDATE SET
+    ON CONFLICT (symbol, timestamp_utc, time_interval, data_provider) DO UPDATE SET
         exchange_id = COALESCE(EXCLUDED.exchange_id, historical_prices.exchange_id),
         open = COALESCE(EXCLUDED.open, historical_prices.open),
         high = COALESCE(EXCLUDED.high, historical_prices.high),
@@ -83,12 +70,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Example usage for intraday data:
+-- Example usage for 5-minute interval data:
 -- SELECT upsert_historical_price(
 --     'AAPL',                          -- symbol
---     '2025-09-12 14:58:00'::TIMESTAMP, -- timestamp_utc
---     '1d',                            -- time_range
---     '1m',                            -- time_interval
+--     '2025-09-12 14:55:00'::TIMESTAMP, -- timestamp_utc
+--     '5m',                            -- time_interval (no range needed)
 --     'alpha_vantage',                 -- data_provider
 --     'NASDAQ',                        -- exchange_code
 --     'NASDAQ Stock Market',           -- exchange_name
@@ -108,8 +94,7 @@ $$ LANGUAGE plpgsql;
 -- SELECT upsert_historical_price(
 --     'AAPL',                          -- symbol
 --     '2020-06-01 00:00:00'::TIMESTAMP, -- timestamp_utc (midnight for daily data)
---     '5y',                            -- time_range
---     '1d',                            -- time_interval
+--     '1d',                            -- time_interval (no range needed)
 --     'alpha_vantage',                 -- data_provider
 --     'NASDAQ',                        -- exchange_code
 --     'NASDAQ Stock Market',           -- exchange_name

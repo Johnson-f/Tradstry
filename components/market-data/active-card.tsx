@@ -6,11 +6,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTopGainers, useTopLosers, useMostActive } from '@/lib/hooks/use-market-data';
+import { useTopGainersWithPrices, useTopLosersWithPrices, useMostActiveWithPrices } from '@/lib/hooks/use-market-data';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
-import type { MarketMover } from '@/lib/types/market-data';
+import type { MarketMoverWithPrices } from '@/lib/types/market-data';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRealtimeTable } from '@/lib/hooks/useRealtimeUpdates';
+import { useSymbolNavigation } from '@/lib/hooks/use-symbol-navigation';
 
 // Format functions
 const formatPrice = (value: number | undefined | null): string => {
@@ -38,19 +39,34 @@ const formatVolume = (volume: number | undefined | null): string => {
   return numValue.toString();
 };
 
+// Convert price from backend (string or number) to number for calculations
+const parsePrice = (price: string | number | undefined | null): number => {
+  if (typeof price === 'number') return isNaN(price) ? 0 : price;
+  if (typeof price === 'string') return parseFloat(price) || 0;
+  return 0;
+};
+
 // Stock item component
 interface StockItemProps {
-  stock: MarketMover;
+  stock: MarketMoverWithPrices;
   rank: number;
+  onClick?: () => void;
 }
 
-const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
-  // Use percent_change from backend, fallback to changePercent for compatibility
-  const percentChange = stock.percent_change ?? stock.changePercent ?? 0;
+const StockItem: React.FC<StockItemProps> = ({ stock, rank, onClick }) => {
+  // Parse percent_change string (e.g., "2.45%") to number, fallback to 0
+  const percentChangeStr = stock.percent_change ?? '0';
+  const percentChange = parseFloat(percentChangeStr.replace('%', '')) || 0;
   const isPositive = percentChange >= 0;
   
+  // Parse price (can be string or number from backend) to number
+  const priceValue = parsePrice(stock.price);
+  
   return (
-    <div className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+    <div 
+      onClick={onClick}
+      className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0 cursor-pointer"
+    >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           {stock.logo && (
@@ -78,7 +94,7 @@ const StockItem: React.FC<StockItemProps> = ({ stock, rank }) => {
       
       <div className="text-right flex-shrink-0 ml-4">
         <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-          ${formatPrice(stock.price ?? 0)}
+          ${formatPrice(priceValue)}
         </div>
         <div className={`text-xs font-medium ${
           isPositive 
@@ -111,13 +127,14 @@ const StockItemSkeleton: React.FC = () => (
 
 // Tab content component
 interface TabContentProps {
-  stocks: MarketMover[];
+  stocks: MarketMoverWithPrices[];
   isLoading: boolean;
   error: Error | null;
   type: 'gainers' | 'losers' | 'actives';
+  onStockClick: (symbol: string) => void;
 }
 
-const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type }) => {
+const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type, onStockClick }) => {
   if (error) {
     return (
       <Alert variant="destructive">
@@ -150,7 +167,12 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
     <ScrollArea className="h-[400px]">
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {stocks.map((stock, index) => (
-          <StockItem key={stock.symbol} stock={stock} rank={index + 1} />
+          <StockItem 
+            key={stock.symbol} 
+            stock={stock} 
+            rank={index + 1} 
+            onClick={() => onStockClick(stock.symbol)}
+          />
         ))}
       </div>
     </ScrollArea>
@@ -161,23 +183,20 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type 
 export const ActiveCard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('gainers');
   const queryClient = useQueryClient();
+  const { navigateToSymbol } = useSymbolNavigation();
+  
+  const handleStockClick = (symbol: string) => {
+    navigateToSymbol(symbol);
+  };
   
   // Enable realtime updates for market data
-  useRealtimeTable('market_movers', queryClient, ['top-gainers']);
-  useRealtimeTable('market_movers', queryClient, ['top-losers']);
-  useRealtimeTable('market_movers', queryClient, ['most-active']);
+  useRealtimeTable('market_movers', queryClient, ['market-movers', 'gainers-with-prices']);
+  useRealtimeTable('market_movers', queryClient, ['market-movers', 'losers-with-prices']);
+  useRealtimeTable('market_movers', queryClient, ['market-movers', 'most-active-with-prices']);
   
-  const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainers({ limit: 25 });
-  const { losers, isLoading: losersLoading, error: losersError } = useTopLosers({ limit: 25 });
-  const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActive({ limit: 25 });
-
-  // Debug logging
-  console.log('DEBUG - Gainers:', { gainers, gainersLoading, gainersError });
-  console.log('DEBUG - First gainer object:', gainers[0]);
-  console.log('DEBUG - Losers:', { losers, losersLoading, losersError });
-  console.log('DEBUG - First loser object:', losers[0]);
-  console.log('DEBUG - Actives:', { actives, activesLoading, activesError });
-  console.log('DEBUG - First active object:', actives[0]);
+  const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainersWithPrices({ limit: 25 });
+  const { losers, isLoading: losersLoading, error: losersError } = useTopLosersWithPrices({ limit: 25 });
+  const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActiveWithPrices({ limit: 25 });
 
   const getTabIcon = (tab: string) => {
     switch (tab) {
@@ -227,6 +246,7 @@ export const ActiveCard: React.FC = () => {
                 isLoading={gainersLoading} 
                 error={gainersError}
                 type="gainers"
+                onStockClick={handleStockClick}
               />
             </TabsContent>
             
@@ -236,6 +256,7 @@ export const ActiveCard: React.FC = () => {
                 isLoading={losersLoading} 
                 error={losersError}
                 type="losers"
+                onStockClick={handleStockClick}
               />
             </TabsContent>
             
@@ -245,6 +266,7 @@ export const ActiveCard: React.FC = () => {
                 isLoading={activesLoading} 
                 error={activesError}
                 type="actives"
+                onStockClick={handleStockClick}
               />
             </TabsContent>
           </div>
