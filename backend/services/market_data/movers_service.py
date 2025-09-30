@@ -15,6 +15,12 @@ from .symbol_registry_cache import (
 )
 from .price_cache_service import get_cached_prices
 from .logo_service import LogoService
+from .movers_cache_service import (
+    movers_cache_service,
+    MoverType,
+    get_cached_movers_list,
+    cache_movers_list
+)
 from models.market_data import (
     MarketMover, 
     MarketMoverWithPrices, 
@@ -38,7 +44,31 @@ class MoversService(BaseMarketDataService):
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get top gainers for a specific date (falls back to latest available date)."""
+        """
+        Get top gainers with Redis cache integration.
+        
+        Flow:
+        1. Check Redis cache (fast, ~1-5ms)
+        2. If cache miss, query database (~100-300ms)
+        3. Cache result for next request
+        
+        Cache TTL: 5 minutes (market movers change frequently)
+        """
+        # Try cache first
+        if self.cache_enabled:
+            cached_movers = await get_cached_movers_list(
+                MoverType.GAINERS,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+            
+            if cached_movers:
+                logger.info(f"💰 Cache HIT: Retrieved {len(cached_movers)} gainers from Redis")
+                return [MarketMover(**item) for item in cached_movers]
+            
+            logger.info(f"📊 Cache MISS: Querying database for gainers")
+        
+        # Cache miss - query database
         async def operation(client):
             target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
@@ -50,19 +80,50 @@ class MoversService(BaseMarketDataService):
             # If no data for target date, try getting the most recent data
             if not response.data:
                 logger.info(f"No gainers for {target_date}, fetching latest available data")
-                latest_response = client.rpc('get_top_gainers_latest', {'p_limit': request.limit}).execute()
+                latest_params = {'p_limit': request.limit}
+                latest_response = client.rpc('get_top_gainers_latest', latest_params).execute()
                 return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
             
             return [MarketMover(**item) for item in response.data]
         
-        return await self._execute_with_retry(operation, access_token)
-
+        movers = await self._execute_with_retry(operation, access_token)
+        
+        # Cache for next request
+        if self.cache_enabled and movers:
+            movers_data = [m.dict() for m in movers]
+            await cache_movers_list(
+                MoverType.GAINERS,
+                movers_data,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+        
+        return movers
     async def get_top_losers(
         self, 
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get top losers for a specific date (falls back to latest available date)."""
+        """
+        Get top losers with Redis cache integration.
+        
+        Cache TTL: 5 minutes
+        """
+        # Try cache first
+        if self.cache_enabled:
+            cached_movers = await get_cached_movers_list(
+                MoverType.LOSERS,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+            
+            if cached_movers:
+                logger.info(f"💰 Cache HIT: retrieved {len(cached_movers)} losers from Redis")
+                return [MarketMover(**item) for item in cached_movers]
+            
+            logger.info(f"📊 Cache MISS: Querying database for losers")
+        
+        # Cache miss - query database
         async def operation(client):
             target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
@@ -74,19 +135,51 @@ class MoversService(BaseMarketDataService):
             # If no data for target date, try getting the most recent data
             if not response.data:
                 logger.info(f"No losers for {target_date}, fetching latest available data")
-                latest_response = client.rpc('get_top_losers_latest', {'p_limit': request.limit}).execute()
+                latest_params = {'p_limit': request.limit}
+                latest_response = client.rpc('get_top_losers_latest', latest_params).execute()
                 return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
             
             return [MarketMover(**item) for item in response.data]
         
-        return await self._execute_with_retry(operation, access_token)
+        movers = await self._execute_with_retry(operation, access_token)
+        
+        # Cache for next request
+        if self.cache_enabled and movers:
+            movers_data = [m.dict() for m in movers]
+            await cache_movers_list(
+                MoverType.LOSERS,
+                movers_data,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+        
+        return movers
 
     async def get_most_active(
         self, 
         request: MarketMoversRequest, 
         access_token: str = None
     ) -> List[MarketMover]:
-        """Get most active stocks for a specific date (falls back to latest available date)."""
+        """
+        Get most active stocks with Redis cache integration.
+        
+        Cache TTL: 5 minutes
+        """
+        # Try cache first
+        if self.cache_enabled:
+            cached_movers = await get_cached_movers_list(
+                MoverType.MOST_ACTIVE,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+            
+            if cached_movers:
+                logger.info(f"💰 Cache HIT: Retrieved {len(cached_movers)} most active stocks from Redis")
+                return [MarketMover(**item) for item in cached_movers]
+            
+            logger.info(f"📊 Cache MISS: Querying database for most active")
+        
+        # Cache miss - query database
         async def operation(client):
             target_date = request.data_date.isoformat() if request.data_date else date.today().isoformat()
             params = {
@@ -98,12 +191,25 @@ class MoversService(BaseMarketDataService):
             # If no data for target date, try getting the most recent data
             if not response.data:
                 logger.info(f"No active stocks for {target_date}, fetching latest available data")
-                latest_response = client.rpc('get_most_active_latest', {'p_limit': request.limit}).execute()
+                latest_params = {'p_limit': request.limit}
+                latest_response = client.rpc('get_most_active_latest', latest_params).execute()
                 return [MarketMover(**item) for item in latest_response.data] if latest_response.data else []
             
             return [MarketMover(**item) for item in response.data]
         
-        return await self._execute_with_retry(operation, access_token)
+        movers = await self._execute_with_retry(operation, access_token)
+        
+        # Cache for next request
+        if self.cache_enabled and movers:
+            movers_data = [m.dict() for m in movers]
+            await cache_movers_list(
+                MoverType.MOST_ACTIVE,
+                movers_data,
+                limit=request.limit,
+                data_date=request.data_date
+            )
+        
+        return movers
 
     async def get_top_gainers_with_logos(
         self, 
@@ -240,11 +346,11 @@ class MoversService(BaseMarketDataService):
         access_token: str = None
     ) -> List[MarketMoverWithPrices]:
         """Get top gainers with real-time prices from finance-query API."""
-        # First get the basic gainers data from database
+        # Get gainers (from cache or database)
         gainers = await self.get_top_gainers(request, access_token)
-        logger.info(f"📊 Retrieved {len(gainers)} gainers from database")
+        logger.info(f"📊 Retrieved {len(gainers)} gainers")
         if not gainers:
-            logger.warning("No gainers found in database")
+            logger.warning("No gainers found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
@@ -279,11 +385,11 @@ class MoversService(BaseMarketDataService):
         access_token: str = None
     ) -> List[MarketMoverWithPrices]:
         """Get top losers with real-time prices from finance-query API."""
-        # First get the basic losers data from database
+        # Get losers (from cache or database)
         losers = await self.get_top_losers(request, access_token)
-        logger.info(f"📊 Retrieved {len(losers)} losers from database")
+        logger.info(f"📊 Retrieved {len(losers)} losers")
         if not losers:
-            logger.warning("No losers found in database")
+            logger.warning("No losers found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
@@ -318,11 +424,11 @@ class MoversService(BaseMarketDataService):
         access_token: str = None
     ) -> List[MarketMoverWithPrices]:
         """Get most active stocks with real-time prices from finance-query API."""
-        # First get the basic most active data from database
+        # Get most active (from cache or database)
         most_active = await self.get_most_active(request, access_token)
-        logger.info(f"📊 Retrieved {len(most_active)} most active stocks from database")
+        logger.info(f"📊 Retrieved {len(most_active)} most active stocks")
         if not most_active:
-            logger.warning("No most active stocks found in database")
+            logger.warning("No most active stocks found")
             return []
 
         # Extract symbols and fetch real-time prices from cache
@@ -410,26 +516,27 @@ class MoversService(BaseMarketDataService):
     
     async def get_all_mover_symbols_from_cache(self) -> List[str]:
         """
-        Get all market mover symbols using cache.
+        Get all market mover symbols from Redis cache.
         
         Fast lookup (1-5ms) instead of database query (100-300ms).
+        Uses Symbol Registry Cache for instant symbol retrieval.
         """
         if not self.cache_enabled:
             return await self._get_mover_symbols_from_database()
         
         try:
-            # Get from cache (fast!)
+            # Get from Redis cache (fast! ~1-5ms)
             symbols = await get_mover_symbols()
             
             if symbols:
-                logger.debug(f"Cache hit: Retrieved {len(symbols)} mover symbols")
+                logger.info(f"✅ Cache HIT: Retrieved {len(symbols)} mover symbols from Redis")
                 return symbols
             
-            logger.warning("Cache returned empty, falling back to database")
+            logger.warning("⚠️ Cache MISS: Symbol registry returned empty, falling back to database")
             return await self._get_mover_symbols_from_database()
             
         except Exception as e:
-            logger.error(f"Cache lookup failed: {e}. Falling back to database")
+            logger.error(f"❌ Cache lookup failed: {e}. Falling back to database")
             return await self._get_mover_symbols_from_database()
     
     async def batch_fetch_mover_prices(
@@ -466,8 +573,11 @@ class MoversService(BaseMarketDataService):
     async def _get_mover_symbols_from_database(self, access_token: str = None) -> List[str]:
         """
         Fallback: Get mover symbols from database when cache unavailable.
+        
+        This should RARELY be called. If you see this log frequently,
+        check Symbol Registry Cache health.
         """
-        logger.warning("Using database fallback for mover symbol lookup")
+        logger.warning("⚠️ Using DATABASE fallback for mover symbol lookup (slow path)")
         
         try:
             async def operation(client):
@@ -475,10 +585,10 @@ class MoversService(BaseMarketDataService):
                 return list(set([row['symbol'] for row in response.data])) if response.data else []
             
             symbols = await self._execute_with_retry(operation, access_token)
-            logger.info(f"Fetched {len(symbols)} mover symbols from database (fallback)")
+            logger.info(f"📊 Fetched {len(symbols)} mover symbols from database (fallback took ~100-300ms)")
             return symbols
             
         except Exception as e:
-            logger.error(f"Database fallback failed: {e}")
+            logger.error(f"❌ Database fallback failed: {e}")
             return []
             raise
