@@ -1,137 +1,135 @@
-"use client";
+"use client"
 
-import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTopGainersWithPrices, useTopLosersWithPrices, useMostActiveWithPrices } from '@/lib/hooks/use-market-data';
-import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
-import type { MarketMoverWithPrices } from '@/lib/types/market-data';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRealtimeTable } from '@/lib/hooks/useRealtimeUpdates';
-import { useSymbolNavigation } from '@/lib/hooks/use-symbol-navigation';
+import type React from "react"
+import { useState } from "react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useTopGainersWithPrices, useTopLosersWithPrices, useMostActiveWithPrices } from "@/lib/hooks/use-market-data"
+import { TrendingUp, TrendingDown, Activity } from "lucide-react"
+import type { MarketMoverWithPrices } from "@/lib/types/market-data"
+import { useQueryClient } from "@tanstack/react-query"
+import { useRealtimeTable } from "@/lib/hooks/useRealtimeUpdates"
+import { useSymbolNavigation } from "@/lib/hooks/use-symbol-navigation"
+import Image from "next/image"
+import { cn } from "@/lib/utils"
 
 // Format functions
 const formatPrice = (value: number | undefined | null): string => {
-  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-  return numValue.toFixed(2);
-};
+  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
+  return numValue.toFixed(2)
+}
 
 const formatChange = (value: number | undefined | null): string => {
-  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-  return numValue.toFixed(2);
-};
+  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
+  return numValue.toFixed(2)
+}
 
 const formatPercentChange = (value: number | undefined | null): string => {
-  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-  return `${numValue.toFixed(2)}%`;
-};
+  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
+  return `${numValue.toFixed(2)}%`
+}
 
 const formatVolume = (volume: number | undefined | null): string => {
-  const numValue = typeof volume === 'number' && !isNaN(volume) ? volume : 0;
+  const numValue = typeof volume === "number" && !isNaN(volume) ? volume : 0
   if (numValue >= 1000000) {
-    return `${(numValue / 1000000).toFixed(1)}M`;
+    return `${(numValue / 1000000).toFixed(1)}M`
   } else if (numValue >= 1000) {
-    return `${(numValue / 1000).toFixed(1)}K`;
+    return `${(numValue / 1000).toFixed(1)}K`
   }
-  return numValue.toString();
-};
+  return numValue.toString()
+}
 
 // Convert price from backend (string or number) to number for calculations
 const parsePrice = (price: string | number | undefined | null): number => {
-  if (typeof price === 'number') return isNaN(price) ? 0 : price;
-  if (typeof price === 'string') return parseFloat(price) || 0;
-  return 0;
-};
+  if (typeof price === "number") return isNaN(price) ? 0 : price
+  if (typeof price === "string") return Number.parseFloat(price) || 0
+  return 0
+}
 
 // Stock item component
 interface StockItemProps {
-  stock: MarketMoverWithPrices;
-  rank: number;
-  onClick?: () => void;
+  stock: MarketMoverWithPrices
+  rank: number
+  onClick?: () => void
 }
 
 const StockItem: React.FC<StockItemProps> = ({ stock, rank, onClick }) => {
   // Parse percent_change string (e.g., "2.45%") to number, fallback to 0
-  const percentChangeStr = stock.percent_change ?? '0';
-  const percentChange = parseFloat(percentChangeStr.replace('%', '')) || 0;
-  const isPositive = percentChange >= 0;
-  
+  const percentChangeStr = stock.percent_change ?? "0"
+  const percentChange = Number.parseFloat(percentChangeStr.replace("%", "")) || 0
+  const isPositive = percentChange >= 0
+
   // Parse price (can be string or number from backend) to number
-  const priceValue = parsePrice(stock.price);
-  
+  const priceValue = parsePrice(stock.price)
+
   return (
-    <div 
+    <div
       onClick={onClick}
-      className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0 cursor-pointer"
+      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer"
     >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          {stock.logo && (
-            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
-              <img 
-                src={stock.logo} 
-                alt={`${stock.symbol} logo`} 
-                className="w-6 h-6 rounded-full"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-            </div>
+      <div className="flex items-center space-x-3 min-w-0 flex-1">
+        <div className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+          {stock.logo ? (
+            <Image
+              src={stock.logo || "/placeholder.svg"}
+              alt={`${stock.symbol} logo`}
+              width={40}
+              height={40}
+              className="object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.style.display = "none"
+              }}
+            />
+          ) : (
+            <div className="text-xs font-semibold text-muted-foreground">{stock.symbol?.slice(0, 2)}</div>
           )}
-          <div className="min-w-0">
-            <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-              {stock.symbol}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {stock.name}
-            </div>
-          </div>
+        </div>
+
+        <div className="min-w-0">
+          <h4 className="font-medium text-sm truncate">{stock.symbol}</h4>
         </div>
       </div>
-      
+
       <div className="text-right flex-shrink-0 ml-4">
-        <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-          ${formatPrice(priceValue)}
-        </div>
-        <div className={`text-xs font-medium ${
-          isPositive 
-            ? 'text-green-600 dark:text-green-400' 
-            : 'text-red-600 dark:text-red-400'
-        }`}>
-          {isPositive ? '+' : ''}{formatPercentChange(percentChange)}
+        <div className="font-medium text-sm">${formatPrice(priceValue)}</div>
+        <div className={cn("text-xs font-medium", isPositive ? "text-green-600" : "text-red-600")}>
+          {isPositive ? "+" : ""}
+          {formatPercentChange(percentChange)}
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
 // Loading skeleton
 const StockItemSkeleton: React.FC = () => (
-  <div className="flex items-center justify-between py-2 px-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-    <div className="flex items-center gap-3 flex-1">
-      <Skeleton className="w-8 h-8 rounded-full" />
-      <div className="space-y-1">
-        <Skeleton className="w-12 h-4" />
-        <Skeleton className="w-20 h-3" />
+  <div className="flex items-center justify-between px-4 py-3">
+    <div className="flex items-center space-x-3 flex-1">
+      <Skeleton className="h-10 w-10 rounded-lg" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-24" />
       </div>
     </div>
-    <div className="text-right space-y-1">
-      <Skeleton className="w-16 h-4" />
-      <Skeleton className="w-12 h-3" />
+    <div className="text-right space-y-2">
+      <Skeleton className="h-4 w-16" />
+      <Skeleton className="h-3 w-12" />
     </div>
   </div>
-);
+)
 
 // Tab content component
 interface TabContentProps {
-  stocks: MarketMoverWithPrices[];
-  isLoading: boolean;
-  error: Error | null;
-  type: 'gainers' | 'losers' | 'actives';
-  onStockClick: (symbol: string) => void;
+  stocks: MarketMoverWithPrices[]
+  isLoading: boolean
+  error: Error | null
+  type: "gainers" | "losers" | "actives"
+  onStockClick: (symbol: string) => void
 }
 
 const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type, onStockClick }) => {
@@ -142,17 +140,20 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type,
           Failed to load {type}: {error.message}
         </AlertDescription>
       </Alert>
-    );
+    )
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-1">
+      <div>
         {Array.from({ length: 10 }).map((_, index) => (
-          <StockItemSkeleton key={index} />
+          <div key={index}>
+            <StockItemSkeleton />
+            {index < 9 && <Separator />}
+          </div>
         ))}
       </div>
-    );
+    )
   }
 
   if (stocks.length === 0) {
@@ -160,110 +161,109 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type,
       <div className="text-center py-8 text-muted-foreground">
         <p>No {type} data available at the moment.</p>
       </div>
-    );
+    )
   }
 
   return (
     <ScrollArea className="h-[400px]">
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+      <div>
         {stocks.map((stock, index) => (
-          <StockItem 
-            key={stock.symbol} 
-            stock={stock} 
-            rank={index + 1} 
-            onClick={() => onStockClick(stock.symbol)}
-          />
+          <div key={stock.symbol}>
+            <StockItem stock={stock} rank={index + 1} onClick={() => onStockClick(stock.symbol)} />
+            {index < stocks.length - 1 && <Separator />}
+          </div>
         ))}
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 // Main component
 export const ActiveCard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('gainers');
-  const queryClient = useQueryClient();
-  const { navigateToSymbol } = useSymbolNavigation();
-  
+  const [activeTab, setActiveTab] = useState("gainers")
+  const queryClient = useQueryClient()
+  const { navigateToSymbol } = useSymbolNavigation()
+
   const handleStockClick = (symbol: string) => {
-    navigateToSymbol(symbol);
-  };
-  
-  // Enable realtime updates for market data
-  useRealtimeTable('market_movers', queryClient, ['market-movers', 'gainers-with-prices']);
-  useRealtimeTable('market_movers', queryClient, ['market-movers', 'losers-with-prices']);
-  useRealtimeTable('market_movers', queryClient, ['market-movers', 'most-active-with-prices']);
-  
-  const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainersWithPrices({ limit: 25 });
-  const { losers, isLoading: losersLoading, error: losersError } = useTopLosersWithPrices({ limit: 25 });
-  const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActiveWithPrices({ limit: 25 });
+    navigateToSymbol(symbol)
+  }
+
+  useRealtimeTable("market_movers", queryClient, ["market-movers", "gainers-with-prices"])
+  useRealtimeTable("market_movers", queryClient, ["market-movers", "losers-with-prices"])
+  useRealtimeTable("market_movers", queryClient, ["market-movers", "most-active-with-prices"])
+
+  const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainersWithPrices({ limit: 25 })
+  const { losers, isLoading: losersLoading, error: losersError } = useTopLosersWithPrices({ limit: 25 })
+  const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActiveWithPrices({ limit: 25 })
 
   const getTabIcon = (tab: string) => {
     switch (tab) {
-      case 'gainers':
-        return <TrendingUp className="w-4 h-4" />;
-      case 'losers':
-        return <TrendingDown className="w-4 h-4" />;
-      case 'actives':
-        return <Activity className="w-4 h-4" />;
+      case "gainers":
+        return <TrendingUp className="w-4 h-4" />
+      case "losers":
+        return <TrendingDown className="w-4 h-4" />
+      case "actives":
+        return <Activity className="w-4 h-4" />
       default:
-        return null;
+        return null
     }
-  };
+  }
 
   return (
-    <Card className="w-full max-w-4xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
-      <CardContent className="p-90">
+    <Card className="w-full max-w-4xl">
+      <CardContent className="p-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-            <TabsTrigger 
-              value="gainers" 
-              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-green-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-green-400"
-            >
-              <TrendingUp className="w-3 h-3" />
-              <span>Gainers</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="losers" 
-              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-red-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-red-400"
-            >
-              <TrendingDown className="w-3 h-3" />
-              <span>Losers</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="actives" 
-              className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-blue-400"
-            >
-              <Activity className="w-3 h-3" />
-              <span>Active</span>
-            </TabsTrigger>
-          </TabsList>
-          
+          <div className="p-4 pb-0">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              <TabsTrigger
+                value="gainers"
+                className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-green-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-green-400"
+              >
+                <TrendingUp className="w-3 h-3" />
+                <span>Gainers</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="losers"
+                className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-red-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-red-400"
+              >
+                <TrendingDown className="w-3 h-3" />
+                <span>Losers</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="actives"
+                className="flex items-center gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-blue-400"
+              >
+                <Activity className="w-3 h-3" />
+                <span>Active</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
           <div className="mt-4">
             <TabsContent value="gainers" className="mt-0">
-              <TabContent 
-                stocks={gainers} 
-                isLoading={gainersLoading} 
+              <TabContent
+                stocks={gainers}
+                isLoading={gainersLoading}
                 error={gainersError}
                 type="gainers"
                 onStockClick={handleStockClick}
               />
             </TabsContent>
-            
+
             <TabsContent value="losers" className="mt-0">
-              <TabContent 
-                stocks={losers} 
-                isLoading={losersLoading} 
+              <TabContent
+                stocks={losers}
+                isLoading={losersLoading}
                 error={losersError}
                 type="losers"
                 onStockClick={handleStockClick}
               />
             </TabsContent>
-            
+
             <TabsContent value="actives" className="mt-0">
-              <TabContent 
-                stocks={actives} 
-                isLoading={activesLoading} 
+              <TabContent
+                stocks={actives}
+                isLoading={activesLoading}
                 error={activesError}
                 type="actives"
                 onStockClick={handleStockClick}
@@ -273,7 +273,7 @@ export const ActiveCard: React.FC = () => {
         </Tabs>
       </CardContent>
     </Card>
-  );
-};
+  )
+}
 
-export default ActiveCard;
+export default ActiveCard
