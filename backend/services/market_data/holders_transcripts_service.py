@@ -48,14 +48,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InstitutionalHolder]:
         """Get institutional holders for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_institutional_holders',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_date_reported': date_reported.isoformat() if date_reported else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_date_reported': date_reported.isoformat() if date_reported else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_institutional_holders', params).execute()
             
             return [InstitutionalHolder(**item) for item in response.data] if response.data else []
         
@@ -70,14 +69,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[MutualFundHolder]:
         """Get mutual fund holders for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_mutualfund_holders',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_date_reported': date_reported.isoformat() if date_reported else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_date_reported': date_reported.isoformat() if date_reported else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_mutualfund_holders', params).execute()
             
             return [MutualFundHolder(**item) for item in response.data] if response.data else []
         
@@ -98,16 +96,15 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InsiderTransaction]:
         """Get insider transactions for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_insider_transactions',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_transaction_type': transaction_type,
-                    'p_start_date': start_date.isoformat() if start_date else None,
-                    'p_end_date': end_date.isoformat() if end_date else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_transaction_type': transaction_type,
+                'p_start_date': start_date.isoformat() if start_date else None,
+                'p_end_date': end_date.isoformat() if end_date else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_insider_transactions', params).execute()
             
             return [InsiderTransaction(**item) for item in response.data] if response.data else []
         
@@ -121,13 +118,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InsiderPurchasesSummary]:
         """Get insider purchases summary for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_insider_purchases_summary',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_summary_period': summary_period
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_summary_period': summary_period
+            }
+            
+            response = client.rpc('get_insider_purchases_summary', params).execute()
             
             return [InsiderPurchasesSummary(**item) for item in response.data] if response.data else []
         
@@ -141,13 +137,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InsiderRoster]:
         """Get insider roster for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_insider_roster',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_insider_roster', params).execute()
             
             return [InsiderRoster(**item) for item in response.data] if response.data else []
         
@@ -166,14 +161,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[HolderData]:
         """Get all holder types for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_all_holders',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_holder_type': holder_type,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_holder_type': holder_type,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_all_holders', params).execute()
             
             return [HolderData(**item) for item in response.data] if response.data else []
         
@@ -187,13 +181,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InstitutionalHolder]:
         """Get top institutional holders across all symbols."""
         async def operation(client):
-            response = client.rpc(
-                'get_top_institutional_holders',
-                {
-                    'p_order_by': order_by,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_order_by': order_by,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_top_institutional_holders', params).execute()
             
             return [InstitutionalHolder(**item) for item in response.data] if response.data else []
         
@@ -208,14 +201,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[InsiderTransaction]:
         """Get recent insider transactions across all symbols."""
         async def operation(client):
-            response = client.rpc(
-                'get_recent_insider_transactions',
-                {
-                    'p_transaction_type': transaction_type,
-                    'p_days_back': days_back,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_transaction_type': transaction_type,
+                'p_days_back': days_back,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_recent_insider_transactions', params).execute()
             
             return [InsiderTransaction(**item) for item in response.data] if response.data else []
         
@@ -228,12 +220,9 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[HolderStatistics]:
         """Get holder statistics for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_holder_statistics',
-                {
-                    'p_symbol': symbol.upper()
-                }
-            ).execute()
+            params = {'p_symbol': symbol.upper()}
+            
+            response = client.rpc('get_holder_statistics', params).execute()
             
             return [HolderStatistics(**item) for item in response.data] if response.data else []
         
@@ -248,14 +237,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[HolderSearchResult]:
         """Search holders by name pattern."""
         async def operation(client):
-            response = client.rpc(
-                'search_holders_by_name',
-                {
-                    'p_name_pattern': name_pattern,
-                    'p_holder_type': holder_type,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_name_pattern': name_pattern,
+                'p_holder_type': holder_type,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('search_holders_by_name', params).execute()
             
             return [HolderSearchResult(**item) for item in response.data] if response.data else []
         
@@ -273,17 +261,16 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[HolderData]:
         """Get paginated holders with flexible sorting."""
         async def operation(client):
-            response = client.rpc(
-                'get_holders_paginated',
-                {
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_holder_type': holder_type,
-                    'p_offset': offset,
-                    'p_limit': limit,
-                    'p_sort_column': sort_column,
-                    'p_sort_direction': sort_direction
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_holder_type': holder_type,
+                'p_offset': offset,
+                'p_limit': limit,
+                'p_sort_column': sort_column,
+                'p_sort_direction': sort_direction
+            }
+            
+            response = client.rpc('get_holders_paginated', params).execute()
             
             return [HolderData(**item) for item in response.data] if response.data else []
         
@@ -301,13 +288,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscript]:
         """Get earnings transcripts for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_earnings_transcripts',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_earnings_transcripts', params).execute()
             
             return [EarningsTranscript(**item) for item in response.data] if response.data else []
         
@@ -322,14 +308,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> Optional[EarningsTranscript]:
         """Get specific earnings transcript by period."""
         async def operation(client):
-            response = client.rpc(
-                'get_earnings_transcript_by_period',
-                {
-                    'p_symbol': symbol.upper(),
-                    'p_year': year,
-                    'p_quarter': quarter.upper()
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper(),
+                'p_year': year,
+                'p_quarter': quarter.upper()
+            }
+            
+            response = client.rpc('get_earnings_transcript_by_period', params).execute()
             
             if response.data and len(response.data) > 0:
                 return EarningsTranscript(**response.data[0])
@@ -344,12 +329,9 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> Optional[EarningsTranscript]:
         """Get latest earnings transcript for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_latest_earnings_transcript',
-                {
-                    'p_symbol': symbol.upper()
-                }
-            ).execute()
+            params = {'p_symbol': symbol.upper()}
+            
+            response = client.rpc('get_latest_earnings_transcript', params).execute()
             
             if response.data and len(response.data) > 0:
                 return EarningsTranscript(**response.data[0])
@@ -365,13 +347,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get recent earnings transcripts across all symbols."""
         async def operation(client):
-            response = client.rpc(
-                'get_recent_earnings_transcripts',
-                {
-                    'p_days_back': days_back,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_days_back': days_back,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_recent_earnings_transcripts', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -386,14 +367,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[TranscriptSearchResult]:
         """Search transcripts by text content."""
         async def operation(client):
-            response = client.rpc(
-                'search_earnings_transcripts',
-                {
-                    'p_search_text': search_text,
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_search_text': search_text,
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('search_earnings_transcripts', params).execute()
             
             return [TranscriptSearchResult(**item) for item in response.data] if response.data else []
         
@@ -408,14 +388,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get transcripts by participant."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcripts_by_participant',
-                {
-                    'p_participant_name': participant_name,
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_participant_name': participant_name,
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_transcripts_by_participant', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -431,15 +410,14 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get transcripts by date range."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcripts_by_date_range',
-                {
-                    'p_start_date': start_date.isoformat(),
-                    'p_end_date': end_date.isoformat(),
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_start_date': start_date.isoformat(),
+                'p_end_date': end_date.isoformat(),
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_transcripts_by_date_range', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -454,14 +432,13 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get transcripts by year."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcripts_by_year',
-                {
-                    'p_year': year,
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_year': year,
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_transcripts_by_year', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -474,12 +451,9 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> Optional[TranscriptStatistics]:
         """Get transcript statistics for a symbol."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcript_statistics',
-                {
-                    'p_symbol': symbol.upper()
-                }
-            ).execute()
+            params = {'p_symbol': symbol.upper()}
+            
+            response = client.rpc('get_transcript_statistics', params).execute()
             
             if response.data and len(response.data) > 0:
                 return TranscriptStatistics(**response.data[0])
@@ -495,13 +469,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get transcript metadata without full text."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcript_metadata',
-                {
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_transcript_metadata', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -520,18 +493,17 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[EarningsTranscriptMetadata]:
         """Get paginated transcripts with flexible sorting."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcripts_paginated',
-                {
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_year': year,
-                    'p_quarter': quarter.upper() if quarter else None,
-                    'p_offset': offset,
-                    'p_limit': limit,
-                    'p_sort_column': sort_column,
-                    'p_sort_direction': sort_direction
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_year': year,
+                'p_quarter': quarter.upper() if quarter else None,
+                'p_offset': offset,
+                'p_limit': limit,
+                'p_sort_column': sort_column,
+                'p_sort_direction': sort_direction
+            }
+            
+            response = client.rpc('get_transcripts_paginated', params).execute()
             
             return [EarningsTranscriptMetadata(**item) for item in response.data] if response.data else []
         
@@ -545,13 +517,12 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[TranscriptParticipant]:
         """Get unique participants across transcripts."""
         async def operation(client):
-            response = client.rpc(
-                'get_unique_participants',
-                {
-                    'p_symbol': symbol.upper() if symbol else None,
-                    'p_limit': limit
-                }
-            ).execute()
+            params = {
+                'p_symbol': symbol.upper() if symbol else None,
+                'p_limit': limit
+            }
+            
+            response = client.rpc('get_unique_participants', params).execute()
             
             return [TranscriptParticipant(**item) for item in response.data] if response.data else []
         
@@ -564,12 +535,9 @@ class HoldersTranscriptsService(BaseMarketDataService):
     ) -> List[TranscriptQuarter]:
         """Get transcript count by quarter."""
         async def operation(client):
-            response = client.rpc(
-                'get_transcript_count_by_quarter',
-                {
-                    'p_symbol': symbol.upper() if symbol else None
-                }
-            ).execute()
+            params = {'p_symbol': symbol.upper() if symbol else None}
+            
+            response = client.rpc('get_transcript_count_by_quarter', params).execute()
             
             return [TranscriptQuarter(**item) for item in response.data] if response.data else []
         

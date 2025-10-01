@@ -550,34 +550,34 @@ GRANT EXECUTE ON FUNCTION get_holders_paginated TO PUBLIC;
 
 /*
 -- Get top institutional holders for AAPL
-SELECT * FROM get_institutional_holders('AAPL');
+SELECT * FROM get_institutional_holders('AVGO');
 
--- Get mutual fund holders for AAPL
-SELECT * FROM get_mutualfund_holders('AAPL', NULL, 25);
+-- Get mutual fund holders for AVGO
+SELECT * FROM get_mutualfund_holders('AVGO', NULL, 25);
 
--- Get insider transactions for AAPL (buy transactions only)
-SELECT * FROM get_insider_transactions('AAPL', 'Buy', NULL, NULL, 50);
+-- Get insider transactions for AVGO (buy transactions only)
+SELECT * FROM get_insider_transactions('AVGO', 'Buy', NULL, NULL, 50);
 
--- Get insider transactions for AAPL in last 90 days
+-- Get insider transactions for AVGO in last 90 days
 SELECT * FROM get_insider_transactions(
-    'AAPL', 
+    'AVGO', 
     NULL, 
     CURRENT_TIMESTAMP - INTERVAL '90 days', 
     NULL, 
     100
 );
 
--- Get insider purchases summary for AAPL
-SELECT * FROM get_insider_purchases_summary('AAPL');
+-- Get insider purchases summary for AVGO
+SELECT * FROM get_insider_purchases_summary('AVGO');
 
--- Get insider roster for AAPL
-SELECT * FROM get_insider_roster('AAPL');
+-- Get insider roster for AVGO
+SELECT * FROM get_insider_roster('AVGO');
 
--- Get all holders for AAPL
-SELECT * FROM get_all_holders('AAPL');
+-- Get all holders for AVGO
+SELECT * FROM get_all_holders('AVGO');
 
--- Get only institutional holders for AAPL
-SELECT * FROM get_all_holders('AAPL', 'institutional');
+-- Get only institutional holders for AVGO
+SELECT * FROM get_all_holders('AVGO', 'institutional');
 
 -- Get top institutional holders across all symbols (by shares)
 SELECT * FROM get_top_institutional_holders('shares', 100);
@@ -591,21 +591,20 @@ SELECT * FROM get_recent_insider_transactions(NULL, 30, 100);
 -- Get recent insider sale transactions (last 60 days)
 SELECT * FROM get_recent_insider_transactions('Sale', 60, 50);
 
--- Get holder statistics for AAPL
-SELECT * FROM get_holder_statistics('AAPL');
+-- Get holder statistics for AVGO
+SELECT * FROM get_holder_statistics('AVGO');
 
--- Search for Vanguard holdings
+-- Search for Vanguard holding
 SELECT * FROM search_holders_by_name('Vanguard');
 
--- Search for Vanguard institutional holdings only
+-- Search for Vanguard institutional holding only
 SELECT * FROM search_holders_by_name('Vanguard', 'institutional', 100);
 
--- Get paginated holders for AAPL (sorted by shares descending)
-SELECT * FROM get_holders_paginated('AAPL', NULL, 0, 50, 'shares', 'DESC');
+-- Get paginated holders for AVGO (sorted by shares descending)
+SELECT * FROM get_holders_paginated('AVGO', NULL, 0, 50, 'shares', 'DESC');
 
 -- Get paginated institutional holders across all symbols
 SELECT * FROM get_holders_paginated(NULL, 'institutional', 0, 100, 'value', 'DESC');
 
--- Get second page of mutual fund holders for AAPL
-SELECT * FROM get_holders_paginated('AAPL', 'mutualfund', 50, 50, 'shares', 'DESC');
-*/
+-- Get second page of mutual fund holders for AVGO
+SELECT * FROM get_holders_paginated('AVGO', 'mutualfund', 50, 50, 'shares', 'DESC');
