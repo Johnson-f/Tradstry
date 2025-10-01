@@ -38,7 +38,7 @@ const formatEmployeeCount = (count: number | undefined | null): string => {
 };
 
 const formatDate = (dateString: string | undefined | null): string => {
-  if (!dateString) return 'N/A';
+  if (!dateString) return '--';
   
   try {
     const date = new Date(dateString);
@@ -60,7 +60,7 @@ interface InfoRowProps {
 }
 
 const InfoRow: React.FC<InfoRowProps> = ({ label, value, formatter }) => {
-  const displayValue = formatter ? formatter(value) : (value?.toString() || 'N/A');
+  const displayValue = formatter ? formatter(value) : (value?.toString() || '--');
   
   return (
     <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700/30 last:border-b-0">

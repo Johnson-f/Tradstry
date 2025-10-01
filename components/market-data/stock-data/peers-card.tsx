@@ -75,11 +75,10 @@ const PeerItem: React.FC<PeerItemProps> = ({ peer, rank, onClick }) => {
 
         <div className="min-w-0 flex-1">
           <h4 className="font-medium text-sm">{peer.peer_symbol}</h4>
-          {(peer.peer_name || peer.name) && (
-            <p className="text-xs text-muted-foreground truncate">{peer.peer_name || peer.name}</p>
-          )}
+        
         </div>
       </div>
+    
 
       <div className="text-right flex-shrink-0 ml-4">
         <div className="font-medium text-sm">${formatPrice(priceValue)}</div>
