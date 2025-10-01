@@ -30,8 +30,12 @@ class SymbolService(BaseMarketDataService):
 
     async def save_symbol_to_database(self, symbol: str, access_token: str = None) -> SymbolSaveResponse:
         """Save a symbol to the stock_quotes table for tracking. Real-time prices are fetched via API."""
-        async def operation(client):
-            existing_check = client.table('stock_quotes').select('symbol').eq('symbol', symbol).limit(1).execute()
+        # Use admin client directly for this operation (bypasses RLS)
+        admin_client = get_supabase_admin_client()
+        
+        # Check if symbol already exists
+        try:
+            existing_check = admin_client.table('stock_quotes').select('symbol').eq('symbol', symbol).limit(1).execute()
             
             if len(existing_check.data) > 0:
                 return SymbolSaveResponse(
@@ -39,45 +43,49 @@ class SymbolService(BaseMarketDataService):
                     symbol=symbol,
                     message=f'Symbol {symbol} already tracked. Real-time prices available via API.'
                 )
-            
-            initial_quote_data = None
-            try:
-                async with httpx.AsyncClient() as http_client:
-                    quote_response = await http_client.get(
-                        f"https://finance-query.onrender.com/v1/quotes?symbols={symbol}"
-                    )
-                    if quote_response.status_code == 200:
-                        quote_data = quote_response.json()
-                        if isinstance(quote_data, list) and len(quote_data) > 0:
-                            initial_quote_data = quote_data[0]
-                        elif isinstance(quote_data, dict):
-                            initial_quote_data = quote_data.get(symbol)
-            except Exception as api_error:
-                print(f"Failed to fetch initial quote data for symbol: {symbol}, {api_error}")
-            
-            admin_client = get_supabase_admin_client()
-            # Stock_quotes table redesigned: only metadata, no price data
-            insert_data = {
-                'symbol': symbol,
-                'quote_timestamp': datetime.now().isoformat(),
-                'data_provider': 'finance_query',
-            }
-            
-            print(f"Inserting symbol metadata for {symbol}: {insert_data}")
-            
-            # Note: Price data is fetched in real-time from finance-query API
-            # The stock_quotes table now only tracks symbol metadata
-            
+        except Exception as e:
+            print(f"Error checking symbol existence: {e}")
+        
+        # Fetch initial quote data (optional, for validation)
+        initial_quote_data = None
+        try:
+            async with httpx.AsyncClient() as http_client:
+                quote_response = await http_client.get(
+                    f"https://finance-query.onrender.com/v1/quotes?symbols={symbol}",
+                    timeout=10.0
+                )
+                if quote_response.status_code == 200:
+                    quote_data = quote_response.json()
+                    if isinstance(quote_data, list) and len(quote_data) > 0:
+                        initial_quote_data = quote_data[0]
+                    elif isinstance(quote_data, dict):
+                        initial_quote_data = quote_data.get(symbol)
+        except Exception as api_error:
+            print(f"Failed to fetch initial quote data for symbol {symbol}: {api_error}")
+        
+        # Prepare insert data (metadata only, no price data)
+        insert_data = {
+            'symbol': symbol,
+            'quote_timestamp': datetime.now().isoformat(),
+            'data_provider': 'finance_query',
+        }
+        
+        print(f"[Symbol Service] Inserting symbol metadata for {symbol}: {insert_data}")
+        
+        try:
+            # Insert using admin client (bypasses RLS)
             response = admin_client.table('stock_quotes').insert(insert_data).execute()
             
             if response.data:
-                # Symbol tracking added - real-time prices fetched from finance-query API
                 message = f'Symbol {symbol} successfully tracked. Real-time prices available via API.'
+                print(f"[Symbol Service] Successfully saved {symbol} to database")
                 return SymbolSaveResponse(success=True, symbol=symbol, message=message)
             else:
-                raise Exception("Failed to save symbol to database")
-        
-        return await self._execute_with_retry(operation, access_token)
+                raise Exception("No data returned from insert operation")
+        except Exception as e:
+            error_msg = f"Failed to save symbol {symbol} to database: {str(e)}"
+            print(f"[Symbol Service] ERROR: {error_msg}")
+            raise Exception(error_msg)
 
     async def search_symbols(
         self, 
