@@ -1,168 +1,221 @@
-"use client";
+"use client"
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { useStockPeersWithPrices } from "@/lib/hooks/use-market-data";
-import { cn } from "@/lib/utils";
-import Image from "next/image";
-import { useSymbolNavigation } from "@/lib/hooks/use-symbol-navigation";
+import type React from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useStockPeersWithPrices } from "@/lib/hooks/use-market-data"
+import { Users } from "lucide-react"
+import type { StockPeerWithPrices } from "@/lib/types/market-data"
+import { useQueryClient } from "@tanstack/react-query"
+import { useRealtimeTable } from "@/lib/hooks/useRealtimeUpdates"
+import { useSymbolNavigation } from "@/lib/hooks/use-symbol-navigation"
+import Image from "next/image"
+import { cn } from "@/lib/utils"
+
+// Format functions
+const formatPrice = (value: number | undefined | null): string => {
+  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
+  return numValue.toFixed(2)
+}
+
+const formatPercentChange = (value: number | undefined | null): string => {
+  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
+  return `${numValue.toFixed(2)}%`
+}
 
 // Convert price from backend (string or number) to number for calculations
 const parsePrice = (price: string | number | undefined | null): number => {
-  if (typeof price === 'number') return isNaN(price) ? 0 : price;
-  if (typeof price === 'string') return parseFloat(price) || 0;
-  return 0;
-};
-
-interface PeersCardProps {
-  symbol: string;
-  dataDate?: string;
-  limit?: number;
-  className?: string;
+  if (typeof price === "number") return isNaN(price) ? 0 : price
+  if (typeof price === "string") return Number.parseFloat(price) || 0
+  return 0
 }
 
-export function PeersCard({ 
-  symbol, 
-  dataDate, 
-  limit = 10, 
-  className 
-}: PeersCardProps) {
-  const { peersWithPrices, isLoading, error } = useStockPeersWithPrices(symbol, dataDate, limit);
-  const { navigateToSymbol } = useSymbolNavigation();
+// Peer stock item component
+interface PeerItemProps {
+  peer: StockPeerWithPrices
+  rank: number
+  onClick?: () => void
+}
 
-  const displayData = peersWithPrices;
-  
+const PeerItem: React.FC<PeerItemProps> = ({ peer, rank, onClick }) => {
+  // Parse percent_change string (e.g., "2.45%") to number, fallback to 0
+  const percentChangeStr = peer.percent_change ?? "0"
+  const percentChange = Number.parseFloat(percentChangeStr.replace("%", "")) || 0
+  const isPositive = percentChange >= 0
+
+  // Parse price (can be string or number from backend) to number
+  const priceValue = parsePrice(peer.price)
+
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer"
+    >
+      <div className="flex items-center space-x-3 min-w-0 flex-1">
+        <div className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+          {peer.logo ? (
+            <Image
+              src={peer.logo || "/placeholder.svg"}
+              alt={`${peer.peer_symbol} logo`}
+              width={40}
+              height={40}
+              className="object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.style.display = "none"
+              }}
+            />
+          ) : (
+            <div className="text-xs font-semibold text-muted-foreground">{peer.peer_symbol?.slice(0, 2)}</div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h4 className="font-medium text-sm">{peer.peer_symbol}</h4>
+          {(peer.peer_name || peer.name) && (
+            <p className="text-xs text-muted-foreground truncate">{peer.peer_name || peer.name}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="text-right flex-shrink-0 ml-4">
+        <div className="font-medium text-sm">${formatPrice(priceValue)}</div>
+        <div className={cn("text-xs font-medium", isPositive ? "text-green-600" : "text-red-600")}>
+          {isPositive ? "+" : ""}
+          {formatPercentChange(percentChange)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Loading skeleton
+const PeerItemSkeleton: React.FC = () => (
+  <div className="flex items-center justify-between px-4 py-3">
+    <div className="flex items-center space-x-3 flex-1">
+      <Skeleton className="h-10 w-10 rounded-lg" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-24" />
+      </div>
+    </div>
+    <div className="text-right space-y-2">
+      <Skeleton className="h-4 w-16" />
+      <Skeleton className="h-3 w-12" />
+    </div>
+  </div>
+)
+
+// Main component
+interface PeersCardProps {
+  symbol: string
+  limit?: number
+  className?: string
+}
+
+export const PeersCard: React.FC<PeersCardProps> = ({ symbol, limit = 25, className = "" }) => {
+  const queryClient = useQueryClient()
+  const { navigateToSymbol } = useSymbolNavigation()
+
   const handlePeerClick = (peerSymbol: string) => {
-    navigateToSymbol(peerSymbol);
-  };
+    navigateToSymbol(peerSymbol)
+  }
+
+  // Enable realtime updates for peers data
+  useRealtimeTable("stock_peers", queryClient, ["stock-peers-with-prices", symbol])
+
+  const { peersWithPrices, isLoading, error } = useStockPeersWithPrices(symbol, undefined, limit)
 
   if (error) {
     return (
-      <div className={cn("w-full", className)}>
-        <h3 className="text-lg font-semibold mb-4">Peers</h3>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Failed to load peers data</p>
-              <p className="text-sm text-red-500">{error.message}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+      <Card className={cn("w-full", className)}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Stock Peers
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertDescription>
+              Failed to load peer stocks: {error.message}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <Card className={cn("w-full", className)}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Stock Peers
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index}>
+                <PeerItemSkeleton />
+                {index < 7 && <Separator />}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (peersWithPrices.length === 0) {
+    return (
+      <Card className={cn("w-full", className)}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Stock Peers
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground">
+            <p>No peer data available for {symbol} at the moment.</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <div className={cn("w-full", className)}>
-      <h3 className="text-lg font-semibold mb-2">Peers</h3>
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            // Loading skeletons
-            Array.from({ length: 6 }).map((_, index) => (
-              <div key={index}>
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center space-x-3">
-                    <Skeleton className="h-10 w-10 rounded-lg" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                  </div>
-                  <div className="text-right space-y-2">
-                    <Skeleton className="h-4 w-16" />
-                    <Skeleton className="h-3 w-12" />
-                  </div>
-                </div>
-                {index < 5 && <Separator />}
+    <Card className={cn("w-full", className)}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="w-5 h-5" />
+          Stock Peers
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <ScrollArea className="h-[400px]">
+          <div>
+            {peersWithPrices.map((peer, index) => (
+              <div key={peer.peer_symbol}>
+                <PeerItem 
+                  peer={peer} 
+                  rank={index + 1} 
+                  onClick={() => handlePeerClick(peer.peer_symbol)} 
+                />
+                {index < peersWithPrices.length - 1 && <Separator />}
               </div>
-            ))
-          ) : displayData.length === 0 ? (
-            <div className="text-center py-8 px-4">
-              <p className="text-muted-foreground">No peers data available</p>
-            </div>
-          ) : (
-            displayData.map((peer, index) => {
-              // Using StockPeerWithPrices structure
-              const peerSymbol = peer.peer_symbol;
-              const peerName = peer.name || peer.peer_name; // Prefer API name over stored name
-              const price = peer.price;
-              const percentChange = peer.percent_change;
-              const logo = peer.logo;
-
-              return (
-                <div key={peerSymbol || index}>
-                  <div 
-                    onClick={() => handlePeerClick(peerSymbol)}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center space-x-3">
-                      {/* Company Logo */}
-                      <div className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                        {logo ? (
-                          <Image
-                            src={logo}
-                            alt={`${peerSymbol} logo`}
-                            width={40}
-                            height={40}
-                            className="object-contain"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="text-xs font-semibold text-muted-foreground">
-                            {peerSymbol?.slice(0, 2)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Company Info */}
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-medium text-sm truncate">
-                          {peerName || peerSymbol}
-                        </h4>
-                        <p className="text-xs text-muted-foreground">
-                          {peerSymbol} • NASDAQ
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Price and Change */}
-                    <div className="text-right">
-                      <div className="font-medium text-sm">
-                        {(() => {
-                          const priceValue = parsePrice(price);
-                          return priceValue === 0 ? 'N/A' : `$${priceValue.toFixed(2)}`;
-                        })()}
-                      </div>
-                      {percentChange !== undefined && percentChange !== null && (
-                        (() => {
-                          // Parse percent_change string (e.g., "2.45%") to number
-                          const percentChangeStr = percentChange?.toString() ?? '0';
-                          const numPercentChange = parseFloat(percentChangeStr.replace('%', '')) || 0;
-                          
-                          return (
-                            <div className={cn(
-                              "text-xs font-medium",
-                              numPercentChange >= 0 ? "text-green-600" : "text-red-600"
-                            )}>
-                              {numPercentChange >= 0 ? '+' : ''}{numPercentChange.toFixed(2)}%
-                            </div>
-                          );
-                        })()
-                      )}
-                    </div>
-                  </div>
-                  {index < displayData.length - 1 && <Separator />}
-                </div>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+            ))}
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  )
 }
+
+export default PeersCard

@@ -21,14 +21,14 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        p.symbol,
-        p.name,
-        p.logo,
-        p.fetch_timestamp
-    FROM stock_peers p
-    WHERE p.peer_of = UPPER(p_symbol)
-      AND p.data_date = p_data_date
-    ORDER BY p.symbol ASC
+        sp.symbol,
+        sp.name,
+        sp.logo,
+        sp.fetch_timestamp
+    FROM stock_peers sp
+    WHERE sp.peer_of = UPPER(p_symbol)
+      AND sp.data_date = p_data_date
+    ORDER BY sp.symbol ASC
     LIMIT p_limit;
 END;
 $$;
@@ -52,15 +52,15 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        p.symbol,
-        p.name,
-        p.logo,
-        p.fetch_timestamp
-    FROM stock_peers p
-    WHERE p.peer_of = UPPER(p_symbol)
-      AND p.data_date = p_data_date
-      AND p.logo IS NOT NULL
-    ORDER BY p.name ASC
+        sp.symbol,
+        sp.name,
+        sp.logo,
+        sp.fetch_timestamp
+    FROM stock_peers sp
+    WHERE sp.peer_of = UPPER(p_symbol)
+      AND sp.data_date = p_data_date
+      AND sp.logo IS NOT NULL
+    ORDER BY sp.name ASC
     LIMIT p_limit;
 END;
 $$;
@@ -80,11 +80,11 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        p.symbol
-    FROM stock_peers p
-    WHERE p.peer_of = UPPER(p_symbol)
-      AND p.data_date = p_data_date
-    ORDER BY p.symbol ASC;
+        sp.symbol
+    FROM stock_peers sp
+    WHERE sp.peer_of = UPPER(p_symbol)
+      AND sp.data_date = p_data_date
+    ORDER BY sp.symbol ASC;
 END;
 $$;
 
@@ -109,14 +109,14 @@ BEGIN
     WITH peer_data AS (
         -- Get peer metadata only
         SELECT 
-            p.symbol,
-            p.name,
-            p.logo,
+            sp.symbol,
+            sp.name,
+            sp.logo,
             FALSE as is_main_stock,
-            p.fetch_timestamp
-        FROM stock_peers p
-        WHERE p.peer_of = UPPER(p_symbol)
-          AND p.data_date = p_data_date
+            sp.fetch_timestamp
+        FROM stock_peers sp
+        WHERE sp.peer_of = UPPER(p_symbol)
+          AND sp.data_date = p_data_date
         
         UNION ALL
         
@@ -164,13 +164,13 @@ BEGIN
     -- Build dynamic query with sorting (metadata fields only)
     query_text := format('
         SELECT 
-            p.symbol,
-            p.name,
-            p.logo,
-            p.fetch_timestamp
-        FROM stock_peers p
-        WHERE p.peer_of = UPPER($1)
-          AND p.data_date = $2
+            sp.symbol,
+            sp.name,
+            sp.logo,
+            sp.fetch_timestamp
+        FROM stock_peers sp
+        WHERE sp.peer_of = UPPER($1)
+          AND sp.data_date = $2
         ORDER BY %I %s
         LIMIT $3 OFFSET $4',
         p_sort_column, 

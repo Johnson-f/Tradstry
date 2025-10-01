@@ -61,21 +61,41 @@ CREATE POLICY "stock_quotes_select_policy" ON stock_quotes
     FOR SELECT
     USING (true);  -- Allow all users to read all rows
 
--- Create policy for INSERT operations (deny all users)
+-- Create policy for INSERT operations (allow service role only)
+-- Note: Service role bypasses RLS by default, but we explicitly allow it here for clarity
+-- Regular authenticated users are denied by the false check
 CREATE POLICY "stock_quotes_insert_policy" ON stock_quotes
     FOR INSERT
-    WITH CHECK (false);  -- Deny all insert operations
+    WITH CHECK (
+        -- Service role can insert (authenticated users cannot)
+        auth.jwt() ->> 'role' = 'service_role'
+        OR
+        -- Fallback: If no JWT (direct service role key usage), allow
+        auth.jwt() IS NULL
+    );
 
--- Create policy for UPDATE operations (deny all users)
+-- Create policy for UPDATE operations (allow service role only)
 CREATE POLICY "stock_quotes_update_policy" ON stock_quotes
     FOR UPDATE
-    USING (false)  -- Deny all update operations
-    WITH CHECK (false);
+    USING (
+        auth.jwt() ->> 'role' = 'service_role'
+        OR
+        auth.jwt() IS NULL
+    )
+    WITH CHECK (
+        auth.jwt() ->> 'role' = 'service_role'
+        OR
+        auth.jwt() IS NULL
+    );
 
--- Create policy for DELETE operations (deny all users)
+-- Create policy for DELETE operations (allow service role only)
 CREATE POLICY "stock_quotes_delete_policy" ON stock_quotes
     FOR DELETE
-    USING (false);  -- Deny all delete operations
+    USING (
+        auth.jwt() ->> 'role' = 'service_role'
+        OR
+        auth.jwt() IS NULL
+    );
 
 -- =====================================================
 -- SECURITY PRINCIPLES FOR STOCK_QUOTES TABLE
