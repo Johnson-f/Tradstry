@@ -1,5 +1,5 @@
 "use client"
-{/* Shared layout across the protected pages */}
+{/* Shared layout across the app pages */}
 import Sidebar from "@/components/sidebar";
 import ThemeProvider from "@/components/theme-provider";
 import { useState } from "react";

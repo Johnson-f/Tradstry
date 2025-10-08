@@ -153,7 +153,7 @@ export default function StockSymbolPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-500">Invalid Symbol</h1>
           <p className="text-gray-600 mt-2">Please provide a valid stock symbol</p>
-          <Link href="/protected/markets">
+          <Link href="/app/markets">
             <Button className="mt-4">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Markets
@@ -172,7 +172,7 @@ export default function StockSymbolPage() {
           <div className="relative flex items-center">
             {/* Left side - Navigation breadcrumb */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Link href="/protected/markets" className="hover:text-foreground transition-colors">
+              <Link href="/app/markets" className="hover:text-foreground transition-colors">
                 Markets
               </Link>
               <ChevronRight className="w-4 h-4" />
@@ -187,7 +187,7 @@ export default function StockSymbolPage() {
                 <SymbolSearch 
                   placeholder="Search for companies, tickers"
                   onSymbolSelect={(selectedSymbol) => {
-                    router.push(`/protected/markets/${selectedSymbol.toUpperCase()}`);
+                    router.push(`/app/markets/${selectedSymbol.toUpperCase()}`);
                   }}
                 />
               </div>

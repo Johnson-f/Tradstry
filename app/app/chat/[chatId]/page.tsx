@@ -319,7 +319,7 @@ export default function ChatPage() {
     // This would navigate to a new chat
     setUserScrolled(false);
     setOptimisticMessages([]); // Clear optimistic messages
-    window.location.href = "/protected/chat/new";
+    window.location.href = "/app/chat/new";
   }, []);
 
   const canSendMessage = !isChatting && !isStreaming && message.trim().length > 0;
@@ -357,7 +357,7 @@ export default function ChatPage() {
         <div className="flex items-center justify-between">
           {/* Left side - Navigation breadcrumb */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link href="/protected" className="hover:text-foreground transition-colors">
+            <Link href="/app" className="hover:text-foreground transition-colors">
               Dashboard
             </Link>
             <ChevronRight className="w-4 h-4" />
