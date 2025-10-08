@@ -28,21 +28,21 @@ import { useEffect, useState } from "react";
 import { SettingsDialog } from "./settings-dialog";
 
 const navItems = [
-  { label: "Home", icon: Home, href: "/protected" },
-  { label: "Dashboard", icon: LayoutDashboard, href: "/protected/dashboard" },
-  { label: "Journal", icon: NotebookPen, href: "/protected/journal" },
-  { label: "Setups", icon: Library, href: "/protected/setups" },
-  { label: "Notebook", icon: Notebook, href: "/protected/notepad" },
-  { label: "Analytics", icon: PieChart, href: "/protected/analytics" },
+  { label: "Home", icon: Home, href: "/app" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/app/dashboard" },
+  { label: "Journal", icon: NotebookPen, href: "/app/journal" },
+  { label: "Setups", icon: Library, href: "/app/setups" },
+  { label: "Notebook", icon: Notebook, href: "/app/notepad" },
+  { label: "Analytics", icon: PieChart, href: "/app/analytics" },
   {
     label: "AI Reports",
     icon: ChartNoAxesColumnIncreasing,
-    href: "/protected/ai-reports",
+    href: "/app/ai-reports",
   },
-  { label: "Mindset Lab", icon: BrainCog, href: "/protected/mindset" },
-  { label: "Markets", icon: ChartCandlestick, href: "/protected/markets" },
-  { label: "Brokerage", icon: Wallet, href: "/protected/brokerage" },
-  { label: "Education", icon: GraduationCap, href: "/protected/education" },
+  { label: "Mindset Lab", icon: BrainCog, href: "/app/mindset" },
+  { label: "Markets", icon: ChartCandlestick, href: "/app/markets" },
+  { label: "Brokerage", icon: Wallet, href: "/app/brokerage" },
+  { label: "Education", icon: GraduationCap, href: "/app/education" },
 ];
 
 export default function Sidebar({
