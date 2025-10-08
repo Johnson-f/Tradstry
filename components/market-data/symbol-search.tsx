@@ -125,7 +125,7 @@ export function SymbolSearch({
       if (onSymbolSelect) {
         onSymbolSelect(symbol);
       } else {
-        router.push(`/protected/markets/${symbol}`);
+        router.push(`/app/markets/${symbol}`);
       }
     } catch (err) {
       console.error('Error handling symbol selection:', err);
@@ -133,7 +133,7 @@ export function SymbolSearch({
       if (onSymbolSelect) {
         onSymbolSelect(symbol);
       } else {
-        router.push(`/protected/markets/${symbol}`);
+        router.push(`/app/markets/${symbol}`);
       }
     }
   };

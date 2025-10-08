@@ -33,7 +33,7 @@ export default function ChatListPage() {
   }, [refetchSessions]);
 
   const handleNewChat = () => {
-    router.push("/protected/chat/new");
+    router.push("/app/chat/new");
   };
 
   if (sessionsLoading && !sessions.length) {
@@ -102,7 +102,7 @@ export default function ChatListPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {sessions.map((session) => (
-                  <Link key={session.id} href={`/protected/chat/${session.id}`}>
+                  <Link key={session.id} href={`/app/chat/${session.id}`}>
                     <Card className="hover:shadow-md transition-shadow cursor-pointer">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-lg flex items-center justify-between">

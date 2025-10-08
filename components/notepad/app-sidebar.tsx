@@ -121,10 +121,10 @@ export function AppSidebar({
 
   // Get current active folder or tag from pathname
   const getCurrentFolder = () => {
-    if (pathname === "/protected/notepad") return "home";
-    const folderMatch = pathname.match(/\/protected\/notepad\/folder\/([^/]+)/);
+    if (pathname === "/app/notepad") return "home";
+    const folderMatch = pathname.match(/\/app\/notepad\/folder\/([^/]+)/);
     if (folderMatch) return folderMatch[1];
-    const tagMatch = pathname.match(/\/protected\/notepad\/tag\/([^/]+)/);
+    const tagMatch = pathname.match(/\/app\/notepad\/tag\/([^/]+)/);
     if (tagMatch) return `tag:${tagMatch[1]}`;
     return "home";
   };
@@ -352,7 +352,7 @@ export function AppSidebar({
 
           // Navigate away from the note if we're currently viewing it
           if (pathname.includes(itemToDelete.id)) {
-            router.push("/protected/notepad");
+            router.push("/app/notepad");
           }
           break;
         case "tag":
@@ -594,8 +594,8 @@ export function AppSidebar({
                     const isActive = activeSlug === folder.slug;
                     const folderUrl =
                       folder.slug === "home"
-                        ? "/protected/notepad"
-                        : `/protected/notepad/folder/${folder.slug}`;
+                        ? "/app/notepad"
+                        : `/app/notepad/folder/${folder.slug}`;
 
                     return (
                       <SidebarMenuItem key={folder.slug}>
@@ -677,7 +677,7 @@ export function AppSidebar({
                   <TagsListSkeleton />
                 ) : tags && tags.length > 0 ? (
                   tags.map((tag) => {
-                    const tagUrl = `/protected/notepad/tag/${tag.id}`;
+                    const tagUrl = `/app/notepad/tag/${tag.id}`;
                     const isActiveTag = pathname === tagUrl;
 
                     return (
@@ -775,7 +775,7 @@ export function AppSidebar({
                   <NotesListSkeleton />
                 ) : tagNotes && tagNotes.length > 0 ? (
                   tagNotes.map((note) => {
-                    const noteUrl = `/protected/notepad/note/${note.id}`;
+                    const noteUrl = `/app/notepad/note/${note.id}`;
                     const isActiveNote = pathname === noteUrl;
 
                     // Generate preview from content
@@ -856,7 +856,7 @@ export function AppSidebar({
                   <TemplatesListSkeleton />
                 ) : templates && templates.length > 0 ? (
                   templates.map((template) => {
-                    const templateUrl = `/protected/notepad/template/${template.id}`;
+                    const templateUrl = `/app/notepad/template/${template.id}`;
                     const isActiveTemplate = pathname === templateUrl;
 
                     // Generate preview from content
@@ -1009,7 +1009,7 @@ export function AppSidebar({
                   <NotesListSkeleton />
                 ) : trashNotes && trashNotes.length > 0 ? (
                   trashNotes.map((note) => {
-                    const noteUrl = `/protected/notepad/note/${note.id}`;
+                    const noteUrl = `/app/notepad/note/${note.id}`;
                     const isActiveNote = pathname === noteUrl;
 
                     // Generate preview from content
@@ -1121,7 +1121,7 @@ export function AppSidebar({
                 <NotesListSkeleton />
               ) : notes && notes.length > 0 ? (
                 notes.map((note) => {
-                  const noteUrl = `/protected/notepad/note/${note.id}`;
+                  const noteUrl = `/app/notepad/note/${note.id}`;
                   const isActiveNote = pathname === noteUrl;
 
                   // Generate preview from content
