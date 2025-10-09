@@ -32,8 +32,8 @@ export function NavMain({
         return (
           <Link key={item.href || item.url} href={item.url} tabIndex={0}>
             <div
-              className={`flex items-center gap-3 rounded-lg cursor-pointer text-slate-300 hover:bg-[#353a45] hover:text-white transition-colors px-3 py-2 ${
-                isActive ? "bg-[#353a45] text-white" : ""
+              className={`flex items-center gap-3 rounded-lg cursor-pointer text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors px-3 py-2 ${
+                isActive ? "bg-accent text-accent-foreground" : ""
               } ${
                 collapsed ? "justify-center gap-0" : ""
               }`}
