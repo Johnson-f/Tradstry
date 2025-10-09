@@ -16,8 +16,6 @@ import {
   Wallet,
   LogOut,
   Moon,
-  ChevronLeft,
-  ChevronRight,
   Sun,
   Notebook,
   LayoutDashboard,
@@ -101,23 +99,22 @@ export default function Sidebar({
   const handleThemeToggle = () => {
     setTheme(theme === "dark" ? "light" : "dark");
   };
-
   return (
     <>
       <aside
         className={cn(
           "fixed top-0 left-0 h-screen shadow-xl flex flex-col justify-between transition-all duration-300 z-50",
-          collapsed ? "w-16" : "w-68", // Update the sidebar width here
+          collapsed ? "w-16" : "w-64"
         )}
         style={{ backgroundColor: "hsl(0 0% 10.5%)" }}
       >
         {/* Top Section */}
         <div>
-          {/* Profile & Collapse Button */}
-          <div className="flex items-center justify-between px-4 pt-6 pb-4">
+          {/* Profile */}
+          <div className="flex items-center px-4 pt-6 pb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-                <span className="text-white font-bold text-lg">CL</span>
+                <span className="text-white font-bold text-lg">T</span>
               </div>
               {!collapsed && (
                 <div>
@@ -130,17 +127,6 @@ export default function Sidebar({
                 </div>
               )}
             </div>
-            <button
-              className="ml-2 p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              onClick={() => handleCollapsedChange(!collapsed)}
-              aria-label="Toggle sidebar"
-            >
-              {collapsed ? (
-                <ChevronRight className="w-5 h-5" />
-              ) : (
-                <ChevronLeft className="w-5 h-5" />
-              )}
-            </button>
           </div>
           {/* Navigation */}
           <nav className="mt-6 flex flex-col gap-1 px-2">
