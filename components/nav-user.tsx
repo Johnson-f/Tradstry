@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import {
   BadgeCheck,
   Bell,
@@ -9,6 +11,8 @@ import {
   CreditCard,
   LogOut,
   Settings,
+  Moon,
+  Sun,
 } from "lucide-react"
 
 import {
@@ -27,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 // Removed SidebarProvider dependencies since we're using custom implementation
 import { createClient } from "@/lib/supabase/client"
+import { SettingsDialog } from "./settings-dialog"
 
 export function NavUser({
   user,
@@ -40,11 +45,16 @@ export function NavUser({
   collapsed?: boolean
 }) {
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   
   // Simple mobile detection (alternative to useSidebar hook)
   const [isMobile, setIsMobile] = React.useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   
   React.useEffect(() => {
+    setMounted(true)
+    
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 768)
     }
@@ -61,6 +71,10 @@ export function NavUser({
     router.push("/auth/login")
   }
 
+  const handleThemeToggle = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
+
   // Generate initials from user name
   const getInitials = (name: string) => {
     return name
@@ -75,7 +89,7 @@ export function NavUser({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className={`flex items-center gap-3 rounded-lg cursor-pointer text-slate-300 hover:bg-[#353a45] hover:text-white transition-colors w-full px-3 py-2 ${
+          className={`flex items-center gap-3 rounded-lg cursor-pointer text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors w-full px-3 py-2 ${
             collapsed ? "justify-center gap-0 w-10 h-10 p-0" : ""
           }`}
         >
@@ -85,8 +99,8 @@ export function NavUser({
           {!collapsed && (
             <>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium text-white">{user.name}</span>
-                <span className="truncate text-xs text-slate-400">{user.email}</span>
+                <span className="truncate font-medium text-foreground">{user.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
               </div>
               <ChevronsUpDown className="ml-auto w-4 h-4" />
             </>
@@ -116,9 +130,17 @@ export function NavUser({
             <BadgeCheck className="mr-2 h-4 w-4" />
             Account
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
             <Settings className="mr-2 h-4 w-4" />
             Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleThemeToggle}>
+            {mounted && (theme === "dark" ? (
+              <Sun className="mr-2 h-4 w-4" />
+            ) : (
+              <Moon className="mr-2 h-4 w-4" />
+            ))}
+            {mounted ? (theme === "dark" ? "Light Mode" : "Dark Mode") : "Theme"}
           </DropdownMenuItem>
           <DropdownMenuItem>
             <Bell className="mr-2 h-4 w-4" />
@@ -131,6 +153,7 @@ export function NavUser({
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </DropdownMenu>
   )
 }

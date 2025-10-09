@@ -14,13 +14,11 @@ import {
   Wallet,
   Notebook,
   LayoutDashboard,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -49,14 +47,6 @@ const navItems = [
   { title: "Education", url: "/app/education", icon: GraduationCap },
 ]
 
-const navSecondaryItems = [
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
-    action: "settings",
-  },
-]
 
 export function AppSidebar({
   collapsed: externalCollapsed,
@@ -127,10 +117,9 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "fixed top-0 left-0 h-screen shadow-xl flex flex-col justify-between transition-all duration-300 z-50",
+        "fixed top-0 left-0 h-screen shadow-xl flex flex-col justify-between transition-all duration-300 z-50 bg-[hsl(var(--sidebar-bg))]",
         collapsed ? "w-16" : "w-64"
       )}
-      style={{ backgroundColor: "hsl(0 0% 10.5%)" }}
     >
       {/* Top Section */}
       <div>
@@ -142,17 +131,17 @@ export function AppSidebar({
             </div>
             {!collapsed && (
               <div>
-                <div className="text-white font-bold text-base leading-tight">
+                <div className="text-foreground font-bold text-base leading-tight">
                   Tradistry
                 </div>
-                <div className="text-xs text-slate-400 leading-tight">
+                <div className="text-xs text-muted-foreground leading-tight">
                   Journal & Analytics
                 </div>
               </div>
             )}
           </div>
           <button
-            className="ml-2 p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            className="ml-2 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
             onClick={() => handleCollapsedChange(!collapsed)}
             aria-label="Toggle sidebar"
           >
@@ -172,10 +161,7 @@ export function AppSidebar({
 
       {/* Bottom Section */}
       <div className="px-2 pb-6">
-        <NavSecondary items={navSecondaryItems} collapsed={collapsed} />
-        <div className="mt-4">
-          <NavUser user={userData} collapsed={collapsed} />
-        </div>
+        <NavUser user={userData} collapsed={collapsed} />
       </div>
     </aside>
   )
