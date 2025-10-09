@@ -1,6 +1,6 @@
 "use client"
 {/* Shared layout across the app pages */}
-import Sidebar from "@/components/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import ThemeProvider from "@/components/theme-provider";
 import { useState } from "react";
 
@@ -14,17 +14,13 @@ export default function ProtectedLayout({
   return (
     <ThemeProvider>
       <div className="min-h-screen">
-        <Sidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
+        <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
         <div 
           className={`transition-all duration-500 ease-out ${
             isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           } ml-0`}
         >
-          <div className="flex-1 flex flex-col">
-            <div className="flex-1">
-              {children}
-            </div>
-          </div>
+          {children}
         </div>
       </div>
     </ThemeProvider>

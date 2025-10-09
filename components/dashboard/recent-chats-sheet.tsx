@@ -55,7 +55,9 @@ export default function RecentChatsSheet({ children }: RecentChatsSheetProps) {
               </div>
             ) : error ? (
               <div className="p-6 text-center">
-                <p className="text-red-600 text-sm mb-4">{error}</p>
+                <p className="text-red-600 text-sm mb-4">
+                  {error instanceof Error ? error.message : String(error)}
+                </p>
                 <Button onClick={clearError} variant="outline" size="sm">
                   Try Again
                 </Button>
