@@ -3,24 +3,13 @@
 import { eq, desc, and, gte, lte, sql, count, sum } from 'drizzle-orm';
 import { getDrizzleDb } from './drizzle';
 import { 
-  stockTrades, 
-  optionTrades, 
-  portfolioPositions, 
-  tradingAnalytics,
-  marketData,
-  aiInsights,
+  stocks, 
+  options, 
   syncMetadata,
-  users,
-  type StockTrade,
-  type NewStockTrade,
-  type OptionTrade,
-  type NewOptionTrade,
-  type PortfolioPosition,
-  type NewPortfolioPosition,
-  type MarketData,
-  type NewMarketData,
-  type AiInsight,
-  type NewAiInsight,
+  type Stock,
+  type NewStock,
+  type Option,
+  type NewOption,
 } from './schema';
 
 /**
@@ -44,41 +33,40 @@ export class DatabaseOperations {
     return this.drizzleDb.getDb();
   }
 
-  // ========== STOCK TRADES ==========
+  // ========== STOCKS ==========
 
-  async getStockTrades(userId: string, limit = 100): Promise<StockTrade[]> {
+  async getStocks(limit = 100): Promise<Stock[]> {
     const db = this.getDb();
     return await db
       .select()
-      .from(stockTrades)
-      .where(eq(stockTrades.userId, userId))
-      .orderBy(desc(stockTrades.tradeDate))
+      .from(stocks)
+      .orderBy(desc(stocks.entryDate))
       .limit(limit);
   }
 
-  async addStockTrade(trade: NewStockTrade): Promise<StockTrade> {
+  async addStock(stock: NewStock): Promise<Stock> {
     const db = this.getDb();
-    const tradeWithSync = {
-      ...trade,
+    const stockWithSync = {
+      ...stock,
       syncStatus: 'pending' as const,
     };
     
-    await db.insert(stockTrades).values(tradeWithSync);
+    await db.insert(stocks).values(stockWithSync);
     
     // Mark sync as needed
-    await this.markSyncNeeded('stock_trades');
+    await this.markSyncNeeded('stocks');
     
-    // Return the inserted trade
-    const [insertedTrade] = await db
+    // Return the inserted stock
+    const [insertedStock] = await db
       .select()
-      .from(stockTrades)
-      .where(eq(stockTrades.id, trade.id!))
+      .from(stocks)
+      .where(eq(stocks.id, stock.id!))
       .limit(1);
     
-    return insertedTrade;
+    return insertedStock;
   }
 
-  async updateStockTrade(id: string, updates: Partial<NewStockTrade>): Promise<StockTrade> {
+  async updateStock(id: number, updates: Partial<NewStock>): Promise<Stock> {
     const db = this.getDb();
     const updatesWithSync = {
       ...updates,
@@ -87,59 +75,67 @@ export class DatabaseOperations {
     };
     
     await db
-      .update(stockTrades)
+      .update(stocks)
       .set(updatesWithSync)
-      .where(eq(stockTrades.id, id));
+      .where(eq(stocks.id, id));
     
-    await this.markSyncNeeded('stock_trades');
+    await this.markSyncNeeded('stocks');
     
-    const [updatedTrade] = await db
+    const [updatedStock] = await db
       .select()
-      .from(stockTrades)
-      .where(eq(stockTrades.id, id))
+      .from(stocks)
+      .where(eq(stocks.id, id))
       .limit(1);
     
-    return updatedTrade;
+    return updatedStock;
   }
 
-  async deleteStockTrade(id: string): Promise<void> {
+  async deleteStock(id: number): Promise<void> {
     const db = this.getDb();
-    await db.delete(stockTrades).where(eq(stockTrades.id, id));
-    await this.markSyncNeeded('stock_trades');
+    await db.delete(stocks).where(eq(stocks.id, id));
+    await this.markSyncNeeded('stocks');
   }
 
-  // ========== OPTION TRADES ==========
-
-  async getOptionTrades(userId: string, limit = 100): Promise<OptionTrade[]> {
+  async getStocksBySymbol(symbol: string): Promise<Stock[]> {
     const db = this.getDb();
     return await db
       .select()
-      .from(optionTrades)
-      .where(eq(optionTrades.userId, userId))
-      .orderBy(desc(optionTrades.tradeDate))
+      .from(stocks)
+      .where(eq(stocks.symbol, symbol))
+      .orderBy(desc(stocks.entryDate));
+  }
+
+  // ========== OPTIONS ==========
+
+  async getOptions(limit = 100): Promise<Option[]> {
+    const db = this.getDb();
+    return await db
+      .select()
+      .from(options)
+      .orderBy(desc(options.entryDate))
       .limit(limit);
   }
 
-  async addOptionTrade(trade: NewOptionTrade): Promise<OptionTrade> {
+  async addOption(option: NewOption): Promise<Option> {
     const db = this.getDb();
-    const tradeWithSync = {
-      ...trade,
+    const optionWithSync = {
+      ...option,
       syncStatus: 'pending' as const,
     };
     
-    await db.insert(optionTrades).values(tradeWithSync);
-    await this.markSyncNeeded('option_trades');
+    await db.insert(options).values(optionWithSync);
+    await this.markSyncNeeded('options');
     
-    const [insertedTrade] = await db
+    const [insertedOption] = await db
       .select()
-      .from(optionTrades)
-      .where(eq(optionTrades.id, trade.id!))
+      .from(options)
+      .where(eq(options.id, option.id!))
       .limit(1);
     
-    return insertedTrade;
+    return insertedOption;
   }
 
-  async updateOptionTrade(id: string, updates: Partial<NewOptionTrade>): Promise<OptionTrade> {
+  async updateOption(id: number, updates: Partial<NewOption>): Promise<Option> {
     const db = this.getDb();
     const updatesWithSync = {
       ...updates,
@@ -148,154 +144,62 @@ export class DatabaseOperations {
     };
     
     await db
-      .update(optionTrades)
+      .update(options)
       .set(updatesWithSync)
-      .where(eq(optionTrades.id, id));
+      .where(eq(options.id, id));
     
-    await this.markSyncNeeded('option_trades');
+    await this.markSyncNeeded('options');
     
-    const [updatedTrade] = await db
+    const [updatedOption] = await db
       .select()
-      .from(optionTrades)
-      .where(eq(optionTrades.id, id))
+      .from(options)
+      .where(eq(options.id, id))
       .limit(1);
     
-    return updatedTrade;
+    return updatedOption;
   }
 
-  async deleteOptionTrade(id: string): Promise<void> {
+  async deleteOption(id: number): Promise<void> {
     const db = this.getDb();
-    await db.delete(optionTrades).where(eq(optionTrades.id, id));
-    await this.markSyncNeeded('option_trades');
+    await db.delete(options).where(eq(options.id, id));
+    await this.markSyncNeeded('options');
   }
 
-  // ========== PORTFOLIO POSITIONS ==========
-
-  async getPortfolioPositions(userId: string): Promise<PortfolioPosition[]> {
+  async getOptionsBySymbol(symbol: string): Promise<Option[]> {
     const db = this.getDb();
     return await db
       .select()
-      .from(portfolioPositions)
-      .where(eq(portfolioPositions.userId, userId))
-      .orderBy(desc(portfolioPositions.totalShares));
+      .from(options)
+      .where(eq(options.symbol, symbol))
+      .orderBy(desc(options.entryDate));
   }
 
-  async updatePortfolioPosition(position: NewPortfolioPosition): Promise<void> {
+  async getOpenOptions(): Promise<Option[]> {
     const db = this.getDb();
-    await db
-      .insert(portfolioPositions)
-      .values(position)
-      .onConflictDoUpdate({
-        target: portfolioPositions.id,
-        set: {
-          totalShares: position.totalShares,
-          averageCost: position.averageCost,
-          currentPrice: position.currentPrice,
-          marketValue: position.marketValue,
-          unrealizedPnl: position.unrealizedPnl,
-          totalPnl: position.totalPnl,
-          percentChange: position.percentChange,
-          lastUpdated: new Date(),
-        },
-      });
-  }
-
-  // ========== MARKET DATA ==========
-
-  async getMarketData(symbols: string[]): Promise<MarketData[]> {
-    const db = this.getDb();
-    const now = new Date();
-    
     return await db
       .select()
-      .from(marketData)
-      .where(and(
-        sql`${marketData.symbol} IN ${symbols}`,
-        gte(marketData.expiresAt, now)
-      ));
+      .from(options)
+      .where(eq(options.status, 'open'))
+      .orderBy(desc(options.entryDate));
   }
 
-  async cacheMarketData(data: NewMarketData[]): Promise<void> {
-    const db = this.getDb();
-    
-    for (const item of data) {
-      await db
-        .insert(marketData)
-        .values(item)
-        .onConflictDoUpdate({
-          target: marketData.symbol,
-          set: {
-            companyName: item.companyName,
-            currentPrice: item.currentPrice,
-            changeAmount: item.changeAmount,
-            changePercent: item.changePercent,
-            dayHigh: item.dayHigh,
-            dayLow: item.dayLow,
-            volume: item.volume,
-            marketCap: item.marketCap,
-            lastUpdated: new Date(),
-            expiresAt: item.expiresAt,
-          },
-        });
-    }
-  }
-
-  // ========== AI INSIGHTS ==========
-
-  async getAiInsights(userId: string, limit = 20): Promise<AiInsight[]> {
-    const db = this.getDb();
-    const now = new Date();
-    
-    return await db
-      .select()
-      .from(aiInsights)
-      .where(and(
-        eq(aiInsights.userId, userId),
-        sql`(${aiInsights.expiresAt} IS NULL OR ${aiInsights.expiresAt} > ${now})`
-      ))
-      .orderBy(desc(aiInsights.createdAt))
-      .limit(limit);
-  }
-
-  async addAiInsight(insight: NewAiInsight): Promise<AiInsight> {
-    const db = this.getDb();
-    await db.insert(aiInsights).values(insight);
-    
-    const [insertedInsight] = await db
-      .select()
-      .from(aiInsights)
-      .where(eq(aiInsights.id, insight.id!))
-      .limit(1);
-    
-    return insertedInsight;
-  }
-
-  async markInsightAsRead(id: string): Promise<void> {
-    const db = this.getDb();
-    await db
-      .update(aiInsights)
-      .set({ isRead: true })
-      .where(eq(aiInsights.id, id));
-  }
 
   // ========== ANALYTICS ==========
 
-  async getTradingStats(userId: string, period?: { start: Date; end: Date }) {
+  async getTradingStats(period?: { start: Date; end: Date }) {
     const db = this.getDb();
     
     let stockQuery = db
       .select({
         totalTrades: count(),
-        totalPnl: sum(stockTrades.totalCost),
+        totalValue: sum(sql`${stocks.entryPrice} * ${stocks.numberShares}`),
       })
-      .from(stockTrades)
-      .where(eq(stockTrades.userId, userId));
+      .from(stocks);
     
     if (period) {
       stockQuery = stockQuery.where(and(
-        eq(stockTrades.userId, userId),
-        gte(stockTrades.tradeDate, period.start),
-        lte(stockTrades.tradeDate, period.end)
+        gte(stocks.entryDate, period.start),
+        lte(stocks.entryDate, period.end)
       )) as any;
     }
     
@@ -304,16 +208,14 @@ export class DatabaseOperations {
     let optionQuery = db
       .select({
         totalTrades: count(),
-        totalPnl: sum(optionTrades.totalCost),
+        totalPremium: sum(options.totalPremium),
       })
-      .from(optionTrades)
-      .where(eq(optionTrades.userId, userId));
+      .from(options);
     
     if (period) {
       optionQuery = optionQuery.where(and(
-        eq(optionTrades.userId, userId),
-        gte(optionTrades.tradeDate, period.start),
-        lte(optionTrades.tradeDate, period.end)
+        gte(options.entryDate, period.start),
+        lte(options.entryDate, period.end)
       )) as any;
     }
     
@@ -323,7 +225,8 @@ export class DatabaseOperations {
       totalTrades: (stockStats.totalTrades || 0) + (optionStats.totalTrades || 0),
       totalStockTrades: stockStats.totalTrades || 0,
       totalOptionTrades: optionStats.totalTrades || 0,
-      totalPnl: (stockStats.totalPnl || 0) + (optionStats.totalPnl || 0),
+      totalStockValue: stockStats.totalValue || 0,
+      totalPremium: optionStats.totalPremium || 0,
     };
   }
 
@@ -376,27 +279,14 @@ export class DatabaseOperations {
   // ========== CLEANUP ==========
 
   async cleanupExpiredData(): Promise<void> {
-    const db = this.getDb();
-    const now = new Date();
-    
-    // Clean expired market data
-    await db
-      .delete(marketData)
-      .where(lte(marketData.expiresAt, now));
-    
-    // Clean expired AI insights
-    await db
-      .delete(aiInsights)
-      .where(and(
-        sql`${aiInsights.expiresAt} IS NOT NULL`,
-        lte(aiInsights.expiresAt, now)
-      ));
+    // Currently no expiring data in stocks/options tables
+    // This method is kept for future use
+    console.log('Cleanup completed - no expired data to remove');
   }
 }
 
 // Singleton instance
 let dbOperationsInstance: DatabaseOperations | null = null;
-
 /**
  * Get or create database operations instance
  */
