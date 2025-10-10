@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { initializeUser } from "@/lib/services/user-service";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,14 +41,24 @@ export function SignUpForm({
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      // Step 1: Create user with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/app`,
         },
       });
+      
       if (error) throw error;
+
+      // Note: User initialization will happen after email confirmation and first login
+      // This ensures the user has an active session with proper authentication token
+      if (data.user && data.user.id) {
+        console.log('User created successfully, initialization will happen after login');
+      }
+
+      // Redirect to success page regardless of initialization result
       router.push("/auth/sign-up-success");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

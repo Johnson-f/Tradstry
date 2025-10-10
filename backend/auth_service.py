@@ -6,7 +6,7 @@ from database import get_supabase
 import asyncio
 
 class AuthService:
-    def __init__(self, supabase: Client = None):  # Changed from 'init' to '__init__'
+    def __init__(self, supabase: Client = None): # What's up Nick? lmaoooo
         self.supabase = supabase or get_supabase()
         self.token_refresh_threshold = 300  # Refresh 5 minutes before expiry
 
