@@ -16,6 +16,7 @@ export interface BrowserDatabaseConfig {
 export class BrowserDatabaseClient {
   private client: ReturnType<typeof createClient> | null = null;
   private config: BrowserDatabaseConfig | null = null;
+  private remoteConfig: { remoteUrl?: string; authToken?: string } | null = null;
 
   /**
    * Initialize the browser database
@@ -27,20 +28,17 @@ export class BrowserDatabaseClient {
       // Create local browser database
       const dbName = `tradistry_${config.userId.replace(/-/g, '_')}`;
       
-      if (config.remoteUrl && config.authToken) {
-        // Create client with cloud sync capability
-        this.client = createClient({
-          url: `file:${dbName}.db`,
-          syncUrl: config.remoteUrl,
-          authToken: config.authToken,
-          syncInterval: 60000, // Sync every minute
-        });
-      } else {
-        // Create local-only client
-        this.client = createClient({
-          url: `file:${dbName}.db`,
-        });
-      }
+      // Always create local-only client
+      // Sync will be handled by our custom SyncService via Rust backend
+      this.client = createClient({
+        url: `file:${dbName}.db`,
+      });
+      
+      // Store remote config for SyncService to use
+      this.remoteConfig = {
+        remoteUrl: config.remoteUrl,
+        authToken: config.authToken,
+      };
 
       console.log(`Browser database initialized: ${dbName}`);
     } catch (error) {
@@ -79,24 +77,11 @@ export class BrowserDatabaseClient {
   }
 
   /**
-   * Manually trigger sync with cloud database
+   * Note: Sync is handled by SyncService via Rust backend
+   * This client is local-only for maximum performance
    */
-  async sync(): Promise<void> {
-    if (!this.client) {
-      throw new Error('Database not initialized');
-    }
-
-    try {
-      if ('sync' in this.client) {
-        await (this.client as any).sync();
-        console.log('Database synced successfully');
-      } else {
-        console.warn('Sync not available - using local database only');
-      }
-    } catch (error) {
-      console.error('Failed to sync database:', error);
-      throw error;
-    }
+  getRemoteConfig() {
+    return this.remoteConfig;
   }
 
   /**

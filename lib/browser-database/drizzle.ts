@@ -58,142 +58,55 @@ export class DrizzleDatabase {
     if (!this.db) throw new Error('Database not initialized');
 
     try {
-      // Create all tables if they don't exist
+      // Create stocks table (matches backend exactly)
       await this.db.run(`
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          email TEXT NOT NULL UNIQUE,
-          first_name TEXT,
-          last_name TEXT,
-          avatar TEXT,
-          created_at INTEGER DEFAULT (unixepoch()),
-          updated_at INTEGER DEFAULT (unixepoch()),
+        CREATE TABLE IF NOT EXISTS stocks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          symbol TEXT NOT NULL,
+          trade_type TEXT NOT NULL CHECK (trade_type IN ('BUY', 'SELL')),
+          order_type TEXT NOT NULL CHECK (order_type IN ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT')),
+          entry_price REAL NOT NULL,
+          exit_price REAL,
+          stop_loss REAL NOT NULL,
+          commissions REAL NOT NULL DEFAULT 0.00,
+          number_shares REAL NOT NULL,
+          take_profit REAL,
+          entry_date INTEGER NOT NULL,
+          exit_date INTEGER,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          sync_status TEXT DEFAULT 'synced',
           last_sync_at INTEGER DEFAULT (unixepoch())
         )
       `);
 
+      // Create options table (matches backend exactly)
       await this.db.run(`
-        CREATE TABLE IF NOT EXISTS stock_trades (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS options (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
           symbol TEXT NOT NULL,
-          company_name TEXT,
-          action TEXT NOT NULL,
-          quantity INTEGER NOT NULL,
-          price REAL NOT NULL,
-          fees REAL DEFAULT 0,
-          total_cost REAL NOT NULL,
-          trade_date INTEGER NOT NULL,
-          notes TEXT,
-          tags TEXT,
-          image_urls TEXT,
-          created_at INTEGER DEFAULT (unixepoch()),
-          updated_at INTEGER DEFAULT (unixepoch()),
-          last_sync_at INTEGER DEFAULT (unixepoch()),
-          sync_status TEXT DEFAULT 'synced'
-        )
-      `);
-
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS option_trades (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          symbol TEXT NOT NULL,
-          underlying_symbol TEXT NOT NULL,
-          option_type TEXT NOT NULL,
-          action TEXT NOT NULL,
-          contracts INTEGER NOT NULL,
+          strategy_type TEXT NOT NULL,
+          trade_direction TEXT NOT NULL CHECK (trade_direction IN ('Bullish', 'Bearish', 'Neutral')),
+          number_of_contracts INTEGER NOT NULL CHECK (number_of_contracts > 0),
+          option_type TEXT NOT NULL CHECK (option_type IN ('Call', 'Put')),
           strike_price REAL NOT NULL,
-          premium REAL NOT NULL,
           expiration_date INTEGER NOT NULL,
-          fees REAL DEFAULT 0,
-          total_cost REAL NOT NULL,
-          trade_date INTEGER NOT NULL,
-          notes TEXT,
-          tags TEXT,
-          image_urls TEXT,
-          created_at INTEGER DEFAULT (unixepoch()),
-          updated_at INTEGER DEFAULT (unixepoch()),
-          last_sync_at INTEGER DEFAULT (unixepoch()),
-          sync_status TEXT DEFAULT 'synced'
-        )
-      `);
-
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS portfolio_positions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          symbol TEXT NOT NULL,
-          company_name TEXT,
-          total_shares INTEGER NOT NULL,
-          average_cost REAL NOT NULL,
-          current_price REAL,
-          market_value REAL,
-          unrealized_pnl REAL,
-          realized_pnl REAL,
-          total_pnl REAL,
-          percent_change REAL,
-          last_updated INTEGER DEFAULT (unixepoch()),
+          entry_price REAL NOT NULL,
+          exit_price REAL,
+          total_premium REAL NOT NULL,
+          commissions REAL NOT NULL DEFAULT 0.00,
+          implied_volatility REAL NOT NULL,
+          entry_date INTEGER NOT NULL,
+          exit_date INTEGER,
+          status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          sync_status TEXT DEFAULT 'synced',
           last_sync_at INTEGER DEFAULT (unixepoch())
         )
       `);
 
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS trading_analytics (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          period TEXT NOT NULL,
-          period_start INTEGER NOT NULL,
-          period_end INTEGER NOT NULL,
-          total_trades INTEGER DEFAULT 0,
-          winning_trades INTEGER DEFAULT 0,
-          losing_trades INTEGER DEFAULT 0,
-          win_rate REAL DEFAULT 0,
-          total_pnl REAL DEFAULT 0,
-          realized_pnl REAL DEFAULT 0,
-          unrealized_pnl REAL DEFAULT 0,
-          avg_win_amount REAL DEFAULT 0,
-          avg_loss_amount REAL DEFAULT 0,
-          portfolio_value REAL DEFAULT 0,
-          total_invested REAL DEFAULT 0,
-          available_cash REAL DEFAULT 0,
-          calculated_at INTEGER DEFAULT (unixepoch()),
-          last_sync_at INTEGER DEFAULT (unixepoch())
-        )
-      `);
-
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS market_data (
-          symbol TEXT PRIMARY KEY,
-          company_name TEXT,
-          current_price REAL,
-          change_amount REAL,
-          change_percent REAL,
-          day_high REAL,
-          day_low REAL,
-          volume INTEGER,
-          market_cap REAL,
-          last_updated INTEGER DEFAULT (unixepoch()),
-          expires_at INTEGER NOT NULL
-        )
-      `);
-
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS ai_insights (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          type TEXT NOT NULL,
-          title TEXT NOT NULL,
-          content TEXT NOT NULL,
-          confidence REAL,
-          relevance_score REAL,
-          is_read INTEGER DEFAULT 0,
-          expires_at INTEGER,
-          created_at INTEGER DEFAULT (unixepoch()),
-          last_sync_at INTEGER DEFAULT (unixepoch())
-        )
-      `);
-
+      // Create sync metadata table for tracking changes
       await this.db.run(`
         CREATE TABLE IF NOT EXISTS sync_metadata (
           id TEXT PRIMARY KEY,
@@ -223,27 +136,22 @@ export class DrizzleDatabase {
     if (!this.db) return;
 
     const indexes = [
-      'CREATE INDEX IF NOT EXISTS idx_stock_trades_user_id ON stock_trades(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_stock_trades_symbol ON stock_trades(symbol)',
-      'CREATE INDEX IF NOT EXISTS idx_stock_trades_trade_date ON stock_trades(trade_date)',
-      'CREATE INDEX IF NOT EXISTS idx_stock_trades_sync_status ON stock_trades(sync_status)',
+      // Stocks table indexes
+      'CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol)',
+      'CREATE INDEX IF NOT EXISTS idx_stocks_entry_date ON stocks(entry_date)',
+      'CREATE INDEX IF NOT EXISTS idx_stocks_trade_type ON stocks(trade_type)',
+      'CREATE INDEX IF NOT EXISTS idx_stocks_sync_status ON stocks(sync_status)',
       
-      'CREATE INDEX IF NOT EXISTS idx_option_trades_user_id ON option_trades(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_option_trades_symbol ON option_trades(symbol)',
-      'CREATE INDEX IF NOT EXISTS idx_option_trades_trade_date ON option_trades(trade_date)',
-      'CREATE INDEX IF NOT EXISTS idx_option_trades_sync_status ON option_trades(sync_status)',
+      // Options table indexes
+      'CREATE INDEX IF NOT EXISTS idx_options_symbol ON options(symbol)',
+      'CREATE INDEX IF NOT EXISTS idx_options_entry_date ON options(entry_date)',
+      'CREATE INDEX IF NOT EXISTS idx_options_expiration_date ON options(expiration_date)',
+      'CREATE INDEX IF NOT EXISTS idx_options_status ON options(status)',
+      'CREATE INDEX IF NOT EXISTS idx_options_sync_status ON options(sync_status)',
       
-      'CREATE INDEX IF NOT EXISTS idx_portfolio_positions_user_id ON portfolio_positions(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_portfolio_positions_symbol ON portfolio_positions(symbol)',
-      
-      'CREATE INDEX IF NOT EXISTS idx_trading_analytics_user_id ON trading_analytics(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_trading_analytics_period ON trading_analytics(period)',
-      
-      'CREATE INDEX IF NOT EXISTS idx_market_data_expires_at ON market_data(expires_at)',
-      
-      'CREATE INDEX IF NOT EXISTS idx_ai_insights_user_id ON ai_insights(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_ai_insights_type ON ai_insights(type)',
-      'CREATE INDEX IF NOT EXISTS idx_ai_insights_is_read ON ai_insights(is_read)',
+      // Sync metadata indexes
+      'CREATE INDEX IF NOT EXISTS idx_sync_metadata_table_name ON sync_metadata(table_name)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_metadata_pending_changes ON sync_metadata(pending_changes)',
     ];
 
     for (const indexSql of indexes) {
