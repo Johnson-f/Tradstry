@@ -1,27 +1,16 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:9000";
 
 export const apiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
   endpoints: {
-    // Auth endpoints
-    auth: {
-      login: "/auth/login",
-      register: "/auth/register",
-      refresh: "/auth/refresh",
-      logout: "/auth/logout",
+    // User management endpoints (Rust backend)
+    user: {
+      initialize: "/user/initialize",
     },
-    // Stock endpoints
-    stocks: {
-      base: "/stocks",
-      byId: (id: number) => `/stocks/${id}`,
-      bySymbol: (symbol: string) => `/stocks?symbol=${symbol}`,
-      open: "/stocks?status=open",
-      closed: "/stocks?status=closed",
-      dateRange: (startDate: string, endDate: string) =>
-        `/stocks?start_date=${startDate}&end_date=${endDate}`,
-    },
+    // Health check
+    health: "/health",
     // Options endpoints
     options: {
       base: "/options",
@@ -224,7 +213,6 @@ export const apiConfig = {
     // AI Summary endpoints (Static - Production)
     aiSummary: {
       generate: "/ai-summary/generate",
-      chat: "/ai-summary/chat",
       quickInsights: "/ai-summary/quick-insights",
       status: "/ai-summary/status",
       resetChat: "/ai-summary/chat/reset",
@@ -235,8 +223,9 @@ export const apiConfig = {
         searchSimilar: "/ai-summary/reports/search-similar",
         stats: "/ai-summary/reports/stats",
       },
-      // Chat history
+      // Chat history and endpoints
       chat: {
+        base: "/ai-summary/chat",
         history: "/ai-summary/chat/history",
         searchSimilar: "/ai-summary/chat/search-similar",
         stats: "/ai-summary/chat/stats",

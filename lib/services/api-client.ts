@@ -63,7 +63,7 @@ class ApiClient {
 
           if (!session) {
             // Redirect to login page or handle unauthenticated state
-            window.location.href = '/login';
+            window.location.href = '/auth/login';
             return Promise.reject(error);
           }
 
@@ -73,7 +73,7 @@ class ApiClient {
               await this.supabase.auth.refreshSession();
 
             if (refreshError || !newSession) {
-              window.location.href = '/login';
+              window.location.href = '/auth/login';
               return Promise.reject(error);
             }
 
@@ -81,7 +81,7 @@ class ApiClient {
             error.config.headers.Authorization = `Bearer ${newSession.access_token}`;
             return this.axiosInstance.request(error.config);
           } catch (refreshError) {
-            window.location.href = '/login';
+            window.location.href = '/auth/login';
             return Promise.reject(error);
           }
         }
