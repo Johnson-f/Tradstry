@@ -1,0 +1,72 @@
+---
+alwaysApply: true
+description: Project structure and architecture guidelines
+---
+
+# Project Structure Guide
+
+This is a Next.js 15 trading journal application with a Python FastAPI backend and browser-based SQLite storage.
+
+## Architecture Overview
+
+### Frontend (Next.js 15)
+- **Framework**: Next.js 15 with App Router
+- **Styling**: Tailwind CSS with shadcn/ui components
+- **State Management**: TanStack Query (React Query) + SWR
+- **Database**: Browser SQLite with Drizzle ORM
+- **Rich Text**: Lexical editor for notepad functionality
+- **Charts**: Recharts for analytics visualization
+
+### Backend (Python FastAPI)
+- **Location**: `backend/` directory
+- **Database**: PostgreSQL with Supabase
+- **Authentication**: Supabase Auth
+- **AI Integration**: Gemini AI for reports and insights
+
+### Key Directories
+
+#### Frontend Structure
+- `app/` - Next.js App Router pages and layouts
+- `components/` - Reusable React components organized by feature
+- `lib/` - Utility libraries, configurations, and shared logic
+- `hooks/` - Custom React hooks
+- `lib/drizzle/` - Database schema and migrations for browser SQLite
+
+#### Backend Structure
+- `backend/routers/` - FastAPI route handlers
+- `backend/models/` - Database models
+- `backend/services/` - Business logic services
+- `backend/config/` - Configuration files
+
+#### Database
+- `Database/` - PostgreSQL SQL functions and procedures
+- `supabase/migrations/` - Database migrations
+- `Edge Functions/` - Supabase Edge Functions for external API integrations
+
+## File Organization Patterns
+
+### Components
+- Feature-based organization: `components/journal/`, `components/analytics/`, etc.
+- UI components in `components/ui/` (shadcn/ui)
+- Each feature has its own subdirectory with related components
+
+### Types and Schemas
+- TypeScript types in `lib/types/` or alongside feature files
+- Database schemas in `lib/drizzle/` with proper type inference
+- Export types from `types.ts` files for easy imports
+
+### API Integration
+- Edge Functions handle external API calls (Yahoo Finance, etc.)
+- Backend routers handle internal API logic
+- Frontend uses hooks for API state management
+
+## Import Patterns
+- Use `@/` alias for imports from project root
+- Prefer relative imports within feature directories
+- Group imports: external libraries, internal modules, types
+
+## Configuration Files
+- [next.config.ts](mdc:next.config.ts) - Next.js configuration
+- [tailwind.config.ts](mdc:tailwind.config.ts) - Tailwind CSS configuration
+- [tsconfig.json](mdc:tsconfig.json) - TypeScript configuration
+- [package.json](mdc:package.json) - Dependencies and scripts

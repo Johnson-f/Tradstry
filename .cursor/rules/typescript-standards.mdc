@@ -1,0 +1,164 @@
+---
+globs: *.ts,*.tsx
+description: TypeScript coding standards and best practices
+---
+
+# TypeScript Standards
+
+## Type Safety and Inference
+
+### Strict TypeScript Configuration
+- Use strict mode enabled in [tsconfig.json](mdc:tsconfig.json)
+- Prefer type inference over explicit annotations when clear
+- Use `as const` for literal types and enums
+- Export types from dedicated `types.ts` files
+
+### Type Definitions
+```typescript
+// Good: Use const assertions for enums
+export const TradeType = {
+  BUY: 'BUY',
+  SELL: 'SELL'
+} as const;
+
+export type TradeTypeEnum = typeof TradeType[keyof typeof TradeType];
+
+// Good: Proper type inference with Drizzle
+export type JournalTrade = typeof journalTable.$inferSelect;
+export type NewJournalTrade = typeof journalTable.$inferInsert;
+```
+
+### Interface vs Type
+- Use `interface` for object shapes that might be extended
+- Use `type` for unions, intersections, and computed types
+- Prefer `interface` for component props
+
+### Generic Types
+- Use generics for reusable components and utilities
+- Provide default generic parameters when appropriate
+- Use constraints (`extends`) to limit generic types
+
+## Code Organization
+
+### File Structure
+- One main export per file, with supporting exports
+- Group related types together
+- Use barrel exports (`index.ts`) for clean imports
+
+### Import/Export Patterns
+```typescript
+// Good: Named exports for types
+export interface TradeFormData {
+  symbol: string;
+  assetType: 'STOCK' | 'OPTION';
+  // ...
+}
+
+// Good: Re-export from schema
+export type { JournalTrade, NewJournalTrade } from './schema';
+
+// Good: Import order
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { TradeType, OrderType } from './types';
+```
+
+### Type Guards and Validation
+- Use type guards for runtime type checking
+- Prefer Zod schemas for form validation
+- Use discriminated unions for variant types
+
+## Error Handling
+
+### Error Types
+```typescript
+// Good: Specific error types
+export class DatabaseError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'DatabaseError';
+  }
+}
+
+// Good: Result type pattern
+export type Result<T, E = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E };
+```
+
+### Null Safety
+- Use optional chaining (`?.`) and nullish coalescing (`??`)
+- Prefer non-null assertion (`!`) only when certain
+- Use strict null checks
+
+## Performance Considerations
+
+### Type-Only Imports
+```typescript
+// Good: Type-only imports
+import type { NextConfig } from "next";
+import type { Config } from "tailwindcss";
+```
+
+### Lazy Loading Types
+- Use dynamic imports for heavy type definitions
+- Consider type-only exports for large type files
+
+## Drizzle ORM Specific
+
+### Schema Definition
+```typescript
+// Good: Proper typing with Drizzle
+export const journalTable = sqliteTable('journal_trades', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  assetType: text('asset_type').notNull().$type<AssetTypeEnum>(),
+  // ...
+});
+```
+
+### Query Types
+- Use `inferSelect` and `inferInsert` for type safety
+- Leverage Drizzle's type inference for queries
+- Use proper typing for SQL functions
+
+## React TypeScript Patterns
+
+### Component Props
+```typescript
+// Good: Interface for props
+interface TradeFormProps {
+  onSubmit: (data: TradeFormData) => void;
+  initialData?: Partial<TradeFormData>;
+  isLoading?: boolean;
+}
+
+// Good: Generic component props
+interface TableProps<T> {
+  data: T[];
+  columns: ColumnDef<T>[];
+  onRowClick?: (row: T) => void;
+}
+```
+
+### Hook Types
+```typescript
+// Good: Proper hook return types
+export function useTradeData(symbol: string): {
+  data: JournalTrade[] | undefined;
+  isLoading: boolean;
+  error: Error | null;
+} {
+  // ...
+}
+```
+
+## Common Patterns to Avoid
+
+### Any Types
+- Avoid `any` - use `unknown` or proper typing
+- Use type assertions sparingly
+- Prefer type guards over type assertions
+
+### Overly Complex Types
+- Keep types simple and readable
+- Use utility types (`Partial`, `Pick`, `Omit`) appropriately
+- Consider breaking complex types into smaller ones

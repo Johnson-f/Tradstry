@@ -1,0 +1,248 @@
+---
+globs: *.tsx,*.jsx
+description: React and Next.js component development guidelines
+---
+
+# React & Next.js Guidelines
+
+## Component Architecture
+
+### Component Organization
+- Feature-based organization in `components/` directory
+- Each feature has its own subdirectory (e.g., `components/journal/`)
+- UI components in `components/ui/` (shadcn/ui pattern)
+- Shared components at root level of `components/`
+
+### Component Structure
+```typescript
+// Good: Functional component with proper typing
+interface TradeFormProps {
+  onSubmit: (data: TradeFormData) => void;
+  initialData?: Partial<TradeFormData>;
+}
+
+export function TradeForm({ onSubmit, initialData }: TradeFormProps) {
+  // Component logic
+  return (
+    // JSX
+  );
+}
+```
+
+### Component Patterns
+- Use functional components with hooks
+- Prefer named exports over default exports
+- Use proper TypeScript interfaces for props
+- Implement proper error boundaries
+
+## Next.js App Router Patterns
+
+### Page Components
+- Use `page.tsx` for route pages
+- Use `layout.tsx` for shared layouts
+- Use `loading.tsx` for loading states
+- Use `error.tsx` for error boundaries
+
+### Server vs Client Components
+```typescript
+// Good: Server component (default)
+export default function DashboardPage() {
+  // Server-side logic
+  return <DashboardContent />;
+}
+
+// Good: Client component when needed
+'use client';
+export function InteractiveChart() {
+  const [data, setData] = useState();
+  // Client-side logic
+}
+```
+
+### Data Fetching
+- Use Server Components for initial data loading
+- Use TanStack Query for client-side data management
+- Use SWR for simple data fetching patterns
+- Implement proper loading and error states
+
+## State Management
+
+### Local State
+```typescript
+// Good: useState for simple state
+const [isOpen, setIsOpen] = useState(false);
+const [formData, setFormData] = useState<TradeFormData>(initialData);
+
+// Good: useReducer for complex state
+const [state, dispatch] = useReducer(tradeReducer, initialState);
+```
+
+### Global State
+- Use TanStack Query for server state
+- Use React Context for app-wide client state
+- Use Zustand for complex client state (if needed)
+- Avoid prop drilling with proper state lifting
+
+### Form State
+```typescript
+// Good: React Hook Form integration
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+export function TradeForm() {
+  const form = useForm<TradeFormData>({
+    resolver: zodResolver(tradeSchema),
+    defaultValues: initialData,
+  });
+  
+  return (
+    <Form {...form}>
+      {/* Form fields */}
+    </Form>
+  );
+}
+```
+
+## Styling and UI
+
+### Tailwind CSS
+- Use Tailwind utility classes
+- Follow the design system in [tailwind.config.ts](mdc:tailwind.config.ts)
+- Use CSS variables for theme colors
+- Implement responsive design patterns
+
+### Component Styling
+```typescript
+// Good: Conditional styling
+const buttonClass = cn(
+  "px-4 py-2 rounded-md",
+  variant === "primary" && "bg-primary text-primary-foreground",
+  variant === "secondary" && "bg-secondary text-secondary-foreground",
+  className
+);
+```
+
+### shadcn/ui Components
+- Use existing shadcn/ui components from `components/ui/`
+- Extend components rather than modifying them directly
+- Follow the component composition pattern
+- Use proper TypeScript interfaces for component props
+
+## Performance Optimization
+
+### React Patterns
+```typescript
+// Good: Memoization for expensive calculations
+const expensiveValue = useMemo(() => {
+  return calculateTradeStats(trades);
+}, [trades]);
+
+// Good: Callback memoization
+const handleSubmit = useCallback((data: TradeFormData) => {
+  onSubmit(data);
+}, [onSubmit]);
+```
+
+### Next.js Optimization
+- Use `next/image` for optimized images
+- Implement proper loading states
+- Use dynamic imports for code splitting
+- Optimize bundle size with proper imports
+
+### Rendering Optimization
+```typescript
+// Good: React.memo for expensive components
+export const TradeChart = React.memo(function TradeChart({ data }: Props) {
+  return <Chart data={data} />;
+});
+
+// Good: Virtualization for large lists
+import { FixedSizeList as List } from 'react-window';
+```
+
+## Error Handling
+
+### Error Boundaries
+```typescript
+// Good: Error boundary component
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+}
+```
+
+### Async Error Handling
+```typescript
+// Good: Error handling in async operations
+const { data, error, isLoading } = useQuery({
+  queryKey: ['trades'],
+  queryFn: fetchTrades,
+  onError: (error) => {
+    toast.error('Failed to load trades');
+  },
+});
+```
+
+## Accessibility
+
+### ARIA and Semantic HTML
+- Use proper semantic HTML elements
+- Implement ARIA attributes for complex components
+- Ensure keyboard navigation works properly
+- Test with screen readers
+
+### Focus Management
+```typescript
+// Good: Focus management
+const focusRef = useRef<HTMLInputElement>(null);
+
+useEffect(() => {
+  if (isOpen && focusRef.current) {
+    focusRef.current.focus();
+  }
+}, [isOpen]);
+```
+
+## Testing Patterns
+
+### Component Testing
+- Test component behavior, not implementation
+- Use React Testing Library patterns
+- Mock external dependencies properly
+- Test accessibility features
+
+### Integration Testing
+- Test user workflows end-to-end
+- Mock API calls appropriately
+- Test error scenarios
+- Verify loading states
+
+## Common Anti-Patterns to Avoid
+
+### Performance Issues
+- Avoid unnecessary re-renders
+- Don't create objects/functions in render
+- Use proper dependency arrays in hooks
+- Avoid prop drilling with context
+
+### State Management Issues
+- Don't mutate state directly
+- Use proper state updates
+- Avoid storing derived state
+- Use proper key props for lists
+
+### Next.js Issues
+- Don't use client-side rendering unnecessarily
+- Avoid large bundle sizes
+- Don't ignore loading states
+- Use proper error handling
