@@ -56,7 +56,6 @@ class IndexedDBSQLitePersistence {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error('Failed to load database from IndexedDB:', error);
       return null;
     }
   }
@@ -73,7 +72,6 @@ class IndexedDBSQLitePersistence {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error('Failed to save database to IndexedDB:', error);
       throw error;
     }
   }
@@ -90,7 +88,6 @@ class IndexedDBSQLitePersistence {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error('Failed to delete database from IndexedDB:', error);
       throw error;
     }
   }
@@ -119,14 +116,11 @@ export class BrowserSQLiteClient implements DatabaseClient {
    */
   async init(): Promise<void> {
     try {
-      console.log('Initializing SQLite WASM module...');
       
       // Initialize the SQLite WASM module using the official method
       this.sqlite3 = await sqlite3InitModule();
       // Make sqlite3 available globally for CAPI access
       (globalThis as any).sqlite3 = this.sqlite3;
-      console.log('SQLite WASM module initialized successfully');
-      console.log('SQLite version:', this.sqlite3.version.libVersion);
 
       // Create database instance
       let db: any;
@@ -139,19 +133,15 @@ export class BrowserSQLiteClient implements DatabaseClient {
         if (isWorker && this.isOpfsAvailable()) {
           try {
             // Try to use OPFS for persistence (Worker thread only)
-            console.log('Attempting to create OPFS database...');
             
             // Check if SharedArrayBuffer is available (indicates COOP/COEP headers are set)
             if (typeof SharedArrayBuffer === 'undefined') {
-              console.warn('SharedArrayBuffer not available - COOP/COEP headers not set.');
               throw new Error('SharedArrayBuffer not available');
             }
             
             db = new this.sqlite3.oo1.OpfsDb(this.options.dbName, 'c');
             storageType = 'OPFS';
-            console.log('✅ OPFS database opened successfully:', this.options.dbName);
           } catch (opfsError) {
-            console.warn('OPFS database creation failed:', opfsError);
             db = null;
           }
         }
@@ -159,7 +149,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
         // If OPFS failed or we're in main thread, try IndexedDB
         if (!db) {
           try {
-            console.log('Attempting to use IndexedDB-backed persistence...');
             
             // Create in-memory database first
             db = new this.sqlite3.oo1.DB();
@@ -170,7 +159,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
             // Try to load existing database from IndexedDB
             const existingData = await this.persistence.load();
             if (existingData && existingData.byteLength > 0) {
-              console.log(`📥 Loading existing database from IndexedDB (${existingData.byteLength} bytes)...`);
               
               try {
                 // Close the empty db
@@ -192,29 +180,22 @@ export class BrowserSQLiteClient implements DatabaseClient {
                 
                 // Check the result
                 db.checkRc(rc);
-                console.log('✅ Database loaded successfully from IndexedDB');
               } catch (deserializeError) {
-                console.error('Failed to load existing database:', deserializeError);
-                console.log('Creating fresh in-memory database...');
                 // Create a fresh database on error
                 if (db && typeof db.close === 'function') {
                   try {
                     db.close();
                   } catch (closeError) {
-                    console.warn('Failed to close failed database:', closeError);
                   }
                 }
                 db = new this.sqlite3.oo1.DB();
               }
             } else {
-              console.log('No existing database found in IndexedDB, starting fresh');
             }
             
             this.persistenceEnabled = true;
             storageType = 'IndexedDB';
-            console.log('✅ IndexedDB persistence enabled');
           } catch (idbError) {
-            console.warn('IndexedDB persistence setup failed:', idbError);
             if (!db) {
               db = new this.sqlite3.oo1.DB();
             }
@@ -225,10 +206,8 @@ export class BrowserSQLiteClient implements DatabaseClient {
       
       // Final fallback to in-memory
       if (!db) {
-        console.log('Creating in-memory database...');
         db = new this.sqlite3.oo1.DB();
-        storageType = 'in-memory';
-        console.log('In-memory database created successfully');
+        this.isInitialized = true;
       }
 
       // Store the database instance and mark as initialized BEFORE running init SQL
@@ -238,25 +217,18 @@ export class BrowserSQLiteClient implements DatabaseClient {
       
       // Log the actual storage being used
       if (storageType === 'in-memory' && !this.persistenceEnabled) {
-        console.log('⚠️  Using IN-MEMORY storage (data will be lost on page reload)');
       } else {
-        console.log(`📦 Using PERSISTENT storage (${storageType})`);
-        console.log(`💾 Storage quota: ${storageType === 'IndexedDB' ? '~unlimited (browser dependent)' : 'N/A'}`);
       }
 
       // Run initialization SQL if provided
       if (this.options.initSql.length > 0) {
-        console.log('Executing initialization SQL...');
         for (const sql of this.options.initSql) {
           try {
             db.exec(sql);
-            console.log('Executed SQL:', sql.substring(0, 50) + '...');
           } catch (sqlError) {
-            console.error('Failed to execute init SQL:', sql, sqlError);
             throw sqlError;
           }
         }
-        console.log('Database initialization SQL executed successfully');
       }
 
       // Save initial state if using IndexedDB
@@ -272,19 +244,15 @@ export class BrowserSQLiteClient implements DatabaseClient {
                 const serialized = this.sqlite3.capi.sqlite3_js_db_export(this.promiser.pointer);
                 if (serialized && this.persistence) {
                   // Use synchronous IndexedDB operations for beforeunload
-                  console.log('Saving database before page unload...');
                 }
               }
             } catch (error) {
-              console.warn('Failed to save database on page unload:', error);
             }
           });
         }
       }
 
-      console.log('Database initialization completed successfully');
     } catch (error) {
-      console.error('Failed to initialize database:', error);
       // Reset state on error
       this.isInitialized = false;
       this.promiser = null;
@@ -303,7 +271,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
 
     try {
       if (!this.sqlite3?.capi) {
-        console.warn('Cannot save: SQLite CAPI not available');
         return;
       }
 
@@ -315,12 +282,9 @@ export class BrowserSQLiteClient implements DatabaseClient {
       
       if (serialized && serialized.byteLength > 0) {
         await this.persistence.save(serialized);
-        console.log(`💾 Database saved to IndexedDB (${serialized.byteLength} bytes)`);
       } else {
-        console.warn('Cannot save: serialized database is empty');
       }
     } catch (error) {
-      console.error('Failed to save to IndexedDB:', error);
     }
   }
 
@@ -338,7 +302,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
     // Schedule save for 500ms from now (more responsive)
     this.autoSaveTimer = setTimeout(() => {
       this.saveToIndexedDB().catch(error => {
-        console.error('Auto-save failed:', error);
       });
     }, 500);
   }
@@ -353,7 +316,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
       const db = this.promiser;
       
       if (params.length > 0) {
-        console.log('Executing with parameters:', { sql, params });
         
         const stmt = db.prepare(sql);
         
@@ -366,7 +328,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
             ? this.sqlite3.capi.sqlite3_last_insert_rowid(db.pointer)
             : 0;
           
-          console.log('Execute successful:', { changes, lastInsertRowid });
           
           stmt.finalize();
           
@@ -378,11 +339,9 @@ export class BrowserSQLiteClient implements DatabaseClient {
             lastInsertRowid,
           };
         } catch (stmtError) {
-          console.error('Statement execution error:', stmtError);
           try {
             stmt.finalize();
           } catch (finalizeError) {
-            console.error('Failed to finalize statement:', finalizeError);
           }
           throw stmtError;
         }
@@ -402,7 +361,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
         return result;
       }
     } catch (error) {
-      console.error('Failed to execute SQL:', { sql, params, error });
       throw error;
     }
   }
@@ -436,7 +394,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
           try {
             stmt.finalize();
           } catch (finalizeError) {
-            console.error('Failed to finalize statement:', finalizeError);
           }
           throw stmtError;
         }
@@ -458,7 +415,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
 
       return result;
     } catch (error) {
-      console.error('Failed to query SQL:', { sql, params, error });
       throw error;
     }
   }
@@ -488,7 +444,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
         throw error;
       }
     } catch (error) {
-      console.error('Transaction failed:', error);
       throw error;
     }
   }
@@ -507,7 +462,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
       const db = this.promiser;
       return this.sqlite3.capi.sqlite3_js_db_export(db.pointer);
     } catch (error) {
-      console.error('Failed to export database:', error);
       throw error;
     }
   }
@@ -540,14 +494,12 @@ export class BrowserSQLiteClient implements DatabaseClient {
       }
       
       this.promiser = newDb;
-      console.log('Database imported successfully');
       
       // Save to IndexedDB if persistence is enabled
       if (this.persistenceEnabled) {
         await this.saveToIndexedDB();
       }
     } catch (error) {
-      console.error('Failed to import database:', error);
       throw error;
     }
   }
@@ -571,9 +523,7 @@ export class BrowserSQLiteClient implements DatabaseClient {
       if (this.persistenceEnabled && this.persistence) {
         try {
           await this.saveToIndexedDB();
-          console.log('Final database state saved successfully');
         } catch (error) {
-          console.warn('Failed to save final database state:', error);
         }
       }
 
@@ -588,9 +538,7 @@ export class BrowserSQLiteClient implements DatabaseClient {
       this.isInitialized = false;
       this.persistence = null;
       this.persistenceEnabled = false;
-      console.log('Database connection closed');
     } catch (error) {
-      console.error('Failed to close database:', error);
       throw error;
     }
   }
