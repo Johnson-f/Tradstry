@@ -63,7 +63,6 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to initialize database');
       setError(error);
-      console.error('Database initialization failed:', error);
     } finally {
       setIsInitializing(false);
     }
@@ -179,7 +178,7 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
   useEffect(() => {
     return () => {
       if (dbRef.current) {
-        dbRef.current.close().catch(console.error);
+        dbRef.current.close().catch(() => {});
       }
     };
   }, []);
