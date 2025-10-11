@@ -117,6 +117,7 @@
         "npm:@radix-ui/react-toggle-group@^1.1.10",
         "npm:@radix-ui/react-toggle@^1.1.9",
         "npm:@radix-ui/react-tooltip@^1.2.8",
+        "npm:@sqlite.org/sqlite-wasm@3.50.4-build1",
         "npm:@supabase/ssr@latest",
         "npm:@supabase/supabase-js@latest",
         "npm:@tanstack/react-query-devtools@^5.84.2",

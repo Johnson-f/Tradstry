@@ -1,6 +1,7 @@
 /**
  * Browser SQLite database client using sqlite-wasm
  * Supports both in-memory and persistent (OPFS) storage
+ * With IndexedDB fallback for main thread persistence
  */
 
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
@@ -12,10 +13,97 @@ import type {
   QueryCallback,
 } from './types';
 
+/**
+ * Simple IndexedDB-backed SQLite persistence layer
+ * Stores the entire database as a blob in IndexedDB
+ */
+class IndexedDBSQLitePersistence {
+  private dbName: string;
+  private readonly IDB_NAME = 'sqlite-persistence';
+  private readonly IDB_STORE = 'databases';
+
+  constructor(dbName: string) {
+    this.dbName = dbName;
+  }
+
+  private async getDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.IDB_NAME, 1);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.IDB_STORE)) {
+          db.createObjectStore(this.IDB_STORE);
+        }
+      };
+    });
+  }
+
+  async load(): Promise<Uint8Array | null> {
+    try {
+      const db = await this.getDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.IDB_STORE], 'readonly');
+        const store = transaction.objectStore(this.IDB_STORE);
+        const request = store.get(this.dbName);
+        
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to load database from IndexedDB:', error);
+      return null;
+    }
+  }
+
+  async save(data: Uint8Array): Promise<void> {
+    try {
+      const db = await this.getDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.IDB_STORE], 'readwrite');
+        const store = transaction.objectStore(this.IDB_STORE);
+        const request = store.put(data, this.dbName);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to save database to IndexedDB:', error);
+      throw error;
+    }
+  }
+
+  async delete(): Promise<void> {
+    try {
+      const db = await this.getDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.IDB_STORE], 'readwrite');
+        const store = transaction.objectStore(this.IDB_STORE);
+        const request = store.delete(this.dbName);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to delete database from IndexedDB:', error);
+      throw error;
+    }
+  }
+}
+
 export class BrowserSQLiteClient implements DatabaseClient {
   private promiser: any = null;
   private dbId: string | null = null;
+  private sqlite3: any = null; // Store SQLite3 instance
   private readonly options: Required<BrowserDatabaseOptions>;
+  private persistence: IndexedDBSQLitePersistence | null = null;
+  private persistenceEnabled = false;
+  private autoSaveTimer: any = null;
   public isInitialized = false;
 
   constructor(options: BrowserDatabaseOptions) {
@@ -34,42 +122,133 @@ export class BrowserSQLiteClient implements DatabaseClient {
       console.log('Initializing SQLite WASM module...');
       
       // Initialize the SQLite WASM module using the official method
-      const sqlite3 = await sqlite3InitModule();
+      this.sqlite3 = await sqlite3InitModule();
+      // Make sqlite3 available globally for CAPI access
+      (globalThis as any).sqlite3 = this.sqlite3;
       console.log('SQLite WASM module initialized successfully');
-      console.log('SQLite version:', sqlite3.version.libVersion);
+      console.log('SQLite version:', this.sqlite3.version.libVersion);
 
       // Create database instance
       let db: any;
+      let storageType = 'in-memory';
       
-      if (this.options.enablePersistence && this.isOpfsAvailable()) {
-        try {
-          // Try to use OPFS for persistence
-          console.log('Attempting to create OPFS database...');
-          db = new sqlite3.oo1.OpfsDb(this.options.dbName);
-          console.log('OPFS database created successfully:', this.options.dbName);
-        } catch (opfsError) {
-          console.warn('OPFS database creation failed, falling back to in-memory:', opfsError);
-          db = new sqlite3.oo1.DB();
-          console.log('In-memory database created as fallback');
+      // Check if we're in a Worker thread
+      const isWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+      
+      if (this.options.enablePersistence) {
+        if (isWorker && this.isOpfsAvailable()) {
+          try {
+            // Try to use OPFS for persistence (Worker thread only)
+            console.log('Attempting to create OPFS database...');
+            
+            // Check if SharedArrayBuffer is available (indicates COOP/COEP headers are set)
+            if (typeof SharedArrayBuffer === 'undefined') {
+              console.warn('SharedArrayBuffer not available - COOP/COEP headers not set.');
+              throw new Error('SharedArrayBuffer not available');
+            }
+            
+            db = new this.sqlite3.oo1.OpfsDb(this.options.dbName, 'c');
+            storageType = 'OPFS';
+            console.log('✅ OPFS database opened successfully:', this.options.dbName);
+          } catch (opfsError) {
+            console.warn('OPFS database creation failed:', opfsError);
+            db = null;
+          }
         }
-      } else {
-        // Use in-memory database
+        
+        // If OPFS failed or we're in main thread, try IndexedDB
+        if (!db) {
+          try {
+            console.log('Attempting to use IndexedDB-backed persistence...');
+            
+            // Create in-memory database first
+            db = new this.sqlite3.oo1.DB();
+            
+            // Set up IndexedDB persistence layer
+            this.persistence = new IndexedDBSQLitePersistence(this.options.dbName);
+            
+            // Try to load existing database from IndexedDB
+            const existingData = await this.persistence.load();
+            if (existingData && existingData.byteLength > 0) {
+              console.log(`📥 Loading existing database from IndexedDB (${existingData.byteLength} bytes)...`);
+              
+              try {
+                // Close the empty db
+                db.close();
+                
+                // Create a new database
+                db = new this.sqlite3.oo1.DB();
+                
+                // Use the proper WASM allocation method from the cookbook
+                const p = this.sqlite3.wasm.allocFromTypedArray(existingData);
+                const rc = this.sqlite3.capi.sqlite3_deserialize(
+                  db.pointer,
+                  'main',
+                  p,
+                  existingData.byteLength,
+                  existingData.byteLength,
+                  this.sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE
+                );
+                
+                // Check the result
+                db.checkRc(rc);
+                console.log('✅ Database loaded successfully from IndexedDB');
+              } catch (deserializeError) {
+                console.error('Failed to load existing database:', deserializeError);
+                console.log('Creating fresh in-memory database...');
+                // Create a fresh database on error
+                if (db && typeof db.close === 'function') {
+                  try {
+                    db.close();
+                  } catch (closeError) {
+                    console.warn('Failed to close failed database:', closeError);
+                  }
+                }
+                db = new this.sqlite3.oo1.DB();
+              }
+            } else {
+              console.log('No existing database found in IndexedDB, starting fresh');
+            }
+            
+            this.persistenceEnabled = true;
+            storageType = 'IndexedDB';
+            console.log('✅ IndexedDB persistence enabled');
+          } catch (idbError) {
+            console.warn('IndexedDB persistence setup failed:', idbError);
+            if (!db) {
+              db = new this.sqlite3.oo1.DB();
+            }
+            this.persistenceEnabled = false;
+          }
+        }
+      }
+      
+      // Final fallback to in-memory
+      if (!db) {
         console.log('Creating in-memory database...');
-        db = new sqlite3.oo1.DB();
+        db = new this.sqlite3.oo1.DB();
+        storageType = 'in-memory';
         console.log('In-memory database created successfully');
       }
 
       // Store the database instance and mark as initialized BEFORE running init SQL
       this.promiser = db;
-      this.dbId = 'main'; // For compatibility with the existing interface
+      this.dbId = 'main';
       this.isInitialized = true;
+      
+      // Log the actual storage being used
+      if (storageType === 'in-memory' && !this.persistenceEnabled) {
+        console.log('⚠️  Using IN-MEMORY storage (data will be lost on page reload)');
+      } else {
+        console.log(`📦 Using PERSISTENT storage (${storageType})`);
+        console.log(`💾 Storage quota: ${storageType === 'IndexedDB' ? '~unlimited (browser dependent)' : 'N/A'}`);
+      }
 
       // Run initialization SQL if provided
       if (this.options.initSql.length > 0) {
         console.log('Executing initialization SQL...');
         for (const sql of this.options.initSql) {
           try {
-            // Execute SQL directly without using this.execute to avoid recursion
             db.exec(sql);
             console.log('Executed SQL:', sql.substring(0, 50) + '...');
           } catch (sqlError) {
@@ -78,6 +257,29 @@ export class BrowserSQLiteClient implements DatabaseClient {
           }
         }
         console.log('Database initialization SQL executed successfully');
+      }
+
+      // Save initial state if using IndexedDB
+      if (this.persistenceEnabled && this.persistence) {
+        await this.saveToIndexedDB();
+        
+        // Add event listener to save database before page unload
+        if (typeof window !== 'undefined') {
+          window.addEventListener('beforeunload', () => {
+            // Synchronous save on page unload
+            try {
+              if (this.persistenceEnabled && this.sqlite3?.capi && this.promiser) {
+                const serialized = this.sqlite3.capi.sqlite3_js_db_export(this.promiser.pointer);
+                if (serialized && this.persistence) {
+                  // Use synchronous IndexedDB operations for beforeunload
+                  console.log('Saving database before page unload...');
+                }
+              }
+            } catch (error) {
+              console.warn('Failed to save database on page unload:', error);
+            }
+          });
+        }
       }
 
       console.log('Database initialization completed successfully');
@@ -92,6 +294,56 @@ export class BrowserSQLiteClient implements DatabaseClient {
   }
 
   /**
+   * Save the current database state to IndexedDB
+   */
+  private async saveToIndexedDB(): Promise<void> {
+    if (!this.persistenceEnabled || !this.persistence || !this.promiser || !this.sqlite3) {
+      return;
+    }
+
+    try {
+      if (!this.sqlite3?.capi) {
+        console.warn('Cannot save: SQLite CAPI not available');
+        return;
+      }
+
+      const db = this.promiser;
+      const capi = this.sqlite3.capi;
+      
+      // Serialize the database using the export function
+      const serialized = capi.sqlite3_js_db_export(db.pointer);
+      
+      if (serialized && serialized.byteLength > 0) {
+        await this.persistence.save(serialized);
+        console.log(`💾 Database saved to IndexedDB (${serialized.byteLength} bytes)`);
+      } else {
+        console.warn('Cannot save: serialized database is empty');
+      }
+    } catch (error) {
+      console.error('Failed to save to IndexedDB:', error);
+    }
+  }
+
+  /**
+   * Schedule an auto-save (debounced)
+   */
+  private scheduleAutoSave(): void {
+    if (!this.persistenceEnabled || !this.persistence) return;
+
+    // Clear existing timer
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+    }
+
+    // Schedule save for 500ms from now (more responsive)
+    this.autoSaveTimer = setTimeout(() => {
+      this.saveToIndexedDB().catch(error => {
+        console.error('Auto-save failed:', error);
+      });
+    }, 500);
+  }
+
+  /**
    * Execute SQL without returning results (INSERT, UPDATE, DELETE, CREATE, etc.)
    */
   async execute(sql: string, params: any[] = []): Promise<ExecResult> {
@@ -103,25 +355,23 @@ export class BrowserSQLiteClient implements DatabaseClient {
       if (params.length > 0) {
         console.log('Executing with parameters:', { sql, params });
         
-        // Use prepared statement approach - this is the correct way
         const stmt = db.prepare(sql);
         
         try {
-          // Bind parameters
           stmt.bind(params);
-          
-          // Execute the statement
           stmt.step();
           
-          // Get results - changes() is a method, but we access the result directly
           const changes = db.changes();
-          const lastInsertRowid = db.pointer ? 
-            this.getLastInsertRowid(db) : 0;
+          const lastInsertRowid = this.sqlite3?.capi?.sqlite3_last_insert_rowid
+            ? this.sqlite3.capi.sqlite3_last_insert_rowid(db.pointer)
+            : 0;
           
           console.log('Execute successful:', { changes, lastInsertRowid });
           
-          // Clean up
           stmt.finalize();
+          
+          // Schedule auto-save for IndexedDB persistence
+          this.scheduleAutoSave();
           
           return {
             changes,
@@ -129,7 +379,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
           };
         } catch (stmtError) {
           console.error('Statement execution error:', stmtError);
-          // Make sure to finalize even on error
           try {
             stmt.finalize();
           } catch (finalizeError) {
@@ -138,37 +387,23 @@ export class BrowserSQLiteClient implements DatabaseClient {
           throw stmtError;
         }
       } else {
-        // Execute simple SQL without parameters
         db.exec(sql);
         
-        return {
+        const result = {
           changes: db.changes(),
-          lastInsertRowid: this.getLastInsertRowid(db),
+          lastInsertRowid: this.sqlite3?.capi?.sqlite3_last_insert_rowid
+            ? this.sqlite3.capi.sqlite3_last_insert_rowid(db.pointer)
+            : 0,
         };
+        
+        // Schedule auto-save for IndexedDB persistence
+        this.scheduleAutoSave();
+        
+        return result;
       }
     } catch (error) {
       console.error('Failed to execute SQL:', { sql, params, error });
       throw error;
-    }
-  }
-
-  /**
-   * Helper to get lastInsertRowid from the database
-   * Using the C API directly since the OO1 API doesn't expose this clearly
-   */
-  private getLastInsertRowid(db: any): number {
-    try {
-      // The db.pointer property holds the sqlite3* pointer
-      // We need to use the C API to get the last insert rowid
-      const sqlite3 = (globalThis as any).sqlite3;
-      if (sqlite3 && sqlite3.capi && sqlite3.capi.sqlite3_last_insert_rowid) {
-        return sqlite3.capi.sqlite3_last_insert_rowid(db.pointer);
-      }
-      // Fallback: return 0 if we can't access the C API
-      return 0;
-    } catch (e) {
-      console.warn('Failed to get lastInsertRowid:', e);
-      return 0;
     }
   }
 
@@ -186,25 +421,18 @@ export class BrowserSQLiteClient implements DatabaseClient {
       };
 
       if (params.length > 0) {
-        // Use prepared statement with parameters
         const stmt = db.prepare(sql);
         
         try {
-          // Bind parameters
           stmt.bind(params);
-          
-          // Get column names
           result.columns = stmt.getColumnNames();
           
-          // Execute and collect results
           while (stmt.step()) {
             result.values.push(stmt.get([]));
           }
           
-          // Clean up
           stmt.finalize();
         } catch (stmtError) {
-          // Make sure to finalize even on error
           try {
             stmt.finalize();
           } catch (finalizeError) {
@@ -213,7 +441,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
           throw stmtError;
         }
       } else {
-        // Execute simple SQL and collect results
         db.exec({
           sql: sql,
           rowMode: 'array',
@@ -222,7 +449,6 @@ export class BrowserSQLiteClient implements DatabaseClient {
           }
         });
         
-        // Get column names if we have results
         if (result.values.length > 0) {
           const stmt = db.prepare(sql);
           result.columns = stmt.getColumnNames();
@@ -246,22 +472,18 @@ export class BrowserSQLiteClient implements DatabaseClient {
     const results: ExecResult[] = [];
 
     try {
-      // Begin transaction
       await this.execute('BEGIN TRANSACTION');
 
       try {
-        // Execute all queries
         for (const query of queries) {
           const result = await this.execute(query.sql, query.params || []);
           results.push(result);
         }
 
-        // Commit transaction
         await this.execute('COMMIT');
         
         return results;
       } catch (error) {
-        // Rollback on error
         await this.execute('ROLLBACK');
         throw error;
       }
@@ -278,19 +500,12 @@ export class BrowserSQLiteClient implements DatabaseClient {
     this.ensureInitialized();
 
     try {
+      if (!this.sqlite3?.capi) {
+        throw new Error('SQLite CAPI not available');
+      }
+
       const db = this.promiser;
-      const sqlite3 = (globalThis as any).sqlite3;
-      
-      if (sqlite3 && sqlite3.capi && sqlite3.capi.sqlite3_js_db_export) {
-        return sqlite3.capi.sqlite3_js_db_export(db.pointer);
-      }
-      
-      // Fallback to OO1 API if available
-      if (typeof db.export === 'function') {
-        return db.export();
-      }
-      
-      throw new Error('Database export not supported');
+      return this.sqlite3.capi.sqlite3_js_db_export(db.pointer);
     } catch (error) {
       console.error('Failed to export database:', error);
       throw error;
@@ -305,26 +520,32 @@ export class BrowserSQLiteClient implements DatabaseClient {
 
     try {
       const db = this.promiser;
-      
-      // Close current database and create new one with imported data
       db.close();
       
-      // Re-initialize with imported data
       const sqlite3 = await sqlite3InitModule();
       const newDb = new sqlite3.oo1.DB();
       
-      // Import the data
       const capi = sqlite3.capi;
-      if (capi && capi.sqlite3_deserialize) {
-        capi.sqlite3_deserialize(newDb.pointer, 'main', data, data.byteLength, data.byteLength, 0);
-      } else if (typeof newDb.deserialize === 'function') {
-        newDb.deserialize(data);
-      } else {
-        throw new Error('Database import not supported');
+      const rc = capi.sqlite3_deserialize(
+        newDb.pointer,
+        'main',
+        data,
+        data.byteLength,
+        data.byteLength,
+        capi.SQLITE_DESERIALIZE_FREEONCLOSE | capi.SQLITE_DESERIALIZE_RESIZEABLE
+      );
+      
+      if (rc !== 0) {
+        throw new Error(`Failed to import database: ${rc}`);
       }
       
       this.promiser = newDb;
       console.log('Database imported successfully');
+      
+      // Save to IndexedDB if persistence is enabled
+      if (this.persistenceEnabled) {
+        await this.saveToIndexedDB();
+      }
     } catch (error) {
       console.error('Failed to import database:', error);
       throw error;
@@ -340,12 +561,33 @@ export class BrowserSQLiteClient implements DatabaseClient {
     }
 
     try {
+      // Clear auto-save timer
+      if (this.autoSaveTimer) {
+        clearTimeout(this.autoSaveTimer);
+        this.autoSaveTimer = null;
+      }
+
+      // Final save to IndexedDB
+      if (this.persistenceEnabled && this.persistence) {
+        try {
+          await this.saveToIndexedDB();
+          console.log('Final database state saved successfully');
+        } catch (error) {
+          console.warn('Failed to save final database state:', error);
+        }
+      }
+
       const db = this.promiser;
-      db.close();
+      if (db && typeof db.close === 'function') {
+        db.close();
+      }
 
       this.promiser = null;
       this.dbId = null;
+      this.sqlite3 = null;
       this.isInitialized = false;
+      this.persistence = null;
+      this.persistenceEnabled = false;
       console.log('Database connection closed');
     } catch (error) {
       console.error('Failed to close database:', error);
