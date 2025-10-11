@@ -1,0 +1,427 @@
+---
+description: Trading journal domain-specific patterns and business logic
+---
+
+# Trading Journal Domain Guidelines
+
+## Domain Model
+
+### Core Entities
+- **Trade**: Individual trading transaction (stock or option)
+- **Journal**: Collection of trades for analysis
+- **Setup**: Trading strategy or pattern
+- **Analytics**: Performance metrics and insights
+- **Notes**: Trade-related observations and learnings
+
+### Trade Types and Asset Classes
+```typescript
+// Good: Comprehensive trade type definitions
+export interface TradeFormData {
+  symbol: string;
+  assetType: 'STOCK' | 'OPTION';
+  tradeType: 'BUY' | 'SELL';
+  orderType: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
+  entryPrice: number;
+  exitPrice?: number;
+  stopLoss: number;
+  takeProfit?: number;
+  commissions?: number;
+  numberOfShares: number;
+  
+  // Options specific
+  strikePrice?: number;
+  optionType?: 'CALL' | 'PUT';
+  expirationDate?: string;
+  premium?: number;
+  
+  // Dates and metadata
+  entryDate: string;
+  exitDate?: string;
+  notes?: string;
+  tags?: string[];
+}
+```
+
+## Business Logic Patterns
+
+### Trade Calculations
+```typescript
+// Good: Proper profit/loss calculations
+export interface TradeCalculations {
+  profitLoss?: number;
+  profitLossPercentage?: number;
+  daysDuration?: number;
+  isWinner?: boolean;
+}
+
+export function calculateTradeMetrics(trade: JournalTrade): TradeCalculations {
+  if (!trade.exitPrice || !trade.exitDate) {
+    return {}; // Open trade
+  }
+
+  const profitLoss = (trade.exitPrice - trade.entryPrice) * trade.numberOfShares - (trade.commissions || 0);
+  const profitLossPercentage = (profitLoss / (trade.entryPrice * trade.numberOfShares)) * 100;
+  const daysDuration = Math.ceil(
+    (new Date(trade.exitDate).getTime() - new Date(trade.entryDate).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  return {
+    profitLoss,
+    profitLossPercentage,
+    daysDuration,
+    isWinner: profitLoss > 0,
+  };
+}
+```
+
+### Position Sizing and Risk Management
+```typescript
+// Good: Risk calculation utilities
+export function calculatePositionSize(
+  accountValue: number,
+  riskPercentage: number,
+  entryPrice: number,
+  stopLoss: number
+): number {
+  const riskAmount = accountValue * (riskPercentage / 100);
+  const riskPerShare = Math.abs(entryPrice - stopLoss);
+  return Math.floor(riskAmount / riskPerShare);
+}
+
+export function calculateRiskRewardRatio(
+  entryPrice: number,
+  stopLoss: number,
+  takeProfit: number
+): number {
+  const risk = Math.abs(entryPrice - stopLoss);
+  const reward = Math.abs(takeProfit - entryPrice);
+  return reward / risk;
+}
+```
+
+### Trade Status Management
+```typescript
+// Good: Trade lifecycle management
+export type TradeStatus = 'open' | 'closed' | 'cancelled';
+
+export function updateTradeStatus(
+  trade: JournalTrade,
+  newStatus: TradeStatus,
+  exitPrice?: number,
+  exitDate?: string
+): Partial<JournalTrade> {
+  const updates: Partial<JournalTrade> = {
+    status: newStatus,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (newStatus === 'closed' && exitPrice && exitDate) {
+    updates.exitPrice = exitPrice;
+    updates.exitDate = exitDate;
+  }
+
+  return updates;
+}
+```
+
+## Data Validation and Constraints
+
+### Trade Validation Rules
+```typescript
+// Good: Business rule validation
+export function validateTradeData(data: TradeFormData): string[] {
+  const errors: string[] = [];
+
+  // Price validation
+  if (data.entryPrice <= 0) {
+    errors.push('Entry price must be positive');
+  }
+
+  if (data.stopLoss <= 0) {
+    errors.push('Stop loss must be positive');
+  }
+
+  if (data.stopLoss >= data.entryPrice && data.tradeType === 'BUY') {
+    errors.push('Stop loss must be below entry price for long positions');
+  }
+
+  if (data.stopLoss <= data.entryPrice && data.tradeType === 'SELL') {
+    errors.push('Stop loss must be above entry price for short positions');
+  }
+
+  // Options validation
+  if (data.assetType === 'OPTION') {
+    if (!data.strikePrice || data.strikePrice <= 0) {
+      errors.push('Strike price is required for options');
+    }
+    if (!data.optionType) {
+      errors.push('Option type (CALL/PUT) is required');
+    }
+    if (!data.expirationDate) {
+      errors.push('Expiration date is required for options');
+    }
+  }
+
+  // Date validation
+  if (data.exitDate && new Date(data.exitDate) <= new Date(data.entryDate)) {
+    errors.push('Exit date must be after entry date');
+  }
+
+  return errors;
+}
+```
+
+### Portfolio Constraints
+```typescript
+// Good: Portfolio-level validation
+export function validatePortfolioConstraints(
+  trades: JournalTrade[],
+  newTrade: TradeFormData
+): string[] {
+  const errors: string[] = [];
+  const openTrades = trades.filter(t => t.status === 'open' && t.symbol === newTrade.symbol);
+
+  // Check for existing position
+  if (openTrades.length > 0 && newTrade.tradeType === 'BUY') {
+    errors.push('Cannot open new long position - existing position exists');
+  }
+
+  // Check position size limits
+  const totalExposure = openTrades.reduce((sum, trade) => 
+    sum + (trade.entryPrice * trade.numberOfShares), 0
+  );
+  
+  const newExposure = newTrade.entryPrice * newTrade.numberOfShares;
+  const maxExposure = 10000; // Example limit
+
+  if (totalExposure + newExposure > maxExposure) {
+    errors.push('Position size exceeds maximum exposure limit');
+  }
+
+  return errors;
+}
+```
+
+## Analytics and Reporting
+
+### Performance Metrics
+```typescript
+// Good: Comprehensive performance tracking
+export interface TradeStats {
+  totalTrades: number;
+  openTrades: number;
+  closedTrades: number;
+  totalProfit?: number;
+  totalLoss?: number;
+  winRate?: number;
+  averageWin?: number;
+  averageLoss?: number;
+  profitFactor?: number;
+  maxDrawdown?: number;
+}
+
+export function calculateTradeStats(trades: JournalTrade[]): TradeStats {
+  const closedTrades = trades.filter(t => t.status === 'closed' && t.exitPrice);
+  const openTrades = trades.filter(t => t.status === 'open');
+  
+  const calculations = closedTrades.map(calculateTradeMetrics);
+  const winners = calculations.filter(c => c.isWinner);
+  const losers = calculations.filter(c => !c.isWinner);
+
+  const totalProfit = winners.reduce((sum, c) => sum + (c.profitLoss || 0), 0);
+  const totalLoss = Math.abs(losers.reduce((sum, c) => sum + (c.profitLoss || 0), 0));
+
+  return {
+    totalTrades: trades.length,
+    openTrades: openTrades.length,
+    closedTrades: closedTrades.length,
+    totalProfit,
+    totalLoss,
+    winRate: closedTrades.length > 0 ? (winners.length / closedTrades.length) * 100 : 0,
+    averageWin: winners.length > 0 ? totalProfit / winners.length : 0,
+    averageLoss: losers.length > 0 ? totalLoss / losers.length : 0,
+    profitFactor: totalLoss > 0 ? totalProfit / totalLoss : 0,
+  };
+}
+```
+
+### Time-Based Analysis
+```typescript
+// Good: Time-based performance analysis
+export function calculateMonthlyPerformance(trades: JournalTrade[]) {
+  const monthlyData = new Map<string, { profit: number; trades: number }>();
+
+  trades.forEach(trade => {
+    if (trade.status === 'closed' && trade.exitDate) {
+      const month = trade.exitDate.substring(0, 7); // YYYY-MM
+      const metrics = calculateTradeMetrics(trade);
+      
+      if (!monthlyData.has(month)) {
+        monthlyData.set(month, { profit: 0, trades: 0 });
+      }
+      
+      const data = monthlyData.get(month)!;
+      data.profit += metrics.profitLoss || 0;
+      data.trades += 1;
+    }
+  });
+
+  return Array.from(monthlyData.entries()).map(([month, data]) => ({
+    month,
+    profit: data.profit,
+    trades: data.trades,
+    averageProfit: data.profit / data.trades,
+  }));
+}
+```
+
+## Integration Patterns
+
+### Market Data Integration
+```typescript
+// Good: Market data integration
+export interface MarketData {
+  symbol: string;
+  currentPrice: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  marketCap?: number;
+  lastUpdated: string;
+}
+
+export async function getMarketData(symbol: string): Promise<MarketData> {
+  // Integration with Yahoo Finance or other data provider
+  const response = await fetch(`/api/market-data/${symbol}`);
+  return response.json();
+}
+```
+
+### AI Integration
+```typescript
+// Good: AI-powered insights
+export interface AIInsight {
+  type: 'pattern' | 'risk' | 'opportunity' | 'performance';
+  title: string;
+  description: string;
+  confidence: number;
+  actionable: boolean;
+  relatedTrades?: number[];
+}
+
+export async function generateTradeInsights(trades: JournalTrade[]): Promise<AIInsight[]> {
+  const response = await fetch('/api/ai/insights', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trades }),
+  });
+  return response.json();
+}
+```
+
+## Error Handling and Edge Cases
+
+### Trading-Specific Errors
+```typescript
+// Good: Domain-specific error handling
+export class TradingError extends Error {
+  constructor(
+    message: string,
+    public code: 'INVALID_PRICE' | 'INSUFFICIENT_FUNDS' | 'MARKET_CLOSED' | 'POSITION_LIMIT',
+    public tradeId?: number
+  ) {
+    super(message);
+    this.name = 'TradingError';
+  }
+}
+
+export function handleTradingError(error: unknown): TradingError {
+  if (error instanceof TradingError) {
+    return error;
+  }
+  
+  // Convert generic errors to trading errors
+  if (error instanceof Error) {
+    if (error.message.includes('price')) {
+      return new TradingError('Invalid price data', 'INVALID_PRICE');
+    }
+    if (error.message.includes('funds')) {
+      return new TradingError('Insufficient funds', 'INSUFFICIENT_FUNDS');
+    }
+  }
+  
+  return new TradingError('Unknown trading error', 'INVALID_PRICE');
+}
+```
+
+### Data Consistency
+```typescript
+// Good: Ensure data consistency
+export function validateTradeConsistency(trade: JournalTrade): boolean {
+  // Check required fields
+  if (!trade.symbol || !trade.entryPrice || !trade.entryDate) {
+    return false;
+  }
+
+  // Check closed trade requirements
+  if (trade.status === 'closed') {
+    if (!trade.exitPrice || !trade.exitDate) {
+      return false;
+    }
+    if (new Date(trade.exitDate) <= new Date(trade.entryDate)) {
+      return false;
+    }
+  }
+
+  // Check options requirements
+  if (trade.assetType === 'OPTION') {
+    if (!trade.strikePrice || !trade.optionType || !trade.expirationDate) {
+      return false;
+    }
+  }
+
+  return true;
+}
+```
+
+## Performance Considerations
+
+### Large Dataset Handling
+```typescript
+// Good: Efficient data processing for large trade histories
+export function processLargeTradeHistory(trades: JournalTrade[]) {
+  // Use streaming for large datasets
+  const batchSize = 1000;
+  const results: TradeStats[] = [];
+
+  for (let i = 0; i < trades.length; i += batchSize) {
+    const batch = trades.slice(i, i + batchSize);
+    const stats = calculateTradeStats(batch);
+    results.push(stats);
+  }
+
+  return results;
+}
+```
+
+### Caching Strategies
+```typescript
+// Good: Cache expensive calculations
+const statsCache = new Map<string, TradeStats>();
+
+export function getCachedTradeStats(userId: string, trades: JournalTrade[]): TradeStats {
+  const cacheKey = `${userId}-${trades.length}-${trades[0]?.updatedAt || ''}`;
+  
+  if (statsCache.has(cacheKey)) {
+    return statsCache.get(cacheKey)!;
+  }
+
+  const stats = calculateTradeStats(trades);
+  statsCache.set(cacheKey, stats);
+  
+  // Clear cache after 5 minutes
+  setTimeout(() => statsCache.delete(cacheKey), 5 * 60 * 1000);
+  
+  return stats;
+}
+```
