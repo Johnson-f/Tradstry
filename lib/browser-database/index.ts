@@ -1,21 +1,22 @@
 /**
- * Browser Database - Main Entry Point
- * 
- * This module provides a complete browser-based SQLite database solution using:
- * - @libsql/client for SQLite database operations
- * - Drizzle ORM for type-safe database queries
- * - Automatic sync with cloud database via Rust backend
- * - Offline-first architecture with conflict resolution
+ * Browser SQLite Database - Export all modules
  */
 
-// Core exports
-export { BrowserDatabaseClient, getBrowserDatabase } from './client';
-export { DrizzleDatabase, getDrizzleDb } from './drizzle';
-export { DatabaseOperations, getDbOperations } from './operations';
-export { SyncService, getSyncService } from './sync';
+// Core client
+export { BrowserSQLiteClient, createBrowserDatabase } from './client';
 
-// Schema and types
-export * from './schema';
+// React hooks
+export { useBrowserDatabase, useTableStore } from './use-browser-database';
+export type { UseBrowserDatabaseOptions, UseBrowserDatabaseReturn } from './use-browser-database';
 
-// Re-export for convenience
-export type { BrowserDatabaseConfig } from './client';
+// Types
+export type {
+  DatabaseConfig,
+  QueryResult,
+  ExecResult,
+  DatabaseClient,
+  SqliteWorkerResponse,
+  SqliteWorkerMessage,
+  BrowserDatabaseOptions,
+  QueryCallback,
+} from './types';
