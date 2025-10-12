@@ -89,27 +89,48 @@ const TailwindAdvancedEditor = ({
   useEffect(() => {
     if (propInitialContent) {
       setInitialContent(propInitialContent);
-    } else if (initialHtmlContent) {
-      // Convert HTML to JSONContent
+    } else if (initialHtmlContent !== undefined) {
+      // Convert HTML to JSONContent or create empty content
       try {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = initialHtmlContent;
-        const textContent = tempDiv.textContent || '';
-        
-        // Create a simple JSONContent structure
-        const jsonContent: JSONContent = {
-          type: 'doc',
-          content: textContent ? [
-            {
+        if (initialHtmlContent === '' || initialHtmlContent === null) {
+          // Create completely empty content for new notes
+          setInitialContent({
+            type: 'doc',
+            content: [{
               type: 'paragraph',
-              content: [{ type: 'text', text: textContent }]
-            }
-          ] : []
-        };
-        setInitialContent(jsonContent);
+              content: []
+            }]
+          });
+        } else {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = initialHtmlContent;
+          const textContent = tempDiv.textContent || '';
+          
+          // Create a simple JSONContent structure
+          const jsonContent: JSONContent = {
+            type: 'doc',
+            content: textContent ? [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: textContent }]
+              }
+            ] : [{
+              type: 'paragraph',
+              content: []
+            }]
+          };
+          setInitialContent(jsonContent);
+        }
       } catch (error) {
         console.error('Error converting HTML to JSONContent:', error);
-        setInitialContent(defaultEditorContent);
+        // For notes modal, start with empty content on error
+        setInitialContent({
+          type: 'doc',
+          content: [{
+            type: 'paragraph',
+            content: []
+          }]
+        });
       }
     } else {
       const content = window.localStorage.getItem("novel-content");
@@ -118,10 +139,53 @@ const TailwindAdvancedEditor = ({
     }
   }, [propInitialContent, initialHtmlContent]);
 
+  // Force re-initialization when initialHtmlContent changes
+  useEffect(() => {
+    if (initialHtmlContent !== undefined) {
+      if (initialHtmlContent === '' || initialHtmlContent === null) {
+        setInitialContent({
+          type: 'doc',
+          content: [{
+            type: 'paragraph',
+            content: []
+          }]
+        });
+      } else {
+        try {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = initialHtmlContent;
+          const textContent = tempDiv.textContent || '';
+          
+          setInitialContent({
+            type: 'doc',
+            content: textContent ? [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: textContent }]
+              }
+            ] : [{
+              type: 'paragraph',
+              content: []
+            }]
+          });
+        } catch (error) {
+          console.error('Error converting HTML to JSONContent:', error);
+          setInitialContent({
+            type: 'doc',
+            content: [{
+              type: 'paragraph',
+              content: []
+            }]
+          });
+        }
+      }
+    }
+  }, [initialHtmlContent]);
+
   if (!initialContent) return null;
 
   return (
-    <div className="relative w-full max-w-screen-lg">
+    <div className="relative w-full min-h-[500px] flex flex-col">
       <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
         <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">{saveStatus}</div>
         <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
@@ -132,7 +196,7 @@ const TailwindAdvancedEditor = ({
         <EditorContent
           initialContent={initialContent}
           extensions={extensions}
-          className="relative min-h-[500px] w-full max-w-screen-lg border-muted bg-background sm:mb-[calc(20vh)] sm:rounded-lg sm:border sm:shadow-lg"
+          className="relative min-h-[500px] w-full border-muted bg-background rounded-lg border shadow-lg"
           editorProps={{
             handleDOMEvents: {
               keydown: (_view, event) => handleCommandNavigation(event),
