@@ -12,59 +12,108 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Edit2, Trash2, Save, X, FileText, Star } from "lucide-react";
+import { Edit2, Trash2, Save, X, FileText, Calendar, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
-import { useTradeNotesManagement } from "@/lib/hooks/use-trade-notes";
+import { formatDistanceToNow } from "date-fns";
+import { useNotesDatabase } from "@/lib/drizzle/notes";
+import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
 import {
-  TradeNoteInDB,
-  TradeNoteUpdate,
-  TradePhase,
-} from "@/lib/services/trade-notes-service";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface TradeNotesHistoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  userId: string;
 }
 
-interface EditingNote extends TradeNoteUpdate {
-  id: number;
+interface EditingNote {
+  id: string;
+  name: string;
+  content: string;
 }
 
 export function TradeNotesHistoryModal({
   open,
   onOpenChange,
+  userId,
 }: TradeNotesHistoryModalProps) {
-  const { notes, isLoading, error, updateNote, deleteNote, refetch } =
-    useTradeNotesManagement();
+  const { 
+    isInitialized,
+    getAllNotes, 
+    updateNote, 
+    deleteNote,
+    duplicateNote,
+    getStats 
+  } = useNotesDatabase(userId);
+  
+  const [notes, setNotes] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [editingNote, setEditingNote] = useState<EditingNote | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Load notes
+  const loadNotes = async () => {
+    if (!isInitialized) return;
+    
+    setLoading(true);
+    try {
+      const notesData = await getAllNotes({
+        orderBy: 'updated_at',
+        orderDirection: 'desc',
+        limit: 50
+      });
+      setNotes(notesData);
+    } catch (error) {
+      console.error('Failed to load notes:', error);
+      toast.error('Failed to load notes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load stats
+  const loadStats = async () => {
+    if (!isInitialized) return;
+    
+    try {
+      const statsData = await getStats();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+  };
 
   useEffect(() => {
-    if (open) {
-      refetch();
+    if (open && isInitialized) {
+      loadNotes();
+      loadStats();
     }
-  }, [open, refetch]);
+  }, [open, isInitialized]);
 
-  const handleEdit = (note: TradeNoteInDB) => {
+  const handleEdit = (note: any) => {
     setEditingNote({
       id: note.id,
-      title: note.title,
-      content: note.content,
-      tags: note.tags,
-      rating: note.rating,
-      phase: note.phase,
+      name: note.name,
+      content: note.content || '',
     });
   };
 
@@ -74,15 +123,13 @@ export function TradeNotesHistoryModal({
     setIsUpdating(true);
     try {
       await updateNote(editingNote.id, {
-        title: editingNote.title,
+        name: editingNote.name,
         content: editingNote.content,
-        tags: editingNote.tags,
-        rating: editingNote.rating,
-        phase: editingNote.phase,
       });
       toast.success("Note updated successfully");
       setEditingNote(null);
-      refetch();
+      await loadNotes();
+      await loadStats();
     } catch (error) {
       toast.error("Failed to update note");
     } finally {
@@ -90,12 +137,13 @@ export function TradeNotesHistoryModal({
     }
   };
 
-  const handleDelete = async (noteId: number) => {
+  const handleDelete = async (noteId: string) => {
     setIsDeleting(noteId);
     try {
       await deleteNote(noteId);
       toast.success("Note deleted successfully");
-      refetch();
+      await loadNotes();
+      await loadStats();
     } catch (error) {
       toast.error("Failed to delete note");
     } finally {
@@ -103,296 +151,220 @@ export function TradeNotesHistoryModal({
     }
   };
 
+  const handleDuplicate = async (noteId: string) => {
+    try {
+      await duplicateNote(noteId);
+      toast.success("Note duplicated successfully");
+      await loadNotes();
+      await loadStats();
+    } catch (error) {
+      toast.error("Failed to duplicate note");
+    }
+  };
+
   const handleCancel = () => {
     setEditingNote(null);
   };
 
-  const getPhaseColor = (phase: TradePhase | null) => {
-    switch (phase) {
-      case TradePhase.PRE_ENTRY:
-        return "bg-blue-50 text-blue-700 border-blue-200";
-      case TradePhase.ENTRY:
-        return "bg-green-50 text-green-700 border-green-200";
-      case TradePhase.MANAGEMENT:
-        return "bg-yellow-50 text-yellow-700 border-yellow-200";
-      case TradePhase.EXIT:
-        return "bg-red-50 text-red-700 border-red-200";
-      case TradePhase.POST_ANALYSIS:
-        return "bg-purple-50 text-purple-700 border-purple-200";
-      default:
-        return "bg-gray-50 text-gray-700 border-gray-200";
+  // Get word count from content
+  const getWordCount = (content: string) => {
+    if (!content) return 0;
+    try {
+      const parsed = JSON.parse(content);
+      const text = JSON.stringify(parsed);
+      return text.split(/\s+/).filter(word => word.length > 0).length;
+    } catch {
+      return content.split(/\s+/).filter(word => word.length > 0).length;
     }
   };
 
-  const getRatingStars = (rating: number | null) => {
-    if (!rating) return null;
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={`h-4 w-4 ${
-          i < rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-        }`}
-      />
-    ));
-  };
+  if (!isInitialized) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading notes...</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh]">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Trade Notes History
+            Trading Notes History
           </DialogTitle>
           <DialogDescription>
-            View, edit, and manage all your trade notes
+            View, edit, and manage all your trading notes
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-6 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-20 w-full" />
-                  </CardContent>
-                </Card>
+        <div className="flex flex-1 gap-4 min-h-0">
+          {/* Notes List */}
+          <div className="w-80 flex flex-col">
+            {/* Stats */}
+            {stats && (
+              <div className="flex gap-2 text-sm text-muted-foreground mb-4">
+                <Badge variant="secondary">{stats.totalNotes} notes</Badge>
+                <Badge variant="secondary">{stats.totalWords} words</Badge>
+                {stats.lastUpdated && (
+                  <Badge variant="outline">
+                    Updated {formatDistanceToNow(new Date(stats.lastUpdated), { addSuffix: true })}
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            <ScrollArea className="flex-1">
+              {loading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="p-3 border rounded-lg">
+                      <Skeleton className="h-4 w-3/4 mb-2" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
               ))}
             </div>
-          ) : error ? (
-            <div className="text-center py-8 text-red-600">
-              Error loading notes: {error.message}
-            </div>
-          ) : !notes || notes.length === 0 ? (
+              ) : notes.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No trade notes found</p>
+                  <p>No notes found</p>
               <p className="text-sm">
-                Start adding notes to your trades to see them here
+                    Start creating notes to see them here
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+                <div className="space-y-2">
               {notes.map((note) => (
-                <Card key={note.id} className="relative">
-                  <CardHeader className="pb-3">
+                    <div
+                      key={note.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${
+                        editingNote?.id === note.id ? 'bg-accent border-primary' : 'border-border'
+                      }`}
+                      onClick={() => handleEdit(note)}
+                    >
                     <div className="flex items-start justify-between">
-                      <div className="space-y-2">
-                        {editingNote?.id === note.id ? (
-                          <Input
-                            value={editingNote.title}
-                            onChange={(e) =>
-                              setEditingNote({
-                                ...editingNote,
-                                title: e.target.value,
-                              })
-                            }
-                            className="font-semibold"
-                            placeholder="Note title"
-                          />
-                        ) : (
-                          <CardTitle className="text-lg">
-                            {note.title}
-                          </CardTitle>
-                        )}
-
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <span>{note.trade_symbol}</span>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium truncate">{note.name}</h3>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            {note.content && (
+                              <>
                           <span>•</span>
-                          <span className="capitalize">{note.trade_type}</span>
-                          <span>•</span>
-                          <span>
-                            {new Date(note.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {note.phase && (
-                            <Badge
-                              variant="outline"
-                              className={getPhaseColor(note.phase)}
-                            >
-                              {note.phase.replace("_", " ")}
-                            </Badge>
-                          )}
-
-                          {note.rating && (
-                            <div className="flex items-center gap-1">
-                              {getRatingStars(note.rating)}
-                            </div>
-                          )}
-
-                          {note.tags && note.tags.length > 0 && (
-                            <div className="flex gap-1">
-                              {note.tags.map((tag, index) => (
-                                <Badge
-                                  key={index}
-                                  variant="secondary"
-                                  className="text-xs"
-                                >
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
+                                <span>{getWordCount(note.content)} words</span>
+                              </>
+                            )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {editingNote?.id === note.id ? (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={handleSave}
-                              disabled={isUpdating}
-                            >
-                              <Save className="h-4 w-4" />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={handleCancel}
-                              disabled={isUpdating}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicate(note.id);
+                            }}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Duplicate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsDeleting(note.id);
+                              }}
+                              className="text-destructive"
                             >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(note)}
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(note.id)}
-                              disabled={isDeleting === note.id}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
-                  </CardHeader>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
 
-                  <CardContent>
-                    {editingNote?.id === note.id ? (
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="content">Content</Label>
-                          <Textarea
-                            id="content"
-                            value={editingNote.content}
-                            onChange={(e) =>
-                              setEditingNote({
-                                ...editingNote,
-                                content: e.target.value,
-                              })
-                            }
-                            rows={4}
-                            placeholder="Note content"
+          {/* Editor Area */}
+          <div className="flex-1 flex flex-col">
+            {editingNote ? (
+              <div className="flex-1 flex flex-col">
+                {/* Editor Header */}
+                <div className="border-b p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Input
+                      value={editingNote.name}
+                      onChange={(e) => setEditingNote({ ...editingNote, name: e.target.value })}
+                      className="font-semibold text-lg border-none shadow-none p-0 h-auto"
                           />
                         </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="phase">Phase</Label>
-                            <Select
-                              value={editingNote.phase || ""}
-                              onValueChange={(value) =>
-                                setEditingNote({
-                                  ...editingNote,
-                                  phase: value as TradePhase,
-                                })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select phase" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={TradePhase.PRE_ENTRY}>
-                                  Pre Entry
-                                </SelectItem>
-                                <SelectItem value={TradePhase.ENTRY}>
-                                  Entry
-                                </SelectItem>
-                                <SelectItem value={TradePhase.MANAGEMENT}>
-                                  Management
-                                </SelectItem>
-                                <SelectItem value={TradePhase.EXIT}>
-                                  Exit
-                                </SelectItem>
-                                <SelectItem value={TradePhase.POST_ANALYSIS}>
-                                  Post Analysis
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div>
-                            <Label htmlFor="rating">Rating</Label>
-                            <Select
-                              value={editingNote.rating?.toString() || ""}
-                              onValueChange={(value) =>
-                                setEditingNote({
-                                  ...editingNote,
-                                  rating: value ? parseInt(value) : null,
-                                })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select rating" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 Star</SelectItem>
-                                <SelectItem value="2">2 Stars</SelectItem>
-                                <SelectItem value="3">3 Stars</SelectItem>
-                                <SelectItem value="4">4 Stars</SelectItem>
-                                <SelectItem value="5">5 Stars</SelectItem>
-                              </SelectContent>
-                            </Select>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSave} disabled={isUpdating}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {isUpdating ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button onClick={handleCancel} variant="outline">
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel
+                    </Button>
                           </div>
                         </div>
 
-                        <div>
-                          <Label htmlFor="tags">Tags (comma separated)</Label>
-                          <Input
-                            id="tags"
-                            value={editingNote.tags?.join(", ") || ""}
-                            onChange={(e) =>
-                              setEditingNote({
-                                ...editingNote,
-                                tags: e.target.value
-                                  .split(",")
-                                  .map((tag) => tag.trim())
-                                  .filter(Boolean),
-                              })
-                            }
-                            placeholder="tag1, tag2, tag3"
-                          />
+                {/* Editor Content */}
+                <div className="flex-1 p-4">
+                  <TailwindAdvancedEditor />
                         </div>
                       </div>
                     ) : (
-                      <div className="whitespace-pre-wrap text-sm">
-                        {note.content}
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                    Select a note to start editing
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a note from the sidebar to begin editing.
+                  </p>
+                </div>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              ))}
+          </div>
             </div>
-          )}
-        </ScrollArea>
+
+        {/* Delete confirmation dialog */}
+        <AlertDialog open={!!isDeleting} onOpenChange={() => setIsDeleting(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Note</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this note? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => isDeleting && handleDelete(isDeleting)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

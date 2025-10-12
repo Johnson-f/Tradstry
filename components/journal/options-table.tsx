@@ -695,6 +695,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
         <TradeNotesModal
           open={notesModalOpen}
           onOpenChange={setNotesModalOpen}
+          userId={user?.id || ''}
           tradeId={selectedTradeForNotes.id}
           tradeType="option"
           tradeSymbol={selectedTradeForNotes.symbol}
