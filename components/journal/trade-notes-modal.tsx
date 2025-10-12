@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { useNotesDatabase } from "@/lib/drizzle/notes";
 import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
 import { formatDistanceToNow } from "date-fns";
@@ -198,9 +199,9 @@ export function TradeNotesModal({
         }
       }}
     >
-      <div className="bg-background border rounded-lg w-[98vw] h-[98vh] flex flex-col overflow-hidden">
+      <div className="bg-background border rounded-lg w-[98vw] h-[98vh] flex flex-col">
         {/* Header */}
-        <div className="p-6 pb-4 border-b">
+        <div className="p-6 pb-4 border-b shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -225,11 +226,11 @@ export function TradeNotesModal({
           </p>
           </div>
 
-        <div className="flex flex-1 gap-4 px-6 pb-6 min-h-0">
+        <div className="flex flex-1 gap-4 px-6 pb-6 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-80 flex flex-col">
+          <div className="w-80 flex flex-col overflow-hidden">
             {/* Create New Note Button */}
-            <div className="mb-5">
+            <div className="mb-5 shrink-0">
               <Button 
                 onClick={() => setShowCreateForm(true)}
                 className="w-full"
@@ -242,7 +243,7 @@ export function TradeNotesModal({
 
             {/* Create Form */}
             {showCreateForm && (
-              <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+              <div className="mb-4 p-4 border rounded-lg bg-muted/30 shrink-0">
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="newNoteName">Note Name *</Label>
@@ -281,15 +282,16 @@ export function TradeNotesModal({
 
             {/* Notes List */}
             <ScrollArea className="flex-1">
-              {notes.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No notes found</p>
-                  <p className="text-sm">Create your first note to get started</p>
-          </div>
-              ) : (
-                <div className="space-y-2">
-                  {notes.map((note) => (
+              <div className="pr-4">
+                {notes.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No notes found</p>
+                    <p className="text-sm">Create your first note to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {notes.map((note) => (
                   <div
                     key={note.id}
                       className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${
@@ -325,17 +327,21 @@ export function TradeNotesModal({
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </ScrollArea>
           </div>
 
+          {/* Vertical Separator */}
+          <Separator orientation="vertical" className="h-full" />
+
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col overflow-hidden">
             {selectedNote ? (
-              <div className="flex-1 flex flex-col">
+              <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Note Header */}
-                <div className="border-b p-4 flex items-center justify-between">
+                <div className="border-b p-4 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-4">
                     <Input
                       value={selectedNote.name}
@@ -356,17 +362,21 @@ export function TradeNotesModal({
                 </div>
 
                 {/* Editor Content */}
-                <div className="flex-1 p-4">
-                  <TailwindAdvancedEditor 
-                    key={selectedNote?.id || 'new'}
-                    initialHtmlContent={selectedNote?.content || ''}
-                    onContentChange={(content) => setNoteContent(content)}
-                    onSave={(content) => {
-                      if (selectedNote) {
-                        handleUpdateNote();
-                      }
-                    }}
-                  />
+                <div className="flex-1 overflow-hidden">
+                  <ScrollArea className="h-full">
+                    <div className="p-4">
+                      <TailwindAdvancedEditor 
+                        key={selectedNote?.id ? `note-${selectedNote.id}` : `empty-${Date.now()}`}
+                        initialHtmlContent={selectedNote?.content ?? ''}
+                        onContentChange={(content) => setNoteContent(content)}
+                        onSave={(content) => {
+                          if (selectedNote) {
+                            handleUpdateNote();
+                          }
+                        }}
+                      />
+                    </div>
+                  </ScrollArea>
                 </div>
               </div>
             ) : (
