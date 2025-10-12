@@ -22,14 +22,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
-import { StockInDB, StockUpdate, TradeStatus } from "@/lib/types/trading";
+import { Stock } from "@/lib/drizzle/journal";
 
 interface EditStockDialogProps {
-  stock: StockInDB;
+  stock: Stock;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (id: number, data: StockUpdate) => Promise<void>;
+  onSave: (id: number, data: Partial<Omit<Stock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -41,15 +40,19 @@ export function EditStockDialog({
   isSaving,
 }: EditStockDialogProps) {
   // Initialize form data with only updateable fields from the stock
-  const [formData, setFormData] = useState<StockUpdate>({
-    exit_price: stock.exit_price,
-    exit_date: stock.exit_date,
-    notes: stock.notes || "",
-    status: stock.status || "open"
+  const [formData, setFormData] = useState<Partial<Omit<Stock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>>({
+    exitPrice: stock.exitPrice,
+    exitDate: stock.exitDate,
+    // notes: stock.notes || "", // Remove notes field as it's not in the new schema
+    // status: stock.status || "open" // Remove status field as it's not in the new schema
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!stock.id) {
+      toast.error('Invalid stock trade');
+      return;
+    }
     await onSave(stock.id, formData);
   };
 
@@ -74,14 +77,14 @@ export function EditStockDialog({
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right font-medium">Entry Price</Label>
               <div className="col-span-3 py-2 text-sm">
-                ${stock.entry_price.toFixed(2)}
+                ${stock.entryPrice ? stock.entryPrice.toFixed(2) : 'N/A'}
               </div>
             </div>
 
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right font-medium">Entry Date</Label>
               <div className="col-span-3 py-2 text-sm">
-                {stock.entry_date ? format(new Date(stock.entry_date), "PPP") : 'N/A'}
+                {stock.entryDate ? format(new Date(stock.entryDate), "PPP") : 'N/A'}
               </div>
             </div>
 
@@ -93,11 +96,11 @@ export function EditStockDialog({
                 id="exit_price"
                 type="number"
                 step="0.01"
-                value={formData.exit_price || ''}
+                value={formData.exitPrice || ''}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    exit_price: e.target.value ? parseFloat(e.target.value) : undefined,
+                    exitPrice: e.target.value ? parseFloat(e.target.value) : undefined,
                   })
                 }
                 className="col-span-3"
@@ -116,8 +119,8 @@ export function EditStockDialog({
                     className="col-span-3 justify-start text-left font-normal"
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.exit_date ? (
-                      format(new Date(formData.exit_date), "PPP")
+                    {formData.exitDate ? (
+                      format(new Date(formData.exitDate), "PPP")
                     ) : (
                       <span>Pick a date</span>
                     )}
@@ -126,11 +129,11 @@ export function EditStockDialog({
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
-                    selected={formData.exit_date ? new Date(formData.exit_date) : undefined}
+                    selected={formData.exitDate ? new Date(formData.exitDate) : undefined}
                     onSelect={(date) =>
                       setFormData({
                         ...formData,
-                        exit_date: date ? date.toISOString() : undefined,
+                        exitDate: date ? date.toISOString() : undefined,
                       })
                     }
                     initialFocus
@@ -139,40 +142,6 @@ export function EditStockDialog({
               </Popover>
             </div>
 
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="status" className="text-right">
-                Status
-              </Label>
-              <select
-                id="status"
-                value={formData.status}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    status: e.target.value as TradeStatus,
-                  })
-                }
-                className="col-span-3 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="open">Open</option>
-                <option value="closed">Closed</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="notes" className="text-right pt-2">
-                Notes
-              </Label>
-              <Textarea
-                id="notes"
-                value={formData.notes || ""}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                className="col-span-3"
-                placeholder="Add any notes about this trade"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button

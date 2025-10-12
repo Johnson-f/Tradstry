@@ -5,10 +5,9 @@
 
 export * from './schema';
 
-// Additional utility types
-export interface TradeFormData {
+// Stock form data type
+export interface StockFormData {
   symbol: string;
-  assetType: 'STOCK' | 'OPTION';
   tradeType: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   entryPrice: number;
@@ -16,26 +15,35 @@ export interface TradeFormData {
   stopLoss: number;
   takeProfit?: number;
   commissions?: number;
-  numberOfShares: number;
-  
-  // Options specific
-  strikePrice?: number;
-  optionType?: 'CALL' | 'PUT';
-  expirationDate?: string;
-  premium?: number;
-  
-  // Dates
+  numberShares: number;
   entryDate: string;
   exitDate?: string;
-  
-  // Metadata
-  notes?: string;
-  tags?: string[];
 }
 
+// Option form data type
+export interface OptionFormData {
+  symbol: string;
+  strategyType: string;
+  tradeDirection: 'Bullish' | 'Bearish' | 'Neutral';
+  numberOfContracts: number;
+  optionType: 'Call' | 'Put';
+  strikePrice: number;
+  expirationDate: string;
+  entryPrice: number;
+  exitPrice?: number;
+  totalPremium: number;
+  commissions?: number;
+  impliedVolatility: number;
+  entryDate: string;
+  exitDate?: string;
+  status?: 'open' | 'closed';
+}
+
+// Union type for both form data types
+export type TradeFormData = StockFormData | OptionFormData;
+
 export interface TradeFilters {
-  status?: 'open' | 'closed' | 'cancelled';
-  assetType?: 'STOCK' | 'OPTION';
+  status?: 'open' | 'closed';
   symbol?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -44,9 +52,11 @@ export interface TradeFilters {
 }
 
 export interface TradeStats {
+  totalStocks: number;
+  totalOptions: number;
+  openOptions: number;
+  closedOptions: number;
   totalTrades: number;
-  openTrades: number;
-  closedTrades: number;
   totalProfit?: number;
   totalLoss?: number;
   winRate?: number;
@@ -68,13 +78,34 @@ export interface TradeCalculations {
 }
 
 // Form validation schemas (can be used with zod later)
-export interface TradeValidation {
+export interface StockValidation {
   symbol: string;
   entryPrice: number;
-  numberOfShares: number;
+  numberShares: number;
   stopLoss: number;
   entryDate: string;
 }
 
+export interface OptionValidation {
+  symbol: string;
+  entryPrice: number;
+  numberOfContracts: number;
+  strikePrice: number;
+  expirationDate: string;
+  entryDate: string;
+}
+
 // Export types for easy imports in components
-export type { JournalTrade, NewJournalTrade } from './schema';
+export type { 
+  Stock, 
+  NewStock, 
+  Option, 
+  NewOption, 
+  Trade, 
+  NewTrade,
+  TradeTypeEnum,
+  OrderTypeEnum,
+  TradeDirectionEnum,
+  OptionTypeEnum,
+  StatusEnum
+} from './schema';
