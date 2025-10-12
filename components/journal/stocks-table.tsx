@@ -466,6 +466,7 @@ export function StocksTable({ className }: StocksTableProps) {
         <TradeNotesModal
           open={notesModalOpen}
           onOpenChange={setNotesModalOpen}
+          userId={user?.id || ''}
           tradeId={selectedTradeForNotes.id}
           tradeType="stock"
           tradeSymbol={selectedTradeForNotes.symbol}

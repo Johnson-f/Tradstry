@@ -1,352 +1,420 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, Star, StarOff, Tag, Calendar, Image } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Plus, FileText, Save, X, Trash2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  useCreateTradeNote,
-  useTradeNotesByTrade,
-} from "@/lib/hooks/use-trade-notes";
-import {
-  TradeNoteCreate,
-  TradeNoteInDB,
-} from "@/lib/services/trade-notes-service";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useNotesDatabase } from "@/lib/drizzle/notes";
+import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
+import { formatDistanceToNow } from "date-fns";
 
 interface TradeNotesModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  tradeId: number;
-  tradeType: "stock" | "option";
+  userId: string;
+  tradeId?: number;
+  tradeType?: "stock" | "option";
   tradeSymbol?: string;
 }
 
 export function TradeNotesModal({
   open,
   onOpenChange,
+  userId,
   tradeId,
   tradeType,
   tradeSymbol,
 }: TradeNotesModalProps) {
-  const [formData, setFormData] = useState<Partial<TradeNoteCreate>>({
-    trade_id: tradeId,
-    trade_type: tradeType,
-    title: "",
-    content: "",
-    tags: [],
-    rating: undefined,
-    phase: undefined,
-    image_id: undefined,
-  });
-  const [newTag, setNewTag] = useState("");
+  const [noteName, setNoteName] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const createMutation = useCreateTradeNote();
-  const { data: existingNotes = [], isLoading: notesLoading } = useTradeNotesByTrade(tradeId, tradeType);
+  const { insertNote, getAllNotes, updateNote, deleteNote, isInitialized } = useNotesDatabase(userId);
+  const [notes, setNotes] = useState<any[]>([]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Load existing notes
+  const loadNotes = async () => {
+    if (!isInitialized) return;
     
-    if (!formData.title?.trim() || !formData.content?.trim()) {
-      toast.error("Please fill in both title and content");
+    try {
+      const notesData = await getAllNotes({ 
+        orderBy: 'updated_at', 
+        orderDirection: 'desc',
+        limit: 50 
+      });
+      setNotes(notesData);
+    } catch (error) {
+      console.error("Failed to load notes:", error);
+      toast.error("Failed to load notes");
+    }
+  };
+
+  // Load notes when modal opens
+  useEffect(() => {
+    if (open && isInitialized) {
+      loadNotes();
+    }
+  }, [open, isInitialized]);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && open) {
+        onOpenChange(false);
+      }
+    };
+
+    if (open) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [open, onOpenChange]);
+
+  const handleCreateNote = async () => {
+    if (!noteName.trim()) {
+      toast.error("Please enter a note name");
       return;
     }
 
+    if (!userId) {
+      toast.error("User ID is missing");
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      const noteData: TradeNoteCreate = {
-        trade_id: tradeId,
-        trade_type: tradeType,
-        title: formData.title.trim(),
-        content: formData.content.trim(),
-        tags: formData.tags,
-        rating: formData.rating,
-        phase: formData.phase,
-        image_id: formData.image_id,
-      };
-
-      await createMutation.mutateAsync(noteData);
-      toast.success("Trade note created successfully");
-      
-      // Reset form
-      setFormData({
-        trade_id: tradeId,
-        trade_type: tradeType,
-        title: "",
-        content: "",
-        tags: [],
-        rating: undefined,
-        phase: undefined,
-        image_id: undefined,
+      const newNote = await insertNote({
+        name: noteName.trim(),
+        content: noteContent || ""
       });
       
-      onOpenChange(false);
+      toast.success("Note created successfully");
+      setNoteName("");
+      setNoteContent("");
+      setShowCreateForm(false);
+      setSelectedNote(newNote);
+      await loadNotes();
     } catch (error) {
-      console.error("Error creating trade note:", error);
-      toast.error("Failed to create trade note");
+      console.error("Error creating note:", error);
+      toast.error("Failed to create note");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleAddTag = () => {
-    if (newTag.trim() && !formData.tags?.includes(newTag.trim())) {
-      setFormData({
-        ...formData,
-        tags: [...(formData.tags || []), newTag.trim()],
+  const handleSelectNote = (note: any) => {
+    setSelectedNote(note);
+    setNoteContent(note.content || "");
+    setShowCreateForm(false);
+  };
+
+  const handleUpdateNote = async () => {
+    if (!selectedNote) return;
+
+    setIsSaving(true);
+    try {
+      await updateNote(selectedNote.id, {
+        name: selectedNote.name,
+        content: noteContent,
       });
-      setNewTag("");
+      toast.success("Note updated successfully");
+      await loadNotes();
+    } catch (error) {
+      console.error("Error updating note:", error);
+      toast.error("Failed to update note");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    setFormData({
-      ...formData,
-      tags: formData.tags?.filter((tag) => tag !== tagToRemove) || [],
-    });
+  const handleDeleteNote = async (noteId: string) => {
+    setIsDeleting(noteId);
+    try {
+      await deleteNote(noteId);
+      toast.success("Note deleted successfully");
+      if (selectedNote?.id === noteId) {
+        setSelectedNote(null);
+        setNoteContent("");
+      }
+      await loadNotes();
+    } catch (error) {
+      console.error("Error deleting note:", error);
+      toast.error("Failed to delete note");
+    } finally {
+      setIsDeleting(null);
+    }
   };
 
-  const handleRatingClick = (rating: number) => {
-    setFormData({
-      ...formData,
-      rating: formData.rating === rating ? undefined : rating,
-    });
+  const handleCancel = () => {
+    setNoteName("");
+    setNoteContent("");
+    setShowCreateForm(false);
+    setSelectedNote(null);
+    onOpenChange(false);
   };
+
+  const getWordCount = (content: string) => {
+    if (!content) return 0;
+    try {
+      const parsed = JSON.parse(content);
+      const text = JSON.stringify(parsed);
+      return text.split(/\s+/).filter(word => word.length > 0).length;
+    } catch {
+      return content.split(/\s+/).filter(word => word.length > 0).length;
+    }
+  };
+
+  if (!open) return null;
+
+  if (!isInitialized) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+        <div className="bg-background border rounded-lg p-8 max-w-md w-full mx-4">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading notes...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Add Trade Note
+    <div 
+      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onOpenChange(false);
+        }
+      }}
+    >
+      <div className="bg-background border rounded-lg w-[98vw] h-[98vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="p-6 pb-4 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              <h2 className="text-lg font-semibold">Trading Notes</h2>
             {tradeSymbol && (
               <Badge variant="outline" className="ml-2">
                 {tradeSymbol}
               </Badge>
             )}
-          </DialogTitle>
-          <DialogDescription>
-            Add a note for this {tradeType} trade. You can include your reasoning, observations, or lessons learned.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Title *</Label>
-            <Input
-              id="title"
-              value={formData.title || ""}
-              onChange={(e) =>
-                setFormData({ ...formData, title: e.target.value })
-              }
-              placeholder="Enter a title for your note"
-              required
-            />
-          </div>
-
-          {/* Content */}
-          <div className="space-y-2">
-            <Label htmlFor="content">Content *</Label>
-            <Textarea
-              id="content"
-              value={formData.content || ""}
-              onChange={(e) =>
-                setFormData({ ...formData, content: e.target.value })
-              }
-              placeholder="Write your trade note here..."
-              rows={4}
-              required
-            />
-          </div>
-
-          {/* Phase */}
-          <div className="space-y-2">
-            <Label htmlFor="phase">Trade Phase</Label>
-            <Select
-              value={formData.phase || ""}
-              onValueChange={(value) =>
-                setFormData({
-                  ...formData,
-                  phase: value as "planning" | "execution" | "reflection",
-                })
-              }
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="h-8 w-8 p-0"
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select trade phase" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="planning">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Planning
-                  </div>
-                </SelectItem>
-                <SelectItem value="execution">
-                  <div className="flex items-center gap-2">
-                    <Star className="h-4 w-4" />
-                    Execution
-                  </div>
-                </SelectItem>
-                <SelectItem value="reflection">
-                  <div className="flex items-center gap-2">
-                    <StarOff className="h-4 w-4" />
-                    Reflection
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Create and manage your trading notes with rich text editing capabilities.
+          </p>
           </div>
 
-          {/* Rating */}
-          <div className="space-y-2">
-            <Label>Rating</Label>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <Button
-                  key={rating}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRatingClick(rating)}
-                  className="p-1"
-                >
-                  <Star
-                    className={`h-5 w-5 ${
-                      formData.rating && formData.rating >= rating
-                        ? "fill-yellow-400 text-yellow-400"
-                        : "text-gray-300"
-                    }`}
-                  />
-                </Button>
-              ))}
-              {formData.rating && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFormData({ ...formData, rating: undefined })}
-                  className="ml-2 text-xs"
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div className="space-y-2">
-            <Label>Tags</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="Add a tag"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-              />
-              <Button type="button" onClick={handleAddTag} size="sm">
-                <Tag className="h-4 w-4" />
+        <div className="flex flex-1 gap-4 px-6 pb-6 min-h-0">
+          {/* Sidebar */}
+          <div className="w-80 flex flex-col">
+            {/* Create New Note Button */}
+            <div className="mb-5">
+              <Button 
+                onClick={() => setShowCreateForm(true)}
+                className="w-full"
+                disabled={isSaving}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Note
               </Button>
+          </div>
+
+            {/* Create Form */}
+            {showCreateForm && (
+              <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="newNoteName">Note Name *</Label>
+                    <Input
+                      id="newNoteName"
+                      value={noteName}
+                      onChange={(e) => setNoteName(e.target.value)}
+                      placeholder="Enter note name"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                <Button
+                      onClick={handleCreateNote} 
+                      disabled={isSaving || !noteName.trim()}
+                  size="sm"
+                      className="flex-1"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {isSaving ? "Creating..." : "Create"}
+                </Button>
+                <Button
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setNoteName("");
+                      }}
+                      variant="outline"
+                  size="sm"
+                >
+                      <X className="h-4 w-4" />
+                </Button>
             </div>
-            {formData.tags && formData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {formData.tags.map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="secondary"
-                    className="cursor-pointer"
-                    onClick={() => handleRemoveTag(tag)}
-                  >
-                    {tag} ×
-                  </Badge>
-                ))}
+          </div>
               </div>
             )}
+
+            {/* Notes List */}
+            <ScrollArea className="flex-1">
+              {notes.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No notes found</p>
+                  <p className="text-sm">Create your first note to get started</p>
           </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Note"}
-            </Button>
-          </DialogFooter>
-        </form>
-
-        {/* Existing Notes */}
-        {existingNotes.length > 0 && (
-          <>
-            <Separator className="my-4" />
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Existing Notes ({existingNotes.length})
-              </h4>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {existingNotes.map((note) => (
+              ) : (
+                <div className="space-y-2">
+                  {notes.map((note) => (
                   <div
                     key={note.id}
-                    className="p-3 border rounded-lg bg-muted/30"
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${
+                        selectedNote?.id === note.id ? 'bg-accent border-primary' : 'border-border'
+                      }`}
+                      onClick={() => handleSelectNote(note)}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h5 className="text-sm font-medium">{note.title}</h5>
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {note.content}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          {note.phase && (
-                            <Badge variant="outline" className="text-xs">
-                              {note.phase}
-                            </Badge>
-                          )}
-                          {note.rating && (
-                            <div className="flex items-center gap-1">
-                              {[...Array(note.rating)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className="h-3 w-3 fill-yellow-400 text-yellow-400"
-                                />
-                              ))}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium truncate">{note.name}</h3>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            {note.content && (
+                              <>
+                                <span>•</span>
+                                <span>{getWordCount(note.content)} words</span>
+                              </>
+                            )}
                             </div>
-                          )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsDeleting(note.id);
+                          }}
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col">
+            {selectedNote ? (
+              <div className="flex-1 flex flex-col">
+                {/* Note Header */}
+                <div className="border-b p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Input
+                      value={selectedNote.name}
+                      onChange={(e) => setSelectedNote({ ...selectedNote, name: e.target.value })}
+                      className="font-semibold text-lg border-none shadow-none p-0 h-auto"
+                    />
                   </div>
-                ))}
+                  <div className="flex gap-2">
+                    <Button onClick={handleUpdateNote} disabled={isSaving}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button onClick={handleCancel} variant="outline">
+                      <X className="h-4 w-4 mr-2" />
+                      Close
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Editor Content */}
+                <div className="flex-1 p-4">
+                  <TailwindAdvancedEditor 
+                    key={selectedNote?.id || 'new'}
+                    initialHtmlContent={selectedNote?.content || ''}
+                    onContentChange={(content) => setNoteContent(content)}
+                    onSave={(content) => {
+                      if (selectedNote) {
+                        handleUpdateNote();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                    Select a note to start editing
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a note from the sidebar or create a new one.
+                  </p>
               </div>
             </div>
-          </>
+            )}
+          </div>
+        </div>
+
+        {/* Delete confirmation dialog */}
+        {isDeleting && (
+          <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center">
+            <div className="bg-background border rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Delete Note</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Are you sure you want to delete this note? This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDeleting(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => isDeleting && handleDeleteNote(isDeleting)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
