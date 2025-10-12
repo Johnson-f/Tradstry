@@ -11,12 +11,22 @@ export * from './types';
 export { useJournalDatabase } from './operations';
 
 // Export utility functions
-export { TradeType, OrderType, AssetType } from './schema';
+export { 
+  TradeType, 
+  OrderType, 
+  TradeDirection, 
+  OptionType, 
+  Status 
+} from './schema';
 
 // Re-export common types for convenience
 export type { 
-  JournalTrade, 
-  NewJournalTrade,
+  Stock, 
+  NewStock,
+  Option, 
+  NewOption,
+  Trade,
+  NewTrade,
   TradeFormData,
   TradeFilters,
   TradeStats,

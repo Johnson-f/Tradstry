@@ -1,18 +1,17 @@
 "use client";
 
-import { useOptions, useOptionMutations } from "@/lib/hooks/use-options";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
-
-import { OptionInDB, OptionUpdate } from "@/lib/types/trading";
+import { Option, useJournalDatabase } from "@/lib/drizzle/journal";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 import { AddTradeDialog } from "./add-trade-dialog";
 import { TradeNotesModal } from "./trade-notes-modal";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
 import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
-import { useState } from "react";
 import {
   Pagination,
   PaginationContent,
@@ -65,8 +64,8 @@ interface OptionsTableProps {
 interface EditOptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  option: OptionInDB | null;
-  onSave: (id: number, data: OptionUpdate) => Promise<void>;
+  option: Option | null;
+  onSave: (id: number, data: Partial<Omit<Option, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -78,10 +77,9 @@ function EditOptionDialog({
   isSaving,
 }: EditOptionDialogProps) {
   // Initialize form data with only updateable fields from the option
-  const [formData, setFormData] = useState<OptionUpdate>({
-    exit_price: option?.exit_price,
-    exit_date: option?.exit_date,
-    notes: option?.notes || "",
+  const [formData, setFormData] = useState<Partial<Omit<Option, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>>({
+    exitPrice: option?.exitPrice,
+    exitDate: option?.exitDate,
     status: option?.status || "open",
   });
 
@@ -137,8 +135,8 @@ function EditOptionDialog({
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right font-medium">Entry Date</Label>
               <div className="col-span-3 py-2 text-sm">
-                {option.entry_date
-                  ? format(new Date(option.entry_date), "PPP")
+                {option.entryDate
+                  ? format(new Date(option.entryDate), "PPP")
                   : "N/A"}
               </div>
             </div>
@@ -151,11 +149,11 @@ function EditOptionDialog({
                 id="exit_price"
                 type="number"
                 step="0.01"
-                value={formData.exit_price || ""}
+                value={formData.exitPrice || ""}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    exit_price: e.target.value
+                    exitPrice: e.target.value
                       ? parseFloat(e.target.value)
                       : undefined,
                   })
@@ -176,8 +174,8 @@ function EditOptionDialog({
                     className="col-span-3 justify-start text-left font-normal"
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.exit_date ? (
-                      format(new Date(formData.exit_date), "PPP")
+                    {formData.exitDate ? (
+                      format(new Date(formData.exitDate), "PPP")
                     ) : (
                       <span>Pick a date</span>
                     )}
@@ -187,14 +185,14 @@ function EditOptionDialog({
                   <Calendar
                     mode="single"
                     selected={
-                      formData.exit_date
-                        ? new Date(formData.exit_date)
+                      formData.exitDate
+                        ? new Date(formData.exitDate)
                         : undefined
                     }
                     onSelect={(date) =>
                       setFormData({
                         ...formData,
-                        exit_date: date ? date.toISOString() : undefined,
+                        exitDate: date ? date.toISOString() : undefined,
                       })
                     }
                     initialFocus
@@ -203,20 +201,6 @@ function EditOptionDialog({
               </Popover>
             </div>
 
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="notes" className="text-right">
-                Notes
-              </Label>
-              <Textarea
-                id="notes"
-                value={formData.notes || ""}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                className="col-span-3"
-                placeholder="Add any notes about this trade"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button
@@ -240,13 +224,66 @@ function EditOptionDialog({
 const ITEMS_PER_PAGE = 20;
 
 export function OptionsTable({ className }: OptionsTableProps) {
-  const { options = [], error, isLoading, refetch } = useOptions();
-  const { updateOption, deleteOption, isUpdating, isDeleting } = useOptionMutations();
-  const [editingOption, setEditingOption] = useState<OptionInDB | null>(null);
+  const { user } = useAuth();
+  const { 
+    getAllOptions, 
+    updateOption, 
+    deleteOption, 
+    isInitialized, 
+    isInitializing, 
+    error: dbError 
+  } = useJournalDatabase(user?.id || '');
+  
+  const [options, setOptions] = useState<Option[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [editingOption, setEditingOption] = useState<Option | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<OptionInDB | null>(null);
+  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<Option | null>(null);
+
+  // Function to refresh options data
+  const refreshOptions = async () => {
+    if (!user?.id || !isInitialized) return;
+    
+    try {
+      console.log('Refreshing options data...');
+      setIsLoading(true);
+      const data = await getAllOptions();
+      console.log('Options data received:', data);
+      setOptions(data);
+    } catch (error) {
+      console.error('Error refreshing options:', error);
+      setError(error as Error);
+      toast.error('Failed to refresh options');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load options on component mount
+  useEffect(() => {
+    const loadOptions = async () => {
+      if (!user?.id || !isInitialized) return;
+      
+      try {
+        setIsLoading(true);
+        const data = await getAllOptions();
+        setOptions(data);
+      } catch (error) {
+        console.error('Error loading options:', error);
+        setError(error as Error);
+        toast.error('Failed to load options');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadOptions();
+  }, [user?.id, getAllOptions, isInitialized]);
 
   // Calculate pagination
   const totalPages = Math.ceil(options.length / ITEMS_PER_PAGE);
@@ -262,20 +299,26 @@ export function OptionsTable({ className }: OptionsTableProps) {
     }
   };
 
-  const handleEdit = (option: OptionInDB) => {
+  const handleEdit = (option: Option) => {
     setEditingOption(option);
     setIsEditDialogOpen(true);
   };
 
-  const handleSave = async (id: number, data: OptionUpdate) => {
+  const handleSave = async (id: number, data: Partial<Omit<Option, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>) => {
     const toastId = toast.loading("Updating option trade...");
     try {
+      setIsUpdating(true);
       await updateOption(id, data);
       toast.success("Option trade updated successfully", { id: toastId });
-      refetch();
+      
+      // Reload options
+      const updatedOptions = await getAllOptions();
+      setOptions(updatedOptions);
     } catch (error) {
       console.error("Error updating option:", error);
       toast.error("Failed to update option trade. Please try again.", { id: toastId });
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -321,20 +364,58 @@ export function OptionsTable({ className }: OptionsTableProps) {
     if (confirmed) {
       const toastId = toast.loading("Deleting option trade...");
       try {
+        setIsDeleting(true);
         await deleteOption(id);
         toast.success("Option trade deleted successfully", { id: toastId });
-        refetch();
+        
+        // Reload options
+        const updatedOptions = await getAllOptions();
+        setOptions(updatedOptions);
       } catch (error) {
         console.error("Error deleting option:", error);
         toast.error("Failed to delete option trade. Please try again.", { id: toastId });
+      } finally {
+        setIsDeleting(false);
       }
     }
   };
 
-  const handleAddNote = (option: OptionInDB) => {
+  const handleAddNote = (option: Option) => {
     setSelectedTradeForNotes(option);
     setNotesModalOpen(true);
   };
+
+  // Show loading state while database is initializing
+  if (isInitializing) {
+    return (
+      <div className="rounded-md border">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Options Trades</h3>
+        </div>
+        <div className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="text-sm text-muted-foreground">Initializing database...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if database initialization failed
+  if (dbError) {
+    return (
+      <div className="rounded-md border">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Options Trades</h3>
+        </div>
+        <div className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="text-sm text-destructive">Database initialization failed: {dbError.message}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -350,7 +431,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
       <div className="rounded-md border">
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-lg font-semibold">Options Trades</h3>
-          <AddTradeDialog />
+          <AddTradeDialog onTradeAdded={refreshOptions} />
         </div>
 
         {editingOption && (
@@ -432,7 +513,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
             ))
           ) : paginatedOptions && paginatedOptions.length > 0 ? (
             paginatedOptions.map((option) => {
-              const isCall = option.option_type === "Call";
+              const isCall = option.optionType === "Call";
               const isOpen = option.status === "open";
 
               return (
@@ -440,25 +521,25 @@ export function OptionsTable({ className }: OptionsTableProps) {
                   <TableCell className="font-medium">{option.symbol}</TableCell>
                   <TableCell>
                     <div className="text-sm text-muted-foreground">
-                      {option.strategy_type || "N/A"}
+                      {option.strategyType || "N/A"}
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
                       className={
-                        option.trade_direction === "Bullish"
+                        option.tradeDirection === "Bullish"
                           ? "bg-green-50 text-green-700 border-green-200"
-                          : option.trade_direction === "Bearish"
+                          : option.tradeDirection === "Bearish"
                           ? "bg-red-50 text-red-700 border-red-200"
                           : "bg-gray-50 text-gray-700 border-gray-200"
                       }
                     >
-                      {option.trade_direction || "N/A"}
+                      {option.tradeDirection || "N/A"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.number_of_contracts || "N/A"}
+                    {option.numberOfContracts || "N/A"}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -469,17 +550,17 @@ export function OptionsTable({ className }: OptionsTableProps) {
                           : "bg-purple-50 text-purple-700 border-purple-200"
                       }
                     >
-                      {option.option_type}
+                      {option.optionType}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.entry_price
-                      ? `$${option.entry_price.toFixed(2)}`
+                    {option.entryPrice
+                      ? `$${option.entryPrice.toFixed(2)}`
                       : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {option.exit_price
-                      ? `$${option.exit_price.toFixed(2)}`
+                    {option.exitPrice
+                      ? `$${option.exitPrice.toFixed(2)}`
                       : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
@@ -489,15 +570,15 @@ export function OptionsTable({ className }: OptionsTableProps) {
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      {option.entry_date
-                        ? new Date(option.entry_date).toLocaleDateString()
+                      {option.entryDate
+                        ? new Date(option.entryDate).toLocaleDateString()
                         : "N/A"}
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      {option.exit_date
-                        ? new Date(option.exit_date).toLocaleDateString()
+                      {option.exitDate
+                        ? new Date(option.exitDate).toLocaleDateString()
                         : "-"}
                     </div>
                   </TableCell>

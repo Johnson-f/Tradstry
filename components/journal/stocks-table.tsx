@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
-import { StockInDB, StockUpdate } from "@/lib/types/trading";
-import { useStockMutations } from "@/lib/hooks/use-stocks";
+import { Stock, useJournalDatabase } from "@/lib/drizzle/journal";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { Toaster } from "sonner";
 import { EditStockDialog } from "./edit-stock-dialog";
 import { TradeNotesModal } from "./trade-notes-modal";
@@ -32,20 +32,67 @@ import {
 } from "@/components/ui/pagination";
 
 interface StocksTableProps {
-  stocks: StockInDB[];
-  isLoading?: boolean;
+  className?: string;
 }
 
 const ITEMS_PER_PAGE = 20;
 
-export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps) {
-  const { updateStock, deleteStock, isUpdating, isDeleting } =
-    useStockMutations();
-  const [editingStock, setEditingStock] = useState<StockInDB | null>(null);
+export function StocksTable({ className }: StocksTableProps) {
+  const { user } = useAuth();
+  const { 
+    getAllStocks, 
+    updateStock, 
+    deleteStock, 
+    isInitialized, 
+    isInitializing, 
+    error: dbError 
+  } = useJournalDatabase(user?.id || '');
+  
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editingStock, setEditingStock] = useState<Stock | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<StockInDB | null>(null);
+  const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<Stock | null>(null);
+
+  // Function to refresh stocks data
+  const refreshStocks = async () => {
+    if (!user?.id || !isInitialized) return;
+    
+    try {
+      setIsLoading(true);
+      const data = await getAllStocks();
+      setStocks(data);
+    } catch (error) {
+      console.error('Error refreshing stocks:', error);
+      toast.error('Failed to refresh stocks');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load stocks on component mount
+  useEffect(() => {
+    const loadStocks = async () => {
+      if (!user?.id || !isInitialized) return;
+      
+      try {
+        setIsLoading(true);
+        const data = await getAllStocks();
+        setStocks(data);
+      } catch (error) {
+        console.error('Error loading stocks:', error);
+        toast.error('Failed to load stocks');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStocks();
+  }, [user?.id, getAllStocks, isInitialized]);
   
   // Calculate pagination
   const totalPages = Math.ceil(stocks.length / ITEMS_PER_PAGE);
@@ -61,7 +108,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
     }
   };
 
-  const handleEdit = (stock: StockInDB) => {
+  const handleEdit = (stock: Stock) => {
     console.log("handleEdit called with stock:", stock);
     console.log("Stock ID:", stock?.id);
     if (!stock?.id) {
@@ -73,7 +120,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
     setIsEditDialogOpen(true);
   };
 
-  const handleSave = async (id: number, data: StockUpdate) => {
+  const handleSave = async (id: number, data: Partial<Omit<Stock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>) => {
     const toastId = toast.loading("Updating stock trade...");
     try {
       await updateStock(id, data);
@@ -135,7 +182,7 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
     }
   };
 
-  const handleAddNote = (stock: StockInDB) => {
+  const handleAddNote = (stock: Stock) => {
     setSelectedTradeForNotes(stock);
     setNotesModalOpen(true);
   };
@@ -163,12 +210,44 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
 
   const hasData = stocks && stocks.length > 0;
 
+  // Show loading state while database is initializing
+  if (isInitializing) {
+    return (
+      <div className="rounded-md border">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Stock Trades</h3>
+        </div>
+        <div className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="text-sm text-muted-foreground">Initializing database...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if database initialization failed
+  if (dbError) {
+    return (
+      <div className="rounded-md border">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Stock Trades</h3>
+        </div>
+        <div className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="text-sm text-destructive">Database initialization failed: {dbError.message}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="rounded-md border">
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-lg font-semibold">Stock Trades</h3>
-          <AddTradeDialog />
+          <AddTradeDialog onTradeAdded={refreshStocks} />
         </div>
         <Table>
           <TableHeader>
@@ -219,18 +298,18 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                     {stock.symbol}
                   </TableCell>
                   <TableCell className="capitalize">
-                    {stock.trade_type}
+                    {stock.tradeType}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${stock.entry_price?.toFixed(2) || "N/A"}
+                    ${stock.entryPrice?.toFixed(2) || "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {stock.exit_price
-                      ? `$${stock.exit_price.toFixed(2)}`
+                    {stock.exitPrice
+                      ? `$${stock.exitPrice.toFixed(2)}`
                       : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {stock.number_shares || "N/A"}
+                    {stock.numberShares || "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
                     {stock.commissions
@@ -238,37 +317,35 @@ export function StocksTable({ stocks = [], isLoading = false }: StocksTableProps
                       : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {stock.stop_loss
-                      ? `$${stock.stop_loss.toFixed(2)}`
+                    {stock.stopLoss
+                      ? `$${stock.stopLoss.toFixed(2)}`
                       : "N/A"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {stock.take_profit
-                      ? `$${stock.take_profit.toFixed(2)}`
+                    {stock.takeProfit
+                      ? `$${stock.takeProfit.toFixed(2)}`
                       : "N/A"}
                   </TableCell>
                   <TableCell>
-                    {stock.entry_date
-                      ? new Date(stock.entry_date).toLocaleDateString()
+                    {stock.entryDate
+                      ? new Date(stock.entryDate).toLocaleDateString()
                       : "N/A"}
                   </TableCell>
                   <TableCell>
-                    {stock.exit_date
-                      ? new Date(stock.exit_date).toLocaleDateString()
+                    {stock.exitDate
+                      ? new Date(stock.exitDate).toLocaleDateString()
                       : "N/A"}
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={
-                        stock.status === "open" ? "outline" : "secondary"
-                      }
+                      variant={stock.exitPrice ? "secondary" : "outline"}
                       className={
-                        stock.status === "open"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : "bg-red-50 text-red-700 border-red-200"
+                        stock.exitPrice
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-green-50 text-green-700 border-green-200"
                       }
                     >
-                      {stock.status}
+                      {stock.exitPrice ? "Closed" : "Open"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">

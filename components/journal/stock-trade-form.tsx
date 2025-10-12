@@ -31,7 +31,7 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { stockService } from "@/lib/services/stock-service";
+import { useJournalDatabase, StockFormData, NewStock } from "@/lib/drizzle/journal";
 import { useAuth } from "@/lib/hooks/use-auth";
 
 const stockFormSchema = z.object({
@@ -59,6 +59,9 @@ interface StockTradeFormProps {
 export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading } = useAuth();
+  
+  // Get database operations
+  const { insertStock } = useJournalDatabase(user?.id || '');
 
   const form = useForm<StockFormValues>({
     resolver: zodResolver(stockFormSchema),
@@ -112,20 +115,24 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
     setIsSubmitting(true);
 
     try {
-      const payload = {
-        ...data,
-        entry_date: data.entry_date.toISOString(),
-        exit_date: data.exit_date ? data.exit_date.toISOString() : null,
+      const payload: Omit<NewStock, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
+        symbol: data.symbol,
+        tradeType: data.trade_type,
+        orderType: data.order_type,
+        entryPrice: data.entry_price,
+        exitPrice: data.exit_price,
+        stopLoss: data.stop_loss,
+        takeProfit: data.take_profit,
+        commissions: data.commissions,
+        numberShares: data.number_shares,
+        entryDate: data.entry_date.toISOString(),
+        exitDate: data.exit_date ? data.exit_date.toISOString() : undefined,
       };
 
-      console.log("Sending payload to API:", payload);
+      console.log("Sending payload to database:", payload);
 
-      if (!stockService || !stockService.createStock) {
-        throw new Error("Stock service is not available");
-      }
-
-      const response = await stockService.createStock(payload);
-      console.log("API Response:", response);
+      const response = await insertStock(payload);
+      console.log("Database Response:", response);
 
       toast.success("Stock trade created successfully!");
       onSuccess?.();

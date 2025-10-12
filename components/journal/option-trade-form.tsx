@@ -24,8 +24,8 @@ import {
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { optionService } from "@/lib/services/options-service";
-import { OptionType, TradeDirection } from "@/lib/types/trading";
+import { useJournalDatabase, OptionFormData, NewOption } from "@/lib/drizzle/journal";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { toast } from "sonner";
 
 const optionFormSchema = z.object({
@@ -54,6 +54,10 @@ interface OptionTradeFormProps {
 
 export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  
+  // Get database operations
+  const { insertOption } = useJournalDatabase(user?.id || '');
 
   const form = useForm<OptionFormValues>({
     resolver: zodResolver(optionFormSchema),
@@ -77,13 +81,41 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
   });
 
   const onSubmit = async (data: OptionFormValues) => {
+    if (authLoading) {
+      toast.info("Please wait while we verify your session...");
+      return;
+    }
+
+    if (!user) {
+      toast.error("You must be logged in to create a trade");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
-      // Call your API to create the option trade
-      await optionService.createOption({
-        ...data,
+      
+      const payload: Omit<NewOption, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
+        symbol: data.symbol,
+        strategyType: data.strategy_type,
+        tradeDirection: data.trade_direction,
+        numberOfContracts: data.number_of_contracts,
+        optionType: data.option_type,
+        strikePrice: data.strike_price,
+        expirationDate: data.expiration_date.toISOString(),
+        entryPrice: data.entry_price,
+        exitPrice: data.exit_price,
+        totalPremium: data.total_premium,
+        commissions: data.commissions,
+        impliedVolatility: data.implied_volatility || 0,
+        entryDate: data.entry_date.toISOString(),
+        exitDate: data.exit_date ? data.exit_date.toISOString() : undefined,
         status: data.exit_price ? 'closed' : 'open',
-      });
+      };
+
+      console.log("Sending option payload to database:", payload);
+      
+      const response = await insertOption(payload);
+      console.log("Option database response:", response);
       
       toast.success("Options trade added successfully!");
       
@@ -453,7 +485,7 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
         /> */}
 
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || authLoading}>
             {isSubmitting ? "Adding..." : "Add Options Trade"}
           </Button>
         </div>

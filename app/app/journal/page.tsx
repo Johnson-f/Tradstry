@@ -5,84 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
-import { useStocks } from "@/lib/hooks/use-stocks";
-import { useOptions } from "@/lib/hooks/use-options";
-import { useAnalytics, type AnalyticsFilters } from "@/lib/hooks/use-analytics";
-
 import { StocksTable } from "@/components/journal/stocks-table";
 import { OptionsTable } from "@/components/journal/options-table";
-import { AnalyticsSummary } from "@/components/analytics/analytics-summary";
-import { DateRangePicker } from "@/components/analytics/date-range-picker";
 import { TradeNotesHistoryModal } from "@/components/journal/trade-notes-history-modal";
 
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
-  const [filters, setFilters] = useState<AnalyticsFilters>({
-    periodType: "all_time",
-    customStartDate: null,
-    customEndDate: null,
-  });
   const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
 
-  const { stocks, error: stocksError, isLoading: stocksLoading } = useStocks();
-  const {
-    options,
-    error: optionsError,
-    isLoading: optionsLoading,
-  } = useOptions();
-  
-  const {
-    winRate,
-    netPnl,
-    tradeExpectancy,
-    averageGain,
-    averageLoss,
-    riskRewardRatio,
-    isLoading: analyticsLoading,
-    error: analyticsError,
-  } = useAnalytics(activeTab, filters);
-
-  const isLoading = activeTab === "stocks" ? stocksLoading : optionsLoading;
-  const error = activeTab === "stocks" ? stocksError : optionsError;
-  const totalTrades =
-    activeTab === "stocks" ? stocks?.length || 0 : options?.length || 0;
-
-  if (isLoading) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
-            <div className="p-8">
-              <div className="mt-8">
-                <Skeleton className="h-10 w-48 mb-4" />
-                <Skeleton className="h-12 w-full rounded-md" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
-            <div className="p-8 text-red-500">
-              Failed to load {activeTab}: {error.message}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-screen flex flex-col">
@@ -98,15 +28,6 @@ export default function JournalPage() {
               <FileText className="h-4 w-4" />
               Manage Notes
             </Button>
-            <DateRangePicker 
-              onDateChange={({ startDate, endDate, periodType }) => {
-                setFilters({
-                  periodType,
-                  customStartDate: startDate,
-                  customEndDate: endDate,
-                });
-              }}
-            />
           </div>
         </div>
       </div>
@@ -143,7 +64,8 @@ export default function JournalPage() {
               </div>
 
               <TabsContent value="stocks" className="space-y-4">
-                <AnalyticsSummary
+                {/* Analytics temporarily disabled */}
+                {/* <AnalyticsSummary
                   type={activeTab}
                   winRate={winRate}
                   netPnl={netPnl}
@@ -153,19 +75,20 @@ export default function JournalPage() {
                   averageLoss={averageLoss}
                   riskRewardRatio={riskRewardRatio}
                   isLoading={analyticsLoading}
-                />
-                <StocksTable stocks={stocks || []} isLoading={stocksLoading} />
+                /> */}
+                <StocksTable />
               </TabsContent>
 
               <TabsContent value="options" className="space-y-4">
-                <AnalyticsSummary
+                {/* Analytics temporarily disabled */}
+                {/* <AnalyticsSummary
                   type={activeTab}
                   winRate={winRate}
                   netPnl={netPnl}
                   tradeExpectancy={tradeExpectancy}
                   totalTrades={options?.length || 0}
                   isLoading={analyticsLoading}
-                />
+                /> */}
                 <OptionsTable />
               </TabsContent>
             </Tabs>

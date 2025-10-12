@@ -5,8 +5,27 @@
 
 import { eq, and, desc, asc, count, sql, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { useCallback } from 'react';
 import { useBrowserDatabase } from '@/lib/browser-database';
-import { journalTable, journalIndexes, type JournalTrade, type NewJournalTrade } from './schema';
+import { 
+  stocksTable, 
+  optionsTable, 
+  stocksIndexes, 
+  optionsIndexes, 
+  type Stock, 
+  type NewStock, 
+  type Option, 
+  type NewOption,
+  type Trade,
+  type NewTrade
+} from './schema';
+
+// Helper function to convert snake_case to camelCase
+const snakeToCamel = (s: string) => s.replace(/([-_][a-z])/ig, ($1) => {
+  return $1.toUpperCase()
+    .replace('-', '')
+    .replace('_', '');
+});
 
 /**
  * Hook for journal database operations
@@ -16,43 +35,58 @@ export function useJournalDatabase(userId: string) {
     dbName: 'tradistry-journal',
     enablePersistence: true,
     initSql: [
-      // Create main table
-      `CREATE TABLE IF NOT EXISTS journal_trades (
+      // Create stocks table
+      `CREATE TABLE IF NOT EXISTS stocks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,
         symbol TEXT NOT NULL,
-        asset_type TEXT NOT NULL,
-        trade_type TEXT NOT NULL,
-        order_type TEXT NOT NULL,
+        trade_type TEXT NOT NULL CHECK (trade_type IN ('BUY', 'SELL')),
+        order_type TEXT NOT NULL CHECK (order_type IN ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT')),
         entry_price REAL NOT NULL,
         exit_price REAL,
         stop_loss REAL NOT NULL,
-        take_profit REAL,
         commissions REAL NOT NULL DEFAULT 0.00,
-        number_of_shares REAL NOT NULL,
-        strike_price REAL,
-        option_type TEXT,
-        expiration_date TEXT,
-        premium REAL,
+        number_shares REAL NOT NULL,
+        take_profit REAL,
         entry_date TEXT NOT NULL,
         exit_date TEXT,
-        status TEXT NOT NULL DEFAULT 'open',
-        notes TEXT,
-        tags TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
       
-      // Create indexes
-      `CREATE INDEX IF NOT EXISTS idx_journal_user_id ON journal_trades(user_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_journal_symbol ON journal_trades(symbol)`,
-      `CREATE INDEX IF NOT EXISTS idx_journal_entry_date ON journal_trades(entry_date)`,
-      `CREATE INDEX IF NOT EXISTS idx_journal_status ON journal_trades(status)`,
-      `CREATE INDEX IF NOT EXISTS idx_journal_asset_type ON journal_trades(asset_type)`,
+      // Create options table
+      `CREATE TABLE IF NOT EXISTS options (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        strategy_type TEXT NOT NULL,
+        trade_direction TEXT NOT NULL CHECK (trade_direction IN ('Bullish', 'Bearish', 'Neutral')),
+        number_of_contracts INTEGER NOT NULL CHECK (number_of_contracts > 0),
+        option_type TEXT NOT NULL CHECK (option_type IN ('Call', 'Put')),
+        strike_price REAL NOT NULL,
+        expiration_date TEXT NOT NULL,
+        entry_price REAL NOT NULL,
+        exit_price REAL,
+        total_premium REAL NOT NULL,
+        commissions REAL NOT NULL DEFAULT 0.00,
+        implied_volatility REAL NOT NULL,
+        entry_date TEXT NOT NULL,
+        exit_date TEXT,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
       
-      // Create unique constraint for preventing duplicates
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_unique_position 
-       ON journal_trades(user_id, symbol, asset_type, trade_type, entry_price, entry_date)`
+      // Create stocks indexes
+      `CREATE INDEX IF NOT EXISTS idx_stocks_user_id ON stocks(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol)`,
+      `CREATE INDEX IF NOT EXISTS idx_stocks_entry_date ON stocks(entry_date)`,
+      
+      // Create options indexes
+      `CREATE INDEX IF NOT EXISTS idx_options_user_id ON options(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_options_symbol ON options(symbol)`,
+      `CREATE INDEX IF NOT EXISTS idx_options_entry_date ON options(entry_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_options_status ON options(status)`
     ],
     autoInit: true
   });
@@ -75,63 +109,120 @@ export function useJournalDatabase(userId: string) {
   });
 
   /**
-   * Insert a new journal trade
+   * Insert a new stock trade
    */
-  const insertTrade = async (trade: Omit<NewJournalTrade, 'id' | 'createdAt' | 'updatedAt'>): Promise<JournalTrade> => {
-    const tradeWithUser = { ...trade, userId };
-    
+  const insertStock = useCallback(async (stock: Omit<NewStock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Stock> => {
     const sql = `
-      INSERT INTO journal_trades (
-        user_id, symbol, asset_type, trade_type, order_type,
-        entry_price, exit_price, stop_loss, take_profit, commissions,
-        number_of_shares, strike_price, option_type, expiration_date,
-        premium, entry_date, exit_date, status, notes, tags
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO stocks (
+        user_id, symbol, trade_type, order_type, entry_price, exit_price,
+        stop_loss, commissions, number_shares, take_profit, entry_date, exit_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `;
     
     const params = [
-      tradeWithUser.userId,
-      tradeWithUser.symbol,
-      tradeWithUser.assetType,
-      tradeWithUser.tradeType,
-      tradeWithUser.orderType,
-      tradeWithUser.entryPrice,
-      tradeWithUser.exitPrice || null,
-      tradeWithUser.stopLoss,
-      tradeWithUser.takeProfit || null,
-      tradeWithUser.commissions || 0.00,
-      tradeWithUser.numberOfShares,
-      tradeWithUser.strikePrice || null,
-      tradeWithUser.optionType || null,
-      tradeWithUser.expirationDate || null,
-      tradeWithUser.premium || null,
-      tradeWithUser.entryDate,
-      tradeWithUser.exitDate || null,
-      tradeWithUser.status || 'open',
-      tradeWithUser.notes || null,
-      tradeWithUser.tags || null
+      userId,
+      stock.symbol,
+      stock.tradeType,
+      stock.orderType,
+      stock.entryPrice,
+      stock.exitPrice || null,
+      stock.stopLoss,
+      stock.commissions || 0.00,
+      stock.numberShares,
+      stock.takeProfit || null,
+      stock.entryDate,
+      stock.exitDate || null
     ];
 
     const result = await query(sql, params);
     if (result.values.length === 0) {
-      throw new Error('Failed to insert trade');
+      throw new Error('Failed to insert stock');
     }
 
-    // Convert array result to object
     const row = result.values[0];
-    return result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {}) as JournalTrade;
-  };
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Stock;
+  }, [userId, query]);
 
   /**
-   * Update an existing trade
+   * Insert a new option trade
    */
-  const updateTrade = async (id: number, updates: Partial<Omit<NewJournalTrade, 'id' | 'userId' | 'createdAt'>>): Promise<JournalTrade> => {
-    const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+  const insertOption = useCallback(async (option: Omit<NewOption, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Option> => {
+    const sql = `
+      INSERT INTO options (
+        user_id, symbol, strategy_type, trade_direction, number_of_contracts,
+        option_type, strike_price, expiration_date, entry_price, exit_price,
+        total_premium, commissions, implied_volatility, entry_date, exit_date, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING *
+    `;
+    
+    const params = [
+      userId,
+      option.symbol,
+      option.strategyType,
+      option.tradeDirection,
+      option.numberOfContracts,
+      option.optionType,
+      option.strikePrice,
+      option.expirationDate,
+      option.entryPrice,
+      option.exitPrice || null,
+      option.totalPremium,
+      option.commissions || 0.00,
+      option.impliedVolatility,
+      option.entryDate,
+      option.exitDate || null,
+      option.status || 'open'
+    ];
+
+    console.log('insertOption SQL:', sql);
+    console.log('insertOption params:', params);
+    const result = await query(sql, params);
+    console.log('insertOption raw result:', result);
+    if (result.values.length === 0) {
+      throw new Error('Failed to insert option');
+    }
+
+    const row = result.values[0];
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    console.log('insertOption mapped result:', obj);
+    return obj as Option;
+  }, [userId, query]);
+
+  /**
+   * Update an existing stock trade
+   */
+  const updateStock = useCallback(async (id: number, updates: Partial<Omit<NewStock, 'id' | 'userId' | 'createdAt'>>): Promise<Stock> => {
+    // Map camelCase field names to snake_case column names
+    const fieldToColumnMap: Record<string, string> = {
+      symbol: 'symbol',
+      tradeType: 'trade_type',
+      orderType: 'order_type',
+      entryPrice: 'entry_price',
+      exitPrice: 'exit_price',
+      stopLoss: 'stop_loss',
+      commissions: 'commissions',
+      numberShares: 'number_shares',
+      takeProfit: 'take_profit',
+      entryDate: 'entry_date',
+      exitDate: 'exit_date',
+    };
+
+    const setClause = Object.keys(updates)
+      .map(key => `${fieldToColumnMap[key] || key} = ?`)
+      .join(', ');
     const values = Object.values(updates);
     
     const sql = `
-      UPDATE journal_trades 
+      UPDATE stocks 
       SET ${setClause}, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?
       RETURNING *
@@ -139,18 +230,80 @@ export function useJournalDatabase(userId: string) {
     
     const result = await query(sql, [...values, id, userId]);
     if (result.values.length === 0) {
-      throw new Error('Trade not found or no permission to update');
+      throw new Error('Stock not found or no permission to update');
     }
 
     const row = result.values[0];
-    return result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {}) as JournalTrade;
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Stock;
+  }, [userId, query]);
+
+  /**
+   * Update an existing option trade
+   */
+  const updateOption = useCallback(async (id: number, updates: Partial<Omit<NewOption, 'id' | 'userId' | 'createdAt'>>): Promise<Option> => {
+    // Map camelCase field names to snake_case column names
+    const fieldToColumnMap: Record<string, string> = {
+      symbol: 'symbol',
+      strategyType: 'strategy_type',
+      tradeDirection: 'trade_direction',
+      numberOfContracts: 'number_of_contracts',
+      optionType: 'option_type',
+      strikePrice: 'strike_price',
+      expirationDate: 'expiration_date',
+      entryPrice: 'entry_price',
+      exitPrice: 'exit_price',
+      totalPremium: 'total_premium',
+      commissions: 'commissions',
+      impliedVolatility: 'implied_volatility',
+      entryDate: 'entry_date',
+      exitDate: 'exit_date',
+      status: 'status',
+    };
+
+    const setClause = Object.keys(updates)
+      .map(key => `${fieldToColumnMap[key] || key} = ?`)
+      .join(', ');
+    const values = Object.values(updates);
+    
+    const sql = `
+      UPDATE options 
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+      RETURNING *
+    `;
+    
+    const result = await query(sql, [...values, id, userId]);
+    if (result.values.length === 0) {
+      throw new Error('Option not found or no permission to update');
+    }
+
+    const row = result.values[0];
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Option;
+  }, [userId, query]);
+
+  /**
+   * Close a stock trade (set exit price and date)
+   */
+  const closeStock = async (id: number, exitPrice: number, exitDate?: string): Promise<Stock> => {
+    return updateStock(id, {
+      exitPrice,
+      exitDate: exitDate || new Date().toISOString()
+    });
   };
 
   /**
-   * Close a trade (set exit price and date)
+   * Close an option trade (set exit price and date)
    */
-  const closeTrade = async (id: number, exitPrice: number, exitDate?: string): Promise<JournalTrade> => {
-    return updateTrade(id, {
+  const closeOption = async (id: number, exitPrice: number, exitDate?: string): Promise<Option> => {
+    return updateOption(id, {
       exitPrice,
       exitDate: exitDate || new Date().toISOString(),
       status: 'closed'
@@ -158,34 +311,76 @@ export function useJournalDatabase(userId: string) {
   };
 
   /**
-   * Delete a trade
+   * Delete a stock trade
    */
-  const deleteTrade = async (id: number): Promise<boolean> => {
+  const deleteStock = useCallback(async (id: number): Promise<boolean> => {
     const result = await execute(
-      `DELETE FROM journal_trades WHERE id = ? AND user_id = ?`,
+      `DELETE FROM stocks WHERE id = ? AND user_id = ?`,
       [id, userId]
     );
     return result.changes > 0;
-  };
+  }, [userId, execute]);
 
   /**
-   * Get all trades for the user
+   * Delete an option trade
    */
-  const getAllTrades = async (options?: {
+  const deleteOption = useCallback(async (id: number): Promise<boolean> => {
+    const result = await execute(
+      `DELETE FROM options WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    return result.changes > 0;
+  }, [userId, execute]);
+
+  /**
+   * Get all stock trades for the user
+   */
+  const getAllStocks = useCallback(async (options?: {
     limit?: number;
     offset?: number;
-    orderBy?: 'entryDate' | 'symbol' | 'createdAt';
+    orderBy?: 'entry_date' | 'symbol' | 'created_at';
     orderDirection?: 'asc' | 'desc';
-    status?: 'open' | 'closed' | 'cancelled';
-    assetType?: 'STOCK' | 'OPTION';
-  }): Promise<JournalTrade[]> => {
+  }): Promise<Stock[]> => {
     const { 
       limit = 100, 
       offset = 0, 
-      orderBy = 'entryDate', 
+      orderBy = 'entry_date', 
+      orderDirection = 'desc'
+    } = options || {};
+
+    const sql = `
+      SELECT * FROM stocks 
+      WHERE user_id = ?
+      ORDER BY ${orderBy} ${orderDirection.toUpperCase()}
+      LIMIT ? OFFSET ?
+    `;
+    
+    const result = await query(sql, [userId, limit, offset]);
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Stock;
+    });
+  }, [userId, query]);
+
+  /**
+   * Get all option trades for the user
+   */
+  const getAllOptions = useCallback(async (options?: {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'entry_date' | 'symbol' | 'created_at';
+    orderDirection?: 'asc' | 'desc';
+    status?: 'open' | 'closed';
+  }): Promise<Option[]> => {
+    const { 
+      limit = 100, 
+      offset = 0, 
+      orderBy = 'entry_date', 
       orderDirection = 'desc',
-      status,
-      assetType
+      status
     } = options || {};
 
     let whereClause = 'WHERE user_id = ?';
@@ -196,13 +391,8 @@ export function useJournalDatabase(userId: string) {
       params.push(status);
     }
 
-    if (assetType) {
-      whereClause += ' AND asset_type = ?';
-      params.push(assetType);
-    }
-
     const sql = `
-      SELECT * FROM journal_trades 
+      SELECT * FROM options 
       ${whereClause}
       ORDER BY ${orderBy} ${orderDirection.toUpperCase()}
       LIMIT ? OFFSET ?
@@ -210,141 +400,280 @@ export function useJournalDatabase(userId: string) {
     
     params.push(limit, offset);
     
+    console.log('getAllOptions SQL:', sql);
+    console.log('getAllOptions params:', params);
+    console.log('getAllOptions userId:', userId);
+    
+    // Debug: Check if any options exist at all
+    try {
+      const debugResult = await query('SELECT * FROM options', []);
+      console.log('Debug - all options in database:', debugResult);
+    } catch (error) {
+      console.log('Debug - error querying options table:', error);
+    }
+    
+    // Debug: Check table structure
+    try {
+      const tableInfo = await query('PRAGMA table_info(options)', []);
+      console.log('Debug - options table structure:', tableInfo);
+    } catch (error) {
+      console.log('Debug - error getting table info:', error);
+    }
+    
     const result = await query(sql, params);
-    return result.values.map(row => 
-      result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {})
-    ) as JournalTrade[];
-  };
+    console.log('getAllOptions raw result:', result);
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Option;
+    });
+  }, [userId, query]);
 
   /**
-   * Get trades by symbol
+   * Get stock trades by symbol
    */
-  const getTradesBySymbol = async (symbol: string): Promise<JournalTrade[]> => {
+  const getStocksBySymbol = async (symbol: string): Promise<Stock[]> => {
     const result = await query(
-      `SELECT * FROM journal_trades WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
+      `SELECT * FROM stocks WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
       [userId, symbol]
     );
     
-    return result.values.map(row => 
-      result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {})
-    ) as JournalTrade[];
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Stock;
+    });
   };
 
   /**
-   * Get single trade by ID
+   * Get option trades by symbol
    */
-  const getTradeById = async (id: number): Promise<JournalTrade | null> => {
+  const getOptionsBySymbol = async (symbol: string): Promise<Option[]> => {
     const result = await query(
-      `SELECT * FROM journal_trades WHERE id = ? AND user_id = ?`,
+      `SELECT * FROM options WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
+      [userId, symbol]
+    );
+    
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Option;
+    });
+  };
+
+  /**
+   * Get single stock trade by ID
+   */
+  const getStockById = async (id: number): Promise<Stock | null> => {
+    const result = await query(
+      `SELECT * FROM stocks WHERE id = ? AND user_id = ?`,
       [id, userId]
     );
     
     if (result.values.length === 0) return null;
     
     const row = result.values[0];
-    return result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {}) as JournalTrade;
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Stock;
   };
 
   /**
-   * Search trades by symbol or notes
+   * Get single option trade by ID
    */
-  const searchTrades = async (searchTerm: string): Promise<JournalTrade[]> => {
+  const getOptionById = async (id: number): Promise<Option | null> => {
     const result = await query(
-      `SELECT * FROM journal_trades 
-       WHERE user_id = ? AND (symbol LIKE ? OR notes LIKE ?)
+      `SELECT * FROM options WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    
+    if (result.values.length === 0) return null;
+    
+    const row = result.values[0];
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Option;
+  };
+
+  /**
+   * Search stock trades by symbol
+   */
+  const searchStocks = async (searchTerm: string): Promise<Stock[]> => {
+    const result = await query(
+      `SELECT * FROM stocks 
+       WHERE user_id = ? AND symbol LIKE ?
+       ORDER BY entry_date DESC`,
+      [userId, `%${searchTerm}%`]
+    );
+    
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Stock;
+    });
+  };
+
+  /**
+   * Search option trades by symbol or strategy type
+   */
+  const searchOptions = async (searchTerm: string): Promise<Option[]> => {
+    const result = await query(
+      `SELECT * FROM options 
+       WHERE user_id = ? AND (symbol LIKE ? OR strategy_type LIKE ?)
        ORDER BY entry_date DESC`,
       [userId, `%${searchTerm}%`, `%${searchTerm}%`]
     );
     
-    return result.values.map(row => 
-      result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {})
-    ) as JournalTrade[];
+    return result.values.map(row => {
+      const obj: Record<string, any> = {};
+      result.columns.forEach((col, idx) => {
+        obj[snakeToCamel(col)] = row[idx];
+      });
+      return obj as Option;
+    });
   };
 
   /**
    * Get trading statistics
    */
   const getStats = async () => {
-    const totalTradesResult = await query(
-      `SELECT COUNT(*) as total FROM journal_trades WHERE user_id = ?`,
+    const stocksCountResult = await query(
+      `SELECT COUNT(*) as total FROM stocks WHERE user_id = ?`,
       [userId]
     );
 
-    const openTradesResult = await query(
-      `SELECT COUNT(*) as open FROM journal_trades WHERE user_id = ? AND status = 'open'`,
+    const optionsCountResult = await query(
+      `SELECT COUNT(*) as total FROM options WHERE user_id = ?`,
       [userId]
     );
 
-    const closedTradesResult = await query(
-      `SELECT COUNT(*) as closed FROM journal_trades WHERE user_id = ? AND status = 'closed'`,
+    const openOptionsResult = await query(
+      `SELECT COUNT(*) as open FROM options WHERE user_id = ? AND status = 'open'`,
+      [userId]
+    );
+
+    const closedOptionsResult = await query(
+      `SELECT COUNT(*) as closed FROM options WHERE user_id = ? AND status = 'closed'`,
       [userId]
     );
 
     return {
-      totalTrades: totalTradesResult.values[0][0] as number,
-      openTrades: openTradesResult.values[0][0] as number,
-      closedTrades: closedTradesResult.values[0][0] as number,
+      totalStocks: stocksCountResult.values[0][0] as number,
+      totalOptions: optionsCountResult.values[0][0] as number,
+      openOptions: openOptionsResult.values[0][0] as number,
+      closedOptions: closedOptionsResult.values[0][0] as number,
+      totalTrades: (stocksCountResult.values[0][0] as number) + (optionsCountResult.values[0][0] as number),
     };
   };
 
   /**
-   * Upsert trade (insert or update based on unique constraint)
+   * Upsert stock trade (insert or update based on unique constraint)
    */
-  const upsertTrade = async (trade: Omit<NewJournalTrade, 'id' | 'createdAt' | 'updatedAt'>): Promise<JournalTrade> => {
-    const tradeWithUser = { ...trade, userId };
-    
+  const upsertStock = async (stock: Omit<NewStock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Stock> => {
     const sql = `
-      INSERT INTO journal_trades (
-        user_id, symbol, asset_type, trade_type, order_type,
-        entry_price, exit_price, stop_loss, take_profit, commissions,
-        number_of_shares, strike_price, option_type, expiration_date,
-        premium, entry_date, exit_date, status, notes, tags
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, symbol, asset_type, trade_type, entry_price, entry_date) DO UPDATE SET
+      INSERT INTO stocks (
+        user_id, symbol, trade_type, order_type, entry_price, exit_price,
+        stop_loss, commissions, number_shares, take_profit, entry_date, exit_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, symbol, trade_type, entry_price, entry_date) DO UPDATE SET
         order_type = excluded.order_type,
         exit_price = excluded.exit_price,
         stop_loss = excluded.stop_loss,
-        take_profit = excluded.take_profit,
         commissions = excluded.commissions,
-        number_of_shares = excluded.number_of_shares,
-        strike_price = excluded.strike_price,
-        option_type = excluded.option_type,
-        expiration_date = excluded.expiration_date,
-        premium = excluded.premium,
+        number_shares = excluded.number_shares,
+        take_profit = excluded.take_profit,
         exit_date = excluded.exit_date,
-        status = excluded.status,
-        notes = excluded.notes,
-        tags = excluded.tags,
         updated_at = datetime('now')
       RETURNING *
     `;
     
     const params = [
-      tradeWithUser.userId,
-      tradeWithUser.symbol,
-      tradeWithUser.assetType,
-      tradeWithUser.tradeType,
-      tradeWithUser.orderType,
-      tradeWithUser.entryPrice,
-      tradeWithUser.exitPrice || null,
-      tradeWithUser.stopLoss,
-      tradeWithUser.takeProfit || null,
-      tradeWithUser.commissions || 0.00,
-      tradeWithUser.numberOfShares,
-      tradeWithUser.strikePrice || null,
-      tradeWithUser.optionType || null,
-      tradeWithUser.expirationDate || null,
-      tradeWithUser.premium || null,
-      tradeWithUser.entryDate,
-      tradeWithUser.exitDate || null,
-      tradeWithUser.status || 'open',
-      tradeWithUser.notes || null,
-      tradeWithUser.tags || null
+      userId,
+      stock.symbol,
+      stock.tradeType,
+      stock.orderType,
+      stock.entryPrice,
+      stock.exitPrice || null,
+      stock.stopLoss,
+      stock.commissions || 0.00,
+      stock.numberShares,
+      stock.takeProfit || null,
+      stock.entryDate,
+      stock.exitDate || null
     ];
 
     const result = await query(sql, params);
     const row = result.values[0];
-    return result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {}) as JournalTrade;
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Stock;
+  };
+
+  /**
+   * Upsert option trade (insert or update based on unique constraint)
+   */
+  const upsertOption = async (option: Omit<NewOption, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Option> => {
+    const sql = `
+      INSERT INTO options (
+        user_id, symbol, strategy_type, trade_direction, number_of_contracts,
+        option_type, strike_price, expiration_date, entry_price, exit_price,
+        total_premium, commissions, implied_volatility, entry_date, exit_date, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, symbol, option_type, strike_price, expiration_date, entry_date) DO UPDATE SET
+        strategy_type = excluded.strategy_type,
+        trade_direction = excluded.trade_direction,
+        number_of_contracts = excluded.number_of_contracts,
+        entry_price = excluded.entry_price,
+        exit_price = excluded.exit_price,
+        total_premium = excluded.total_premium,
+        commissions = excluded.commissions,
+        implied_volatility = excluded.implied_volatility,
+        exit_date = excluded.exit_date,
+        status = excluded.status,
+        updated_at = datetime('now')
+      RETURNING *
+    `;
+    
+    const params = [
+      userId,
+      option.symbol,
+      option.strategyType,
+      option.tradeDirection,
+      option.numberOfContracts,
+      option.optionType,
+      option.strikePrice,
+      option.expirationDate,
+      option.entryPrice,
+      option.exitPrice || null,
+      option.totalPremium,
+      option.commissions || 0.00,
+      option.impliedVolatility,
+      option.entryDate,
+      option.exitDate || null,
+      option.status || 'open'
+    ];
+
+    const result = await query(sql, params);
+    const row = result.values[0];
+    const obj: Record<string, any> = {};
+    result.columns.forEach((col, idx) => {
+      obj[snakeToCamel(col)] = row[idx];
+    });
+    return obj as Option;
   };
 
   return {
@@ -354,18 +683,29 @@ export function useJournalDatabase(userId: string) {
     error,
     init,
     
-    // CRUD operations
-    insertTrade,
-    updateTrade,
-    closeTrade,
-    deleteTrade,
-    upsertTrade,
+    // Stock operations
+    insertStock,
+    updateStock,
+    closeStock,
+    deleteStock,
+    upsertStock,
+    getAllStocks,
+    getStocksBySymbol,
+    getStockById,
+    searchStocks,
     
-    // Query operations
-    getAllTrades,
-    getTradesBySymbol,
-    getTradeById,
-    searchTrades,
+    // Option operations
+    insertOption,
+    updateOption,
+    closeOption,
+    deleteOption,
+    upsertOption,
+    getAllOptions,
+    getOptionsBySymbol,
+    getOptionById,
+    searchOptions,
+    
+    // Statistics
     getStats,
     
     // Direct database access for custom queries

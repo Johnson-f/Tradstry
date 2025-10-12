@@ -18,7 +18,11 @@ import { OptionTradeForm } from "./option-trade-form";
 
 type TradeType = "stock" | "option";
 
-export function AddTradeDialog() {
+interface AddTradeDialogProps {
+  onTradeAdded?: () => void;
+}
+
+export function AddTradeDialog({ onTradeAdded }: AddTradeDialogProps) {
   const [open, setOpen] = useState(false);
   const [tradeType, setTradeType] = useState<TradeType>("stock");
 
@@ -32,7 +36,8 @@ export function AddTradeDialog() {
 
   const handleTradeAdded = () => {
     setOpen(false);
-    // You might want to add a callback here to refresh the parent component
+    // Call the parent callback to refresh the table
+    onTradeAdded?.();
   };
 
   return (
