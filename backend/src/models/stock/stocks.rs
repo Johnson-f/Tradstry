@@ -1023,6 +1023,7 @@ impl Stock {
 
     /// Convert from libsql row to Stock struct
     /// Get playbook setups associated with this stock trade
+    #[allow(dead_code)]
     pub async fn get_playbooks(
         &self,
         conn: &Connection,
@@ -1031,6 +1032,7 @@ impl Stock {
     }
 
     /// Tag this stock trade with a playbook setup
+    #[allow(dead_code)]
     pub async fn tag_with_playbook(
         &self,
         conn: &Connection,
@@ -1040,6 +1042,7 @@ impl Stock {
     }
 
     /// Remove a playbook tag from this stock trade
+    #[allow(dead_code)]
     pub async fn untag_playbook(
         &self,
         conn: &Connection,

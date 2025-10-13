@@ -969,6 +969,7 @@ impl OptionTrade {
 
     /// Convert from libsql row to OptionTrade struct
     /// Get playbook setups associated with this option trade
+    #[allow(dead_code)]
     pub async fn get_playbooks(
         &self,
         conn: &Connection,
@@ -977,6 +978,7 @@ impl OptionTrade {
     }
 
     /// Tag this option trade with a playbook setup
+    #[allow(dead_code)]
     pub async fn tag_with_playbook(
         &self,
         conn: &Connection,
@@ -986,6 +988,7 @@ impl OptionTrade {
     }
 
     /// Remove a playbook tag from this option trade
+    #[allow(dead_code)]
     pub async fn untag_playbook(
         &self,
         conn: &Connection,

@@ -82,15 +82,15 @@ impl Playbook {
         conn.execute(
             "INSERT INTO playbook (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             libsql::params![
-                id,
+                id.clone(),
                 request.name,
                 request.description,
-                now,
+                now.clone(),
                 now
             ],
         ).await?;
 
-        Self::find_by_id(conn, &id).await
+        Self::find_by_id(conn, &id).await?.ok_or_else(|| "Failed to retrieve created playbook".into())
     }
 
     /// Find a playbook by ID
@@ -105,7 +105,7 @@ impl Playbook {
             .await?;
 
         if let Some(row) = rows.next().await? {
-            Ok(Some(Self::from_row(row)?))
+            Ok(Some(Self::from_row(&row)?))
         } else {
             Ok(None)
         }
@@ -156,7 +156,7 @@ impl Playbook {
 
         let mut playbooks = Vec::new();
         while let Some(row) = rows.next().await? {
-            playbooks.push(Self::from_row(row)?);
+            playbooks.push(Self::from_row(&row)?);
         }
 
         Ok(playbooks)
@@ -211,6 +211,7 @@ impl Playbook {
     }
 
     /// Count playbooks with optional filtering
+    #[allow(dead_code)]
     pub async fn count(
         conn: &Connection,
         query: &PlaybookQuery,
@@ -264,6 +265,7 @@ impl Playbook {
     }
 
     /// Check if a playbook exists
+    #[allow(dead_code)]
     pub async fn exists(conn: &Connection, playbook_id: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
             .prepare("SELECT 1 FROM playbook WHERE id = ? LIMIT 1")
@@ -275,6 +277,7 @@ impl Playbook {
     }
 
     /// Get playbooks with pagination
+    #[allow(dead_code)]
     pub async fn get_paginated(
         conn: &Connection,
         page: i64,
@@ -290,7 +293,7 @@ impl Playbook {
 
         let mut playbooks = Vec::new();
         while let Some(row) = rows.next().await? {
-            playbooks.push(Self::from_row(row)?);
+            playbooks.push(Self::from_row(&row)?);
         }
 
         Ok(playbooks)
@@ -407,7 +410,7 @@ impl Playbook {
 
         let mut playbooks = Vec::new();
         while let Some(row) = rows.next().await? {
-            playbooks.push(Self::from_row(row)?);
+            playbooks.push(Self::from_row(&row)?);
         }
 
         Ok(playbooks)
@@ -432,7 +435,7 @@ impl Playbook {
 
         let mut playbooks = Vec::new();
         while let Some(row) = rows.next().await? {
-            playbooks.push(Self::from_row(row)?);
+            playbooks.push(Self::from_row(&row)?);
         }
 
         Ok(playbooks)
