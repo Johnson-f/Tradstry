@@ -29,6 +29,108 @@ export interface OptionsAnalyticsResult {
   lossRate: number;
 }
 
+const getDateFilter = (options: OptionsAnalyticsOptions = {}, useExitDate = true) => {
+  const { timeRange = 'all_time', customStartDate, customEndDate } = options;
+  const dateField = useExitDate ? 'exit_date' : 'entry_date';
+  
+  switch (timeRange) {
+    case '7d':
+      return `AND ${dateField} >= date('now', '-7 days')`;
+    case '30d':
+      return `AND ${dateField} >= date('now', '-30 days')`;
+    case '90d':
+      return `AND ${dateField} >= date('now', '-90 days')`;
+    case '1y':
+      return `AND ${dateField} >= date('now', '-1 year')`;
+    case 'ytd':
+      return `AND ${dateField} >= date('now', 'start of year')`;
+    case 'custom':
+      let customFilter = '';
+      if (customStartDate) {
+        customFilter += ` AND ${dateField} >= '${customStartDate}'`;
+      }
+      if (customEndDate) {
+        customFilter += ` AND ${dateField} <= '${customEndDate}'`;
+      }
+      return customFilter;
+    default:
+      return '';
+  }
+};
+
+export const optionsAnalytics = {
+  async getProfitFactor(db: BrowserSQLiteClient, userId: string, options: OptionsAnalyticsOptions = {}): Promise<number> {
+    const dateFilter = getDateFilter(options);
+    const sql = `
+      WITH trade_profits AS (
+        SELECT 
+          CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
+            ELSE 0
+          END AS profit
+        FROM options
+        WHERE user_id = ?
+          AND status = 'closed'
+          AND exit_date IS NOT NULL
+          ${dateFilter}
+      ),
+      profit_metrics AS (
+        SELECT
+          SUM(CASE WHEN profit > 0 THEN profit ELSE 0 END) AS gross_profit,
+          ABS(SUM(CASE WHEN profit < 0 THEN profit ELSE 0 END)) AS gross_loss,
+          COUNT(*) AS total_trades
+        FROM trade_profits
+      )
+      SELECT 
+        CASE 
+          WHEN total_trades = 0 THEN 0
+          WHEN gross_loss = 0 AND gross_profit > 0 THEN 999.99
+          WHEN gross_loss = 0 THEN 0
+          ELSE ROUND(gross_profit / gross_loss, 2) 
+        END AS profit_factor
+      FROM profit_metrics
+    `;
+    const result = await db.query(sql, [userId]);
+    return result.values[0]?.[0] as number || 0;
+  },
+
+  async getAvgHoldTimeWinners(db: BrowserSQLiteClient, userId: string, options: OptionsAnalyticsOptions = {}): Promise<number> {
+    const dateFilter = getDateFilter(options);
+    const sql = `
+      WITH winning_trades AS (
+        SELECT 
+          (julianday(exit_date) - julianday(entry_date)) AS hold_days
+        FROM options
+        WHERE user_id = ?
+          AND status = 'closed'
+          AND exit_date IS NOT NULL
+          AND (
+            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
+          )
+          ${dateFilter}
+      )
+      SELECT 
+        CASE 
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND(AVG(hold_days), 2)
+        END AS avg_hold_days
+      FROM winning_trades
+    `;
+    const result = await db.query(sql, [userId]);
+    return result.values[0]?.[0] as number || 0;
+  },
+};
+
 /**
  * Hook for options analytics operations
  */
@@ -42,28 +144,27 @@ export function useOptionsAnalytics(userId: string) {
   /**
    * Get date filter condition based on time range
    */
-  const getDateFilter = useCallback((options: OptionsAnalyticsOptions = {}, useExitDate = true) => {
+  const getDateFilter = useCallback((options: OptionsAnalyticsOptions = {}) => {
     const { timeRange = 'all_time', customStartDate, customEndDate } = options;
-    const dateField = useExitDate ? 'exit_date' : 'entry_date';
     
     switch (timeRange) {
       case '7d':
-        return `AND ${dateField} >= date('now', '-7 days')`;
+        return `AND exit_date >= date('now', '-7 days')`;
       case '30d':
-        return `AND ${dateField} >= date('now', '-30 days')`;
+        return `AND exit_date >= date('now', '-30 days')`;
       case '90d':
-        return `AND ${dateField} >= date('now', '-90 days')`;
+        return `AND exit_date >= date('now', '-90 days')`;
       case '1y':
-        return `AND ${dateField} >= date('now', '-1 year')`;
+        return `AND exit_date >= date('now', '-1 year')`;
       case 'ytd':
-        return `AND ${dateField} >= date('now', 'start of year')`;
+        return `AND exit_date >= date('now', 'start of year')`;
       case 'custom':
         let customFilter = '';
         if (customStartDate) {
-          customFilter += ` AND ${dateField} >= '${customStartDate}'`;
+          customFilter += ` AND exit_date >= '${customStartDate}'`;
         }
         if (customEndDate) {
-          customFilter += ` AND ${dateField} <= '${customEndDate}'`;
+          customFilter += ` AND exit_date <= '${customEndDate}'`;
         }
         return customFilter;
       default:
@@ -73,7 +174,6 @@ export function useOptionsAnalytics(userId: string) {
 
   /**
    * Calculate profit factor for options trades
-   * Profit Factor = Gross Profit / Gross Loss
    */
   const getProfitFactor = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
     const dateFilter = getDateFilter(options);
@@ -167,11 +267,11 @@ export function useOptionsAnalytics(userId: string) {
         WHERE user_id = ?
           AND status = 'closed'
           AND exit_date IS NOT NULL
-          AND (
-            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price < entry_price) OR
-            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price > entry_price) OR
-            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price < entry_price) OR
-            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price > entry_price)
+          AND NOT (
+            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
           )
           ${dateFilter}
       )
@@ -252,11 +352,11 @@ export function useOptionsAnalytics(userId: string) {
         WHERE user_id = ?
           AND status = 'closed'
           AND exit_date IS NOT NULL
-          AND (
-            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price < entry_price) OR
-            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price > entry_price) OR
-            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price < entry_price) OR
-            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price > entry_price)
+          AND NOT (
+            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
           )
           ${dateFilter}
       )
@@ -276,35 +376,34 @@ export function useOptionsAnalytics(userId: string) {
     const dateFilter = getDateFilter(options);
     
     const sql = `
-      WITH option_gains AS (
+      WITH trade_gains AS (
         SELECT
-          CASE
-            WHEN strategy_type LIKE '%long%' THEN
-              (COALESCE(exit_price, 0) - entry_price) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN strategy_type LIKE '%short%' THEN
-              (entry_price - COALESCE(exit_price, 0)) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN trade_direction = 'Bullish' THEN
-              (COALESCE(exit_price, 0) - entry_price) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN trade_direction = 'Bearish' THEN
-              (entry_price - COALESCE(exit_price, 0)) * number_of_contracts - COALESCE(commissions, 0)
+          CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
             ELSE 0
           END AS gain
         FROM options
         WHERE user_id = ?
-          AND exit_date IS NOT NULL
-          AND exit_price IS NOT NULL
           AND status = 'closed'
+          AND exit_date IS NOT NULL
           AND (
-            (strategy_type LIKE '%long%' AND exit_price > entry_price) OR
-            (strategy_type LIKE '%short%' AND exit_price < entry_price) OR
-            (trade_direction = 'Bullish' AND exit_price > entry_price) OR
-            (trade_direction = 'Bearish' AND exit_price < entry_price)
+            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
           )
           ${dateFilter}
       )
       SELECT
         COALESCE(AVG(gain), 0) AS average_gain
-      FROM option_gains
+      FROM trade_gains
     `;
 
     const result = await query(sql, [userId]);
@@ -318,35 +417,34 @@ export function useOptionsAnalytics(userId: string) {
     const dateFilter = getDateFilter(options);
     
     const sql = `
-      WITH option_losses AS (
+      WITH trade_losses AS (
         SELECT
-          ABS(CASE
-            WHEN strategy_type LIKE '%long%' THEN
-              (COALESCE(exit_price, 0) - entry_price) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN strategy_type LIKE '%short%' THEN
-              (entry_price - COALESCE(exit_price, 0)) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN trade_direction = 'Bullish' THEN
-              (COALESCE(exit_price, 0) - entry_price) * number_of_contracts - COALESCE(commissions, 0)
-            WHEN trade_direction = 'Bearish' THEN
-              (entry_price - COALESCE(exit_price, 0)) * number_of_contracts - COALESCE(commissions, 0)
+          ABS(CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
             ELSE 0
           END) AS loss
         FROM options
         WHERE user_id = ?
-          AND exit_date IS NOT NULL
-          AND exit_price IS NOT NULL
           AND status = 'closed'
-          AND (
-            (strategy_type LIKE '%long%' AND exit_price < entry_price) OR
-            (strategy_type LIKE '%short%' AND exit_price > entry_price) OR
-            (trade_direction = 'Bullish' AND exit_price < entry_price) OR
-            (trade_direction = 'Bearish' AND exit_price > entry_price)
+          AND exit_date IS NOT NULL
+          AND NOT (
+            (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+            (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+            (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
           )
           ${dateFilter}
       )
       SELECT
         COALESCE(AVG(loss), 0) AS average_loss
-      FROM option_losses
+      FROM trade_losses
     `;
 
     const result = await query(sql, [userId]);
@@ -360,21 +458,129 @@ export function useOptionsAnalytics(userId: string) {
     const dateFilter = getDateFilter(options);
     
     const sql = `
-      SELECT
-        COALESCE(ROUND(SUM(
-          CASE
-            WHEN strategy_type LIKE '%long%' OR trade_direction = 'Bullish' THEN
-              (COALESCE(exit_price, 0) - entry_price) * number_of_contracts * 100 - COALESCE(commissions, 0)
-            WHEN strategy_type LIKE '%short%' OR trade_direction = 'Bearish' THEN
-              (entry_price - COALESCE(exit_price, 0)) * number_of_contracts * 100 - COALESCE(commissions, 0)
+      WITH trade_pnl AS (
+        SELECT
+          CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
             ELSE 0
-          END
-        ), 2), 0) AS net_pnl
-      FROM options
-      WHERE user_id = ?
-        AND status = 'closed'
-        AND exit_date IS NOT NULL
-        ${dateFilter}
+          END AS pnl
+        FROM options
+        WHERE user_id = ?
+          AND status = 'closed'
+          AND exit_date IS NOT NULL
+          ${dateFilter}
+      )
+      SELECT
+        COALESCE(SUM(pnl), 0) AS net_pnl
+      FROM trade_pnl
+    `;
+
+    const result = await query(sql, [userId]);
+    return result.values[0]?.[0] as number || 0;
+  }, [userId, query, getDateFilter]);
+
+  /**
+   * Calculate risk to reward ratio
+   */
+  const getRiskRewardRatio = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
+    const dateFilter = getDateFilter(options);
+    
+    const sql = `
+      WITH trade_metrics AS (
+        SELECT
+          CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
+            ELSE 0
+          END AS pnl
+        FROM options
+        WHERE user_id = ?
+          AND status = 'closed'
+          AND exit_date IS NOT NULL
+          ${dateFilter}
+      ),
+      gain_loss_stats AS (
+        SELECT
+          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) AS avg_gain,
+          COALESCE(AVG(CASE WHEN pnl < 0 THEN ABS(pnl) END), 0) AS avg_loss,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) AS winning_trades,
+          COUNT(CASE WHEN pnl < 0 THEN 1 END) AS losing_trades
+        FROM trade_metrics
+      )
+      SELECT
+        CASE
+          WHEN avg_gain = 0 OR avg_gain IS NULL THEN 0
+          WHEN avg_loss = 0 OR avg_loss IS NULL THEN 0
+          ELSE ROUND(avg_loss / avg_gain, 2)
+        END AS risk_reward_ratio
+      FROM gain_loss_stats
+    `;
+
+    const result = await query(sql, [userId]);
+    return result.values[0]?.[0] as number || 0;
+  }, [userId, query, getDateFilter]);
+
+  /**
+   * Calculate trade expectancy
+   */
+  const getTradeExpectancy = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
+    const dateFilter = getDateFilter(options);
+    
+    const sql = `
+      WITH trade_metrics AS (
+        SELECT
+          CASE 
+            WHEN trade_direction = 'Bullish' AND option_type = 'Call' THEN 
+              (COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bullish' AND option_type = 'Put' THEN 
+              -((COALESCE(exit_price, 0) - entry_price) * 100 * number_of_contracts) - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Put' THEN 
+              (entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts - commissions
+            WHEN trade_direction = 'Bearish' AND option_type = 'Call' THEN 
+              -((entry_price - COALESCE(exit_price, 0)) * 100 * number_of_contracts) - commissions
+            ELSE 0
+          END AS pnl
+        FROM options
+        WHERE user_id = ?
+          AND status = 'closed'
+          AND exit_date IS NOT NULL
+          ${dateFilter}
+      ),
+      expectancy_stats AS (
+        SELECT
+          CASE
+            WHEN COUNT(*) = 0 THEN 0
+            ELSE CAST(COUNT(CASE WHEN pnl > 0 THEN 1 END) AS REAL) / COUNT(*)
+          END AS win_rate_decimal,
+          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) AS avg_gain,
+          COALESCE(AVG(CASE WHEN pnl < 0 THEN ABS(pnl) END), 0) AS avg_loss,
+          COUNT(*) AS total_trades,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) AS winning_trades,
+          COUNT(CASE WHEN pnl < 0 THEN 1 END) AS losing_trades
+        FROM trade_metrics
+      )
+      SELECT
+        CASE
+          WHEN total_trades = 0 THEN 0
+          ELSE ROUND(
+            (win_rate_decimal * avg_gain) - ((1 - win_rate_decimal) * avg_loss),
+            2
+          )
+        END AS trade_expectancy
+      FROM expectancy_stats
     `;
 
     const result = await query(sql, [userId]);
@@ -388,32 +594,35 @@ export function useOptionsAnalytics(userId: string) {
     const dateFilter = getDateFilter(options);
     
     const sql = `
-      WITH trade_counts AS (
+      WITH trade_results AS (
         SELECT
-          COUNT(*) AS total_closed_trades,
-          COUNT(
-            CASE
-              WHEN (
-                (strategy_type LIKE '%long%' AND exit_price > entry_price) OR
-                (strategy_type LIKE '%short%' AND exit_price < entry_price) OR
-                (trade_direction = 'Bullish' AND exit_price > entry_price) OR
-                (trade_direction = 'Bearish' AND exit_price < entry_price)
-              ) THEN 1
-            END
-          ) AS winning_trades
+          CASE
+            WHEN (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+                 (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+                 (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+                 (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price) THEN 1
+            ELSE 0
+          END AS is_winning_trade
         FROM options
         WHERE user_id = ?
           AND status = 'closed'
           AND exit_date IS NOT NULL
+          AND exit_price IS NOT NULL
+          AND entry_price IS NOT NULL
           ${dateFilter}
+      ),
+      win_rate_stats AS (
+        SELECT
+          COUNT(*) AS total_trades,
+          SUM(is_winning_trade) AS winning_trades
+        FROM trade_results
       )
       SELECT
         CASE
-          WHEN total_closed_trades > 0 THEN
-            ROUND((winning_trades * 100.0 / total_closed_trades), 2)
-          ELSE 0
-        END AS win_rate
-      FROM trade_counts
+          WHEN total_trades = 0 THEN 0
+          ELSE ROUND((winning_trades * 100.0 / total_trades), 2)
+        END AS win_rate_percentage
+      FROM win_rate_stats
     `;
 
     const result = await query(sql, [userId]);
@@ -428,15 +637,11 @@ export function useOptionsAnalytics(userId: string) {
     
     const sql = `
       SELECT 
-        COALESCE(ROUND(AVG(
-          CASE 
-            WHEN number_of_contracts > 0 THEN (total_premium * number_of_contracts * 100)
-            ELSE 0
-          END
-        ), 2), 0) AS average_position_size
+        COALESCE(ROUND(AVG(entry_price * 100 * number_of_contracts), 2), 0) AS average_position_size
       FROM options
       WHERE user_id = ?
         AND status = 'closed'
+        AND exit_date IS NOT NULL
         ${dateFilter}
     `;
 
@@ -448,30 +653,21 @@ export function useOptionsAnalytics(userId: string) {
    * Calculate average risk per trade
    */
   const getAverageRiskPerTrade = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
-    const dateFilter = getDateFilter(options, false); // Use entry_date for risk calculation
+    const dateFilter = getDateFilter(options);
     
     const sql = `
       SELECT 
         COALESCE(ROUND(AVG(
           CASE 
-            WHEN option_type = 'Call' AND trade_direction = 'Bullish' THEN (total_premium * number_of_contracts * 100)
-            WHEN option_type = 'Put' AND trade_direction = 'Bullish' THEN (total_premium * number_of_contracts * 100)
-            WHEN option_type = 'Call' AND trade_direction = 'Bearish' THEN 
-              CASE 
-                WHEN strike_price IS NOT NULL THEN ((strike_price - entry_price + total_premium) * number_of_contracts * 100)
-                ELSE (total_premium * number_of_contracts * 100)
-              END
-            WHEN option_type = 'Put' AND trade_direction = 'Bearish' THEN 
-              CASE 
-                WHEN strike_price IS NOT NULL THEN ((entry_price - strike_price + total_premium) * number_of_contracts * 100)
-                ELSE (total_premium * number_of_contracts * 100)
-              END
-            ELSE 0
+            WHEN trade_direction = 'Bullish' THEN (entry_price - stop_loss) * 100 * number_of_contracts
+            WHEN trade_direction = 'Bearish' THEN (stop_loss - entry_price) * 100 * number_of_contracts
           END
         ), 2), 0) AS average_risk_per_trade
       FROM options
       WHERE user_id = ?
         AND status = 'closed'
+        AND exit_date IS NOT NULL
+        AND stop_loss IS NOT NULL
         ${dateFilter}
     `;
 
@@ -486,28 +682,26 @@ export function useOptionsAnalytics(userId: string) {
     const dateFilter = getDateFilter(options);
     
     const sql = `
-      WITH trade_stats AS (
-        SELECT 
-          COUNT(*) AS total_trades,
-          SUM(CASE WHEN 
-            (CASE 
-              WHEN status = 'closed' AND exit_price IS NOT NULL THEN 
-                (exit_price - entry_price) * number_of_contracts * 100 - total_premium
-              ELSE 0 
-            END) < 0 
-          THEN 1 ELSE 0 END) AS losing_trades
-        FROM options
-        WHERE user_id = ?
-          AND status = 'closed'
-          AND exit_price IS NOT NULL
-          ${dateFilter}
-      )
       SELECT 
         CASE 
-          WHEN total_trades = 0 THEN 0 
-          ELSE ROUND((losing_trades * 100.0 / total_trades), 2)
-        END AS loss_rate_percentage
-      FROM trade_stats
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND(
+            (COUNT(CASE 
+              WHEN NOT (
+                (trade_direction = 'Bullish' AND option_type = 'Call' AND exit_price > entry_price) OR
+                (trade_direction = 'Bullish' AND option_type = 'Put' AND exit_price < entry_price) OR
+                (trade_direction = 'Bearish' AND option_type = 'Put' AND exit_price > entry_price) OR
+                (trade_direction = 'Bearish' AND option_type = 'Call' AND exit_price < entry_price)
+              ) THEN 1 
+            END) * 100.0 / COUNT(*)), 2
+          )
+        END AS loss_rate
+      FROM options
+      WHERE user_id = ?
+        AND status = 'closed'
+        AND exit_date IS NOT NULL
+        AND exit_price IS NOT NULL
+        ${dateFilter}
     `;
 
     const result = await query(sql, [userId]);
@@ -515,35 +709,73 @@ export function useOptionsAnalytics(userId: string) {
   }, [userId, query, getDateFilter]);
 
   /**
-   * Calculate risk to reward ratio
-   * Risk/Reward Ratio = Average Loss / Average Gain
+   * Get all analytics metrics at once
    */
-  const getRiskRewardRatio = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
-    const [averageGain, averageLoss] = await Promise.all([
+  const getAllAnalytics = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<OptionsAnalyticsResult> => {
+    const [
+      profitFactor,
+      avgHoldTimeWinners,
+      avgHoldTimeLosers,
+      biggestWinner,
+      biggestLoser,
+      averageGain,
+      averageLoss,
+      netPnL,
+      riskRewardRatio,
+      tradeExpectancy,
+      winRate,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate
+    ] = await Promise.all([
+      getProfitFactor(options),
+      getAvgHoldTimeWinners(options),
+      getAvgHoldTimeLosers(options),
+      getBiggestWinner(options),
+      getBiggestLoser(options),
       getAverageGain(options),
-      getAverageLoss(options)
-    ]);
-
-    if (averageGain === 0) return 0;
-    return Math.round((averageLoss / averageGain) * 100) / 100;
-  }, [getAverageGain, getAverageLoss]);
-
-  /**
-   * Calculate trade expectancy
-   * Trade Expectancy = (Win Rate * Average Gain) - (Loss Rate * Average Loss)
-   */
-  const getTradeExpectancy = useCallback(async (options: OptionsAnalyticsOptions = {}): Promise<number> => {
-    const [winRate, averageGain, averageLoss] = await Promise.all([
+      getAverageLoss(options),
+      getNetPnL(options),
+      getRiskRewardRatio(options),
+      getTradeExpectancy(options),
       getWinRate(options),
-      getAverageGain(options),
-      getAverageLoss(options)
+      getAveragePositionSize(options),
+      getAverageRiskPerTrade(options),
+      getLossRate(options)
     ]);
 
-    const winRateDecimal = winRate / 100;
-    const lossRateDecimal = 1 - winRateDecimal;
-
-    return Math.round(((winRateDecimal * averageGain) - (lossRateDecimal * averageLoss)) * 100) / 100;
-  }, [getWinRate, getAverageGain, getAverageLoss]);
+    return {
+      profitFactor,
+      avgHoldTimeWinners,
+      avgHoldTimeLosers,
+      biggestWinner,
+      biggestLoser,
+      averageGain,
+      averageLoss,
+      netPnL,
+      riskRewardRatio,
+      tradeExpectancy,
+      winRate,
+      averagePositionSize,
+      averageRiskPerTrade,
+      lossRate
+    };
+  }, [
+    getProfitFactor,
+    getAvgHoldTimeWinners,
+    getAvgHoldTimeLosers,
+    getBiggestWinner,
+    getBiggestLoser,
+    getAverageGain,
+    getAverageLoss,
+    getNetPnL,
+    getRiskRewardRatio,
+    getTradeExpectancy,
+    getWinRate,
+    getAveragePositionSize,
+    getAverageRiskPerTrade,
+    getLossRate
+  ]);
 
   return {
     // Individual metrics
@@ -555,67 +787,17 @@ export function useOptionsAnalytics(userId: string) {
     getAverageGain,
     getAverageLoss,
     getNetPnL,
+    getRiskRewardRatio,
+    getTradeExpectancy,
     getWinRate,
     getAveragePositionSize,
     getAverageRiskPerTrade,
     getLossRate,
-    getRiskRewardRatio,
-    getTradeExpectancy,
     
     // Combined metrics
-    getAllAnalytics: async (options: OptionsAnalyticsOptions = {}): Promise<OptionsAnalyticsResult> => {
-      const [
-        profitFactor,
-        avgHoldTimeWinners,
-        avgHoldTimeLosers,
-        biggestWinner,
-        biggestLoser,
-        averageGain,
-        averageLoss,
-        netPnL,
-        winRate,
-        averagePositionSize,
-        averageRiskPerTrade,
-        lossRate
-      ] = await Promise.all([
-        getProfitFactor(options),
-        getAvgHoldTimeWinners(options),
-        getAvgHoldTimeLosers(options),
-        getBiggestWinner(options),
-        getBiggestLoser(options),
-        getAverageGain(options),
-        getAverageLoss(options),
-        getNetPnL(options),
-        getWinRate(options),
-        getAveragePositionSize(options),
-        getAverageRiskPerTrade(options),
-        getLossRate(options)
-      ]);
-
-      const riskRewardRatio = await getRiskRewardRatio(options);
-      const tradeExpectancy = await getTradeExpectancy(options);
-
-      return {
-        profitFactor,
-        avgHoldTimeWinners,
-        avgHoldTimeLosers,
-        biggestWinner,
-        biggestLoser,
-        averageGain,
-        averageLoss,
-        netPnL,
-        riskRewardRatio,
-        tradeExpectancy,
-        winRate,
-        averagePositionSize,
-        averageRiskPerTrade,
-        lossRate
-      };
-    },
+    getAllAnalytics,
     
     // Utility
     getDateFilter
   };
 }
-
-// Types are already exported above with the interface declarations

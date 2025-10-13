@@ -44,6 +44,8 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
   const dbRef = useRef<BrowserSQLiteClient | null>(null);
   const isOpfsSupported = BrowserSQLiteClient.isOpfsSupported();
 
+  const optionsString = JSON.stringify(options);
+
   // Initialize database
   const init = useCallback(async () => {
     if (isInitializing || isInitialized) {
@@ -54,7 +56,7 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
     setError(null);
 
     try {
-      const dbInstance = createBrowserDatabase(options);
+      const dbInstance = createBrowserDatabase(JSON.parse(optionsString));
       await dbInstance.init();
       
       dbRef.current = dbInstance;
@@ -66,7 +68,7 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
     } finally {
       setIsInitializing(false);
     }
-  }, [options, isInitializing, isInitialized]);
+  }, [optionsString, isInitializing, isInitialized]);
 
   // Execute SQL without results
   const execute = useCallback(async (sql: string, params?: any[]): Promise<ExecResult> => {
@@ -169,10 +171,11 @@ export function useBrowserDatabase(options: UseBrowserDatabaseOptions): UseBrows
 
   // Auto-initialize if requested
   useEffect(() => {
-    if (options.autoInit !== false && !isInitialized && !isInitializing) {
+    const currentOptions: UseBrowserDatabaseOptions = JSON.parse(optionsString);
+    if (currentOptions.autoInit !== false && !isInitialized && !isInitializing) {
       init();
     }
-  }, [init, options.autoInit, isInitialized, isInitializing]);
+  }, [init, optionsString, isInitialized, isInitializing]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -208,7 +211,7 @@ export function useTableStore<T extends Record<string, any>>(
   dbOptions?: Omit<UseBrowserDatabaseOptions, 'initSql'>
 ) {
   const { isInitialized, execute, query, error, isInitializing } = useBrowserDatabase({
-    ...dbOptions,
+    ...(dbOptions || {}),
     dbName: dbOptions?.dbName || 'app-store',
     initSql: [schema],
   });
