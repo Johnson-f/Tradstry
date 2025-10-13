@@ -968,6 +968,32 @@ impl OptionTrade {
     }
 
     /// Convert from libsql row to OptionTrade struct
+    /// Get playbook setups associated with this option trade
+    pub async fn get_playbooks(
+        &self,
+        conn: &Connection,
+    ) -> Result<Vec<crate::models::playbook::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::get_option_trade_playbooks(conn, self.id).await
+    }
+
+    /// Tag this option trade with a playbook setup
+    pub async fn tag_with_playbook(
+        &self,
+        conn: &Connection,
+        setup_id: &str,
+    ) -> Result<crate::models::playbook::playbook::OptionTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::tag_option_trade(conn, self.id, setup_id).await
+    }
+
+    /// Remove a playbook tag from this option trade
+    pub async fn untag_playbook(
+        &self,
+        conn: &Connection,
+        setup_id: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::untag_option_trade(conn, self.id, setup_id).await
+    }
+
     fn from_row(row: &libsql::Row) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {
         let trade_direction_str: String = row.get(3)?;
         let option_type_str: String = row.get(5)?;

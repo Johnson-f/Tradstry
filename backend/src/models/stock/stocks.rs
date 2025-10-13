@@ -1022,6 +1022,32 @@ impl Stock {
     }
 
     /// Convert from libsql row to Stock struct
+    /// Get playbook setups associated with this stock trade
+    pub async fn get_playbooks(
+        &self,
+        conn: &Connection,
+    ) -> Result<Vec<crate::models::playbook::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::get_stock_trade_playbooks(conn, self.id).await
+    }
+
+    /// Tag this stock trade with a playbook setup
+    pub async fn tag_with_playbook(
+        &self,
+        conn: &Connection,
+        setup_id: &str,
+    ) -> Result<crate::models::playbook::playbook::StockTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::tag_stock_trade(conn, self.id, setup_id).await
+    }
+
+    /// Remove a playbook tag from this stock trade
+    pub async fn untag_playbook(
+        &self,
+        conn: &Connection,
+        setup_id: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::playbook::Playbook::untag_stock_trade(conn, self.id, setup_id).await
+    }
+
     fn from_row(row: &libsql::Row) -> Result<Stock, Box<dyn std::error::Error + Send + Sync>> {
         let trade_type_str: String = row.get(2)?;
         let order_type_str: String = row.get(3)?;
