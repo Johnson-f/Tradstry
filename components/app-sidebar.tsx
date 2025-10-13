@@ -37,7 +37,7 @@ const navItems = [
   { title: "Home", url: "/app", icon: Home },
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
   { title: "Journal", url: "/app/journal", icon: NotebookPen },
-  { title: "Setups", url: "/app/setups", icon: Library },
+  { title: "Playbook", url: "/app/playbook", icon: Library },
   { title: "Notebook", url: "/app/notepad", icon: Notebook },
   { title: "Analytics", url: "/app/analytics", icon: PieChart },
   { title: "AI Reports", url: "/app/ai-reports", icon: ChartNoAxesColumnIncreasing },

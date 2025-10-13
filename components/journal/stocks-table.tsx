@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
-import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
+import { SetupTradeAssociationCompact } from "@/components/playbook/setup-trade-association-compact";
 import {
   Pagination,
   PaginationContent,
