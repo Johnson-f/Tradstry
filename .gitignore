@@ -41,25 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Python Environment 
-.venv/
-venv/
-__pycache__/
-*.pyc
-
 # Local helper scripts (not needed in repo)
-start.sh
 *.local.sh
 
-# Celery runtime files
-backend/logs/
-backend/*.pid
-backend/celerybeat-schedule
-backend/celerybeat.pid
-backend/test.py
-backend/test_connection.py
-
 # Rust backend
-rust-backend/target/
+backend/target/
 
 .vscode

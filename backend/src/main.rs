@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use turso::{
-    AppState, 
+    AppState,
     get_user_id,
     get_supabase_user_id,
     validate_jwt_token,
@@ -85,7 +85,7 @@ async fn main() -> std::io::Result<()> {
 
     // Get port from environment or default
     let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "6000".to_string())
+        .unwrap_or_else(|_| "9000".to_string())
         .parse::<u16>()
         .expect("Invalid PORT value");
 
@@ -95,7 +95,7 @@ async fn main() -> std::io::Result<()> {
     // Start HTTP server
     HttpServer::new(move || {
         log::info!("Creating new App instance");
-        
+
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
@@ -106,7 +106,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_data.clone())
             // CRITICAL: Add TursoClient as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
-            // CRITICAL: Add SupabaseConfig as separate app_data for user routes  
+            // CRITICAL: Add SupabaseConfig as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().config.supabase.clone()))
             .wrap(cors)
             .wrap(Logger::default())
@@ -154,7 +154,7 @@ fn configure_public_routes(cfg: &mut web::ServiceConfig) {
         .route("/profile", web::get().to(get_profile));
 }
 
-// Protected routes configuration  
+// Protected routes configuration
 fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     log::info!("Configuring auth routes");
     cfg.service(
@@ -249,7 +249,7 @@ async fn get_profile(req: actix_web::HttpRequest) -> ActixResult<Json<ApiRespons
         });
         return Ok(Json(ApiResponse::success(profile)));
     }
-    
+
     // Fallback to Clerk claims
     if let Some(claims) = req.extensions().get::<turso::ClerkClaims>() {
         let profile = serde_json::json!({
@@ -260,7 +260,7 @@ async fn get_profile(req: actix_web::HttpRequest) -> ActixResult<Json<ApiRespons
         });
         return Ok(Json(ApiResponse::success(profile)));
     }
-    
+
     // No authentication
     let profile = serde_json::json!({
         "authenticated": false
@@ -273,14 +273,14 @@ async fn get_current_user(
     req: actix_web::HttpRequest,
 ) -> ActixResult<Json<ApiResponse<serde_json::Value>>> {
     let extensions = req.extensions();
-    
+
     let (user_id, _email, auth_provider) = if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
         // Handle Supabase claims
         let user_id = get_supabase_user_id(supabase_claims);
         (user_id, supabase_claims.email.clone(), "supabase")
     } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
         // Handle Clerk claims (legacy)
-        let user_id = get_user_id(clerk_claims.clone()).map_err(|_| 
+        let user_id = get_user_id(clerk_claims.clone()).map_err(|_|
             actix_web::error::ErrorBadRequest("Invalid user ID"))?;
         (user_id, clerk_claims.email.clone(), "clerk")
     } else {
@@ -310,13 +310,13 @@ async fn get_user_data(
     req: actix_web::HttpRequest,
 ) -> ActixResult<Json<ApiResponse<serde_json::Value>>> {
     let extensions = req.extensions();
-    
+
     let user_id = if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
         // Handle Supabase claims
         get_supabase_user_id(supabase_claims)
     } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
         // Handle Clerk claims (legacy)
-        get_user_id(clerk_claims.clone()).map_err(|_| 
+        get_user_id(clerk_claims.clone()).map_err(|_|
             actix_web::error::ErrorBadRequest("Invalid user ID"))?
     } else {
         return Err(actix_web::error::ErrorUnauthorized("No authentication claims found"));
@@ -481,9 +481,9 @@ async fn clerk_webhook_handler(
     match app_state.webhook_handler.handle_webhook(&headers, &body).await {
         Ok(response) => Ok(response),
         Err(status) => match status {
-            actix_web::http::StatusCode::UNAUTHORIZED => 
+            actix_web::http::StatusCode::UNAUTHORIZED =>
                 Err(actix_web::error::ErrorUnauthorized("Webhook authentication failed")),
-            actix_web::http::StatusCode::BAD_REQUEST => 
+            actix_web::http::StatusCode::BAD_REQUEST =>
                 Err(actix_web::error::ErrorBadRequest("Invalid webhook payload")),
             _ => Err(actix_web::error::ErrorInternalServerError("Webhook processing failed")),
         }
