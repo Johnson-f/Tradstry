@@ -4,101 +4,102 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { setupsService } from '@/lib/services/setups-service';
-import { SetupTradeAssociation, SetupInDB } from '@/lib/types/setups';
+import { usePlaybookService } from '@/lib/services/playbook-service';
+import type { Playbook } from '@/lib/drizzle/playbook';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 
-interface SetupTradeAssociationCompactProps {
+interface PlaybookTradeAssociationCompactProps {
   tradeId: number;
   tradeType: 'stock' | 'option';
-  onSetupAdded?: () => void;
+  onPlaybookAdded?: () => void;
 }
 
-export function SetupTradeAssociationCompact({ tradeId, tradeType, onSetupAdded }: SetupTradeAssociationCompactProps) {
-  const [selectedSetupId, setSelectedSetupId] = useState<string>('');
-  const [confidenceRating, setConfidenceRating] = useState<string>('');
-  const [notes, setNotes] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [setups, setSetups] = useState<SetupTradeAssociation[]>([]);
-  const [availableSetups, setAvailableSetups] = useState<SetupInDB[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isLoadingSetups, setIsLoadingSetups] = useState(false);
+export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdded }: PlaybookTradeAssociationCompactProps) {
+  const { userId } = useUserProfile();
+  const playbookService = usePlaybookService(userId);
 
-  // Load available setups when component mounts
+  const [selectedPlaybookId, setSelectedPlaybookId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [availablePlaybooks, setAvailablePlaybooks] = useState<Playbook[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLoadingPlaybooks, setIsLoadingPlaybooks] = useState(false);
+
+  useEffect(() => {
+    // Initial load of current playbooks
+    loadCurrentPlaybooks();
+  }, [playbookService.isInitialized]);
+
   useEffect(() => {
     if (isDialogOpen) {
-      loadAvailableSetups();
-      loadCurrentSetups();
+      loadAvailablePlaybooks();
+      loadCurrentPlaybooks();
     }
-  }, [isDialogOpen]);
+  }, [isDialogOpen, playbookService.isInitialized]);
 
-  const loadAvailableSetups = async () => {
-    setIsLoadingSetups(true);
+  const loadAvailablePlaybooks = async () => {
+    if (!playbookService.isInitialized) return;
+    setIsLoadingPlaybooks(true);
     try {
-      const setups = await setupsService.getSetups();
-      setAvailableSetups(setups);
+      const allPlaybooks = await playbookService.getAllPlaybooks();
+      setAvailablePlaybooks(allPlaybooks);
     } catch (error) {
-      console.error('Error loading available setups:', error);
-      toast.error('Failed to load available setups');
+      console.error('Error loading available playbooks:', error);
+      toast.error('Failed to load available playbooks');
     } finally {
-      setIsLoadingSetups(false);
+      setIsLoadingPlaybooks(false);
     }
   };
 
-  const loadCurrentSetups = async () => {
+  const loadCurrentPlaybooks = async () => {
+    if (!playbookService.isInitialized) return;
     try {
-      if (tradeType === 'stock') {
-        const stockSetups = await setupsService.getSetupsForStock(tradeId);
-        setSetups(stockSetups);
-      } else {
-        const optionSetups = await setupsService.getSetupsForOption(tradeId);
-        setSetups(optionSetups);
-      }
+      const currentPlaybooks = await playbookService.getPlaybooksForTrade(tradeId, tradeType);
+      setPlaybooks(currentPlaybooks);
     } catch (error) {
-      console.error('Error loading current setups:', error);
+      console.error('Error loading current playbooks:', error);
     }
   };
 
-  const handleAddSetup = async () => {
-    if (!selectedSetupId || selectedSetupId === 'loading' || selectedSetupId === 'none') {
-      toast.error('Please select a valid setup');
+  const handleAddPlaybook = async () => {
+    if (!selectedPlaybookId || selectedPlaybookId === 'loading' || selectedPlaybookId === 'none') {
+      toast.error('Please select a valid playbook');
       return;
     }
 
     setIsLoading(true);
     try {
-      if (tradeType === 'stock') {
-        await setupsService.addSetupToStock(
-          tradeId,
-          parseInt(selectedSetupId),
-          confidenceRating ? parseInt(confidenceRating) : undefined,
-          notes || undefined
-        );
-      } else {
-        await setupsService.addSetupToOption(
-          tradeId,
-          parseInt(selectedSetupId),
-          confidenceRating ? parseInt(confidenceRating) : undefined,
-          notes || undefined
-        );
-      }
+      await playbookService.tagTrade({
+        tradeId,
+        tradeType,
+        setupId: selectedPlaybookId,
+      });
 
-      toast.success('Setup added successfully');
-      setSelectedSetupId('');
-      setConfidenceRating('');
-      setNotes('');
+      toast.success('Playbook added successfully');
+      setSelectedPlaybookId('');
       setIsDialogOpen(false);
-      onSetupAdded?.();
-      loadCurrentSetups();
+      onPlaybookAdded?.();
+      loadCurrentPlaybooks();
     } catch (error) {
-      console.error('Error adding setup:', error);
-      toast.error('Failed to add setup');
+      console.error('Error adding playbook:', error);
+      toast.error('Failed to add playbook');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRemovePlaybook = async (playbookId: string) => {
+    try {
+      await playbookService.untagTrade(tradeId, playbookId, tradeType);
+      toast.success('Playbook removed successfully');
+      loadCurrentPlaybooks();
+    } catch (error) {
+      console.error('Error removing playbook:', error);
+      toast.error('Failed to remove playbook');
     }
   };
 
@@ -106,28 +107,30 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onSetupAdded 
     setIsDialogOpen(true);
   };
 
-  // Filter out setups that are already associated with this trade
-  const availableSetupsForTrade = availableSetups.filter(
-    setup => !setups.some(existingSetup => existingSetup.setup_id === setup.id)
+  const availablePlaybooksForTrade = availablePlaybooks.filter(
+    playbook => !playbooks.some(existingPlaybook => existingPlaybook.id === playbook.id)
   );
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Show existing setups as badges */}
-      {setups.slice(0, 2).map((setup) => (
-        <Badge key={setup.setup_id} variant="secondary" className="text-xs">
-          {setup.setup_name}
+    <div className="flex items-center gap-2 flex-wrap">
+      {playbooks.slice(0, 2).map((playbook) => (
+        <Badge key={playbook.id} variant="secondary" className="text-xs">
+          {playbook.name}
+          <button
+            onClick={() => handleRemovePlaybook(playbook.id)}
+            className="ml-1.5 hover:text-destructive"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </Badge>
       ))}
       
-      {/* Show count if more than 2 setups */}
-      {setups.length > 2 && (
+      {playbooks.length > 2 && (
         <Badge variant="outline" className="text-xs">
-          +{setups.length - 2}
+          +{playbooks.length - 2}
         </Badge>
       )}
 
-      {/* Add Setup Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogTrigger asChild>
           <Button 
@@ -139,99 +142,57 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onSetupAdded 
             <Plus className="h-3 w-3" />
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Add Setup to {tradeType === 'stock' ? 'Stock' : 'Option'} Trade</DialogTitle>
+            <DialogTitle>Add Playbook to {tradeType === 'stock' ? 'Stock' : 'Option'} Trade</DialogTitle>
             <DialogDescription>
-              Select a setup pattern that applies to this trade.
+              Select a playbook that applies to this trade.
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="setupSelect">Setup Pattern</Label>
-                <Select value={selectedSetupId} onValueChange={setSelectedSetupId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={isLoadingSetups ? "Loading setups..." : "Select a setup"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingSetups ? (
-                      <SelectItem value="loading" disabled>Loading setups...</SelectItem>
-                    ) : availableSetupsForTrade.length === 0 ? (
-                      <SelectItem value="none" disabled>No setups available</SelectItem>
-                    ) : (
-                      availableSetupsForTrade.map((setup) => (
-                        <SelectItem key={setup.id} value={setup.id.toString()}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{setup.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {setup.category} • {setup.description ? setup.description.substring(0, 30) + '...' : 'No description'}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {availableSetupsForTrade.length === 0 && !isLoadingSetups && (
-                  <p className="text-xs text-muted-foreground">
-                    No setups available. Create some setups first in the Setups section.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confidenceRating">Confidence Rating</Label>
-                <Select value={confidenceRating} onValueChange={setConfidenceRating}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select rating" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 - Low</SelectItem>
-                    <SelectItem value="2">2 - Below Average</SelectItem>
-                    <SelectItem value="3">3 - Average</SelectItem>
-                    <SelectItem value="4">4 - Above Average</SelectItem>
-                    <SelectItem value="5">5 - High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                placeholder="Add any additional notes about why this setup applies to this trade"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-              />
+              <Label htmlFor="playbookSelect">Playbook</Label>
+              <Select value={selectedPlaybookId} onValueChange={setSelectedPlaybookId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingPlaybooks ? "Loading playbooks..." : "Select a playbook"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {isLoadingPlaybooks ? (
+                    <SelectItem value="loading" disabled>Loading playbooks...</SelectItem>
+                  ) : availablePlaybooksForTrade.length === 0 ? (
+                    <SelectItem value="none" disabled>No playbooks available</SelectItem>
+                  ) : (
+                    availablePlaybooksForTrade.map((playbook) => (
+                      <SelectItem key={playbook.id} value={playbook.id}>
+                        <span className="font-medium">{playbook.name}</span>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {availablePlaybooksForTrade.length === 0 && !isLoadingPlaybooks && (
+                <p className="text-xs text-muted-foreground">
+                  No playbooks available. Create some in the Playbook section.
+                </p>
+              )}
             </div>
 
-            {/* Show existing setups */}
-            {setups.length > 0 && (
+            {playbooks.length > 0 && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Current Setups</Label>
+                <Label className="text-sm font-medium">Current Playbooks</Label>
                 <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {setups.map((setup) => (
-                    <div key={setup.setup_id} className="p-2 border rounded-lg text-sm">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{setup.setup_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {setup.setup_category}
-                            {setup.confidence_rating && ` • ${setup.confidence_rating}/5`}
-                          </p>
-                          {setup.notes && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {setup.notes}
-                            </p>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(setup.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                  {playbooks.map((playbook) => (
+                    <div key={playbook.id} className="p-2 border rounded-lg text-sm flex justify-between items-center">
+                      <p className="font-medium">{playbook.name}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemovePlaybook(playbook.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <X className="h-3 w-3 text-muted-foreground" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -248,14 +209,14 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onSetupAdded 
               Cancel
             </Button>
             <Button 
-              onClick={handleAddSetup} 
-              disabled={isLoading || !selectedSetupId || selectedSetupId === 'loading' || selectedSetupId === 'none' || availableSetupsForTrade.length === 0}
+              onClick={handleAddPlaybook} 
+              disabled={isLoading || !selectedPlaybookId || selectedPlaybookId === 'loading' || selectedPlaybookId === 'none' || availablePlaybooksForTrade.length === 0}
             >
-              {isLoading ? 'Adding...' : 'Add Setup'}
+              {isLoading ? 'Adding...' : 'Add Playbook'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
-} 
+}
