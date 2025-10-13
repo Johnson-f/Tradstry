@@ -1,0 +1,46 @@
+
+S/N,TICKER SYMBOL,ENTRY PRICE ($),EXIT PRICE ($),STOP LOSS ($),STOP LOSS (%),NUMBER OF SHARES,RISK AMOUNT ($),TRADE VALUE ($),RISK / REWARD,PROFIT / LOSS (%),PROFIT / LOSS ($),DATE OF ENTRY,DATE OF EXIT,HOLDING PERIOD
+1,QBTS, $18.85,$18.90,$18.29,2.97%,3.00,$1.68,$56.55,0.09,0.27%,$0.15,7/18/2025,7/21/2025,3
+2,SNAP, $10.00,$10.07,$9.75,2.50%,7.00,$1.75,$70.00,0.28,0.70%,$0.49,7/21/2025,7/23/2025,2
+3,BULL, $16.89,$16.55,$16.55,-2.01%,5.00,$1.70,$84.45,1.00,-2.01%,-$1.70,7/23/2025,7/23/2025,0
+4,TMC, $8.03,$7.92,$7.86,-2.12%,11.00,$1.87,$88.33,0.65,-1.37%,-$1.21,7/24/2025,7/25/2025,1
+5,COUR, $12.00,$11.87,$11.75,-2.08%,4.00,$1.00,$48.00,0.52,-1.08%,-$0.52,7/30/2025,7/30/2025,0
+6,COMM, $14.51,$14.51,$14.20,-2.14%,3.00,$0.93,$43.53,0.00,0.00%,$0.00,8/5/2025,8/5/2025,0
+7,ZETA, $20.25,$19.75,$19.75,-2.47%,2.00,$1.00,$40.50,1.00,-2.47%,-$1.00,8/7/2025,8/7/2025,0
+8,REVG, $50.85,$50.49,$50.28,-1.12%,1.92,$1.09,$97.63,0.63,-0.71%,-$0.69,8/8/2025,8/20/2025,12
+9,USAR, $19.05,$18.31,$18.58,-2.47%,2.00,$0.94,$38.10,1.56,-3.86%,-$1.47,8/13/2025,8/13/2025,0
+10,AEO, $13.28,$12.61,$13.10,-1.36%,5.00,$0.90,$66.40,3.72,-5.05%,-$3.35,8/14/2025,8/14/2025,0
+11,WULF, $8.71,$8.50,$8.50,-2.41%,5.00,$1.05,$43.55,1.00,-2.41%,-$1.05,8/15/2025,8/15/2025,0
+12,HNGE, $60.00,$54.00,$59.00,-1.67%,1.00,$1.00,$60.00,6.00,-10.00%,-$6.00,8/18/2025,8/19/2025,1
+13,RDDT, $221.38,$220.15,$221.38,0.00%,0.27,$0.00,$59.44,#DIV/0!,-0.55%,-$0.33,8/28/2025,8/29/2025,1
+14,PRM, $22.18,$21.17,$21.78,-1.80%,1.89,$0.76,$42.01,2.53,-4.55%,-$1.91,9/12/2025,9/16/2025,4
+15,SMR, $45.52,$42.42,$45.52,0.00%,1.51,$0.00,$68.74,#DIV/0!,-6.82%,-$4.69,9/22/2025,9/23/2025,1
+16,LEVI, $22.95,$22.91,$22.95,0.00%,3.05,$0.00,$70.00,#DIV/0!,-0.17%,-$0.12,9/18/2025,9/25/2025,7
+
+
+S/N,TICKER SYMBOL,ENTRY TACTICS,EDGES ,ENTRY RATIONALE,EXIT RATIONALE,EMOTIONAL STATE,LESSON LEARNT ,THINGS TO IMPROVE,
+1,QBTS,INSIDE DAY,RELATIVE STRENGTH ,I bot because of the inside day near its pivot after a strong day prior,"Sold at breakout, turned out to be a false breakout ","Was not emotional entering, planned the trade ahead. ","Learnt must follow my rules no matter what, especially the first 30m",Need to learn to be comfortable with trading high ADR names ,
+2,SNAP,INSIDE DAY,RELATIVE STRENGTH ,"I bot because it reclaimed its 200-day EMA, and entered off the inside day after reclaiming ","Too be honest, sold because of emotions, was emotional about BULL","Was calm entering the trade, followed the plan. The exit was based on emotions ",Never make a decision out of emotions ever again,Need to control my impulses & don't let other trades affect another trade ,
+3,BULL,HIGH VOLUME CLOSE ,HIGHEST VOLUME EVER,"I bot because it was consolidating at HVC on the 15 mins chart, and i found where to manage risk",I was stopped out - happened to be a shakeout ,"Was at peace with myself taking the loss, but hesistated a little bit on the entry ","I must obey my stop no matter what, this loss is forcing me to learn how to position size in ADR names",Need to learn how to seriously position size in high ADR names moving forward ,
+4,TMC ,BASE PIVOT (ORB),RELATIVE STRENGTH ,"I bot because on the daily it broke, entered with a retest of ORB high on the 15 mins chart","Exited at my stop, it gapped down on me ",Followed my plan i prepared for myself - not emotional ,Found the importance of not chasing anything due to FOMO,Find myself being obssesed about an open position - need to stop this ,
+5,COUR,HIGH VOLUME CLOSE ,HIGHEST VOLUME ERVER ,I bot because it's consolidating at the HVC while the EMAs on the 15 mins chart catches up,"Was emotional exiting, didn't follow my exit plan to sell at my stop loss","Placed the order in pre market, so pretty calm ","Follow the plan - especially the stop loss, if a stock hasn't hit it no reason to sell ",Trying a new position sizing i developed - pyramiding in ,
+6,COMM,HIGH VOLUME CLOSE ,HIGHEST VOLUME EVER ,"Was consolidating at HVC & saw a way to manage risk, that's why i bought ","Exited at breakeven, i guess HVE came because of acquistion ","Calm in this trade, sold at breakeven ","Not much to learn, check why HVE is in stocks - this one came because of acquistion ","Didn't plan this trade prior to opening, just saw where i could manage risk",
+7,ZETA,HIGH VOLUME CLOSE ,HIGHEST VOLUME EVER ,Bot on a retest of HVC ,Exited at my pre defined stop slightly below the 21-day on the 15 mins ,"Followed my plan, emotional calm - but worried mentally that i'm taking many losses in a row ","Fixating on HVC - HVC has a low win rate, need to start focusing on whole numbers & volume support ",Need to focus on volume support & whole numbers ,
+8,REVG,INSIDE DAY ,RELATIVE STRENGTH ,"Bot on inside day - few minutes after the opening, near at it's pivot ",Got stopped out near breakeven,Planned the trade & accepted the risk,No lesson - followed my plan,Need to go in with whole shares so i could place hard stops at BE next time ,
+9,USAR,HIGHEST VOLUME CLOSE,HIGHEST VOLUME EVER,Bot few minutes into the opening at HVC placing my stop less thhan -2% away,Got stopped out shortly after,Was unfazed about the loss - emotionally stable,A trade that's proofing me more HVC has a low win rate ,Need to stop focusing on HVC ,
+10,AEO,HIGH VOLUME CLOSE,HIGHEST VOLUME EVER ,Placed the other in pre market & got filled at $13.28,Exited way below my stop loss - wasn't happy,I was emotionally down after exiting - sold way below my planned risk ,Never buy a stock into major economic data report - like CPI or PPI,Need to check what economic data are coming out & their impact on the market,This is a proof Highest volume close has low win rate 
+11,WULF,HIGH VOLUME CLOSE ,HIGHEST VOLUME EVER ,I placed order few minutes into the opening at HVC ,Got stopped out few mintues after ,Didn't feel to good about getting stopped out only to see it blast off to $11 the next day,Never place a buy order 30 mintues into the opening - always noisy ,Don't place orders 30 minutes into the opening ,
+12,HNGE,WHOLE NUMBER ,HIGHEST VOLUME SINCE IPO,"I bot at $60 few hours into the opening - wasn't planned at all coming into the day, just saw the alert go off",Got stopped out the next day on a gap down,Was furious about the gap down it had - questioned everythingg about my trading,I didn't listen to my recent trades result ,"I need to listen to my recent trades - 4 losses in a row i stop trading, or cut my position",
+13,RDDT,INSIDE DAY,RELATIVE STRENGTH ,"I bot shares few hours into opening - formed a kinda of inside day near a pivot, followed my position size plan",Got stopped out near breakeven - spread made the trade a loss,"Was calm with this trade, no strings! One of the trade executed well emotionally ",Reduce the frequency i watch the charts of my current positions ,I need to reduce the frequency i watch the chart of my current positions ,Reduced my risk to 0.4% of my account here 
+14,PRM,INSIDE DAY,RELATIVE STRENGTH ,Triple day inside day caught my attention after a massive move up,"Got stopped, sold my shares","I had nothing about this trade, guess the stock stopped me out because someome sold shares ",Obey my stops - follow my rules no matter what ,Nothing to improve here ,
+15,SMR,VOLUME SUPPORT,HIGHEST VOLUME EVER ,I bot near the volume support consolidation of price using the 15-mins chart ,Exited because i was forced too on a gapped down ,Was really emotional about this trade - if i had followed my plan it would have been breakeven,Neveer argue with my stops - even tho later on i'll feel stupid if the stock goes up. ,Need more discpline to follow my plan & stick to my stop ,
+16,LEVI,INSIDE DAY,RELATIVE STRENGTH ,I first bot LEVI on a inside day - added with my add on rules ,Exited at breakeven - wasn't comforatble with holding ,This was my most calm trade ever - i expected the worst (expectations were extremely low),Always key expectation extremely low on open positions ,Try keeping my expectations low when i buy a stock,
+
+
+
+{"input": "Trade Summary: Ticker: SNAP. Entry: $10.00, Exit: $10.07, Stop Loss: $9.75 (-2.5%). R/R: 0.28, P/L: +0.70%. Entry Tactic: Inside Day, Edge: Relative Strength. Entry Rationale: I bought because it reclaimed its 200-day EMA and entered off the inside day after reclaiming. Exit Rationale: Sold because of emotions, was emotional about BULL. Emotional State: Calm entering, emotional exiting. Lesson: Never make a decision out of emotions again.", 
+"output": "Good entry based on strength and reclaim of 200 EMA, but your emotional exit limited your gains. Stick to your planned stop and exit rules to let trades work. Managing emotions between trades is key for consistency."}
+
+{"input": "Trade Summary: Ticker: TMC. Entry: $8.03, Exit: $7.92, Stop Loss: $7.86 (-2.12%). R/R: 0.65, P/L: -1.37%. Entry Tactic: Base Pivot (ORB), Edge: Relative Strength. Entry Rationale: Bought because on daily it broke out from the base, entered on retest of ORB high on 15-min chart. Exit Rationale: Exited at my stop due to gap down. Emotional State: Followed plan, not emotional. Lesson: Importance of not chasing due to FOMO.", 
+"output": "This was a disciplined trade. You followed your plan and accepted the loss calmly — a sign of growth. Keep avoiding FOMO entries; gap-downs are unpredictable, so consider pre-market risk filters next time."}
+
