@@ -426,7 +426,28 @@ export function NotesManager({ userId }: NotesManagerProps) {
 
             {/* Editor Content */}
             <div className="flex-1 p-4">
-              <TailwindAdvancedEditor />
+              <TailwindAdvancedEditor 
+                key={editingNote.id} // Force re-render when switching notes
+                initialHtmlContent={editingNote.content}
+                tradeNoteId={editingNote.id} // Use note ID as trade note ID for image uploads
+                onContentChange={(content) => {
+                  setEditingNote(prev => prev ? { ...prev, content } : null);
+                }}
+                onSave={async (content) => {
+                  if (editingNote) {
+                    try {
+                      await updateNote(editingNote.id, {
+                        name: editingNote.name,
+                        content: content
+                      });
+                      toast.success('Note auto-saved');
+                    } catch (error) {
+                      console.error('Auto-save failed:', error);
+                      toast.error('Auto-save failed');
+                    }
+                  }
+                }}
+              />
             </div>
           </div>
         ) : (

@@ -1,60 +1,112 @@
 import { createImageUpload } from "novel";
 import { toast } from "sonner";
+import imagesService from "@/lib/services/images-service";
+// no need to import api endpoints for direct image src; use signed URL instead
+
+let tradeNoteIdOverride: string | undefined;
+
+export function setTradeNoteId(id: string) {
+  tradeNoteIdOverride = id;
+}
+
+function getTradeNoteId(): string | undefined {
+  if (tradeNoteIdOverride) return tradeNoteIdOverride;
+
+  const fromDataAttr = document.body?.getAttribute?.("data-trade-note-id") || undefined;
+  if (fromDataAttr) return fromDataAttr;
+
+  try {
+    const lsId =
+      localStorage.getItem("trade_note_id") ||
+      localStorage.getItem("note_id") ||
+      localStorage.getItem("noteId") ||
+      undefined;
+    if (lsId) return lsId;
+  } catch {}
+
+  try {
+    const urlObj = new URL(window.location.href);
+    return (
+      urlObj.searchParams.get("trade_note_id") ||
+      urlObj.searchParams.get("note_id") ||
+      urlObj.searchParams.get("noteId") ||
+      undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 const onUpload = (file: File) => {
-  const promise = fetch("/api/upload", {
-    method: "POST",
-    headers: {
-      "content-type": file?.type || "application/octet-stream",
-      "x-vercel-filename": file?.name || "image.png",
-    },
-    body: file,
-  });
+  const promise = (async () => {
+    const tradeNoteId = getTradeNoteId();
+    if (!tradeNoteId) throw new Error("Missing note_id");
+
+    const uploaded = await imagesService.uploadImage({ file, note_id: tradeNoteId });
+    console.log('Upload response:', uploaded); // Debug log
+    
+    const imageId = (uploaded as any)?.id 
+      ?? (uploaded as any)?.image?.id 
+      ?? (uploaded as any)?.data?.id
+      ?? (uploaded as any)?.image_id; // Additional fallback
+    
+    if (!imageId) {
+      console.error('Upload response structure:', uploaded);
+      throw new Error("Upload response missing image id");
+    }
+    
+    console.log('Getting URL for image ID:', imageId); // Debug log
+    const urlResponse = await imagesService.getImageUrl(imageId);
+    console.log('URL response:', urlResponse); // Debug log
+    
+    if (!urlResponse?.url) {
+      throw new Error("Failed to get image URL");
+    }
+    
+    return { url: urlResponse.url };
+  })();
 
   return new Promise((resolve, reject) => {
     toast.promise(
-      promise.then(async (res) => {
-        // Successfully uploaded image
-        if (res.status === 200) {
-          const { url } = (await res.json()) as { url: string };
-          // preload the image
-          const image = new Image();
-          image.src = url;
-          image.onload = () => {
-            resolve(url);
-          };
-          // No blob store configured
-        } else if (res.status === 401) {
-          resolve(file);
-          throw new Error("`BLOB_READ_WRITE_TOKEN` environment variable not found, reading image locally instead.");
-          // Unknown error
-        } else {
-          throw new Error("Error uploading image. Please try again.");
-        }
+      promise.then(async ({ url }) => {
+        const img = new Image();
+        img.src = url;
+        img.onload = () => resolve(url);
       }),
       {
         loading: "Uploading image...",
         success: "Image uploaded successfully.",
         error: (e) => {
+          console.error('Image upload error:', e);
           reject(e);
-          return e.message;
+          return e.message || "Failed to upload image. Please check console for details.";
         },
       },
     );
   });
 };
 
-export const uploadFn = createImageUpload({
-  onUpload,
-  validateFn: (file) => {
-    if (!file.type.includes("image/")) {
-      toast.error("File type not supported.");
-      return false;
-    }
-    if (file.size / 1024 / 1024 > 20) {
-      toast.error("File size too big (max 20MB).");
-      return false;
-    }
-    return true;
-  },
-});
+export const createUploadFn = (tradeNoteId?: string) => {
+  // Set the trade note ID for this upload session
+  if (tradeNoteId) {
+    setTradeNoteId(tradeNoteId);
+  }
+  
+  return createImageUpload({
+    onUpload,
+    validateFn: (file) => {
+      if (!file.type.includes("image/")) {
+        toast.error("File type not supported.");
+        return false;
+      }
+      if (file.size / 1024 / 1024 > 20) {
+        toast.error("File size too big (max 20MB).");
+        return false;
+      }
+      return true;
+    },
+  });
+};
+
+// Default export for backward compatibility
+export const uploadFn = createUploadFn();
