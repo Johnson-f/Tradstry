@@ -1,121 +1,125 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { SetupCreateDialog } from '@/components/setups/setup-create-dialog';
-import { SetupEditDialog } from '@/components/setups/setup-edit-dialog';
-import { SetupDeleteDialog } from '@/components/setups/setup-delete-dialog';
 import { Button } from '@/components/ui/button';
-import { Plus, Filter, Search, MoreVertical, Edit, Trash2 } from 'lucide-react';
-import { SetupInDB, SetupCategory } from '@/lib/types/setups';
-import { setupsService } from '@/lib/services/setups-service';
+import { Plus, Filter, Search, MoreVertical, Edit, Trash2, Database, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
+import type { Playbook, PlaybookFormData } from '@/lib/drizzle/playbook';
+import { PlaybookCreateDialog } from '@/components/playbook/playbook-create-dialog';
+import { PlaybookEditDialog } from '@/components/playbook/playbook-edit-dialog';
+import { PlaybookDeleteDialog } from '@/components/playbook/playbook-delete-dialog';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
-export default function SetupsPage() {
-  const [setups, setSetups] = useState<SetupInDB[]>([]);
-  const [filteredSetups, setFilteredSetups] = useState<SetupInDB[]>([]);
+export default function PlaybookPage() {
+  const { userId } = useUserProfile();
+  const playbookService = usePlaybookService(userId);
+  
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [filteredPlaybooks, setFilteredPlaybooks] = useState<Playbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<SetupCategory | 'all'>('all');
-  const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedSetup, setSelectedSetup] = useState<SetupInDB | null>(null);
+  const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
+  const [showMigrationOption, setShowMigrationOption] = useState(false);
 
-  // Load setups on component mount
+  // Load playbooks when database is initialized
   useEffect(() => {
-    loadSetups();
-  }, []);
+    if (playbookService.isInitialized && !playbookService.isInitializing) {
+      loadPlaybooks();
+    }
+  }, [playbookService.isInitialized, playbookService.isInitializing]);
 
-  // Filter setups when search or filters change
+  // Filter playbooks when search changes
   useEffect(() => {
-    filterSetups();
-  }, [setups, searchQuery, selectedCategory, showActiveOnly]);
+    filterPlaybooks();
+  }, [playbooks, searchQuery]);
 
-  const loadSetups = async () => {
+  // Check if database is initialized and show migration option
+  useEffect(() => {
+    if (playbookService.isInitialized && playbooks.length === 0 && !loading) {
+      setShowMigrationOption(true);
+    }
+  }, [playbookService.isInitialized, playbooks.length, loading]);
+
+  const loadPlaybooks = async () => {
     try {
       setLoading(true);
-      const allSetups = await setupsService.getSetups();
-      setSetups(allSetups);
+      const allPlaybooks = await playbookService.getAllPlaybooks();
+      setPlaybooks(allPlaybooks);
     } catch (error) {
-      console.error('Error loading setups:', error);
+      console.error('Error loading playbooks:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterSetups = () => {
-    let filtered = [...setups];
+  const filterPlaybooks = () => {
+    let filtered = [...playbooks];
 
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(setup =>
-        setup.name.toLowerCase().includes(query) ||
-        setup.description?.toLowerCase().includes(query) ||
-        setup.tags.some(tag => tag.toLowerCase().includes(query))
+      filtered = filtered.filter(playbook =>
+        playbook.name.toLowerCase().includes(query) ||
+        playbook.description?.toLowerCase().includes(query)
       );
     }
 
-    // Filter by category
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(setup => setup.category === selectedCategory);
-    }
-
-    // Filter by active status
-    if (showActiveOnly) {
-      filtered = filtered.filter(setup => setup.is_active);
-    }
-
-    setFilteredSetups(filtered);
+    setFilteredPlaybooks(filtered);
   };
 
-  const handleSetupCreated = (newSetup: SetupInDB) => {
-    setSetups(prev => [newSetup, ...prev]);
+  const handlePlaybookCreated = (newPlaybook: Playbook) => {
+    setPlaybooks(prev => [newPlaybook, ...prev]);
     setIsCreateDialogOpen(false);
+    setShowMigrationOption(false);
   };
 
-  const handleSetupUpdated = (updatedSetup: SetupInDB) => {
-    setSetups(prev => prev.map(setup => 
-      setup.id === updatedSetup.id ? updatedSetup : setup
+  const handlePlaybookUpdated = (updatedPlaybook: Playbook) => {
+    setPlaybooks(prev => prev.map(playbook => 
+      playbook.id === updatedPlaybook.id ? updatedPlaybook : playbook
     ));
+    setIsEditDialogOpen(false);
   };
 
-  const handleSetupDeleted = (setupId: number) => {
-    setSetups(prev => prev.filter(setup => setup.id !== setupId));
+  const handlePlaybookDeleted = (playbookId: string) => {
+    setPlaybooks(prev => prev.filter(playbook => playbook.id !== playbookId));
+    setIsDeleteDialogOpen(false);
   };
 
-  const handleEditSetup = (setup: SetupInDB) => {
-    setSelectedSetup(setup);
+  const handleEditPlaybook = (playbook: Playbook) => {
+    setSelectedPlaybook(playbook);
     setIsEditDialogOpen(true);
   };
 
-  const handleDeleteSetup = (setup: SetupInDB) => {
-    setSelectedSetup(setup);
+  const handleDeletePlaybook = (playbook: Playbook) => {
+    setSelectedPlaybook(playbook);
     setIsDeleteDialogOpen(true);
   };
 
-  const getCategoryColor = (category: SetupCategory) => {
-    const colors = {
-      Breakout: 'bg-blue-100 text-blue-800',
-      Pullback: 'bg-green-100 text-green-800',
-      Reversal: 'bg-red-100 text-red-800',
-      Continuation: 'bg-purple-100 text-purple-800',
-      Range: 'bg-yellow-100 text-yellow-800',
-      Other: 'bg-gray-100 text-gray-800'
-    };
-    return colors[category] || colors.Other;
+  const handleMigrateSetups = async () => {
+    try {
+      setLoading(true);
+      const migratedPlaybooks = await playbookService.migrateSetupsToPlaybooks();
+      setPlaybooks(prev => [...migratedPlaybooks, ...prev]);
+      setShowMigrationOption(false);
+    } catch (error) {
+      console.error('Error migrating setups:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) {
+  if (loading || playbookService.isInitializing) {
     return (
       <div className="h-screen flex flex-col">
         <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight">Setups</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Playbook</h1>
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-y-auto">
@@ -138,55 +142,65 @@ export default function SetupsPage() {
     );
   }
 
+  if (playbookService.error) {
+    return (
+      <div className="h-screen flex flex-col">
+        <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
+          <h1 className="text-2xl font-bold tracking-tight">Playbook</h1>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full overflow-y-auto">
+            <div className="p-8">
+              <div className="text-center py-12">
+                <div className="text-destructive mb-4">
+                  <h3 className="text-lg font-semibold mb-2">Database Error</h3>
+                  <p className="text-sm">{playbookService.error.message}</p>
+                </div>
+                <Button onClick={() => playbookService.init()}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Setups</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Playbook</h1>
+          <div className="flex items-center space-x-2">
+            {showMigrationOption && (
+              <Button variant="outline" onClick={handleMigrateSetups}>
+                <Database className="mr-2 h-4 w-4" />
+                Migrate Setups
+              </Button>
+            )}
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New Setup
+              New Playbook
           </Button>
+          </div>
         </div>
       </div>
 
-      {/* Filters and Search */}
+      {/* Search */}
       <div className="border-b bg-background px-8 py-4 flex-shrink-0">
         <div className="flex items-center space-x-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search setups..."
+              placeholder="Search playbooks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
-          
-          <Select value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as SetupCategory | 'all')}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="Breakout">Breakout</SelectItem>
-              <SelectItem value="Pullback">Pullback</SelectItem>
-              <SelectItem value="Reversal">Reversal</SelectItem>
-              <SelectItem value="Continuation">Continuation</SelectItem>
-              <SelectItem value="Range">Range</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            variant={showActiveOnly ? "default" : "outline"}
-            onClick={() => setShowActiveOnly(!showActiveOnly)}
-            size="sm"
-          >
-            <Filter className="mr-2 h-4 w-4" />
-            {showActiveOnly ? 'Active Only' : 'All Setups'}
-          </Button>
         </div>
       </div>
 
@@ -194,44 +208,43 @@ export default function SetupsPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
-            {filteredSetups.length === 0 ? (
+            {filteredPlaybooks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-muted-foreground mb-4">
-                  {setups.length === 0 ? (
+                  {playbooks.length === 0 ? (
                     <>
-                      <h3 className="text-lg font-semibold mb-2">No setups created yet</h3>
-                      <p className="text-sm">Create your first trading setup to get started</p>
+                      <h3 className="text-lg font-semibold mb-2">No playbooks created yet</h3>
+                      <p className="text-sm">Create your first trading playbook to get started</p>
                     </>
                   ) : (
                     <>
-                      <h3 className="text-lg font-semibold mb-2">No setups match your filters</h3>
-                      <p className="text-sm">Try adjusting your search or filter criteria</p>
+                      <h3 className="text-lg font-semibold mb-2">No playbooks match your search</h3>
+                      <p className="text-sm">Try adjusting your search criteria</p>
                     </>
                   )}
                 </div>
-                {setups.length === 0 && (
+                {playbooks.length === 0 && (
                   <Button onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Create First Setup
+                    Create First Playbook
                   </Button>
                 )}
               </div>
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {filteredSetups.map((setup) => (
+                {filteredPlaybooks.map((playbook) => (
                   <div
-                    key={setup.id}
+                    key={playbook.id}
                     className="border rounded-lg p-6 hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-lg mb-2">{setup.name}</h3>
-                        <Badge className={getCategoryColor(setup.category)}>
-                          {setup.category}
+                        <h3 className="font-semibold text-lg mb-2">{playbook.name}</h3>
+                        <Badge variant="secondary">
+                          Trading Setup
                         </Badge>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${setup.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -239,12 +252,12 @@ export default function SetupsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditSetup(setup)}>
+                            <DropdownMenuItem onClick={() => handleEditPlaybook(playbook)}>
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onClick={() => handleDeleteSetup(setup)}
+                              onClick={() => handleDeletePlaybook(playbook)}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -255,29 +268,14 @@ export default function SetupsPage() {
                       </div>
                     </div>
                     
-                    {setup.description && (
+                    {playbook.description && (
                       <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
-                        {setup.description}
+                        {playbook.description}
                       </p>
                     )}
                     
-                    {setup.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-4">
-                        {setup.tags.slice(0, 3).map((tag, index) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                        {setup.tags.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{setup.tags.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                    
                     <div className="text-xs text-muted-foreground">
-                      Created {new Date(setup.created_at).toLocaleDateString()}
+                      Created {new Date(playbook.createdAt).toLocaleDateString()}
                     </div>
                   </div>
                 ))}
@@ -287,27 +285,27 @@ export default function SetupsPage() {
         </div>
       </div>
 
-      {/* Create Setup Dialog */}
-      <SetupCreateDialog
+      {/* Create Playbook Dialog */}
+      <PlaybookCreateDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        onSetupCreated={handleSetupCreated}
+        onPlaybookCreated={handlePlaybookCreated}
       />
 
-      {/* Edit Setup Dialog */}
-      <SetupEditDialog
+      {/* Edit Playbook Dialog */}
+      <PlaybookEditDialog
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
-        setup={selectedSetup}
-        onSetupUpdated={handleSetupUpdated}
+        playbook={selectedPlaybook}
+        onPlaybookUpdated={handlePlaybookUpdated}
       />
 
-      {/* Delete Setup Dialog */}
-      <SetupDeleteDialog
+      {/* Delete Playbook Dialog */}
+      <PlaybookDeleteDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
-        setup={selectedSetup}
-        onSetupDeleted={handleSetupDeleted}
+        playbook={selectedPlaybook}
+        onPlaybookDeleted={handlePlaybookDeleted}
       />
     </div>
   );

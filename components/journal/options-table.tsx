@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { AddTradeDialog } from "./add-trade-dialog";
 import { TradeNotesModal } from "./trade-notes-modal";
 import { ActionsDropdown } from "@/components/ui/actions-dropdown";
-import { SetupTradeAssociationCompact } from "@/components/setups/setup-trade-association-compact";
+import { SetupTradeAssociationCompact } from "@/components/playbook/setup-trade-association-compact";
 import {
   Pagination,
   PaginationContent,
