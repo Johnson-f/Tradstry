@@ -413,6 +413,9 @@ export class BrowserSQLiteClient implements DatabaseClient {
         }
       }
 
+      // Schedule auto-save for IndexedDB persistence
+      this.scheduleAutoSave();
+
       return result;
     } catch (error) {
       throw error;
