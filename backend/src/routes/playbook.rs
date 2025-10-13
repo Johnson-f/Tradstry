@@ -1,16 +1,15 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use libsql::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use base64;
 
 use crate::models::playbook::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
 };
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseClaims, SupabaseConfig};
-use crate::turso::auth::{AuthError, parse_jwt_claims};
+use crate::turso::auth::AuthError;
 
 /// Response wrapper for playbook operations
 #[derive(Debug, Serialize)]
@@ -52,6 +51,8 @@ pub struct TagTradeResponse {
 
 /// Parse JWT claims without full validation (for middleware)
 fn parse_jwt_claims(token: &str) -> Result<SupabaseClaims, AuthError> {
+    use base64::Engine;
+    
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return Err(AuthError::InvalidToken);
@@ -85,7 +86,7 @@ fn extract_token_from_request(req: &HttpRequest) -> Option<String> {
 /// Get authenticated user from request
 async fn get_authenticated_user(
     req: &HttpRequest,
-    supabase_config: &SupabaseConfig,
+    _supabase_config: &SupabaseConfig,
 ) -> Result<SupabaseClaims, actix_web::Error> {
     let token = extract_token_from_request(req)
         .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing or invalid authorization header"))?;
@@ -101,11 +102,11 @@ async fn get_user_database_connection(
     user_id: &str,
     turso_client: &Arc<TursoClient>,
 ) -> Result<Connection, actix_web::Error> {
-    turso_client
+    Ok(turso_client
         .get_user_database_connection(user_id)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {}", e)))?
-        .ok_or_else(|| actix_web::error::ErrorNotFound("User database not found"))?
+        .ok_or_else(|| actix_web::error::ErrorNotFound("User database not found"))?)
 }
 
 /// Create a new playbook setup
@@ -306,9 +307,11 @@ pub async fn tag_trade(
     let result = match request.trade_type {
         TradeType::Stock => {
             Playbook::tag_stock_trade(&conn, request.trade_id, &request.setup_id).await
+                .map(|association| serde_json::to_value(association).unwrap_or_default())
         }
         TradeType::Option => {
             Playbook::tag_option_trade(&conn, request.trade_id, &request.setup_id).await
+                .map(|association| serde_json::to_value(association).unwrap_or_default())
         }
     };
 
@@ -316,7 +319,7 @@ pub async fn tag_trade(
         Ok(association) => Ok(HttpResponse::Created().json(TagTradeResponse {
             success: true,
             message: "Trade tagged successfully".to_string(),
-            data: Some(serde_json::to_value(association).unwrap_or_default()),
+            data: Some(association),
         })),
         Err(e) => {
             log::error!("Failed to tag trade: {}", e);
