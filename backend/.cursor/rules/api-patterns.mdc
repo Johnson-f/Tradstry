@@ -1,0 +1,65 @@
+---
+globs: src/routes/*.rs
+---
+
+# API Route Patterns
+
+## Route Handler Structure
+Follow this pattern for all route handlers:
+
+```rust
+pub async fn handler_name(
+    req: HttpRequest,
+    // path parameters, query params, or JSON payload
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    info!("=== Handler Name Called ===");
+    
+    // 1. Authenticate user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    info!("✓ Authentication successful for user: {}", claims.sub);
+
+    // 2. Get database connection
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    info!("✓ Database connection established");
+
+    // 3. Business logic
+    // ... implementation ...
+
+    // 4. Return response
+    Ok(HttpResponse::Ok().json(ApiResponse::success(data)))
+}
+```
+
+## Response Patterns
+- **Success**: `HttpResponse::Ok().json(ApiResponse::success(data))`
+- **Created**: `HttpResponse::Created().json(ApiResponse::success(data))`
+- **Not Found**: `HttpResponse::NotFound().json(ApiResponse::error("Resource not found"))`
+- **Bad Request**: `HttpResponse::BadRequest().json(ApiResponse::error("Invalid input"))`
+- **Unauthorized**: `HttpResponse::Unauthorized().json(ApiResponse::error("Authentication required"))`
+- **Internal Error**: `HttpResponse::InternalServerError().json(ApiResponse::error("Internal server error"))`
+
+## Authentication
+- Always use `get_authenticated_user()` helper function
+- Extract user ID from JWT claims: `claims.sub`
+- Log authentication success/failure
+- Return 401 for authentication failures
+
+## Database Operations
+- Use `get_user_database_connection()` helper function
+- Handle connection errors gracefully
+- Use proper error logging for database failures
+- Consider using transactions for multi-step operations
+
+## Input Validation
+- Validate required fields and return 400 for missing data
+- Use proper deserialization with meaningful error messages
+- Sanitize input data before database operations
+- Log validation errors for debugging
+
+## Error Handling
+- Use `?` operator for error propagation
+- Log errors with context before returning
+- Return appropriate HTTP status codes
+- Provide meaningful error messages to clients

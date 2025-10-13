@@ -1,0 +1,74 @@
+---
+description: Testing and debugging patterns
+---
+
+# Testing and Debugging
+
+## Logging Patterns
+Use structured logging throughout the application:
+
+```rust
+use log::{info, error, warn, debug};
+
+// Log operation start
+info!("=== Operation Name Called ===");
+
+// Log authentication success
+info!("✓ Authentication successful for user: {}", claims.sub);
+
+// Log database operations
+info!("✓ Database connection established");
+info!("✓ Retrieved {} records", results.len());
+
+// Log errors with context
+error!("Failed to process request: {}", e);
+error!("Database query failed for user {}: {}", user_id, e);
+```
+
+## API Testing with curl
+Use these patterns for testing API endpoints:
+
+```bash
+# Test with JWT token
+curl -X GET "http://localhost:3000/api/endpoint" \
+  -H "Authorization: Bearer <jwt_token>"
+
+# POST with JSON data
+curl -X POST "http://localhost:3000/api/endpoint" \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"field": "value"}'
+
+# Test with query parameters
+curl -X GET "http://localhost:3000/api/endpoint?param=value" \
+  -H "Authorization: Bearer <jwt_token>"
+```
+
+## Common Test Scenarios
+- **Authentication**: Test with valid/invalid JWT tokens
+- **Authorization**: Test user isolation (user A can't access user B's data)
+- **Validation**: Test with missing/invalid required fields
+- **Error Handling**: Test database connection failures
+- **Pagination**: Test with different limit/offset values
+
+## Debugging Tips
+- Check server logs for detailed error messages
+- Use `cargo run` to see real-time log output
+- Verify JWT token format and expiration
+- Test database connectivity separately
+- Use `netstat -an | grep LISTEN` to check server port
+
+## Environment Variables
+Ensure these are set for proper operation:
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anonymous key
+- `TURSO_DATABASE_URL` - Turso database URL
+- `TURSO_AUTH_TOKEN` - Turso authentication token
+- `UPLOADCARE_PUBLIC_KEY` - Uploadcare public key
+- `UPLOADCARE_SECRET_KEY` - Uploadcare secret key
+
+## Common Issues
+- **Port conflicts**: Server runs on port 3000 by default
+- **JWT expiration**: Tokens expire after 1 hour
+- **Database connections**: Ensure Turso database is accessible
+- **CORS issues**: Check CORS configuration for frontend requests
