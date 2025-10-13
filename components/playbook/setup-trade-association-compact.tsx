@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,7 +20,13 @@ interface PlaybookTradeAssociationCompactProps {
 
 export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdded }: PlaybookTradeAssociationCompactProps) {
   const { userId } = useUserProfile();
-  const playbookService = usePlaybookService(userId);
+  const { 
+    isInitialized, 
+    getPlaybooksForTrade, 
+    getAllPlaybooks, 
+    tagTrade, 
+    untagTrade 
+  } = usePlaybookService(userId);
 
   const [selectedPlaybookId, setSelectedPlaybookId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,23 +35,21 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoadingPlaybooks, setIsLoadingPlaybooks] = useState(false);
 
-  useEffect(() => {
-    // Initial load of current playbooks
-    loadCurrentPlaybooks();
-  }, [playbookService.isInitialized]);
-
-  useEffect(() => {
-    if (isDialogOpen) {
-      loadAvailablePlaybooks();
-      loadCurrentPlaybooks();
+  const loadCurrentPlaybooks = useCallback(async () => {
+    if (!isInitialized) return;
+    try {
+      const currentPlaybooks = await getPlaybooksForTrade(tradeId, tradeType);
+      setPlaybooks(currentPlaybooks);
+    } catch (error) {
+      console.error('Error loading current playbooks:', error);
     }
-  }, [isDialogOpen, playbookService.isInitialized]);
+  }, [isInitialized, getPlaybooksForTrade, tradeId, tradeType]);
 
-  const loadAvailablePlaybooks = async () => {
-    if (!playbookService.isInitialized) return;
+  const loadAvailablePlaybooks = useCallback(async () => {
+    if (!isInitialized) return;
     setIsLoadingPlaybooks(true);
     try {
-      const allPlaybooks = await playbookService.getAllPlaybooks();
+      const allPlaybooks = await getAllPlaybooks();
       setAvailablePlaybooks(allPlaybooks);
     } catch (error) {
       console.error('Error loading available playbooks:', error);
@@ -53,17 +57,18 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
     } finally {
       setIsLoadingPlaybooks(false);
     }
-  };
+  }, [isInitialized, getAllPlaybooks]);
 
-  const loadCurrentPlaybooks = async () => {
-    if (!playbookService.isInitialized) return;
-    try {
-      const currentPlaybooks = await playbookService.getPlaybooksForTrade(tradeId, tradeType);
-      setPlaybooks(currentPlaybooks);
-    } catch (error) {
-      console.error('Error loading current playbooks:', error);
+  useEffect(() => {
+    loadCurrentPlaybooks();
+  }, [loadCurrentPlaybooks]);
+
+  useEffect(() => {
+    if (isDialogOpen) {
+      loadAvailablePlaybooks();
+      loadCurrentPlaybooks();
     }
-  };
+  }, [isDialogOpen, loadAvailablePlaybooks, loadCurrentPlaybooks]);
 
   const handleAddPlaybook = async () => {
     if (!selectedPlaybookId || selectedPlaybookId === 'loading' || selectedPlaybookId === 'none') {
@@ -73,7 +78,7 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
 
     setIsLoading(true);
     try {
-      await playbookService.tagTrade({
+      await tagTrade({
         tradeId,
         tradeType,
         setupId: selectedPlaybookId,
@@ -94,7 +99,7 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
 
   const handleRemovePlaybook = async (playbookId: string) => {
     try {
-      await playbookService.untagTrade(tradeId, playbookId, tradeType);
+      await untagTrade(tradeId, playbookId, tradeType);
       toast.success('Playbook removed successfully');
       loadCurrentPlaybooks();
     } catch (error) {
