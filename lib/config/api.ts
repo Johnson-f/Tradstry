@@ -9,6 +9,14 @@ export const apiConfig = {
     user: {
       initialize: "/user/initialize",
     },
+    // Images endpoints
+    images: {
+      base: "/images",
+      upload: "/images/upload",
+      count: "/images/count",
+      byTradeNote: (tradeNoteId: string) => `/images/trade-note/${tradeNoteId}`,
+      byId: (imageId: string) => `/images/${imageId}`,
+    },
     // Health check
     health: "/health",
     // Options endpoints

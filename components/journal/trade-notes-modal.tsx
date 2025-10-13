@@ -374,6 +374,7 @@ export function TradeNotesModal({
                             handleUpdateNote();
                           }
                         }}
+                        tradeNoteId={tradeId?.toString()}
                       />
                     </div>
                   </ScrollArea>

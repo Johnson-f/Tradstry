@@ -83,31 +83,36 @@ export function useNotesDatabase(userId: string) {
       throw new Error("User ID is required but not provided");
     }
     
-    const sql = `
+    // Insert the note using execute (not query)
+    const insertSql = `
       INSERT INTO notes (id, user_id, name, content)
       VALUES (?, ?, ?, ?)
-      RETURNING *
     `;
     
-    const params = [
+    const insertParams = [
       id,
       userId,
       note.name,
       note.content || ''
     ];
 
-    const result = await query(sql, params);
-    if (result.values.length === 0) {
+    await execute(insertSql, insertParams);
+
+    // Retrieve the inserted note
+    const selectSql = `SELECT * FROM notes WHERE id = ? AND user_id = ?`;
+    const selectResult = await query(selectSql, [id, userId]);
+    
+    if (selectResult.values.length === 0) {
       throw new Error('Failed to insert note');
     }
 
-    const row = result.values[0];
+    const row = selectResult.values[0];
     const obj: Record<string, any> = {};
-    result.columns.forEach((col, idx) => {
+    selectResult.columns.forEach((col, idx) => {
       obj[snakeToCamel(col)] = row[idx];
     });
     return obj as Note;
-  }, [userId, query]);
+  }, [userId, query, execute]);
 
   /**
    * Update an existing note
@@ -124,25 +129,33 @@ export function useNotesDatabase(userId: string) {
       .join(', ');
     const values = Object.values(updates);
     
-    const sql = `
+    // Update using execute (not query)
+    const updateSql = `
       UPDATE notes 
       SET ${setClause}, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?
-      RETURNING *
     `;
     
-    const result = await query(sql, [...values, id, userId]);
-    if (result.values.length === 0) {
+    const updateResult = await execute(updateSql, [...values, id, userId]);
+    if (updateResult.changes === 0) {
       throw new Error('Note not found or no permission to update');
     }
 
-    const row = result.values[0];
+    // Retrieve the updated note
+    const selectSql = `SELECT * FROM notes WHERE id = ? AND user_id = ?`;
+    const selectResult = await query(selectSql, [id, userId]);
+    
+    if (selectResult.values.length === 0) {
+      throw new Error('Note not found after update');
+    }
+
+    const row = selectResult.values[0];
     const obj: Record<string, any> = {};
-    result.columns.forEach((col, idx) => {
+    selectResult.columns.forEach((col, idx) => {
       obj[snakeToCamel(col)] = row[idx];
     });
     return obj as Note;
-  }, [userId, query]);
+  }, [userId, query, execute]);
 
   /**
    * Delete a note
@@ -203,7 +216,7 @@ export function useNotesDatabase(userId: string) {
   /**
    * Get single note by ID
    */
-  const getNoteById = async (id: string): Promise<Note | null> => {
+  const getNoteById = useCallback(async (id: string): Promise<Note | null> => {
     const result = await query(
       `SELECT * FROM notes WHERE id = ? AND user_id = ?`,
       [id, userId]
@@ -217,12 +230,12 @@ export function useNotesDatabase(userId: string) {
       obj[snakeToCamel(col)] = row[idx];
     });
     return obj as Note;
-  };
+  }, [userId, query]);
 
   /**
    * Search notes by name
    */
-  const searchNotes = async (searchTerm: string): Promise<Note[]> => {
+  const searchNotes = useCallback(async (searchTerm: string): Promise<Note[]> => {
     const result = await query(
       `SELECT * FROM notes 
        WHERE user_id = ? AND name LIKE ?
@@ -237,12 +250,12 @@ export function useNotesDatabase(userId: string) {
       });
       return obj as Note;
     });
-  };
+  }, [userId, query]);
 
   /**
    * Get notes statistics
    */
-  const getStats = async () => {
+  const getStats = useCallback(async () => {
     const countResult = await query(
       `SELECT COUNT(*) as total FROM notes WHERE user_id = ?`,
       [userId]
@@ -270,12 +283,12 @@ export function useNotesDatabase(userId: string) {
       averageWordsPerNote,
       lastUpdated,
     };
-  };
+  }, [userId, query]);
 
   /**
    * Duplicate a note
    */
-  const duplicateNote = async (id: string): Promise<Note> => {
+  const duplicateNote = useCallback(async (id: string): Promise<Note> => {
     const originalNote = await getNoteById(id);
     if (!originalNote) {
       throw new Error('Note not found');
@@ -285,7 +298,7 @@ export function useNotesDatabase(userId: string) {
       name: `${originalNote.name} (Copy)`,
       content: originalNote.content || ''
     });
-  };
+  }, [getNoteById, insertNote]);
 
   return {
     // Database state

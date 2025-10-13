@@ -29,7 +29,7 @@ const navItems = [
   { label: "Home", icon: Home, href: "/app" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/app/dashboard" },
   { label: "Journal", icon: NotebookPen, href: "/app/journal" },
-  { label: "Setups", icon: Library, href: "/app/setups" },
+  { label: "Playbook", icon: Library, href: "/app/playbook" },
   { label: "Notebook", icon: Notebook, href: "/app/notepad" },
   { label: "Analytics", icon: PieChart, href: "/app/analytics" },
   {

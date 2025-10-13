@@ -14,7 +14,7 @@ import {
   handleImageDrop,
   handleImagePaste,
 } from "novel";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { defaultExtensions } from "./extensions";
 import { ColorSelector } from "./selectors/color-selector";
@@ -24,7 +24,7 @@ import { NodeSelector } from "./selectors/node-selector";
 import { Separator } from "./ui/separator";
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
-import { uploadFn } from "./image-upload";
+import { createUploadFn } from "./image-upload";
 import { TextButtons } from "./selectors/text-buttons";
 import { slashCommand, suggestionItems } from "./slash-command";
 
@@ -37,17 +37,22 @@ interface TailwindAdvancedEditorProps {
   initialHtmlContent?: string;
   onContentChange?: (content: string) => void;
   onSave?: (content: string) => void;
+  tradeNoteId?: string;
 }
 
 const TailwindAdvancedEditor = ({ 
   initialContent: propInitialContent, 
   initialHtmlContent,
   onContentChange, 
-  onSave 
+  onSave,
+  tradeNoteId
 }: TailwindAdvancedEditorProps = {}) => {
   const [initialContent, setInitialContent] = useState<null | JSONContent>(null);
   const [saveStatus, setSaveStatus] = useState("Saved");
   const [charsCount, setCharsCount] = useState();
+  
+  // Create upload function with trade note ID
+  const uploadFn = useMemo(() => createUploadFn(tradeNoteId), [tradeNoteId]);
 
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
@@ -205,7 +210,7 @@ const TailwindAdvancedEditor = ({
             handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved, uploadFn),
             attributes: {
               class:
-                "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
+                "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full tr-notes-editor",
             },
           }}
           onUpdate={({ editor }) => {
@@ -214,6 +219,11 @@ const TailwindAdvancedEditor = ({
           }}
           slotAfter={<ImageResizer />}
         >
+          <style>{`
+            /* Ensure images are fully visible during and after upload */
+            .tr-notes-editor img { opacity: 1 !important; filter: none !important; }
+            .tr-notes-editor figure img { opacity: 1 !important; filter: none !important; }
+          `}</style>
           <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
             <EditorCommandEmpty className="px-2 text-muted-foreground">No results</EditorCommandEmpty>
             <EditorCommandList>
