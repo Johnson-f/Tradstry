@@ -550,6 +550,89 @@ impl TursoClient {
             libsql::params![],
         ).await.context("Failed to create update trigger for images")?;
 
+        // Create playbook table for trading setups
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS playbook (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create playbook table")?;
+
+        // Create stock_trade_playbook junction table
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS stock_trade_playbook (
+                stock_trade_id INTEGER NOT NULL,
+                setup_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (stock_trade_id, setup_id),
+                FOREIGN KEY (stock_trade_id) REFERENCES stocks(id) ON DELETE CASCADE,
+                FOREIGN KEY (setup_id) REFERENCES playbook(id) ON DELETE CASCADE
+            )
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create stock_trade_playbook table")?;
+
+        // Create option_trade_playbook junction table
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS option_trade_playbook (
+                option_trade_id INTEGER NOT NULL,
+                setup_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (option_trade_id, setup_id),
+                FOREIGN KEY (option_trade_id) REFERENCES options(id) ON DELETE CASCADE,
+                FOREIGN KEY (setup_id) REFERENCES playbook(id) ON DELETE CASCADE
+            )
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create option_trade_playbook table")?;
+
+        // Create indexes for playbook tables
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_playbook_updated_at ON playbook(updated_at)",
+            libsql::params![],
+        ).await.context("Failed to create playbook updated_at index")?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stock_trade_playbook_stock_trade_id ON stock_trade_playbook(stock_trade_id)",
+            libsql::params![],
+        ).await.context("Failed to create stock_trade_playbook stock_trade_id index")?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stock_trade_playbook_setup_id ON stock_trade_playbook(setup_id)",
+            libsql::params![],
+        ).await.context("Failed to create stock_trade_playbook setup_id index")?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_option_trade_playbook_option_trade_id ON option_trade_playbook(option_trade_id)",
+            libsql::params![],
+        ).await.context("Failed to create option_trade_playbook option_trade_id index")?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_option_trade_playbook_setup_id ON option_trade_playbook(setup_id)",
+            libsql::params![],
+        ).await.context("Failed to create option_trade_playbook setup_id index")?;
+
+        // Create trigger to update the updated_at timestamp on playbook table
+        conn.execute(
+            r#"
+            CREATE TRIGGER IF NOT EXISTS update_playbook_timestamp 
+            AFTER UPDATE ON playbook 
+            FOR EACH ROW 
+            BEGIN 
+                UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id; 
+            END
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create update trigger for playbook")?;
+
         // Create schema version table to track schema versions
         conn.execute(
             r#"
@@ -649,8 +732,8 @@ impl TursoClient {
     /// Get current schema version from the application
     pub fn get_current_schema_version() -> SchemaVersion {
         SchemaVersion {
-            version: "0.0.2".to_string(),
-            description: "Initial trading schema with stocks, options, trade_notes, images and user_profile tables".to_string(),
+            version: "0.0.3".to_string(),
+            description: "Trading schema with stocks, options, trade_notes, images, user_profile and playbook tables".to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -798,6 +881,51 @@ impl TursoClient {
                 triggers: vec![
                     TriggerInfo { name: "update_images_timestamp".to_string(), table_name: "images".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE images SET updated_at = datetime('now') WHERE id = NEW.id".to_string() },
                 ],
+            },
+            // Playbook table
+            TableSchema {
+                name: "playbook".to_string(),
+                columns: vec![
+                    ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                    ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                    ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                ],
+                indexes: vec![
+                    IndexInfo { name: "idx_playbook_updated_at".to_string(), table_name: "playbook".to_string(), columns: vec!["updated_at".to_string()], is_unique: false },
+                ],
+                triggers: vec![
+                    TriggerInfo { name: "update_playbook_timestamp".to_string(), table_name: "playbook".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id".to_string() },
+                ],
+            },
+            // Stock trade playbook junction table
+            TableSchema {
+                name: "stock_trade_playbook".to_string(),
+                columns: vec![
+                    ColumnInfo { name: "stock_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "setup_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                ],
+                indexes: vec![
+                    IndexInfo { name: "idx_stock_trade_playbook_stock_trade_id".to_string(), table_name: "stock_trade_playbook".to_string(), columns: vec!["stock_trade_id".to_string()], is_unique: false },
+                    IndexInfo { name: "idx_stock_trade_playbook_setup_id".to_string(), table_name: "stock_trade_playbook".to_string(), columns: vec!["setup_id".to_string()], is_unique: false },
+                ],
+                triggers: vec![],
+            },
+            // Option trade playbook junction table
+            TableSchema {
+                name: "option_trade_playbook".to_string(),
+                columns: vec![
+                    ColumnInfo { name: "option_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "setup_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                ],
+                indexes: vec![
+                    IndexInfo { name: "idx_option_trade_playbook_option_trade_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: false },
+                    IndexInfo { name: "idx_option_trade_playbook_setup_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["setup_id".to_string()], is_unique: false },
+                ],
+                triggers: vec![],
             },
         ]
     }

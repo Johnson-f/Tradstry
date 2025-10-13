@@ -29,7 +29,7 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
-use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes};
+use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes};
 
 #[derive(Serialize)]
 struct ApiResponse<T> {
@@ -134,6 +134,11 @@ async fn main() -> std::io::Result<()> {
             .configure(|cfg| {
                 log::info!("Configuring images routes");
                 configure_images_routes(cfg);
+            })
+            // Register playbook routes
+            .configure(|cfg| {
+                log::info!("Configuring playbook routes");
+                configure_playbook_routes(cfg);
             })
             .configure(configure_auth_routes)
             .configure(configure_public_routes)
