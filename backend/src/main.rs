@@ -30,7 +30,8 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
-use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_replicache_routes};
+use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes};
+use replicache::{handle_push, handle_pull};
 
 #[derive(Serialize)]
 struct ApiResponse<T> {
@@ -144,7 +145,12 @@ async fn main() -> std::io::Result<()> {
             // Register replicache routes
             .configure(|cfg| {
                 log::info!("Configuring replicache routes");
-                configure_replicache_routes(cfg);
+                cfg.service(
+                    web::scope("/api/replicache")
+                        .wrap(HttpAuthentication::bearer(jwt_validator))
+                        .route("/push", web::post().to(handle_push))
+                        .route("/pull", web::post().to(handle_pull))
+                );
             })
             .configure(configure_auth_routes)
             .configure(configure_public_routes)
@@ -173,17 +179,6 @@ fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
             .wrap(HttpAuthentication::bearer(jwt_validator))
             .route("/me", web::get().to(get_current_user))
             .route("/my-data", web::get().to(get_user_data))
-    );
-}
-
-// Replicache routes configuration
-fn configure_replicache_routes(cfg: &mut web::ServiceConfig) {
-    log::info!("Configuring replicache routes");
-    cfg.service(
-        web::scope("/api/replicache")
-            .wrap(HttpAuthentication::bearer(jwt_validator))
-            .route("/push", web::post().to(handle_push))
-            .route("/pull", web::post().to(handle_pull))
     );
 }
 

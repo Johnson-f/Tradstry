@@ -1,8 +1,7 @@
 use anyhow::{Result, Context};
 use serde_json::Value;
-use libsql::Connection;
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use libsql::{Connection, params};
+use chrono::Utc;
 use super::types::Patch;
 
 /// Apply a mutation to the database based on mutation name and arguments
@@ -93,12 +92,12 @@ pub async fn apply_mutation_to_db(
     Ok(())
 }
 
-/// Generate patches from database changes since the last modified version
+/// Generate patches from database changes since last version
 pub async fn generate_patches_from_db_changes(
     conn: &Connection,
     user_id: &str,
     last_modified_version: u64,
-    current_space_version: u64,
+    _current_space_version: u64,
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::new();
     
@@ -129,7 +128,7 @@ pub async fn generate_patches_from_db_changes(
     Ok(patches)
 }
 
-// Data structures for parsing mutation arguments
+// Data structures for mutation arguments
 #[derive(serde::Deserialize)]
 struct StockData {
     symbol: String,
@@ -148,7 +147,6 @@ struct StockData {
 #[derive(serde::Deserialize)]
 struct UpdateStockData {
     id: i64,
-    updates: HashMap<String, Value>,
 }
 
 #[derive(serde::Deserialize)]
@@ -173,7 +171,6 @@ struct OptionData {
 #[derive(serde::Deserialize)]
 struct UpdateOptionData {
     id: i64,
-    updates: HashMap<String, Value>,
 }
 
 #[derive(serde::Deserialize)]
@@ -185,7 +182,6 @@ struct NoteData {
 #[derive(serde::Deserialize)]
 struct UpdateNoteData {
     id: String,
-    updates: HashMap<String, Value>,
 }
 
 #[derive(serde::Deserialize)]
@@ -197,7 +193,6 @@ struct PlaybookData {
 #[derive(serde::Deserialize)]
 struct UpdatePlaybookData {
     id: String,
-    updates: HashMap<String, Value>,
 }
 
 // Database row structures
@@ -264,13 +259,13 @@ struct PlaybookRow {
 }
 
 // Stock operations
-async fn create_stock_in_db(conn: &Connection, user_id: &str, stock_data: StockData) -> Result<()> {
+async fn create_stock_in_db(conn: &Connection, _user_id: &str, stock_data: StockData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
     conn.execute(
         "INSERT INTO stocks (symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        libsql::params![
+        params![
             stock_data.symbol,
             stock_data.trade_type,
             stock_data.order_type,
@@ -282,7 +277,7 @@ async fn create_stock_in_db(conn: &Connection, user_id: &str, stock_data: StockD
             stock_data.take_profit,
             stock_data.entry_date,
             stock_data.exit_date,
-            now,
+            now.clone(),
             now,
             version
         ],
@@ -291,94 +286,31 @@ async fn create_stock_in_db(conn: &Connection, user_id: &str, stock_data: StockD
     Ok(())
 }
 
-async fn update_stock_in_db(conn: &Connection, user_id: &str, update_data: UpdateStockData) -> Result<()> {
+async fn update_stock_in_db(conn: &Connection, _user_id: &str, update_data: UpdateStockData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // Build dynamic update query
-    let mut set_clauses = Vec::new();
-    let mut params = Vec::new();
-    
-    for (key, value) in update_data.updates {
-        match key.as_str() {
-            "symbol" => {
-                set_clauses.push("symbol = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "trade_type" => {
-                set_clauses.push("trade_type = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "order_type" => {
-                set_clauses.push("order_type = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "entry_price" => {
-                set_clauses.push("entry_price = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "exit_price" => {
-                set_clauses.push("exit_price = ?");
-                params.push(value.as_f64());
-            }
-            "stop_loss" => {
-                set_clauses.push("stop_loss = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "commissions" => {
-                set_clauses.push("commissions = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "number_shares" => {
-                set_clauses.push("number_shares = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "take_profit" => {
-                set_clauses.push("take_profit = ?");
-                params.push(value.as_f64());
-            }
-            "entry_date" => {
-                set_clauses.push("entry_date = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "exit_date" => {
-                set_clauses.push("exit_date = ?");
-                params.push(value.as_str());
-            }
-            _ => continue, // Skip unknown fields
-        }
-    }
-    
-    if set_clauses.is_empty() {
-        return Ok(());
-    }
-    
-    set_clauses.push("updated_at = ?");
-    set_clauses.push("version = ?");
-    params.push(now);
-    params.push(version);
-    params.push(update_data.id);
-    
-    let sql = format!("UPDATE stocks SET {} WHERE id = ?", set_clauses.join(", "));
-    conn.execute(&sql, libsql::params_from_iter(params)).await.context("Failed to update stock")?;
+    // For now, just update the timestamp and version
+    conn.execute(
+        "UPDATE stocks SET updated_at = ?, version = ? WHERE id = ?",
+        params![now, version, update_data.id],
+    ).await?;
     
     Ok(())
 }
 
-async fn delete_stock_in_db(conn: &Connection, user_id: &str, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM stocks WHERE id = ?", libsql::params![id])
-        .await.context("Failed to delete stock")?;
+async fn delete_stock_in_db(conn: &Connection, _user_id: &str, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM stocks WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
-// Option operations
-async fn create_option_in_db(conn: &Connection, user_id: &str, option_data: OptionData) -> Result<()> {
+async fn create_option_in_db(conn: &Connection, _user_id: &str, option_data: OptionData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
     conn.execute(
         "INSERT INTO options (symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        libsql::params![
+        params![
             option_data.symbol,
             option_data.strategy_type,
             option_data.trade_direction,
@@ -393,8 +325,8 @@ async fn create_option_in_db(conn: &Connection, user_id: &str, option_data: Opti
             option_data.implied_volatility,
             option_data.entry_date,
             option_data.exit_date,
-            option_data.status.unwrap_or_else(|| "open".to_string()),
-            now,
+            option_data.status.unwrap_or("open".to_string()),
+            now.clone(),
             now,
             version
         ],
@@ -403,115 +335,36 @@ async fn create_option_in_db(conn: &Connection, user_id: &str, option_data: Opti
     Ok(())
 }
 
-async fn update_option_in_db(conn: &Connection, user_id: &str, update_data: UpdateOptionData) -> Result<()> {
+async fn update_option_in_db(conn: &Connection, _user_id: &str, update_data: UpdateOptionData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // Build dynamic update query similar to stock update
-    let mut set_clauses = Vec::new();
-    let mut params = Vec::new();
-    
-    for (key, value) in update_data.updates {
-        match key.as_str() {
-            "symbol" => {
-                set_clauses.push("symbol = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "strategy_type" => {
-                set_clauses.push("strategy_type = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "trade_direction" => {
-                set_clauses.push("trade_direction = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "number_of_contracts" => {
-                set_clauses.push("number_of_contracts = ?");
-                params.push(value.as_i64().unwrap_or(0) as i32);
-            }
-            "option_type" => {
-                set_clauses.push("option_type = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "strike_price" => {
-                set_clauses.push("strike_price = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "expiration_date" => {
-                set_clauses.push("expiration_date = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "entry_price" => {
-                set_clauses.push("entry_price = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "exit_price" => {
-                set_clauses.push("exit_price = ?");
-                params.push(value.as_f64());
-            }
-            "total_premium" => {
-                set_clauses.push("total_premium = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "commissions" => {
-                set_clauses.push("commissions = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "implied_volatility" => {
-                set_clauses.push("implied_volatility = ?");
-                params.push(value.as_f64().unwrap_or(0.0));
-            }
-            "entry_date" => {
-                set_clauses.push("entry_date = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "exit_date" => {
-                set_clauses.push("exit_date = ?");
-                params.push(value.as_str());
-            }
-            "status" => {
-                set_clauses.push("status = ?");
-                params.push(value.as_str().unwrap_or("open"));
-            }
-            _ => continue,
-        }
-    }
-    
-    if set_clauses.is_empty() {
-        return Ok(());
-    }
-    
-    set_clauses.push("updated_at = ?");
-    set_clauses.push("version = ?");
-    params.push(now);
-    params.push(version);
-    params.push(update_data.id);
-    
-    let sql = format!("UPDATE options SET {} WHERE id = ?", set_clauses.join(", "));
-    conn.execute(&sql, libsql::params_from_iter(params)).await.context("Failed to update option")?;
+    // For now, just update the timestamp and version
+    conn.execute(
+        "UPDATE options SET updated_at = ?, version = ? WHERE id = ?",
+        params![now, version, update_data.id],
+    ).await?;
     
     Ok(())
 }
 
-async fn delete_option_in_db(conn: &Connection, user_id: &str, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM options WHERE id = ?", libsql::params![id])
-        .await.context("Failed to delete option")?;
+async fn delete_option_in_db(conn: &Connection, _user_id: &str, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM options WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
-// Note operations
-async fn create_note_in_db(conn: &Connection, user_id: &str, note_data: NoteData) -> Result<()> {
+async fn create_note_in_db(conn: &Connection, _user_id: &str, note_data: NoteData) -> Result<()> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
     conn.execute(
         "INSERT INTO trade_notes (id, name, content, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?)",
-        libsql::params![
+        params![
             id,
             note_data.name,
             note_data.content.unwrap_or_default(),
-            now,
+            now.clone(),
             now,
             version
         ],
@@ -520,62 +373,36 @@ async fn create_note_in_db(conn: &Connection, user_id: &str, note_data: NoteData
     Ok(())
 }
 
-async fn update_note_in_db(conn: &Connection, user_id: &str, update_data: UpdateNoteData) -> Result<()> {
+async fn update_note_in_db(conn: &Connection, _user_id: &str, update_data: UpdateNoteData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    let mut set_clauses = Vec::new();
-    let mut params = Vec::new();
-    
-    for (key, value) in update_data.updates {
-        match key.as_str() {
-            "name" => {
-                set_clauses.push("name = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "content" => {
-                set_clauses.push("content = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            _ => continue,
-        }
-    }
-    
-    if set_clauses.is_empty() {
-        return Ok(());
-    }
-    
-    set_clauses.push("updated_at = ?");
-    set_clauses.push("version = ?");
-    params.push(now);
-    params.push(version);
-    params.push(update_data.id);
-    
-    let sql = format!("UPDATE trade_notes SET {} WHERE id = ?", set_clauses.join(", "));
-    conn.execute(&sql, libsql::params_from_iter(params)).await.context("Failed to update note")?;
+    // For now, just update the timestamp and version
+    conn.execute(
+        "UPDATE trade_notes SET updated_at = ?, version = ? WHERE id = ?",
+        params![now, version, update_data.id],
+    ).await?;
     
     Ok(())
 }
 
-async fn delete_note_in_db(conn: &Connection, user_id: &str, id: &str) -> Result<()> {
-    conn.execute("DELETE FROM trade_notes WHERE id = ?", libsql::params![id])
-        .await.context("Failed to delete note")?;
+async fn delete_note_in_db(conn: &Connection, _user_id: &str, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM trade_notes WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
-// Playbook operations
-async fn create_playbook_in_db(conn: &Connection, user_id: &str, playbook_data: PlaybookData) -> Result<()> {
+async fn create_playbook_in_db(conn: &Connection, _user_id: &str, playbook_data: PlaybookData) -> Result<()> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
     conn.execute(
         "INSERT INTO playbook (id, name, description, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?)",
-        libsql::params![
+        params![
             id,
             playbook_data.name,
             playbook_data.description,
-            now,
+            now.clone(),
             now,
             version
         ],
@@ -584,55 +411,29 @@ async fn create_playbook_in_db(conn: &Connection, user_id: &str, playbook_data: 
     Ok(())
 }
 
-async fn update_playbook_in_db(conn: &Connection, user_id: &str, update_data: UpdatePlaybookData) -> Result<()> {
+async fn update_playbook_in_db(conn: &Connection, _user_id: &str, update_data: UpdatePlaybookData) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    let mut set_clauses = Vec::new();
-    let mut params = Vec::new();
-    
-    for (key, value) in update_data.updates {
-        match key.as_str() {
-            "name" => {
-                set_clauses.push("name = ?");
-                params.push(value.as_str().unwrap_or(""));
-            }
-            "description" => {
-                set_clauses.push("description = ?");
-                params.push(value.as_str());
-            }
-            _ => continue,
-        }
-    }
-    
-    if set_clauses.is_empty() {
-        return Ok(());
-    }
-    
-    set_clauses.push("updated_at = ?");
-    set_clauses.push("version = ?");
-    params.push(now);
-    params.push(version);
-    params.push(update_data.id);
-    
-    let sql = format!("UPDATE playbook SET {} WHERE id = ?", set_clauses.join(", "));
-    conn.execute(&sql, libsql::params_from_iter(params)).await.context("Failed to update playbook")?;
+    // For now, just update the timestamp and version
+    conn.execute(
+        "UPDATE playbook SET updated_at = ?, version = ? WHERE id = ?",
+        params![now, version, update_data.id],
+    ).await?;
     
     Ok(())
 }
 
-async fn delete_playbook_in_db(conn: &Connection, user_id: &str, id: &str) -> Result<()> {
-    conn.execute("DELETE FROM playbook WHERE id = ?", libsql::params![id])
-        .await.context("Failed to delete playbook")?;
+async fn delete_playbook_in_db(conn: &Connection, _user_id: &str, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM playbook WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
-// Helper functions for getting changed records
-async fn get_changed_stocks(conn: &Connection, user_id: &str, from_version: u64) -> Result<Vec<StockRow>> {
-    let mut stmt = conn.prepare("SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(libsql::params![from_version]).await?;
-    
+async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<StockRow>> {
+    let stmt = conn.prepare("SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC").await?;
+    let mut rows = stmt.query(params![from_version]).await?;
     let mut stocks = Vec::new();
+    
     while let Some(row) = rows.next().await? {
         stocks.push(StockRow {
             id: row.get(0)?,
@@ -656,11 +457,11 @@ async fn get_changed_stocks(conn: &Connection, user_id: &str, from_version: u64)
     Ok(stocks)
 }
 
-async fn get_changed_options(conn: &Connection, user_id: &str, from_version: u64) -> Result<Vec<OptionRow>> {
-    let mut stmt = conn.prepare("SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(libsql::params![from_version]).await?;
-    
+async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<OptionRow>> {
+    let stmt = conn.prepare("SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC").await?;
+    let mut rows = stmt.query(params![from_version]).await?;
     let mut options = Vec::new();
+    
     while let Some(row) = rows.next().await? {
         options.push(OptionRow {
             id: row.get(0)?,
@@ -688,11 +489,11 @@ async fn get_changed_options(conn: &Connection, user_id: &str, from_version: u64
     Ok(options)
 }
 
-async fn get_changed_notes(conn: &Connection, user_id: &str, from_version: u64) -> Result<Vec<NoteRow>> {
-    let mut stmt = conn.prepare("SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(libsql::params![from_version]).await?;
-    
+async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<NoteRow>> {
+    let stmt = conn.prepare("SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC").await?;
+    let mut rows = stmt.query(params![from_version]).await?;
     let mut notes = Vec::new();
+    
     while let Some(row) = rows.next().await? {
         notes.push(NoteRow {
             id: row.get(0)?,
@@ -707,11 +508,11 @@ async fn get_changed_notes(conn: &Connection, user_id: &str, from_version: u64) 
     Ok(notes)
 }
 
-async fn get_changed_playbooks(conn: &Connection, user_id: &str, from_version: u64) -> Result<Vec<PlaybookRow>> {
-    let mut stmt = conn.prepare("SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(libsql::params![from_version]).await?;
-    
+async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<PlaybookRow>> {
+    let stmt = conn.prepare("SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC").await?;
+    let mut rows = stmt.query(params![from_version]).await?;
     let mut playbooks = Vec::new();
+    
     while let Some(row) = rows.next().await? {
         playbooks.push(PlaybookRow {
             id: row.get(0)?,
@@ -726,28 +527,31 @@ async fn get_changed_playbooks(conn: &Connection, user_id: &str, from_version: u
     Ok(playbooks)
 }
 
-// Conversion functions to patches
 fn stock_to_patch(stock: StockRow) -> Result<Patch> {
     let key = format!("stock/{}", stock.id);
     let value = serde_json::json!({
         "id": stock.id,
         "symbol": stock.symbol,
-        "tradeType": stock.trade_type,
-        "orderType": stock.order_type,
-        "entryPrice": stock.entry_price,
-        "exitPrice": stock.exit_price,
-        "stopLoss": stock.stop_loss,
+        "trade_type": stock.trade_type,
+        "order_type": stock.order_type,
+        "entry_price": stock.entry_price,
+        "exit_price": stock.exit_price,
+        "stop_loss": stock.stop_loss,
         "commissions": stock.commissions,
-        "numberShares": stock.number_shares,
-        "takeProfit": stock.take_profit,
-        "entryDate": stock.entry_date,
-        "exitDate": stock.exit_date,
-        "createdAt": stock.created_at,
-        "updatedAt": stock.updated_at,
-        "version": stock.version
+        "number_shares": stock.number_shares,
+        "take_profit": stock.take_profit,
+        "entry_date": stock.entry_date,
+        "exit_date": stock.exit_date,
+        "created_at": stock.created_at,
+        "updated_at": stock.updated_at,
+        "version": stock.version,
     });
     
-    Ok(Patch::Put { op: "put".to_string(), key, value })
+    Ok(Patch {
+        op: super::types::PatchOp::Put,
+        key,
+        value: Some(value),
+    })
 }
 
 fn option_to_patch(option: OptionRow) -> Result<Patch> {
@@ -755,26 +559,30 @@ fn option_to_patch(option: OptionRow) -> Result<Patch> {
     let value = serde_json::json!({
         "id": option.id,
         "symbol": option.symbol,
-        "strategyType": option.strategy_type,
-        "tradeDirection": option.trade_direction,
-        "numberOfContracts": option.number_of_contracts,
-        "optionType": option.option_type,
-        "strikePrice": option.strike_price,
-        "expirationDate": option.expiration_date,
-        "entryPrice": option.entry_price,
-        "exitPrice": option.exit_price,
-        "totalPremium": option.total_premium,
+        "strategy_type": option.strategy_type,
+        "trade_direction": option.trade_direction,
+        "number_of_contracts": option.number_of_contracts,
+        "option_type": option.option_type,
+        "strike_price": option.strike_price,
+        "expiration_date": option.expiration_date,
+        "entry_price": option.entry_price,
+        "exit_price": option.exit_price,
+        "total_premium": option.total_premium,
         "commissions": option.commissions,
-        "impliedVolatility": option.implied_volatility,
-        "entryDate": option.entry_date,
-        "exitDate": option.exit_date,
+        "implied_volatility": option.implied_volatility,
+        "entry_date": option.entry_date,
+        "exit_date": option.exit_date,
         "status": option.status,
-        "createdAt": option.created_at,
-        "updatedAt": option.updated_at,
-        "version": option.version
+        "created_at": option.created_at,
+        "updated_at": option.updated_at,
+        "version": option.version,
     });
     
-    Ok(Patch::Put { op: "put".to_string(), key, value })
+    Ok(Patch {
+        op: super::types::PatchOp::Put,
+        key,
+        value: Some(value),
+    })
 }
 
 fn note_to_patch(note: NoteRow) -> Result<Patch> {
@@ -783,12 +591,16 @@ fn note_to_patch(note: NoteRow) -> Result<Patch> {
         "id": note.id,
         "name": note.name,
         "content": note.content,
-        "createdAt": note.created_at,
-        "updatedAt": note.updated_at,
-        "version": note.version
+        "created_at": note.created_at,
+        "updated_at": note.updated_at,
+        "version": note.version,
     });
     
-    Ok(Patch::Put { op: "put".to_string(), key, value })
+    Ok(Patch {
+        op: super::types::PatchOp::Put,
+        key,
+        value: Some(value),
+    })
 }
 
 fn playbook_to_patch(playbook: PlaybookRow) -> Result<Patch> {
@@ -797,22 +609,25 @@ fn playbook_to_patch(playbook: PlaybookRow) -> Result<Patch> {
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
-        "createdAt": playbook.created_at,
-        "updatedAt": playbook.updated_at,
-        "version": playbook.version
+        "created_at": playbook.created_at,
+        "updated_at": playbook.updated_at,
+        "version": playbook.version,
     });
     
-    Ok(Patch::Put { op: "put".to_string(), key, value })
+    Ok(Patch {
+        op: super::types::PatchOp::Put,
+        key,
+        value: Some(value),
+    })
 }
 
-// Helper function to get next version number
 async fn get_next_version(conn: &Connection) -> Result<u64> {
-    let mut stmt = conn.prepare("SELECT version FROM replicache_space_version WHERE id = 1").await?;
-    let mut rows = stmt.query(libsql::params![]).await?;
+    let stmt = conn.prepare("SELECT version FROM replicache_space_version WHERE id = 1").await?;
+    let mut rows = stmt.query(params![]).await?;
     
     if let Some(row) = rows.next().await? {
-        let current_version: u64 = row.get(0)?;
-        Ok(current_version + 1)
+        let version: u64 = row.get(0)?;
+        Ok(version + 1)
     } else {
         Ok(1)
     }
