@@ -1,13 +1,11 @@
-import { stockMutators } from './stocks';
-import { optionMutators } from './options';
-import { noteMutators } from './notes';
-import { playbookMutators } from './playbook';
+import * as stocksMutators from './stocks';
+import * as optionsMutators from './options';
+import * as notesMutators from './notes';
+import * as playbookMutators from './playbook';
 
-export function registerMutators() {
-  return {
-    ...stockMutators,
-    ...optionMutators,
-    ...noteMutators,
-    ...playbookMutators,
-  };
-}
+export const mutators = {
+  ...stocksMutators,
+  ...optionsMutators,
+  ...notesMutators,
+  ...playbookMutators,
+};

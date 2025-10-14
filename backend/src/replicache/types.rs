@@ -135,25 +135,25 @@ pub struct PlaybookKV {
     pub version: u64, // For LWW conflict resolution
 }
 
+// Patch operation for data synchronization
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Patch {
+    pub op: PatchOp,
+    pub key: String,
+    pub value: Option<serde_json::Value>,
+}
+
 // Mutation processing errors
 #[derive(Debug, thiserror::Error)]
 pub enum MutationError {
-    #[error("Invalid mutation name: {0}")]
-    InvalidMutationName(String),
-    #[error("Invalid key format: {0}")]
-    InvalidKeyFormat(String),
     #[error("Database error: {0}")]
     DatabaseError(#[from] libsql::Error),
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
-    #[error("Stock not found: {0}")]
-    StockNotFound(i64),
-    #[error("Option not found: {0}")]
-    OptionNotFound(i64),
-    #[error("Note not found: {0}")]
-    NoteNotFound(String),
-    #[error("Playbook not found: {0}")]
-    PlaybookNotFound(String),
+    #[error("Chrono parse error: {0}")]
+    ChronoParseError(#[from] chrono::ParseError),
+    #[error("Generic error: {0}")]
+    GenericError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub type MutationResult<T> = Result<T, MutationError>;
