@@ -13,7 +13,7 @@ import { TradeNotesHistoryModal } from "@/components/journal/trade-notes-history
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useStockAnalytics } from "@/lib/drizzle/analytics/stocks";
 import { useOptionsAnalytics } from "@/lib/drizzle/analytics/options";
-import { syncStocks } from "@/lib/sync/journal/stocks";
+import { syncStocks, debugSyncState, resetJournalDatabase } from "@/lib/sync/journal/stocks";
 
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
@@ -423,19 +423,68 @@ export default function JournalPage() {
               Manage Notes
             </Button>
             <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!user?.id) return;
+                await debugSyncState(user.id);
+              }}
+              className="flex items-center gap-2"
+            >
+              🔍 Debug Sync
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!user?.id) return;
+                if (confirm('⚠️ Reset database? This will clear all local data and create a fresh database. Continue?')) {
+                  try {
+                    await resetJournalDatabase();
+                    console.log('✅ Database reset successfully');
+                    alert('Database reset successfully! The app should work normally now.');
+                  } catch (error) {
+                    console.error('❌ Database reset failed:', error);
+                    alert('Database reset failed. Please refresh the page.');
+                  }
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              🔄 Reset DB
+            </Button>
+            <Button
               variant="default"
               onClick={async () => {
                 if (!user?.id) return;
                 try {
                   const lastPulledAt = typeof window !== 'undefined' ? localStorage.getItem('journal.stocks.lastPulledAt') || undefined : undefined;
                   console.debug('[Journal] Manual sync triggered', { lastPulledAt });
+                  
+                  // Debug state before sync
+                  await debugSyncState(user.id);
+                  
                   const result = await syncStocks(user.id, { updatedAfter: lastPulledAt });
                   console.debug('[Journal] Manual sync complete', result);
+                  
+                  // Show success message
+                  const { pull, push } = result;
+                  const totalChanges = pull.inserted + pull.merged + push.created + push.updated;
+                  
+                  if (totalChanges > 0) {
+                    console.info(`[Journal] Sync completed: ${pull.inserted + pull.merged} pulled, ${push.created + push.updated} pushed`);
+                  } else {
+                    console.info('[Journal] Sync completed: No changes detected');
+                  }
+                  
                   if (typeof window !== 'undefined') {
                     localStorage.setItem('journal.stocks.lastPulledAt', new Date().toISOString());
                   }
+                  
+                  // Debug state after sync
+                  await debugSyncState(user.id);
+                  
                 } catch (error) {
                   console.error('[Journal] Manual sync failed', error);
+                  // You could add toast notification here if you have a toast system
                 }
               }}
               className="flex items-center gap-2"

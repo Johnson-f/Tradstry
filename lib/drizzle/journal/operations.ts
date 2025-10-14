@@ -7,6 +7,7 @@ import { eq, and, desc, asc, count, sql, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { useCallback } from 'react';
 import { useBrowserDatabase } from '@/lib/browser-database';
+import { getJournalDatabase } from '@/lib/sync/journal/stocks';
 import { 
   stocksTable, 
   optionsTable, 
