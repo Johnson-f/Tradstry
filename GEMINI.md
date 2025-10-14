@@ -1,4 +1,4 @@
-This is a full-stack application for a trading journal and analytics platform called Tradistry.
+This is a full-stack application for a trading journal and analytics platform called Tradstry.
 
 **Project Structure:**
 
