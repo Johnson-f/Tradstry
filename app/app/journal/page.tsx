@@ -386,104 +386,6 @@ export default function JournalPage() {
     );
   };
 
-  // Inline Analytics Card (compact, single-line style)
-  const InlineStatsCard = ({ type, analytics, className }: { type: string; analytics: any; className?: string }) => {
-    if (analyticsLoading) {
-      return (
-        <Card className={className}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-6">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-4 w-20" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    if (!analytics) {
-      return (
-        <Card className={className}>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No {type} data available</p>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const performanceStatus = getPerformanceStatus(analytics.netPnL);
-    const totalTrades: number =
-      (typeof analytics.totalTrades === "number" ? analytics.totalTrades : null) ??
-      (typeof analytics.totalCount === "number" ? analytics.totalCount : null) ??
-      0;
-    const profitFactor: number | null = typeof analytics.profitFactor === "number" ? analytics.profitFactor : null;
-
-    return (
-      <Card className={className}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">
-            {type.charAt(0).toUpperCase() + type.slice(1)} Overview
-          </CardTitle>
-          <BarChart3 className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            {/* Total Trades */}
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[10px]">Total Trades</Badge>
-              <span className="text-sm font-semibold">{totalTrades}</span>
-            </div>
-
-            {/* Net P&L */}
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[10px]">Net P&L</Badge>
-              <span
-                className={`text-sm font-semibold ${
-                  performanceStatus === "positive"
-                    ? "text-green-600"
-                    : performanceStatus === "negative"
-                    ? "text-red-600"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {formatCurrency(analytics.netPnL)}
-              </span>
-            </div>
-
-            {/* Win Rate */}
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[10px]">Win Rate</Badge>
-              <span className="text-sm font-semibold">{formatPercentage(analytics.winRate)}</span>
-            </div>
-
-            {/* Profit Factor */}
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[10px]">Profit Factor</Badge>
-              <span
-                className={`text-sm font-semibold ${
-                  profitFactor && profitFactor > 1
-                    ? "text-green-600"
-                    : profitFactor && profitFactor < 1
-                    ? "text-red-600"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {profitFactor ? profitFactor.toFixed(2) : "N/A"}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
   return (
     <div className="h-screen flex flex-col">
       <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
@@ -505,11 +407,6 @@ export default function JournalPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="p-8 space-y-8">
-            {/* Quick Analytics Overview - inline cards */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <InlineStatsCard type="stocks" analytics={stocksAnalytics} className="md:col-span-1" />
-              <InlineStatsCard type="options" analytics={optionsAnalytics} className="md:col-span-1" />
-            </div>
 
             <Tabs
               defaultValue="stocks"

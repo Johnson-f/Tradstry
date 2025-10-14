@@ -394,6 +394,9 @@ export function useJournalDatabase(userId: string) {
       LIMIT ? OFFSET ?
     `;
     
+    // Bind pagination parameters
+    params.push(limit, offset);
+
     const result = await query(sql, params);
 
     return result.values.map(row => {
