@@ -192,12 +192,67 @@ pub struct StockQuery {
     pub trade_type: Option<TradeType>,
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
+    pub updated_after: Option<DateTime<Utc>>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
 /// Stock operations implementation using LibSQL
 impl Stock {
+    fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        // Try as f64
+        if let Ok(v) = row.get::<f64>(i) {
+            return Ok(v);
+        }
+        // Try as Option<f64>
+        if let Ok(v) = row.get::<Option<f64>>(i) {
+            return Ok(v.unwrap_or(0.0));
+        }
+        // Try as i64
+        if let Ok(v) = row.get::<i64>(i) {
+            return Ok(v as f64);
+        }
+        // Try as Option<i64>
+        if let Ok(v) = row.get::<Option<i64>>(i) {
+            return Ok(v.unwrap_or(0) as f64);
+        }
+        // Try as String
+        if let Ok(s) = row.get::<String>(i) {
+            if let Ok(parsed) = s.parse::<f64>() {
+                return Ok(parsed);
+            }
+        }
+        // Fallback to 0.0
+        Ok(0.0)
+    }
+
+    fn get_opt_f64(row: &libsql::Row, idx: usize) -> Result<Option<f64>, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        // Try Option<f64>
+        if let Ok(v) = row.get::<Option<f64>>(i) {
+            return Ok(v);
+        }
+        // Try f64
+        if let Ok(v) = row.get::<f64>(i) {
+            return Ok(Some(v));
+        }
+        // Try Option<i64>
+        if let Ok(v) = row.get::<Option<i64>>(i) {
+            return Ok(v.map(|x| x as f64));
+        }
+        // Try i64
+        if let Ok(v) = row.get::<i64>(i) {
+            return Ok(Some(v as f64));
+        }
+        // Try String
+        if let Ok(s) = row.get::<String>(i) {
+            if let Ok(parsed) = s.parse::<f64>() {
+                return Ok(Some(parsed));
+            }
+        }
+        Ok(None)
+    }
     /// Create a new stock trade in the user's database
     pub async fn create(
         conn: &Connection,
@@ -302,6 +357,11 @@ impl Stock {
         if let Some(end_date) = query.end_date {
             sql.push_str(" AND entry_date <= ?");
             query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+        }
+
+        if let Some(updated_after) = query.updated_after {
+            sql.push_str(" AND updated_at >= ?");
+            query_params.push(libsql::Value::Text(updated_after.to_rfc3339()));
         }
 
         sql.push_str(" ORDER BY entry_date DESC");
@@ -432,6 +492,11 @@ impl Stock {
         if let Some(end_date) = query.end_date {
             sql.push_str(" AND entry_date <= ?");
             query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+        }
+
+        if let Some(updated_after) = query.updated_after {
+            sql.push_str(" AND updated_at >= ?");
+            query_params.push(libsql::Value::Text(updated_after.to_rfc3339()));
         }
 
         let mut rows = conn
@@ -1092,12 +1157,12 @@ impl Stock {
             symbol: row.get(1)?,
             trade_type,
             order_type,
-            entry_price: row.get(4)?,
-            exit_price: row.get(5)?,
-            stop_loss: row.get(6)?,
-            commissions: row.get(7)?,
-            number_shares: row.get(8)?,
-            take_profit: row.get(9)?,
+            entry_price: Self::get_f64(row, 4)?,
+            exit_price: Self::get_opt_f64(row, 5)?,
+            stop_loss: Self::get_f64(row, 6)?,
+            commissions: Self::get_f64(row, 7)?,
+            number_shares: Self::get_f64(row, 8)?,
+            take_profit: Self::get_opt_f64(row, 9)?,
             entry_date,
             exit_date,
             created_at,
