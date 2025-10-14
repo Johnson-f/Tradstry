@@ -3,7 +3,7 @@
  * Implements all options calculation functions from backend/database/02_options/05_calculations/
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useBrowserDatabase } from '@/lib/browser-database';
 
 export interface OptionsAnalyticsOptions {
@@ -135,7 +135,7 @@ export const optionsAnalytics = {
  * Hook for options analytics operations
  */
 export function useOptionsAnalytics(userId: string) {
-  const { query } = useBrowserDatabase({
+  const { query, isInitialized } = useBrowserDatabase({
     dbName: 'tradistry-journal',
     enablePersistence: true,
     autoInit: true
@@ -657,17 +657,11 @@ export function useOptionsAnalytics(userId: string) {
     
     const sql = `
       SELECT 
-        COALESCE(ROUND(AVG(
-          CASE 
-            WHEN trade_direction = 'Bullish' THEN (entry_price - stop_loss) * 100 * number_of_contracts
-            WHEN trade_direction = 'Bearish' THEN (stop_loss - entry_price) * 100 * number_of_contracts
-          END
-        ), 2), 0) AS average_risk_per_trade
+        COALESCE(ROUND(AVG(total_premium), 2), 0) AS average_risk_per_trade
       FROM options
       WHERE user_id = ?
         AND status = 'closed'
         AND exit_date IS NOT NULL
-        AND stop_loss IS NOT NULL
         ${dateFilter}
     `;
 
@@ -777,7 +771,8 @@ export function useOptionsAnalytics(userId: string) {
     getLossRate
   ]);
 
-  return {
+  return useMemo(() => ({
+    isInitialized,
     // Individual metrics
     getProfitFactor,
     getAvgHoldTimeWinners,
@@ -799,5 +794,23 @@ export function useOptionsAnalytics(userId: string) {
     
     // Utility
     getDateFilter
-  };
+  }), [
+    getProfitFactor,
+    getAvgHoldTimeWinners,
+    getAvgHoldTimeLosers,
+    getBiggestWinner,
+    getBiggestLoser,
+    getAverageGain,
+    getAverageLoss,
+    getNetPnL,
+    getRiskRewardRatio,
+    getTradeExpectancy,
+    getWinRate,
+    getAveragePositionSize,
+    getAverageRiskPerTrade,
+    getLossRate,
+    getAllAnalytics,
+    getDateFilter,
+    isInitialized
+  ]);
 }
