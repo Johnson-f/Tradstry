@@ -297,7 +297,8 @@ impl TursoClient {
                 entry_date TIMESTAMP NOT NULL,
                 exit_date TIMESTAMP,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                version INTEGER NOT NULL DEFAULT 0
             )
             "#,
             libsql::params![],
@@ -360,7 +361,8 @@ impl TursoClient {
                 exit_date TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                version INTEGER NOT NULL DEFAULT 0
             )
             "#,
             libsql::params![],
@@ -415,7 +417,8 @@ impl TursoClient {
                 name TEXT NOT NULL,
                 content TEXT DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                version INTEGER NOT NULL DEFAULT 0
             )
             "#,
             libsql::params![],
@@ -558,7 +561,8 @@ impl TursoClient {
                 name TEXT NOT NULL,
                 description TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                version INTEGER NOT NULL DEFAULT 0
             )
             "#,
             libsql::params![],
@@ -653,7 +657,44 @@ impl TursoClient {
             libsql::params![current_version.version, current_version.description, current_version.created_at],
         ).await.context("Failed to insert initial schema version")?;
 
-        info!("Trading schema initialized successfully with stocks, options, trade_notes, tags tables, and schema version tracking");
+        // Create Replicache client state tracking tables
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS replicache_clients (
+              client_group_id TEXT NOT NULL,
+              client_id TEXT NOT NULL,
+              last_mutation_id INTEGER NOT NULL DEFAULT 0,
+              last_modified_version INTEGER NOT NULL,
+              user_id TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+              PRIMARY KEY (client_group_id, client_id)
+            )
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create replicache_clients table")?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_replicache_clients_user_id ON replicache_clients(user_id)",
+            libsql::params![],
+        ).await.context("Failed to create replicache_clients user_id index")?;
+
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS replicache_space_version (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              version INTEGER NOT NULL DEFAULT 0
+            )
+            "#,
+            libsql::params![],
+        ).await.context("Failed to create replicache_space_version table")?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO replicache_space_version (id, version) VALUES (1, 0)",
+            libsql::params![],
+        ).await.context("Failed to insert initial replicache_space_version")?;
+
+        info!("Trading schema initialized successfully with stocks, options, trade_notes, tags tables, replicache tables, and schema version tracking");
         Ok(())
     }
 
@@ -730,10 +771,11 @@ impl TursoClient {
     }
 
     /// Get current schema version from the application
+    /// Always update the version number when a new table is added, modified or deleted 
     pub fn get_current_schema_version() -> SchemaVersion {
         SchemaVersion {
-            version: "0.0.3".to_string(),
-            description: "Trading schema with stocks, options, trade_notes, images, user_profile and playbook tables".to_string(),
+            version: "0.0.5".to_string(),
+            description: "Trading schema with stocks, options, trade_notes, images, user_profile, playbook tables, Replicache client tracking, and version columns for LWW conflict resolution".to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -759,6 +801,7 @@ impl TursoClient {
                     ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                     ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_stocks_symbol".to_string(), table_name: "stocks".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
@@ -792,6 +835,7 @@ impl TursoClient {
                     ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'open'".to_string()), is_primary_key: false },
                     ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_options_symbol".to_string(), table_name: "options".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
@@ -816,6 +860,7 @@ impl TursoClient {
                     ColumnInfo { name: "content".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: Some("''".to_string()), is_primary_key: false },
                     ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_trade_notes_updated_at".to_string(), table_name: "trade_notes".to_string(), columns: vec!["updated_at".to_string()], is_unique: false },
@@ -891,6 +936,7 @@ impl TursoClient {
                     ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                     ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_playbook_updated_at".to_string(), table_name: "playbook".to_string(), columns: vec!["updated_at".to_string()], is_unique: false },
@@ -925,6 +971,33 @@ impl TursoClient {
                     IndexInfo { name: "idx_option_trade_playbook_option_trade_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: false },
                     IndexInfo { name: "idx_option_trade_playbook_setup_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["setup_id".to_string()], is_unique: false },
                 ],
+                triggers: vec![],
+            },
+            // Replicache client state tracking table
+            TableSchema {
+                name: "replicache_clients".to_string(),
+                columns: vec![
+                    ColumnInfo { name: "client_group_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "client_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "last_mutation_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "last_modified_version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                    ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                    ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                ],
+                indexes: vec![
+                    IndexInfo { name: "idx_replicache_clients_user_id".to_string(), table_name: "replicache_clients".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+                ],
+                triggers: vec![],
+            },
+            // Replicache space version tracking table
+            TableSchema {
+                name: "replicache_space_version".to_string(),
+                columns: vec![
+                    ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                    ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+                ],
+                indexes: vec![],
                 triggers: vec![],
             },
         ]
