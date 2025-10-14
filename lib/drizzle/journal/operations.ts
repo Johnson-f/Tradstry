@@ -180,10 +180,7 @@ export function useJournalDatabase(userId: string) {
       option.status || 'open'
     ];
 
-    console.log('insertOption SQL:', sql);
-    console.log('insertOption params:', params);
     const result = await query(sql, params);
-    console.log('insertOption raw result:', result);
     if (result.values.length === 0) {
       throw new Error('Failed to insert option');
     }
@@ -193,7 +190,6 @@ export function useJournalDatabase(userId: string) {
     result.columns.forEach((col, idx) => {
       obj[snakeToCamel(col)] = row[idx];
     });
-    console.log('insertOption mapped result:', obj);
     return obj as Option;
   }, [userId, query]);
 
@@ -349,7 +345,7 @@ export function useJournalDatabase(userId: string) {
     } = options || {};
 
     const sql = `
-      SELECT * FROM stocks 
+      SELECT id, user_id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at FROM stocks 
       WHERE user_id = ?
       ORDER BY ${orderBy} ${orderDirection.toUpperCase()}
       LIMIT ? OFFSET ?
@@ -392,36 +388,14 @@ export function useJournalDatabase(userId: string) {
     }
 
     const sql = `
-      SELECT * FROM options 
+      SELECT id, user_id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at FROM options 
       ${whereClause}
       ORDER BY ${orderBy} ${orderDirection.toUpperCase()}
       LIMIT ? OFFSET ?
     `;
     
-    params.push(limit, offset);
-    
-    console.log('getAllOptions SQL:', sql);
-    console.log('getAllOptions params:', params);
-    console.log('getAllOptions userId:', userId);
-    
-    // Debug: Check if any options exist at all
-    try {
-      const debugResult = await query('SELECT * FROM options', []);
-      console.log('Debug - all options in database:', debugResult);
-    } catch (error) {
-      console.log('Debug - error querying options table:', error);
-    }
-    
-    // Debug: Check table structure
-    try {
-      const tableInfo = await query('PRAGMA table_info(options)', []);
-      console.log('Debug - options table structure:', tableInfo);
-    } catch (error) {
-      console.log('Debug - error getting table info:', error);
-    }
-    
     const result = await query(sql, params);
-    console.log('getAllOptions raw result:', result);
+
     return result.values.map(row => {
       const obj: Record<string, any> = {};
       result.columns.forEach((col, idx) => {
@@ -436,7 +410,7 @@ export function useJournalDatabase(userId: string) {
    */
   const getStocksBySymbol = async (symbol: string): Promise<Stock[]> => {
     const result = await query(
-      `SELECT * FROM stocks WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
+      `SELECT id, user_id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at FROM stocks WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
       [userId, symbol]
     );
     
@@ -454,7 +428,7 @@ export function useJournalDatabase(userId: string) {
    */
   const getOptionsBySymbol = async (symbol: string): Promise<Option[]> => {
     const result = await query(
-      `SELECT * FROM options WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
+      `SELECT id, user_id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at FROM options WHERE user_id = ? AND symbol = ? ORDER BY entry_date DESC`,
       [userId, symbol]
     );
     
@@ -472,7 +446,7 @@ export function useJournalDatabase(userId: string) {
    */
   const getStockById = async (id: number): Promise<Stock | null> => {
     const result = await query(
-      `SELECT * FROM stocks WHERE id = ? AND user_id = ?`,
+      `SELECT id, user_id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at FROM stocks WHERE id = ? AND user_id = ?`,
       [id, userId]
     );
     
@@ -491,7 +465,7 @@ export function useJournalDatabase(userId: string) {
    */
   const getOptionById = async (id: number): Promise<Option | null> => {
     const result = await query(
-      `SELECT * FROM options WHERE id = ? AND user_id = ?`,
+      `SELECT id, user_id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at FROM options WHERE id = ? AND user_id = ?`,
       [id, userId]
     );
     
@@ -510,7 +484,7 @@ export function useJournalDatabase(userId: string) {
    */
   const searchStocks = async (searchTerm: string): Promise<Stock[]> => {
     const result = await query(
-      `SELECT * FROM stocks 
+      `SELECT id, user_id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at FROM stocks 
        WHERE user_id = ? AND symbol LIKE ?
        ORDER BY entry_date DESC`,
       [userId, `%${searchTerm}%`]
@@ -530,7 +504,7 @@ export function useJournalDatabase(userId: string) {
    */
   const searchOptions = async (searchTerm: string): Promise<Option[]> => {
     const result = await query(
-      `SELECT * FROM options 
+      `SELECT id, user_id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at FROM options 
        WHERE user_id = ? AND (symbol LIKE ? OR strategy_type LIKE ?)
        ORDER BY entry_date DESC`,
       [userId, `%${searchTerm}%`, `%${searchTerm}%`]

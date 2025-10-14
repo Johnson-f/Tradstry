@@ -3,7 +3,7 @@
  * Implements all stock calculation functions from backend/database/01_stock/05_calculations/
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useBrowserDatabase } from '@/lib/browser-database';
 
 export interface StockAnalyticsOptions {
@@ -33,7 +33,7 @@ export interface StockAnalyticsResult {
  * Hook for stock analytics operations
  */
 export function useStockAnalytics(userId: string) {
-  const { query } = useBrowserDatabase({
+  const { query, isInitialized } = useBrowserDatabase({
     dbName: 'tradistry-journal',
     enablePersistence: true,
     autoInit: true
@@ -602,7 +602,8 @@ export function useStockAnalytics(userId: string) {
     getLossRate
   ]);
 
-  return {
+  return useMemo(() => ({
+    isInitialized,
     // Individual metrics
     getProfitFactor,
     getAvgHoldTimeWinners,
@@ -624,7 +625,25 @@ export function useStockAnalytics(userId: string) {
     
     // Utility
     getDateFilter
-  };
+  }), [
+    getProfitFactor,
+    getAvgHoldTimeWinners,
+    getAvgHoldTimeLosers,
+    getBiggestWinner,
+    getBiggestLoser,
+    getAverageGain,
+    getAverageLoss,
+    getNetPnL,
+    getRiskRewardRatio,
+    getTradeExpectancy,
+    getWinRate,
+    getAveragePositionSize,
+    getAverageRiskPerTrade,
+    getLossRate,
+    getAllAnalytics,
+    getDateFilter,
+    isInitialized
+  ]);
 }
 
 // Types are already exported above with the interface declarations
