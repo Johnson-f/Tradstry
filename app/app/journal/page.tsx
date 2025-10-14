@@ -13,6 +13,7 @@ import { TradeNotesHistoryModal } from "@/components/journal/trade-notes-history
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useStockAnalytics } from "@/lib/drizzle/analytics/stocks";
 import { useOptionsAnalytics } from "@/lib/drizzle/analytics/options";
+import { syncStocks } from "@/lib/sync/journal/stocks";
 
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
@@ -55,6 +56,27 @@ export default function JournalPage() {
 
     loadAnalytics();
   }, [user?.id, isStockDbInitialized, isOptionsDbInitialized, getAllStockAnalytics, getAllOptionsAnalytics]);
+
+  // Initial sync with backend when user is available
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const runInitialSync = async () => {
+      try {
+        const lastPulledAt = typeof window !== 'undefined' ? localStorage.getItem('journal.stocks.lastPulledAt') || undefined : undefined;
+        console.debug('[Journal] Starting initial stocks sync', { lastPulledAt });
+        const result = await syncStocks(user.id, { updatedAfter: lastPulledAt });
+        console.debug('[Journal] Sync complete', result);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('journal.stocks.lastPulledAt', new Date().toISOString());
+        }
+      } catch (error) {
+        console.error('[Journal] Stocks sync failed', error);
+      }
+    };
+
+    runInitialSync();
+  }, [user?.id]);
 
   // Helper functions
   const formatCurrency = (value: number | null): string => {
@@ -399,6 +421,26 @@ export default function JournalPage() {
             >
               <FileText className="h-4 w-4" />
               Manage Notes
+            </Button>
+            <Button
+              variant="default"
+              onClick={async () => {
+                if (!user?.id) return;
+                try {
+                  const lastPulledAt = typeof window !== 'undefined' ? localStorage.getItem('journal.stocks.lastPulledAt') || undefined : undefined;
+                  console.debug('[Journal] Manual sync triggered', { lastPulledAt });
+                  const result = await syncStocks(user.id, { updatedAfter: lastPulledAt });
+                  console.debug('[Journal] Manual sync complete', result);
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('journal.stocks.lastPulledAt', new Date().toISOString());
+                  }
+                } catch (error) {
+                  console.error('[Journal] Manual sync failed', error);
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              Sync now
             </Button>
           </div>
         </div>
