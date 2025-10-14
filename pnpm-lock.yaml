@@ -281,6 +281,12 @@ importers:
       recharts:
         specifier: ^3.2.0
         version: 3.2.0(@types/react@19.1.13)(react-dom@19.1.1(react@19.1.1))(react-is@19.1.1)(react@19.1.1)(redux@5.0.1)
+      replicache:
+        specifier: ^15.3.0
+        version: 15.3.0
+      replicache-react:
+        specifier: ^5.0.1
+        version: 5.0.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -418,6 +424,10 @@ packages:
   '@babel/types@7.28.4':
     resolution: {integrity: sha512-bkFqkLhh3pMBUQQkpVgWDWq/lqzc2678eUyDlTBhRqhCHFguYYGM0Efga7tYk4TogG/3x0EEl66/OQ+WGbWB/Q==}
     engines: {node: '>=6.9.0'}
+
+  '@badrap/valita@0.3.16':
+    resolution: {integrity: sha512-slP2blSd6A+xUBgGf+wW6adGd72ojBLxemU0jXQ0fXQcsZWYQ70wTLTJggs6+oxcAqN/bvYA3Ops8SqR2Imyaw==}
+    engines: {node: '>= 16'}
 
   '@braintree/sanitize-url@6.0.2':
     resolution: {integrity: sha512-Tbsj02wXCbqGmzdnXNk0SOF19ChhRU70BsroIi4Pm6Ehp56in6vch94mfbdQ17DozxkL3BAVjbZ4Qc1a0HFRAg==}
@@ -2040,6 +2050,17 @@ packages:
 
   '@remirror/core-constants@3.0.0':
     resolution: {integrity: sha512-42aWfPrimMfDKDi4YegyS7x+/0tlzaqwPQCULLanv3DMIlu96KTJR0fM5isWX2UViOqlGnX6YFgqWepcX+XMNg==}
+
+  '@rocicorp/lock@1.0.4':
+    resolution: {integrity: sha512-FavTiO8ETXFXDVfA87IThGduTTTR8iqzBnr/c60gUUmbk7knGEXPmf2B+yiNuluJD0ku0fL2V2r62UXnsLXl6w==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  '@rocicorp/logger@5.4.0':
+    resolution: {integrity: sha512-kmMR5iLrwRIsvPZ+UXnmyAM3Mlvz6rCHrYfMsrMPgFYKLfo7amUH1RwHo6tuuqJiAvUbeaCoDtc8e+V0Mr4PSA==}
+
+  '@rocicorp/resolver@1.0.2':
+    resolution: {integrity: sha512-TfjMTQp9cNNqNtHFfa+XHEGdA7NnmDRu+ZJH4YF3dso0Xk/b9DMhg/sl+b6CR4ThFZArXXDsG1j8Mwl34wcOZQ==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -4994,6 +5015,17 @@ packages:
   remark-rehype@11.1.2:
     resolution: {integrity: sha512-Dh7l57ianaEoIpzbp0PC9UKAdCSVklD8E5Rpw7ETfbTl3FqcOOgq5q2LVDhgGCkaBv7p24JXikPdvhhmHvKMsw==}
 
+  replicache-react@5.0.1:
+    resolution: {integrity: sha512-xwiVdoANIX9oagqK8sT/txx9ltfEmkKgbJivdVvyz13bj5PAT+b8o9xuMtY4X1bJgu+9mn04muWPKtPv9MV/ZA==}
+    peerDependencies:
+      react: '>=16.0 <19.0'
+      react-dom: '>=16.0 <19.0'
+
+  replicache@15.3.0:
+    resolution: {integrity: sha512-XE9NbpG5bVuJNcj61vzbZBwesNx9q51l6/o0J8wT4v1YZhKoqj9GExwc3pLUYSi/AyrQtkX44wOyrSMLHzFIaA==}
+    engines: {node: '>=14.8.0'}
+    hasBin: true
+
   requires-port@1.0.0:
     resolution: {integrity: sha512-KigOCHcocU3XODJxsu8i/j8T9tzT4adHiecwORRQ0ZZFcp7ahwXuRU1m+yuO90C5ZUyGeGfocHDI14M3L3yDAQ==}
 
@@ -5750,6 +5782,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
+
+  '@badrap/valita@0.3.16': {}
 
   '@braintree/sanitize-url@6.0.2': {}
 
@@ -7589,6 +7623,14 @@ snapshots:
       react-redux: 9.2.0(@types/react@19.1.13)(react@19.1.1)(redux@5.0.1)
 
   '@remirror/core-constants@3.0.0': {}
+
+  '@rocicorp/lock@1.0.4':
+    dependencies:
+      '@rocicorp/resolver': 1.0.2
+
+  '@rocicorp/logger@5.4.0': {}
+
+  '@rocicorp/resolver@1.0.2': {}
 
   '@rtsao/scc@1.1.0': {}
 
@@ -10950,6 +10992,18 @@ snapshots:
       mdast-util-to-hast: 13.2.0
       unified: 11.0.5
       vfile: 6.0.3
+
+  replicache-react@5.0.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1):
+    dependencies:
+      react: 19.1.1
+      react-dom: 19.1.1(react@19.1.1)
+
+  replicache@15.3.0:
+    dependencies:
+      '@badrap/valita': 0.3.16
+      '@rocicorp/lock': 1.0.4
+      '@rocicorp/logger': 5.4.0
+      '@rocicorp/resolver': 1.0.2
 
   requires-port@1.0.0: {}
 

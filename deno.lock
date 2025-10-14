@@ -158,6 +158,8 @@
         "npm:react-resizable-panels@^3.0.4",
         "npm:react@19",
         "npm:recharts@^3.2.0",
+        "npm:replicache-react@^5.0.1",
+        "npm:replicache@^15.3.0",
         "npm:sonner@^2.0.7",
         "npm:swr@^2.3.4",
         "npm:tailwind-merge@^3.3.0",
