@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
+import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
 import type { Playbook, PlaybookFormData } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
@@ -32,7 +32,7 @@ export function PlaybookCreateDialog({
   onPlaybookCreated,
 }: PlaybookCreateDialogProps) {
   const { userId } = useUserProfile();
-  const playbookService = usePlaybookService(userId);
+  const { playbooks, createPlaybook } = usePlaybooks(userId);
   
   const [formData, setFormData] = useState<PlaybookFormData>({
     name: '',
@@ -41,11 +41,54 @@ export function PlaybookCreateDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // Inline utility functions
+  const validatePlaybookData = (data: PlaybookFormData): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    if (!data.name || data.name.trim().length === 0) {
+      errors.push('Playbook name is required');
+    }
+
+    if (data.name && data.name.length > 100) {
+      errors.push('Playbook name must be less than 100 characters');
+    }
+
+    if (data.description && data.description.length > 500) {
+      errors.push('Description must be less than 500 characters');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
+  const generateUniqueName = async (baseName: string): Promise<string> => {
+    let name = baseName;
+    let counter = 1;
+
+    try {
+      while (true) {
+        const existingPlaybooks = (playbooks || []).filter(p => p.name === name);
+        if (existingPlaybooks.length === 0) {
+          break;
+        }
+        name = `${baseName} (${counter})`;
+        counter++;
+      }
+    } catch (error) {
+      console.warn('Error checking for existing playbook names, using base name:', error);
+      return baseName;
+    }
+
+    return name;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validate form data
-    const validation = playbookUtils.validatePlaybookData(formData);
+    const validation = validatePlaybookData(formData);
     if (!validation.isValid) {
       setErrors(validation.errors);
       return;
@@ -56,14 +99,14 @@ export function PlaybookCreateDialog({
 
     try {
       // Generate unique name if needed
-      const uniqueName = await playbookUtils.generateUniqueName(formData.name, playbookService.searchPlaybooks);
+      const uniqueName = await generateUniqueName(formData.name);
       
       const playbookData: PlaybookFormData = {
         ...formData,
         name: uniqueName,
       };
 
-      const newPlaybook = await playbookService.createPlaybook(playbookData);
+      const newPlaybook = await createPlaybook(playbookData);
       onPlaybookCreated(newPlaybook);
       
       // Reset form

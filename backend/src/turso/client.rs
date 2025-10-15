@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use libsql::{Connection, Database, Builder};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use log::{info, error};
 
 use super::config::TursoConfig;
@@ -1241,6 +1241,28 @@ impl TursoClient {
             }
         }
 
+        // Best-effort: drop columns that no longer exist in expected schema
+        let expected_names: HashSet<String> = table_schema
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+
+        for existing in &current_columns {
+            if !expected_names.contains(&existing.name) && !existing.is_primary_key {
+                let drop_sql = format!(
+                    "ALTER TABLE {} DROP COLUMN {}",
+                    table_schema.name, existing.name
+                );
+                info!(
+                    "Attempting to drop removed column {} from table {}",
+                    existing.name, table_schema.name
+                );
+                // Some libSQL/SQLite builds may not support DROP COLUMN; ignore failures.
+                let _ = conn.execute(&drop_sql, libsql::params![]).await;
+            }
+        }
+
         Ok(())
     }
 
@@ -1328,5 +1350,15 @@ impl TursoClient {
         }
 
         Ok(())
+    }
+}
+
+impl TursoClient {
+    /// Public helper to be called by the auth/init flow: ensures the user's DB schema
+    /// is up-to-date with the application schema definition. This will add missing
+    /// columns like `stocks.version` or attempt to remove deprecated columns.
+    pub async fn ensure_user_schema_on_login(&self, user_id: &str) -> Result<()> {
+        info!("Ensuring user schema is up to date for {}", user_id);
+        self.sync_user_database_schema(user_id).await
     }
 }

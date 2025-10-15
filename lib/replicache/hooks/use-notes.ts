@@ -18,7 +18,8 @@ export function useNotes(userId: string) {
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
-    }
+    },
+    [] // Default to empty array if undefined
   );
 
   const createNote = async (note: any) => {

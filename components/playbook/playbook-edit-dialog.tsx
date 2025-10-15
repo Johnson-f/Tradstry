@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
+import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
 import type { Playbook, PlaybookFormData } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
@@ -34,7 +34,7 @@ export function PlaybookEditDialog({
   onPlaybookUpdated,
 }: PlaybookEditDialogProps) {
   const { userId } = useUserProfile();
-  const playbookService = usePlaybookService(userId);
+  const { updatePlaybook } = usePlaybooks(userId);
   
   const [formData, setFormData] = useState<PlaybookFormData>({
     name: '',
@@ -42,6 +42,28 @@ export function PlaybookEditDialog({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+
+  // Inline utility function
+  const validatePlaybookData = (data: PlaybookFormData): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    if (!data.name || data.name.trim().length === 0) {
+      errors.push('Playbook name is required');
+    }
+
+    if (data.name && data.name.length > 100) {
+      errors.push('Playbook name must be less than 100 characters');
+    }
+
+    if (data.description && data.description.length > 500) {
+      errors.push('Description must be less than 500 characters');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
 
   // Update form data when playbook changes
   useEffect(() => {
@@ -59,7 +81,7 @@ export function PlaybookEditDialog({
     if (!playbook) return;
     
     // Validate form data
-    const validation = playbookUtils.validatePlaybookData(formData);
+    const validation = validatePlaybookData(formData);
     if (!validation.isValid) {
       setErrors(validation.errors);
       return;
@@ -69,7 +91,7 @@ export function PlaybookEditDialog({
     setErrors([]);
 
     try {
-      const updatedPlaybook = await playbookService.updatePlaybook(playbook.id, formData);
+      const updatedPlaybook = await updatePlaybook(playbook.id, formData);
       onPlaybookUpdated(updatedPlaybook);
       
       onOpenChange(false);

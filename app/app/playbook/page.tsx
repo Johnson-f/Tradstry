@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
+import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
 import type { Playbook, PlaybookFormData } from '@/lib/replicache/schemas/playbook';
 import { PlaybookCreateDialog } from '@/components/playbook/playbook-create-dialog';
 import { PlaybookEditDialog } from '@/components/playbook/playbook-edit-dialog';
@@ -16,9 +16,8 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 
 export default function PlaybookPage() {
   const { userId } = useUserProfile();
-  const playbookService = usePlaybookService(userId);
+  const { playbooks, isInitialized } = usePlaybooks(userId);
   
-  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [filteredPlaybooks, setFilteredPlaybooks] = useState<Playbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,13 +27,6 @@ export default function PlaybookPage() {
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
   const [showMigrationOption, setShowMigrationOption] = useState(false);
 
-  // Load playbooks when database is initialized
-  useEffect(() => {
-    if (playbookService.isInitialized && !playbookService.isInitializing) {
-      loadPlaybooks();
-    }
-  }, [playbookService.isInitialized, playbookService.isInitializing]);
-
   // Filter playbooks when search changes
   useEffect(() => {
     filterPlaybooks();
@@ -42,25 +34,18 @@ export default function PlaybookPage() {
 
   // Check if database is initialized and show migration option
   useEffect(() => {
-    if (playbookService.isInitialized && playbooks.length === 0 && !loading) {
+    if (isInitialized && (playbooks || []).length === 0 && !loading) {
       setShowMigrationOption(true);
     }
-  }, [playbookService.isInitialized, playbooks.length, loading]);
+  }, [isInitialized, playbooks, loading]);
 
-  const loadPlaybooks = async () => {
-    try {
-      setLoading(true);
-      const allPlaybooks = await playbookService.getAllPlaybooks();
-      setPlaybooks(allPlaybooks);
-    } catch (error) {
-      console.error('Error loading playbooks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Set loading state based on initialization
+  useEffect(() => {
+    setLoading(!isInitialized);
+  }, [isInitialized]);
 
   const filterPlaybooks = () => {
-    let filtered = [...playbooks];
+    let filtered = [...(playbooks || [])];
 
     // Filter by search query
     if (searchQuery) {
@@ -75,20 +60,15 @@ export default function PlaybookPage() {
   };
 
   const handlePlaybookCreated = (newPlaybook: Playbook) => {
-    setPlaybooks(prev => [newPlaybook, ...prev]);
     setIsCreateDialogOpen(false);
     setShowMigrationOption(false);
   };
 
   const handlePlaybookUpdated = (updatedPlaybook: Playbook) => {
-    setPlaybooks(prev => prev.map(playbook => 
-      playbook.id === updatedPlaybook.id ? updatedPlaybook : playbook
-    ));
     setIsEditDialogOpen(false);
   };
 
   const handlePlaybookDeleted = (playbookId: string) => {
-    setPlaybooks(prev => prev.filter(playbook => playbook.id !== playbookId));
     setIsDeleteDialogOpen(false);
   };
 
@@ -102,20 +82,7 @@ export default function PlaybookPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleMigrateSetups = async () => {
-    try {
-      setLoading(true);
-      const migratedPlaybooks = await playbookService.migrateSetupsToPlaybooks();
-      setPlaybooks(prev => [...migratedPlaybooks, ...prev]);
-      setShowMigrationOption(false);
-    } catch (error) {
-      console.error('Error migrating setups:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading || playbookService.isInitializing) {
+  if (loading) {
     return (
       <div className="h-screen flex flex-col">
         <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
@@ -142,32 +109,6 @@ export default function PlaybookPage() {
     );
   }
 
-  if (playbookService.error) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight">Playbook</h1>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
-            <div className="p-8">
-              <div className="text-center py-12">
-                <div className="text-destructive mb-4">
-                  <h3 className="text-lg font-semibold mb-2">Database Error</h3>
-                  <p className="text-sm">{playbookService.error.message}</p>
-                </div>
-                <Button onClick={() => playbookService.init()}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Retry
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -175,12 +116,6 @@ export default function PlaybookPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Playbook</h1>
           <div className="flex items-center space-x-2">
-            {showMigrationOption && (
-              <Button variant="outline" onClick={handleMigrateSetups}>
-                <Database className="mr-2 h-4 w-4" />
-                Migrate Setups
-              </Button>
-            )}
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
               New Playbook
@@ -211,7 +146,7 @@ export default function PlaybookPage() {
             {filteredPlaybooks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-muted-foreground mb-4">
-                  {playbooks.length === 0 ? (
+                  {(playbooks || []).length === 0 ? (
                     <>
                       <h3 className="text-lg font-semibold mb-2">No playbooks created yet</h3>
                       <p className="text-sm">Create your first trading playbook to get started</p>
@@ -223,7 +158,7 @@ export default function PlaybookPage() {
                     </>
                   )}
                 </div>
-                {playbooks.length === 0 && (
+                {(playbooks || []).length === 0 && (
                   <Button onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Create First Playbook

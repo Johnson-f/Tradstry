@@ -257,7 +257,7 @@ export function TradeNotesModal({
             {/* Notes List */}
             <ScrollArea className="flex-1">
               <div className="pr-4">
-                {notes.length === 0 ? (
+                {!notes || notes.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>No notes found</p>
@@ -265,7 +265,7 @@ export function TradeNotesModal({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {notes.map((note: { id: string; name: string; content?: string; updatedAt: string }) => (
+                    {(notes || []).map((note: { id: string; name: string; content?: string; updatedAt: string }) => (
                   <div
                     key={note.id}
                       className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${

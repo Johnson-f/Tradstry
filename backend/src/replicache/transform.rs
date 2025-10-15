@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use serde_json::Value as JsonValue;
-use libsql::{Connection, params, Row, Value};
+use libsql::{Connection, params, Row, Value, params_from_iter};
 use chrono::Utc;
 use super::types::Patch;
 
@@ -134,25 +134,25 @@ pub async fn generate_patches_from_db_changes(
     // Get changed stocks
     let changed_stocks = get_changed_stocks(conn, user_id, last_modified_version).await?;
     for stock in changed_stocks {
-        patches.push(stock_to_patch(stock)?);
+        patches.push(stock_to_patch(stock, user_id)?);
     }
     
     // Get changed options
     let changed_options = get_changed_options(conn, user_id, last_modified_version).await?;
     for option in changed_options {
-        patches.push(option_to_patch(option)?);
+        patches.push(option_to_patch(option, user_id)?);
     }
     
     // Get changed notes
     let changed_notes = get_changed_notes(conn, user_id, last_modified_version).await?;
     for note in changed_notes {
-        patches.push(note_to_patch(note)?);
+        patches.push(note_to_patch(note, user_id)?);
     }
     
     // Get changed playbooks
     let changed_playbooks = get_changed_playbooks(conn, user_id, last_modified_version).await?;
     for playbook in changed_playbooks {
-        patches.push(playbook_to_patch(playbook)?);
+        patches.push(playbook_to_patch(playbook, user_id)?);
     }
     
     Ok(patches)
@@ -457,10 +457,21 @@ async fn delete_playbook_in_db(conn: &Connection, _user_id: &str, id: &str) -> R
 }
 
 async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<StockRow>> {
-    let stmt = conn.prepare(
-        "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC"
-    ).await?;
-    let mut rows = stmt.query(params![from_version as i64]).await?;
+    // If this is the initial sync (cookie == 0), return all rows
+    let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
+        (
+            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks ORDER BY created_at ASC",
+            vec![],
+        )
+    } else {
+        (
+            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC",
+            vec![Value::Integer(from_version as i64)],
+        )
+    };
+
+    let stmt = conn.prepare(sql).await?;
+    let mut rows = stmt.query(params_from_iter(params)).await?;
     let mut stocks = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -487,10 +498,20 @@ async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64
 }
 
 async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<OptionRow>> {
-    let stmt = conn.prepare(
-        "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC"
-    ).await?;
-    let mut rows = stmt.query(params![from_version as i64]).await?;
+    let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
+        (
+            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options ORDER BY created_at ASC",
+            vec![],
+        )
+    } else {
+        (
+            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC",
+            vec![Value::Integer(from_version as i64)],
+        )
+    };
+
+    let stmt = conn.prepare(sql).await?;
+    let mut rows = stmt.query(params_from_iter(params)).await?;
     let mut options = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -521,10 +542,20 @@ async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u6
 }
 
 async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<NoteRow>> {
-    let stmt = conn.prepare(
-        "SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC"
-    ).await?;
-    let mut rows = stmt.query(params![from_version as i64]).await?;
+    let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
+        (
+            "SELECT id, name, content, created_at, updated_at, version FROM trade_notes ORDER BY created_at ASC",
+            vec![],
+        )
+    } else {
+        (
+            "SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC",
+            vec![Value::Integer(from_version as i64)],
+        )
+    };
+
+    let stmt = conn.prepare(sql).await?;
+    let mut rows = stmt.query(params_from_iter(params)).await?;
     let mut notes = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -542,10 +573,20 @@ async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64)
 }
 
 async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<PlaybookRow>> {
-    let stmt = conn.prepare(
-        "SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC"
-    ).await?;
-    let mut rows = stmt.query(params![from_version as i64]).await?;
+    let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
+        (
+            "SELECT id, name, description, created_at, updated_at, version FROM playbook ORDER BY created_at ASC",
+            vec![],
+        )
+    } else {
+        (
+            "SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC",
+            vec![Value::Integer(from_version as i64)],
+        )
+    };
+
+    let stmt = conn.prepare(sql).await?;
+    let mut rows = stmt.query(params_from_iter(params)).await?;
     let mut playbooks = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -562,9 +603,10 @@ async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: 
     Ok(playbooks)
 }
 
-fn stock_to_patch(stock: StockRow) -> Result<Patch> {
+fn stock_to_patch(stock: StockRow, user_id: &str) -> Result<Patch> {
     let key = format!("stock/{}", stock.id);
     let value = serde_json::json!({
+        "userId": user_id,
         "id": stock.id,
         "symbol": stock.symbol,
         "tradeType": stock.trade_type,
@@ -589,9 +631,10 @@ fn stock_to_patch(stock: StockRow) -> Result<Patch> {
     })
 }
 
-fn option_to_patch(option: OptionRow) -> Result<Patch> {
+fn option_to_patch(option: OptionRow, user_id: &str) -> Result<Patch> {
     let key = format!("option/{}", option.id);
     let value = serde_json::json!({
+        "userId": user_id,
         "id": option.id,
         "symbol": option.symbol,
         "strategyType": option.strategy_type,
@@ -620,9 +663,10 @@ fn option_to_patch(option: OptionRow) -> Result<Patch> {
     })
 }
 
-fn note_to_patch(note: NoteRow) -> Result<Patch> {
+fn note_to_patch(note: NoteRow, user_id: &str) -> Result<Patch> {
     let key = format!("note/{}", note.id);
     let value = serde_json::json!({
+        "userId": user_id,
         "id": note.id,
         "name": note.name,
         "content": note.content,
@@ -638,9 +682,10 @@ fn note_to_patch(note: NoteRow) -> Result<Patch> {
     })
 }
 
-fn playbook_to_patch(playbook: PlaybookRow) -> Result<Patch> {
+fn playbook_to_patch(playbook: PlaybookRow, user_id: &str) -> Result<Patch> {
     let key = format!("playbook/{}", playbook.id);
     let value = serde_json::json!({
+        "userId": user_id,
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
