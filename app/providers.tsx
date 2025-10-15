@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 import { ReactNode, useState } from "react";
 import { Toaster } from "sonner";
+import { ReplicacheProvider } from "@/lib/replicache";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -42,7 +43,9 @@ export function Providers({ children }: { children: ReactNode }) {
         disableTransitionOnChange
         forcedTheme={isAuthPage || isLandingPage ? "light" : undefined}
       >
-        {children}
+        <ReplicacheProvider>
+          {children}
+        </ReplicacheProvider>
         <Toaster position="top-right" duration={5000} />
       </ThemeProvider>
     </QueryClientProvider>

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
-import type { Playbook, PlaybookFormData } from '@/lib/drizzle/playbook';
+import type { Playbook, PlaybookFormData } from '@/lib/replicache/schemas/playbook';
 import { PlaybookCreateDialog } from '@/components/playbook/playbook-create-dialog';
 import { PlaybookEditDialog } from '@/components/playbook/playbook-edit-dialog';
 import { PlaybookDeleteDialog } from '@/components/playbook/playbook-delete-dialog';

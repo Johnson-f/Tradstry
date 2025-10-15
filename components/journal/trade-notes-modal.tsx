@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useNotesDatabase } from "@/lib/drizzle/notes";
+import { useNotes } from "@/lib/replicache/hooks/use-notes";
 import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
 import { formatDistanceToNow } from "date-fns";
 
@@ -38,32 +38,9 @@ export function TradeNotesModal({
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const { insertNote, getAllNotes, updateNote, deleteNote, isInitialized } = useNotesDatabase(userId);
-  const [notes, setNotes] = useState<any[]>([]);
+  const { createNote, updateNote, deleteNote, isInitialized, notes } = useNotes(userId);
 
-  // Load existing notes
-  const loadNotes = async () => {
-    if (!isInitialized) return;
-    
-    try {
-      const notesData = await getAllNotes({ 
-        orderBy: 'updated_at', 
-        orderDirection: 'desc',
-        limit: 50 
-      });
-      setNotes(notesData);
-    } catch (error) {
-      console.error("Failed to load notes:", error);
-      toast.error("Failed to load notes");
-    }
-  };
-
-  // Load notes when modal opens
-  useEffect(() => {
-    if (open && isInitialized) {
-      loadNotes();
-    }
-  }, [open, isInitialized]);
+  // Notes are automatically loaded via Replicache subscription
 
   // Handle escape key
   useEffect(() => {
@@ -92,7 +69,7 @@ export function TradeNotesModal({
 
     setIsSaving(true);
     try {
-      const newNote = await insertNote({
+      const newNote = await createNote({
         name: noteName.trim(),
         content: noteContent || ""
       });
@@ -102,7 +79,6 @@ export function TradeNotesModal({
       setNoteContent("");
       setShowCreateForm(false);
       setSelectedNote(newNote);
-      await loadNotes();
     } catch (error) {
       console.error("Error creating note:", error);
       toast.error("Failed to create note");
@@ -111,7 +87,7 @@ export function TradeNotesModal({
     }
   };
 
-  const handleSelectNote = (note: any) => {
+  const handleSelectNote = (note: { id: string; name: string; content?: string }) => {
     setSelectedNote(note);
     setNoteContent(note.content || "");
     setShowCreateForm(false);
@@ -127,7 +103,6 @@ export function TradeNotesModal({
         content: noteContent,
       });
       toast.success("Note updated successfully");
-      await loadNotes();
     } catch (error) {
       console.error("Error updating note:", error);
       toast.error("Failed to update note");
@@ -145,7 +120,6 @@ export function TradeNotesModal({
         setSelectedNote(null);
         setNoteContent("");
       }
-      await loadNotes();
     } catch (error) {
       console.error("Error deleting note:", error);
       toast.error("Failed to delete note");
@@ -291,7 +265,7 @@ export function TradeNotesModal({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {notes.map((note) => (
+                    {notes.map((note: { id: string; name: string; content?: string; updatedAt: string }) => (
                   <div
                     key={note.id}
                       className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${

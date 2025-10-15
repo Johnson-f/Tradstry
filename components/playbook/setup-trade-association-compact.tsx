@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { usePlaybookService } from '@/lib/services/playbook-service';
-import type { Playbook } from '@/lib/drizzle/playbook';
+import type { Playbook } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';

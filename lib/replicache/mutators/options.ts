@@ -1,5 +1,5 @@
 import type { WriteTransaction } from 'replicache';
-import type { Option, NewOption } from '@/lib/drizzle/journal/schema';
+import type { Option, NewOption } from '@/lib/replicache/schemas/journal';
 
 export async function createOption(tx: WriteTransaction, option: Omit<NewOption, 'id' | 'createdAt' | 'updatedAt'>) {
   const id = Date.now(); // Or use proper ID generation

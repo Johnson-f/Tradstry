@@ -110,6 +110,12 @@ export const apiConfig = {
       trades: (setupId: string) => `/playbooks/${setupId}/trades`,
     },
 
+    // Replicache endpoints
+    replicache: {
+      push: "/replicache/push",
+      pull: "/replicache/pull",
+    },
+
     // The following endpoints seem to belong to other services, keeping them as is.
     // Notes endpoints (Legacy or different service)
     notes: {
@@ -213,8 +219,7 @@ export const apiConfig = {
         quotes: (symbol: string) => `/market-data/quotes/${symbol}`,
         quotesWithPrices: (symbol: string) =>
           `/market-data/quotes/${symbol}/with-prices`,
-        fundamentals: (symbol: string) =>
-          `/market-data/fundamentals/${symbol}`,
+        fundamentals: (symbol: string) => `/market-data/fundamentals/${symbol}`,
         combined: (symbol: string) => `/market-data/stock/${symbol}/combined`,
       },
       movements: {
@@ -256,7 +261,8 @@ export const apiConfig = {
           `/market-data/watchlists/${id}/items/with-prices`,
         base: "/market-data/watchlists",
         addItem: "/market-data/watchlists/items",
-        deleteItem: (itemId: number) => `/market-data/watchlists/items/${itemId}`,
+        deleteItem: (itemId: number) =>
+          `/market-data/watchlists/items/${itemId}`,
         deleteBySymbol: (watchlistId: number, symbol: string) =>
           `/market-data/watchlists/${watchlistId}/items/${symbol}`,
         clear: (id: number) => `/market-data/watchlists/${id}/clear`,

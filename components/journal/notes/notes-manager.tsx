@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useNotesDatabase } from '@/lib/drizzle/notes';
+import { useState } from 'react';
+import { useNotes } from '@/lib/replicache/hooks/use-notes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { 
   Plus, 
   Search, 
@@ -51,76 +50,29 @@ interface EditingNote {
 export function NotesManager({ userId }: NotesManagerProps) {
   const { 
     isInitialized, 
-    getAllNotes, 
-    insertNote,
+    notes,
+    createNote,
     updateNote,
-    deleteNote, 
-    duplicateNote, 
-    searchNotes,
-    getStats 
-  } = useNotesDatabase(userId);
+    deleteNote
+  } = useNotes(userId);
   
-  const [notes, setNotes] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState<EditingNote | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [newNoteName, setNewNoteName] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // Load notes
-  const loadNotes = async () => {
-    if (!isInitialized) return;
-    
-    setLoading(true);
-    try {
-      const notesData = await getAllNotes({
-        orderBy: 'updated_at',
-        orderDirection: 'desc',
-        limit: 50
-      });
-      setNotes(notesData);
-    } catch (error) {
-      console.error('Failed to load notes:', error);
-      toast.error('Failed to load notes');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Notes are automatically loaded via Replicache subscription
+  // Filter notes based on search term
+  const filteredNotes = notes?.filter((note: { name: string; content: string }) => 
+    note.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    note.content.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
-  // Load stats
-  const loadStats = async () => {
-    if (!isInitialized) return;
-    
-    try {
-      const statsData = await getStats();
-      setStats(statsData);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
-  };
-
-  // Search notes
-  const handleSearch = async (term: string) => {
+  // Search notes - now handled by filtering
+  const handleSearch = (term: string) => {
     setSearchTerm(term);
-    if (!isInitialized) return;
-    
-    setLoading(true);
-    try {
-      if (term.trim()) {
-        const searchResults = await searchNotes(term);
-        setNotes(searchResults);
-      } else {
-        await loadNotes();
-      }
-    } catch (error) {
-      console.error('Failed to search notes:', error);
-      toast.error('Failed to search notes');
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Create new note
@@ -131,7 +83,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
     }
 
     try {
-      const newNote = await insertNote({
+      const newNote = await createNote({
         name: newNoteName.trim(),
         content: ''
       });
@@ -139,8 +91,6 @@ export function NotesManager({ userId }: NotesManagerProps) {
       toast.success('Note created successfully');
       setNewNoteName('');
       setIsCreating(false);
-      await loadNotes();
-      await loadStats();
       
       // Start editing the new note
       setEditingNote({
@@ -167,8 +117,6 @@ export function NotesManager({ userId }: NotesManagerProps) {
       
       toast.success('Note updated successfully');
       setEditingNote(null);
-      await loadNotes();
-      await loadStats();
     } catch (error) {
       console.error('Failed to update note:', error);
       toast.error('Failed to update note');
@@ -183,8 +131,6 @@ export function NotesManager({ userId }: NotesManagerProps) {
       const success = await deleteNote(noteId);
       if (success) {
         toast.success('Note deleted successfully');
-        await loadNotes();
-        await loadStats();
       } else {
         toast.error('Failed to delete note');
       }
@@ -195,13 +141,13 @@ export function NotesManager({ userId }: NotesManagerProps) {
     setDeleteNoteId(null);
   };
 
-  // Duplicate note
+  // Duplicate note via Replicache by creating a new note with same content
   const handleDuplicateNote = async (noteId: string) => {
     try {
-      await duplicateNote(noteId);
+      const src = notes.find((n: { id: string; name: string; content?: string }) => n.id === noteId);
+      if (!src) return;
+      await createNote({ name: `${src.name} (Copy)`, content: src.content || '' });
       toast.success('Note duplicated successfully');
-      await loadNotes();
-      await loadStats();
     } catch (error) {
       console.error('Failed to duplicate note:', error);
       toast.error('Failed to duplicate note');
@@ -234,12 +180,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
     }
   };
 
-  useEffect(() => {
-    if (isInitialized) {
-      loadNotes();
-      loadStats();
-    }
-  }, [isInitialized]);
+  // Data is automatically loaded via Replicache subscription
 
   if (!isInitialized) {
     return (
@@ -281,18 +222,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
             />
           </div>
 
-          {/* Stats */}
-          {stats && (
-            <div className="flex gap-2 text-sm text-muted-foreground">
-              <Badge variant="secondary">{stats.totalNotes} notes</Badge>
-              <Badge variant="secondary">{stats.totalWords} words</Badge>
-              {stats.lastUpdated && (
-                <Badge variant="outline">
-                  Updated {formatDistanceToNow(new Date(stats.lastUpdated), { addSuffix: true })}
-                </Badge>
-              )}
-            </div>
-          )}
+          {/* Stats removed: Replicache-driven list renders instantly */}
         </CardHeader>
 
         <CardContent className="flex-1 overflow-y-auto">
@@ -323,11 +253,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
             </div>
           )}
 
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-            </div>
-          ) : notes.length === 0 ? (
+          {filteredNotes.length === 0 ? (
             <div className="text-center py-8">
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground mb-4">
@@ -342,7 +268,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {notes.map((note) => (
+              {filteredNotes.map((note: { id: string; name: string; content: string; updatedAt: string }) => (
                 <div
                   key={note.id}
                   className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${

@@ -22,7 +22,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Stock } from "@/lib/drizzle/journal";
+import { Stock } from "@/lib/replicache/schemas";
 
 interface EditStockDialogProps {
   stock: Stock;
