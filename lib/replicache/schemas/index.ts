@@ -5,5 +5,5 @@ export * from './notes';
 export * from './playbook';
 
 // Add any additional FormData types that components might need
-export type StockFormData = Omit<import('./journal').Stock, 'id' | 'createdAt' | 'updatedAt' | 'userId'>;
-export type OptionFormData = Omit<import('./journal').Option, 'id' | 'createdAt' | 'updatedAt' | 'userId'>;
+export type StockFormData = Omit<import('./journal').Stock, 'id' | 'createdAt' | 'updatedAt'>;
+export type OptionFormData = Omit<import('./journal').Option, 'id' | 'createdAt' | 'updatedAt'>;

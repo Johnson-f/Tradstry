@@ -54,8 +54,7 @@ pub async fn apply_mutation_to_db(
             update_stock_in_db(conn, user_id, update_data).await?;
         }
         "deleteStock" => {
-            let id = mutation_args.get("id")
-                .and_then(|v| v.as_i64())
+            let id = mutation_args.as_i64()
                 .context("Missing or invalid stock ID")?;
             delete_stock_in_db(conn, user_id, id).await?;
         }
@@ -72,8 +71,7 @@ pub async fn apply_mutation_to_db(
             update_option_in_db(conn, user_id, update_data).await?;
         }
         "deleteOption" => {
-            let id = mutation_args.get("id")
-                .and_then(|v| v.as_i64())
+            let id = mutation_args.as_i64()
                 .context("Missing or invalid option ID")?;
             delete_option_in_db(conn, user_id, id).await?;
         }
@@ -90,8 +88,7 @@ pub async fn apply_mutation_to_db(
             update_note_in_db(conn, user_id, update_data).await?;
         }
         "deleteNote" => {
-            let id = mutation_args.get("id")
-                .and_then(|v| v.as_str())
+            let id = mutation_args.as_str()
                 .context("Missing or invalid note ID")?;
             delete_note_in_db(conn, user_id, id).await?;
         }
@@ -108,8 +105,7 @@ pub async fn apply_mutation_to_db(
             update_playbook_in_db(conn, user_id, update_data).await?;
         }
         "deletePlaybook" => {
-            let id = mutation_args.get("id")
-                .and_then(|v| v.as_str())
+            let id = mutation_args.as_str()
                 .context("Missing or invalid playbook ID")?;
             delete_playbook_in_db(conn, user_id, id).await?;
         }
@@ -603,10 +599,9 @@ async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: 
     Ok(playbooks)
 }
 
-fn stock_to_patch(stock: StockRow, user_id: &str) -> Result<Patch> {
+fn stock_to_patch(stock: StockRow, _user_id: &str) -> Result<Patch> {
     let key = format!("stock/{}", stock.id);
     let value = serde_json::json!({
-        "userId": user_id,
         "id": stock.id,
         "symbol": stock.symbol,
         "tradeType": stock.trade_type,
@@ -631,10 +626,9 @@ fn stock_to_patch(stock: StockRow, user_id: &str) -> Result<Patch> {
     })
 }
 
-fn option_to_patch(option: OptionRow, user_id: &str) -> Result<Patch> {
+fn option_to_patch(option: OptionRow, _user_id: &str) -> Result<Patch> {
     let key = format!("option/{}", option.id);
     let value = serde_json::json!({
-        "userId": user_id,
         "id": option.id,
         "symbol": option.symbol,
         "strategyType": option.strategy_type,
@@ -663,10 +657,9 @@ fn option_to_patch(option: OptionRow, user_id: &str) -> Result<Patch> {
     })
 }
 
-fn note_to_patch(note: NoteRow, user_id: &str) -> Result<Patch> {
+fn note_to_patch(note: NoteRow, _user_id: &str) -> Result<Patch> {
     let key = format!("note/{}", note.id);
     let value = serde_json::json!({
-        "userId": user_id,
         "id": note.id,
         "name": note.name,
         "content": note.content,
@@ -682,10 +675,9 @@ fn note_to_patch(note: NoteRow, user_id: &str) -> Result<Patch> {
     })
 }
 
-fn playbook_to_patch(playbook: PlaybookRow, user_id: &str) -> Result<Patch> {
+fn playbook_to_patch(playbook: PlaybookRow, _user_id: &str) -> Result<Patch> {
     let key = format!("playbook/{}", playbook.id);
     let value = serde_json::json!({
-        "userId": user_id,
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,

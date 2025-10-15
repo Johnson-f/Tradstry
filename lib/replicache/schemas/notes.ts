@@ -7,7 +7,6 @@
 
 export type Note = {
   id: string;
-  userId: string;
   name: string;
   content: string | null;
   createdAt: string;

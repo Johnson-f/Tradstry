@@ -15,7 +15,6 @@ export function useStocks(userId: string) {
       
       return list
         .map(([_, value]) => value as Stock)
-        .filter(stock => stock.userId === userId)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
