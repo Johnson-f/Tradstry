@@ -22,27 +22,25 @@ export function useStocks(userId: string) {
     }
   );
 
-  const createStock = async (stock: Omit<Stock, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const createStock = async (stock: Omit<Stock, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    const toCents = (value: number | null | undefined): number | null => {
-      if (value === null || value === undefined) return null;
-      return Math.round(value * 100);
-    };
 
+    // Data is already in dollars from the form
+    // Just pass it through - no conversion needed
+    // Send snake_case keys expected by the backend
     const args = {
       symbol: stock.symbol,
       trade_type: stock.tradeType,
       order_type: stock.orderType,
-      entry_price: toCents(stock.entryPrice)!,
-      exit_price: toCents(stock.exitPrice),
-      stop_loss: toCents(stock.stopLoss)!,
-      commissions: toCents(stock.commissions || 0)!,
+      entry_price: stock.entryPrice,
+      exit_price: stock.exitPrice,
+      stop_loss: stock.stopLoss,
+      commissions: stock.commissions || 0,
       number_shares: stock.numberShares,
-      take_profit: toCents(stock.takeProfit),
+      take_profit: stock.takeProfit,
       entry_date: stock.entryDate,
       exit_date: stock.exitDate,
-      user_id: userId,
-    };
+    } as const;
 
     return await (rep as any).mutate.createStock(args);
   };

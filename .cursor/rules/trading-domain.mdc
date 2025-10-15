@@ -2,6 +2,8 @@
 description: Trading domain specific patterns and business logic conventions
 ---
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 # Trading Domain Patterns
 
 ## Core Trading Entities
@@ -93,26 +95,26 @@ export interface Position {
 export abstract class TradingStrategy {
   abstract name: string;
   abstract description: string;
-  
+
   abstract shouldEnter(marketData: MarketData): boolean;
   abstract shouldExit(position: Position, marketData: MarketData): boolean;
   abstract calculatePositionSize(accountValue: number, riskPercent: number): number;
-  
+
   validateEntry(trade: Trade): ValidationResult {
     const errors: string[] = [];
-    
+
     if (!trade.symbol) {
       errors.push('Symbol is required');
     }
-    
+
     if (trade.quantity <= 0) {
       errors.push('Quantity must be positive');
     }
-    
+
     if (trade.price <= 0) {
       errors.push('Price must be positive');
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors
@@ -124,15 +126,15 @@ export abstract class TradingStrategy {
 export class MomentumStrategy extends TradingStrategy {
   name = 'Momentum';
   description = 'Buy on upward momentum, sell on downward momentum';
-  
+
   shouldEnter(marketData: MarketData): boolean {
     return marketData.rsi < 30 && marketData.macd > 0;
   }
-  
+
   shouldExit(position: Position, marketData: MarketData): boolean {
     return marketData.rsi > 70 || marketData.macd < 0;
   }
-  
+
   calculatePositionSize(accountValue: number, riskPercent: number): number {
     return (accountValue * riskPercent) / 100;
   }
@@ -155,7 +157,7 @@ export class PositionSizer {
     const riskPerShare = Math.abs(entryPrice - stopLoss);
     return Math.floor(riskAmount / riskPerShare);
   }
-  
+
   static calculateByVolatility(
     accountValue: number,
     symbol: string,
@@ -166,7 +168,7 @@ export class PositionSizer {
     const volatilityMultiplier = 1 / (volatility / 100);
     return Math.floor(riskAmount * volatilityMultiplier);
   }
-  
+
   static calculateByKelly(
     winRate: number,
     averageWin: number,
@@ -192,25 +194,25 @@ export class RiskCalculator {
     const portfolioValue = positions.reduce((sum, pos) => sum + pos.marketValue, 0);
     const volatility = this.calculatePortfolioVolatility(positions);
     const zScore = this.getZScore(confidenceLevel);
-    
+
     return portfolioValue * volatility * zScore * Math.sqrt(timeHorizon);
   }
-  
+
   static calculateMaxDrawdown(trades: Trade[]): number {
     let peak = 0;
     let maxDrawdown = 0;
     let runningPnL = 0;
-    
+
     for (const trade of trades) {
       runningPnL += trade.realizedPnL || 0;
       peak = Math.max(peak, runningPnL);
       const drawdown = peak - runningPnL;
       maxDrawdown = Math.max(maxDrawdown, drawdown);
     }
-    
+
     return maxDrawdown;
   }
-  
+
   static calculateSharpeRatio(
     returns: number[],
     riskFreeRate: number = 0.02
@@ -218,7 +220,7 @@ export class RiskCalculator {
     const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const excessReturn = avgReturn - riskFreeRate;
     const volatility = this.calculateStandardDeviation(returns);
-    
+
     return volatility > 0 ? excessReturn / volatility : 0;
   }
 }
@@ -232,18 +234,18 @@ export class RiskCalculator {
 export class MarketDataService {
   private cache = new Map<string, MarketData>();
   private cacheTimeout = 60000; // 1 minute
-  
+
   async getRealTimeData(symbol: string): Promise<MarketData> {
     const cached = this.cache.get(symbol);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
       return cached;
     }
-    
+
     const data = await this.fetchFromAPI(symbol);
     this.cache.set(symbol, data);
     return data;
   }
-  
+
   async getHistoricalData(
     symbol: string,
     period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | '10y' | 'ytd' | 'max',
@@ -252,7 +254,7 @@ export class MarketDataService {
     // Implementation for fetching historical data
     return [];
   }
-  
+
   private async fetchFromAPI(symbol: string): Promise<MarketData> {
     // Implementation for real-time data fetching
     return {
@@ -278,20 +280,20 @@ export class TradeAnalytics {
     const closedTrades = trades.filter(t => t.status === 'closed');
     const winningTrades = closedTrades.filter(t => (t.realizedPnL || 0) > 0);
     const losingTrades = closedTrades.filter(t => (t.realizedPnL || 0) < 0);
-    
+
     const totalPnL = closedTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
     const winRate = closedTrades.length > 0 ? winningTrades.length / closedTrades.length : 0;
-    
-    const averageWin = winningTrades.length > 0 
-      ? winningTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0) / winningTrades.length 
+
+    const averageWin = winningTrades.length > 0
+      ? winningTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0) / winningTrades.length
       : 0;
-      
-    const averageLoss = losingTrades.length > 0 
-      ? losingTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0) / losingTrades.length 
+
+    const averageLoss = losingTrades.length > 0
+      ? losingTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0) / losingTrades.length
       : 0;
-    
+
     const profitFactor = averageLoss !== 0 ? Math.abs(averageWin / averageLoss) : 0;
-    
+
     return {
       totalTrades: closedTrades.length,
       winningTrades: winningTrades.length,
@@ -305,17 +307,17 @@ export class TradeAnalytics {
       largestLoss: Math.min(...losingTrades.map(t => t.realizedPnL || 0), 0),
     };
   }
-  
+
   static calculateDrawdowns(trades: Trade[]): DrawdownPeriod[] {
     const drawdowns: DrawdownPeriod[] = [];
     let peak = 0;
     let currentDrawdown = 0;
     let drawdownStart: Date | null = null;
     let runningPnL = 0;
-    
+
     for (const trade of trades) {
       runningPnL += trade.realizedPnL || 0;
-      
+
       if (runningPnL > peak) {
         peak = runningPnL;
         if (currentDrawdown > 0) {
@@ -338,7 +340,7 @@ export class TradeAnalytics {
         }
       }
     }
-    
+
     return drawdowns;
   }
 }
@@ -388,28 +390,28 @@ export class TradeJournalService {
       updatedAt: new Date(),
     };
   }
-  
+
   async analyzeEmotions(entries: TradeJournalEntry[]): Promise<EmotionAnalysis> {
     const emotionCounts = new Map<string, number>();
     const emotionIntensities = new Map<string, number[]>();
-    
+
     for (const entry of entries) {
       for (const emotion of entry.emotions) {
         emotionCounts.set(emotion.type, (emotionCounts.get(emotion.type) || 0) + 1);
-        
+
         if (!emotionIntensities.has(emotion.type)) {
           emotionIntensities.set(emotion.type, []);
         }
         emotionIntensities.get(emotion.type)!.push(emotion.intensity);
       }
     }
-    
+
     const averageIntensities = new Map<string, number>();
     for (const [emotion, intensities] of emotionIntensities) {
       const avg = intensities.reduce((sum, i) => sum + i, 0) / intensities.length;
       averageIntensities.set(emotion, avg);
     }
-    
+
     return {
       totalEntries: entries.length,
       emotionCounts: Object.fromEntries(emotionCounts),

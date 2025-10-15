@@ -2,6 +2,8 @@
 description: Authentication and security patterns for Supabase Auth integration
 ---
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 # Authentication & Security Patterns
 
 ## Authentication Architecture
@@ -146,9 +148,9 @@ interface ProtectedRouteProps {
   redirectTo?: string;
 }
 
-export function ProtectedRoute({ 
-  children, 
-  redirectTo = '/auth/login' 
+export function ProtectedRoute({
+  children,
+  redirectTo = '/auth/login'
 }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -259,12 +261,12 @@ where
     if let Some(claims) = req.downcast_ref::<SupabaseClaims>() {
         return Ok(claims.sub.clone());
     }
-    
+
     // Fallback to Clerk claims
     if let Some(claims) = req.downcast_ref::<ClerkClaims>() {
         return Ok(claims.sub.clone());
     }
-    
+
     Err(TradingError::InsufficientPermissions)
 }
 
@@ -360,13 +362,13 @@ use validator::{Validate, ValidationError};
 pub struct CreateTradeRequest {
     #[validate(length(min = 1, max = 10, message = "Symbol must be 1-10 characters"))]
     pub symbol: String,
-    
+
     #[validate(range(min = 0.01, message = "Quantity must be positive"))]
     pub quantity: f64,
-    
+
     #[validate(range(min = 0.01, message = "Price must be positive"))]
     pub price: f64,
-    
+
     #[validate(custom = "validate_trade_type")]
     pub trade_type: String,
 }
@@ -386,7 +388,7 @@ pub async fn create_trade(
     // Validate input
     req.validate()
         .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
-    
+
     // ... rest of handler
 }
 ```

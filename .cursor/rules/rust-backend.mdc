@@ -1,6 +1,9 @@
 ---
 alwaysApply: true
 ---
+
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 # Rust Backend Patterns
 
 ## Project Structure
@@ -36,16 +39,16 @@ use thiserror::Error;
 pub enum TradingError {
     #[error("Database error: {0}")]
     Database(#[from] libsql::Error),
-    
+
     #[error("Authentication error: {0}")]
     Auth(#[from] AuthError),
-    
+
     #[error("Validation error: {field} - {message}")]
     Validation { field: String, message: String },
-    
+
     #[error("Trade not found: {id}")]
     TradeNotFound { id: String },
-    
+
     #[error("Insufficient permissions")]
     InsufficientPermissions,
 }
@@ -143,9 +146,9 @@ impl Trade {
     ) -> Result<Self> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        
+
         conn.execute(
-            "INSERT INTO trades (id, user_id, symbol, quantity, price, trade_type, status, created_at, updated_at) 
+            "INSERT INTO trades (id, user_id, symbol, quantity, price, trade_type, status, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 id,
@@ -166,7 +169,7 @@ impl Trade {
     pub async fn find_by_id(conn: &libsql::Connection, id: &str) -> Result<Self> {
         let mut stmt = conn.prepare("SELECT * FROM trades WHERE id = ?")?;
         let mut rows = stmt.query([id])?;
-        
+
         if let Some(row) = rows.next()? {
             Ok(Self::from_row(row)?)
         } else {
@@ -182,17 +185,17 @@ impl Trade {
     ) -> Result<Vec<Self>> {
         let limit = limit.unwrap_or(100);
         let offset = offset.unwrap_or(0);
-        
+
         let mut stmt = conn.prepare(
             "SELECT * FROM trades WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )?;
         let mut rows = stmt.query([user_id, limit.to_string(), offset.to_string()])?;
-        
+
         let mut trades = Vec::new();
         while let Some(row) = rows.next()? {
             trades.push(Self::from_row(row)?);
         }
-        
+
         Ok(trades)
     }
 }
@@ -210,7 +213,7 @@ pub async fn create_trade(
     req: web::Json<CreateTradeRequest>,
 ) -> ActixResult<HttpResponse> {
     let user_id = get_user_id(&req)?;
-    
+
     // Get user's database connection
     let conn = app_state
         .get_user_db_connection(&user_id)
@@ -219,7 +222,7 @@ pub async fn create_trade(
 
     // Create trade
     let trade = Trade::create(&conn, &user_id, req.into_inner()).await?;
-    
+
     Ok(HttpResponse::Created().json(ApiResponse::success(trade)))
 }
 
@@ -228,7 +231,7 @@ pub async fn get_trades(
     query: web::Query<TradeQuery>,
 ) -> ActixResult<HttpResponse> {
     let user_id = get_user_id(&query)?;
-    
+
     let conn = app_state
         .get_user_db_connection(&user_id)
         .await?
@@ -240,7 +243,7 @@ pub async fn get_trades(
         query.limit,
         query.offset,
     ).await?;
-    
+
     Ok(HttpResponse::Ok().json(ApiResponse::success(trades)))
 }
 ```

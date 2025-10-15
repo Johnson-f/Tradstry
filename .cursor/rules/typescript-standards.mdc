@@ -3,6 +3,8 @@ globs: *.ts,*.tsx
 description: TypeScript coding standards and conventions for the Tradistry project
 ---
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 # TypeScript Standards & Conventions
 
 ## Configuration
@@ -92,11 +94,11 @@ interface TradingDashboardProps {
 }
 
 // Use React.FC sparingly, prefer direct function declarations
-export function TradingDashboard({ 
-  userId, 
-  initialData = [], 
+export function TradingDashboard({
+  userId,
+  initialData = [],
   onTradeUpdate,
-  className 
+  className
 }: TradingDashboardProps) {
   // implementation
 }
@@ -123,7 +125,7 @@ export function useTradingData(userId: string) {
 
 ### Result Pattern
 ```typescript
-type Result<T, E = Error> = 
+type Result<T, E = Error> =
   | { success: true; data: T }
   | { success: false; error: E };
 
