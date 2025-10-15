@@ -130,6 +130,7 @@ pub async fn generate_patches_from_db_changes(
 
 // Data structures for mutation arguments
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StockData {
     symbol: String,
     trade_type: String,
@@ -145,11 +146,13 @@ struct StockData {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateStockData {
     id: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OptionData {
     symbol: String,
     strategy_type: String,
@@ -169,28 +172,33 @@ struct OptionData {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateOptionData {
     id: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NoteData {
     name: String,
     content: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateNoteData {
     id: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PlaybookData {
     name: String,
     description: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdatePlaybookData {
     id: String,
 }

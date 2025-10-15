@@ -1,6 +1,7 @@
 import { Replicache } from "replicache";
 import { mutators } from "./mutators";
 import { apiConfig, getFullUrl } from "@/lib/config/api";
+import { createClient } from "@/lib/supabase/client";
 
 export const REPLICACHE_CONFIG = {
   pushURL: getFullUrl(apiConfig.endpoints.replicache.push),
@@ -15,6 +16,14 @@ export function createReplicache(userId: string, token: string) {
     pushURL: REPLICACHE_CONFIG.pushURL,
     pullURL: REPLICACHE_CONFIG.pullURL,
     auth: `Bearer ${token}`,
+    getAuth: async () => {
+      try {
+        const { data: { session } } = await createClient().auth.getSession();
+        return session?.access_token ? `Bearer ${session.access_token}` : "";
+      } catch {
+        return "";
+      }
+    },
     mutators,
   });
 }
