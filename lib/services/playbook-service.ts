@@ -3,14 +3,15 @@
  * Bridges the existing setup system with the new playbook database
  */
 
-import { usePlaybookDatabase } from '@/lib/drizzle/playbook';
+import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
 import type { 
   Playbook, 
   NewPlaybook, 
   StockTradePlaybook, 
   TagTradeRequest,
   PlaybookStats,
-  PlaybookWithUsage
+  PlaybookWithUsage,
+  PlaybookFormData
 } from '@/lib/replicache/schemas/playbook';
 import { setupsService } from '@/lib/services/setups-service';
 import type { SetupInDB, SetupCreate, SetupUpdate, SetupCategory } from '@/lib/types/setups';
@@ -84,16 +85,31 @@ export function convertPlaybookToSetup(playbook: Playbook, userId: string): Part
  * Hook for using the playbook service
  */
 export function usePlaybookService(userId: string) {
-  const playbookDb = usePlaybookDatabase(userId);
+  const { playbooks, createPlaybook, updatePlaybook, deletePlaybook, isInitialized } = usePlaybooks(userId);
+
+  // Search playbooks by name
+  const searchPlaybooks = async (searchTerm: string): Promise<Playbook[]> => {
+    if (!playbooks) return [];
+    const lowerSearch = searchTerm.toLowerCase();
+    return playbooks.filter(p => 
+      p.name.toLowerCase().includes(lowerSearch) || 
+      p.description?.toLowerCase().includes(lowerSearch)
+    );
+  };
 
   // Migration function that uses the database operations
   const migrateSetupsToPlaybooksHandler = async (): Promise<Playbook[]> => {
-    return migrateSetupsToPlaybooks(playbookDb.createPlaybook);
+    return migrateSetupsToPlaybooks(createPlaybook);
   };
 
   return {
-    // Direct database operations
-    ...playbookDb,
+    // Direct database operations from Replicache
+    playbooks,
+    createPlaybook,
+    updatePlaybook,
+    deletePlaybook,
+    isInitialized,
+    searchPlaybooks,
     // Migration utilities
     migrateSetupsToPlaybooks: migrateSetupsToPlaybooksHandler,
     convertSetupToPlaybook,

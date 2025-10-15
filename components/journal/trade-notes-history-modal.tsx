@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Edit2, Trash2, Save, X, FileText, Calendar, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useNotesDatabase } from "@/lib/drizzle/notes";
+import { useNotes } from "@/lib/replicache/hooks/use-notes";
 import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
 import {
   DropdownMenu,
@@ -31,66 +31,44 @@ interface EditingNote {
   content: string;
 }
 
+// Helper function to get word count from content
+const getWordCount = (content: string) => {
+  if (!content) return 0;
+  try {
+    const parsed = JSON.parse(content);
+    const text = JSON.stringify(parsed);
+    return text.split(/\s+/).filter(word => word.length > 0).length;
+  } catch {
+    return content.split(/\s+/).filter(word => word.length > 0).length;
+  }
+};
+
 export function TradeNotesHistoryModal({
   open,
   onOpenChange,
   userId,
 }: TradeNotesHistoryModalProps) {
   const { 
-    isInitialized,
-    getAllNotes, 
+    notes: allNotes,
     updateNote, 
     deleteNote,
-    duplicateNote,
-    getStats 
-  } = useNotesDatabase(userId);
+    createNote,
+    isInitialized 
+  } = useNotes(userId);
   
-  const [notes, setNotes] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  // Compute stats from notes
+  const notes = allNotes || [];
+  const stats = {
+    totalNotes: notes.length,
+    totalWords: notes.reduce((sum, note) => sum + getWordCount(note.content || ''), 0),
+    lastUpdated: notes.length > 0 ? notes[0]?.updatedAt : null
+  };
   const [editingNote, setEditingNote] = useState<EditingNote | null>(null);
   const [noteContent, setNoteContent] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  // Load notes
-  const loadNotes = async () => {
-    if (!isInitialized) return;
-    
-    setLoading(true);
-    try {
-      const notesData = await getAllNotes({
-        orderBy: 'updated_at',
-        orderDirection: 'desc',
-        limit: 50
-      });
-      setNotes(notesData);
-    } catch (error) {
-      console.error('Failed to load notes:', error);
-      toast.error('Failed to load notes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load stats
-  const loadStats = async () => {
-    if (!isInitialized) return;
-    
-    try {
-      const statsData = await getStats();
-      setStats(statsData);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (open && isInitialized) {
-      loadNotes();
-      loadStats();
-    }
-  }, [open, isInitialized]);
+  // Notes are automatically loaded via Replicache subscription
 
   // Handle escape key
   useEffect(() => {
@@ -127,8 +105,7 @@ export function TradeNotesHistoryModal({
       toast.success("Note updated successfully");
       setEditingNote(null);
       setNoteContent("");
-      await loadNotes();
-      await loadStats();
+      // Replicache will automatically update via subscription
     } catch (error) {
       toast.error("Failed to update note");
     } finally {
@@ -144,8 +121,7 @@ export function TradeNotesHistoryModal({
         setEditingNote(null);
         setNoteContent("");
       }
-      await loadNotes();
-      await loadStats();
+      // Replicache will automatically update via subscription
     } catch (error) {
       toast.error("Failed to delete note");
     } finally {
@@ -155,10 +131,19 @@ export function TradeNotesHistoryModal({
 
   const handleDuplicate = async (noteId: string) => {
     try {
-      await duplicateNote(noteId);
+      const originalNote = notes.find(n => n.id === noteId);
+      if (!originalNote) {
+        toast.error("Note not found");
+        return;
+      }
+      
+      await createNote({
+        userId,
+        name: `${originalNote.name} (Copy)`,
+        content: originalNote.content,
+      });
       toast.success("Note duplicated successfully");
-      await loadNotes();
-      await loadStats();
+      // Replicache will automatically update via subscription
     } catch (error) {
       toast.error("Failed to duplicate note");
     }
@@ -167,18 +152,6 @@ export function TradeNotesHistoryModal({
   const handleCancel = () => {
     setEditingNote(null);
     setNoteContent("");
-  };
-
-  // Get word count from content
-  const getWordCount = (content: string) => {
-    if (!content) return 0;
-    try {
-      const parsed = JSON.parse(content);
-      const text = JSON.stringify(parsed);
-      return text.split(/\s+/).filter(word => word.length > 0).length;
-    } catch {
-      return content.split(/\s+/).filter(word => word.length > 0).length;
-    }
   };
 
   if (!open) return null;
