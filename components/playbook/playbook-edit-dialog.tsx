@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { usePlaybookService, playbookUtils } from '@/lib/services/playbook-service';
-import type { Playbook, PlaybookFormData } from '@/lib/drizzle/playbook';
+import type { Playbook, PlaybookFormData } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
 

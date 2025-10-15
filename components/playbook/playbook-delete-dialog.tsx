@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { usePlaybookService } from '@/lib/services/playbook-service';
-import type { Playbook } from '@/lib/drizzle/playbook';
+import type { Playbook } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';

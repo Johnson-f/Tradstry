@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
-import { Option, useJournalDatabase } from "@/lib/drizzle/journal";
+import { Option } from "@/lib/replicache/schemas/journal";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useOptions } from "@/lib/replicache/hooks/use-options";
 
 import { AddTradeDialog } from "./add-trade-dialog";
 import { TradeNotesModal } from "./trade-notes-modal";
@@ -226,69 +227,25 @@ const ITEMS_PER_PAGE = 20;
 export function OptionsTable({ className }: OptionsTableProps) {
   const { user } = useAuth();
   const { 
-    getAllOptions, 
+    options, 
     updateOption, 
     deleteOption, 
-    isInitialized, 
-    isInitializing, 
-    error: dbError 
-  } = useJournalDatabase(user?.id || '');
+    isInitialized 
+  } = useOptions(user?.id || '');
   
-  const [options, setOptions] = useState<Option[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
   const [editingOption, setEditingOption] = useState<Option | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [selectedTradeForNotes, setSelectedTradeForNotes] = useState<Option | null>(null);
 
-  // Function to refresh options data
-  const refreshOptions = async () => {
-    if (!user?.id || !isInitialized) return;
-    
-    try {
-      console.log('Refreshing options data...');
-      setIsLoading(true);
-      const data = await getAllOptions();
-      console.log('Options data received:', data);
-      setOptions(data);
-    } catch (error) {
-      console.error('Error refreshing options:', error);
-      setError(error as Error);
-      toast.error('Failed to refresh options');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load options on component mount
-  useEffect(() => {
-    const loadOptions = async () => {
-      if (!user?.id || !isInitialized) return;
-      
-      try {
-        setIsLoading(true);
-        const data = await getAllOptions();
-        setOptions(data);
-      } catch (error) {
-        console.error('Error loading options:', error);
-        setError(error as Error);
-        toast.error('Failed to load options');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadOptions();
-  }, [user?.id, getAllOptions, isInitialized]);
-
-  // Calculate pagination
-  const totalPages = Math.ceil(options.length / ITEMS_PER_PAGE);
+  // Safely calculate pagination
+  const safeOptions = options || [];
+  const totalPages = Math.ceil(safeOptions.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedOptions = options.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedOptions = safeOptions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -310,10 +267,6 @@ export function OptionsTable({ className }: OptionsTableProps) {
       setIsUpdating(true);
       await updateOption(id, data);
       toast.success("Option trade updated successfully", { id: toastId });
-      
-      // Reload options
-      const updatedOptions = await getAllOptions();
-      setOptions(updatedOptions);
     } catch (error) {
       console.error("Error updating option:", error);
       toast.error("Failed to update option trade. Please try again.", { id: toastId });
@@ -367,10 +320,6 @@ export function OptionsTable({ className }: OptionsTableProps) {
         setIsDeleting(true);
         await deleteOption(id);
         toast.success("Option trade deleted successfully", { id: toastId });
-        
-        // Reload options
-        const updatedOptions = await getAllOptions();
-        setOptions(updatedOptions);
       } catch (error) {
         console.error("Error deleting option:", error);
         toast.error("Failed to delete option trade. Please try again.", { id: toastId });
@@ -385,42 +334,26 @@ export function OptionsTable({ className }: OptionsTableProps) {
     setNotesModalOpen(true);
   };
 
-  // Show loading state while database is initializing
-  if (isInitializing) {
+  // Show loading state while Replicache is initializing
+  if (!isInitialized) {
     return (
-      <div className="rounded-md border">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-lg font-semibold">Options Trades</h3>
-        </div>
-        <div className="p-8">
-          <div className="flex items-center justify-center">
-            <div className="text-sm text-muted-foreground">Initializing database...</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state if database initialization failed
-  if (dbError) {
-    return (
-      <div className="rounded-md border">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-lg font-semibold">Options Trades</h3>
-        </div>
-        <div className="p-8">
-          <div className="flex items-center justify-center">
-            <div className="text-sm text-destructive">Database initialization failed: {dbError.message}</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-        Error loading options: {error.message}
+      <div className="space-y-4">
+        <Toaster position="top-right" richColors expand={true} />
+        {Array(5)
+          .fill(0)
+          .map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center space-x-4 p-4 border rounded-lg"
+            >
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-4 w-16 ml-auto" />
+            </div>
+          ))}
       </div>
     );
   }
@@ -431,7 +364,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
       <div className="rounded-md border">
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-lg font-semibold">Options Trades</h3>
-          <AddTradeDialog onTradeAdded={refreshOptions} />
+          <AddTradeDialog />
         </div>
 
         {editingOption && (
@@ -463,55 +396,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {isLoading ? (
-            // Loading skeleton
-            Array.from({ length: 5 }).map((_, i) => (
-              <TableRow key={`skeleton-${i}`}>
-                <TableCell>
-                  <Skeleton className="h-4 w-16" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-20" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-16" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-12 ml-auto" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-12" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-16 ml-auto" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-16 ml-auto" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-16 ml-auto" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-24" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-24" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-16" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-20" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-8 w-8" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-8 w-8" />
-                </TableCell>
-              </TableRow>
-            ))
-          ) : paginatedOptions && paginatedOptions.length > 0 ? (
+          {paginatedOptions && paginatedOptions.length > 0 ? (
             paginatedOptions.map((option) => {
               const isCall = option.optionType === "Call";
               const isOpen = option.status === "open";
@@ -639,7 +524,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
       </Table>
 
       {/* Pagination */}
-      {!isLoading && options.length > ITEMS_PER_PAGE && (
+      {safeOptions.length > ITEMS_PER_PAGE && (
         <div className="flex items-center justify-end space-x-2 py-4">
           <Pagination>
             <PaginationContent>
@@ -686,7 +571,7 @@ export function OptionsTable({ className }: OptionsTableProps) {
           </Pagination>
 
           <div className="text-sm text-muted-foreground">
-            {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, options.length)} of {options.length} trades
+            {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, safeOptions.length)} of {safeOptions.length} trades
           </div>
         </div>
       )}

@@ -24,8 +24,9 @@ import {
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useJournalDatabase, OptionFormData, NewOption } from "@/lib/drizzle/journal";
+import { OptionFormData, NewOption } from "@/lib/replicache/schemas";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useOptions } from "@/lib/replicache/hooks/use-options";
 import { toast } from "sonner";
 
 const optionFormSchema = z.object({
@@ -56,8 +57,8 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading } = useAuth();
   
-  // Get database operations
-  const { insertOption } = useJournalDatabase(user?.id || '');
+  // Use Replicache hook instead of direct database operations
+  const { createOption, isInitialized } = useOptions(user?.id || '');
 
   const form = useForm<OptionFormValues>({
     resolver: zodResolver(optionFormSchema),
@@ -67,9 +68,9 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
       trade_direction: "Bullish",
       number_of_contracts: 1,
       option_type: "Call",
-      strike_price: undefined,
+      strike_price: 0,
       expiration_date: new Date(),
-      entry_price: undefined,
+      entry_price: 0,
       exit_price: undefined,
       total_premium: 0,
       commissions: 0,
@@ -91,10 +92,16 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
       return;
     }
 
+    if (!isInitialized) {
+      toast.info("Please wait while we initialize the database...");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       
-      const payload: Omit<NewOption, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
+      const payload: Omit<NewOption, 'id' | 'createdAt' | 'updatedAt'> = {
+        userId: user.id,
         symbol: data.symbol,
         strategyType: data.strategy_type,
         tradeDirection: data.trade_direction,
@@ -112,10 +119,10 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
         status: data.exit_price ? 'closed' : 'open',
       };
 
-      console.log("Sending option payload to database:", payload);
+      console.log("Sending option payload to Replicache:", payload);
       
-      const response = await insertOption(payload);
-      console.log("Option database response:", response);
+      const response = await createOption(payload);
+      console.log("Replicache Response:", response);
       
       toast.success("Options trade added successfully!");
       
@@ -485,8 +492,8 @@ export function OptionTradeForm({ onSuccess }: OptionTradeFormProps) {
         /> */}
 
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isSubmitting || authLoading}>
-            {isSubmitting ? "Adding..." : "Add Options Trade"}
+          <Button type="submit" disabled={isSubmitting || authLoading || !isInitialized}>
+            {isSubmitting ? "Adding..." : !isInitialized ? "Initializing..." : "Add Options Trade"}
           </Button>
         </div>
       </form>

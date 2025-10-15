@@ -1,6 +1,6 @@
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
-import type { Stock } from '@/lib/drizzle/journal/schema';
+import type { Stock } from '@/lib/replicache/schemas/journal';
 
 export function useStocks(userId: string) {
   const { rep, isInitialized } = useReplicache();

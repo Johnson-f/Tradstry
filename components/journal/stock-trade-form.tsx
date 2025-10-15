@@ -31,19 +31,17 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useJournalDatabase, StockFormData, NewStock } from "@/lib/drizzle/journal";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useStocks } from "@/lib/replicache/hooks/use-stocks";
 
 const stockFormSchema = z.object({
   symbol: z.string().min(1, "Symbol is required"),
-  trade_type: z.enum(["BUY", "SELL"]).default("BUY"),
-  order_type: z
-    .enum(["MARKET", "LIMIT", "STOP", "STOP_LIMIT"])
-    .default("MARKET"),
+  trade_type: z.enum(["BUY", "SELL"]),
+  order_type: z.enum(["MARKET", "LIMIT", "STOP", "STOP_LIMIT"]),
   entry_price: z.number().min(0.0001, "Must be greater than 0"),
   exit_price: z.number().optional(),
   number_shares: z.number().min(0.0001, "Must be greater than 0"),
-  commissions: z.number().min(0, "Cannot be negative").default(0),
+  commissions: z.number().min(0, "Cannot be negative"),
   stop_loss: z.number().min(0.0001, "Must be greater than 0"),
   take_profit: z.number().optional(),
   entry_date: z.date(),
@@ -60,8 +58,8 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading } = useAuth();
   
-  // Get database operations
-  const { insertStock } = useJournalDatabase(user?.id || '');
+  // Use Replicache hook instead of direct database operations
+  const { createStock, isInitialized } = useStocks(user?.id || '');
 
   const form = useForm<StockFormValues>({
     resolver: zodResolver(stockFormSchema),
@@ -110,29 +108,36 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
       return;
     }
 
+    if (!isInitialized) {
+      console.log("Replicache not initialized...");
+      toast.info("Please wait while we initialize the database...");
+      return;
+    }
+
     console.log("User authenticated, submitting form...");
     console.log("User object:", user);
     setIsSubmitting(true);
 
     try {
-      const payload: Omit<NewStock, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
+      const payload = {
         symbol: data.symbol,
         tradeType: data.trade_type,
         orderType: data.order_type,
         entryPrice: data.entry_price,
-        exitPrice: data.exit_price,
+        exitPrice: data.exit_price ?? null,
         stopLoss: data.stop_loss,
-        takeProfit: data.take_profit,
+        takeProfit: data.take_profit ?? null,
         commissions: data.commissions,
         numberShares: data.number_shares,
         entryDate: data.entry_date.toISOString(),
-        exitDate: data.exit_date ? data.exit_date.toISOString() : undefined,
+        exitDate: data.exit_date ? data.exit_date.toISOString() : null,
+        userId: user.id,
       };
 
-      console.log("Sending payload to database:", payload);
+      console.log("Sending payload to Replicache:", payload);
 
-      const response = await insertStock(payload);
-      console.log("Database Response:", response);
+      const response = await createStock(payload);
+      console.log("Replicache Response:", response);
 
       toast.success("Stock trade created successfully!");
       onSuccess?.();
@@ -473,16 +478,17 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
         <div className="flex justify-end pt-4">
           <Button
             type="submit"
-            disabled={isSubmitting || authLoading}
+            disabled={isSubmitting || authLoading || !isInitialized}
             className="w-full sm:w-auto"
             onClick={() => {
               console.log("Save Trade button clicked");
               console.log("isSubmitting:", isSubmitting);
               console.log("authLoading:", authLoading);
+              console.log("isInitialized:", isInitialized);
               console.log("Form state:", form.formState);
             }}
           >
-            {isSubmitting ? "Saving..." : "Save Trade"}
+            {isSubmitting ? "Saving..." : !isInitialized ? "Initializing..." : "Save Trade"}
           </Button>
         </div>
       </form>

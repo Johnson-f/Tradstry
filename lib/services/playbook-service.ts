@@ -7,11 +7,11 @@ import { usePlaybookDatabase } from '@/lib/drizzle/playbook';
 import type { 
   Playbook, 
   NewPlaybook, 
-  PlaybookFormData,
+  StockTradePlaybook, 
   TagTradeRequest,
   PlaybookStats,
   PlaybookWithUsage
-} from '@/lib/drizzle/playbook';
+} from '@/lib/replicache/schemas/playbook';
 import { setupsService } from '@/lib/services/setups-service';
 import type { SetupInDB, SetupCreate, SetupUpdate, SetupCategory } from '@/lib/types/setups';
 

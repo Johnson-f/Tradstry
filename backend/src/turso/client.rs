@@ -135,21 +135,21 @@ impl TursoClient {
             .to_lowercase()           // Convert to lowercase
             .replace("_", "-");        // Replace underscores with dashes
         let db_name = format!("user-{}", sanitized_id);
-        
+
         info!("Generated database name: {}", db_name);
-        
+
         // Create database via Turso API
         let db_info = self.create_database_via_api(&db_name).await?;
-        
+
         // Create auth token for the database
         let token = self.create_database_token(&db_name).await?;
-        
+
         // Construct the database URL
         let db_url = format!("libsql://{}", db_info.hostname);
-        
+
         // Initialize the database schema
         self.initialize_user_database_schema(&db_url, &token).await?;
-        
+
         // Create user database entry
         let user_db_entry = UserDatabaseEntry {
             user_id: user_id.to_string(),
@@ -171,7 +171,7 @@ impl TursoClient {
     /// Create database via Turso API
     async fn create_database_via_api(&self, db_name: &str) -> Result<TursoDatabaseInfo> {
         let url = format!("https://api.turso.tech/v1/organizations/{}/databases", self.config.turso_org);
-        
+
         let mut payload = HashMap::new();
         payload.insert("name", db_name);
         payload.insert("group", "users-group"); // Use users-group for user databases
@@ -186,13 +186,13 @@ impl TursoClient {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            
+
             // Check if the error is because database already exists
             if error_text.contains("already exists") {
                 info!("Database {} already exists, fetching existing info", db_name);
                 return self.get_existing_database_info(db_name).await;
             }
-            
+
             anyhow::bail!("Failed to create database: {}", error_text);
         }
 
@@ -447,11 +447,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on stocks table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_stocks_timestamp 
-            AFTER UPDATE ON stocks 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE stocks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_stocks_timestamp
+            AFTER UPDATE ON stocks
+            FOR EACH ROW
+            BEGIN
+                UPDATE stocks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -460,11 +460,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on options table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_options_timestamp 
-            AFTER UPDATE ON options 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE options SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_options_timestamp
+            AFTER UPDATE ON options
+            FOR EACH ROW
+            BEGIN
+                UPDATE options SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -473,11 +473,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on user_profile table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_user_profile_timestamp 
-            AFTER UPDATE ON user_profile 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE user_profile SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_user_profile_timestamp
+            AFTER UPDATE ON user_profile
+            FOR EACH ROW
+            BEGIN
+                UPDATE user_profile SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -486,11 +486,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on trade_notes table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_trade_notes_timestamp 
-            AFTER UPDATE ON trade_notes 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE trade_notes SET updated_at = datetime('now') WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_trade_notes_timestamp
+            AFTER UPDATE ON trade_notes
+            FOR EACH ROW
+            BEGIN
+                UPDATE trade_notes SET updated_at = datetime('now') WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -543,11 +543,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on images table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_images_timestamp 
-            AFTER UPDATE ON images 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE images SET updated_at = datetime('now') WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_images_timestamp
+            AFTER UPDATE ON images
+            FOR EACH ROW
+            BEGIN
+                UPDATE images SET updated_at = datetime('now') WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -627,11 +627,11 @@ impl TursoClient {
         // Create trigger to update the updated_at timestamp on playbook table
         conn.execute(
             r#"
-            CREATE TRIGGER IF NOT EXISTS update_playbook_timestamp 
-            AFTER UPDATE ON playbook 
-            FOR EACH ROW 
-            BEGIN 
-                UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id; 
+            CREATE TRIGGER IF NOT EXISTS update_playbook_timestamp
+            AFTER UPDATE ON playbook
+            FOR EACH ROW
+            BEGIN
+                UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id;
             END
             "#,
             libsql::params![],
@@ -703,8 +703,8 @@ impl TursoClient {
         let conn = self.get_registry_connection().await?;
 
         conn.execute(
-            "INSERT OR REPLACE INTO user_databases 
-             (user_id, email, db_name, db_url, db_token, created_at, updated_at) 
+            "INSERT OR REPLACE INTO user_databases
+             (user_id, email, db_name, db_url, db_token, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
             libsql::params![
                 entry.user_id.as_str(),
@@ -771,7 +771,7 @@ impl TursoClient {
     }
 
     /// Get current schema version from the application
-    /// Always update the version number when a new table is added, modified or deleted 
+    /// Always update the version number when a new table is added, modified or deleted
     pub fn get_current_schema_version() -> SchemaVersion {
         SchemaVersion {
             version: "0.0.5".to_string(),
@@ -1061,16 +1061,16 @@ impl TursoClient {
             }
 
             let current_version = current_version.unwrap();
-            
+
             // Compare versions
             if current_version.version != expected_version.version {
-                info!("Schema version mismatch: current={}, expected={}", 
+                info!("Schema version mismatch: current={}, expected={}",
                       current_version.version, expected_version.version);
-                
+
                 // Apply schema migrations
                 self.apply_schema_migrations(&conn, &expected_schema).await?;
                 self.update_schema_version(&conn, &expected_version).await?;
-                
+
                 info!("Schema synchronized successfully for user: {}", user_id);
             } else {
                 info!("Schema is up to date for user: {}", user_id);
@@ -1170,11 +1170,16 @@ impl TursoClient {
     /// Create a table based on schema definition
     async fn create_table(&self, conn: &Connection, table_schema: &TableSchema) -> Result<()> {
         let mut create_sql = format!("CREATE TABLE IF NOT EXISTS {} (", table_schema.name);
-        
+
+        let primary_keys: Vec<String> = table_schema.columns.iter()
+            .filter(|col| col.is_primary_key)
+            .map(|col| col.name.clone())
+            .collect();
+
         let column_definitions: Vec<String> = table_schema.columns.iter().map(|col| {
             let mut def = format!("{} {}", col.name, col.data_type);
-            
-            if col.is_primary_key {
+
+            if col.is_primary_key && primary_keys.len() == 1 {
                 if col.data_type.to_uppercase().contains("INTEGER") {
                     def.push_str(" PRIMARY KEY AUTOINCREMENT");
                 } else {
@@ -1183,15 +1188,20 @@ impl TursoClient {
             } else if !col.is_nullable {
                 def.push_str(" NOT NULL");
             }
-            
+
             if let Some(default) = &col.default_value {
                 def.push_str(&format!(" DEFAULT {}", default));
             }
-            
+
             def
         }).collect();
 
         create_sql.push_str(&column_definitions.join(", "));
+
+        if primary_keys.len() > 1 {
+            create_sql.push_str(&format!(", PRIMARY KEY ({})", primary_keys.join(", ")));
+        }
+
         create_sql.push_str(")");
 
         info!("Creating table with SQL: {}", create_sql);
@@ -1206,27 +1216,27 @@ impl TursoClient {
     async fn update_table_schema(&self, conn: &Connection, table_schema: &TableSchema) -> Result<()> {
         // Get current columns
         let current_columns = self.get_table_columns(conn, &table_schema.name).await?;
-        
+
         // Check for missing columns and add them
         for expected_col in &table_schema.columns {
             if !current_columns.iter().any(|col| col.name == expected_col.name) {
                 info!("Adding missing column {} to table {}", expected_col.name, table_schema.name);
-                
-                let mut alter_sql = format!("ALTER TABLE {} ADD COLUMN {}", 
+
+                let mut alter_sql = format!("ALTER TABLE {} ADD COLUMN {}",
                                           table_schema.name, expected_col.name);
                 alter_sql.push_str(&format!(" {}", expected_col.data_type));
-                
+
                 if !expected_col.is_nullable {
                     alter_sql.push_str(" NOT NULL");
                 }
-                
+
                 if let Some(default) = &expected_col.default_value {
                     alter_sql.push_str(&format!(" DEFAULT {}", default));
                 }
 
                 conn.execute(&alter_sql, libsql::params![])
                     .await
-                    .context(format!("Failed to add column {} to table {}", 
+                    .context(format!("Failed to add column {} to table {}",
                                    expected_col.name, table_schema.name))?;
             }
         }

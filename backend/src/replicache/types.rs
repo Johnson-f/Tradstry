@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 // Push Request from client to server
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PushRequest {
+    #[serde(rename = "clientGroupID")]
     pub client_group_id: String,
     pub mutations: Vec<Mutation>,
 }
@@ -11,6 +12,7 @@ pub struct PushRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Mutation {
     pub id: u64,
+    #[serde(rename = "clientID")]
     pub client_id: String,
     pub name: String,
     pub args: serde_json::Value,
@@ -20,6 +22,7 @@ pub struct Mutation {
 // Pull Request from client to server
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PullRequest {
+    #[serde(rename = "clientGroupID")]
     pub client_group_id: String,
     pub cookie: Option<u64>,
 }
@@ -28,6 +31,7 @@ pub struct PullRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PullResponse {
     pub cookie: u64,
+    #[serde(rename = "lastMutationIDChanges")]
     pub last_mutation_id_changes: std::collections::HashMap<String, u64>,
     pub patch: Vec<PatchOperation>,
 }
@@ -52,9 +56,13 @@ pub enum PatchOp {
 // Client state tracking
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientState {
+    #[serde(rename = "clientGroupID")]
     pub client_group_id: String,
+    #[serde(rename = "clientID")]
     pub client_id: String,
+    #[serde(rename = "lastMutationID")]
     pub last_mutation_id: u64,
+    #[serde(rename = "lastModifiedVersion")]
     pub last_modified_version: u64,
     pub user_id: String,
     pub created_at: DateTime<Utc>,
