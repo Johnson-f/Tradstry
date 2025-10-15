@@ -146,6 +146,7 @@
         "npm:lodash@^4.17.21",
         "npm:lowlight@^3.3.0",
         "npm:lucide-react@0.544",
+        "npm:nanoid@^5.1.6",
         "npm:next-themes@~0.4.6",
         "npm:next@latest",
         "npm:novel@^1.0.2",

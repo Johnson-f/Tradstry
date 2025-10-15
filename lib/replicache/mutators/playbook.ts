@@ -1,11 +1,12 @@
 import type { WriteTransaction } from 'replicache';
+import type { Playbook, NewPlaybook } from '@/lib/replicache/schemas/playbook';
+import { nanoid } from 'nanoid';
 
-export async function createPlaybook(tx: WriteTransaction, playbook: any) {
-  console.log('createPlaybook mutator called with args:', playbook);
-  const id = Date.now().toString();
+export async function createPlaybook(tx: WriteTransaction, playbook: Omit<NewPlaybook, 'id' | 'createdAt' | 'updatedAt'>) {
+  const id = nanoid();
   const now = new Date().toISOString();
   
-  const newPlaybook = {
+  const newPlaybook: Playbook = {
     ...playbook,
     id,
     createdAt: now,
@@ -16,12 +17,11 @@ export async function createPlaybook(tx: WriteTransaction, playbook: any) {
   return newPlaybook;
 }
 
-export async function updatePlaybook(tx: WriteTransaction, { id, updates }: { id: string; updates: any }) {
-  console.log('updatePlaybook mutator called with args:', id, updates);
-  const existing = await tx.get(`playbook/${id}`);
+export async function updatePlaybook(tx: WriteTransaction, { id, updates }: { id: string; updates: Partial<Playbook> }) {
+  const existing = await tx.get(`playbook/${id}`) as Playbook | undefined;
   if (!existing) throw new Error('Playbook not found');
 
-  const updated = {
+  const updated: Playbook = {
     ...existing,
     ...updates,
     updatedAt: new Date().toISOString(),
@@ -32,6 +32,5 @@ export async function updatePlaybook(tx: WriteTransaction, { id, updates }: { id
 }
 
 export async function deletePlaybook(tx: WriteTransaction, id: string) {
-  console.log('deletePlaybook mutator called with id:', id);
   await tx.del(`playbook/${id}`);
 }

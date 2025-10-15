@@ -1,10 +1,12 @@
 import type { WriteTransaction } from 'replicache';
+import type { Note, NewNote } from '@/lib/replicache/schemas/notes';
+import { nanoid } from 'nanoid';
 
-export async function createNote(tx: WriteTransaction, note: any) {
-  const id = Date.now().toString();
+export async function createNote(tx: WriteTransaction, note: Omit<NewNote, 'id' | 'createdAt' | 'updatedAt'>) {
+  const id = nanoid();
   const now = new Date().toISOString();
   
-  const newNote = {
+  const newNote: Note = {
     ...note,
     id,
     createdAt: now,
@@ -15,11 +17,11 @@ export async function createNote(tx: WriteTransaction, note: any) {
   return newNote;
 }
 
-export async function updateNote(tx: WriteTransaction, { id, updates }: { id: string; updates: any }) {
-  const existing = await tx.get(`note/${id}`);
+export async function updateNote(tx: WriteTransaction, { id, updates }: { id: string; updates: Partial<Note> }) {
+  const existing = await tx.get(`note/${id}`) as Note | undefined;
   if (!existing) throw new Error('Note not found');
 
-  const updated = {
+  const updated: Note = {
     ...existing,
     ...updates,
     updatedAt: new Date().toISOString(),
