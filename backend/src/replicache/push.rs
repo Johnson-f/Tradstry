@@ -1,37 +1,10 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use std::sync::Arc;
-use crate::turso::{TursoClient, config::SupabaseConfig};
+use crate::turso::{TursoClient, get_supabase_user_id, SupabaseClaims};
 use crate::replicache::{PushRequest, Mutation, MutationResult, MutationError};
 use crate::replicache::client_state::{update_client_mutation_id, increment_space_version};
 use crate::replicache::transform::{apply_mutation_to_db};
 use libsql::params;
-
-
-fn extract_token_from_request(req: &HttpRequest) -> Option<String> {
-    req.headers()
-        .get("Authorization")
-        .and_then(|header| header.to_str().ok())
-        .and_then(|header| {
-            if header.starts_with("Bearer ") {
-                Some(header[7..].to_string())
-            } else {
-                None
-            }
-        })
-}
-
-async fn get_authenticated_user(
-    req: &HttpRequest,
-    supabase_config: &SupabaseConfig,
-) -> Result<crate::turso::config::SupabaseClaims, actix_web::Error> {
-    let token = extract_token_from_request(req)
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing or invalid authorization header"))?;
-    
-    // Validate JWT token with Supabase
-    crate::turso::auth::validate_supabase_jwt_token(&token, supabase_config)
-        .await
-        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid JWT token"))
-}
 
 async fn get_user_db_connection(
     user_id: &str,
@@ -59,11 +32,12 @@ pub async fn handle_push(
     req: HttpRequest,
     payload: web::Json<PushRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
 ) -> ActixResult<HttpResponse> {
-    // 1. Authenticate user
-    let claims = get_authenticated_user(&req, &supabase_config).await?;
-    let user_id = &claims.sub;
+    // 1. Get user from middleware (already authenticated)
+    let claims = req.extensions()
+        .get::<SupabaseClaims>()
+        .ok_or_else(|| actix_web::error::ErrorUnauthorized("No authentication claims found"))?;
+    let user_id = get_supabase_user_id(claims);
     
     // 2. Get user database connection
     let conn = get_user_db_connection(user_id, &turso_client).await?;
