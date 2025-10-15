@@ -5,6 +5,8 @@ description: Project structure and architecture guidelines for Tradistry trading
 
 # Tradstry Project Structure & Architecture
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models 
+
 ## Overview
 Tradistry is a full-stack trading journal and analytics platform with a multi-tenant architecture where each user gets their own isolated database.
 

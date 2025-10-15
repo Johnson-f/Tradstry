@@ -1,46 +1,42 @@
 import type { WriteTransaction } from 'replicache';
-import type { Stock, NewStock } from '@/lib/replicache/schemas/journal';
+import type { Stock } from '@/lib/replicache/schemas/journal';
 
 export async function createStock(
   tx: WriteTransaction,
   args: {
     symbol: string;
-    trade_type: Stock['tradeType'];
-    order_type: Stock['orderType'];
-    entry_price: number; // cents
-    exit_price: number | null; // cents
-    stop_loss: number; // cents
-    commissions: number; // cents
-    number_shares: number;
-    take_profit: number | null; // cents
-    entry_date: string;
-    exit_date: string | null;
-    user_id: string;
+    tradeType: Stock['tradeType'];
+    orderType: Stock['orderType'];
+    entryPrice: number; // dollars
+    exitPrice: number | null; // dollars
+    stopLoss: number; // dollars
+    commissions: number; // dollars
+    numberShares: number;
+    takeProfit: number | null; // dollars
+    entryDate: string;
+    exitDate: string | null;
+    user_id?: string; // Optional - will be set by server
   }
 ) {
-  // Convert cents back to floats for local cache display
-  const fromCents = (value: number | null): number | null => {
-    if (value === null) return null;
-    return value / 100;
-  };
-
   // Store locally with a temporary ID
   const tempId = Date.now();
   const now = new Date().toISOString();
+  
+  // Note: userId will be set properly when the server responds with the actual record
   const newStock: Stock = {
     id: tempId,
-    userId: args.user_id,
+    userId: '', // Will be set from server response
     symbol: args.symbol,
-    tradeType: args.trade_type,
-    orderType: args.order_type,
-    entryPrice: fromCents(args.entry_price)!,
-    exitPrice: fromCents(args.exit_price),
-    stopLoss: fromCents(args.stop_loss)!,
-    commissions: fromCents(args.commissions) || 0,
-    numberShares: args.number_shares,
-    takeProfit: fromCents(args.take_profit),
-    entryDate: args.entry_date,
-    exitDate: args.exit_date,
+    tradeType: args.tradeType,
+    orderType: args.orderType,
+    entryPrice: args.entryPrice,
+    exitPrice: args.exitPrice,
+    stopLoss: args.stopLoss,
+    commissions: args.commissions || 0,
+    numberShares: args.numberShares,
+    takeProfit: args.takeProfit,
+    entryDate: args.entryDate,
+    exitDate: args.exitDate,
     createdAt: now,
     updatedAt: now,
   };

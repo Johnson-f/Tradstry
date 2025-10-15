@@ -3,6 +3,8 @@ alwaysApply: true
 ---
 # React & Next.js Patterns
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 ## Component Structure
 
 ### Component Organization
@@ -26,22 +28,22 @@ export function TradingDashboard({ userId, initialData = [], className }: Tradin
   // Hooks at the top
   const router = useRouter();
   const { trades, loading, error, refetch } = useTradingData(userId);
-  
+
   // State
   const [selectedTrade, setSelectedTrade] = useState<TradeData | null>(null);
-  
+
   // Effects
   useEffect(() => {
     if (error) {
       toast.error('Failed to load trades');
     }
   }, [error]);
-  
+
   // Event handlers
   const handleTradeSelect = (trade: TradeData) => {
     setSelectedTrade(trade);
   };
-  
+
   // Render
   return (
     <div className={cn("trading-dashboard", className)}>
@@ -137,7 +139,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateTrade = useCallback((id: string, updates: Partial<TradeData>) => {
-    setTrades(prev => prev.map(trade => 
+    setTrades(prev => prev.map(trade =>
       trade.id === id ? { ...trade, ...updates } : trade
     ));
   }, []);
@@ -215,7 +217,7 @@ export function TradeForm({ onSubmit }: { onSubmit: (data: TradeFormData) => voi
         />
         {errors.symbol && <span className="error-text">{errors.symbol.message}</span>}
       </div>
-      
+
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Creating...' : 'Create Trade'}
       </Button>
@@ -237,7 +239,7 @@ export default function TradesPage() {
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-8">Trades</h1>
-      
+
       <Suspense fallback={<TradesListSkeleton />}>
         <TradesList />
       </Suspense>
@@ -257,7 +259,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -276,14 +278,14 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
     const trade = await tradingService.createTrade(user.id, body);
-    
+
     return NextResponse.json({ trade }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
@@ -347,7 +349,7 @@ interface TradesListProps {
 
 export function TradesList({ children }: TradesListProps) {
   const { trades, loading, error } = useTrades();
-  
+
   return <>{children(trades, loading, error)}</>;
 }
 

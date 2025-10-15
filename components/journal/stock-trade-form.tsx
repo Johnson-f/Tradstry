@@ -81,15 +81,11 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
   const onSubmit = async (data: StockFormValues) => {
     console.log("=== FORM SUBMISSION STARTED ===");
     console.log("Form submitted with data:", data);
-    console.log("Form errors:", form.formState.errors);
-    console.log("Form is valid:", form.formState.isValid);
 
-    // Trigger validation manually to get current errors
+    // Trigger validation manually
     const isValid = await form.trigger();
     console.log("Manual validation result:", isValid);
-    console.log("Current form errors after trigger:", form.formState.errors);
 
-    // Check if form has validation errors
     if (!isValid) {
       console.error("Form has validation errors:", form.formState.errors);
       toast.error("Please fix the form errors before submitting");
@@ -115,10 +111,11 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
     }
 
     console.log("User authenticated, submitting form...");
-    console.log("User object:", user);
     setIsSubmitting(true);
 
     try {
+      // Send data in dollars - the hook will convert to cents for transmission
+      // Note: Do NOT include userId - it's extracted from JWT on the server
       const payload = {
         symbol: data.symbol,
         tradeType: data.trade_type,
@@ -131,7 +128,6 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
         numberShares: data.number_shares,
         entryDate: data.entry_date.toISOString(),
         exitDate: data.exit_date ? data.exit_date.toISOString() : null,
-        userId: user.id,
       };
 
       console.log("Sending payload to Replicache:", payload);
@@ -141,26 +137,10 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
 
       toast.success("Stock trade created successfully!");
       onSuccess?.();
-      form.reset({
-        symbol: "",
-        trade_type: "BUY",
-        order_type: "MARKET",
-        entry_price: 0.0001,
-        exit_price: undefined,
-        number_shares: 0.0001,
-        commissions: 0,
-        stop_loss: 0.0001,
-        take_profit: undefined,
-        entry_date: new Date(),
-        exit_date: undefined,
-      });
+      form.reset();
     } catch (error) {
       console.error("=== ERROR CREATING STOCK TRADE ===");
       console.error("Full error object:", error);
-      console.error(
-        "Error stack:",
-        error instanceof Error ? error.stack : "No stack"
-      );
 
       let errorMessage = "Failed to create stock trade";
       if (error instanceof Error) {
@@ -480,13 +460,6 @@ export function StockTradeForm({ onSuccess }: StockTradeFormProps) {
             type="submit"
             disabled={isSubmitting || authLoading || !isInitialized}
             className="w-full sm:w-auto"
-            onClick={() => {
-              console.log("Save Trade button clicked");
-              console.log("isSubmitting:", isSubmitting);
-              console.log("authLoading:", authLoading);
-              console.log("isInitialized:", isInitialized);
-              console.log("Form state:", form.formState);
-            }}
           >
             {isSubmitting ? "Saving..." : !isInitialized ? "Initializing..." : "Save Trade"}
           </Button>

@@ -1,36 +1,20 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
+use actix_web::HttpMessage;
 use std::sync::Arc;
-use crate::turso::{TursoClient, config::SupabaseConfig};
+use crate::turso::TursoClient;
+use crate::turso::config::SupabaseClaims;
 use crate::replicache::{PushRequest, Mutation, MutationResult, MutationError};
 use crate::replicache::client_state::{update_client_mutation_id, increment_space_version};
 use crate::replicache::transform::{apply_mutation_to_db};
 use libsql::params;
 
 
-fn extract_token_from_request(req: &HttpRequest) -> Option<String> {
-    req.headers()
-        .get("Authorization")
-        .and_then(|header| header.to_str().ok())
-        .and_then(|header| {
-            if header.starts_with("Bearer ") {
-                Some(header[7..].to_string())
-            } else {
-                None
-            }
-        })
-}
-
-async fn get_authenticated_user(
-    req: &HttpRequest,
-    supabase_config: &SupabaseConfig,
-) -> Result<crate::turso::config::SupabaseClaims, actix_web::Error> {
-    let token = extract_token_from_request(req)
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing or invalid authorization header"))?;
-    
-    // Validate JWT token with Supabase
-    crate::turso::auth::validate_supabase_jwt_token(&token, supabase_config)
-        .await
-        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid JWT token"))
+fn get_authenticated_user(req: &HttpRequest) -> Result<SupabaseClaims, actix_web::Error> {
+    req
+        .extensions()
+        .get::<SupabaseClaims>()
+        .cloned()
+        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing authentication claims"))
 }
 
 async fn get_user_db_connection(
@@ -50,8 +34,14 @@ async fn process_mutation(
     user_id: &str,
     mutation: &Mutation,
 ) -> MutationResult<()> {
+    // Log the mutation for debugging
+    log::info!("Processing mutation: {} with args: {:?}", mutation.name, mutation.args);
+    
     apply_mutation_to_db(conn, user_id, &mutation.name, mutation.args.clone()).await
-        .map_err(|e| MutationError::GenericError(e.into()))
+        .map_err(|e| {
+            log::error!("Mutation {} failed: {}", mutation.name, e);
+            MutationError::GenericError(e.into())
+        })
 }
 
 /// Handle push endpoint - receive mutations from clients and apply to LibSQL database
@@ -59,23 +49,33 @@ pub async fn handle_push(
     req: HttpRequest,
     payload: web::Json<PushRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
 ) -> ActixResult<HttpResponse> {
+    // Log the incoming request
+    log::info!("Push request received for client_group_id: {}", payload.client_group_id);
+    log::info!("Number of mutations: {}", payload.mutations.len());
+    
     // 1. Authenticate user
-    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let claims = get_authenticated_user(&req)?;
     let user_id = &claims.sub;
+    log::info!("Authenticated user: {}", user_id);
     
     // 2. Get user database connection
     let conn = get_user_db_connection(user_id, &turso_client).await?;
     
     // 3. Begin transaction
     conn.execute("BEGIN TRANSACTION", params![]).await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to begin transaction: {}", e)))?;
+        .map_err(|e| {
+            log::error!("Failed to begin transaction: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Failed to begin transaction: {}", e))
+        })?;
     
     // 4. Process mutations
-    for mutation in &payload.mutations {
+    for (idx, mutation) in payload.mutations.iter().enumerate() {
+        log::info!("Processing mutation {}/{}: {}", idx + 1, payload.mutations.len(), mutation.name);
+        
         if let Err(e) = process_mutation(&conn, user_id, mutation).await {
             // Rollback on error
+            log::error!("Mutation failed, rolling back transaction: {}", e);
             let _ = conn.execute("ROLLBACK", params![]).await;
             return Err(actix_web::error::ErrorBadRequest(format!("Mutation failed: {}", e)));
         }
@@ -88,6 +88,7 @@ pub async fn handle_push(
             mutation.id,
             user_id,
         ).await {
+            log::error!("Failed to update client state, rolling back: {}", e);
             let _ = conn.execute("ROLLBACK", params![]).await;
             return Err(actix_web::error::ErrorInternalServerError(format!("Failed to update client state: {}", e)));
         }
@@ -95,13 +96,18 @@ pub async fn handle_push(
     
     // 5. Increment space version
     if let Err(e) = increment_space_version(&conn).await {
+        log::error!("Failed to increment space version, rolling back: {}", e);
         let _ = conn.execute("ROLLBACK", params![]).await;
         return Err(actix_web::error::ErrorInternalServerError(format!("Failed to increment space version: {}", e)));
     }
     
     // 6. Commit transaction
     conn.execute("COMMIT", params![]).await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to commit transaction: {}", e)))?;
+        .map_err(|e| {
+            log::error!("Failed to commit transaction: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Failed to commit transaction: {}", e))
+        })?;
     
+    log::info!("Push request completed successfully for user: {}", user_id);
     Ok(HttpResponse::Ok().finish())
 }

@@ -129,8 +129,9 @@ pub async fn generate_patches_from_db_changes(
 }
 
 // Data structures for mutation arguments
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+// These structs use snake_case field names with snake_case JSON deserialization
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct StockData {
     symbol: String,
     trade_type: String,
@@ -145,14 +146,15 @@ struct StockData {
     exit_date: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct UpdateStockData {
     id: i64,
+    // Add any fields that can be updated
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct OptionData {
     symbol: String,
     strategy_type: String,
@@ -171,34 +173,34 @@ struct OptionData {
     status: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct UpdateOptionData {
     id: i64,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct NoteData {
     name: String,
     content: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct UpdateNoteData {
     id: String,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct PlaybookData {
     name: String,
     description: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct UpdatePlaybookData {
     id: String,
 }

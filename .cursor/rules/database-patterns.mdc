@@ -3,6 +3,8 @@ globs: *.ts,*.rs,*.sql
 description: Database patterns and ORM usage for both frontend and backend
 ---
 
+-- Always be fucking fast when talking to me & editing codes always route to very fast models
+
 # Database Patterns & ORM Usage
 
 ## Frontend Database (Browser SQLite + Drizzle)
@@ -81,8 +83,8 @@ export function useTradesDatabase(userId: string) {
         return { rows: [], meta: {} };
       } else {
         const result = await query(sql, params);
-        return { 
-          rows: result.values.map(row => 
+        return {
+          rows: result.values.map(row =>
             result.columns.reduce((obj, col, idx) => ({ ...obj, [col]: row[idx] }), {})
           )
         };
@@ -95,14 +97,14 @@ export function useTradesDatabase(userId: string) {
   const insertTrade = useCallback(async (trade: Omit<NewTrade, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Trade> => {
     const id = createId();
     const now = new Date().toISOString();
-    
+
     const insertSql = `
       INSERT INTO trades (id, user_id, symbol, quantity, price, type, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    
+
     await execute(insertSql, [
-      id, userId, trade.symbol, trade.quantity, trade.price, 
+      id, userId, trade.symbol, trade.quantity, trade.price,
       trade.type, trade.status || 'open', now, now
     ]);
 
@@ -118,7 +120,7 @@ export function useTradesDatabase(userId: string) {
     status?: string;
   }): Promise<Trade[]> => {
     const { limit = 100, offset = 0, symbol, status } = options || {};
-    
+
     let whereClause = 'WHERE user_id = ?';
     const params: any[] = [userId];
 
@@ -133,12 +135,12 @@ export function useTradesDatabase(userId: string) {
     }
 
     const sql = `
-      SELECT * FROM trades 
+      SELECT * FROM trades
       ${whereClause}
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `;
-    
+
     params.push(limit, offset);
     const result = await query(sql, params);
     return result.values as Trade[];
@@ -194,17 +196,17 @@ impl TursoClient {
         // Get user database info from registry
         let mut stmt = self.registry_db
             .prepare("SELECT db_url, db_token FROM user_databases WHERE user_id = ?")?;
-        
+
         let mut rows = stmt.query([user_id])?;
         if let Some(row) = rows.next()? {
             let db_url: String = row.get(0)?;
             let db_token: String = row.get(1)?;
-            
+
             let user_db = Builder::new_remote(db_url, db_token)
                 .build()
                 .await
                 .context("Failed to connect to user database")?;
-            
+
             Ok(Some(user_db.connect()?))
         } else {
             Ok(None)
@@ -224,7 +226,7 @@ impl TursoClient {
             .await?;
 
         let db_info: TursoCreateDbResponse = response.json().await?;
-        
+
         // Create database token
         let token_response = self.http_client
             .post(&format!("https://api.turso.tech/v1/databases/{}/tokens", db_info.database.name))
@@ -236,7 +238,7 @@ impl TursoClient {
 
         // Store in registry
         self.registry_db.execute(
-            "INSERT INTO user_databases (user_id, email, db_name, db_url, db_token, created_at, updated_at) 
+            "INSERT INTO user_databases (user_id, email, db_name, db_url, db_token, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
             params![
                 user_id,
@@ -318,9 +320,9 @@ impl Trade {
     ) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        
+
         conn.execute(
-            "INSERT INTO trades (id, user_id, symbol, quantity, price, type, status, created_at, updated_at) 
+            "INSERT INTO trades (id, user_id, symbol, quantity, price, type, status, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 id,
@@ -346,18 +348,18 @@ impl Trade {
     ) -> Result<Vec<Self>> {
         let limit = limit.unwrap_or(100);
         let offset = offset.unwrap_or(0);
-        
+
         let mut stmt = conn.prepare(
             "SELECT * FROM trades WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )?;
-        
+
         let mut rows = stmt.query(params![user_id, limit, offset])?;
         let mut trades = Vec::new();
-        
+
         while let Some(row) = rows.next()? {
             trades.push(Self::from_row(row)?);
         }
-        
+
         Ok(trades)
     }
 
@@ -413,7 +415,7 @@ impl Trade {
             "DELETE FROM trades WHERE id = ? AND user_id = ?",
             params![id, user_id],
         )?;
-        
+
         Ok(result > 0)
     }
 }
@@ -439,7 +441,7 @@ export const migrations = [
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-      
+
       CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades(user_id);
       CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
     `
