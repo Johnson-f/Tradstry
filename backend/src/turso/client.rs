@@ -774,8 +774,8 @@ impl TursoClient {
     /// Always update the version number when a new table is added, modified or deleted
     pub fn get_current_schema_version() -> SchemaVersion {
         SchemaVersion {
-            version: "0.0.5".to_string(),
-            description: "Trading schema with stocks, options, trade_notes, images, user_profile, playbook tables, Replicache client tracking, and version columns for LWW conflict resolution".to_string(),
+            version: "0.0.6".to_string(),
+            description: "Trading schema with stocks, options, trade_notes, images, user_profile, playbook tables, Replicache client tracking, version columns for LWW conflict resolution, and soft delete support".to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -802,12 +802,14 @@ impl TursoClient {
                     ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_stocks_symbol".to_string(), table_name: "stocks".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
                     IndexInfo { name: "idx_stocks_trade_type".to_string(), table_name: "stocks".to_string(), columns: vec!["trade_type".to_string()], is_unique: false },
                     IndexInfo { name: "idx_stocks_entry_date".to_string(), table_name: "stocks".to_string(), columns: vec!["entry_date".to_string()], is_unique: false },
                     IndexInfo { name: "idx_stocks_exit_date".to_string(), table_name: "stocks".to_string(), columns: vec!["exit_date".to_string()], is_unique: false },
+                    IndexInfo { name: "idx_stocks_is_deleted".to_string(), table_name: "stocks".to_string(), columns: vec!["is_deleted".to_string()], is_unique: false },
                 ],
                 triggers: vec![
                     TriggerInfo { name: "update_stocks_timestamp".to_string(), table_name: "stocks".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE stocks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },
@@ -836,6 +838,7 @@ impl TursoClient {
                     ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                     ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+                    ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ],
                 indexes: vec![
                     IndexInfo { name: "idx_options_symbol".to_string(), table_name: "options".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
@@ -846,6 +849,7 @@ impl TursoClient {
                     IndexInfo { name: "idx_options_entry_date".to_string(), table_name: "options".to_string(), columns: vec!["entry_date".to_string()], is_unique: false },
                     IndexInfo { name: "idx_options_exit_date".to_string(), table_name: "options".to_string(), columns: vec!["exit_date".to_string()], is_unique: false },
                     IndexInfo { name: "idx_options_expiration_date".to_string(), table_name: "options".to_string(), columns: vec!["expiration_date".to_string()], is_unique: false },
+                    IndexInfo { name: "idx_options_is_deleted".to_string(), table_name: "options".to_string(), columns: vec!["is_deleted".to_string()], is_unique: false },
                 ],
                 triggers: vec![
                     TriggerInfo { name: "update_options_timestamp".to_string(), table_name: "options".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE options SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },

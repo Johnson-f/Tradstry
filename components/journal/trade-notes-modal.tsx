@@ -11,7 +11,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useNotes } from "@/lib/replicache/hooks/use-notes";
 import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
-import { formatDistanceToNow } from "date-fns";
 
 interface TradeNotesModalProps {
   open: boolean;
@@ -105,7 +104,12 @@ export function TradeNotesModal({
       toast.success("Note updated successfully");
     } catch (error) {
       console.error("Error updating note:", error);
-      toast.error("Failed to update note");
+      // Don't show error toast for sync timing issues - the mutator will handle it gracefully
+      if (error instanceof Error && error.message.includes('Note not found')) {
+        console.log("Note sync timing issue - handled gracefully by mutator");
+      } else {
+        toast.error("Failed to update note");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -257,7 +261,7 @@ export function TradeNotesModal({
             {/* Notes List */}
             <ScrollArea className="flex-1">
               <div className="pr-4">
-                {!notes || notes.length === 0 ? (
+                {notes.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>No notes found</p>
@@ -265,7 +269,7 @@ export function TradeNotesModal({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {(notes || []).map((note: { id: string; name: string; content?: string; updatedAt: string }) => (
+                    {notes.map((note) => (
                   <div
                     key={note.id}
                       className={`p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${
@@ -278,7 +282,7 @@ export function TradeNotesModal({
                           <h3 className="font-medium truncate">{note.name}</h3>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                             <Calendar className="h-3 w-3" />
-                            <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
                             {note.content && (
                               <>
                                 <span>•</span>

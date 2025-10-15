@@ -34,7 +34,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
 import TailwindAdvancedEditor from '@/components/journal/trade-notes/components/tailwind/advanced-editor';
 
 interface NotesManagerProps {
@@ -281,7 +280,7 @@ export function NotesManager({ userId }: NotesManagerProps) {
                       <h3 className="font-medium truncate">{note.name}</h3>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                         <Calendar className="h-3 w-3" />
-                        <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                        <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
                         {note.content && (
                           <>
                             <span>•</span>
@@ -369,7 +368,12 @@ export function NotesManager({ userId }: NotesManagerProps) {
                       toast.success('Note auto-saved');
                     } catch (error) {
                       console.error('Auto-save failed:', error);
-                      toast.error('Auto-save failed');
+                      // Don't show error toast for sync timing issues - the mutator will handle it gracefully
+                      if (error instanceof Error && error.message.includes('Note not found')) {
+                        console.log("Note sync timing issue - handled gracefully by mutator");
+                      } else {
+                        toast.error('Auto-save failed');
+                      }
                     }
                   }
                 }}

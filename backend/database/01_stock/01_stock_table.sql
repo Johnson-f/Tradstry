@@ -46,4 +46,12 @@ CREATE POLICY "Users can delete own stocks" ON public.stocks
 
 
 -- New columns added
--- ALTER TABLE public.stocks ADD COLUMN status character varying DEFAULT 'open';
+
+-- Add is_deleted column to stocks table for soft delete functionality
+ALTER TABLE stocks ADD COLUMN is_deleted INTEGER DEFAULT 0;
+
+-- Create index for better performance on soft delete queries
+CREATE INDEX IF NOT EXISTS idx_stocks_is_deleted ON stocks(is_deleted);
+
+-- Update existing records to have is_deleted = 0 (not deleted)
+UPDATE stocks SET is_deleted = 0 WHERE is_deleted IS NULL;

@@ -110,6 +110,18 @@ pub async fn apply_mutation_to_db(
             delete_playbook_in_db(conn, user_id, id).await?;
         }
         
+        // Trade-Playbook association mutations
+        "tagTrade" => {
+            let tag_data = serde_json::from_value::<TagTradeData>(mutation_args)
+                .context("Failed to parse tagTrade arguments")?;
+            tag_trade_in_db(conn, user_id, tag_data).await?;
+        }
+        "untagTrade" => {
+            let untag_data = serde_json::from_value::<UntagTradeData>(mutation_args)
+                .context("Failed to parse untagTrade arguments")?;
+            untag_trade_in_db(conn, user_id, untag_data).await?;
+        }
+        
         _ => {
             return Err(anyhow::anyhow!("Unknown mutation: {}", mutation_name));
         }
@@ -222,6 +234,20 @@ struct UpdatePlaybookData {
     id: String,
 }
 
+#[derive(serde::Deserialize, Debug)]
+struct TagTradeData {
+    trade_id: i64,
+    trade_type: String,
+    setup_id: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct UntagTradeData {
+    trade_id: i64,
+    trade_type: String,
+    setup_id: String,
+}
+
 // Database row structures
 #[derive(Debug)]
 struct StockRow {
@@ -240,6 +266,7 @@ struct StockRow {
     created_at: String,
     updated_at: String,
     version: u64,
+    is_deleted: i64,
 }
 
 #[derive(Debug)]
@@ -263,6 +290,7 @@ struct OptionRow {
     created_at: String,
     updated_at: String,
     version: u64,
+    is_deleted: i64,
 }
 
 #[derive(Debug)]
@@ -326,7 +354,7 @@ async fn update_stock_in_db(conn: &Connection, _user_id: &str, update_data: Upda
 }
 
 async fn delete_stock_in_db(conn: &Connection, _user_id: &str, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM stocks WHERE id = ?", params![id]).await?;
+    conn.execute("UPDATE stocks SET is_deleted = 1 WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
@@ -374,7 +402,7 @@ async fn update_option_in_db(conn: &Connection, _user_id: &str, update_data: Upd
 }
 
 async fn delete_option_in_db(conn: &Connection, _user_id: &str, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM options WHERE id = ?", params![id]).await?;
+    conn.execute("UPDATE options SET is_deleted = 1 WHERE id = ?", params![id]).await?;
     Ok(())
 }
 
@@ -452,16 +480,62 @@ async fn delete_playbook_in_db(conn: &Connection, _user_id: &str, id: &str) -> R
     Ok(())
 }
 
+async fn tag_trade_in_db(conn: &Connection, _user_id: &str, tag_data: TagTradeData) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    
+    match tag_data.trade_type.as_str() {
+        "stock" => {
+            conn.execute(
+                "INSERT OR IGNORE INTO stock_trade_playbook (stock_trade_id, setup_id, created_at) VALUES (?, ?, ?)",
+                params![tag_data.trade_id, tag_data.setup_id, now],
+            ).await.context("Failed to tag stock trade")?;
+        }
+        "option" => {
+            conn.execute(
+                "INSERT OR IGNORE INTO option_trade_playbook (option_trade_id, setup_id, created_at) VALUES (?, ?, ?)",
+                params![tag_data.trade_id, tag_data.setup_id, now],
+            ).await.context("Failed to tag option trade")?;
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Invalid trade type: {}", tag_data.trade_type));
+        }
+    }
+    
+    Ok(())
+}
+
+async fn untag_trade_in_db(conn: &Connection, _user_id: &str, untag_data: UntagTradeData) -> Result<()> {
+    match untag_data.trade_type.as_str() {
+        "stock" => {
+            conn.execute(
+                "DELETE FROM stock_trade_playbook WHERE stock_trade_id = ? AND setup_id = ?",
+                params![untag_data.trade_id, untag_data.setup_id],
+            ).await.context("Failed to untag stock trade")?;
+        }
+        "option" => {
+            conn.execute(
+                "DELETE FROM option_trade_playbook WHERE option_trade_id = ? AND setup_id = ?",
+                params![untag_data.trade_id, untag_data.setup_id],
+            ).await.context("Failed to untag option trade")?;
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Invalid trade type: {}", untag_data.trade_type));
+        }
+    }
+    
+    Ok(())
+}
+
 async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<StockRow>> {
     // If this is the initial sync (cookie == 0), return all rows
     let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
         (
-            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks ORDER BY created_at ASC",
+            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version, is_deleted FROM stocks WHERE is_deleted = 0 ORDER BY created_at ASC",
             vec![],
         )
     } else {
         (
-            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC",
+            "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version, is_deleted FROM stocks WHERE version > ? AND is_deleted = 0 ORDER BY version ASC",
             vec![Value::Integer(from_version as i64)],
         )
     };
@@ -487,6 +561,7 @@ async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64
             created_at: row.get(12)?,
             updated_at: row.get(13)?,
             version: row.get::<i64>(14)? as u64,
+            is_deleted: row.get(15)?,
         });
     }
     
@@ -496,12 +571,12 @@ async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64
 async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<OptionRow>> {
     let (sql, params): (&str, Vec<Value>) = if from_version == 0 {
         (
-            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options ORDER BY created_at ASC",
+            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version, is_deleted FROM options WHERE is_deleted = 0 ORDER BY created_at ASC",
             vec![],
         )
     } else {
         (
-            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC",
+            "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version, is_deleted FROM options WHERE version > ? AND is_deleted = 0 ORDER BY version ASC",
             vec![Value::Integer(from_version as i64)],
         )
     };
@@ -531,6 +606,7 @@ async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u6
             created_at: row.get(16)?,
             updated_at: row.get(17)?,
             version: row.get::<i64>(18)? as u64,
+            is_deleted: row.get(19)?,
         });
     }
     
