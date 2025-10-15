@@ -1,15 +1,45 @@
 use anyhow::{Result, Context};
-use serde_json::Value;
-use libsql::{Connection, params};
+use serde_json::Value as JsonValue;
+use libsql::{Connection, params, Row, Value};
 use chrono::Utc;
 use super::types::Patch;
+
+/// Helper function to safely get a numeric value as f64
+fn get_numeric_as_f64(row: &Row, index: i32) -> Result<f64> {
+    match row.get_value(index)? {
+        Value::Null => Ok(0.0),
+        Value::Integer(i) => Ok(i as f64),
+        Value::Real(r) => Ok(r),
+        Value::Text(t) => t.parse::<f64>()
+            .context(format!("Failed to parse text as f64: {}", t)),
+        Value::Blob(_) => anyhow::bail!("Cannot convert blob to f64"),
+    }
+}
+
+/// Helper function to safely get an optional numeric value as Option<f64>
+fn get_optional_numeric_as_f64(row: &Row, index: i32) -> Result<Option<f64>> {
+    match row.get_value(index)? {
+        Value::Null => Ok(None),
+        Value::Integer(i) => Ok(Some(i as f64)),
+        Value::Real(r) => Ok(Some(r)),
+        Value::Text(t) => {
+            if t.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(t.parse::<f64>()
+                    .context(format!("Failed to parse text as f64: {}", t))?))
+            }
+        },
+        Value::Blob(_) => anyhow::bail!("Cannot convert blob to f64"),
+    }
+}
 
 /// Apply a mutation to the database based on mutation name and arguments
 pub async fn apply_mutation_to_db(
     conn: &Connection,
     user_id: &str,
     mutation_name: &str,
-    mutation_args: Value,
+    mutation_args: JsonValue,
 ) -> Result<()> {
     match mutation_name {
         // Stock mutations
@@ -129,9 +159,8 @@ pub async fn generate_patches_from_db_changes(
 }
 
 // Data structures for mutation arguments
-// These structs use snake_case field names with snake_case JSON deserialization
+// Replicache sends these in snake_case, so we accept snake_case directly
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct StockData {
     symbol: String,
     trade_type: String,
@@ -147,14 +176,11 @@ struct StockData {
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct UpdateStockData {
     id: i64,
-    // Add any fields that can be updated
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct OptionData {
     symbol: String,
     strategy_type: String,
@@ -174,33 +200,28 @@ struct OptionData {
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct UpdateOptionData {
     id: i64,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct NoteData {
     name: String,
     content: Option<String>,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct UpdateNoteData {
     id: String,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct PlaybookData {
     name: String,
     description: Option<String>,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "snake_case")]
 struct UpdatePlaybookData {
     id: String,
 }
@@ -300,7 +321,6 @@ async fn update_stock_in_db(conn: &Connection, _user_id: &str, update_data: Upda
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // For now, just update the timestamp and version
     conn.execute(
         "UPDATE stocks SET updated_at = ?, version = ? WHERE id = ?",
         params![now, version, update_data.id],
@@ -349,7 +369,6 @@ async fn update_option_in_db(conn: &Connection, _user_id: &str, update_data: Upd
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // For now, just update the timestamp and version
     conn.execute(
         "UPDATE options SET updated_at = ?, version = ? WHERE id = ?",
         params![now, version, update_data.id],
@@ -387,7 +406,6 @@ async fn update_note_in_db(conn: &Connection, _user_id: &str, update_data: Updat
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // For now, just update the timestamp and version
     conn.execute(
         "UPDATE trade_notes SET updated_at = ?, version = ? WHERE id = ?",
         params![now, version, update_data.id],
@@ -425,7 +443,6 @@ async fn update_playbook_in_db(conn: &Connection, _user_id: &str, update_data: U
     let now = Utc::now().to_rfc3339();
     let version = get_next_version(conn).await?;
     
-    // For now, just update the timestamp and version
     conn.execute(
         "UPDATE playbook SET updated_at = ?, version = ? WHERE id = ?",
         params![now, version, update_data.id],
@@ -440,8 +457,10 @@ async fn delete_playbook_in_db(conn: &Connection, _user_id: &str, id: &str) -> R
 }
 
 async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<StockRow>> {
-    let stmt = conn.prepare("SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(params![from_version]).await?;
+    let stmt = conn.prepare(
+        "SELECT id, symbol, trade_type, order_type, entry_price, exit_price, stop_loss, commissions, number_shares, take_profit, entry_date, exit_date, created_at, updated_at, version FROM stocks WHERE version > ? ORDER BY version ASC"
+    ).await?;
+    let mut rows = stmt.query(params![from_version as i64]).await?;
     let mut stocks = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -450,17 +469,17 @@ async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64
             symbol: row.get(1)?,
             trade_type: row.get(2)?,
             order_type: row.get(3)?,
-            entry_price: row.get(4)?,
-            exit_price: row.get(5)?,
-            stop_loss: row.get(6)?,
-            commissions: row.get(7)?,
-            number_shares: row.get(8)?,
-            take_profit: row.get(9)?,
+            entry_price: get_numeric_as_f64(&row, 4)?,
+            exit_price: get_optional_numeric_as_f64(&row, 5)?,
+            stop_loss: get_numeric_as_f64(&row, 6)?,
+            commissions: get_numeric_as_f64(&row, 7)?,
+            number_shares: get_numeric_as_f64(&row, 8)?,
+            take_profit: get_optional_numeric_as_f64(&row, 9)?,
             entry_date: row.get(10)?,
             exit_date: row.get(11)?,
             created_at: row.get(12)?,
             updated_at: row.get(13)?,
-            version: row.get(14)?,
+            version: row.get::<i64>(14)? as u64,
         });
     }
     
@@ -468,8 +487,10 @@ async fn get_changed_stocks(conn: &Connection, _user_id: &str, from_version: u64
 }
 
 async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<OptionRow>> {
-    let stmt = conn.prepare("SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(params![from_version]).await?;
+    let stmt = conn.prepare(
+        "SELECT id, symbol, strategy_type, trade_direction, number_of_contracts, option_type, strike_price, expiration_date, entry_price, exit_price, total_premium, commissions, implied_volatility, entry_date, exit_date, status, created_at, updated_at, version FROM options WHERE version > ? ORDER BY version ASC"
+    ).await?;
+    let mut rows = stmt.query(params![from_version as i64]).await?;
     let mut options = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -480,19 +501,19 @@ async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u6
             trade_direction: row.get(3)?,
             number_of_contracts: row.get(4)?,
             option_type: row.get(5)?,
-            strike_price: row.get(6)?,
+            strike_price: get_numeric_as_f64(&row, 6)?,
             expiration_date: row.get(7)?,
-            entry_price: row.get(8)?,
-            exit_price: row.get(9)?,
-            total_premium: row.get(10)?,
-            commissions: row.get(11)?,
-            implied_volatility: row.get(12)?,
+            entry_price: get_numeric_as_f64(&row, 8)?,
+            exit_price: get_optional_numeric_as_f64(&row, 9)?,
+            total_premium: get_numeric_as_f64(&row, 10)?,
+            commissions: get_numeric_as_f64(&row, 11)?,
+            implied_volatility: get_numeric_as_f64(&row, 12)?,
             entry_date: row.get(13)?,
             exit_date: row.get(14)?,
             status: row.get(15)?,
             created_at: row.get(16)?,
             updated_at: row.get(17)?,
-            version: row.get(18)?,
+            version: row.get::<i64>(18)? as u64,
         });
     }
     
@@ -500,8 +521,10 @@ async fn get_changed_options(conn: &Connection, _user_id: &str, from_version: u6
 }
 
 async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<NoteRow>> {
-    let stmt = conn.prepare("SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(params![from_version]).await?;
+    let stmt = conn.prepare(
+        "SELECT id, name, content, created_at, updated_at, version FROM trade_notes WHERE version > ? ORDER BY version ASC"
+    ).await?;
+    let mut rows = stmt.query(params![from_version as i64]).await?;
     let mut notes = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -511,7 +534,7 @@ async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64)
             content: row.get(2)?,
             created_at: row.get(3)?,
             updated_at: row.get(4)?,
-            version: row.get(5)?,
+            version: row.get::<i64>(5)? as u64,
         });
     }
     
@@ -519,8 +542,10 @@ async fn get_changed_notes(conn: &Connection, _user_id: &str, from_version: u64)
 }
 
 async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: u64) -> Result<Vec<PlaybookRow>> {
-    let stmt = conn.prepare("SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC").await?;
-    let mut rows = stmt.query(params![from_version]).await?;
+    let stmt = conn.prepare(
+        "SELECT id, name, description, created_at, updated_at, version FROM playbook WHERE version > ? ORDER BY version ASC"
+    ).await?;
+    let mut rows = stmt.query(params![from_version as i64]).await?;
     let mut playbooks = Vec::new();
     
     while let Some(row) = rows.next().await? {
@@ -530,7 +555,7 @@ async fn get_changed_playbooks(conn: &Connection, _user_id: &str, from_version: 
             description: row.get(2)?,
             created_at: row.get(3)?,
             updated_at: row.get(4)?,
-            version: row.get(5)?,
+            version: row.get::<i64>(5)? as u64,
         });
     }
     
@@ -542,18 +567,18 @@ fn stock_to_patch(stock: StockRow) -> Result<Patch> {
     let value = serde_json::json!({
         "id": stock.id,
         "symbol": stock.symbol,
-        "trade_type": stock.trade_type,
-        "order_type": stock.order_type,
-        "entry_price": stock.entry_price,
-        "exit_price": stock.exit_price,
-        "stop_loss": stock.stop_loss,
+        "tradeType": stock.trade_type,
+        "orderType": stock.order_type,
+        "entryPrice": stock.entry_price,
+        "exitPrice": stock.exit_price,
+        "stopLoss": stock.stop_loss,
         "commissions": stock.commissions,
-        "number_shares": stock.number_shares,
-        "take_profit": stock.take_profit,
-        "entry_date": stock.entry_date,
-        "exit_date": stock.exit_date,
-        "created_at": stock.created_at,
-        "updated_at": stock.updated_at,
+        "numberShares": stock.number_shares,
+        "takeProfit": stock.take_profit,
+        "entryDate": stock.entry_date,
+        "exitDate": stock.exit_date,
+        "createdAt": stock.created_at,
+        "updatedAt": stock.updated_at,
         "version": stock.version,
     });
     
@@ -569,22 +594,22 @@ fn option_to_patch(option: OptionRow) -> Result<Patch> {
     let value = serde_json::json!({
         "id": option.id,
         "symbol": option.symbol,
-        "strategy_type": option.strategy_type,
-        "trade_direction": option.trade_direction,
-        "number_of_contracts": option.number_of_contracts,
-        "option_type": option.option_type,
-        "strike_price": option.strike_price,
-        "expiration_date": option.expiration_date,
-        "entry_price": option.entry_price,
-        "exit_price": option.exit_price,
-        "total_premium": option.total_premium,
+        "strategyType": option.strategy_type,
+        "tradeDirection": option.trade_direction,
+        "numberOfContracts": option.number_of_contracts,
+        "optionType": option.option_type,
+        "strikePrice": option.strike_price,
+        "expirationDate": option.expiration_date,
+        "entryPrice": option.entry_price,
+        "exitPrice": option.exit_price,
+        "totalPremium": option.total_premium,
         "commissions": option.commissions,
-        "implied_volatility": option.implied_volatility,
-        "entry_date": option.entry_date,
-        "exit_date": option.exit_date,
+        "impliedVolatility": option.implied_volatility,
+        "entryDate": option.entry_date,
+        "exitDate": option.exit_date,
         "status": option.status,
-        "created_at": option.created_at,
-        "updated_at": option.updated_at,
+        "createdAt": option.created_at,
+        "updatedAt": option.updated_at,
         "version": option.version,
     });
     
@@ -601,8 +626,8 @@ fn note_to_patch(note: NoteRow) -> Result<Patch> {
         "id": note.id,
         "name": note.name,
         "content": note.content,
-        "created_at": note.created_at,
-        "updated_at": note.updated_at,
+        "createdAt": note.created_at,
+        "updatedAt": note.updated_at,
         "version": note.version,
     });
     
@@ -619,8 +644,8 @@ fn playbook_to_patch(playbook: PlaybookRow) -> Result<Patch> {
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
-        "created_at": playbook.created_at,
-        "updated_at": playbook.updated_at,
+        "createdAt": playbook.created_at,
+        "updatedAt": playbook.updated_at,
         "version": playbook.version,
     });
     
@@ -636,8 +661,8 @@ async fn get_next_version(conn: &Connection) -> Result<u64> {
     let mut rows = stmt.query(params![]).await?;
     
     if let Some(row) = rows.next().await? {
-        let version: u64 = row.get(0)?;
-        Ok(version + 1)
+        let version: i64 = row.get(0)?;
+        Ok(version as u64 + 1)
     } else {
         Ok(1)
     }

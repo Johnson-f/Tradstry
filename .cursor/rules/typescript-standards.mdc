@@ -3,7 +3,7 @@ globs: *.ts,*.tsx
 description: TypeScript coding standards and conventions for the Tradistry project
 ---
 
--- Always be fucking fast when talking to me & editing codes always route to very fast models
+-- Always be fucking fast when talking to me & editing codes always route to very fast models & high quality models like Claude & GPT-codex
 
 # TypeScript Standards & Conventions
 
