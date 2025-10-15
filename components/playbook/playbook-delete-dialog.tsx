@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { usePlaybookService } from '@/lib/services/playbook-service';
+import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
 import type { Playbook } from '@/lib/replicache/schemas/playbook';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
@@ -32,7 +32,7 @@ export function PlaybookDeleteDialog({
   onPlaybookDeleted,
 }: PlaybookDeleteDialogProps) {
   const { userId } = useUserProfile();
-  const playbookService = usePlaybookService(userId);
+  const { deletePlaybook } = usePlaybooks(userId);
   
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,15 +44,10 @@ export function PlaybookDeleteDialog({
     setError(null);
 
     try {
-      const success = await playbookService.deletePlaybook(playbook.id);
-      
-      if (success) {
-        onPlaybookDeleted(playbook.id);
-        onOpenChange(false);
-        toast.success('Playbook deleted successfully');
-      } else {
-        throw new Error('Failed to delete playbook');
-      }
+      await deletePlaybook(playbook.id);
+      onPlaybookDeleted(playbook.id);
+      onOpenChange(false);
+      toast.success('Playbook deleted successfully');
     } catch (error) {
       console.error('Error deleting playbook:', error);
       toast.error('Failed to delete playbook');

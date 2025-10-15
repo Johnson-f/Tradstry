@@ -288,14 +288,14 @@ async fn create_user_database_internal(
         Some(existing_db) => {
             info!("Database already exists for user: {}, checking schema version", user_id);
             
-            // Synchronize schema for existing database
-            match turso_client.sync_user_database_schema(user_id).await {
+            // Ensure schema is up-to-date for existing database (adds missing columns like stocks.version)
+            match turso_client.ensure_user_schema_on_login(user_id).await {
                 Ok(_) => {
-                    info!("Schema synchronized successfully for existing user: {}", user_id);
+                    info!("Schema ensured successfully for existing user: {}", user_id);
                     schema_synced = true;
                 }
                 Err(e) => {
-                    warn!("Failed to synchronize schema for user {}: {}", user_id, e);
+                    warn!("Failed to ensure schema for user {}: {}", user_id, e);
                     // Continue anyway, as the database exists and is functional
                 }
             }
