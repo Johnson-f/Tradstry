@@ -43,7 +43,6 @@ export type StatusEnum = typeof Status[keyof typeof Status];
 // Type inference for inserts and selects
 export type Stock = {
   id: number;
-  userId: string;
   symbol: string;
   tradeType: TradeTypeEnum;
   orderType: OrderTypeEnum;
@@ -63,7 +62,6 @@ export type NewStock = Omit<Stock, 'id' | 'createdAt' | 'updatedAt'>;
 
 export type Option = {
   id: number;
-  userId: string;
   symbol: string;
   strategyType: string;
   tradeDirection: TradeDirectionEnum;

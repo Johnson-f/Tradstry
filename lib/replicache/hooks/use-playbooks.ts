@@ -14,7 +14,6 @@ export function usePlaybooks(userId: string) {
       
       return list
         .map(([_, value]) => value as any)
-        .filter(playbook => playbook.userId === userId)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );

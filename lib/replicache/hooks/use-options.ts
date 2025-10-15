@@ -15,7 +15,6 @@ export function useOptions(userId: string) {
       
       return list
         .map(([_, value]) => value as Option)
-        .filter(option => option.userId === userId)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );

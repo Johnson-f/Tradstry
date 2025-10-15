@@ -14,7 +14,6 @@ export function useNotes(userId: string) {
       
       return list
         .map(([_, value]) => value as any)
-        .filter(note => note.userId === userId)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );

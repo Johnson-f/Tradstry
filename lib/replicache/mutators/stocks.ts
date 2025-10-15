@@ -25,7 +25,6 @@ export async function createStock(
   // Note: userId will be set properly when the server responds with the actual record
   const newStock: Stock = {
     id: tempId,
-    userId: '', // Will be set from server response
     symbol: args.symbol,
     tradeType: args.tradeType,
     orderType: args.orderType,
