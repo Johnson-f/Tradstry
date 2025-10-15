@@ -11,7 +11,7 @@ actix-cors = "0.7"
 actix-multipart = "0.6"
 
 # HTTP client for Turso API calls and Supabase JWT validation
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls-webpki-roots"] }
 
 # Authentication & JWT - Updated for Supabase
 # jsonwebtoken = "9.3.0" # Removed for Supabase JWT validation

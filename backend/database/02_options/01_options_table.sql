@@ -46,3 +46,14 @@ CREATE POLICY "Users can update own options" ON public.options
 -- Policy for authenticated users to delete only their own option records
 CREATE POLICY "Users can delete own options" ON public.options
     FOR DELETE USING (auth.uid() = user_id);
+
+-- New columns added
+
+-- Add is_deleted column to options table for soft delete functionality
+ALTER TABLE options ADD COLUMN is_deleted INTEGER DEFAULT 0;
+
+-- Create index for better performance on soft delete queries
+CREATE INDEX IF NOT EXISTS idx_options_is_deleted ON options(is_deleted);
+
+-- Update existing records to have is_deleted = 0 (not deleted)
+UPDATE options SET is_deleted = 0 WHERE is_deleted IS NULL;

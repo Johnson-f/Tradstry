@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Edit2, Trash2, Save, X, FileText, Calendar, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
 import { useNotes } from "@/lib/replicache/hooks/use-notes";
 import TailwindAdvancedEditor from "@/components/journal/trade-notes/components/tailwind/advanced-editor";
 import {
@@ -107,7 +106,13 @@ export function TradeNotesHistoryModal({
       setNoteContent("");
       // Replicache will automatically update via subscription
     } catch (error) {
-      toast.error("Failed to update note");
+      console.error("Error updating note:", error);
+      // Don't show error toast for sync timing issues - the mutator will handle it gracefully
+      if (error instanceof Error && error.message.includes('Note not found')) {
+        console.log("Note sync timing issue - handled gracefully by mutator");
+      } else {
+        toast.error("Failed to update note");
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -214,7 +219,7 @@ export function TradeNotesHistoryModal({
                 <Badge variant="secondary">{stats.totalWords} words</Badge>
                 {stats.lastUpdated && (
                   <Badge variant="outline">
-                    Updated {formatDistanceToNow(new Date(stats.lastUpdated), { addSuffix: true })}
+                    Updated {new Date(stats.lastUpdated).toLocaleDateString()}
                   </Badge>
                 )}
               </div>
@@ -223,7 +228,7 @@ export function TradeNotesHistoryModal({
             {/* Notes List */}
             <ScrollArea className="flex-1">
               <div className="pr-4">
-                {loading ? (
+                {!isInitialized ? (
                   <div className="space-y-2">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="p-3 border rounded-lg">
@@ -255,7 +260,7 @@ export function TradeNotesHistoryModal({
                             <h3 className="font-medium truncate">{note.name}</h3>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                               <Calendar className="h-3 w-3" />
-                              <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                              <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
                               {note.content && (
                                 <>
                                   <span>•</span>
