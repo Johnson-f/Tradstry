@@ -1,31 +1,48 @@
 import type { WriteTransaction } from 'replicache';
 import type { Stock, NewStock } from '@/lib/replicache/schemas/journal';
 
-export async function createStock(tx: WriteTransaction, stock: Omit<NewStock, 'id' | 'createdAt' | 'updatedAt'>) {
-  // The backend will handle ID generation and timestamps
-  // We just pass the data through
-  // The mutation name and args will be sent to the backend
-  const mutationArgs = {
-    symbol: stock.symbol,
-    trade_type: stock.tradeType,
-    order_type: stock.orderType,
-    entry_price: stock.entryPrice,
-    exit_price: stock.exitPrice,
-    stop_loss: stock.stopLoss,
-    commissions: stock.commissions || 0,
-    number_shares: stock.numberShares,
-    take_profit: stock.takeProfit,
-    entry_date: stock.entryDate,
-    exit_date: stock.exitDate,
+export async function createStock(
+  tx: WriteTransaction,
+  args: {
+    symbol: string;
+    trade_type: Stock['tradeType'];
+    order_type: Stock['orderType'];
+    entry_price: number; // cents
+    exit_price: number | null; // cents
+    stop_loss: number; // cents
+    commissions: number; // cents
+    number_shares: number;
+    take_profit: number | null; // cents
+    entry_date: string;
+    exit_date: string | null;
+    user_id: string;
+  }
+) {
+  // Convert cents back to floats for local cache display
+  const fromCents = (value: number | null): number | null => {
+    if (value === null) return null;
+    return value / 100;
   };
 
   // Store locally with a temporary ID
   const tempId = Date.now();
+  const now = new Date().toISOString();
   const newStock: Stock = {
-    ...stock,
     id: tempId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    userId: args.user_id,
+    symbol: args.symbol,
+    tradeType: args.trade_type,
+    orderType: args.order_type,
+    entryPrice: fromCents(args.entry_price)!,
+    exitPrice: fromCents(args.exit_price),
+    stopLoss: fromCents(args.stop_loss)!,
+    commissions: fromCents(args.commissions) || 0,
+    numberShares: args.number_shares,
+    takeProfit: fromCents(args.take_profit),
+    entryDate: args.entry_date,
+    exitDate: args.exit_date,
+    createdAt: now,
+    updatedAt: now,
   };
 
   await tx.put(`stock/${tempId}`, newStock);

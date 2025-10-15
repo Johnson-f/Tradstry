@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { ReactNode, useState } from "react";
 import { Toaster } from "sonner";
 import { ReplicacheProvider } from "@/lib/replicache";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -33,6 +34,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname.startsWith("/auth");
   const isLandingPage = pathname === "/";
+  const { isAuthenticated } = useAuth();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -43,9 +45,13 @@ export function Providers({ children }: { children: ReactNode }) {
         disableTransitionOnChange
         forcedTheme={isAuthPage || isLandingPage ? "light" : undefined}
       >
-        <ReplicacheProvider>
-          {children}
-        </ReplicacheProvider>
+        {!isAuthPage && !isLandingPage ? (
+          <ReplicacheProvider>
+            {children}
+          </ReplicacheProvider>
+        ) : (
+          <>{children}</>
+        )}
         <Toaster position="top-right" duration={5000} />
       </ThemeProvider>
     </QueryClientProvider>

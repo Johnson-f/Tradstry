@@ -16,7 +16,7 @@ pub struct Mutation {
     pub client_id: String,
     pub name: String,
     pub args: serde_json::Value,
-    pub timestamp: i64,
+    pub timestamp: f64,
 }
 
 // Pull Request from client to server

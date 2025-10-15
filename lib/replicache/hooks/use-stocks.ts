@@ -24,7 +24,27 @@ export function useStocks(userId: string) {
 
   const createStock = async (stock: Omit<Stock, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.createStock(stock);
+    const toCents = (value: number | null | undefined): number | null => {
+      if (value === null || value === undefined) return null;
+      return Math.round(value * 100);
+    };
+
+    const args = {
+      symbol: stock.symbol,
+      trade_type: stock.tradeType,
+      order_type: stock.orderType,
+      entry_price: toCents(stock.entryPrice)!,
+      exit_price: toCents(stock.exitPrice),
+      stop_loss: toCents(stock.stopLoss)!,
+      commissions: toCents(stock.commissions || 0)!,
+      number_shares: stock.numberShares,
+      take_profit: toCents(stock.takeProfit),
+      entry_date: stock.entryDate,
+      exit_date: stock.exitDate,
+      user_id: userId,
+    };
+
+    return await (rep as any).mutate.createStock(args);
   };
 
   const updateStock = async (id: number, updates: Partial<Stock>) => {
