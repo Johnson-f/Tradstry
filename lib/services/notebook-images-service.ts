@@ -23,14 +23,10 @@ class NotebookImagesService {
   }
 
   async getImageUrl(imageId: string): Promise<string> {
-    const response = await fetch(`/api/notebook/images/${imageId}`);
-
-    if (!response.ok) {
-      throw new Error('Failed to get image URL');
-    }
-
-    const data = await response.json();
-    return data.url;
+    // Return the API proxy URL directly instead of fetching from Supabase
+    // This avoids CORS issues by serving images through our API
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+    return `${baseUrl}/api/notebook/images/${imageId}`;
   }
 
   async getImagesByNoteId(noteId: string): Promise<NotebookImage[]> {

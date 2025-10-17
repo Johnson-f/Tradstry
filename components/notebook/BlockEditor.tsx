@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import "@blocknote/core/style.css";
 import "@blocknote/mantine/style.css";
 
-
 interface EditorProps {
   onChange: (value: string) => void;
   onTitleChange?: (title: string) => void;
@@ -27,14 +26,16 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   const [isDragOver, setIsDragOver] = useState(false);
   const [processedInitialContent, setProcessedInitialContent] = useState<PartialBlock[] | undefined>(undefined);
 
-  // Function to resolve image IDs to fresh signed URLs
+  // Function to resolve image IDs to API proxy URLs
   const resolveImageUrl = useCallback(async (imageId: string): Promise<string> => {
     try {
+      console.log('Resolving image URL for ID:', imageId);
       const url = await notebookImagesService.getImageUrl(imageId);
+      console.log('Resolved URL:', url);
       return url;
     } catch (error) {
       console.error('Failed to resolve image URL:', error);
-      // Return a placeholder or broken image URL
+      // Return a placeholder image URL
       return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjZjNmNGY2Ii8+CjxwYXRoIGQ9Ik0xMiA2VjE4TTYgMTJIMTgiIHN0cm9rZT0iIzk5YTNhZiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+';
     }
   }, []);
@@ -69,7 +70,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
   }, [resolveImageUrl]);
 
-  // Image upload handler - FIXED VERSION
+  // Image upload handler - simplified like notion-clone
   const handleUpload = useCallback(async (file: File) => {
     if (!docId) {
       toast.error('Cannot upload image: Note ID missing');
@@ -77,15 +78,16 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
 
     try {
-      const { id, url } = await notebookImagesService.uploadImage({
+      console.log('Starting image upload for file:', file.name, 'size:', file.size);
+      const result = await notebookImagesService.uploadImage({
         file,
         note_id: docId
       });
       
-      // Store the image ID in a data attribute for later resolution
-      // But return the actual displayable URL immediately so BlockNote can render it
-      // We'll convert it to the notebook-image:// scheme when saving
-      return url;
+      console.log('Upload result:', result);
+      
+      // Return the URL directly - no complex URL scheme conversion
+      return result.url;
     } catch (error) {
       console.error('Image upload error:', error);
       toast.error('Failed to upload image');
@@ -124,10 +126,14 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
 
         try {
           const loadingToast = toast.loading('Uploading pasted image...');
-          const { id, url } = await notebookImagesService.uploadImage({
+          console.log('Pasting image:', file.name, 'size:', file.size);
+          
+          const result = await notebookImagesService.uploadImage({
             file,
             note_id: docId
           });
+
+          console.log('Paste upload result:', result);
 
           // Insert the image into the editor using the actual URL
           editor.insertBlocks(
@@ -135,7 +141,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
               {
                 type: 'image',
                 props: {
-                  url: url, // Use the actual signed URL
+                  url: result.url, // Use the actual signed URL directly
                   caption: file.name,
                 },
               },
@@ -183,10 +189,14 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
       if (file.type.startsWith('image/')) {
         try {
           const loadingToast = toast.loading('Uploading dropped image...');
-          const { id, url } = await notebookImagesService.uploadImage({
+          console.log('Dropping image:', file.name, 'size:', file.size);
+          
+          const result = await notebookImagesService.uploadImage({
             file,
             note_id: docId
           });
+
+          console.log('Drop upload result:', result);
 
           // Insert the image into the editor using the actual URL
           editor.insertBlocks(
@@ -194,7 +204,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
               {
                 type: 'image',
                 props: {
-                  url: url, // Use the actual signed URL
+                  url: result.url, // Use the actual signed URL directly
                   caption: file.name,
                 },
               },
@@ -221,15 +231,14 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
   }, [docId]);
 
-  // Helper function to extract image ID from signed URL
+  // Helper function to extract image ID from API proxy URL
   const extractImageIdFromUrl = (url: string): string | null => {
-    // Try to extract the image ID from the URL path
-    // Format: userId/notebooks/noteId/imageId.ext
-    const match = url.match(/notebooks\/[^/]+\/([^/.]+)\./);
+    // Extract image ID from API proxy URL format: /api/notebook/images/{imageId}
+    const match = url.match(/\/api\/notebook\/images\/([^/?]+)/);
     return match ? match[1] : null;
   };
 
-  // Convert signed URLs back to notebook-image:// scheme for storage
+  // Convert API proxy URLs back to notebook-image:// scheme for storage
   const convertUrlsToScheme = useCallback((doc: any): any => {
     if (Array.isArray(doc)) {
       return doc.map(block => convertUrlsToScheme(block));
