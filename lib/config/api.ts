@@ -117,67 +117,7 @@ export const apiConfig = {
     },
 
     // The following endpoints seem to belong to other services, keeping them as is.
-    // Notes endpoints (Legacy or different service)
-    notes: {
-      folders: {
-        base: "/notes/folders/",
-        byId: (id: string) => `/notes/folders/${id}`,
-        bySlug: (slug: string) => `/notes/folders/slug/${slug}`,
-      },
-      notes: {
-        base: "/notes/notes/",
-        byId: (id: string) => `/notes/notes/${id}`,
-        favorite: (id: string) => `/notes/notes/${id}/favorite`,
-      },
-      tags: {
-        base: "/notes/tags/",
-        byNote: (noteId: string) => `/notes/notes/${noteId}/tags`,
-        removeFromNote: (noteId: string, tagName: string) =>
-          `/notes/notes/${noteId}/tags/${tagName}`,
-      },
-      templates: {
-        base: "/notes/templates",
-        byId: (id: string) => `/notes/templates/${id}`,
-      },
-    },
     // Analytics endpoints (Legacy or different service)
-    analytics: {
-      stocks: {
-        winRate: "/analytics/stocks/win-rate",
-        averageGain: "/analytics/stocks/average-gain",
-        averageLoss: "/analytics/stocks/average-loss",
-        riskRewardRatio: "/analytics/stocks/risk-reward-ratio",
-        tradeExpectancy: "/analytics/stocks/trade-expectancy",
-        netPnl: "/analytics/stocks/net-pnl",
-        profitFactor: "/analytics/stocks/profit-factor",
-        avgHoldTimeWinners: "/analytics/stocks/avg-hold-time-winners",
-        avgHoldTimeLosers: "/analytics/stocks/avg-hold-time-losers",
-        biggestWinner: "/analytics/stocks/biggest-winner",
-        biggestLoser: "/analytics/stocks/biggest-loser",
-        averagePositionSize: "/analytics/stocks/average-position-size",
-        averageRiskPerTrade: "/analytics/stocks/average-risk-per-trade",
-        lossRate: "/analytics/stocks/loss-rate",
-        summary: (periodType: string) =>
-          `/analytics/stocks/summary/${periodType}`,
-      },
-      options: {
-        winRate: "/analytics/options/win-rate",
-        averageGain: "/analytics/options/average-gain",
-        averageLoss: "/analytics/options/average-loss",
-        riskRewardRatio: "/analytics/options/risk-reward-ratio",
-        tradeExpectancy: "/analytics/options/trade-expectancy",
-        netPnl: "/analytics/options/net-pnl",
-        profitFactor: "/analytics/options/profit-factor",
-        avgHoldTimeWinners: "/analytics/options/avg-hold-time-winners",
-        avgHoldTimeLosers: "/analytics/options/avg-hold-time-losers",
-        biggestWinner: "/analytics/options/biggest-winner",
-        biggestLoser: "/analytics/options/biggest-loser",
-        averagePositionSize: "/analytics/options/average-position-size",
-        averageRiskPerTrade: "/analytics/options/average-risk-per-trade",
-        lossRate: "/analytics/options/loss-rate",
-        summary: (periodType: string) =>
-          `/analytics/options/summary/${periodType}`,
-      },
       portfolio: "/analytics/portfolio",
       portfolioCombined: "/analytics/portfolio/combined",
       portfolioCombinedSummary: (periodType: string) =>
@@ -193,6 +133,7 @@ export const apiConfig = {
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
     },
+
     // Market Data endpoints
     marketData: {
       base: "/market-data",

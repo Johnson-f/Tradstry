@@ -266,6 +266,7 @@ struct StockRow {
     created_at: String,
     updated_at: String,
     version: u64,
+    #[allow(dead_code)]
     is_deleted: i64,
 }
 
@@ -290,6 +291,7 @@ struct OptionRow {
     created_at: String,
     updated_at: String,
     version: u64,
+    #[allow(dead_code)]
     is_deleted: i64,
 }
 
