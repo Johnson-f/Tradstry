@@ -303,7 +303,7 @@ export const apiConfig = {
       dynamic: (path: string) => `/ai-dynamic/dynamic/${path}`,
     },
   },
-  timeout: 300000, // 5 minutes
+  timeout: 30000, // 5 minutes
   retries: 3,
 };
 

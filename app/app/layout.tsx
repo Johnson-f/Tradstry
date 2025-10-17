@@ -13,7 +13,7 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const { isInitialized, isInitializing, error } = useUserInitialization();
+  const { isInitialized, isInitializing, error, needsRefresh } = useUserInitialization();
   const [showInitializationStatus, setShowInitializationStatus] = useState(false);
   const pathname = usePathname();
   const isNotebook = pathname?.startsWith("/app/notebook");
@@ -58,9 +58,15 @@ export default function ProtectedLayout({
                 </div>
               )}
               {error && !isInitializing && (
-                <div className="text-sm text-amber-600">
-                  <p>Setup incomplete: {error}</p>
-                  <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
+                <div className="text-sm text-red-600">
+                  <p>Setup failed: {error}</p>
+                  {needsRefresh ? (
+                    <p className="text-xs mt-1 text-muted-foreground">
+                      Please refresh the page to try again
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
+                  )}
                 </div>
               )}
             </div>

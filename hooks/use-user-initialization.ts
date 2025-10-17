@@ -1,45 +1,72 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { initializeUser } from '@/lib/services/user-service';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
+// Global flag to prevent multiple simultaneous initialization attempts
+let globalInitializationInProgress = false;
 
 interface UserInitializationState {
   isInitialized: boolean;
   isInitializing: boolean;
   error: string | null;
+  needsRefresh: boolean;
 }
+
+// Use localStorage instead of sessionStorage to persist across refreshes
+const STORAGE_KEY_PREFIX = 'user-init-status-';
 
 /**
  * Hook to handle user initialization after login
  * This runs once when the user first accesses the protected app
+ * Implements retry logic: tries twice, then prompts user to refresh
  */
 export function useUserInitialization() {
   const [state, setState] = useState<UserInitializationState>({
     isInitialized: false,
     isInitializing: false,
     error: null,
+    needsRefresh: false,
   });
 
-  // TanStack Query hooks must be called at the top level (not inside effects)
   const queryClient = useQueryClient();
+  const hasInitializedRef = useRef(false); // Prevent double-initialization in strict mode
+  
   const initializeMutation = useMutation({
     mutationKey: ['user', 'initialize'],
     mutationFn: async ({ email, userId }: { email: string; userId: string }) => {
-      const res = await initializeUser(email, userId);
-      if (res.success) {
-        queryClient.setQueryData(['user', 'initialized', userId], true);
-      }
-      return res;
+      return await initializeUser(email, userId, 2, 1000);
     },
     gcTime: Infinity,
+    retry: false,
   });
+
+  const handleRefreshPrompt = useCallback(() => {
+    toast.error(
+      'Unable to initialize your account. Please refresh the page to try again.',
+      {
+        duration: 10000,
+        action: {
+          label: 'Refresh Page',
+          onClick: () => window.location.reload(),
+        },
+      }
+    );
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
     const initializeUserOnLogin = async () => {
+      // Prevent double initialization in React strict mode
+      if (hasInitializedRef.current) {
+        console.log('Already processed initialization in this component instance');
+        return;
+      }
+
       const supabase = createClient();
       
       try {
@@ -51,27 +78,56 @@ export function useUserInitialization() {
           return;
         }
 
-        // Check if we've already tried to initialize this user in this session
-        const initKey = `user-initialized-${user.id}`;
-        const alreadyInitialized = sessionStorage.getItem(initKey);
+        // Check localStorage for initialization status
+        const initKey = `${STORAGE_KEY_PREFIX}${user.id}`;
+        const storedStatus = localStorage.getItem(initKey);
         
-        if (alreadyInitialized) {
+        if (storedStatus === 'success') {
+          console.log('User already initialized (found in localStorage)');
+          hasInitializedRef.current = true;
           if (mounted) {
             setState({
               isInitialized: true,
               isInitializing: false,
               error: null,
+              needsRefresh: false,
             });
           }
           return;
         }
 
-        // Set initializing state
+        if (storedStatus === 'failed') {
+          console.log('User initialization previously failed');
+          hasInitializedRef.current = true;
+          if (mounted) {
+            setState({
+              isInitialized: false,
+              isInitializing: false,
+              error: 'Initialization failed. Please refresh the page.',
+              needsRefresh: true,
+            });
+            handleRefreshPrompt();
+          }
+          return;
+        }
+
+        // Check if another initialization is already in progress globally
+        if (globalInitializationInProgress) {
+          console.log('User initialization already in progress globally, skipping');
+          return;
+        }
+
+        // Mark as initialized to prevent re-runs
+        hasInitializedRef.current = true;
+
+        // Set global flag and local state
+        globalInitializationInProgress = true;
         if (mounted) {
           setState(prev => ({
             ...prev,
             isInitializing: true,
             error: null,
+            needsRefresh: false,
           }));
         }
 
@@ -80,53 +136,98 @@ export function useUserInitialization() {
           userId: user.id 
         });
 
-        // Initialize user in backend
+        // Check cache first
         const cached = queryClient.getQueryData<boolean>(['user', 'initialized', user.id]);
         if (cached) {
           console.log('User already initialized (cached)');
-          return;
-        }
-
-        const initResult = await initializeMutation.mutateAsync({ email: user.email!, userId: user.id });
-        
-        if (mounted) {
-          if (initResult.success) {
-            console.log('User successfully initialized in backend');
-            // Mark as initialized in session storage
-            sessionStorage.setItem(initKey, 'true');
+          localStorage.setItem(initKey, 'success');
+          if (mounted) {
             setState({
               isInitialized: true,
               isInitializing: false,
               error: null,
+              needsRefresh: false,
             });
+          }
+          globalInitializationInProgress = false;
+          return;
+        }
+
+        // Attempt initialization with retry logic built into the service
+        const initResult = await initializeMutation.mutateAsync({ 
+          email: user.email!, 
+          userId: user.id 
+        });
+        
+        if (mounted) {
+          if (initResult.success) {
+            console.log('User successfully initialized in backend');
+            localStorage.setItem(initKey, 'success');
+            queryClient.setQueryData(['user', 'initialized', user.id], true);
+            
+            setState({
+              isInitialized: true,
+              isInitializing: false,
+              error: null,
+              needsRefresh: false,
+            });
+            
+            toast.success('Account initialized successfully!');
           } else {
-            console.warn('User initialization failed:', initResult.message);
+            console.error('User initialization failed after retries:', initResult.message);
+            localStorage.setItem(initKey, 'failed');
+            
             setState({
               isInitialized: false,
               isInitializing: false,
-              error: initResult.message || 'Initialization failed',
+              error: initResult.message || 'Initialization failed after multiple attempts',
+              needsRefresh: true,
             });
+            
+            handleRefreshPrompt();
           }
         }
+        
+        globalInitializationInProgress = false;
       } catch (error) {
         console.error('User initialization error:', error);
+        
         if (mounted) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
+          
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const initKey = `${STORAGE_KEY_PREFIX}${user.id}`;
+            localStorage.setItem(initKey, 'failed');
+          }
+          
           setState({
             isInitialized: false,
             isInitializing: false,
-            error: error instanceof Error ? error.message : 'Unknown initialization error',
+            error: errorMessage,
+            needsRefresh: true,
           });
+          
+          handleRefreshPrompt();
         }
+        
+        globalInitializationInProgress = false;
       }
     };
 
-    // Run initialization
     initializeUserOnLogin();
 
     return () => {
       mounted = false;
     };
-  }, [initializeMutation, queryClient]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - run only once on mount
 
   return state;
+}
+
+// Export utility function to clear initialization status (for logout)
+export function clearUserInitializationStatus(userId: string) {
+  localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`);
 }
