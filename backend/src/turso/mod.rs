@@ -4,6 +4,8 @@
 //! and Clerk webhook integration for a multi-tenant system where each
 //! user gets their own Turso database.
 
+pub mod schema;
+
 pub mod auth;
 pub mod client;
 pub mod config;

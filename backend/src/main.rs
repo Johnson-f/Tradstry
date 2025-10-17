@@ -30,7 +30,7 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
-use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes};
+use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes};
 use replicache::{handle_push, handle_pull};
 
 #[derive(Serialize)]
@@ -141,6 +141,11 @@ async fn main() -> std::io::Result<()> {
             .configure(|cfg| {
                 log::info!("Configuring playbook routes");
                 configure_playbook_routes(cfg);
+            })
+            // Register notebook routes
+            .configure(|cfg| {
+                log::info!("Configuring notebook routes");
+                configure_notebook_routes(cfg);
             })
             // Register replicache routes
             .configure(|cfg| {

@@ -5,3 +5,5 @@ pub mod options;
 pub mod playbook;
 pub mod stock;
 
+pub mod notebook;
+

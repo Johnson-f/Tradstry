@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
+use crate::turso::schema::get_current_schema_version;
 
 /// Request payload for user database initialization
 #[derive(Debug, Deserialize)]
@@ -280,7 +281,7 @@ async fn create_user_database_internal(
     user_id: &str,
     email: &str,
 ) -> Result<(String, String, bool, String), anyhow::Error> {
-    let current_schema_version = TursoClient::get_current_schema_version();
+    let current_schema_version = get_current_schema_version();
     let mut schema_synced = false;
     
     // Check if database already exists
@@ -345,7 +346,7 @@ pub async fn sync_user_schema(
             // Perform schema synchronization
             match turso_client.sync_user_database_schema(&user_id).await {
                 Ok(_) => {
-                    let current_version = TursoClient::get_current_schema_version();
+                    let current_version = get_current_schema_version();
                     info!("Schema synchronized successfully for user: {}", user_id);
                     Ok(HttpResponse::Ok().json(serde_json::json!({
                         "success": true,
@@ -403,7 +404,7 @@ pub async fn get_user_schema_version(
 
     match turso_client.get_user_schema_version(&user_id).await {
         Ok(Some(version)) => {
-            let current_version = TursoClient::get_current_schema_version();
+            let current_version = get_current_schema_version();
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "user_schema_version": version.version,
                 "user_schema_description": version.description,
@@ -414,7 +415,7 @@ pub async fn get_user_schema_version(
             })))
         }
         Ok(None) => {
-            let current_version = TursoClient::get_current_schema_version();
+            let current_version = get_current_schema_version();
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "user_schema_version": null,
                 "user_schema_description": "No schema version found (legacy database)",
