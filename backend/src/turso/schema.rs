@@ -494,8 +494,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for notebook feature)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.7".to_string(),
-        description: "Add notebook (notes, tags, templates, reminders, calendar, external calendars) and bump schema".to_string(),
+        version: "0.0.8".to_string(),
+        description: "Notebook tables + indexes/triggers ensured for existing DBs".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }

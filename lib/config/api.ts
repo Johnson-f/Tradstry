@@ -150,7 +150,6 @@ export const apiConfig = {
       },
     },
 
-    // The following endpoints seem to belong to other services, keeping them as is.
     // Analytics endpoints (Legacy or different service)
       portfolio: "/analytics/portfolio",
       portfolioCombined: "/analytics/portfolio/combined",
@@ -166,7 +165,7 @@ export const apiConfig = {
       tickerProfitSummary: "/analytics/ticker-profit-summary",
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
-    },
+
 
     // Market Data endpoints
     marketData: {
@@ -267,7 +266,6 @@ export const apiConfig = {
           `/market-data/financials/cash-flow/${symbol}`,
       },
     },
-    // AI Summary endpoints
     aiSummary: {
       generate: "/ai-summary/generate",
       quickInsights: "/ai-summary/quick-insights",
