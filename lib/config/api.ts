@@ -5,7 +5,7 @@ export const apiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
   endpoints: {
-    // Root
+    // Root - unimportant endpoint 
     root: "/",
     health: "/health",
     profile: "/profile",

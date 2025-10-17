@@ -85,6 +85,8 @@ const Navigation = () => {
         "width",
         `calc(100% - ${newWidth}px)`,
       );
+      // Notify layout about current sidebar width
+      window.dispatchEvent(new CustomEvent("notebook:sidebar-width", { detail: newWidth }));
     }
   };
 
@@ -99,6 +101,7 @@ const Navigation = () => {
       setIsCollapsed(false);
       setIsResetting(true);
 
+      const width = isMobile ? 0 : 240;
       sidebarRef.current.style.width = isMobile ? "100%" : "240px";
       navbarRef.current.style.removeProperty("width");
       navbarRef.current.style.setProperty(
@@ -106,6 +109,8 @@ const Navigation = () => {
         isMobile ? "0" : "calc(100%-240px)",
       );
       navbarRef.current.style.setProperty("left", isMobile ? "100%" : "240px");
+      // Notify layout
+      window.dispatchEvent(new CustomEvent("notebook:sidebar-width", { detail: width }));
       setTimeout(() => setIsResetting(false), 300);
     }
   };
@@ -118,9 +123,20 @@ const Navigation = () => {
       sidebarRef.current.style.width = "0";
       navbarRef.current.style.setProperty("width", "100%");
       navbarRef.current.style.setProperty("left", "0");
+      // Notify layout
+      window.dispatchEvent(new CustomEvent("notebook:sidebar-width", { detail: 0 }));
       setTimeout(() => setIsResetting(false), 300);
     }
   };
+
+  // Listen for global request to open/expand the sidebar
+  useEffect(() => {
+    const openHandler = () => {
+      resetWidth();
+    };
+    window.addEventListener("notebook:sidebar-open", openHandler);
+    return () => window.removeEventListener("notebook:sidebar-open", openHandler);
+  }, []);
 
   const handleCreate = () => {
     const promise = createNote({ title: "Untitled" }).then((note) => {
@@ -141,7 +157,7 @@ const Navigation = () => {
       <aside
         ref={sidebarRef}
         className={cn(
-          "group/sidebar fixed inset-y-0 left-0 z-[300] flex h-screen w-60 flex-col overflow-y-auto bg-secondary",
+          "group/sidebar fixed inset-y-0 left-0 z-[20] flex h-screen w-60 flex-col overflow-hidden bg-secondary",
           isResetting && "transition-all duration-300 ease-in-out",
           isMobile && "w-0",
         )}
@@ -156,17 +172,21 @@ const Navigation = () => {
         >
           <ChevronsLeft className="h-6 w-6" />
         </div>
-        <div>
-          <UserItem />
-          <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
-          <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
-          <Item onClick={handleCreate} label="New page" icon={PlusCircle} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div>
+            <UserItem />
+            <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
+            <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
+            <Item onClick={handleCreate} label="New page" icon={PlusCircle} />
+          </div>
+          <div className="mt-4">
+            <DocumentList />
+            <Item onClick={handleCreate} icon={Plus} label="Add a page" />
+          </div>
         </div>
-        <div className="mt-4">
-          <DocumentList />
-          <Item onClick={handleCreate} icon={Plus} label="Add a page" />
+        <div className="border-t p-2">
           <Popover>
-            <PopoverTrigger className="mt-4 w-full">
+            <PopoverTrigger className="w-full">
               <Item label="Trash" icon={Trash} />
             </PopoverTrigger>
             <PopoverContent
@@ -186,7 +206,7 @@ const Navigation = () => {
       <div
         ref={navbarRef}
         className={cn(
-          "absolute left-60 top-0 z-[300] w-[calc(100%-240px)]",
+          "absolute left-60 top-0 z-[10] w-[calc(100%-240px)]",
           isResetting && "transition-all duration-300 ease-in-out",
           isMobile && "left-0 w-full",
         )}

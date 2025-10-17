@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { initializeUser } from '@/lib/services/user-service';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface UserInitializationState {
   isInitialized: boolean;
@@ -19,6 +20,20 @@ export function useUserInitialization() {
     isInitialized: false,
     isInitializing: false,
     error: null,
+  });
+
+  // TanStack Query hooks must be called at the top level (not inside effects)
+  const queryClient = useQueryClient();
+  const initializeMutation = useMutation({
+    mutationKey: ['user', 'initialize'],
+    mutationFn: async ({ email, userId }: { email: string; userId: string }) => {
+      const res = await initializeUser(email, userId);
+      if (res.success) {
+        queryClient.setQueryData(['user', 'initialized', userId], true);
+      }
+      return res;
+    },
+    gcTime: Infinity,
   });
 
   useEffect(() => {
@@ -66,7 +81,13 @@ export function useUserInitialization() {
         });
 
         // Initialize user in backend
-        const initResult = await initializeUser(user.email!, user.id);
+        const cached = queryClient.getQueryData<boolean>(['user', 'initialized', user.id]);
+        if (cached) {
+          console.log('User already initialized (cached)');
+          return;
+        }
+
+        const initResult = await initializeMutation.mutateAsync({ email: user.email!, userId: user.id });
         
         if (mounted) {
           if (initResult.success) {
@@ -105,7 +126,7 @@ export function useUserInitialization() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [initializeMutation, queryClient]);
 
   return state;
 }
