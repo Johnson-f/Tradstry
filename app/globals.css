@@ -1,4 +1,3 @@
-@import '../components/notepad/rich-editor/index.css';
 @tailwind base;
 
 @custom-variant dark (&:is(.dark *));
