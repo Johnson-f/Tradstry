@@ -106,11 +106,13 @@
     "tailwind-merge": "^3.3.0",
     "tiptap": "^1.32.2",
     "use-debounce": "^10.0.5",
+    "usehooks-ts": "^3.1.1",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
     "y-websocket": "^3.0.0",
     "yahoo-finance2": "^2.13.3",
-    "zod": "^4.0.14"
+    "zod": "^4.0.14",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

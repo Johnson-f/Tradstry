@@ -5,6 +5,7 @@ import ThemeProvider from "@/components/theme-provider";
 import { useUserInitialization } from "@/hooks/use-user-initialization";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 export default function ProtectedLayout({
   children,
@@ -14,6 +15,8 @@ export default function ProtectedLayout({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { isInitialized, isInitializing, error } = useUserInitialization();
   const [showInitializationStatus, setShowInitializationStatus] = useState(false);
+  const pathname = usePathname();
+  const isNotebook = pathname?.startsWith("/app/notebook");
 
   // Show initialization status for a few seconds when initializing
   useEffect(() => {
@@ -31,10 +34,12 @@ export default function ProtectedLayout({
   return (
     <ThemeProvider>
       <div className="min-h-screen">
-        <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
-        <div 
+        {!isNotebook && (
+          <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
+        )}
+        <div
           className={`transition-all duration-500 ease-out ${
-            isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+            isNotebook ? '' : isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           } ml-0`}
         >
           {/* User Initialization Status */}
