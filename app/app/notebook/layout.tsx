@@ -16,7 +16,7 @@ export default function NotebookLayout({ children }: { children: React.ReactNode
       <Navigation />
 
       {/* Right side content with a slim notebook navbar on top */}
-      <div className="flex h-full min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-w-0 flex-1 flex-col lg:pl-60 pl-0">
         <nav className="flex items-center justify-between border-b bg-background px-3 py-2 dark:bg-[#1F1F1F]">
           <div className="flex items-center gap-2">
             <Link href="/app" className="text-sm text-muted-foreground hover:underline">
