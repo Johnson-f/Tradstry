@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import React, { useMemo } from "react";
 import { Item } from "@/components/notebook/sidebar/Item";
 import { useCreateNote, useNotes } from "@/lib/hooks/use-notebook";
+import { File } from "lucide-react";
 
 export function DocumentList({ parentId, level = 0 }: { parentId?: string; level?: number }) {
   const router = useRouter();
@@ -41,6 +42,7 @@ export function DocumentList({ parentId, level = 0 }: { parentId?: string; level
             id={n.id}
             label={n.title || "Untitled"}
             level={level}
+            icon={File}
             active={currentId === n.id}
             expanded={!!expanded[n.id]}
             onToggle={() => {

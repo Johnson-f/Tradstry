@@ -5,7 +5,6 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { useTheme } from "next-themes";
 import "@blocknote/core/style.css";
-import "@blocknote/mantine/style.css";
 
 interface EditorProps {
   onChange: (value: string) => void;
