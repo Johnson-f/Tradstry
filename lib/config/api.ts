@@ -116,6 +116,40 @@ export const apiConfig = {
       pull: "/replicache/pull",
     },
 
+    // Notebook endpoints
+    notebook: {
+      base: "/notebook",
+      notes: {
+        base: "/notebook/notes",
+        byId: (id: string) => `/notebook/notes/${id}`,
+        tree: (id: string) => `/notebook/notes/${id}/tree`,
+        reorder: (id: string) => `/notebook/notes/${id}/reorder`,
+        tag: (noteId: string, tagId: string) => `/notebook/notes/${noteId}/tags/${tagId}`,
+        untag: (noteId: string, tagId: string) => `/notebook/notes/${noteId}/tags/${tagId}`,
+      },
+      tags: {
+        base: "/notebook/tags",
+        byId: (id: string) => `/notebook/tags/${id}`,
+      },
+      templates: {
+        base: "/notebook/templates",
+        byId: (id: string) => `/notebook/templates/${id}`,
+      },
+      reminders: {
+        base: "/notebook/reminders",
+        byId: (id: string) => `/notebook/reminders/${id}`,
+        complete: (id: string) => `/notebook/reminders/${id}/complete`,
+      },
+      calendar: {
+        events: "/notebook/calendar/events",
+        connect: (provider: string) => `/notebook/calendar/connect/${provider}`,
+        disconnect: (id: string) => `/notebook/calendar/connections/${id}`,
+        sync: (id: string) => `/notebook/calendar/sync/${id}`,
+        oauthGoogle: "/notebook/calendar/oauth/google",
+        oauthMicrosoft: "/notebook/calendar/oauth/microsoft",
+      },
+    },
+
     // The following endpoints seem to belong to other services, keeping them as is.
     // Analytics endpoints (Legacy or different service)
       portfolio: "/analytics/portfolio",
