@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notebookService } from '@/lib/services/notebook-service';
+import { notebookImagesService } from '@/lib/services/notebook-images-service';
 import type {
   NotebookNote,
   CreateNoteRequest,
@@ -74,7 +75,18 @@ export function useUpdateNote() {
 export function useDeleteNote() {
   const queryClient = useQueryClient();
   const mutation = useMutation({
-    mutationFn: ({ id }: { id: string }) => notebookService.deleteNote(id),
+    mutationFn: async ({ id }: { id: string }) => {
+      // Delete associated images first
+      try {
+        await notebookImagesService.deleteImagesByNoteId(id);
+      } catch (error) {
+        console.error('Failed to delete images for note:', error);
+        // Continue with note deletion even if image cleanup fails
+      }
+      
+      // Then delete the note
+      return notebookService.deleteNote(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notebook', 'notes'] });
     },
