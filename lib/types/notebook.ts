@@ -110,3 +110,25 @@ export interface ApiList<T> {
   message: string;
   data: T[] | null;
 }
+
+export interface NotebookImage {
+  id: string;
+  note_id: string;
+  user_id: string;
+  file_path: string;
+  filename: string;
+  mime_type: string;
+  file_size: number;
+  alt_text?: string | null;
+  caption?: string | null;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotebookImageUploadParams {
+  file: File;
+  note_id: string;
+  alt_text?: string;
+  caption?: string;
+}
