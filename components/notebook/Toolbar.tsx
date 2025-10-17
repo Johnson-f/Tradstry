@@ -9,12 +9,12 @@ export default function Toolbar({ docId }: { docId: string }) {
 
   const inputRef = useRef<ElementRef<"input">>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(note?.title ?? "Heading 1");
+  const [title, setTitle] = useState(note?.title ?? "");
   const [icon, setIcon] = useState<string | undefined>(note?.icon ?? undefined);
   const [coverImage, setCoverImage] = useState<string | undefined>(note?.cover_image ?? undefined);
 
   useEffect(() => {
-    setTitle(note?.title ?? "Heading 1");
+    setTitle(note?.title ?? "");
     setIcon((note as any)?.icon);
     setCoverImage((note as any)?.cover_image);
   }, [note]);
@@ -32,7 +32,7 @@ export default function Toolbar({ docId }: { docId: string }) {
   const onChangeTitle = (e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
     setTitle(next);
-    void updateNote({ id: docId, payload: { title: next || "Heading 1" } });
+    void updateNote({ id: docId, payload: { title: next || "" } });
   };
 
   const onChangeIcon = (e: ChangeEvent<HTMLInputElement>) => {
@@ -49,7 +49,7 @@ export default function Toolbar({ docId }: { docId: string }) {
 
   return (
     <div className="group relative px-6 pt-4">
-      {/* Icon + Cover inputs (minimal for now) */}
+      {/* Icon + Cover inputs only */}
       <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
         <input
           placeholder="Icon (emoji)"
@@ -64,20 +64,6 @@ export default function Toolbar({ docId }: { docId: string }) {
           className="h-7 w-64 rounded border bg-transparent px-2"
         />
       </div>
-      {/* Title */}
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          onBlur={disable}
-          onChange={onChangeTitle}
-          value={title}
-          className="h-9 w-full rounded border bg-transparent px-2 text-2xl font-bold focus:outline-none"
-        />
-      ) : (
-        <button onClick={enable} className="px-1 text-left text-2xl font-bold">
-          {title}
-        </button>
-      )}
     </div>
   );
 }

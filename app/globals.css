@@ -77,6 +77,19 @@
   }
 }
 
+:root .bn-editor,
+:root .bn-container,
+:root .mantine-Paper-root,
+:root .mantine-ScrollArea-viewport,
+:root .mantine-ScrollArea-root {
+  background: transparent !important;
+}
+
+:root .bn-editor .bn-inner,
+:root .bn-editor .bn-scroll-container {
+  background-color: transparent !important;
+}
+
 :root {
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
