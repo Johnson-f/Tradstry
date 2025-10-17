@@ -103,10 +103,13 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
+    // Return API proxy URL instead of direct Supabase URL to avoid CORS issues
+    const proxyUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/notebook/images/${imageId}`;
+
     return NextResponse.json({ 
       success: true, 
       id: imageId, 
-      url: urlData?.signedUrl || '' 
+      url: proxyUrl
     });
   } catch (error) {
     console.error('Upload error:', error);

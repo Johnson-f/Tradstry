@@ -17,7 +17,7 @@ export async function GET(
     // Get image metadata
     const { data: image, error: fetchError } = await supabase
       .from('notebook_images')
-      .select('file_path')
+      .select('file_path, mime_type, file_size, filename')
       .eq('id', imageId)
       .eq('user_id', user.id)
       .single();
@@ -36,7 +36,30 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to generate image URL' }, { status: 500 });
     }
 
-    return NextResponse.json({ url: urlData?.signedUrl || '' });
+    // Fetch the image data from Supabase Storage
+    const imageResponse = await fetch(urlData.signedUrl);
+    
+    if (!imageResponse.ok) {
+      console.error('Failed to fetch image from storage:', imageResponse.status);
+      return NextResponse.json({ error: 'Failed to fetch image' }, { status: 500 });
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer();
+    
+    // Return the image with proper headers
+    return new NextResponse(imageBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': image.mime_type || 'image/jpeg',
+        'Content-Length': image.file_size?.toString() || '',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+        'ETag': `"${imageId}"`,
+        'Last-Modified': new Date().toUTCString(),
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
   } catch (error) {
     console.error('Get image error:', error);
     return NextResponse.json({ error: 'Failed to get image' }, { status: 500 });
