@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Increase the max duration for this route if on Vercel
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -20,22 +23,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing file or note_id' }, { status: 400 });
     }
 
+    // Check file size (limit to 5MB to prevent EPIPE errors)
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ 
+        error: 'File too large. Maximum size is 5MB' 
+      }, { status: 400 });
+    }
+
     // Generate unique file path
     const fileExt = file.name.split('.').pop();
     const imageId = crypto.randomUUID();
     const filePath = `${user.id}/notebooks/${noteId}/${imageId}.${fileExt}`;
 
-    // Upload to Supabase Storage
+    // Convert File to ArrayBuffer for more reliable upload
+    const fileArrayBuffer = await file.arrayBuffer();
+    const fileBuffer = new Uint8Array(fileArrayBuffer);
+
+    // Upload to Supabase Storage with proper content type and options
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('notebook-images')
-      .upload(filePath, file, {
+      .upload(filePath, fileBuffer, {
+        contentType: file.type,
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
+        duplex: 'half' // This helps prevent EPIPE errors
       });
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return NextResponse.json({ error: 'Failed to upload file to storage' }, { status: 500 });
+      
+      // Provide more specific error messages
+      if (uploadError.message?.includes('fetch failed') || uploadError.message?.includes('EPIPE')) {
+        return NextResponse.json({ 
+          error: 'Network error during upload. Please try again with a smaller image or check your connection.' 
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        error: `Failed to upload file: ${uploadError.message}` 
+      }, { status: 500 });
     }
 
     // Create metadata record in database
@@ -59,17 +86,21 @@ export async function POST(request: NextRequest) {
       // Cleanup: delete uploaded file if DB insert fails
       await supabase.storage.from('notebook-images').remove([filePath]);
       console.error('Database insert error:', dbError);
-      return NextResponse.json({ error: 'Failed to save image metadata' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to save image metadata' 
+      }, { status: 500 });
     }
 
-    // Generate signed URL
+    // Generate signed URL with longer expiry
     const { data: urlData, error: urlError } = await supabase.storage
       .from('notebook-images')
-      .createSignedUrl(filePath, 3600);
+      .createSignedUrl(filePath, 3600 * 24); // 24 hours
 
     if (urlError) {
       console.error('URL generation error:', urlError);
-      return NextResponse.json({ error: 'Failed to generate image URL' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to generate image URL' 
+      }, { status: 500 });
     }
 
     return NextResponse.json({ 
@@ -79,6 +110,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    
+    // Check for specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('fetch failed') || error.message.includes('EPIPE')) {
+        return NextResponse.json({ 
+          error: 'Network error during upload. Please try a smaller image or check your connection.' 
+        }, { status: 500 });
+      }
+    }
+    
+    return NextResponse.json({ 
+      error: 'Upload failed. Please try again.' 
+    }, { status: 500 });
   }
 }

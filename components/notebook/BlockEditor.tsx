@@ -69,7 +69,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
   }, [resolveImageUrl]);
 
-  // Image upload handler
+  // Image upload handler - FIXED VERSION
   const handleUpload = useCallback(async (file: File) => {
     if (!docId) {
       toast.error('Cannot upload image: Note ID missing');
@@ -82,9 +82,10 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         note_id: docId
       });
       
-      // Return a special URL format that includes the image ID
-      // This allows us to resolve it later when displaying
-      return `notebook-image://${id}`;
+      // Store the image ID in a data attribute for later resolution
+      // But return the actual displayable URL immediately so BlockNote can render it
+      // We'll convert it to the notebook-image:// scheme when saving
+      return url;
     } catch (error) {
       console.error('Image upload error:', error);
       toast.error('Failed to upload image');
@@ -122,19 +123,19 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         if (!file) continue;
 
         try {
-          toast.loading('Uploading pasted image...');
-          const { id } = await notebookImagesService.uploadImage({
+          const loadingToast = toast.loading('Uploading pasted image...');
+          const { id, url } = await notebookImagesService.uploadImage({
             file,
             note_id: docId
           });
 
-          // Insert the image into the editor using BlockNote's API
+          // Insert the image into the editor using the actual URL
           editor.insertBlocks(
             [
               {
                 type: 'image',
                 props: {
-                  url: `notebook-image://${id}`,
+                  url: url, // Use the actual signed URL
                   caption: file.name,
                 },
               },
@@ -143,6 +144,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
             'after'
           );
 
+          toast.dismiss(loadingToast);
           toast.success('Image uploaded successfully');
         } catch (error) {
           console.error('Failed to upload pasted image:', error);
@@ -180,19 +182,19 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
       const file = files[i];
       if (file.type.startsWith('image/')) {
         try {
-          toast.loading('Uploading dropped image...');
-          const { id } = await notebookImagesService.uploadImage({
+          const loadingToast = toast.loading('Uploading dropped image...');
+          const { id, url } = await notebookImagesService.uploadImage({
             file,
             note_id: docId
           });
 
-          // Insert the image into the editor using BlockNote's API
+          // Insert the image into the editor using the actual URL
           editor.insertBlocks(
             [
               {
                 type: 'image',
                 props: {
-                  url: `notebook-image://${id}`,
+                  url: url, // Use the actual signed URL
                   caption: file.name,
                 },
               },
@@ -201,6 +203,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
             'after'
           );
 
+          toast.dismiss(loadingToast);
           toast.success('Image uploaded successfully');
         } catch (error) {
           console.error('Failed to upload dropped image:', error);
@@ -218,13 +221,64 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
   }, [docId]);
 
+  // Helper function to extract image ID from signed URL
+  const extractImageIdFromUrl = (url: string): string | null => {
+    // Try to extract the image ID from the URL path
+    // Format: userId/notebooks/noteId/imageId.ext
+    const match = url.match(/notebooks\/[^/]+\/([^/.]+)\./);
+    return match ? match[1] : null;
+  };
+
+  // Convert signed URLs back to notebook-image:// scheme for storage
+  const convertUrlsToScheme = useCallback((doc: any): any => {
+    if (Array.isArray(doc)) {
+      return doc.map(block => convertUrlsToScheme(block));
+    }
+    
+    if (doc && typeof doc === 'object') {
+      const newDoc = { ...doc };
+      
+      // If it's an image block, convert the URL
+      if (newDoc.type === 'image' && newDoc.props?.url) {
+        const url = newDoc.props.url;
+        // Only convert if it's not already in the notebook-image:// scheme
+        if (!url.startsWith('notebook-image://')) {
+          const imageId = extractImageIdFromUrl(url);
+          if (imageId) {
+            newDoc.props = {
+              ...newDoc.props,
+              url: `notebook-image://${imageId}`
+            };
+          }
+        }
+      }
+      
+      // Recursively process children
+      if (newDoc.children) {
+        newDoc.children = convertUrlsToScheme(newDoc.children);
+      }
+      
+      return newDoc;
+    }
+    
+    return doc;
+  }, []);
+
   // Sync to backend
   const syncToBackend = useCallback((content: string) => {
-    if (content !== lastSavedRef.current) {
-      onChange(content);
-      lastSavedRef.current = content;
+    try {
+      const doc = JSON.parse(content);
+      const convertedDoc = convertUrlsToScheme(doc);
+      const convertedContent = JSON.stringify(convertedDoc, null, 2);
+      
+      if (convertedContent !== lastSavedRef.current) {
+        onChange(convertedContent);
+        lastSavedRef.current = convertedContent;
+      }
+    } catch (error) {
+      console.error('Failed to convert URLs for backend sync:', error);
     }
-  }, [onChange]);
+  }, [onChange, convertUrlsToScheme]);
 
   const extractFirstHeadingText = (doc: any): string | undefined => {
     try {
@@ -248,10 +302,10 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   const handleEditorChange = useCallback(() => {
     const content = JSON.stringify(editor.document, null, 2);
     
-    // Save to localStorage immediately
+    // Save to localStorage immediately (with signed URLs for quick restore)
     saveToLocalStorage(content);
     
-    // Debounced backend sync (3 minutes)
+    // Debounced backend sync (3 minutes) - converts to notebook-image:// scheme
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
@@ -335,5 +389,3 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     </div>
   );
 }
-
-
