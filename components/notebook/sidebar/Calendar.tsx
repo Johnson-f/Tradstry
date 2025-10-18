@@ -6,19 +6,32 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import MiniCalendar from "./mini-calendar"
 import DayView from "./day-view"
+import EventModal from "./EventModal"
 import { format } from "date-fns"
 
 interface CalendarAppProps {
-  onDateSelect?: (date: Date) => void;
+  onCreateNote?: (date: Date) => void;
 }
 
-export default function CalendarApp({ onDateSelect }: CalendarAppProps) {
+export default function CalendarApp({ onCreateNote }: CalendarAppProps) {
   const [selectedDate, setSelectedDate] = useState(new Date(2025, 9, 25)) // October 25, 2025
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day")
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false)
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
-    onDateSelect?.(date);
+  };
+
+  const handleCreateNote = () => {
+    onCreateNote?.(selectedDate);
+  };
+
+  const handleNewEvent = () => {
+    setIsEventModalOpen(true);
+  };
+
+  const handleCloseEventModal = () => {
+    setIsEventModalOpen(false);
   };
 
   return (
@@ -98,10 +111,10 @@ export default function CalendarApp({ onDateSelect }: CalendarAppProps) {
               variant="outline" 
               size="sm" 
               className="gap-2 bg-transparent"
-              onClick={() => handleDateSelect(selectedDate)}
+              onClick={handleNewEvent}
             >
               <Plus className="w-4 h-4" />
-              Create Note
+              New Event
             </Button>
             <Button variant="ghost" size="icon">
               <Search className="w-4 h-4" />
@@ -126,9 +139,16 @@ export default function CalendarApp({ onDateSelect }: CalendarAppProps) {
 
         {/* Day View */}
         <div className="flex-1 overflow-hidden">
-          <DayView selectedDate={selectedDate} onDateSelect={handleDateSelect} />
+          <DayView selectedDate={selectedDate} onCreateNote={handleCreateNote} />
         </div>
       </main>
+      
+      {/* Event Modal */}
+      <EventModal 
+        isOpen={isEventModalOpen}
+        onClose={handleCloseEventModal}
+        selectedDate={selectedDate}
+      />
     </div>
   )
 }

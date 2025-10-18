@@ -11,7 +11,7 @@ export default function CalendarPage() {
   const router = useRouter();
   const { createNote } = useCreateNote();
 
-  const handleDateSelect = async (selectedDate: Date) => {
+  const handleCreateNote = async (selectedDate: Date) => {
     try {
       // Create a new note with the selected date as title
       const noteTitle = format(selectedDate, "MMMM dd, yyyy");
@@ -36,5 +36,5 @@ export default function CalendarPage() {
     }
   };
 
-  return <CalendarApp onDateSelect={handleDateSelect} />;
+  return <CalendarApp onCreateNote={handleCreateNote} />;
 }
