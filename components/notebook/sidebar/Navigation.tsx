@@ -2,15 +2,12 @@
 
 import React, { ElementRef, useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
-import { useMutation } from "@tanstack/react-query";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { useUserProfile } from "@/hooks/use-user-profile";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { DocumentList } from "@/components/notebook/sidebar/DocumentList";
 import { Item } from "@/components/notebook/sidebar/Item";
-import { UserItem } from "@/components/notebook/sidebar/UserItem";
 import TrashBox from "@/components/notebook/sidebar/TrashBox";
 import { useSearch } from "@/components/notebook/hooks/useSearch";
 import { useSettings } from "@/components/notebook/hooks/useSettings";
@@ -24,12 +21,14 @@ import {
   Search,
   Settings,
   Trash,
+  Calendar,
 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Navigation = () => {
   const search = useSearch();
@@ -172,19 +171,30 @@ const Navigation = () => {
         >
           <ChevronsLeft className="h-6 w-6" />
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div>
-            <UserItem />
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="mt-6">
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
+            <div className="mt-3">
             <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
-            <Item onClick={handleCreate} label="New page" icon={PlusCircle} />
+            </div>
+            <div className="mt-3">
+            <Item onClick={handleCreate} label="New page" icon={Plus} />
+            </div>
           </div>
-          <div className="mt-4">
-            <DocumentList />
+          {/* Scrollable documents list */}
+          <div className="mt-20 flex-1">
+            <ScrollArea className="max-h-[calc(100vh-200px)] pr-2">
+              <DocumentList />
+            </ScrollArea>
             <Item onClick={handleCreate} icon={Plus} label="Add a page" />
           </div>
         </div>
-        <div className="border-t p-2">
+        <div className="border-t p-2 space-y-2">
+          <Item 
+            label="Calendar" 
+            icon={Calendar} 
+            onClick={() => router.push('/app/notebook/calendar')}
+          />
           <Popover>
             <PopoverTrigger className="w-full">
               <Item label="Trash" icon={Trash} />
