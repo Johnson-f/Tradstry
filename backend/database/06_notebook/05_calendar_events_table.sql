@@ -3,7 +3,11 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     reminder_id TEXT NOT NULL,
     event_title TEXT NOT NULL,
     event_description TEXT,
-    event_time TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    is_all_day BOOLEAN NOT NULL DEFAULT false,
     is_synced BOOLEAN NOT NULL DEFAULT false,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -11,7 +15,9 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_calendar_events_reminder_id ON calendar_events(reminder_id);
-CREATE INDEX IF NOT EXISTS idx_calendar_events_event_time ON calendar_events(event_time);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_start_date ON calendar_events(start_date);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_end_date ON calendar_events(end_date);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_date_range ON calendar_events(start_date, end_date);
 
 CREATE TRIGGER IF NOT EXISTS update_calendar_events_timestamp
 AFTER UPDATE ON calendar_events

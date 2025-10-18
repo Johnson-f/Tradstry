@@ -321,7 +321,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             reminder_id TEXT NOT NULL,
             event_title TEXT NOT NULL,
             event_description TEXT,
-            event_time TEXT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            start_time TIME,
+            end_time TIME,
+            is_all_day BOOLEAN NOT NULL DEFAULT false,
             is_synced BOOLEAN NOT NULL DEFAULT false,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -331,7 +335,9 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         libsql::params![],
     ).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_reminder_id ON calendar_events(reminder_id)", libsql::params![]).await?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_event_time ON calendar_events(event_time)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_start_date ON calendar_events(start_date)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_end_date ON calendar_events(end_date)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_date_range ON calendar_events(start_date, end_date)", libsql::params![]).await?;
 
     // External calendars (connections and events cache)
     conn.execute(
@@ -494,8 +500,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for notebook feature)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.8".to_string(),
-        description: "Notebook tables + indexes/triggers ensured for existing DBs".to_string(),
+        version: "0.0.10".to_string(),
+        description: "Added calendar events table".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -661,7 +667,7 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
 
     schemas.push(TableSchema { name: "notebook_reminders".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "note_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "reminder_time".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_completed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_notebook_reminders_note_id".to_string(), table_name: "notebook_reminders".to_string(), columns: vec!["note_id".to_string()], is_unique: false }, IndexInfo { name: "idx_notebook_reminders_reminder_time".to_string(), table_name: "notebook_reminders".to_string(), columns: vec!["reminder_time".to_string()], is_unique: false }, IndexInfo { name: "idx_notebook_reminders_is_completed".to_string(), table_name: "notebook_reminders".to_string(), columns: vec!["is_completed".to_string()], is_unique: false } ], triggers: vec![ TriggerInfo { name: "update_notebook_reminders_timestamp".to_string(), table_name: "notebook_reminders".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE notebook_reminders SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ] });
 
-    schemas.push(TableSchema { name: "calendar_events".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "reminder_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "event_title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "event_description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "event_time".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_synced".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_calendar_events_reminder_id".to_string(), table_name: "calendar_events".to_string(), columns: vec!["reminder_id".to_string()], is_unique: false }, IndexInfo { name: "idx_calendar_events_event_time".to_string(), table_name: "calendar_events".to_string(), columns: vec!["event_time".to_string()], is_unique: false } ], triggers: vec![ TriggerInfo { name: "update_calendar_events_timestamp".to_string(), table_name: "calendar_events".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE calendar_events SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ] });
+    schemas.push(TableSchema { name: "calendar_events".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "reminder_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "event_title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "event_description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "start_date".to_string(), data_type: "DATE".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "end_date".to_string(), data_type: "DATE".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "start_time".to_string(), data_type: "TIME".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "end_time".to_string(), data_type: "TIME".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_all_day".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "is_synced".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_calendar_events_reminder_id".to_string(), table_name: "calendar_events".to_string(), columns: vec!["reminder_id".to_string()], is_unique: false }, IndexInfo { name: "idx_calendar_events_start_date".to_string(), table_name: "calendar_events".to_string(), columns: vec!["start_date".to_string()], is_unique: false }, IndexInfo { name: "idx_calendar_events_end_date".to_string(), table_name: "calendar_events".to_string(), columns: vec!["end_date".to_string()], is_unique: false }, IndexInfo { name: "idx_calendar_events_date_range".to_string(), table_name: "calendar_events".to_string(), columns: vec!["start_date".to_string(), "end_date".to_string()], is_unique: false } ], triggers: vec![ TriggerInfo { name: "update_calendar_events_timestamp".to_string(), table_name: "calendar_events".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE calendar_events SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ] });
 
     schemas.push(TableSchema { name: "external_calendar_connections".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "provider".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "access_token".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "refresh_token".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "token_expiry".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "calendar_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_active".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("true".to_string()), is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![], triggers: vec![] });
 
@@ -793,22 +799,77 @@ pub async fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Ve
 /// Update table schema if needed
 pub async fn update_table_schema(conn: &Connection, table_schema: &TableSchema) -> Result<()> {
     let current_columns = get_table_columns(conn, &table_schema.name).await?;
+    
+    // Add missing columns
     for expected_col in &table_schema.columns {
         if !current_columns.iter().any(|c| c.name == expected_col.name) {
             let mut alter_sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table_schema.name, expected_col.name, expected_col.data_type);
-            if !expected_col.is_nullable { alter_sql.push_str(" NOT NULL"); }
-            if let Some(default) = &expected_col.default_value { alter_sql.push_str(&format!(" DEFAULT {}", default)); }
+            
+            // For NOT NULL columns without explicit defaults, provide appropriate defaults
+            if !expected_col.is_nullable {
+                if let Some(default) = &expected_col.default_value {
+                    alter_sql.push_str(&format!(" NOT NULL DEFAULT {}", default));
+                } else {
+                    // Provide default values for NOT NULL columns based on data type
+                    match expected_col.data_type.to_uppercase().as_str() {
+                        "TEXT" | "VARCHAR" => alter_sql.push_str(" NOT NULL DEFAULT ''"),
+                        "INTEGER" => alter_sql.push_str(" NOT NULL DEFAULT 0"),
+                        "REAL" | "DECIMAL" => alter_sql.push_str(" NOT NULL DEFAULT 0.0"),
+                        "BOOLEAN" => alter_sql.push_str(" NOT NULL DEFAULT false"),
+                        "DATE" => alter_sql.push_str(" NOT NULL DEFAULT '1970-01-01'"),
+                        "TIME" => alter_sql.push_str(" NOT NULL DEFAULT '00:00:00'"),
+                        _ => alter_sql.push_str(" NOT NULL DEFAULT ''"),
+                    }
+                }
+            } else if let Some(default) = &expected_col.default_value {
+                alter_sql.push_str(&format!(" DEFAULT {}", default));
+            }
+            
             conn.execute(&alter_sql, libsql::params![]).await?;
         }
     }
-    // Best-effort: attempt to drop removed columns (may be unsupported; ignore failures)
+    
+    // Remove columns that are not in the expected schema
     let expected_names: std::collections::HashSet<String> = table_schema.columns.iter().map(|c| c.name.clone()).collect();
-    for existing in &current_columns {
-        if !expected_names.contains(&existing.name) && !existing.is_primary_key {
-            let drop_sql = format!("ALTER TABLE {} DROP COLUMN {}", table_schema.name, existing.name);
-            let _ = conn.execute(&drop_sql, libsql::params![]).await; // ignore
+    let columns_to_remove: Vec<String> = current_columns.iter()
+        .filter(|c| !expected_names.contains(&c.name) && !c.is_primary_key)
+        .map(|c| c.name.clone())
+        .collect();
+    
+    if !columns_to_remove.is_empty() {
+        log::info!("Removing obsolete columns from {}: {:?}", table_schema.name, columns_to_remove);
+        
+        // SQLite doesn't support DROP COLUMN directly, so we need to recreate the table
+        // First, create a backup of existing data
+        let backup_table = format!("{}_backup", table_schema.name);
+        conn.execute(&format!("CREATE TABLE {} AS SELECT * FROM {}", backup_table, table_schema.name), libsql::params![]).await?;
+        
+        // Drop the original table
+        conn.execute(&format!("DROP TABLE {}", table_schema.name), libsql::params![]).await?;
+        
+        // Recreate the table with the correct schema
+        create_table(conn, table_schema).await?;
+        
+        // Copy data back (only for columns that exist in both schemas)
+        let common_columns: Vec<String> = current_columns.iter()
+            .filter(|c| expected_names.contains(&c.name))
+            .map(|c| c.name.clone())
+            .collect();
+        
+        if !common_columns.is_empty() {
+            let columns_str = common_columns.join(", ");
+            conn.execute(&format!("INSERT INTO {} ({}) SELECT {} FROM {}", 
+                table_schema.name, columns_str, columns_str, backup_table), libsql::params![]).await?;
         }
+        
+        // Drop the backup table
+        conn.execute(&format!("DROP TABLE {}", backup_table), libsql::params![]).await?;
+        
+        // Recreate indexes and triggers
+        ensure_indexes(conn, table_schema).await?;
+        ensure_triggers(conn, table_schema).await?;
     }
+    
     Ok(())
 }
 

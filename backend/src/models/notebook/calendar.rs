@@ -8,7 +8,11 @@ pub struct CalendarEvent {
     pub reminder_id: String,
     pub event_title: String,
     pub event_description: Option<String>,
-    pub event_time: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub is_all_day: bool,
     pub is_synced: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -41,12 +45,14 @@ pub struct ExternalCalendarEvent {
 }
 
 impl CalendarEvent {
-    pub async fn find_all(conn: &Connection) -> Result<Vec<Self>> {
+    pub async fn find_by_date_range(conn: &Connection, start: &str, end: &str) -> Result<Vec<Self>> {
         let stmt = conn.prepare(
-            r#"SELECT id, reminder_id, event_title, event_description, event_time, is_synced, created_at, updated_at
-                 FROM calendar_events ORDER BY event_time ASC"#,
+            r#"SELECT id, reminder_id, event_title, event_description, start_date, end_date, start_time, end_time, is_all_day, is_synced, created_at, updated_at
+                 FROM calendar_events 
+                 WHERE start_date >= ? AND end_date <= ? 
+                 ORDER BY start_date ASC, start_time ASC"#,
         ).await?;
-        let mut rows = stmt.query(params![]).await?;
+        let mut rows = stmt.query(params![start, end]).await?;
         let mut out = Vec::new();
         while let Some(row) = rows.next().await? {
             out.push(Self {
@@ -54,10 +60,14 @@ impl CalendarEvent {
                 reminder_id: row.get(1)?,
                 event_title: row.get(2)?,
                 event_description: row.get(3)?,
-                event_time: row.get(4)?,
-                is_synced: match row.get::<i64>(5)? { 0 => false, _ => true },
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                start_date: row.get(4)?,
+                end_date: row.get(5)?,
+                start_time: row.get(6)?,
+                end_time: row.get(7)?,
+                is_all_day: match row.get::<i64>(8)? { 0 => false, _ => true },
+                is_synced: match row.get::<i64>(9)? { 0 => false, _ => true },
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             });
         }
         Ok(out)
