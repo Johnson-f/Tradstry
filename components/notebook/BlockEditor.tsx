@@ -25,6 +25,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [processedInitialContent, setProcessedInitialContent] = useState<PartialBlock[] | undefined>(undefined);
+  const previousImageIdsRef = useRef<Set<string>>(new Set());
 
   // Function to resolve image IDs to API proxy URLs
   const resolveImageUrl = useCallback(async (imageId: string): Promise<string> => {
@@ -38,6 +39,33 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
       // Return a placeholder image URL
       return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjZjNmNGY2Ii8+CjxwYXRoIGQ9Ik0xMiA2VjE4TTYgMTJIMTgiIHN0cm9rZT0iIzk5YTNhZiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+';
     }
+  }, []);
+
+  // Helper function to extract all image IDs from editor document
+  const extractImageIds = useCallback((doc: any): Set<string> => {
+    const imageIds = new Set<string>();
+    
+    const traverse = (blocks: any[]) => {
+      for (const block of blocks) {
+        if (block.type === 'image' && block.props?.url) {
+          const url = block.props.url;
+          // Extract image ID from both schemes
+          if (url.startsWith('notebook-image://')) {
+            imageIds.add(url.replace('notebook-image://', ''));
+          } else {
+            // Extract from API proxy URL: /api/notebook/images/{imageId}
+            const match = url.match(/\/api\/notebook\/images\/([^/?]+)/);
+            if (match) imageIds.add(match[1]);
+          }
+        }
+        if (block.children) {
+          traverse(block.children);
+        }
+      }
+    };
+    
+    traverse(Array.isArray(doc) ? doc : [doc]);
+    return imageIds;
   }, []);
 
   // Function to process content and resolve image URLs
@@ -274,9 +302,31 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   }, []);
 
   // Sync to backend
-  const syncToBackend = useCallback((content: string) => {
+  const syncToBackend = useCallback(async (content: string) => {
     try {
       const doc = JSON.parse(content);
+      
+      // Extract current image IDs
+      const currentImageIds = extractImageIds(doc);
+      
+      // Find removed images (in previous but not in current)
+      const removedImageIds = Array.from(previousImageIdsRef.current)
+        .filter(id => !currentImageIds.has(id));
+      
+      // Delete removed images from Supabase
+      if (removedImageIds.length > 0 && docId) {
+        console.log('Deleting orphaned images:', removedImageIds);
+        await Promise.allSettled(
+          removedImageIds.map(imageId => 
+            notebookImagesService.deleteImage(imageId)
+          )
+        );
+      }
+      
+      // Update previous image IDs ref
+      previousImageIdsRef.current = currentImageIds;
+      
+      // Convert URLs and sync to backend
       const convertedDoc = convertUrlsToScheme(doc);
       const convertedContent = JSON.stringify(convertedDoc, null, 2);
       
@@ -285,9 +335,9 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         lastSavedRef.current = convertedContent;
       }
     } catch (error) {
-      console.error('Failed to convert URLs for backend sync:', error);
+      console.error('Failed to sync to backend:', error);
     }
-  }, [onChange, convertUrlsToScheme]);
+  }, [onChange, convertUrlsToScheme, extractImageIds, docId]);
 
   const extractFirstHeadingText = (doc: any): string | undefined => {
     try {
@@ -357,6 +407,15 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     };
   }, [docId, editor, syncToBackend]);
 
+  // Initialize image tracking when content loads
+  useEffect(() => {
+    if (processedInitialContent && processedInitialContent.length > 0) {
+      const initialImageIds = extractImageIds(processedInitialContent);
+      previousImageIdsRef.current = initialImageIds;
+      console.log('Initialized image tracking with', initialImageIds.size, 'images');
+    }
+  }, [processedInitialContent, extractImageIds]);
+
   // Load from localStorage on mount
   useEffect(() => {
     if (docId && typeof window !== "undefined") {
@@ -365,11 +424,15 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         processContentWithImageUrls(savedContent).then((processedContent) => {
           if (processedContent.length > 0) {
             editor.replaceBlocks(editor.document, processedContent);
+            // Update image tracking when restoring from localStorage
+            const restoredImageIds = extractImageIds(processedContent);
+            previousImageIdsRef.current = restoredImageIds;
+            console.log('Updated image tracking from localStorage with', restoredImageIds.size, 'images');
           }
         });
       }
     }
-  }, [docId, editor, initialContent, processContentWithImageUrls]);
+  }, [docId, editor, initialContent, processContentWithImageUrls, extractImageIds]);
 
   return (
     <div 

@@ -179,7 +179,6 @@ export default function CalendarApp({ onCreateNote }: CalendarAppProps) {
 
               {/* Calendar Legend */}
               <div className="pt-8 border-t border-border">
-                <h3 className="text-sm font-semibold mb-4">Evernote calendar</h3>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
