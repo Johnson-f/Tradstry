@@ -42,10 +42,19 @@ impl NotebookReminder {
         ).await?;
 
         // Create calendar event automatically
+        // Parse the reminder_time to extract date and time components
+        let reminder_time = chrono::DateTime::parse_from_rfc3339(&req.reminder_time)
+            .map_err(|_| anyhow::anyhow!("Invalid reminder_time format"))?;
+        
+        let start_date = reminder_time.date_naive().format("%Y-%m-%d").to_string();
+        let end_date = start_date.clone(); // Default to same day
+        let start_time = Some(reminder_time.time().format("%H:%M").to_string());
+        let end_time = Some((reminder_time.time() + chrono::Duration::hours(1)).format("%H:%M").to_string());
+        
         conn.execute(
-            r#"INSERT INTO calendar_events (id, reminder_id, event_title, event_description, event_time, is_synced, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 0, ?, ?)"#,
-            params![uuid::Uuid::new_v4().to_string(), id.clone(), req.title, req.description, req.reminder_time, now.clone(), now.clone()],
+            r#"INSERT INTO calendar_events (id, reminder_id, event_title, event_description, start_date, end_date, start_time, end_time, is_all_day, is_synced, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)"#,
+            params![uuid::Uuid::new_v4().to_string(), id.clone(), req.title, req.description, start_date, end_date, start_time, end_time, now.clone(), now.clone()],
         ).await?;
 
         Self::find_by_id(conn, &id).await

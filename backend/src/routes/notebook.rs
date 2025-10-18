@@ -353,8 +353,69 @@ pub async fn create_reminder(
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
-    match NotebookReminder::create(&conn, payload.into_inner()).await {
-        Ok(rem) => Ok(HttpResponse::Created().json(ApiItem { success: true, message: "Reminder created".into(), data: Some(rem) })),
+    
+    let reminder_data = payload.into_inner();
+    
+    // Create the reminder first
+    match NotebookReminder::create(&conn, reminder_data.clone()).await {
+        Ok(rem) => {
+            // Parse the reminder_time to extract date and time components
+            let reminder_time = chrono::DateTime::parse_from_rfc3339(&rem.reminder_time)
+                .map_err(|_| actix_web::error::ErrorBadRequest("Invalid reminder_time format"))?;
+            
+            let start_date = reminder_time.date_naive().format("%Y-%m-%d").to_string();
+            let end_date = start_date.clone(); // Default to same day, can be modified later
+            let start_time = Some(reminder_time.time().format("%H:%M").to_string());
+            let end_time = Some((reminder_time.time() + chrono::Duration::hours(1)).format("%H:%M").to_string());
+            
+            // Ensure calendar_events table exists with new schema and migrate if needed
+            use crate::turso::schema::{update_table_schema, get_expected_schema};
+            
+            // Get the expected schema for calendar_events
+            let expected_schemas = get_expected_schema();
+            if let Some(calendar_schema) = expected_schemas.iter().find(|s| s.name == "calendar_events") {
+                // This will handle both creation and migration
+                update_table_schema(&conn, calendar_schema).await.map_err(|e| {
+                    log::error!("Failed to update calendar_events schema: {:?}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to update calendar_events schema")
+                })?;
+            }
+            
+            // Create corresponding calendar event
+            let calendar_event_sql = r#"
+                INSERT INTO calendar_events (
+                    id, reminder_id, event_title, event_description, 
+                    start_date, end_date, start_time, end_time, 
+                    is_all_day, is_synced, created_at, updated_at
+                ) VALUES (
+                    lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))),
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+                )
+            "#;
+            
+            conn.execute(
+                calendar_event_sql,
+                libsql::params![
+                    rem.id.clone(),
+                    rem.title.clone(),
+                    rem.description.clone(),
+                    start_date.clone(),
+                    end_date.clone(),
+                    start_time.clone(),
+                    end_time.clone(),
+                    false, // is_all_day
+                    false  // is_synced
+                ],
+            ).await.map_err(|e| {
+                log::error!("Failed to create calendar event: {:?}", e);
+                log::error!("SQL: {}", calendar_event_sql);
+                log::error!("Params: reminder_id={}, title={}, description={:?}, start_date={}, end_date={}, start_time={:?}, end_time={:?}", 
+                    rem.id, rem.title, rem.description, start_date, end_date, start_time, end_time);
+                actix_web::error::ErrorInternalServerError("Failed to create calendar event")
+            })?;
+            
+            Ok(HttpResponse::Created().json(ApiItem { success: true, message: "Reminder and calendar event created".into(), data: Some(rem) }))
+        },
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiItem::<NotebookReminder> { success: false, message: e.to_string(), data: None })),
     }
 }
@@ -452,7 +513,7 @@ pub async fn list_calendar_events(
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     
     // Get local events
-    let local_events = CalendarEvent::find_all(&conn).await
+    let local_events = CalendarEvent::find_by_date_range(&conn, &query.start, &query.end).await
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch local events"))?;
     
     // Get external events
@@ -461,8 +522,11 @@ pub async fn list_calendar_events(
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,
-        "local_events": local_events,
-        "external_events": external_events
+        "message": "Calendar events".to_string(),
+        "data": {
+            "local_events": local_events,
+            "external_events": external_events
+        }
     })))
 }
 

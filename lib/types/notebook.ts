@@ -93,7 +93,11 @@ export interface CalendarEvent {
   reminder_id: string;
   event_title: string;
   event_description?: string | null;
-  event_time: string;
+  start_date: string;
+  end_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  is_all_day: boolean;
   is_synced: boolean;
   created_at: string;
   updated_at: string;

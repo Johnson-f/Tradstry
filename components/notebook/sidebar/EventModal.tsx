@@ -9,6 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Clock, X } from "lucide-react";
 import { format } from "date-fns";
+import { useCreateReminder } from "@/lib/hooks/use-notebook";
+import { toast } from "sonner";
 
 interface EventModalProps {
   isOpen: boolean;
@@ -27,29 +29,63 @@ interface EventData {
 }
 
 export default function EventModal({ isOpen, onClose, selectedDate }: EventModalProps) {
+  const { createReminder, isLoading, error } = useCreateReminder();
+  
   const [eventData, setEventData] = useState<EventData>({
     title: "",
-    startDate: selectedDate ? format(selectedDate, "dd/MM/yyyy") : format(new Date(), "dd/MM/yyyy"),
+    startDate: selectedDate ? format(selectedDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
     startTime: "09:00",
-    endDate: selectedDate ? format(selectedDate, "dd/MM/yyyy") : format(new Date(), "dd/MM/yyyy"),
+    endDate: selectedDate ? format(selectedDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
     endTime: "10:00",
     allDay: false,
     calendar: "Events"
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement event creation logic
-    console.log("Creating event:", eventData);
-    onClose();
+    
+    if (!eventData.title.trim()) {
+      toast.error("Please enter an event title");
+      return;
+    }
+
+    try {
+      // Convert date and time to ISO string for backend
+      const startDateTime = new Date(`${eventData.startDate}T${eventData.allDay ? '00:00:00' : eventData.startTime + ':00'}`);
+      const endDateTime = new Date(`${eventData.endDate}T${eventData.allDay ? '23:59:59' : eventData.endTime + ':00'}`);
+      
+      // Validate dates
+      if (isNaN(startDateTime.getTime())) {
+        throw new Error('Invalid start date');
+      }
+      if (isNaN(endDateTime.getTime())) {
+        throw new Error('Invalid end date');
+      }
+      
+      // Create reminder payload - the backend will automatically create calendar event
+      const reminderPayload = {
+        note_id: "temp-note-id", // You might want to create a note first or use a default
+        title: eventData.title,
+        description: eventData.allDay ? 'All day event' : `${eventData.startTime} - ${eventData.endTime}`,
+        reminder_time: startDateTime.toISOString()
+      };
+
+      await createReminder(reminderPayload);
+      toast.success("Event created successfully!");
+      onClose();
+    } catch (err) {
+      console.error("Failed to create event:", err);
+      toast.error("Failed to create event. Please try again.");
+    }
   };
 
   const handleAllDayChange = (checked: boolean) => {
     setEventData(prev => ({
       ...prev,
       allDay: checked,
-      startTime: checked ? "" : "09:00",
-      endTime: checked ? "" : "10:00"
+      startTime: checked ? "00:00" : "09:00",
+      endTime: checked ? "23:59" : "10:00",
+      endDate: checked ? prev.startDate : prev.endDate
     }));
   };
 
@@ -61,6 +97,13 @@ export default function EventModal({ isOpen, onClose, selectedDate }: EventModal
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/50 rounded-md p-3 text-red-300 text-sm">
+              {error.message || "Failed to create event"}
+            </div>
+          )}
+
           {/* Event Title */}
           <div>
             <Input
@@ -68,6 +111,7 @@ export default function EventModal({ isOpen, onClose, selectedDate }: EventModal
               value={eventData.title}
               onChange={(e) => setEventData(prev => ({ ...prev, title: e.target.value }))}
               className="bg-gray-800 border-gray-600 text-white placeholder-gray-400"
+              disabled={isLoading}
             />
           </div>
 
@@ -79,34 +123,23 @@ export default function EventModal({ isOpen, onClose, selectedDate }: EventModal
             </Label>
             <div className="flex gap-2">
               <div className="flex-1">
-                <Select value={eventData.startDate} onValueChange={(value) => setEventData(prev => ({ ...prev, startDate: value }))}>
-                  <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-600">
-                    <SelectItem value={eventData.startDate}>{eventData.startDate}</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="date"
+                  value={eventData.startDate}
+                  onChange={(e) => setEventData(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  disabled={isLoading}
+                />
               </div>
               {!eventData.allDay && (
                 <div className="flex-1">
-                  <Select value={eventData.startTime} onValueChange={(value) => setEventData(prev => ({ ...prev, startTime: value }))}>
-                    <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-600">
-                      <SelectItem value="09:00">09:00</SelectItem>
-                      <SelectItem value="10:00">10:00</SelectItem>
-                      <SelectItem value="11:00">11:00</SelectItem>
-                      <SelectItem value="12:00">12:00</SelectItem>
-                      <SelectItem value="13:00">13:00</SelectItem>
-                      <SelectItem value="14:00">14:00</SelectItem>
-                      <SelectItem value="15:00">15:00</SelectItem>
-                      <SelectItem value="16:00">16:00</SelectItem>
-                      <SelectItem value="17:00">17:00</SelectItem>
-                      <SelectItem value="18:00">18:00</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    type="time"
+                    value={eventData.startTime}
+                    onChange={(e) => setEventData(prev => ({ ...prev, startTime: e.target.value }))}
+                    className="bg-gray-800 border-gray-600 text-white"
+                    disabled={isLoading}
+                  />
                 </div>
               )}
             </div>
@@ -131,34 +164,23 @@ export default function EventModal({ isOpen, onClose, selectedDate }: EventModal
             </Label>
             <div className="flex gap-2">
               <div className="flex-1">
-                <Select value={eventData.endDate} onValueChange={(value) => setEventData(prev => ({ ...prev, endDate: value }))}>
-                  <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-600">
-                    <SelectItem value={eventData.endDate}>{eventData.endDate}</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="date"
+                  value={eventData.endDate}
+                  onChange={(e) => setEventData(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  disabled={isLoading}
+                />
               </div>
               {!eventData.allDay && (
                 <div className="flex-1">
-                  <Select value={eventData.endTime} onValueChange={(value) => setEventData(prev => ({ ...prev, endTime: value }))}>
-                    <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-600">
-                      <SelectItem value="10:00">10:00</SelectItem>
-                      <SelectItem value="11:00">11:00</SelectItem>
-                      <SelectItem value="12:00">12:00</SelectItem>
-                      <SelectItem value="13:00">13:00</SelectItem>
-                      <SelectItem value="14:00">14:00</SelectItem>
-                      <SelectItem value="15:00">15:00</SelectItem>
-                      <SelectItem value="16:00">16:00</SelectItem>
-                      <SelectItem value="17:00">17:00</SelectItem>
-                      <SelectItem value="18:00">18:00</SelectItem>
-                      <SelectItem value="19:00">19:00</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    type="time"
+                    value={eventData.endTime}
+                    onChange={(e) => setEventData(prev => ({ ...prev, endTime: e.target.value }))}
+                    className="bg-gray-800 border-gray-600 text-white"
+                    disabled={isLoading}
+                  />
                 </div>
               )}
             </div>
@@ -207,8 +229,9 @@ export default function EventModal({ isOpen, onClose, selectedDate }: EventModal
             <Button
               type="submit"
               className="bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={isLoading}
             >
-              Create event
+              {isLoading ? "Creating..." : "Create event"}
             </Button>
           </div>
         </form>

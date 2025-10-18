@@ -6,12 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ExternalCalendarEvent } from "@/lib/types/calendar";
+import { useCalendarEvents } from "@/lib/hooks/use-notebook";
 
 interface DayViewProps {
   selectedDate: Date;
   onCreateNote?: () => void;
-  externalEvents?: ExternalCalendarEvent[];
   viewMode?: "day" | "week" | "month";
   onDateSelect?: (date: Date) => void;
   onViewModeChange?: (mode: "day" | "week" | "month") => void;
@@ -21,14 +20,52 @@ interface Event {
   id: string;
   title: string;
   time: string;
+  date: string; // Add date field
   type: 'event' | 'task';
   isExternal?: boolean;
 }
 
-function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "day", onDateSelect, onViewModeChange }: DayViewProps) {
+function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, onViewModeChange }: DayViewProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
   const eventsGridRef = useRef<HTMLDivElement>(null);
+  
+  // Calculate date range based on view mode
+  const getDateRange = () => {
+    const formatDate = (date: Date) => format(date, 'yyyy-MM-dd');
+    
+    switch (viewMode) {
+      case 'day':
+        return {
+          start: formatDate(selectedDate),
+          end: formatDate(selectedDate)
+        };
+      case 'week':
+        const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+        return {
+          start: formatDate(weekStart),
+          end: formatDate(weekEnd)
+        };
+      case 'month':
+        const monthStart = startOfMonth(selectedDate);
+        const monthEnd = endOfMonth(selectedDate);
+        return {
+          start: formatDate(monthStart),
+          end: formatDate(monthEnd)
+        };
+      default:
+        return {
+          start: formatDate(selectedDate),
+          end: formatDate(selectedDate)
+        };
+    }
+  };
+
+  const { start, end } = getDateRange();
+  
+  // Fetch calendar events using the hook with date range
+  const { events: calendarEvents, isLoading: eventsLoading, error: eventsError } = useCalendarEvents(start, end);
 
   // Update current time every minute
   useEffect(() => {
@@ -133,39 +170,65 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isToday, currentTime, viewMode]);
 
-  // Mock events data - in a real app, this would come from your data source
-  const mockEvents: Event[] = [
-    {
-      id: '1',
-      title: 'Morning Standup',
-      time: '09:00',
-      type: 'event'
-    },
-    {
-      id: '2',
-      title: 'Review Trading Journal',
-      time: '10:30',
-      type: 'task'
-    },
-    {
-      id: '3',
-      title: 'Market Analysis Meeting',
-      time: '14:00',
-      type: 'event'
+  // Process calendar events from the API
+  const localEvents: Event[] = (calendarEvents as any)?.local_events?.map((event: any) => {
+    console.log('Processing local event:', event);
+    
+    // Extract time from start_time or event_description
+    let eventTime = '00:00';
+    if (event.start_time) {
+      eventTime = event.start_time;
+    } else if (event.event_description && event.event_description.includes(':')) {
+      // Extract time from description like "09:00 - 10:00"
+      const timeMatch = event.event_description.match(/(\d{2}:\d{2})/);
+      if (timeMatch) {
+        eventTime = timeMatch[1];
+      }
     }
-  ];
+    
+    return {
+      id: event.id,
+      title: event.event_title,
+      time: eventTime,
+      date: event.start_date, // Add the date from the event
+      type: 'event' as const,
+      isExternal: false
+    };
+  }) || [];
 
   // Convert external events to display format
-  const externalEventsFormatted: Event[] = externalEvents.map(event => ({
-    id: event.id,
-    title: event.title,
-    time: format(new Date(event.start_time), 'HH:mm'),
-    type: 'event' as const,
-    isExternal: true
-  }));
+  const externalEventsFormatted: Event[] = (calendarEvents as any)?.external_events?.map((event: any) => {
+    console.log('Processing external event:', event);
+    
+    let eventTime = '00:00';
+    if (event.start_time) {
+      // Handle different time formats
+      if (typeof event.start_time === 'string') {
+        if (event.start_time.includes('T')) {
+          // ISO format
+          eventTime = format(new Date(event.start_time), 'HH:mm');
+        } else {
+          // Time only format
+          eventTime = event.start_time;
+        }
+      }
+    }
+    
+    return {
+      id: event.id,
+      title: event.title || event.event_title,
+      time: eventTime,
+      date: event.start_time ? event.start_time.split('T')[0] : new Date().toISOString().split('T')[0], // Extract date from ISO string
+      type: 'event' as const,
+      isExternal: true
+    };
+  }) || [];
 
   // Combine local and external events
-  const allEvents = [...mockEvents, ...externalEventsFormatted];
+  const allEvents = [...localEvents, ...externalEventsFormatted];
+  
+  console.log('All processed events:', allEvents);
+  console.log('Calendar events raw data:', calendarEvents);
 
   const timeSlots = Array.from({ length: 24 }, (_, i) => {
     const hour = i.toString().padStart(2, '0');
@@ -173,15 +236,26 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
   });
 
   const getEventsForTimeSlot = (timeSlot: string, date?: Date) => {
-    if (viewMode === "week" && date) {
-      // For week view, filter events by date and time
-      return allEvents.filter(event => {
-        const eventDate = new Date(event.time);
-        return isSameDay(eventDate, date) && event.time.startsWith(timeSlot.split(':')[0]);
-      });
-    }
-    // For day view, filter by time only
-    return allEvents.filter(event => event.time.startsWith(timeSlot.split(':')[0]));
+    const targetDate = date || selectedDate;
+    const slotHour = parseInt(timeSlot.split(':')[0]);
+    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
+    
+    console.log(`Getting events for time slot ${timeSlot} (hour: ${slotHour}) on date ${targetDateStr}`);
+    console.log('Available events:', allEvents);
+    
+    const filteredEvents = allEvents.filter(event => {
+      const eventHour = parseInt(event.time.split(':')[0]);
+      const matchesTime = eventHour === slotHour;
+      const matchesDate = event.date === targetDateStr;
+      
+      console.log(`Event "${event.title}" at ${event.time} (hour: ${eventHour}) on ${event.date} matches slot ${slotHour} and date ${targetDateStr}: time=${matchesTime}, date=${matchesDate}`);
+      
+      return matchesTime && matchesDate;
+    });
+    
+    console.log(`Found ${filteredEvents.length} events for slot ${timeSlot} on ${targetDateStr}:`, filteredEvents);
+    
+    return filteredEvents;
   };
 
   if (viewMode === "week") {
@@ -224,7 +298,22 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
             ))}
           </div>
 
+          {/* Loading State */}
+          {eventsLoading && (
+            <div className="flex items-center justify-center h-32">
+              <div className="text-sm text-muted-foreground">Loading events...</div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {eventsError && (
+            <div className="flex items-center justify-center h-32">
+              <div className="text-sm text-red-500">Failed to load events: {eventsError.message}</div>
+            </div>
+          )}
+
           {/* Week Events Grid */}
+          {!eventsLoading && !eventsError && (
           <div ref={eventsGridRef} className="relative overflow-y-auto flex-1">
             {/* Current Time Indicator - Week View */}
             {isToday && getCurrentTimePosition() !== null && (
@@ -299,6 +388,7 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     );
@@ -342,7 +432,22 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
             ))}
           </div>
 
+          {/* Loading State */}
+          {eventsLoading && (
+            <div className="flex items-center justify-center h-32">
+              <div className="text-sm text-muted-foreground">Loading events...</div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {eventsError && (
+            <div className="flex items-center justify-center h-32">
+              <div className="text-sm text-red-500">Failed to load events: {eventsError.message}</div>
+            </div>
+          )}
+
           {/* Month Calendar Grid */}
+          {!eventsLoading && !eventsError && (
           <div className="flex-1 overflow-y-auto">
             {weeks.map((week, weekIndex) => (
               <div key={weekIndex} className="h-24 border-b border-border flex">
@@ -351,10 +456,10 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
                   const isSelected = isSameDay(date, selectedDate);
                   const isToday = isTodayDate(date);
                   const dayEvents = allEvents.filter(event => {
-                    // For month view, show events that occur on this date
-                    // This is a simplified approach - in a real app you'd have proper date matching
-                    const eventDate = new Date(event.time);
-                    return isSameDay(eventDate, date);
+                    // Match events by their actual date
+                    const eventDate = event.date; // YYYY-MM-DD format
+                    const targetDate = format(date, 'yyyy-MM-dd');
+                    return eventDate === targetDate;
                   });
 
                   return (
@@ -400,6 +505,7 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     );
@@ -439,7 +545,22 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
           </Button>
         </div>
 
+        {/* Loading State */}
+        {eventsLoading && (
+          <div className="flex items-center justify-center h-32">
+            <div className="text-sm text-muted-foreground">Loading events...</div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {eventsError && (
+          <div className="flex items-center justify-center h-32">
+            <div className="text-sm text-red-500">Failed to load events: {eventsError.message}</div>
+          </div>
+        )}
+
         {/* Events Grid */}
+        {!eventsLoading && !eventsError && (
         <div ref={eventsGridRef} className="relative overflow-y-auto flex-1">
           {/* Current Time Indicator */}
           {isToday && getCurrentTimePosition() !== null && (
@@ -456,6 +577,7 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
 
           {timeSlots.map((timeSlot) => {
             const events = getEventsForTimeSlot(timeSlot);
+            console.log(`Rendering time slot ${timeSlot} with ${events.length} events:`, events);
             return (
               <div
                 key={timeSlot}
@@ -511,6 +633,7 @@ function DayView({ selectedDate, onCreateNote, externalEvents = [], viewMode = "
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

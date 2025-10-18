@@ -125,8 +125,11 @@ class NotebookService {
   }
 
   // Calendar
-  async listCalendarEvents(): Promise<ApiList<CalendarEvent>> {
-    return apiClient.get(apiConfig.endpoints.notebook.calendar.events);
+  async listCalendarEvents(startDate?: string, endDate?: string): Promise<ApiList<CalendarEvent>> {
+    const params: Record<string, string> = {};
+    if (startDate) params.start = startDate;
+    if (endDate) params.end = endDate;
+    return apiClient.get(apiConfig.endpoints.notebook.calendar.events, { params });
   }
 
   async connectCalendar(provider: 'google' | 'microsoft', payload: { access_token: string; refresh_token: string; token_expiry: string; calendar_id?: string }): Promise<{ success: boolean; connection_id: string }> {

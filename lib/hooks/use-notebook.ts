@@ -274,12 +274,12 @@ export function useCompleteReminder() {
 }
 
 // Calendar
-export function useCalendarEvents() {
+export function useCalendarEvents(startDate?: string, endDate?: string) {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['notebook', 'calendar', 'events'],
-    queryFn: () => notebookService.listCalendarEvents(),
+    queryKey: ['notebook', 'calendar', 'events', startDate, endDate],
+    queryFn: () => notebookService.listCalendarEvents(startDate, endDate),
   });
-  return { events: data?.data ?? [], isLoading, error: error as Error | null, refetch };
+  return { events: data?.data ?? { local_events: [], external_events: [] }, isLoading, error: error as Error | null, refetch };
 }
 
 export function useConnectCalendar() {
