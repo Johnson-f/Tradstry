@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 interface DayViewProps {
   selectedDate: Date;
-  onDateSelect?: (date: Date) => void;
+  onCreateNote?: () => void;
 }
 
 interface Event {
@@ -19,7 +19,7 @@ interface Event {
   type: 'event' | 'task';
 }
 
-function DayView({ selectedDate, onDateSelect }: DayViewProps) {
+function DayView({ selectedDate, onCreateNote }: DayViewProps) {
   // Mock events data - in a real app, this would come from your data source
   const mockEvents: Event[] = [
     {
@@ -77,7 +77,7 @@ function DayView({ selectedDate, onDateSelect }: DayViewProps) {
           <Button 
             size="sm" 
             className="gap-2"
-            onClick={() => onDateSelect?.(selectedDate)}
+            onClick={onCreateNote}
           >
             <Plus className="w-4 h-4" />
             Create Note
