@@ -142,11 +142,13 @@ export const apiConfig = {
       },
       calendar: {
         events: "/notebook/calendar/events",
+        connections: "/notebook/calendar/connections",
         connect: (provider: string) => `/notebook/calendar/connect/${provider}`,
         disconnect: (id: string) => `/notebook/calendar/connections/${id}`,
-        sync: (id: string) => `/notebook/calendar/sync/${id}`,
-        oauthGoogle: "/notebook/calendar/oauth/google",
-        oauthMicrosoft: "/notebook/calendar/oauth/microsoft",
+        sync: (id: string) => `/notebook/calendar/connections/${id}/sync`,
+        syncAll: "/notebook/calendar/sync-all",
+        oauthGoogle: "/notebook/oauth/google/exchange",
+        oauthMicrosoft: "/notebook/oauth/microsoft/exchange",
       },
     },
 

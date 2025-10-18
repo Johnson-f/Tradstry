@@ -12,7 +12,7 @@ use crate::models::notebook::{
     NotebookTag, CreateTagRequest, UpdateTagRequest,
     NotebookTemplate, CreateTemplateRequest, UpdateTemplateRequest,
     NotebookReminder, CreateReminderRequest, UpdateReminderRequest,
-    CalendarEvent,
+    CalendarEvent, ExternalCalendarConnection, ExternalCalendarEvent,
 };
 use crate::service::calendar_service::CalendarService;
 
@@ -444,15 +444,46 @@ pub async fn complete_reminder(
 // ==== Calendar ====
 pub async fn list_calendar_events(
     req: HttpRequest,
+    query: web::Query<DateRangeQuery>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
-    match CalendarEvent::find_all(&conn).await {
-        Ok(events) => Ok(HttpResponse::Ok().json(ApiList { success: true, message: "Events".into(), data: Some(events) })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiList::<CalendarEvent> { success: false, message: e.to_string(), data: None })),
-    }
+    
+    // Get local events
+    let local_events = CalendarEvent::find_all(&conn).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch local events"))?;
+    
+    // Get external events
+    let external_events = ExternalCalendarEvent::find_by_date_range(&conn, &query.start, &query.end).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch external events"))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "local_events": local_events,
+        "external_events": external_events
+    })))
+}
+
+pub async fn list_calendar_connections(
+    req: HttpRequest,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    
+    let connections = ExternalCalendarConnection::find_by_user(&conn).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch connections"))?;
+    
+    Ok(HttpResponse::Ok().json(connections))
+}
+
+#[derive(Deserialize)]
+pub struct DateRangeQuery {
+    pub start: String,
+    pub end: String,
 }
 
 pub fn configure_notebook_routes(cfg: &mut web::ServiceConfig) {
@@ -489,20 +520,23 @@ pub fn configure_notebook_routes(cfg: &mut web::ServiceConfig) {
             .route("/reminders/{id}/complete", web::post().to(complete_reminder))
             // Calendar
             .route("/calendar/events", web::get().to(list_calendar_events))
-            .route("/calendar/connect/{provider}", web::post().to(connect_calendar))
+            .route("/calendar/connections", web::get().to(list_calendar_connections))
             .route("/calendar/connections/{id}", web::delete().to(disconnect_calendar))
-            .route("/calendar/sync/{id}", web::post().to(sync_calendar))
-            .route("/calendar/oauth/google", web::post().to(google_oauth_exchange))
-            .route("/calendar/oauth/microsoft", web::post().to(microsoft_oauth_exchange))
+            .route("/calendar/connections/{id}/sync", web::post().to(sync_calendar))
+            .route("/calendar/sync-all", web::post().to(sync_all_calendars))
+            .route("/oauth/google/exchange", web::post().to(google_oauth_exchange))
+            .route("/oauth/microsoft/exchange", web::post().to(microsoft_oauth_exchange))
     );
 }
 
 // ==== External calendar connect/sync stubs ====
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ConnectPayload { access_token: String, refresh_token: String, token_expiry: String, calendar_id: Option<String> }
 #[derive(Deserialize)]
 struct OAuthCodePayload { code: String, redirect_uri: String, client_id: String, client_secret: String, tenant: Option<String> }
 
+#[allow(dead_code)]
 async fn connect_calendar(
     req: HttpRequest,
     path: web::Path<String>,
@@ -544,8 +578,89 @@ async fn sync_calendar(
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
-    let n = CalendarService::sync_external_events(&conn, &id).await.map_err(|_| actix_web::error::ErrorInternalServerError("Sync failed"))?;
+    
+    // Get Google config from environment
+    let client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
+    let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();
+    
+    let n = CalendarService::sync_external_events(&conn, &id, &client_id, &client_secret).await.map_err(|_| actix_web::error::ErrorInternalServerError("Sync failed"))?;
     Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "synced": n})))
+}
+
+async fn sync_all_calendars(
+    req: HttpRequest,
+    turso_client: web::Data<Arc<TursoClient>>,
+) -> Result<HttpResponse> {
+    // Verify cron secret from header
+    let cron_secret = req.headers().get("X-Cron-Secret")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing cron secret"))?;
+    
+    if cron_secret != std::env::var("CRON_SECRET").unwrap_or_default() {
+        return Err(actix_web::error::ErrorUnauthorized("Invalid cron secret"));
+    }
+    
+    // Get Google config from environment
+    let client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
+    let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();
+    
+    // Get all users with active Google connections from registry
+    let registry_conn = turso_client.get_registry_connection().await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Registry connection failed"))?;
+    
+    let stmt = registry_conn.prepare(
+        "SELECT user_id FROM user_databases WHERE is_active = 1"
+    ).await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+    
+    let mut rows = stmt.query(libsql::params![]).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+    
+    let mut total_synced = 0u64;
+    let mut success_count = 0u64;
+    let mut failure_count = 0u64;
+    
+    while let Some(row) = rows.next().await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))? {
+        let user_id: String = row.get(0).unwrap_or_default();
+        
+        // Get user's database connection
+        if let Ok(Some(user_db)) = turso_client.get_user_database(&user_id).await {
+            let conn = libsql::Builder::new_remote(user_db.db_url.clone(), user_db.db_token.clone())
+                .build()
+                .await
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Database connection failed"))?
+                .connect()
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Database connection failed"))?;
+            
+            // Get all active Google connections for this user
+            let conn_stmt = conn.prepare(
+                "SELECT id FROM external_calendar_connections WHERE provider = 'google' AND is_active = 1"
+            ).await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+            
+            let mut conn_rows = conn_stmt.query(libsql::params![]).await
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+            
+            while let Some(conn_row) = conn_rows.next().await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))? {
+                let connection_id: String = conn_row.get(0).unwrap_or_default();
+                
+                match CalendarService::sync_external_events(&conn, &connection_id, &client_id, &client_secret).await {
+                    Ok(synced) => {
+                        total_synced += synced;
+                        success_count += 1;
+                    },
+                    Err(_) => {
+                        failure_count += 1;
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "total_synced": total_synced,
+        "success_count": success_count,
+        "failure_count": failure_count
+    })))
 }
 
 // Optional: exchange OAuth code and auto-connect

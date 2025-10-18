@@ -64,4 +64,82 @@ impl CalendarEvent {
     }
 }
 
+impl ExternalCalendarConnection {
+    pub async fn find_by_user(conn: &Connection) -> Result<Vec<Self>> {
+        let stmt = conn.prepare(
+            "SELECT * FROM external_calendar_connections WHERE provider = 'google' AND is_active = 1"
+        ).await?;
+        let mut rows = stmt.query(params![]).await?;
+        let mut connections = Vec::new();
+        while let Some(row) = rows.next().await? {
+            connections.push(Self::from_row(row)?);
+        }
+        Ok(connections)
+    }
+    
+    #[allow(dead_code)]
+    pub async fn update_tokens(conn: &Connection, id: &str, access_token: &str, refresh_token: &str, expiry: &str) -> Result<()> {
+        conn.execute(
+            "UPDATE external_calendar_connections SET access_token = ?, refresh_token = ?, token_expiry = ?, updated_at = datetime('now') WHERE id = ?",
+            params![access_token, refresh_token, expiry, id],
+        ).await?;
+        Ok(())
+    }
+    
+    fn from_row(row: libsql::Row) -> Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            provider: row.get(1)?,
+            access_token: row.get(2)?,
+            refresh_token: row.get(3)?,
+            token_expiry: row.get(4)?,
+            calendar_id: row.get(5)?,
+            is_active: row.get::<i64>(6)? != 0,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    }
+}
+
+impl ExternalCalendarEvent {
+    #[allow(dead_code)]
+    pub async fn find_by_connection(conn: &Connection, connection_id: &str) -> Result<Vec<Self>> {
+        let stmt = conn.prepare(
+            "SELECT * FROM external_calendar_events WHERE connection_id = ? ORDER BY start_time ASC"
+        ).await?;
+        let mut rows = stmt.query(params![connection_id]).await?;
+        let mut events = Vec::new();
+        while let Some(row) = rows.next().await? {
+            events.push(Self::from_row(row)?);
+        }
+        Ok(events)
+    }
+    
+    pub async fn find_by_date_range(conn: &Connection, start: &str, end: &str) -> Result<Vec<Self>> {
+        let stmt = conn.prepare(
+            "SELECT * FROM external_calendar_events WHERE start_time >= ? AND start_time <= ? ORDER BY start_time ASC"
+        ).await?;
+        let mut rows = stmt.query(params![start, end]).await?;
+        let mut events = Vec::new();
+        while let Some(row) = rows.next().await? {
+            events.push(Self::from_row(row)?);
+        }
+        Ok(events)
+    }
+    
+    fn from_row(row: libsql::Row) -> Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            connection_id: row.get(1)?,
+            external_event_id: row.get(2)?,
+            title: row.get(3)?,
+            description: row.get(4)?,
+            start_time: row.get(5)?,
+            end_time: row.get(6)?,
+            location: row.get(7)?,
+            last_synced_at: row.get(8)?,
+        })
+    }
+}
+
 
