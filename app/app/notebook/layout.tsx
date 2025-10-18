@@ -8,6 +8,7 @@ import Navigation from "@/components/notebook/sidebar/Navigation";
 import NotebookNavbar from "@/components/notebook/Navbar";
 import NewNoteButton from "@/components/notebook/NewNoteButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft, Menu } from "lucide-react";
 
 export default function NotebookLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -36,13 +37,15 @@ export default function NotebookLayout({ children }: { children: React.ReactNode
             {sidebarWidth === 0 && (
               <button
                 onClick={() => window.dispatchEvent(new Event('notebook:sidebar-open'))}
-                className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
               >
-                Open Sidebar
+                <Menu className="h-4 w-4" />
+                <span>Open Sidebar</span>
               </button>
             )}
-            <Link href="/app" className="text-sm text-muted-foreground hover:underline">
-              ← Back to App
+            <Link href="/app" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline">
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back</span>
             </Link>
             <span className="text-sm text-muted-foreground">/</span>
             <span className="text-sm">{pathname?.replace("/app/", "")}</span>
@@ -52,7 +55,9 @@ export default function NotebookLayout({ children }: { children: React.ReactNode
             <NotebookNavbar />
           </div>
         </nav>
-        <ScrollArea className="h-full pt-16">{children}</ScrollArea>
+        <div className="h-full" style={{ marginTop: '-64px', paddingTop: '64px' }}>
+          {children}
+        </div>
       </div>
     </div>
   );
