@@ -3,6 +3,7 @@ use std::env;
 
 /// Configuration for Turso database connections
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TursoConfig {
     /// Central registry database URL (main Turso database)
     pub registry_db_url: String,
@@ -16,6 +17,10 @@ pub struct TursoConfig {
     pub supabase: SupabaseConfig,
     /// Legacy Clerk webhook secret (for migration period)
     pub clerk_webhook_secret: Option<String>,
+    /// Google OAuth configuration
+    pub google: GoogleConfig,
+    /// Cron secret for external sync endpoint
+    pub cron_secret: String,
 }
 
 /// Supabase authentication configuration
@@ -30,10 +35,20 @@ pub struct SupabaseConfig {
     pub jwks_url: String,
 }
 
+/// Google OAuth configuration
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct GoogleConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
+}
+
 impl TursoConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         let supabase_config = SupabaseConfig::from_env()?;
+        let google_config = GoogleConfig::from_env()?;
         
         Ok(Self {
             registry_db_url: env::var("REGISTRY_DB_URL")
@@ -46,6 +61,9 @@ impl TursoConfig {
                 .map_err(|_| "TURSO_ORG environment variable not set")?,
             supabase: supabase_config,
             clerk_webhook_secret: env::var("CLERK_WEBHOOK_SECRET").ok(),
+            google: google_config,
+            cron_secret: env::var("CRON_SECRET")
+                .map_err(|_| "CRON_SECRET environment variable not set")?,
         })
     }
 }
@@ -69,6 +87,20 @@ impl SupabaseConfig {
             anon_key,
             service_role_key,
             jwks_url,
+        })
+    }
+}
+
+impl GoogleConfig {
+    /// Load Google OAuth configuration from environment variables
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            client_id: env::var("GOOGLE_CLIENT_ID")
+                .map_err(|_| "GOOGLE_CLIENT_ID environment variable not set")?,
+            client_secret: env::var("GOOGLE_CLIENT_SECRET")
+                .map_err(|_| "GOOGLE_CLIENT_SECRET environment variable not set")?,
+            redirect_uri: env::var("GOOGLE_REDIRECT_URI")
+                .unwrap_or_else(|_| "http://localhost:3000/api/auth/callback/google".to_string()),
         })
     }
 }

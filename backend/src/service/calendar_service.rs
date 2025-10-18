@@ -11,6 +11,59 @@ impl CalendarService {
     #[allow(dead_code)]
     pub fn new() -> Self { Self }
 
+    // Token refresh methods
+    pub async fn refresh_google_token(refresh_token: &str, client_id: &str, client_secret: &str) -> Result<(String, String, String)> {
+        let client = Client::new();
+        let resp = client
+            .post("https://oauth2.googleapis.com/token")
+            .form(&[
+                ("refresh_token", refresh_token),
+                ("client_id", client_id),
+                ("client_secret", client_secret),
+                ("grant_type", "refresh_token"),
+            ])
+            .send()
+            .await?;
+        let json: serde_json::Value = resp.json().await?;
+        let access = json.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let expires_in = json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600);
+        let expiry = (Utc::now() + chrono::Duration::seconds(expires_in)).to_rfc3339();
+        Ok((access, refresh_token.to_string(), expiry))
+    }
+
+    pub async fn ensure_valid_token(conn: &Connection, connection_id: &str, client_id: &str, client_secret: &str) -> Result<String> {
+        // Get current token info
+        let stmt = conn.prepare("SELECT access_token, refresh_token, token_expiry FROM external_calendar_connections WHERE id = ?").await?;
+        let mut rows = stmt.query(params![connection_id]).await?;
+        
+        if let Some(row) = rows.next().await? {
+            let access_token: String = row.get(0)?;
+            let refresh_token: String = row.get(1)?;
+            let token_expiry: String = row.get(2)?;
+            
+            // Check if token is expired
+            let expiry_time = chrono::DateTime::parse_from_rfc3339(&token_expiry)
+                .map_err(|_| anyhow::anyhow!("Invalid expiry format"))?;
+            
+            if Utc::now() < expiry_time {
+                return Ok(access_token);
+            }
+            
+            // Token is expired, refresh it
+            let (new_access, new_refresh, new_expiry) = Self::refresh_google_token(&refresh_token, client_id, client_secret).await?;
+            
+            // Update the database with new tokens
+            conn.execute(
+                "UPDATE external_calendar_connections SET access_token = ?, refresh_token = ?, token_expiry = ?, updated_at = datetime('now') WHERE id = ?",
+                params![new_access.clone(), new_refresh, new_expiry, connection_id],
+            ).await?;
+            
+            Ok(new_access)
+        } else {
+            Err(anyhow::anyhow!("Connection not found"))
+        }
+    }
+
     // Connection management
     pub async fn connect_provider(
         conn: &Connection,
@@ -37,7 +90,7 @@ impl CalendarService {
     }
 
     // Sync stub: fetch external events and cache them locally
-    pub async fn sync_external_events(conn: &Connection, connection_id: &str) -> Result<u64> {
+    pub async fn sync_external_events(conn: &Connection, connection_id: &str, client_id: &str, client_secret: &str) -> Result<u64> {
         // Load connection
         let mut rows = conn
             .prepare("SELECT provider, access_token, calendar_id FROM external_calendar_connections WHERE id = ?")
@@ -51,7 +104,11 @@ impl CalendarService {
             let calendar_id: Option<String> = row.get(2)?;
 
             match provider.as_str() {
-                "google" => Self::sync_google_events(conn, &access_token, calendar_id.as_deref()).await,
+                "google" => {
+                    // Ensure token is valid before syncing
+                    let valid_token = Self::ensure_valid_token(conn, connection_id, client_id, client_secret).await?;
+                    Self::sync_google_events(conn, connection_id, &valid_token, calendar_id.as_deref()).await
+                },
                 "microsoft" => Self::sync_microsoft_events(conn, &access_token).await,
                 _ => Ok(0),
             }
@@ -60,7 +117,7 @@ impl CalendarService {
         }
     }
 
-    async fn sync_google_events(conn: &Connection, access_token: &str, calendar_id: Option<&str>) -> Result<u64> {
+    async fn sync_google_events(conn: &Connection, connection_id: &str, access_token: &str, calendar_id: Option<&str>) -> Result<u64> {
         let cal_id = calendar_id.unwrap_or("primary");
         let url = format!("https://www.googleapis.com/calendar/v3/calendars/{}/events?maxResults=50", cal_id);
         let client = Client::new();
@@ -87,8 +144,8 @@ impl CalendarService {
 
                 let id = uuid::Uuid::new_v4().to_string();
                 conn.execute(
-                    "INSERT OR REPLACE INTO external_calendar_events (id, connection_id, external_event_id, title, description, start_time, end_time, location) VALUES (?, (SELECT id FROM external_calendar_connections WHERE access_token = ? LIMIT 1), ?, ?, ?, ?, ?, ?)",
-                    params![id, access_token, ext_id, title, description, start_time, end_time, location],
+                    "INSERT OR REPLACE INTO external_calendar_events (id, connection_id, external_event_id, title, description, start_time, end_time, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, connection_id, ext_id, title, description, start_time, end_time, location],
                 ).await?;
                 inserted += 1;
             }
@@ -147,7 +204,8 @@ impl CalendarService {
         let json: serde_json::Value = resp.json().await?;
         let access = json.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let refresh = json.get("refresh_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let expiry = Utc::now().to_rfc3339();
+        let expires_in = json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600);
+        let expiry = (Utc::now() + chrono::Duration::seconds(expires_in)).to_rfc3339();
         Ok((access, refresh, expiry))
     }
 
