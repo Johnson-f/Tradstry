@@ -9,6 +9,7 @@ use crate::models::options::options::{
     OptionTrade, CreateOptionRequest, UpdateOptionRequest, OptionQuery
 };
 use crate::models::stock::stocks::TimeRange;
+use crate::service::cache_service::CacheService;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -162,20 +163,40 @@ async fn get_user_db_connection(
 
 // CRUD Route Handlers
 
-/// Create a new option trade
+/// Create a new option trade with cache invalidation
 pub async fn create_option(
     req: HttpRequest,
     payload: web::Json<CreateOptionRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("Creating new option trade");
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
     match OptionTrade::create(&conn, payload.into_inner()).await {
         Ok(option) => {
             info!("Successfully created option with ID: {}", option.id);
+            
+            // Invalidate cache after successful creation
+            let cache_service_clone = cache_service.get_ref().clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                match cache_service_clone.invalidate_table_cache(&user_id_clone, "options").await {
+                    Ok(count) => info!("Invalidated {} option cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate option cache for user {}: {}", user_id_clone, e),
+                }
+                
+                // Also invalidate analytics cache
+                match cache_service_clone.invalidate_user_analytics(&user_id_clone).await {
+                    Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
+                }
+            });
+            
             Ok(HttpResponse::Created().json(ApiResponse::success(option)))
         }
         Err(e) => {
@@ -219,20 +240,30 @@ pub async fn get_option_by_id(
     }
 }
 
-/// Get all options with optional filtering
+/// Get all options with optional filtering and caching
 pub async fn get_all_options(
     req: HttpRequest,
     query: web::Query<OptionQuery>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("Fetching options with query: {:?}", query);
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    let option_query = query.into_inner();
 
-    match OptionTrade::find_all(&conn, query.into_inner()).await {
+    // Generate cache key based on query parameters
+    let query_hash = format!("{:?}", option_query);
+    let cache_key = format!("db:{}:options:list:{}", user_id, query_hash);
+    
+    match cache_service.get_or_fetch(&cache_key, 1800, || async {
+        info!("Cache miss for options list, fetching from database");
+        OptionTrade::find_all(&conn, option_query).await.map_err(|e| anyhow::anyhow!("{}", e))
+    }).await {
         Ok(options) => {
-            info!("Found {} options", options.len());
+            info!("Found {} options (cached)", options.len());
             Ok(HttpResponse::Ok().json(ApiResponse::success(options)))
         }
         Err(e) => {

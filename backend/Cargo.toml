@@ -50,3 +50,6 @@ futures-util = "0.3.31"
 
 # Image upload service
 uploadcare = "0.1"
+redis = { version = "0.32.7", features = ["aio", "tokio-comp"] }
+tokio = { version = "1.0", features = ["full"] }
+deadpool-redis = "0.16"

@@ -28,7 +28,7 @@ pub struct UpdatePlaybookRequest {
 }
 
 /// Playbook query parameters for filtering and pagination
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlaybookQuery {
     pub name: Option<String>,
     pub search: Option<String>, // Search in both name and description

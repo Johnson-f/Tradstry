@@ -6,6 +6,7 @@ use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::turso::schema::get_current_schema_version;
+use crate::service::cache_service::CacheService;
 
 /// Request payload for user database initialization
 #[derive(Debug, Deserialize)]
@@ -23,6 +24,8 @@ pub struct InitializeUserResponse {
     pub database_token: Option<String>,
     pub schema_synced: Option<bool>,
     pub schema_version: Option<String>,
+    pub cache_preloaded: Option<bool>,
+    pub cache_status: Option<String>,
 }
 
 /// Parse JWT claims without full validation (for middleware)
@@ -109,12 +112,13 @@ async fn get_authenticated_user(
     Ok(claims)
 }
 
-/// Initialize user database with trading schema
+/// Initialize user database with trading schema and preload cache
 pub async fn initialize_user_database(
     req: HttpRequest,
     payload: web::Json<InitializeUserRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("=== Initialize User Database Called ===");
     info!("User: {} ({})", payload.email, payload.user_id);
@@ -147,19 +151,50 @@ pub async fn initialize_user_database(
             database_token: None,
             schema_synced: None,
             schema_version: None,
+            cache_preloaded: None,
+            cache_status: Some("Not attempted - authentication failed".to_string()),
         }));
     }
     
     match create_user_database_internal(&turso_client, &payload.user_id, &payload.email).await {
         Ok((db_url, db_token, schema_synced, schema_version)) => {
             info!("Successfully initialized database for user: {}", payload.email);
+            
+            // Preload user data into cache asynchronously
+            let cache_service_clone = cache_service.get_ref().clone();
+            let user_id_clone = payload.user_id.clone();
+            
+            tokio::spawn(async move {
+                match turso_client.get_user_database_connection(&user_id_clone).await {
+                    Ok(Some(user_conn)) => {
+                        info!("Starting cache preload for user: {}", user_id_clone);
+                        match cache_service_clone.preload_user_data(&user_conn, &user_id_clone).await {
+                            Ok(_) => {
+                                info!("✓ Cache preload completed successfully for user: {}", user_id_clone);
+                            }
+                            Err(e) => {
+                                error!("✗ Cache preload failed for user {}: {}", user_id_clone, e);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        warn!("No database connection available for cache preload for user: {}", user_id_clone);
+                    }
+                    Err(e) => {
+                        error!("Failed to get database connection for cache preload for user {}: {}", user_id_clone, e);
+                    }
+                }
+            });
+            
             Ok(HttpResponse::Ok().json(InitializeUserResponse {
                 success: true,
-                message: "User database initialized successfully".to_string(),
+                message: "User database initialized successfully. Cache preload started in background.".to_string(),
                 database_url: Some(db_url),
                 database_token: Some(db_token),
                 schema_synced: Some(schema_synced),
                 schema_version: Some(schema_version),
+                cache_preloaded: Some(false), // Will be true when background task completes
+                cache_status: Some("Preloading in background".to_string()),
             }))
         }
         Err(e) => {
@@ -171,6 +206,8 @@ pub async fn initialize_user_database(
                 database_token: None,
                 schema_synced: None,
                 schema_version: None,
+                cache_preloaded: None,
+                cache_status: Some("Not attempted - database initialization failed".to_string()),
             }))
         }
     }

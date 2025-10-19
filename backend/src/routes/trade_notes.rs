@@ -11,6 +11,7 @@ use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::models::notes::{
     TradeNote, CreateTradeNoteRequest, UpdateTradeNoteRequest, TradeNoteQuery
 };
+use crate::service::cache_service::CacheService;
 
 /// Response wrapper for trade notes operations
 #[derive(Debug, Serialize)]
@@ -248,11 +249,13 @@ pub async fn get_trade_note(
 }
 
 /// Get all trade notes with optional filtering
+/// Get trade notes with caching
 pub async fn get_trade_notes(
     req: HttpRequest,
     query: web::Query<TradeNoteQueryParams>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("=== Get Trade Notes Called ===");
     info!("Query params: {:?}", query);
@@ -275,20 +278,32 @@ pub async fn get_trade_notes(
         offset: query.offset,
     };
 
-    // Get trade notes and total count
-    let notes_result = TradeNote::find_all(&conn, trade_note_query).await;
-    let count_result = TradeNote::count(&conn, &TradeNoteQuery {
-        name: query.name.clone(),
-        search: query.search.clone(),
-        start_date: query.start_date,
-        end_date: query.end_date,
-        limit: None,
-        offset: None,
-    }).await;
+    // Generate cache key based on query parameters
+    let query_hash = format!("{:?}", trade_note_query);
+    let cache_key = format!("db:{}:trade_notes:list:{}", claims.sub, query_hash);
+    
+    // Try to get from cache first
+    match cache_service.get_or_fetch(&cache_key, 1800, || async {
+        info!("Cache miss for trade notes list, fetching from database");
+        
+        // Get trade notes and total count
+        let notes_result = TradeNote::find_all(&conn, trade_note_query.clone()).await;
+        let count_result = TradeNote::count(&conn, &TradeNoteQuery {
+            name: query.name.clone(),
+            search: query.search.clone(),
+            start_date: query.start_date,
+            end_date: query.end_date,
+            limit: None,
+            offset: None,
+        }).await;
 
-    match (notes_result, count_result) {
-        (Ok(notes), Ok(total)) => {
-            info!("✓ Retrieved {} trade notes", notes.len());
+        match (notes_result, count_result) {
+            (Ok(notes), Ok(total)) => Ok((notes, total)),
+            (Err(e), _) | (_, Err(e)) => Err(anyhow::anyhow!("{}", e)),
+        }
+    }).await {
+        Ok((notes, total)) => {
+            info!("✓ Retrieved {} trade notes (cached)", notes.len());
             Ok(HttpResponse::Ok().json(TradeNoteListResponse {
                 success: true,
                 message: "Trade notes retrieved successfully".to_string(),
@@ -298,7 +313,7 @@ pub async fn get_trade_notes(
                 page_size: query.page_size,
             }))
         }
-        (Err(e), _) | (_, Err(e)) => {
+        Err(e) => {
             error!("Failed to get trade notes: {}", e);
             Ok(HttpResponse::InternalServerError().json(TradeNoteListResponse {
                 success: false,
