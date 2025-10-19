@@ -5,6 +5,7 @@ import ThemeProvider from "@/components/theme-provider";
 import { useUserInitialization } from "@/hooks/use-user-initialization";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 export default function ProtectedLayout({
   children,
@@ -12,8 +13,10 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const { isInitialized, isInitializing, error } = useUserInitialization();
+  const { isInitialized, isInitializing, error, needsRefresh } = useUserInitialization();
   const [showInitializationStatus, setShowInitializationStatus] = useState(false);
+  const pathname = usePathname();
+  const isNotebook = pathname?.startsWith("/app/notebook");
 
   // Show initialization status for a few seconds when initializing
   useEffect(() => {
@@ -31,10 +34,12 @@ export default function ProtectedLayout({
   return (
     <ThemeProvider>
       <div className="min-h-screen">
-        <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
-        <div 
+        {!isNotebook && (
+          <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
+        )}
+        <div
           className={`transition-all duration-500 ease-out ${
-            isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+            isNotebook ? '' : isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           } ml-0`}
         >
           {/* User Initialization Status */}
@@ -53,9 +58,15 @@ export default function ProtectedLayout({
                 </div>
               )}
               {error && !isInitializing && (
-                <div className="text-sm text-amber-600">
-                  <p>Setup incomplete: {error}</p>
-                  <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
+                <div className="text-sm text-red-600">
+                  <p>Setup failed: {error}</p>
+                  {needsRefresh ? (
+                    <p className="text-xs mt-1 text-muted-foreground">
+                      Please refresh the page to try again
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
+                  )}
                 </div>
               )}
             </div>

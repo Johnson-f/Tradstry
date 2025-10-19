@@ -1,4 +1,3 @@
-@import '../components/notepad/rich-editor/index.css';
 @tailwind base;
 
 @custom-variant dark (&:is(.dark *));
@@ -76,6 +75,19 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+:root .bn-editor,
+:root .bn-container,
+:root .mantine-Paper-root,
+:root .mantine-ScrollArea-viewport,
+:root .mantine-ScrollArea-root {
+  background: transparent !important;
+}
+
+:root .bn-editor .bn-inner,
+:root .bn-editor .bn-scroll-container {
+  background-color: transparent !important;
 }
 
 :root {

@@ -9,8 +9,8 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Tradistry",
-  description: "",
+  title: "Tradstry",
+  description: "A comprehensive trading platform for traders and investors",
   icons: {
     icon: [
       {
