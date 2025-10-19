@@ -167,7 +167,6 @@ export default function DashboardPage() {
                   customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
                 />
               </div> */}
-            </div>
           </div>
         </div>
       </div>
