@@ -87,6 +87,17 @@ impl NotebookNote {
         Self::find_all(conn, Some(id)).await
     }
 
+    pub async fn find_deleted(conn: &Connection) -> Result<Vec<Self>> {
+        let stmt = conn.prepare(
+            r#"SELECT id, parent_id, title, content, position, is_deleted, created_at, updated_at
+                FROM notebook_notes WHERE is_deleted = 1 ORDER BY updated_at DESC"#,
+        ).await?;
+        let mut rows = stmt.query(params![]).await?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await? { out.push(Self::from_row(row)?); }
+        Ok(out)
+    }
+
     pub async fn find_tree(conn: &Connection, id: &str) -> Result<(Self, Vec<(NotebookNote, Vec<NotebookNote>)>)> {
         let root = Self::find_by_id(conn, id).await?;
         let children = Self::find_children(conn, id).await?;
@@ -116,6 +127,22 @@ impl NotebookNote {
         let affected = conn.execute(
             "UPDATE notebook_notes SET is_deleted = 1, updated_at = ? WHERE id = ?",
             params![Utc::now().to_rfc3339(), id],
+        ).await?;
+        Ok(affected > 0)
+    }
+
+    pub async fn restore(conn: &Connection, id: &str) -> Result<bool> {
+        let affected = conn.execute(
+            "UPDATE notebook_notes SET is_deleted = 0, updated_at = ? WHERE id = ?",
+            params![Utc::now().to_rfc3339(), id],
+        ).await?;
+        Ok(affected > 0)
+    }
+
+    pub async fn permanent_delete(conn: &Connection, id: &str) -> Result<bool> {
+        let affected = conn.execute(
+            "DELETE FROM notebook_notes WHERE id = ?",
+            params![id],
         ).await?;
         Ok(affected > 0)
     }

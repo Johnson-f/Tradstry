@@ -1,5 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
+use chrono::{Utc, Datelike};
 // use log::info;
 use std::sync::Arc;
 use libsql::{Connection, Builder};
@@ -15,6 +16,7 @@ use crate::models::notebook::{
     CalendarEvent, ExternalCalendarConnection, ExternalCalendarEvent,
 };
 use crate::service::calendar_service::CalendarService;
+use crate::service::holidays_service::HolidaysService;
 
 #[derive(Debug, Serialize)]
 struct ApiList<T> { success: bool, message: String, data: Option<Vec<T>> }
@@ -146,6 +148,49 @@ pub async fn delete_note(
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     match NotebookNote::soft_delete(&conn, &note_id).await {
         Ok(true) => Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Deleted"}))),
+        Ok(false) => Ok(HttpResponse::NotFound().json(serde_json::json!({"success": false, "message": "Not found"}))),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({"success": false, "message": e.to_string()}))),
+    }
+}
+
+pub async fn list_deleted_notes(
+    req: HttpRequest,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    match NotebookNote::find_deleted(&conn).await {
+        Ok(notes) => Ok(HttpResponse::Ok().json(ApiList { success: true, message: "Deleted notes".into(), data: Some(notes) })),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiList::<NotebookNote> { success: false, message: e.to_string(), data: None })),
+    }
+}
+
+pub async fn restore_note(
+    req: HttpRequest,
+    note_id: web::Path<String>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    match NotebookNote::restore(&conn, &note_id).await {
+        Ok(true) => Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Restored"}))),
+        Ok(false) => Ok(HttpResponse::NotFound().json(serde_json::json!({"success": false, "message": "Not found"}))),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({"success": false, "message": e.to_string()}))),
+    }
+}
+
+pub async fn permanent_delete_note(
+    req: HttpRequest,
+    note_id: web::Path<String>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    match NotebookNote::permanent_delete(&conn, &note_id).await {
+        Ok(true) => Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Permanently deleted"}))),
         Ok(false) => Ok(HttpResponse::NotFound().json(serde_json::json!({"success": false, "message": "Not found"}))),
         Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({"success": false, "message": e.to_string()}))),
     }
@@ -556,9 +601,12 @@ pub fn configure_notebook_routes(cfg: &mut web::ServiceConfig) {
             // Notes
             .route("/notes", web::post().to(create_note))
             .route("/notes", web::get().to(list_notes))
+            .route("/notes/deleted", web::get().to(list_deleted_notes))
             .route("/notes/{id}", web::get().to(get_note))
             .route("/notes/{id}", web::put().to(update_note))
             .route("/notes/{id}", web::delete().to(delete_note))
+            .route("/notes/{id}/restore", web::post().to(restore_note))
+            .route("/notes/{id}/permanent", web::delete().to(permanent_delete_note))
             .route("/notes/{id}/tree", web::get().to(get_note_tree))
             .route("/notes/{id}/reorder", web::post().to(reorder_note))
             // Tags
@@ -588,6 +636,8 @@ pub fn configure_notebook_routes(cfg: &mut web::ServiceConfig) {
             .route("/calendar/connections/{id}", web::delete().to(disconnect_calendar))
             .route("/calendar/connections/{id}/sync", web::post().to(sync_calendar))
             .route("/calendar/sync-all", web::post().to(sync_all_calendars))
+            .route("/calendar/holidays", web::get().to(get_public_holidays))
+            .route("/calendar/holidays/sync", web::post().to(sync_public_holidays))
             .route("/oauth/google/exchange", web::post().to(google_oauth_exchange))
             .route("/oauth/microsoft/exchange", web::post().to(microsoft_oauth_exchange))
     );
@@ -725,6 +775,58 @@ async fn sync_all_calendars(
         "success_count": success_count,
         "failure_count": failure_count
     })))
+}
+
+pub async fn sync_public_holidays(
+    req: HttpRequest,
+    query: web::Query<HolidaysSyncQuery>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    
+    let country_code = query.country_code.as_deref().unwrap_or("US");
+    let year = query.year.unwrap_or_else(|| Utc::now().year());
+    
+    // Fetch holidays from Google
+    let holidays = HolidaysService::fetch_google_holidays(country_code, year).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch holidays"))?;
+    
+    // Store in database
+    let inserted = HolidaysService::store_holidays(&conn, holidays).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to store holidays"))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "synced": inserted,
+        "country_code": country_code,
+        "year": year
+    })))
+}
+
+pub async fn get_public_holidays(
+    req: HttpRequest,
+    query: web::Query<DateRangeQuery>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    
+    // Get user's country from profile or default to US
+    let country_code = "US"; // TODO: Get from user profile
+    
+    let holidays = HolidaysService::get_holidays(&conn, country_code, &query.start, &query.end).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch holidays"))?;
+    
+    Ok(HttpResponse::Ok().json(holidays))
+}
+
+#[derive(Deserialize)]
+pub struct HolidaysSyncQuery {
+    pub country_code: Option<String>,
+    pub year: Option<i32>,
 }
 
 // Optional: exchange OAuth code and auto-connect

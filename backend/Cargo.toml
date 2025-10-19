@@ -1,6 +1,6 @@
 [package]
-name = "model"
-version = "0.1.0"
+name = "Tradstry-backend"
+version = "0.0.1"
 edition = "2024"
 
 [dependencies]
@@ -38,6 +38,9 @@ log = "0.4"
 libsql = "0.9.24"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "bigdecimal"] }
 bigdecimal = { version = "0.4", features = ["serde"] }
+
+# URL encoding for API requests
+urlencoding = "2.1"
 
 # Cryptography
 hmac = "0.12.1"

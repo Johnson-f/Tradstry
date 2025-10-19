@@ -118,20 +118,68 @@ impl CalendarService {
     }
 
     async fn sync_google_events(conn: &Connection, connection_id: &str, access_token: &str, calendar_id: Option<&str>) -> Result<u64> {
-        let cal_id = calendar_id.unwrap_or("primary");
-        let url = format!("https://www.googleapis.com/calendar/v3/calendars/{}/events?maxResults=50", cal_id);
-        let client = Client::new();
-        let resp = client
-            .get(url)
-            .bearer_auth(access_token)
-            .send()
+        // Get last sync timestamp
+        let last_sync_result = conn
+            .prepare("SELECT last_sync_timestamp FROM external_calendar_connections WHERE id = ?")
+            .await?
+            .query(params![connection_id])
+            .await?
+            .next()
             .await?;
-        if !resp.status().is_success() { return Ok(0); }
+        
+        let last_sync = if let Some(row) = last_sync_result {
+            row.get::<String>(0)?
+        } else {
+            // Default to 30 days ago for first sync
+            (Utc::now() - chrono::Duration::days(30)).to_rfc3339()
+        };
+
+        let cal_id = calendar_id.unwrap_or("primary");
+        let now = Utc::now();
+        let future_date = now + chrono::Duration::days(90); // Fetch 90 days ahead
+        
+        // Only fetch events updated since last sync, within date range
+        let url = format!(
+            "https://www.googleapis.com/calendar/v3/calendars/{}/events?maxResults=250&updatedMin={}&timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime",
+            cal_id, 
+            urlencoding::encode(&last_sync),
+            urlencoding::encode(&now.to_rfc3339()),
+            urlencoding::encode(&future_date.to_rfc3339())
+        );
+        
+        let client = Client::new();
+        let resp = client.get(url).bearer_auth(access_token).send().await?;
+        
+        if !resp.status().is_success() { 
+            return Ok(0); 
+        }
+        
         let body: serde_json::Value = resp.json().await?;
         let mut inserted = 0u64;
+        
         if let Some(items) = body.get("items").and_then(|v| v.as_array()) {
             for item in items {
                 let ext_id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+                let now_rfc3339 = Utc::now().to_rfc3339();
+                let ext_updated = item.get("updated").and_then(|v| v.as_str()).unwrap_or(&now_rfc3339);
+                
+                // Check if event already exists and is up-to-date
+                let existing_result = conn
+                    .prepare("SELECT external_updated_at FROM external_calendar_events WHERE connection_id = ? AND external_event_id = ?")
+                    .await?
+                    .query(params![connection_id, ext_id])
+                    .await?
+                    .next()
+                    .await?;
+                
+                if let Some(row) = existing_result {
+                    let existing_updated: String = row.get(0)?;
+                    if existing_updated.as_str() >= ext_updated {
+                        continue; // Skip - already up to date
+                    }
+                }
+                
+                // Extract event data
                 let title = item.get("summary").and_then(|v| v.as_str()).unwrap_or("(no title)");
                 let description = item.get("description").and_then(|v| v.as_str());
                 let start_time = item.get("start").and_then(|s| s.get("dateTime")).and_then(|v| v.as_str())
@@ -144,12 +192,19 @@ impl CalendarService {
 
                 let id = uuid::Uuid::new_v4().to_string();
                 conn.execute(
-                    "INSERT OR REPLACE INTO external_calendar_events (id, connection_id, external_event_id, title, description, start_time, end_time, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    params![id, connection_id, ext_id, title, description, start_time, end_time, location],
+                    "INSERT OR REPLACE INTO external_calendar_events (id, connection_id, external_event_id, title, description, start_time, end_time, location, external_updated_at, last_synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                    params![id, connection_id, ext_id, title, description, start_time, end_time, location, ext_updated],
                 ).await?;
                 inserted += 1;
             }
         }
+        
+        // Update last sync timestamp
+        conn.execute(
+            "UPDATE external_calendar_connections SET last_sync_timestamp = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+            params![connection_id]
+        ).await?;
+        
         Ok(inserted)
     }
 

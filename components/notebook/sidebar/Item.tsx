@@ -19,7 +19,7 @@ import {
   Trash,
 } from "lucide-react";
 import { useUserProfile } from "@/hooks/use-user-profile";
-import { useCreateNote } from "@/lib/hooks/use-notebook";
+import { useCreateNote, useDeleteNote } from "@/lib/hooks/use-notebook";
 
 interface ItemProps {
   id?: string;
@@ -49,12 +49,19 @@ export const Item = ({
   const { firstName, email } = useUserProfile();
   const router = useRouter();
   const { createNote } = useCreateNote();
+  const { deleteNote } = useDeleteNote();
 
-  const onArchive = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  const onArchive = async (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     event.stopPropagation();
     if (!id) return;
-    // TODO: Implement archive functionality
-    toast.success("Note moved to trash!");
+    
+    try {
+      await deleteNote({ id });
+      toast.success("Note moved to trash!");
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      toast.error("Failed to delete note");
+    }
   };
 
   const handleExpand = (
