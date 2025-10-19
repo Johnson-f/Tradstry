@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCalendarEvents } from "@/lib/hooks/use-notebook";
+import { usePublicHolidays } from '@/hooks/use-public-holidays';
 
 interface DayViewProps {
   selectedDate: Date;
@@ -23,6 +24,7 @@ interface Event {
   date: string; // Add date field
   type: 'event' | 'task';
   isExternal?: boolean;
+  isHoliday?: boolean;
 }
 
 function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, onViewModeChange }: DayViewProps) {
@@ -66,6 +68,9 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
   
   // Fetch calendar events using the hook with date range
   const { events: calendarEvents, isLoading: eventsLoading, error: eventsError } = useCalendarEvents(start, end);
+  
+  // Fetch public holidays
+  const { holidays } = usePublicHolidays(start, end);
 
   // Update current time every minute
   useEffect(() => {
@@ -172,8 +177,6 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
 
   // Process calendar events from the API
   const localEvents: Event[] = (calendarEvents as any)?.local_events?.map((event: any) => {
-    console.log('Processing local event:', event);
-    
     // Extract time from start_time or event_description
     let eventTime = '00:00';
     if (event.start_time) {
@@ -198,8 +201,6 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
 
   // Convert external events to display format
   const externalEventsFormatted: Event[] = (calendarEvents as any)?.external_events?.map((event: any) => {
-    console.log('Processing external event:', event);
-    
     let eventTime = '00:00';
     if (event.start_time) {
       // Handle different time formats
@@ -224,12 +225,20 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
     };
   }) || [];
 
-  // Combine local and external events
-  const allEvents = [...localEvents, ...externalEventsFormatted];
-  
-  console.log('All processed events:', allEvents);
-  console.log('Calendar events raw data:', calendarEvents);
+  // Convert holidays to display format
+  const holidayEvents: Event[] = holidays.map(holiday => ({
+    id: holiday.id,
+    title: `🎉 ${holiday.holiday_name}`,
+    time: '00:00',
+    date: holiday.holiday_date,
+    type: 'event' as const,
+    isExternal: false,
+    isHoliday: true,
+  }));
 
+  // Combine local and external events
+  const allEvents = [...localEvents, ...externalEventsFormatted, ...holidayEvents];
+  
   const timeSlots = Array.from({ length: 24 }, (_, i) => {
     const hour = i.toString().padStart(2, '0');
     return `${hour}:00`;
@@ -240,20 +249,13 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
     const slotHour = parseInt(timeSlot.split(':')[0]);
     const targetDateStr = format(targetDate, 'yyyy-MM-dd');
     
-    console.log(`Getting events for time slot ${timeSlot} (hour: ${slotHour}) on date ${targetDateStr}`);
-    console.log('Available events:', allEvents);
-    
     const filteredEvents = allEvents.filter(event => {
       const eventHour = parseInt(event.time.split(':')[0]);
       const matchesTime = eventHour === slotHour;
       const matchesDate = event.date === targetDateStr;
       
-      console.log(`Event "${event.title}" at ${event.time} (hour: ${eventHour}) on ${event.date} matches slot ${slotHour} and date ${targetDateStr}: time=${matchesTime}, date=${matchesDate}`);
-      
       return matchesTime && matchesDate;
     });
-    
-    console.log(`Found ${filteredEvents.length} events for slot ${timeSlot} on ${targetDateStr}:`, filteredEvents);
     
     return filteredEvents;
   };
@@ -577,7 +579,6 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
 
           {timeSlots.map((timeSlot) => {
             const events = getEventsForTimeSlot(timeSlot);
-            console.log(`Rendering time slot ${timeSlot} with ${events.length} events:`, events);
             return (
               <div
                 key={timeSlot}

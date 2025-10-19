@@ -29,6 +29,10 @@ class NotebookService {
     return apiClient.get(apiConfig.endpoints.notebook.notes.base, { params });
   }
 
+  async listDeletedNotes(): Promise<ApiList<NotebookNote>> {
+    return apiClient.get(`${apiConfig.endpoints.notebook.notes.base}/deleted`);
+  }
+
   async getNote(noteId: string): Promise<ApiItem<NotebookNote>> {
     return apiClient.get(apiConfig.endpoints.notebook.notes.byId(noteId));
   }
@@ -43,6 +47,14 @@ class NotebookService {
 
   async deleteNote(noteId: string): Promise<{ success: boolean; message: string }> {
     return apiClient.delete(apiConfig.endpoints.notebook.notes.byId(noteId));
+  }
+
+  async restoreNote(noteId: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.post(`${apiConfig.endpoints.notebook.notes.byId(noteId)}/restore`);
+  }
+
+  async permanentDeleteNote(noteId: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.delete(`${apiConfig.endpoints.notebook.notes.byId(noteId)}/permanent`);
   }
 
   async reorderNote(noteId: string, position: number): Promise<ApiItem<NotebookNote>> {

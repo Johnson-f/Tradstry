@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CalendarConnection } from '@/lib/types/calendar';
 import { apiClient } from '@/lib/services/api-client';
+import { toast } from 'sonner';
 import { SyncResult } from '@/lib/types/calendar';
 
 export function useCalendarConnections() {
@@ -68,11 +69,24 @@ export function useCalendarConnections() {
   }, [fetchConnections]);
 
   const syncConnection = useCallback(async (connectionId: string) => {
+    // Check if sync was done recently (within 5 minutes)
+    const lastSyncKey = `calendar-sync-${connectionId}`;
+    const lastSync = localStorage.getItem(lastSyncKey);
+    const now = Date.now();
+    
+    if (lastSync && (now - parseInt(lastSync)) < 5 * 60 * 1000) {
+      toast.info("Sync was done recently. Please wait a moment.");
+      return;
+    }
+    
     try {
-      await apiClient.post<SyncResult>(`/notebook/calendar/connections/${connectionId}/sync`);
+      const result = await apiClient.post<SyncResult>(`/notebook/calendar/connections/${connectionId}/sync`);
+      localStorage.setItem(lastSyncKey, now.toString());
+      toast.success(`Synced ${result.synced || 0} events`);
       await fetchConnections();
     } catch (err) {
       console.error('Failed to sync:', err);
+      toast.error('Failed to sync calendar');
       throw err;
     }
   }, [fetchConnections]);

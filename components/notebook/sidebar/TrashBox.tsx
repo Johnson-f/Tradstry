@@ -2,25 +2,38 @@
 
 import { useRouter } from "next/navigation";
 import React, { useMemo, useState } from "react";
-import { useNotes, useUpdateNote, useDeleteNote } from "@/lib/hooks/use-notebook";
+import { useDeletedNotes, useRestoreNote, usePermanentDeleteNote } from "@/lib/hooks/use-notebook";
+import { toast } from "sonner";
 
 export default function TrashBox() {
   const router = useRouter();
-  const { notes } = useNotes("trash");
-  const { updateNote } = useUpdateNote();
-  const { deleteNote } = useDeleteNote();
+  const { notes } = useDeletedNotes();
+  const { restoreNote } = useRestoreNote();
+  const { permanentDeleteNote } = usePermanentDeleteNote();
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
-    return (notes || []).filter((n: any) => (n?.is_archived || n?.is_deleted) && (n?.title || "").toLowerCase().includes(q.toLowerCase()));
+    return (notes || []).filter((n: any) => (n?.title || "").toLowerCase().includes(q.toLowerCase()));
   }, [notes, q]);
 
   const onRestore = async (id: string) => {
-    await updateNote({ id, payload: { is_archived: false } as any });
+    try {
+      await restoreNote({ id });
+      toast.success('Note restored successfully');
+    } catch (error) {
+      console.error('Failed to restore note:', error);
+      toast.error('Failed to restore note');
+    }
   };
 
   const onRemove = async (id: string) => {
-    await deleteNote({ id });
+    try {
+      await permanentDeleteNote({ id });
+      toast.success('Note permanently deleted');
+    } catch (error) {
+      console.error('Failed to permanently delete note:', error);
+      toast.error('Failed to permanently delete note');
+    }
   };
 
   return (

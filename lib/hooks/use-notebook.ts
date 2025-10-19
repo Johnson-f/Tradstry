@@ -28,6 +28,14 @@ export function useNotes(parentId?: string) {
   return { notes: data?.data ?? [], isLoading, error: error as Error | null, refetch };
 }
 
+export function useDeletedNotes() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['notebook', 'notes', 'deleted'],
+    queryFn: () => notebookService.listDeletedNotes(),
+  });
+  return { notes: data?.data ?? [], isLoading, error: error as Error | null, refetch };
+}
+
 export function useNote(noteId: string) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['notebook', 'note', noteId],
@@ -89,9 +97,47 @@ export function useDeleteNote() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notebook', 'notes'] });
+      queryClient.invalidateQueries({ queryKey: ['notebook', 'notes', 'deleted'] });
     },
   });
   return { deleteNote: mutation.mutateAsync, isLoading: mutation.isPending, error: mutation.error as Error | null };
+}
+
+export function useRestoreNote() {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      return notebookService.restoreNote(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notebook', 'notes'] });
+      queryClient.invalidateQueries({ queryKey: ['notebook', 'notes', 'deleted'] });
+    },
+  });
+  return { restoreNote: mutation.mutateAsync, isLoading: mutation.isPending, error: mutation.error as Error | null };
+}
+
+export function usePermanentDeleteNote() {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      // Delete associated images first
+      try {
+        await notebookImagesService.deleteImagesByNoteId(id);
+      } catch (error) {
+        console.error('Failed to delete images for note:', error);
+        // Continue with note deletion even if image cleanup fails
+      }
+      
+      // Then permanently delete the note
+      return notebookService.permanentDeleteNote(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notebook', 'notes'] });
+      queryClient.invalidateQueries({ queryKey: ['notebook', 'notes', 'deleted'] });
+    },
+  });
+  return { permanentDeleteNote: mutation.mutateAsync, isLoading: mutation.isPending, error: mutation.error as Error | null };
 }
 
 export function useReorderNote() {
