@@ -127,17 +127,41 @@ impl CacheService {
         // Build dynamic query based on table structure (no user_id needed since each user has their own DB)
         let query = Self::build_select_query(table_name, user_id);
         
-        // Execute query and get results
-        let stmt = conn.prepare(&query).await
-            .context(format!("Failed to prepare query for table: {}", table_name))?;
+        // Execute query and get results with better error handling
+        let stmt = match conn.prepare(&query).await {
+            Ok(stmt) => stmt,
+            Err(e) => {
+                log::warn!("Failed to prepare query for table {}: {}", table_name, e);
+                return Ok(0); // Return 0 instead of erroring
+            }
+        };
         
-        let mut rows = stmt.query(libsql::params![]).await
-            .context(format!("Failed to execute query for table: {}", table_name))?;
+        let mut rows = match stmt.query(libsql::params![]).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                log::warn!("Failed to execute query for table {}: {}", table_name, e);
+                return Ok(0); // Return 0 instead of erroring
+            }
+        };
 
         let mut records = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let record = Self::row_to_json(&row, table_name)?;
-            records.push(record);
+        loop {
+            match rows.next().await {
+                Ok(Some(row)) => {
+                    match Self::row_to_json(&row, table_name) {
+                        Ok(record) => records.push(record),
+                        Err(e) => {
+                            log::warn!("Failed to convert row to JSON for table {}: {}", table_name, e);
+                            // Continue with other rows
+                        }
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    log::warn!("Error reading row from table {}: {}", table_name, e);
+                    break; // Continue with what we have
+                }
+            }
         }
 
         if records.is_empty() {
@@ -149,22 +173,84 @@ impl CacheService {
         let cache_key = format!("db:{}:{}:all", user_id, table_name);
         let ttl_seconds = Self::get_table_ttl(table_name);
         
-        redis_client.set(&cache_key, &records, ttl_seconds).await
-            .context(format!("Failed to cache data for table: {}", table_name))?;
-
-        log::debug!("Cached {} records for table: {}", records.len(), table_name);
-        Ok(records.len())
+        match redis_client.set(&cache_key, &records, ttl_seconds).await {
+            Ok(_) => {
+                log::debug!("Cached {} records for table: {}", records.len(), table_name);
+                Ok(records.len())
+            }
+            Err(e) => {
+                log::warn!("Failed to cache data for table {}: {}", table_name, e);
+                Ok(0) // Return 0 instead of erroring
+            }
+        }
     }
 
-    /// Build dynamic SELECT query for a table
+    /// Check if a table has a specific column
+    async fn table_has_column(conn: &Connection, table_name: &str, column_name: &str) -> bool {
+        let query = format!("PRAGMA table_info({})", table_name);
+        
+        match conn.prepare(&query).await {
+            Ok(stmt) => {
+                match stmt.query(libsql::params![]).await {
+                    Ok(mut rows) => {
+                        loop {
+                            match rows.next().await {
+                                Ok(Some(row)) => {
+                                    if let Ok(col_name) = row.get::<String>(1) { // Column name is at index 1
+                                        if col_name == column_name {
+                                            return true;
+                                        }
+                                    }
+                                }
+                                Ok(None) => break,
+                                Err(_) => break,
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+            Err(_) => {}
+        }
+        
+        false
+    }
+
+    /// Build dynamic SELECT query for a table with column validation
+    async fn build_select_query_with_validation(conn: &Connection, table_name: &str, _user_id: &str) -> String {
+        // Check for common ordering columns and use the first one found
+        let ordering_columns = vec![
+            ("created_at", "DESC"),
+            ("last_synced_at", "DESC"),
+            ("updated_at", "DESC"),
+            ("holiday_date", "ASC"),
+            ("start_date", "ASC"),
+            ("id", "ASC"),
+        ];
+
+        for (column, order) in ordering_columns {
+            if Self::table_has_column(conn, table_name, column).await {
+                return format!("SELECT * FROM {} ORDER BY {} {}", table_name, column, order);
+            }
+        }
+
+        // Fallback to no ordering
+        format!("SELECT * FROM {}", table_name)
+    }
+
+    /// Build dynamic SELECT query for a table (legacy method for backward compatibility)
     fn build_select_query(table_name: &str, _user_id: &str) -> String {
         match table_name {
             // Tables with created_at column for ordering
             "stocks" | "options" | "trade_notes" | "playbook" | "notebook_notes" | 
-            "images" | "external_calendar_connections" | "external_calendar_events" |
+            "images" | "external_calendar_connections" |
             "notebook_tags" | "notebook_templates" | "notebook_reminders" | "calendar_events" |
             "user_profile" => {
                 format!("SELECT * FROM {} ORDER BY created_at DESC", table_name)
+            }
+            // Tables with last_synced_at column for ordering
+            "external_calendar_events" => {
+                format!("SELECT * FROM {} ORDER BY last_synced_at DESC", table_name)
             }
             // Tables with specific ordering
             "public_holidays" => {
@@ -200,70 +286,94 @@ impl CacheService {
         Ok(serde_json::Value::Object(record))
     }
 
-    /// Get column value with proper type handling
+    /// Get column value with proper type handling - safer approach
     fn get_column_value(
         row: &libsql::Row,
         index: usize,
         _table_name: &str,
         column_name: &str,
     ) -> Result<serde_json::Value> {
-        // Try different types based on common patterns
-        if column_name.contains("_id") || column_name == "id" {
-            // Try as integer first, then string
-            if let Ok(value) = row.get::<i64>(index as i32) {
-                return Ok(serde_json::Value::Number(serde_json::Number::from(value)));
-            }
-            if let Ok(value) = row.get::<String>(index as i32) {
-                return Ok(serde_json::Value::String(value));
-            }
-        }
+        // Use libsql's Value type to safely handle all types
+        use libsql::Value;
         
-        if column_name.contains("price") || column_name.contains("amount") || 
-           column_name.contains("quantity") || column_name.contains("size") {
-            // Try as float first, then integer, then string
-            if let Ok(value) = row.get::<f64>(index as i32) {
-                return Ok(serde_json::Value::Number(serde_json::Number::from_f64(value).unwrap_or(serde_json::Number::from(0))));
+        // Get the raw value first to avoid panics
+        let raw_value = match row.get_value(index as i32) {
+            Ok(value) => value,
+            Err(e) => {
+                log::warn!("Failed to get value for column {} at index {}: {}", column_name, index, e);
+                return Ok(serde_json::Value::Null);
             }
-            if let Ok(value) = row.get::<i64>(index as i32) {
-                return Ok(serde_json::Value::Number(serde_json::Number::from(value)));
+        };
+
+        // Convert based on the actual SQLite value type
+        let json_value = match raw_value {
+            Value::Null => serde_json::Value::Null,
+            Value::Integer(i) => {
+                // Handle boolean columns that are stored as integers
+                if column_name.contains("is_") || column_name == "deleted" || 
+                   column_name.contains("active") || column_name.contains("synced") {
+                    serde_json::Value::Bool(i != 0)
+                } else {
+                    serde_json::Value::Number(serde_json::Number::from(i))
+                }
             }
-        }
-        
-        if column_name.contains("date") || column_name.contains("time") || 
-           column_name.contains("created_at") || column_name.contains("updated_at") {
-            // Try as string for dates
-            if let Ok(value) = row.get::<String>(index as i32) {
-                return Ok(serde_json::Value::String(value));
+            Value::Real(f) => {
+                match serde_json::Number::from_f64(f) {
+                    Some(num) => serde_json::Value::Number(num),
+                    None => {
+                        log::warn!("Invalid float value for column {}: {}", column_name, f);
+                        serde_json::Value::Null
+                    }
+                }
             }
-        }
-        
-        if column_name.contains("is_") || column_name == "deleted" {
-            // Try as boolean first, then integer
-            if let Ok(value) = row.get::<bool>(index as i32) {
-                return Ok(serde_json::Value::Bool(value));
+            Value::Text(s) => {
+                // Try to parse text values based on column name patterns
+                if column_name.contains("_id") || column_name == "id" {
+                    // ID columns might be integers stored as text
+                    if let Ok(int_val) = s.parse::<i64>() {
+                        serde_json::Value::Number(serde_json::Number::from(int_val))
+                    } else {
+                        serde_json::Value::String(s)
+                    }
+                } else if column_name.contains("price") || column_name.contains("amount") || 
+                          column_name.contains("quantity") || column_name.contains("size") {
+                    // Numeric columns that might be stored as text
+                    if let Ok(float_val) = s.parse::<f64>() {
+                        match serde_json::Number::from_f64(float_val) {
+                            Some(num) => serde_json::Value::Number(num),
+                            None => serde_json::Value::String(s)
+                        }
+                    } else if let Ok(int_val) = s.parse::<i64>() {
+                        serde_json::Value::Number(serde_json::Number::from(int_val))
+                    } else {
+                        serde_json::Value::String(s)
+                    }
+                } else if column_name.contains("is_") || column_name == "deleted" {
+                    // Boolean columns that might be stored as text
+                    match s.to_lowercase().as_str() {
+                        "true" | "1" | "yes" => serde_json::Value::Bool(true),
+                        "false" | "0" | "no" => serde_json::Value::Bool(false),
+                        _ => {
+                            if let Ok(int_val) = s.parse::<i64>() {
+                                serde_json::Value::Bool(int_val != 0)
+                            } else {
+                                serde_json::Value::String(s)
+                            }
+                        }
+                    }
+                } else {
+                    serde_json::Value::String(s)
+                }
             }
-            if let Ok(value) = row.get::<i64>(index as i32) {
-                return Ok(serde_json::Value::Bool(value != 0));
+            Value::Blob(b) => {
+                // Convert blob to base64 string for JSON serialization
+                use base64::Engine;
+                let base64_string = base64::engine::general_purpose::STANDARD.encode(&b);
+                serde_json::Value::String(format!("data:application/octet-stream;base64,{}", base64_string))
             }
-        }
-        
-        // Default: try string
-        if let Ok(value) = row.get::<String>(index as i32) {
-            return Ok(serde_json::Value::String(value));
-        }
-        
-        // Fallback: try integer
-        if let Ok(value) = row.get::<i64>(index as i32) {
-            return Ok(serde_json::Value::Number(serde_json::Number::from(value)));
-        }
-        
-        // Last resort: try float
-        if let Ok(value) = row.get::<f64>(index as i32) {
-            return Ok(serde_json::Value::Number(serde_json::Number::from_f64(value).unwrap_or(serde_json::Number::from(0))));
-        }
-        
-        // If all else fails, return null
-        Ok(serde_json::Value::Null)
+        };
+
+        Ok(json_value)
     }
 
     /// Get TTL for a specific table
