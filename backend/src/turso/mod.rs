@@ -10,6 +10,7 @@ pub mod auth;
 pub mod client;
 pub mod config;
 pub mod webhook;
+pub mod redis;
 
 // Re-export commonly used items
 pub use auth::{
@@ -24,6 +25,7 @@ pub use config::{TursoConfig, ClerkClaims, SupabaseClaims};
 pub use webhook::ClerkWebhookHandler;
 
 use std::sync::Arc;
+use crate::service::cache_service::CacheService;
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -31,6 +33,7 @@ pub struct AppState {
     pub config: Arc<TursoConfig>,
     pub turso_client: Arc<TursoClient>,
     pub webhook_handler: Arc<ClerkWebhookHandler>,
+    pub cache_service: Arc<CacheService>,
 }
 
 impl AppState {
@@ -48,10 +51,25 @@ impl AppState {
             Arc::clone(&config),
         ));
 
+        // Initialize Redis client
+        let redis_config = crate::turso::redis::RedisConfig::from_env()
+            .map_err(|e| format!("Failed to load Redis config: {}", e))?;
+        
+        let redis_client = crate::turso::redis::RedisClient::new(redis_config).await
+            .map_err(|e| format!("Failed to create Redis client: {}", e))?;
+
+        // Initialize cache service
+        let mut cache_service = CacheService::new(redis_client);
+        cache_service.initialize().await
+            .map_err(|e| format!("Failed to initialize cache service: {}", e))?;
+        
+        let cache_service = Arc::new(cache_service);
+
         Ok(Self {
             config,
             turso_client,
             webhook_handler,
+            cache_service,
         })
     }
 
@@ -65,7 +83,10 @@ impl AppState {
         // Check registry database connection
         self.turso_client.health_check().await?;
         
-        log::info!("All Turso services healthy");
+        // Check Redis connection
+        self.cache_service.health_check().await?;
+        
+        log::info!("All services healthy (Turso + Redis)");
         Ok(())
     }
 }

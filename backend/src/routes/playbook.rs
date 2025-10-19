@@ -3,6 +3,7 @@ use chrono::Utc;
 use libsql::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use log::{info, error};
 
 use crate::models::playbook::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
@@ -10,6 +11,7 @@ use crate::models::playbook::playbook::{
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
+use crate::service::cache_service::CacheService;
 
 /// Response wrapper for playbook operations
 #[derive(Debug, Serialize)]
@@ -110,11 +112,13 @@ async fn get_user_database_connection(
 }
 
 /// Create a new playbook setup
+/// Create a playbook with cache invalidation
 pub async fn create_playbook(
     req: HttpRequest,
     payload: web::Json<CreatePlaybookRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -122,11 +126,24 @@ pub async fn create_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::create(&conn, payload.into_inner()).await {
-        Ok(playbook) => Ok(HttpResponse::Created().json(PlaybookResponse {
-            success: true,
-            message: "Playbook created successfully".to_string(),
-            data: Some(playbook),
-        })),
+        Ok(playbook) => {
+            // Invalidate cache after successful creation
+            let cache_service_clone = cache_service.get_ref().clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                match cache_service_clone.invalidate_table_cache(&user_id_clone, "playbook").await {
+                    Ok(count) => info!("Invalidated {} playbook cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate playbook cache for user {}: {}", user_id_clone, e),
+                }
+            });
+            
+            Ok(HttpResponse::Created().json(PlaybookResponse {
+                success: true,
+                message: "Playbook created successfully".to_string(),
+                data: Some(playbook),
+            }))
+        }
         Err(e) => {
             log::error!("Failed to create playbook: {}", e);
             Ok(HttpResponse::InternalServerError().json(PlaybookResponse {
@@ -173,11 +190,13 @@ pub async fn get_playbook(
 }
 
 /// Get all playbooks with optional filtering
+/// Get playbooks with caching
 pub async fn get_playbooks(
     req: HttpRequest,
     query: web::Query<PlaybookQueryParams>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -195,10 +214,24 @@ pub async fn get_playbooks(
         }),
     };
 
-    match Playbook::find_all(&conn, playbook_query).await {
-        Ok(playbooks) => {
-            let total = Playbook::total_count(&conn).await.unwrap_or(0);
-            
+    // Generate cache key based on query parameters
+    let query_hash = format!("{:?}", playbook_query);
+    let cache_key = format!("db:{}:playbook:list:{}", user_id, query_hash);
+    
+    // Try to get from cache first (1 hour TTL as per plan)
+    match cache_service.get_or_fetch(&cache_key, 3600, || async {
+        info!("Cache miss for playbooks list, fetching from database");
+        
+        let playbooks_result = Playbook::find_all(&conn, playbook_query.clone()).await;
+        let total_result = Playbook::total_count(&conn).await;
+        
+        match (playbooks_result, total_result) {
+            (Ok(playbooks), Ok(total)) => Ok((playbooks, total)),
+            (Err(e), _) | (_, Err(e)) => Err(anyhow::anyhow!("{}", e)),
+        }
+    }).await {
+        Ok((playbooks, total)) => {
+            info!("✓ Retrieved {} playbooks (cached)", playbooks.len());
             Ok(HttpResponse::Ok().json(PlaybookListResponse {
                 success: true,
                 message: "Playbooks retrieved successfully".to_string(),
