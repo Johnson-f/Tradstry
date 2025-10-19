@@ -63,7 +63,6 @@ export function useUserInitialization() {
     const initializeUserOnLogin = async () => {
       // Prevent double initialization in React strict mode
       if (hasInitializedRef.current) {
-        console.log('Already processed initialization in this component instance');
         return;
       }
 
@@ -74,7 +73,6 @@ export function useUserInitialization() {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
-          console.log('No authenticated user found');
           return;
         }
 
@@ -83,7 +81,6 @@ export function useUserInitialization() {
         const storedStatus = localStorage.getItem(initKey);
         
         if (storedStatus === 'success') {
-          console.log('User already initialized (found in localStorage)');
           hasInitializedRef.current = true;
           if (mounted) {
             setState({
@@ -97,7 +94,6 @@ export function useUserInitialization() {
         }
 
         if (storedStatus === 'failed') {
-          console.log('User initialization previously failed');
           hasInitializedRef.current = true;
           if (mounted) {
             setState({
@@ -113,7 +109,6 @@ export function useUserInitialization() {
 
         // Check if another initialization is already in progress globally
         if (globalInitializationInProgress) {
-          console.log('User initialization already in progress globally, skipping');
           return;
         }
 
@@ -131,15 +126,9 @@ export function useUserInitialization() {
           }));
         }
 
-        console.log('Initializing user in backend...', { 
-          email: user.email, 
-          userId: user.id 
-        });
-
         // Check cache first
         const cached = queryClient.getQueryData<boolean>(['user', 'initialized', user.id]);
         if (cached) {
-          console.log('User already initialized (cached)');
           localStorage.setItem(initKey, 'success');
           if (mounted) {
             setState({
@@ -161,7 +150,6 @@ export function useUserInitialization() {
         
         if (mounted) {
           if (initResult.success) {
-            console.log('User successfully initialized in backend');
             localStorage.setItem(initKey, 'success');
             queryClient.setQueryData(['user', 'initialized', user.id], true);
             
@@ -174,7 +162,6 @@ export function useUserInitialization() {
             
             toast.success('Account initialized successfully!');
           } else {
-            console.error('User initialization failed after retries:', initResult.message);
             localStorage.setItem(initKey, 'failed');
             
             setState({
@@ -190,8 +177,6 @@ export function useUserInitialization() {
         
         globalInitializationInProgress = false;
       } catch (error) {
-        console.error('User initialization error:', error);
-        
         if (mounted) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
           

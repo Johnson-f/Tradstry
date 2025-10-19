@@ -71,7 +71,6 @@ export function useUserProfile(): UserProfile {
         });
         
       } catch (err) {
-        console.error('Unexpected error in useUserProfile:', err);
         setProfile(prev => ({
           ...prev,
           loading: false,
