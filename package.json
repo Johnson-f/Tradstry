@@ -4,10 +4,19 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "echo 'No tests configured yet' && exit 0",
+    "test:watch": "echo 'No tests configured yet' && exit 0",
+    "test:coverage": "echo 'No tests configured yet' && exit 0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.49",
+    "@blocknote/core": "^0.41.1",
+    "@blocknote/mantine": "^0.41.1",
+    "@blocknote/react": "^0.41.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@excalidraw/excalidraw": "^0.18.0",
@@ -106,11 +115,13 @@
     "tailwind-merge": "^3.3.0",
     "tiptap": "^1.32.2",
     "use-debounce": "^10.0.5",
+    "usehooks-ts": "^3.1.1",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
     "y-websocket": "^3.0.0",
     "yahoo-finance2": "^2.13.3",
-    "zod": "^4.0.14"
+    "zod": "^4.0.14",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

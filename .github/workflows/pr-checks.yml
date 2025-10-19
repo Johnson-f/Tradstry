@@ -1,0 +1,173 @@
+name: PR Quality Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  frontend-checks:
+    name: Frontend Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: TypeScript Type Check
+        run: |
+          echo "🔍 Running TypeScript type check..."
+          pnpm run type-check
+        continue-on-error: false
+      
+      - name: ESLint Check
+        run: |
+          echo "🔍 Running ESLint checks..."
+          pnpm run lint
+        continue-on-error: false
+      
+      - name: Prettier Format Check
+        run: |
+          echo "🎨 Running Prettier format check..."
+          pnpm run format:check
+        continue-on-error: false
+      
+      - name: Build Check
+        run: |
+          echo "🔨 Running build check..."
+          pnpm run build
+        continue-on-error: false
+
+  backend-checks:
+    name: Backend Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            backend/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+      
+      - name: Rust Type Check
+        run: |
+          echo "🔍 Running Rust type check..."
+          cd backend
+          cargo check --all-targets
+        continue-on-error: false
+      
+      - name: Rust Format Check
+        run: |
+          echo "🎨 Running Rust format check..."
+          cd backend
+          cargo fmt --all -- --check
+        continue-on-error: false
+      
+      - name: Rust Clippy Check
+        run: |
+          echo "🔍 Running Rust clippy check..."
+          cd backend
+          cargo clippy --all-targets --all-features -- -D warnings
+        continue-on-error: false
+      
+      - name: Rust Build Check
+        run: |
+          echo "🔨 Running Rust build check..."
+          cd backend
+          cargo build --release
+        continue-on-error: false
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run Security Audit
+        run: |
+          echo "🔒 Running security audit..."
+          pnpm audit --audit-level moderate
+        continue-on-error: true
+
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [frontend-checks, backend-checks, security-audit]
+    if: always()
+    
+    steps:
+      - name: Generate PR Summary
+        run: |
+          echo "## 📊 PR Quality Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Checks | ${{ needs.frontend-checks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Checks | ${{ needs.backend-checks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Audit | ${{ needs.security-audit.result == 'success' && '✅ Passed' || '⚠️ Warnings' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.frontend-checks.result }}" != "success" || "${{ needs.backend-checks.result }}" != "success" ]]; then
+            echo "❌ **This PR has failed quality checks and should not be merged.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the issues above before requesting review." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ **All quality checks passed! This PR is ready for review.**" >> $GITHUB_STEP_SUMMARY
+          fi

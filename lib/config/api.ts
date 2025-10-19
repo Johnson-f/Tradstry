@@ -5,7 +5,7 @@ export const apiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
   endpoints: {
-    // Root
+    // Root - unimportant endpoint 
     root: "/",
     health: "/health",
     profile: "/profile",
@@ -116,68 +116,43 @@ export const apiConfig = {
       pull: "/replicache/pull",
     },
 
-    // The following endpoints seem to belong to other services, keeping them as is.
-    // Notes endpoints (Legacy or different service)
-    notes: {
-      folders: {
-        base: "/notes/folders/",
-        byId: (id: string) => `/notes/folders/${id}`,
-        bySlug: (slug: string) => `/notes/folders/slug/${slug}`,
-      },
+    // Notebook endpoints
+    notebook: {
+      base: "/notebook",
       notes: {
-        base: "/notes/notes/",
-        byId: (id: string) => `/notes/notes/${id}`,
-        favorite: (id: string) => `/notes/notes/${id}/favorite`,
+        base: "/notebook/notes",
+        byId: (id: string) => `/notebook/notes/${id}`,
+        tree: (id: string) => `/notebook/notes/${id}/tree`,
+        reorder: (id: string) => `/notebook/notes/${id}/reorder`,
+        tag: (noteId: string, tagId: string) => `/notebook/notes/${noteId}/tags/${tagId}`,
+        untag: (noteId: string, tagId: string) => `/notebook/notes/${noteId}/tags/${tagId}`,
       },
       tags: {
-        base: "/notes/tags/",
-        byNote: (noteId: string) => `/notes/notes/${noteId}/tags`,
-        removeFromNote: (noteId: string, tagName: string) =>
-          `/notes/notes/${noteId}/tags/${tagName}`,
+        base: "/notebook/tags",
+        byId: (id: string) => `/notebook/tags/${id}`,
       },
       templates: {
-        base: "/notes/templates",
-        byId: (id: string) => `/notes/templates/${id}`,
+        base: "/notebook/templates",
+        byId: (id: string) => `/notebook/templates/${id}`,
+      },
+      reminders: {
+        base: "/notebook/reminders",
+        byId: (id: string) => `/notebook/reminders/${id}`,
+        complete: (id: string) => `/notebook/reminders/${id}/complete`,
+      },
+      calendar: {
+        events: "/notebook/calendar/events",
+        connections: "/notebook/calendar/connections",
+        connect: (provider: string) => `/notebook/calendar/connect/${provider}`,
+        disconnect: (id: string) => `/notebook/calendar/connections/${id}`,
+        sync: (id: string) => `/notebook/calendar/connections/${id}/sync`,
+        syncAll: "/notebook/calendar/sync-all",
+        oauthGoogle: "/notebook/oauth/google/exchange",
+        oauthMicrosoft: "/notebook/oauth/microsoft/exchange",
       },
     },
+
     // Analytics endpoints (Legacy or different service)
-    analytics: {
-      stocks: {
-        winRate: "/analytics/stocks/win-rate",
-        averageGain: "/analytics/stocks/average-gain",
-        averageLoss: "/analytics/stocks/average-loss",
-        riskRewardRatio: "/analytics/stocks/risk-reward-ratio",
-        tradeExpectancy: "/analytics/stocks/trade-expectancy",
-        netPnl: "/analytics/stocks/net-pnl",
-        profitFactor: "/analytics/stocks/profit-factor",
-        avgHoldTimeWinners: "/analytics/stocks/avg-hold-time-winners",
-        avgHoldTimeLosers: "/analytics/stocks/avg-hold-time-losers",
-        biggestWinner: "/analytics/stocks/biggest-winner",
-        biggestLoser: "/analytics/stocks/biggest-loser",
-        averagePositionSize: "/analytics/stocks/average-position-size",
-        averageRiskPerTrade: "/analytics/stocks/average-risk-per-trade",
-        lossRate: "/analytics/stocks/loss-rate",
-        summary: (periodType: string) =>
-          `/analytics/stocks/summary/${periodType}`,
-      },
-      options: {
-        winRate: "/analytics/options/win-rate",
-        averageGain: "/analytics/options/average-gain",
-        averageLoss: "/analytics/options/average-loss",
-        riskRewardRatio: "/analytics/options/risk-reward-ratio",
-        tradeExpectancy: "/analytics/options/trade-expectancy",
-        netPnl: "/analytics/options/net-pnl",
-        profitFactor: "/analytics/options/profit-factor",
-        avgHoldTimeWinners: "/analytics/options/avg-hold-time-winners",
-        avgHoldTimeLosers: "/analytics/options/avg-hold-time-losers",
-        biggestWinner: "/analytics/options/biggest-winner",
-        biggestLoser: "/analytics/options/biggest-loser",
-        averagePositionSize: "/analytics/options/average-position-size",
-        averageRiskPerTrade: "/analytics/options/average-risk-per-trade",
-        lossRate: "/analytics/options/loss-rate",
-        summary: (periodType: string) =>
-          `/analytics/options/summary/${periodType}`,
-      },
       portfolio: "/analytics/portfolio",
       portfolioCombined: "/analytics/portfolio/combined",
       portfolioCombinedSummary: (periodType: string) =>
@@ -192,7 +167,8 @@ export const apiConfig = {
       tickerProfitSummary: "/analytics/ticker-profit-summary",
       weeklyMetrics: "/analytics/metrics/weekly",
       monthlyMetrics: "/analytics/metrics/monthly",
-    },
+
+
     // Market Data endpoints
     marketData: {
       base: "/market-data",
@@ -292,7 +268,6 @@ export const apiConfig = {
           `/market-data/financials/cash-flow/${symbol}`,
       },
     },
-    // AI Summary endpoints
     aiSummary: {
       generate: "/ai-summary/generate",
       quickInsights: "/ai-summary/quick-insights",
@@ -330,7 +305,7 @@ export const apiConfig = {
       dynamic: (path: string) => `/ai-dynamic/dynamic/${path}`,
     },
   },
-  timeout: 300000, // 5 minutes
+  timeout: 30000, // 5 minutes
   retries: 3,
 };
 

@@ -1,6 +1,5 @@
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
-import type { Note } from '../schemas/notes';
 
 export function useNotes(userId: string) {
   const { rep, isInitialized } = useReplicache();
@@ -12,22 +11,22 @@ export function useNotes(userId: string) {
         .scan({ prefix: 'note/' })
         .entries()
         .toArray();
-      
+
       return list
-        .map(([_, value]) => value as Note)
-        .sort((a, b) => 
+        .map(([_, value]) => value as any)
+        .sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
     },
     [] // Default to empty array if undefined
   );
 
-  const createNote = async (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const createNote = async (note: any) => {
     if (!rep) throw new Error('Replicache not initialized');
     return await (rep as any).mutate.createNote(note);
   };
 
-  const updateNote = async (id: string, updates: Partial<Note>) => {
+  const updateNote = async (id: string, updates: any) => {
     if (!rep) throw new Error('Replicache not initialized');
     return await (rep as any).mutate.updateNote({ id, updates });
   };
@@ -38,7 +37,7 @@ export function useNotes(userId: string) {
   };
 
   return {
-    notes: notes || [],
+    notes,
     createNote,
     updateNote,
     deleteNote,

@@ -38,7 +38,7 @@ const navItems = [
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
   { title: "Journal", url: "/app/journal", icon: NotebookPen },
   { title: "Playbook", url: "/app/playbook", icon: Library },
-  { title: "Notebook", url: "/app/notepad", icon: Notebook },
+  { title: "Notebook", url: "/app/notebook", icon: Notebook },
   { title: "Analytics", url: "/app/analytics", icon: PieChart },
   { title: "AI Reports", url: "/app/ai-reports", icon: ChartNoAxesColumnIncreasing },
   { title: "Mindset Lab", url: "/app/mindset", icon: BrainCog },
