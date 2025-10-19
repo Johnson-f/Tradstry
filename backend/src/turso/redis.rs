@@ -1,6 +1,4 @@
 use anyhow::{Context, Result};
-use deadpool_redis::{Config, Pool, Runtime};
-use deadpool_redis::redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -8,14 +6,7 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub struct RedisConfig {
     pub url: String,
-    #[allow(dead_code)]
     pub token: String,
-    #[allow(dead_code)]
-    pub max_connections: u32,
-    #[allow(dead_code)]
-    pub connection_timeout: Duration,
-    #[allow(dead_code)]
-    pub command_timeout: Duration,
 }
 
 impl RedisConfig {
@@ -23,32 +14,33 @@ impl RedisConfig {
     pub fn from_env() -> Result<Self> {
         let url = std::env::var("UPSTASH_REDIS_REST_URL")
             .context("UPSTASH_REDIS_REST_URL environment variable not set")?;
-        
         let token = std::env::var("UPSTASH_REDIS_REST_TOKEN")
             .context("UPSTASH_REDIS_REST_TOKEN environment variable not set")?;
-
-        Ok(Self {
-            url,
-            token,
-            max_connections: 10,
-            connection_timeout: Duration::from_secs(5),
-            command_timeout: Duration::from_secs(10),
-        })
+        
+        Ok(Self { url, token })
     }
 }
 
-/// Redis client wrapper with connection management
+/// Redis client wrapper using Upstash REST API
 #[derive(Debug, Clone)]
 pub struct RedisClient {
-    pool: Pool,
+    client: reqwest::Client,
+    base_url: String,
+    token: String,
 }
 
 impl RedisClient {
-    /// Create a new Redis client with connection pooling
+    /// Create a new Redis client with HTTP client
     pub async fn new(config: RedisConfig) -> Result<Self> {
-        let pool_config = Config::from_url(config.url);
-        let pool = pool_config.create_pool(Some(Runtime::Tokio1))?;
-        Ok(Self { pool })
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
+        
+        Ok(Self {
+            client,
+            base_url: config.url,
+            token: config.token,
+        })
     }
 
     /// Get a value from Redis cache
@@ -56,9 +48,22 @@ impl RedisClient {
     where
         T: for<'de> Deserialize<'de>,
     {
-        let mut conn = self.pool.get().await?;
-        let cached_data: Option<String> = conn.get(key).await?;
-        Ok(cached_data.map(|data| serde_json::from_str(&data)).transpose()?)
+        let response = self.client
+            .get(&format!("{}/get/{}", self.base_url, key))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let result: UpstashResponse = response.json().await?;
+            if result.result.is_null() {
+                return Ok(None);
+            }
+            let data: T = serde_json::from_value(result.result)?;
+            Ok(Some(data))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Set a value in Redis cache with TTL
@@ -66,46 +71,86 @@ impl RedisClient {
     where
         T: Serialize,
     {
-        let mut conn = self.pool.get().await?;
-        let serialized_value = serde_json::to_string(value)?;
-        let _: () = conn.set_ex(key, serialized_value, ttl_seconds as u64).await?;
+        let serialized = serde_json::to_string(value)?;
+        
+        self.client
+            .post(&format!("{}/setex/{}/{}", self.base_url, key, ttl_seconds))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .body(serialized)
+            .send()
+            .await?
+            .error_for_status()?;
+        
         Ok(())
     }
 
     /// Delete a key from Redis
-    #[allow(dead_code)]
     pub async fn del(&self, key: &str) -> Result<()> {
-        let mut conn = self.pool.get().await?;
-        let _: () = conn.del(key).await?;
+        self.client
+            .post(&format!("{}/del/{}", self.base_url, key))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?
+            .error_for_status()?;
+        
         Ok(())
     }
 
     /// Set expiration time for a key
-    #[allow(dead_code)]
     pub async fn expire(&self, key: &str, ttl_seconds: usize) -> Result<()> {
-        let mut conn = self.pool.get().await?;
-        let _: () = conn.expire(key, ttl_seconds as i64).await?;
+        self.client
+            .post(&format!("{}/expire/{}/{}", self.base_url, key, ttl_seconds))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?
+            .error_for_status()?;
+        
         Ok(())
     }
 
     /// Delete all keys matching a pattern
     pub async fn del_pattern(&self, pattern: &str) -> Result<usize> {
-        let mut conn = self.pool.get().await?;
-        let keys: Vec<String> = conn.keys(pattern).await?;
-        let count = keys.len();
-        if !keys.is_empty() {
-            let _: () = conn.del(keys).await?;
+        // Get keys matching pattern
+        let response = self.client
+            .get(&format!("{}/keys/{}", self.base_url, pattern))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        let result: UpstashResponse = response.json().await?;
+        
+        if let Some(keys) = result.result.as_array() {
+            let count = keys.len();
+            
+            // Delete each key
+            for key in keys {
+                if let Some(key_str) = key.as_str() {
+                    self.del(key_str).await.ok(); // Ignore individual errors
+                }
+            }
+            
+            Ok(count)
+        } else {
+            Ok(0)
         }
-        Ok(count)
     }
 
     /// Health check for Redis connection
     pub async fn health_check(&self) -> Result<()> {
-        let mut conn = self.pool.get().await?;
-        // Simple health check by trying to get a non-existent key
-        let _: Option<String> = conn.get("health_check").await?;
+        self.client
+            .get(&format!("{}/ping", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?
+            .error_for_status()?;
+        
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstashResponse {
+    result: serde_json::Value,
 }
 
 /// Cache key patterns for consistent key generation

@@ -6,6 +6,7 @@ alwaysApply: true
 
 # Rust Backend Patterns
 
+# Don't be afraid to make my backend the most efficent backend ever - implement adcanvec stuff inasmuch as the complier
 ## Project Structure
 ```
 backend/src/

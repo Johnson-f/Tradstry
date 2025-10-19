@@ -110,6 +110,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
             // CRITICAL: Add SupabaseConfig as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().config.supabase.clone()))
+            // CRITICAL: Add CacheService as separate app_data for user routes
+            .app_data(Data::new(app_data.as_ref().cache_service.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging
