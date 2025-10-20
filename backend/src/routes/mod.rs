@@ -5,6 +5,8 @@ pub mod trade_notes;
 pub mod images;
 pub mod playbook;
 pub mod notebook;
+pub mod ai_chat;
+pub mod ai_insights;
 
 pub use user::configure_user_routes;
 pub use options::configure_options_routes;

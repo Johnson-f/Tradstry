@@ -399,6 +399,148 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_public_holidays_country_date ON public_holidays(country_code, holiday_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_public_holidays_date ON public_holidays(holiday_date)", libsql::params![]).await?;
 
+    // AI Chat Tables
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            message_count INTEGER DEFAULT 0,
+            last_message_at TEXT
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at)", libsql::params![]).await?;
+
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+            content TEXT NOT NULL,
+            context_vectors TEXT, -- JSON array of vector IDs
+            token_count INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at)", libsql::params![]).await?;
+
+    // AI Insights Tables
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_insights (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            time_range TEXT NOT NULL CHECK (time_range IN ('7d', '30d', '90d', 'ytd', '1y')),
+            insight_type TEXT NOT NULL CHECK (insight_type IN ('trading_patterns', 'performance_analysis', 'risk_assessment', 'behavioral_analysis', 'market_analysis', 'opportunity_detection')),
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            key_findings TEXT, -- JSON array
+            recommendations TEXT, -- JSON array
+            data_sources TEXT, -- JSON array
+            confidence_score REAL DEFAULT 0.0,
+            generated_at TEXT NOT NULL,
+            expires_at TEXT,
+            metadata TEXT, -- JSON object with additional metadata
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_insights_user_id ON ai_insights(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_insights_time_range ON ai_insights(time_range)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_insights_type ON ai_insights(insight_type)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_insights_generated_at ON ai_insights(generated_at)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_insights_expires_at ON ai_insights(expires_at)", libsql::params![]).await?;
+
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS insight_generation_tasks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            time_range TEXT NOT NULL,
+            insight_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'expired')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at TEXT,
+            completed_at TEXT,
+            error_message TEXT,
+            result_insight_id TEXT,
+            FOREIGN KEY (result_insight_id) REFERENCES ai_insights(id) ON DELETE SET NULL
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_insight_tasks_user_id ON insight_generation_tasks(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_insight_tasks_status ON insight_generation_tasks(status)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_insight_tasks_created_at ON insight_generation_tasks(created_at)", libsql::params![]).await?;
+
+    // AI Reports Tables
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_reports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            time_range TEXT NOT NULL CHECK (time_range IN ('7d', '30d', '90d', 'ytd', '1y')),
+            report_type TEXT NOT NULL CHECK (report_type IN ('comprehensive', 'performance', 'risk', 'trading', 'behavioral', 'market')),
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            analytics TEXT NOT NULL, -- JSON object with analytics data
+            insights TEXT NOT NULL, -- JSON array of insights
+            trades TEXT NOT NULL, -- JSON array of trade data
+            recommendations TEXT NOT NULL, -- JSON array of recommendations
+            patterns TEXT, -- JSON array of trading patterns
+            risk_metrics TEXT, -- JSON object with risk metrics
+            performance_metrics TEXT, -- JSON object with performance metrics
+            behavioral_insights TEXT, -- JSON array of behavioral insights
+            market_analysis TEXT, -- JSON object with market analysis
+            generated_at TEXT NOT NULL,
+            expires_at TEXT,
+            metadata TEXT, -- JSON object with additional metadata
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_user_id ON ai_reports(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_time_range ON ai_reports(time_range)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_type ON ai_reports(report_type)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_generated_at ON ai_reports(generated_at)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_expires_at ON ai_reports(expires_at)", libsql::params![]).await?;
+
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS report_generation_tasks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            time_range TEXT NOT NULL,
+            report_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'expired')),
+            progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at TEXT,
+            completed_at TEXT,
+            error_message TEXT,
+            result_report_id TEXT,
+            FOREIGN KEY (result_report_id) REFERENCES ai_reports(id) ON DELETE SET NULL
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_user_id ON report_generation_tasks(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_status ON report_generation_tasks(status)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_created_at ON report_generation_tasks(created_at)", libsql::params![]).await?;
+
     // Triggers
     conn.execute(
         r#"
@@ -520,11 +662,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     Ok(())
 }
 
-/// Current schema version (bumped for notebook feature)
+/// Current schema version (bumped for AI features)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.11".to_string(),
-        description: "Added calendar events table".to_string(),
+        version: "0.0.12".to_string(),
+        description: "Added AI chat, insights, and reports tables".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -697,6 +839,151 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
     schemas.push(TableSchema { name: "external_calendar_events".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "connection_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "external_event_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "start_time".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "end_time".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "location".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "external_updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "last_synced_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("''".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_external_calendar_events_connection_id".to_string(), table_name: "external_calendar_events".to_string(), columns: vec!["connection_id".to_string()], is_unique: false }, IndexInfo { name: "idx_external_calendar_events_start_time".to_string(), table_name: "external_calendar_events".to_string(), columns: vec!["start_time".to_string()], is_unique: false }, IndexInfo { name: "idx_external_calendar_events_unique".to_string(), table_name: "external_calendar_events".to_string(), columns: vec!["connection_id".to_string(), "external_event_id".to_string()], is_unique: true } ], triggers: vec![] });
 
     schemas.push(TableSchema { name: "public_holidays".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "country_code".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "holiday_name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "holiday_date".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_national".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("true".to_string()), is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("''".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("''".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_public_holidays_country_date".to_string(), table_name: "public_holidays".to_string(), columns: vec!["country_code".to_string(), "holiday_date".to_string()], is_unique: false }, IndexInfo { name: "idx_public_holidays_date".to_string(), table_name: "public_holidays".to_string(), columns: vec!["holiday_date".to_string()], is_unique: false } ], triggers: vec![] });
+
+    // AI Chat Tables
+    schemas.push(TableSchema {
+        name: "chat_sessions".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "message_count".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+            ColumnInfo { name: "last_message_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_chat_sessions_user_id".to_string(), table_name: "chat_sessions".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_chat_sessions_updated_at".to_string(), table_name: "chat_sessions".to_string(), columns: vec!["updated_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "chat_messages".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "session_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "role".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "content".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "context_vectors".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "token_count".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_chat_messages_session_id".to_string(), table_name: "chat_messages".to_string(), columns: vec!["session_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_chat_messages_created_at".to_string(), table_name: "chat_messages".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    // AI Insights Tables
+    schemas.push(TableSchema {
+        name: "ai_insights".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "insight_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "content".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "key_findings".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "recommendations".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "data_sources".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "confidence_score".to_string(), data_type: "REAL".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+            ColumnInfo { name: "generated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "expires_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "metadata".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_ai_insights_user_id".to_string(), table_name: "ai_insights".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_insights_time_range".to_string(), table_name: "ai_insights".to_string(), columns: vec!["time_range".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_insights_type".to_string(), table_name: "ai_insights".to_string(), columns: vec!["insight_type".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_insights_generated_at".to_string(), table_name: "ai_insights".to_string(), columns: vec!["generated_at".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_insights_expires_at".to_string(), table_name: "ai_insights".to_string(), columns: vec!["expires_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "insight_generation_tasks".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "insight_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'pending'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ColumnInfo { name: "started_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "completed_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "error_message".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "result_insight_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_insight_tasks_user_id".to_string(), table_name: "insight_generation_tasks".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_insight_tasks_status".to_string(), table_name: "insight_generation_tasks".to_string(), columns: vec!["status".to_string()], is_unique: false },
+            IndexInfo { name: "idx_insight_tasks_created_at".to_string(), table_name: "insight_generation_tasks".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    // AI Reports Tables
+    schemas.push(TableSchema {
+        name: "ai_reports".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "report_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "summary".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "analytics".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "insights".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "trades".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "recommendations".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "patterns".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "risk_metrics".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "performance_metrics".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "behavioral_insights".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "market_analysis".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "generated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "expires_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "metadata".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_ai_reports_user_id".to_string(), table_name: "ai_reports".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_reports_time_range".to_string(), table_name: "ai_reports".to_string(), columns: vec!["time_range".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_reports_type".to_string(), table_name: "ai_reports".to_string(), columns: vec!["report_type".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_reports_generated_at".to_string(), table_name: "ai_reports".to_string(), columns: vec!["generated_at".to_string()], is_unique: false },
+            IndexInfo { name: "idx_ai_reports_expires_at".to_string(), table_name: "ai_reports".to_string(), columns: vec!["expires_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "report_generation_tasks".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "report_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'pending'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "progress_percentage".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ColumnInfo { name: "started_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "completed_at".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "error_message".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "result_report_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_report_tasks_user_id".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_report_tasks_status".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["status".to_string()], is_unique: false },
+            IndexInfo { name: "idx_report_tasks_created_at".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
 
     schemas
 }

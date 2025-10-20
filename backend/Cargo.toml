@@ -51,4 +51,15 @@ futures-util = "0.3.31"
 # Image upload service
 uploadcare = "0.1"
 tokio = { version = "1.0", features = ["full"] }
+
+# AI/LLM Integration
+genai = "0.4.0" # Unified interface for Gemini and other LLMs
+
+# Additional serialization
+bincode = "1.3" # For efficient binary vector storage
+
+
+# LRU Cache for multi-level caching
+lru = "0.12"
+
 # Removed deadpool-redis - using Upstash REST API instead

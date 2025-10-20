@@ -9,6 +9,9 @@ use crate::models::stock::stocks::{
     Stock, CreateStockRequest, UpdateStockRequest, StockQuery, TimeRange
 };
 use crate::service::cache_service::CacheService;
+use crate::service::vectorization_service::VectorizationService;
+use crate::service::data_formatter::DataFormatter;
+use crate::service::upstash_vector_client::DataType;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -166,6 +169,7 @@ pub async fn create_stock(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
 ) -> Result<HttpResponse> {
     info!("Creating new stock trade");
 
@@ -190,6 +194,26 @@ pub async fn create_stock(
                 match cache_service_clone.invalidate_user_analytics(&user_id_clone).await {
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
+                }
+            });
+
+            // Vectorize the new stock trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let stock_clone = stock.clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
+                match vectorization_service_clone.vectorize_data(
+                    &user_id_clone,
+                    DataType::Stock,
+                    &stock_clone.id.to_string(),
+                    &content,
+                ).await {
+                    Ok(result) => info!("Successfully vectorized stock {} for user {}: {}ms", 
+                        stock_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to vectorize stock {} for user {}: {}", 
+                        stock_clone.id, user_id_clone, e),
                 }
             });
             
@@ -287,6 +311,7 @@ pub async fn update_stock(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
     info!("Updating stock with ID: {}", id);
@@ -314,6 +339,26 @@ pub async fn update_stock(
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
             });
+
+            // Re-vectorize the updated stock trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let stock_clone = stock.clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
+                match vectorization_service_clone.vectorize_data(
+                    &user_id_clone,
+                    DataType::Stock,
+                    &stock_clone.id.to_string(),
+                    &content,
+                ).await {
+                    Ok(result) => info!("Successfully re-vectorized stock {} for user {}: {}ms", 
+                        stock_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to re-vectorize stock {} for user {}: {}", 
+                        stock_clone.id, user_id_clone, e),
+                }
+            });
             
             Ok(HttpResponse::Ok().json(ApiResponse::success(stock)))
         }
@@ -339,6 +384,7 @@ pub async fn delete_stock(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
     info!("Deleting stock with ID: {}", id);
@@ -364,6 +410,22 @@ pub async fn delete_stock(
                 match cache_service_clone.invalidate_user_analytics(&user_id_clone).await {
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
+                }
+            });
+
+            // Delete vectors for the deleted stock trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                match vectorization_service_clone.delete_vectors(
+                    &user_id_clone,
+                    &[id.to_string()],
+                ).await {
+                    Ok(_) => info!("Successfully deleted vectors for stock {} for user {}", 
+                        id, user_id_clone),
+                    Err(e) => error!("Failed to delete vectors for stock {} for user {}: {}", 
+                        id, user_id_clone, e),
                 }
             });
             
