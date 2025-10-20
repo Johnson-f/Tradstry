@@ -11,6 +11,7 @@ pub mod client;
 pub mod config;
 pub mod webhook;
 pub mod redis;
+pub mod vector_config;
 
 // Re-export commonly used items
 pub use auth::{
