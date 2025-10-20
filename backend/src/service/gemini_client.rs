@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::turso::vector_config::GeminiConfig;
 use anyhow::{Context, Result};
 use futures_util::StreamExt;

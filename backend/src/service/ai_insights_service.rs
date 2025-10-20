@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::models::ai::insights::{
     Insight, InsightRequest, InsightType, InsightListResponse, InsightSummary,
     InsightGenerationTask, InsightTemplate, InsightMetadata
@@ -194,7 +196,7 @@ impl AIInsightsService {
         let total_count: u32 = row.get(0)?;
 
         // Get insights
-        let mut stmt = conn.prepare(&query).await?;
+        let stmt = conn.prepare(&query).await?;
         let mut rows = stmt.query(params.iter().map(|s| s.as_str()).collect::<Vec<_>>()).await?;
 
         let mut insights = Vec::new();
@@ -217,7 +219,7 @@ impl AIInsightsService {
         insight_id: &str,
         user_id: &str,
     ) -> Result<Insight> {
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, user_id, time_range, insight_type, title, content, key_findings, recommendations, data_sources, confidence_score, generated_at, expires_at, metadata FROM ai_insights WHERE id = ? AND user_id = ?"
         ).await?;
         
@@ -367,7 +369,7 @@ impl AIInsightsService {
         time_range: &TimeRange,
         insight_type: &InsightType,
     ) -> Result<Option<Insight>> {
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, user_id, time_range, insight_type, title, content, key_findings, recommendations, data_sources, confidence_score, generated_at, expires_at, metadata FROM ai_insights WHERE user_id = ? AND time_range = ? AND insight_type = ? ORDER BY generated_at DESC LIMIT 1"
         ).await?;
         
@@ -496,7 +498,7 @@ impl AIInsightsService {
 
     /// Get generation task
     pub async fn get_generation_task(&self, conn: &Connection, task_id: &str) -> Result<InsightGenerationTask> {
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, user_id, time_range, insight_type, status, created_at, started_at, completed_at, error_message, result_insight_id FROM insight_generation_tasks WHERE id = ?"
         ).await?;
         

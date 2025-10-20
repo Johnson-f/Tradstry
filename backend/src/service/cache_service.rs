@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use crate::turso::redis::{RedisClient, ttl};
 use crate::turso::schema::{get_expected_schema, TableSchema};

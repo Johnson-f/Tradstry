@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::models::stock::stocks::Stock;
 use crate::models::options::options::OptionTrade;
 use crate::models::notes::trade_notes::TradeNote;
