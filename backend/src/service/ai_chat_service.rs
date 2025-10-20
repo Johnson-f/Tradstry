@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::models::ai::chat::{
     ChatMessage, ChatSession, ChatRequest, ChatResponse, ContextSource, 
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
@@ -146,7 +148,7 @@ impl AIChatService {
             .collect();
 
         // Generate streaming AI response
-        let mut stream_receiver = self.gemini_client.generate_chat_stream(gemini_messages).await?;
+        let stream_receiver = self.gemini_client.generate_chat_stream(gemini_messages).await?;
 
         // Store user message
         self.store_message(conn, &user_message).await?;
@@ -236,7 +238,7 @@ impl AIChatService {
         session_id: &str,
         user_id: &str,
     ) -> Result<ChatSession> {
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, user_id, title, created_at, updated_at, message_count, last_message_at 
              FROM chat_sessions WHERE id = ? AND user_id = ?"
         ).await?;
@@ -276,7 +278,7 @@ impl AIChatService {
         let total_count: u32 = row.get(0)?;
 
         // Get sessions
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, user_id, title, created_at, updated_at, message_count, last_message_at 
              FROM chat_sessions WHERE user_id = ? 
              ORDER BY updated_at DESC LIMIT ? OFFSET ?"
@@ -329,7 +331,7 @@ impl AIChatService {
         conn: &Connection,
         session_id: &str,
     ) -> Result<Vec<ChatMessage>> {
-        let mut stmt = conn.prepare(
+        let stmt = conn.prepare(
             "SELECT id, role, content, context_vectors, token_count, created_at 
              FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC"
         ).await?;

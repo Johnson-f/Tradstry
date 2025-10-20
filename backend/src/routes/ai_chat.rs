@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::models::ai::chat::{
     ChatRequest
 };
@@ -31,6 +33,7 @@ async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseCon
 }
 
 /// Get user's database connection with authentication
+#[allow(dead_code)]
 async fn get_user_database_connection(
     req: &HttpRequest,
     turso_client: &TursoClient,
@@ -51,6 +54,7 @@ async fn get_user_database_connection(
     Ok(conn)
 }
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -145,7 +149,7 @@ pub async fn send_streaming_chat_message(
     };
 
     match ai_chat_service.generate_streaming_response(&user_id, chat_request, &conn).await {
-        Ok((mut stream_receiver, session_id, message_id)) => {
+        Ok((stream_receiver, _session_id, _message_id)) => {
             info!("Successfully started streaming chat response for user: {}", user_id);
             
             // Create Server-Sent Events response

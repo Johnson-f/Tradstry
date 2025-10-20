@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::models::stock::stocks::TimeRange;
 use crate::models::ai::insights::Insight;
 use chrono::{DateTime, Utc};

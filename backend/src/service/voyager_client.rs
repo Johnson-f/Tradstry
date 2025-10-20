@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::turso::vector_config::VoyagerConfig;
 use anyhow::{Context, Result};
 use reqwest::Client;

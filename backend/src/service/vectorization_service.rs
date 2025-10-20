@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::service::voyager_client::VoyagerClient;
 use crate::service::upstash_vector_client::{UpstashVectorClient, VectorMetadata, DataType};
 use crate::service::data_formatter::{DataFormatter, DataType as FormatterDataType};

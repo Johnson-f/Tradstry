@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::turso::vector_config::VectorConfig;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
