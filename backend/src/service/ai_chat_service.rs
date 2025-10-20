@@ -4,6 +4,7 @@ use crate::models::ai::chat::{
     ChatMessage, ChatSession, ChatRequest, ChatResponse, ContextSource, 
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
 };
+use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
 use crate::service::vectorization_service::VectorizationService;
 use crate::service::gemini_client::{GeminiClient, MessageRole as GeminiMessageRole};
 use crate::turso::client::TursoClient;
@@ -20,6 +21,7 @@ pub struct AIChatService {
     gemini_client: Arc<GeminiClient>,
     turso_client: Arc<TursoClient>,
     max_context_vectors: usize,
+    prompt_config: ChatPromptConfig,
 }
 
 impl AIChatService {
@@ -34,7 +36,77 @@ impl AIChatService {
             gemini_client,
             turso_client,
             max_context_vectors,
+            prompt_config: ChatPromptConfig::default(),
         }
+    }
+
+    /// Configure prompt templates dynamically
+    pub fn configure_prompts(&mut self, config: ChatPromptConfig) {
+        self.prompt_config = config;
+    }
+    
+    /// Get current prompt configuration
+    pub fn get_prompt_config(&self) -> &ChatPromptConfig {
+        &self.prompt_config
+    }
+
+    /// Build enhanced system prompt based on query type and context
+    fn build_enhanced_system_prompt(
+        &self,
+        query: &str,
+        context_sources: &[ContextSource],
+    ) -> String {
+        // Detect query type and get appropriate template
+        let template = self.prompt_config.detect_query_type(query);
+        
+        // Build base system prompt
+        let mut system_prompt = ContextFormatter::build_system_prompt(template);
+        
+        // Add context if available
+        if !context_sources.is_empty() {
+            let formatted_context = ContextFormatter::format_context_sources(
+                context_sources,
+                self.prompt_config.context_max_length,
+                self.prompt_config.include_relevance_scores,
+            );
+            
+            system_prompt.push_str(&format!("\n\n{}", formatted_context));
+        }
+        
+        system_prompt
+    }
+    
+    /// Build enhanced messages with system prompt
+    fn build_enhanced_messages(
+        &self,
+        messages: &[ChatMessage],
+        query: &str,
+        context_sources: &[ContextSource],
+    ) -> Vec<crate::service::gemini_client::ChatMessage> {
+        let mut gemini_messages = Vec::new();
+        
+        // Add system prompt if this is the first user message or if we have context
+        if messages.len() == 1 || !context_sources.is_empty() {
+            let system_prompt = self.build_enhanced_system_prompt(query, context_sources);
+            gemini_messages.push(crate::service::gemini_client::ChatMessage {
+                role: GeminiMessageRole::System,
+                content: system_prompt,
+            });
+        }
+        
+        // Convert existing messages
+        for msg in messages {
+            gemini_messages.push(crate::service::gemini_client::ChatMessage {
+                role: match msg.role {
+                    MessageRole::User => GeminiMessageRole::User,
+                    MessageRole::Assistant => GeminiMessageRole::Assistant,
+                    MessageRole::System => GeminiMessageRole::System,
+                },
+                content: msg.content.clone(),
+            });
+        }
+        
+        gemini_messages
     }
 
     /// Generate a chat response with context retrieval
@@ -67,18 +139,8 @@ impl AIChatService {
         let user_message = ChatMessage::new(MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
-        // Convert to Gemini format
-        let gemini_messages: Vec<crate::service::gemini_client::ChatMessage> = messages
-            .iter()
-            .map(|msg| crate::service::gemini_client::ChatMessage {
-                role: match msg.role {
-                    MessageRole::User => GeminiMessageRole::User,
-                    MessageRole::Assistant => GeminiMessageRole::Assistant,
-                    MessageRole::System => GeminiMessageRole::System,
-                },
-                content: msg.content.clone(),
-            })
-            .collect();
+        // Convert to Gemini format with enhanced prompts
+        let gemini_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
 
         // Generate AI response
         let ai_response = self.gemini_client.generate_chat(gemini_messages).await?;
@@ -134,18 +196,8 @@ impl AIChatService {
         let user_message = ChatMessage::new(MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
-        // Convert to Gemini format
-        let gemini_messages: Vec<crate::service::gemini_client::ChatMessage> = messages
-            .iter()
-            .map(|msg| crate::service::gemini_client::ChatMessage {
-                role: match msg.role {
-                    MessageRole::User => GeminiMessageRole::User,
-                    MessageRole::Assistant => GeminiMessageRole::Assistant,
-                    MessageRole::System => GeminiMessageRole::System,
-                },
-                content: msg.content.clone(),
-            })
-            .collect();
+        // Convert to Gemini format with enhanced prompts
+        let gemini_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
 
         // Generate streaming AI response
         let stream_receiver = self.gemini_client.generate_chat_stream(gemini_messages).await?;
