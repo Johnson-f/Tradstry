@@ -5,9 +5,9 @@ use crate::models::ai::chat::{
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
 };
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
-use crate::service::vectorization_service::VectorizationService;
-use crate::service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
-use crate::service::embedding_service::EmbeddingService;
+use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::embedding_service::EmbeddingService;
 use crate::turso::client::TursoClient;
 use crate::turso::vector_client::VectorClient;
 use anyhow::Result;

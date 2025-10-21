@@ -26,6 +26,7 @@ impl std::fmt::Display for MessageRole {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub id: String,
+    pub session_id: String, // ADD THIS
     pub role: MessageRole,
     pub content: String,
     pub timestamp: DateTime<Utc>,
@@ -34,9 +35,10 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    pub fn new(role: MessageRole, content: String) -> Self {
+    pub fn new(session_id: String, role: MessageRole, content: String) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            session_id, // ADD THIS
             role,
             content,
             timestamp: Utc::now(),
@@ -262,7 +264,8 @@ mod tests {
 
     #[test]
     fn test_chat_message_creation() {
-        let message = ChatMessage::new(MessageRole::User, "Hello".to_string());
+        let message = ChatMessage::new("session123".to_string(), MessageRole::User, "Hello".to_string());
+        assert_eq!(message.session_id, "session123");
         assert_eq!(message.role, MessageRole::User);
         assert_eq!(message.content, "Hello");
         assert!(message.context_vectors.is_none());
@@ -270,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_chat_message_with_context() {
-        let message = ChatMessage::new(MessageRole::Assistant, "Response".to_string())
+        let message = ChatMessage::new("session123".to_string(), MessageRole::Assistant, "Response".to_string())
             .with_context(vec!["vec1".to_string(), "vec2".to_string()]);
         
         assert!(message.context_vectors.is_some());

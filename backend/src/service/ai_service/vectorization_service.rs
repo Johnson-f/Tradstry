@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use crate::service::voyager_client::VoyagerClient;
-use crate::service::upstash_vector_client::{UpstashVectorClient, VectorMetadata, DataType};
-use crate::service::data_formatter::{DataFormatter, DataType as FormatterDataType};
+use crate::service::ai_service::voyager_client::VoyagerClient;
+use crate::service::ai_service::upstash_vector_client::{UpstashVectorClient, VectorMetadata, DataType};
+use crate::service::ai_service::data_formatter::{DataFormatter, DataType as FormatterDataType};
 use crate::turso::vector_config::AIConfig;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -248,7 +248,7 @@ impl VectorizationService {
         query_text: &str,
         top_k: usize,
         data_types: Option<Vec<DataType>>,
-    ) -> Result<Vec<crate::service::upstash_vector_client::VectorMatch>> {
+    ) -> Result<Vec<crate::service::ai_service::upstash_vector_client::VectorMatch>> {
         // Generate embedding for query
         let query_embedding = self.voyager_client
             .embed_text(query_text)

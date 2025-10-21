@@ -5,9 +5,9 @@ use crate::models::ai::chat::{
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
 };
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
-use crate::service::vectorization_service::VectorizationService;
-use crate::service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
-use crate::service::embedding_service::EmbeddingService;
+use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::voyager_client::VoyagerClient;
 use crate::turso::client::TursoClient;
 use crate::turso::vector_client::VectorClient;
 use anyhow::Result;
@@ -25,7 +25,7 @@ pub struct AIChatService {
     openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
     vector_client: Arc<VectorClient>,
-    embedding_service: Arc<EmbeddingService>,
+    voyager_client: Arc<VoyagerClient>,
     max_context_vectors: usize,
     prompt_config: ChatPromptConfig,
 }
@@ -36,7 +36,7 @@ impl AIChatService {
         openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
         vector_client: Arc<VectorClient>,
-        embedding_service: Arc<EmbeddingService>,
+        voyager_client: Arc<VoyagerClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
@@ -44,7 +44,7 @@ impl AIChatService {
             openrouter_client,
             turso_client,
             vector_client,
-            embedding_service,
+            voyager_client,
             max_context_vectors,
             prompt_config: ChatPromptConfig::default(),
         }
@@ -92,13 +92,13 @@ impl AIChatService {
         messages: &[ChatMessage],
         query: &str,
         context_sources: &[ContextSource],
-    ) -> Vec<crate::service::openrouter_client::ChatMessage> {
+    ) -> Vec<crate::service::ai_service::openrouter_client::ChatMessage> {
         let mut openrouter_messages = Vec::new();
         
         // Add system prompt if this is the first user message or if we have context
         if messages.len() == 1 || !context_sources.is_empty() {
             let system_prompt = self.build_enhanced_system_prompt(query, context_sources);
-            openrouter_messages.push(crate::service::openrouter_client::ChatMessage {
+            openrouter_messages.push(crate::service::ai_service::openrouter_client::ChatMessage {
                 role: OpenRouterMessageRole::System,
                 content: system_prompt,
             });
@@ -106,7 +106,7 @@ impl AIChatService {
         
         // Convert existing messages
         for msg in messages {
-            openrouter_messages.push(crate::service::openrouter_client::ChatMessage {
+            openrouter_messages.push(crate::service::ai_service::openrouter_client::ChatMessage {
                 role: match msg.role {
                     MessageRole::User => OpenRouterMessageRole::User,
                     MessageRole::Assistant => OpenRouterMessageRole::Assistant,
@@ -225,7 +225,7 @@ impl AIChatService {
         let openrouter_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
 
         // Generate streaming AI response
-        let stream_receiver = self.openrouter_client.generate_chat_stream(openrouter_messages).await?;
+        let mut stream_receiver = self.openrouter_client.generate_chat_stream(openrouter_messages).await?;
 
         // Store user message
         self.store_message(conn, &user_message).await?;
@@ -265,13 +265,23 @@ impl AIChatService {
             }
             
             // Update database with final content
-            if let Ok(conn) = service.turso_client.get_connection(&user_id_clone).await {
-                service.update_message_content(&conn, &msg_id, accumulated.clone()).await.ok();
+            if let Ok(Some(conn)) = service.turso_client.get_user_database_connection(&user_id_clone).await {
+                if let Err(e) = service.update_message_content(&conn, &msg_id, accumulated.clone()).await {
+                    log::error!("Failed to update message content for message {}: {}", msg_id, e);
+                } else {
+                    log::info!("Successfully updated message content for message {}", msg_id);
+                }
                 
                 // Vectorize the completed message
                 let mut completed_message = assistant_message_clone;
                 completed_message.content = accumulated;
-                service.vectorize_message(&completed_message, &user_id_clone).await.ok();
+                if let Err(e) = service.vectorize_message(&completed_message, &user_id_clone).await {
+                    log::error!("Failed to vectorize message {}: {}", msg_id, e);
+                } else {
+                    log::info!("Successfully vectorized message {}", msg_id);
+                }
+            } else {
+                log::error!("Failed to get database connection for user {} to save message {}", user_id_clone, msg_id);
             }
         });
 
@@ -280,7 +290,7 @@ impl AIChatService {
 
     /// Vectorize a message and store it in the vector database
     async fn vectorize_message(&self, message: &ChatMessage, user_id: &str) -> Result<()> {
-        let embedding = self.embedding_service.embed_text(&message.content).await?;
+        let embedding = self.voyager_client.embed_text(&message.content).await?;
         
         let metadata = crate::turso::vector_client::VectorMetadata {
             user_id: user_id.to_string(),
@@ -305,7 +315,7 @@ impl AIChatService {
         max_vectors: usize,
     ) -> Result<Vec<ContextSource>> {
         // Generate embedding for query
-        let query_vector = self.embedding_service.embed_text(query).await?;
+        let query_vector = self.voyager_client.embed_text(query).await?;
         
         // Search Upstash Vector (automatically searches all data types)
         let matches = self.vector_client
@@ -323,7 +333,7 @@ impl AIChatService {
                 m.metadata.content_snippet,
             ))
             .collect();
-
+        
         Ok(context_sources)
     }
 
@@ -454,7 +464,7 @@ impl AIChatService {
         session_id: &str,
     ) -> Result<Vec<ChatMessage>> {
         let stmt = conn.prepare(
-            "SELECT id, role, content, context_vectors, token_count, created_at 
+            "SELECT id, session_id, role, content, context_vectors, token_count, created_at 
              FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC"
         ).await?;
         
@@ -462,7 +472,7 @@ impl AIChatService {
         
         let mut messages = Vec::new();
         while let Some(row) = rows.next().await? {
-            let context_vectors: Option<String> = row.get(3)?;
+            let context_vectors: Option<String> = row.get(4)?; // Updated index
             let context_vectors_parsed = if let Some(cv) = context_vectors {
                 Some(serde_json::from_str::<Vec<String>>(&cv)?)
             } else {
@@ -471,16 +481,17 @@ impl AIChatService {
 
             messages.push(ChatMessage {
                 id: row.get(0)?,
-                role: match row.get::<String>(1)?.as_str() {
+                session_id: row.get(1)?,
+                role: match row.get::<String>(2)?.as_str() {
                     "user" => MessageRole::User,
                     "assistant" => MessageRole::Assistant,
                     "system" => MessageRole::System,
                     _ => MessageRole::User,
                 },
-                content: row.get(2)?,
-                timestamp: chrono::DateTime::parse_from_rfc3339(&row.get::<String>(5)?)?.with_timezone(&Utc),
+                content: row.get(3)?,
+                timestamp: chrono::DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
                 context_vectors: context_vectors_parsed,
-                token_count: row.get(4)?,
+                token_count: row.get(5)?,
             });
         }
 
@@ -494,11 +505,23 @@ impl AIChatService {
         message_id: &str,
         content: String,
     ) -> Result<()> {
-        conn.execute(
+        log::info!("Updating message content for message {} with {} characters", message_id, content.len());
+        
+        let result = conn.execute(
             "UPDATE chat_messages SET content = ? WHERE id = ?",
             params![content, message_id],
-        ).await?;
-        Ok(())
+        ).await;
+        
+        match result {
+            Ok(rows_affected) => {
+                log::info!("Successfully updated message {} - {} rows affected", message_id, rows_affected);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to update message {}: {}", message_id, e);
+                Err(e.into())
+            }
+        }
     }
 
     /// Store a chat message

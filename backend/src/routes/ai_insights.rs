@@ -4,7 +4,7 @@ use crate::models::ai::insights::{
     InsightRequest, InsightType
 };
 use crate::models::stock::stocks::TimeRange;
-use crate::service::ai_insights_service::AIInsightsService;
+use crate::service::ai_service::insights_service::AIInsightsService;
 use crate::turso::client::TursoClient;
 use crate::turso::config::SupabaseConfig;
 use crate::turso::auth::validate_supabase_jwt_token;
