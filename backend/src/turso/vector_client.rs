@@ -78,7 +78,14 @@ impl VectorClient {
             anyhow::bail!("Upstash query failed: {}", response.text().await?);
         }
         
-        let results: Vec<QueryResultItem> = response.json().await?;
+        let response_text = response.text().await?;
+        log::debug!("Upstash Vector response: {}", response_text);
+        
+        // Parse the wrapped response from Upstash
+        let wrapped_response: UpstashQueryResponse = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::anyhow!("Failed to parse Upstash response: {} - Response: {}", e, response_text))?;
+        
+        let results = wrapped_response.result;
         
         Ok(results.into_iter().map(|item| VectorMatch {
             id: item.id,
@@ -107,6 +114,11 @@ struct QueryRequest {
     include_vectors: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     filter: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpstashQueryResponse {
+    result: Vec<QueryResultItem>,
 }
 
 #[derive(Deserialize)]
