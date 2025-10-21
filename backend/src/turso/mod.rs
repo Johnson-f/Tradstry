@@ -12,13 +12,14 @@ pub mod config;
 pub mod webhook;
 pub mod redis;
 pub mod vector_config;
+pub mod jwt_cache;
 
 // Re-export commonly used items
 pub use auth::{
     get_user_id,
     get_supabase_user_id,
     validate_jwt_token,
-    validate_supabase_jwt_token,
+    validate_supabase_jwt_token_cached,
     AuthError,
 };
 pub use client::TursoClient;
@@ -33,6 +34,7 @@ use crate::service::vectorization_service::VectorizationService;
 use crate::service::openrouter_client::OpenRouterClient;
 use crate::service::upstash_vector_client::UpstashVectorClient;
 use crate::service::voyager_client::VoyagerClient;
+use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -42,7 +44,9 @@ pub struct AppState {
     pub webhook_handler: Arc<ClerkWebhookHandler>,
     pub cache_service: Arc<CacheService>,
     pub ai_chat_service: Arc<AIChatService>,
+    #[allow(dead_code)]
     pub ai_insights_service: Arc<AIInsightsService>,
+    pub jwt_cache: Arc<JwtCache>,
 }
 
 impl AppState {
@@ -109,6 +113,15 @@ impl AppState {
             10, // max_context_vectors
         ));
 
+        // Initialize JWT cache
+        let cache_duration_seconds = std::env::var("JWT_CACHE_DURATION_SECONDS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse::<i64>()
+            .unwrap_or(30);
+        
+        let jwt_cache = Arc::new(JwtCache::new(cache_duration_seconds));
+        log::info!("JWT Cache initialized with {}s TTL", cache_duration_seconds);
+
         Ok(Self {
             config,
             turso_client,
@@ -116,6 +129,7 @@ impl AppState {
             cache_service,
             ai_chat_service,
             ai_insights_service,
+            jwt_cache,
         })
     }
 
