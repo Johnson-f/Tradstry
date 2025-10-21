@@ -26,7 +26,7 @@ use turso::{
     get_user_id,
     get_supabase_user_id,
     validate_jwt_token,
-    validate_supabase_jwt_token,
+    validate_supabase_jwt_token_cached,
     AuthError,
     SupabaseClaims,
 };
@@ -207,8 +207,12 @@ async fn jwt_validator(
         .app_data::<Data<AppState>>()
         .expect("AppState not found");
 
-    // Try Supabase JWT validation first
-    match validate_supabase_jwt_token(credentials.token(), &app_state.config.supabase).await {
+    // Try Supabase JWT validation first with caching
+    match validate_supabase_jwt_token_cached(
+        credentials.token(),
+        &app_state.config.supabase,
+        &app_state.jwt_cache
+    ).await {
         Ok(claims) => {
             // Store Supabase claims in request extensions
             req.extensions_mut().insert(claims);

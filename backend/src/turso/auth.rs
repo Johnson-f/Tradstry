@@ -7,6 +7,7 @@ use std::sync::Arc;
 use chrono;
 
 use super::config::{ClerkClaims, SupabaseClaims, SupabaseConfig, TursoConfig};
+use super::jwt_cache::JwtCache;
 
 /// Custom error types for authentication
 #[derive(Debug)]
@@ -227,5 +228,31 @@ pub async fn validate_supabase_jwt_token(token: &str, config: &SupabaseConfig) -
 pub async fn validate_jwt_token(token: &str, config: &TursoConfig) -> Result<ClerkClaims> {
     let clerk_auth = ClerkAuth::new(Arc::new(config.clone()));
     clerk_auth.validate_token(token)
+}
+
+/// Validate Supabase JWT token with caching support
+pub async fn validate_supabase_jwt_token_cached(
+    token: &str,
+    config: &SupabaseConfig,
+    jwt_cache: &JwtCache,
+) -> Result<SupabaseClaims, AuthError> {
+    // First check cache
+    if let Some(cached_claims) = jwt_cache.get(token) {
+        log::debug!("JWT Cache Hit: user_id={} (saved Supabase API call)", cached_claims.sub);
+        return Ok(cached_claims);
+    }
+
+    // Cache miss - validate with Supabase
+    log::debug!("JWT Cache Miss: validating with Supabase");
+    let supabase_auth = SupabaseAuth::new(config.clone());
+    let claims = supabase_auth.validate_token(token).await?;
+
+    // Cache the validated claims
+    if let Err(e) = jwt_cache.set(token, &claims) {
+        log::warn!("Failed to cache JWT token: {}", e);
+        // Don't fail the request if caching fails
+    }
+
+    Ok(claims)
 }
 

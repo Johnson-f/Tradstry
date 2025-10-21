@@ -62,4 +62,8 @@ bincode = "1.3" # For efficient binary vector storage
 # LRU Cache for multi-level caching
 lru = "0.12"
 
+# JWT Caching dependencies
+dashmap = "5.5"  # Thread-safe HashMap for JWT caching
+hex = "0.4"      # For hex encoding
+
 # Removed deadpool-redis - using Upstash REST API instead
