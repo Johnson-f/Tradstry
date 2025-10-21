@@ -12,6 +12,7 @@ pub mod config;
 pub mod webhook;
 pub mod redis;
 pub mod vector_config;
+pub mod vector_client; // ADD THIS
 pub mod jwt_cache;
 
 // Re-export commonly used items
@@ -25,15 +26,11 @@ pub use auth::{
 pub use client::TursoClient;
 pub use config::{TursoConfig, ClerkClaims, SupabaseClaims};
 pub use webhook::ClerkWebhookHandler;
+pub use vector_client::VectorClient; // ADD THIS
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_chat_service::AIChatService;
-use crate::service::ai_insights_service::AIInsightsService;
-use crate::service::vectorization_service::VectorizationService;
-use crate::service::openrouter_client::OpenRouterClient;
-use crate::service::upstash_vector_client::UpstashVectorClient;
-use crate::service::voyager_client::VoyagerClient;
+use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient};
 use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
@@ -99,10 +96,18 @@ impl AppState {
             ai_config,
         ));
         
+        // Initialize vector client
+        let vector_client = Arc::new(VectorClient::new(
+            config.vector.rest_url.clone(),
+            config.vector.rest_token.clone(),
+        ));
+        
         let ai_chat_service = Arc::new(AIChatService::new(
             Arc::clone(&vectorization_service),
             Arc::clone(&openrouter_client),
             Arc::clone(&turso_client),
+            Arc::clone(&vector_client),
+            Arc::clone(&voyager_client),
             10, // max_context_vectors
         ));
         

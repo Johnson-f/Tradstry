@@ -17,10 +17,10 @@ pub struct VectorConfig {
 impl VectorConfig {
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(VectorConfig {
-            url: env::var("UPSTASH_VECTOR_URL")
-                .map_err(|_| "UPSTASH_VECTOR_URL environment variable not set")?,
-            token: env::var("UPSTASH_VECTOR_TOKEN")
-                .map_err(|_| "UPSTASH_VECTOR_TOKEN environment variable not set")?,
+            url: env::var("UPSTASH_VECTOR_REST_URL")
+                .map_err(|_| "UPSTASH_VECTOR_REST_URL environment variable not set")?,
+            token: env::var("UPSTASH_VECTOR_REST_TOKEN")
+                .map_err(|_| "UPSTASH_VECTOR_REST_TOKEN environment variable not set")?,
             dimensions: 1024, // voyage-finance-2 uses 1024 dimensions
             namespace_prefix: "user".to_string(),
             max_retries: 3,

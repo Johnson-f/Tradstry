@@ -9,9 +9,9 @@ use crate::models::stock::stocks::{
     Stock, CreateStockRequest, UpdateStockRequest, StockQuery, TimeRange
 };
 use crate::service::cache_service::CacheService;
-use crate::service::vectorization_service::VectorizationService;
-use crate::service::data_formatter::DataFormatter;
-use crate::service::upstash_vector_client::DataType;
+use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::data_formatter::DataFormatter;
+use crate::service::ai_service::upstash_vector_client::DataType;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]

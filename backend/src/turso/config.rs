@@ -21,6 +21,8 @@ pub struct TursoConfig {
     pub google: GoogleConfig,
     /// Cron secret for external sync endpoint
     pub cron_secret: String,
+    /// Vector database configuration
+    pub vector: VectorConfig,
 }
 
 /// Supabase authentication configuration
@@ -44,11 +46,19 @@ pub struct GoogleConfig {
     pub redirect_uri: String,
 }
 
+/// Vector database configuration
+#[derive(Debug, Clone)]
+pub struct VectorConfig {
+    pub rest_url: String,
+    pub rest_token: String,
+}
+
 impl TursoConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         let supabase_config = SupabaseConfig::from_env()?;
         let google_config = GoogleConfig::from_env()?;
+        let vector_config = VectorConfig::from_env()?;
         
         Ok(Self {
             registry_db_url: env::var("REGISTRY_DB_URL")
@@ -64,6 +74,7 @@ impl TursoConfig {
             google: google_config,
             cron_secret: env::var("CRON_SECRET")
                 .map_err(|_| "CRON_SECRET environment variable not set")?,
+            vector: vector_config,
         })
     }
 }
@@ -101,6 +112,18 @@ impl GoogleConfig {
                 .map_err(|_| "GOOGLE_CLIENT_SECRET environment variable not set")?,
             redirect_uri: env::var("GOOGLE_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:3000/api/auth/callback/google".to_string()),
+        })
+    }
+}
+
+impl VectorConfig {
+    /// Load Vector configuration from environment variables
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            rest_url: env::var("UPSTASH_VECTOR_REST_URL")
+                .map_err(|_| "UPSTASH_VECTOR_REST_URL environment variable not set")?,
+            rest_token: env::var("UPSTASH_VECTOR_REST_TOKEN")
+                .map_err(|_| "UPSTASH_VECTOR_REST_TOKEN environment variable not set")?,
         })
     }
 }

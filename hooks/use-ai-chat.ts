@@ -196,15 +196,19 @@ export function useAIChat(): UseAIChatReturn {
           setStreamingMessage(fullContent);
         },
         // onComplete
-        () => {
-          console.log('Stream completed');
+        async () => {
+          console.log('Stream completed, invalidating queries...');
           setIsStreaming(false);
           setStreamingMessage('');
-          // Invalidate queries to refetch latest data
+          
+          // Wait for backend to save
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Invalidate queries
           queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
-          if (currentSessionId) {
+          if (sessionId || currentSessionId) {
             queryClient.invalidateQueries({ 
-              queryKey: QUERY_KEYS.session(currentSessionId) 
+              queryKey: QUERY_KEYS.session(sessionId || currentSessionId!) 
             });
           }
         },
