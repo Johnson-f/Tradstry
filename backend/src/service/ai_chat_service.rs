@@ -6,11 +6,12 @@ use crate::models::ai::chat::{
 };
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
 use crate::service::vectorization_service::VectorizationService;
-use crate::service::gemini_client::{GeminiClient, MessageRole as GeminiMessageRole};
+use crate::service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
 use crate::turso::client::TursoClient;
 use anyhow::Result;
 use chrono::Utc;
 use libsql::{Connection, params};
+use log::warn;
 use serde_json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -18,7 +19,7 @@ use uuid::Uuid;
 /// AI Chat Service for handling chat functionality
 pub struct AIChatService {
     vectorization_service: Arc<VectorizationService>,
-    gemini_client: Arc<GeminiClient>,
+    openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
     max_context_vectors: usize,
     prompt_config: ChatPromptConfig,
@@ -27,13 +28,13 @@ pub struct AIChatService {
 impl AIChatService {
     pub fn new(
         vectorization_service: Arc<VectorizationService>,
-        gemini_client: Arc<GeminiClient>,
+        openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
             vectorization_service,
-            gemini_client,
+            openrouter_client,
             turso_client,
             max_context_vectors,
             prompt_config: ChatPromptConfig::default(),
@@ -82,31 +83,31 @@ impl AIChatService {
         messages: &[ChatMessage],
         query: &str,
         context_sources: &[ContextSource],
-    ) -> Vec<crate::service::gemini_client::ChatMessage> {
-        let mut gemini_messages = Vec::new();
+    ) -> Vec<crate::service::openrouter_client::ChatMessage> {
+        let mut openrouter_messages = Vec::new();
         
         // Add system prompt if this is the first user message or if we have context
         if messages.len() == 1 || !context_sources.is_empty() {
             let system_prompt = self.build_enhanced_system_prompt(query, context_sources);
-            gemini_messages.push(crate::service::gemini_client::ChatMessage {
-                role: GeminiMessageRole::System,
+            openrouter_messages.push(crate::service::openrouter_client::ChatMessage {
+                role: OpenRouterMessageRole::System,
                 content: system_prompt,
             });
         }
         
         // Convert existing messages
         for msg in messages {
-            gemini_messages.push(crate::service::gemini_client::ChatMessage {
+            openrouter_messages.push(crate::service::openrouter_client::ChatMessage {
                 role: match msg.role {
-                    MessageRole::User => GeminiMessageRole::User,
-                    MessageRole::Assistant => GeminiMessageRole::Assistant,
-                    MessageRole::System => GeminiMessageRole::System,
+                    MessageRole::User => OpenRouterMessageRole::User,
+                    MessageRole::Assistant => OpenRouterMessageRole::Assistant,
+                    MessageRole::System => OpenRouterMessageRole::System,
                 },
                 content: msg.content.clone(),
             });
         }
         
-        gemini_messages
+        openrouter_messages
     }
 
     /// Generate a chat response with context retrieval
@@ -125,9 +126,15 @@ impl AIChatService {
             self.create_session(conn, user_id, None).await?
         };
 
-        // Retrieve relevant context using vector similarity search
+        // Retrieve relevant context using vector similarity search with fallback
         let context_sources = if request.include_context.unwrap_or(true) {
-            self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await?
+            match self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await {
+                Ok(sources) => sources,
+                Err(e) => {
+                    warn!("Failed to retrieve context for regular response: {}. Continuing without context.", e);
+                    Vec::new()
+                }
+            }
         } else {
             Vec::new()
         };
@@ -139,11 +146,11 @@ impl AIChatService {
         let user_message = ChatMessage::new(MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
-        // Convert to Gemini format with enhanced prompts
-        let gemini_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
+        // Convert to OpenRouter format with enhanced prompts
+        let openrouter_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
 
         // Generate AI response
-        let ai_response = self.gemini_client.generate_chat(gemini_messages).await?;
+        let ai_response = self.openrouter_client.generate_chat(openrouter_messages).await?;
 
         // Create assistant message
         let assistant_message = ChatMessage::new(MessageRole::Assistant, ai_response.clone())
@@ -182,9 +189,15 @@ impl AIChatService {
             self.create_session(conn, user_id, None).await?
         };
 
-        // Retrieve relevant context
+        // Retrieve relevant context with fallback
         let context_sources = if request.include_context.unwrap_or(true) {
-            self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await?
+            match self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await {
+                Ok(sources) => sources,
+                Err(e) => {
+                    warn!("Failed to retrieve context for streaming response: {}. Continuing without context.", e);
+                    Vec::new()
+                }
+            }
         } else {
             Vec::new()
         };
@@ -196,11 +209,11 @@ impl AIChatService {
         let user_message = ChatMessage::new(MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
-        // Convert to Gemini format with enhanced prompts
-        let gemini_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
+        // Convert to OpenRouter format with enhanced prompts
+        let openrouter_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
 
         // Generate streaming AI response
-        let stream_receiver = self.gemini_client.generate_chat_stream(gemini_messages).await?;
+        let stream_receiver = self.openrouter_client.generate_chat_stream(openrouter_messages).await?;
 
         // Store user message
         self.store_message(conn, &user_message).await?;
@@ -232,15 +245,23 @@ impl AIChatService {
         query: &str,
         max_vectors: usize,
     ) -> Result<Vec<ContextSource>> {
-        // Query similar vectors
-        let vector_matches = self.vectorization_service
+        // Try to query similar vectors with fallback
+        let vector_matches = match self.vectorization_service
             .query_similar_vectors(
                 user_id,
                 query,
                 max_vectors,
                 None, // No specific data type filter
             )
-            .await?;
+            .await
+        {
+            Ok(matches) => matches,
+            Err(e) => {
+                // Log the error but don't fail the entire request
+                warn!("Failed to retrieve vector context for user {}: {}. Continuing without context.", user_id, e);
+                return Ok(Vec::new()); // Return empty context instead of failing
+            }
+        };
 
         // Convert to context sources
         let context_sources: Vec<ContextSource> = vector_matches
@@ -482,6 +503,14 @@ impl AIChatService {
             "UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
             params![title, Utc::now().to_rfc3339(), session_id, user_id],
         ).await?;
+
+        Ok(())
+    }
+
+    /// Health check for AI chat service
+    pub async fn health_check(&self) -> Result<()> {
+        // Check vectorization service
+        self.vectorization_service.health_check().await?;
 
         Ok(())
     }

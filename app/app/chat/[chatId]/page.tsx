@@ -10,6 +10,7 @@ import { Loader2, Send, MessageCircle, ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { MessageRole } from "@/lib/types/ai-chat";
 
 // Type for optimistic messages
 interface OptimisticMessage {
@@ -37,21 +38,18 @@ export default function ChatPage() {
   const chatId = params.chatId as string;
 
   const {
-    messages,
-    messagesLoading: loading,
-    messagesError: error,
+    sessions,
     currentSession,
-    isChatting,
+    messages,
+    isLoading,
     isStreaming,
-    streamingContent,
-    streamingError,
-    chatWithAI,
-    chatWithAIStream,
-    cancelStream,
-    refetchMessages,
-  } = useAIChat({
-    sessionId: chatId && chatId !== "new" && chatId !== "undefined" ? chatId : undefined
-  });
+    error,
+    sendMessage,
+    sendStreamingMessage,
+    createSession,
+    loadSession,
+    clearError,
+  } = useAIChat();
 
   // State
   const [message, setMessage] = useState("");
@@ -69,6 +67,13 @@ export default function ChatPage() {
   // Constants
   const CONTEXT_LIMIT = 10;
   const MAX_MESSAGE_LENGTH = 4000;
+
+  // Load session when chatId changes
+  useEffect(() => {
+    if (chatId && chatId !== "new" && chatId !== "undefined") {
+      loadSession(chatId);
+    }
+  }, [chatId, loadSession]);
 
   // Combine real messages with optimistic messages
   const allMessages = [...messages, ...optimisticMessages];
@@ -119,7 +124,7 @@ export default function ChatPage() {
 
   // Enhanced auto-scroll during streaming with better throttling
   useEffect(() => {
-    if (isStreaming && streamingContent) {
+    if (isStreaming) {
       // Clear any existing timeout
       if (autoScrollTimeoutRef.current) {
         clearTimeout(autoScrollTimeoutRef.current);
@@ -136,7 +141,7 @@ export default function ChatPage() {
         }
       };
     }
-  }, [streamingContent, isStreaming, scrollToBottom]);
+  }, [isStreaming, scrollToBottom]);
 
   // Auto-scroll when streaming starts
   useEffect(() => {
@@ -151,7 +156,7 @@ export default function ChatPage() {
     if (!isStreaming && !userScrolled) {
       scrollToBottom("auto");
     }
-  }, [allMessages, isChatting, isStreaming, userScrolled, scrollToBottom]);
+  }, [allMessages, isLoading, isStreaming, userScrolled, scrollToBottom]);
 
   // Handle content height changes during streaming
   useEffect(() => {
@@ -176,10 +181,10 @@ export default function ChatPage() {
 
   // Focus input when component mounts
   useEffect(() => {
-    if (inputRef.current && !isChatting && !isStreaming) {
+    if (inputRef.current && !isLoading && !isStreaming) {
       inputRef.current.focus();
     }
-  }, [isChatting, isStreaming]);
+  }, [isLoading, isStreaming]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -198,53 +203,6 @@ export default function ChatPage() {
       setOptimisticMessages([]);
     }
   }, [messages, optimisticMessages.length, isStreaming]);
-
-  // Auto-continue streaming if we detect an incomplete conversation from dashboard redirect
-  useEffect(() => {
-    // Only trigger if we have user message(s) but the last message is from user (no AI response yet)
-    // and no streaming is currently active
-    if (chatId && 
-        chatId !== "new" && 
-        chatId !== "undefined" && 
-        messages.length > 0 && 
-        messages[messages.length - 1].role === 'user' && 
-        !isStreaming && 
-        !isChatting &&
-        !loading) {
-      
-      // Check if the last message is a user message without an AI response
-      // This indicates we need to generate an AI response
-      const lastMessage = messages[messages.length - 1];
-      const needsAIResponse = lastMessage.role === 'user';
-      
-      if (needsAIResponse) {
-        console.log('Detected incomplete conversation, starting AI response for:', chatId);
-        
-        // Get the last user message and start streaming the AI response
-        const lastUserMessage = messages[messages.length - 1].content;
-        const request = {
-          message: lastUserMessage,
-          session_id: chatId,
-          context_limit: CONTEXT_LIMIT,
-        };
-
-        // Small delay to ensure component is fully mounted and scroll is set up
-        setTimeout(() => {
-          chatWithAIStream(request, (chunk) => {
-            if (chunk.type === 'session_info') {
-              console.log('Starting AI response stream for session:', chunk.session_id);
-            }
-          }).catch((error) => {
-            console.error('Failed to start AI response stream:', error);
-          });
-        }, 100);
-      }
-    }
-  }, [chatId, messages, isStreaming, isChatting, loading, chatWithAIStream]);
-
-  const clearError = () => {
-    refetchMessages();
-  };
 
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || message.trim().length > MAX_MESSAGE_LENGTH) return;
@@ -269,28 +227,15 @@ export default function ChatPage() {
       // Clear the input immediately
       setMessage("");
 
-      const request: { message: string; context_limit: number; session_id?: string } = {
-        message: userMessage,
-        context_limit: CONTEXT_LIMIT,
-      };
-
-      // Only include session_id for existing chats, not new ones
-      if (chatId !== "new" && chatId !== "undefined") {
-        request.session_id = chatId;
+      // Determine session ID
+      let sessionId = chatId;
+      if (chatId === "new" || chatId === "undefined") {
+        // Create new session
+        sessionId = await createSession("New Chat");
       }
 
-      // Use streaming API
-      await chatWithAIStream(request, (chunk) => {
-        // Handle streaming chunks if needed for additional processing
-        if (chunk.type === 'response_saved' && chunk.session_id) {
-          // Session is automatically managed by the hook
-          console.log('Response saved with session:', chunk.session_id);
-          // Clear optimistic messages once the response is saved
-          setTimeout(() => {
-            setOptimisticMessages([]);
-          }, 100);
-        }
-      });
+      // Use streaming API for better UX
+      await sendStreamingMessage(userMessage, sessionId);
       
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -299,7 +244,7 @@ export default function ChatPage() {
       // Restore the message in the input
       setMessage(userMessage);
     }
-  }, [message, chatId, chatWithAIStream]);
+  }, [message, chatId, createSession, sendStreamingMessage]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -322,9 +267,9 @@ export default function ChatPage() {
     window.location.href = "/app/chat/new";
   }, []);
 
-  const canSendMessage = !isChatting && !isStreaming && message.trim().length > 0;
+  const canSendMessage = !isLoading && !isStreaming && message.trim().length > 0;
 
-  if (loading && !allMessages.length) {
+  if (isLoading && !allMessages.length) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -340,7 +285,7 @@ export default function ChatPage() {
             <CardTitle className="text-red-600">Error</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
             <Button onClick={clearError} variant="outline">
               Try Again
             </Button>
@@ -424,7 +369,7 @@ export default function ChatPage() {
                 </div>
               ))
             )}
-            {isChatting && !isStreaming && (
+            {isLoading && !isStreaming && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-lg px-4 py-2 max-w-[70%]">
                   <div className="flex items-center gap-2">
@@ -434,26 +379,21 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-            {isStreaming && streamingContent && (
-              <StreamingMessage content={streamingContent} />
-            )}
             
-            {/* Streaming Error Display */}
-            {streamingError && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-red-600 dark:text-red-400">
-                    Streaming Error: {streamingError}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={cancelStream}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
-                  >
-                    Cancel
-                  </Button>
-                </div>
+            {/* Show scroll indicator when user has scrolled up during streaming */}
+            {userScrolled && isStreaming && (
+              <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-10">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUserScrolled(false);
+                    scrollToBottom("smooth", true);
+                  }}
+                  className="bg-primary/90 border-primary/20 text-primary-foreground hover:bg-primary shadow-lg backdrop-blur-sm"
+                >
+                  New messages ↓
+                </Button>
               </div>
             )}
             
@@ -461,23 +401,6 @@ export default function ChatPage() {
             <div ref={messagesEndRef} className="h-1" data-messages-end />
           </div>
         </ScrollArea>
-
-        {/* Show scroll indicator when user has scrolled up during streaming */}
-        {userScrolled && isStreaming && (
-          <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-10">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setUserScrolled(false);
-                scrollToBottom("smooth", true);
-              }}
-              className="bg-primary/90 border-primary/20 text-primary-foreground hover:bg-primary shadow-lg backdrop-blur-sm"
-            >
-              New messages ↓
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Message Input */}
@@ -490,7 +413,7 @@ export default function ChatPage() {
               value={message}
               onChange={handleInputChange}
               onKeyDown={handleKeyPress}
-              disabled={isChatting || isStreaming}
+              disabled={isLoading || isStreaming}
               maxLength={MAX_MESSAGE_LENGTH}
               className="bg-transparent border-0 text-white placeholder:text-gray-300 px-6 py-5 text-base rounded-2xl focus:ring-0 focus-visible:ring-0 resize-none font-medium"
               aria-label="Type your message"
@@ -511,7 +434,7 @@ export default function ChatPage() {
               variant="ghost"
               size="icon"
               onClick={handleNewChat}
-              disabled={isChatting || isStreaming}
+              disabled={isLoading || isStreaming}
               className="h-10 w-10 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-all duration-200"
               aria-label="Start new chat"
             >
@@ -525,7 +448,7 @@ export default function ChatPage() {
               className="h-10 w-10 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 rounded-full transition-all duration-200 shadow-md hover:shadow-lg"
               aria-label="Send message"
             >
-              {isChatting || isStreaming ? (
+              {isLoading || isStreaming ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />

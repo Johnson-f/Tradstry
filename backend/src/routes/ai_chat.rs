@@ -3,25 +3,33 @@
 use crate::models::ai::chat::{
     ChatRequest
 };
-use crate::service::ai_chat_service::AIChatService;
-use crate::turso::client::TursoClient;
 use crate::turso::config::SupabaseConfig;
 use crate::turso::auth::validate_supabase_jwt_token;
+use crate::turso::AppState;
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use log::{info, error};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Authenticate user and get user ID
 async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseConfig) -> Result<String> {
     let auth_header = req.headers().get("Authorization")
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing Authorization header"))?
+        .ok_or_else(|| {
+            error!("Missing Authorization header");
+            actix_web::error::ErrorUnauthorized("Missing Authorization header")
+        })?
         .to_str()
-        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid Authorization header"))?;
+        .map_err(|e| {
+            error!("Invalid Authorization header format: {}", e);
+            actix_web::error::ErrorUnauthorized("Invalid Authorization header")
+        })?;
 
     let token = auth_header.strip_prefix("Bearer ")
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Invalid token format"))?;
+        .ok_or_else(|| {
+            error!("Invalid token format - missing Bearer prefix");
+            actix_web::error::ErrorUnauthorized("Invalid token format")
+        })?;
 
+    info!("Validating JWT token for user authentication");
     let claims = validate_supabase_jwt_token(token, supabase_config)
         .await
         .map_err(|e| {
@@ -29,6 +37,7 @@ async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseCon
             actix_web::error::ErrorUnauthorized("Invalid or expired authentication token")
         })?;
 
+    info!("Successfully authenticated user: {}", claims.sub);
     Ok(claims.sub)
 }
 
@@ -36,12 +45,11 @@ async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseCon
 #[allow(dead_code)]
 async fn get_user_database_connection(
     req: &HttpRequest,
-    turso_client: &TursoClient,
-    supabase_config: &SupabaseConfig,
+    app_state: &AppState,
 ) -> Result<libsql::Connection> {
-    let user_id = get_authenticated_user(req, supabase_config).await?;
+    let user_id = get_authenticated_user(req, &app_state.config.supabase).await?;
     
-    let conn = turso_client.get_user_database_connection(&user_id).await
+    let conn = app_state.turso_client.get_user_database_connection(&user_id).await
         .map_err(|e| {
             error!("Failed to get database connection for user {}: {}", user_id, e);
             actix_web::error::ErrorInternalServerError("Database connection failed")
@@ -105,16 +113,14 @@ pub struct UpdateSessionTitleRequest {
 pub async fn send_chat_message(
     req: HttpRequest,
     payload: web::Json<ChatRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     info!("Processing chat message");
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
-    match ai_chat_service.generate_response(&user_id, payload.into_inner(), &conn).await {
+    match app_state.ai_chat_service.generate_response(&user_id, payload.into_inner(), &conn).await {
         Ok(response) => {
             info!("Successfully generated chat response for user: {}", user_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
@@ -132,14 +138,12 @@ pub async fn send_chat_message(
 pub async fn send_streaming_chat_message(
     req: HttpRequest,
     payload: web::Json<StreamingChatRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     info!("Processing streaming chat message");
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     let chat_request = ChatRequest {
         message: payload.message.clone(),
@@ -148,15 +152,16 @@ pub async fn send_streaming_chat_message(
         max_context_vectors: payload.max_context_vectors,
     };
 
-    match ai_chat_service.generate_streaming_response(&user_id, chat_request, &conn).await {
+    match app_state.ai_chat_service.generate_streaming_response(&user_id, chat_request, &conn).await {
         Ok((stream_receiver, _session_id, _message_id)) => {
             info!("Successfully started streaming chat response for user: {}", user_id);
             
-            // Create Server-Sent Events response
+            // Create streaming response with proper JSON format
             let stream = futures_util::stream::unfold(stream_receiver, |mut receiver| async move {
                 match receiver.recv().await {
                     Some(token) => {
-                        let chunk = format!("data: {{\"type\":\"token\",\"content\":\"{}\"}}\n\n", 
+                        // Send newline-delimited JSON format that frontend expects
+                        let chunk = format!("{{\"chunk\":\"{}\"}}\n", 
                             token.replace("\"", "\\\"").replace("\n", "\\n"));
                         Some((Ok::<web::Bytes, std::io::Error>(web::Bytes::from(chunk)), receiver))
                     },
@@ -165,7 +170,7 @@ pub async fn send_streaming_chat_message(
             });
 
             Ok(HttpResponse::Ok()
-                .content_type("text/event-stream")
+                .content_type("application/x-ndjson")
                 .append_header(("Cache-Control", "no-cache"))
                 .append_header(("Connection", "keep-alive"))
                 .streaming(stream))
@@ -183,16 +188,14 @@ pub async fn send_streaming_chat_message(
 pub async fn get_chat_sessions(
     req: HttpRequest,
     query: web::Query<SessionListQuery>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     info!("Getting chat sessions for user");
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
-    match ai_chat_service.get_user_sessions(&conn, &user_id, query.limit, query.offset).await {
+    match app_state.ai_chat_service.get_user_sessions(&conn, &user_id, query.limit, query.offset).await {
         Ok(response) => {
             info!("Successfully retrieved {} chat sessions for user: {}", response.total_count, user_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
@@ -210,17 +213,15 @@ pub async fn get_chat_sessions(
 pub async fn get_chat_session(
     req: HttpRequest,
     path: web::Path<String>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     let session_id = path.into_inner();
     info!("Getting chat session: {}", session_id);
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
-    match ai_chat_service.get_session_details(&conn, &session_id, &user_id).await {
+    match app_state.ai_chat_service.get_session_details(&conn, &session_id, &user_id).await {
         Ok(response) => {
             info!("Successfully retrieved chat session {} for user: {}", session_id, user_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
@@ -238,18 +239,16 @@ pub async fn get_chat_session(
 pub async fn create_chat_session(
     req: HttpRequest,
     payload: web::Json<serde_json::Value>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     info!("Creating new chat session");
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     let title = payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    match ai_chat_service.create_session(&conn, &user_id, title).await {
+    match app_state.ai_chat_service.create_session(&conn, &user_id, title).await {
         Ok(session) => {
             info!("Successfully created chat session {} for user: {}", session.id, user_id);
             Ok(HttpResponse::Created().json(ApiResponse::success(session)))
@@ -268,17 +267,15 @@ pub async fn update_chat_session_title(
     req: HttpRequest,
     path: web::Path<String>,
     payload: web::Json<UpdateSessionTitleRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     let session_id = path.into_inner();
     info!("Updating chat session title: {}", session_id);
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
-    match ai_chat_service.update_session_title(&conn, &session_id, &user_id, payload.title.clone()).await {
+    match app_state.ai_chat_service.update_session_title(&conn, &session_id, &user_id, payload.title.clone()).await {
         Ok(_) => {
             info!("Successfully updated chat session title {} for user: {}", session_id, user_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
@@ -299,17 +296,15 @@ pub async fn update_chat_session_title(
 pub async fn delete_chat_session(
     req: HttpRequest,
     path: web::Path<String>,
-    turso_client: web::Data<Arc<TursoClient>>,
-    supabase_config: web::Data<SupabaseConfig>,
-    ai_chat_service: web::Data<Arc<AIChatService>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     let session_id = path.into_inner();
     info!("Deleting chat session: {}", session_id);
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    let conn = get_user_database_connection(&req, &app_state).await?;
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
-    match ai_chat_service.delete_session(&conn, &session_id, &user_id).await {
+    match app_state.ai_chat_service.delete_session(&conn, &session_id, &user_id).await {
         Ok(_) => {
             info!("Successfully deleted chat session {} for user: {}", session_id, user_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({

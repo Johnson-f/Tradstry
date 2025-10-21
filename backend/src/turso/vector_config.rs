@@ -70,24 +70,28 @@ impl VoyagerConfig {
     }
 }
 
-/// Configuration for Gemini API
+/// Configuration for OpenRouter API
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiConfig {
+pub struct OpenRouterConfig {
     pub api_key: String,
     pub model: String,
+    pub site_url: Option<String>,
+    pub site_name: Option<String>,
     pub max_retries: u32,
     pub timeout_seconds: u64,
     pub max_tokens: u32,
     pub temperature: f32,
 }
 
-impl GeminiConfig {
+impl OpenRouterConfig {
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(GeminiConfig {
-            api_key: env::var("GEMINI_API_KEY")
-                .map_err(|_| "GEMINI_API_KEY environment variable not set")?,
-            model: env::var("GEMINI_MODEL")
-                .unwrap_or_else(|_| "gemini-1.5-flash".to_string()),
+        Ok(OpenRouterConfig {
+            api_key: env::var("OPENROUTER_API_KEY")
+                .map_err(|_| "OPENROUTER_API_KEY environment variable not set")?,
+            model: env::var("OPENROUTER_MODEL")
+                .unwrap_or_else(|_| "deepseek/deepseek-chat-v3.1:free".to_string()),
+            site_url: env::var("OPENROUTER_SITE_URL").ok(),
+            site_name: env::var("OPENROUTER_SITE_NAME").ok(),
             max_retries: 3,
             timeout_seconds: 60,
             max_tokens: 4096,
@@ -97,12 +101,7 @@ impl GeminiConfig {
 
     /// Get the chat completion endpoint URL
     pub fn get_chat_url(&self) -> String {
-        format!("https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent", self.model)
-    }
-
-    /// Get the non-streaming chat completion endpoint URL
-    pub fn get_chat_url_non_streaming(&self) -> String {
-        format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", self.model)
+        "https://openrouter.ai/api/v1/chat/completions".to_string()
     }
 }
 
@@ -111,7 +110,7 @@ impl GeminiConfig {
 pub struct AIConfig {
     pub vector_config: VectorConfig,
     pub voyager_config: VoyagerConfig,
-    pub gemini_config: GeminiConfig,
+    pub openrouter_config: OpenRouterConfig,
     pub max_context_vectors: usize,
     pub insights_schedule_enabled: bool,
     pub insights_schedule_hour: u8,
@@ -123,7 +122,7 @@ impl AIConfig {
         Ok(AIConfig {
             vector_config: VectorConfig::from_env()?,
             voyager_config: VoyagerConfig::from_env()?,
-            gemini_config: GeminiConfig::from_env()?,
+            openrouter_config: OpenRouterConfig::from_env()?,
             max_context_vectors: env::var("MAX_CONTEXT_VECTORS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
@@ -143,4 +142,3 @@ impl AIConfig {
         })
     }
 }
-

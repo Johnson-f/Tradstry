@@ -72,7 +72,7 @@ export default function RecentChatsSheet({ children }: RecentChatsSheetProps) {
               </div>
             ) : (
               sessions.map((session) => (
-                <Link key={session.id} href={`/protected/chat/${session.id}`}>
+                <Link key={session.id} href={`/app/chat/${session.id}`}>
                   <div 
                     className="group p-4 rounded-lg bg-card hover:bg-accent/50 border cursor-pointer transition-colors"
                     onClick={() => setOpen(false)}
