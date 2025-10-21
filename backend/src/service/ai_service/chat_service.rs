@@ -13,7 +13,6 @@ use crate::turso::vector_client::VectorClient;
 use anyhow::Result;
 use chrono::Utc;
 use libsql::{Connection, params};
-use log::warn;
 use serde_json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -127,55 +126,115 @@ impl AIChatService {
         conn: &Connection,
     ) -> Result<ChatResponse> {
         let start_time = std::time::Instant::now();
+        let message_preview = request.message.chars().take(100).collect::<String>();
+        
+        log::info!(
+            "Starting response generation for user={}, session_id={:?}, message_preview='{}'",
+            user_id, request.session_id, message_preview
+        );
 
         // Get or create session
+        let session_start = std::time::Instant::now();
         let session = if let Some(session_id) = request.session_id {
             self.get_session(conn, &session_id, user_id).await?
         } else {
             self.create_session(conn, user_id, None).await?
         };
+        let session_time = session_start.elapsed().as_millis();
+        
+        log::info!(
+            "Session retrieved/created [{}ms] - session_id={}, user={}",
+            session_time, session.id, user_id
+        );
 
         // Retrieve relevant context using vector similarity search with fallback
+        let context_start = std::time::Instant::now();
         let context_sources = if request.include_context.unwrap_or(true) {
             match self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await {
-                Ok(sources) => sources,
+                Ok(sources) => {
+                    let context_time = context_start.elapsed().as_millis();
+                    log::info!(
+                        "Context retrieved [{}ms] - sources={}, user={}",
+                        context_time, sources.len(), user_id
+                    );
+                    sources
+                },
                 Err(e) => {
-                    warn!("Failed to retrieve context for regular response: {}. Continuing without context.", e);
+                    let context_time = context_start.elapsed().as_millis();
+                    log::warn!(
+                        "Context retrieval failed [{}ms] - error={}, user={}. Continuing without context.",
+                        context_time, e, user_id
+                    );
+                    log::debug!("Full context retrieval error details: {:?}", e);
                     Vec::new()
                 }
             }
         } else {
+            log::info!("Context retrieval skipped - include_context=false, user={}", user_id);
             Vec::new()
         };
 
         // Build conversation history
+        let history_start = std::time::Instant::now();
         let mut messages = self.get_session_messages(conn, &session.id).await?;
+        let history_time = history_start.elapsed().as_millis();
+        
+        log::info!(
+            "Message history retrieved [{}ms] - messages={}, session={}",
+            history_time, messages.len(), session.id
+        );
         
         // Add user message
         let user_message = ChatMessage::new(session.id.clone(), MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
         // Convert to OpenRouter format with enhanced prompts
+        let prompt_start = std::time::Instant::now();
         let openrouter_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
+        let prompt_time = prompt_start.elapsed().as_millis();
+        
+        log::info!(
+            "Enhanced messages built [{}ms] - context_sources={}, history_messages={}, user={}",
+            prompt_time, context_sources.len(), messages.len(), user_id
+        );
 
         // Generate AI response
+        let ai_start = std::time::Instant::now();
         let ai_response = self.openrouter_client.generate_chat(openrouter_messages).await?;
+        let ai_time = ai_start.elapsed().as_millis();
+        
+        log::info!(
+            "AI response generated [{}ms] - response_length={}, user={}",
+            ai_time, ai_response.len(), user_id
+        );
 
         // Create assistant message
         let assistant_message = ChatMessage::new(session.id.clone(), MessageRole::Assistant, ai_response.clone())
             .with_context(context_sources.iter().map(|s| s.vector_id.clone()).collect());
 
         // Store messages in database
+        let storage_start = std::time::Instant::now();
         self.store_message(conn, &user_message).await?;
         self.vectorize_message(&user_message, user_id).await.ok();
 
         self.store_message(conn, &assistant_message).await?;
         self.vectorize_message(&assistant_message, user_id).await.ok();
+        let storage_time = storage_start.elapsed().as_millis();
+        
+        log::info!(
+            "Messages stored and vectorized [{}ms] - user_msg={}, ai_msg={}, user={}",
+            storage_time, user_message.id, assistant_message.id, user_id
+        );
 
         // Update session
         self.update_session_last_message(conn, &session.id).await?;
 
         let processing_time = start_time.elapsed().as_millis() as u64;
+        
+        log::info!(
+            "Response generation completed [{}ms] - session={}ms, context={}ms, ai={}ms, storage={}ms, user={}",
+            processing_time, session_time, context_start.elapsed().as_millis(), ai_time, storage_time, user_id
+        );
 
         Ok(ChatResponse {
             message: ai_response,
@@ -194,48 +253,105 @@ impl AIChatService {
         request: ChatRequest,
         conn: &Connection,
     ) -> Result<(tokio::sync::mpsc::Receiver<String>, String, String)> {
+        let start_time = std::time::Instant::now();
+        let message_preview = request.message.chars().take(100).collect::<String>();
+        
+        log::info!(
+            "Starting streaming response generation for user={}, session_id={:?}, message_preview='{}'",
+            user_id, request.session_id, message_preview
+        );
+        
         // Get or create session
+        let session_start = std::time::Instant::now();
         let session = if let Some(session_id) = request.session_id {
             self.get_session(conn, &session_id, user_id).await?
         } else {
             self.create_session(conn, user_id, None).await?
         };
+        let session_time = session_start.elapsed().as_millis();
+        
+        log::info!(
+            "Session retrieved/created [{}ms] - session_id={}, user={}",
+            session_time, session.id, user_id
+        );
 
         // Retrieve relevant context with fallback
+        let context_start = std::time::Instant::now();
         let context_sources = if request.include_context.unwrap_or(true) {
             match self.retrieve_context(user_id, &request.message, request.max_context_vectors.unwrap_or(self.max_context_vectors)).await {
-                Ok(sources) => sources,
+                Ok(sources) => {
+                    let context_time = context_start.elapsed().as_millis();
+                    log::info!(
+                        "Context retrieved [{}ms] - sources={}, user={}",
+                        context_time, sources.len(), user_id
+                    );
+                    sources
+                },
                 Err(e) => {
-                    warn!("Failed to retrieve context for streaming response: {}. Continuing without context.", e);
+                    let context_time = context_start.elapsed().as_millis();
+                    log::warn!(
+                        "Context retrieval failed [{}ms] - error={}, user={}. Continuing without context.",
+                        context_time, e, user_id
+                    );
+                    log::debug!("Full context retrieval error details: {:?}", e);
                     Vec::new()
                 }
             }
         } else {
+            log::info!("Context retrieval skipped - include_context=false, user={}", user_id);
             Vec::new()
         };
 
         // Build conversation history
+        let history_start = std::time::Instant::now();
         let mut messages = self.get_session_messages(conn, &session.id).await?;
+        let history_time = history_start.elapsed().as_millis();
+        
+        log::info!(
+            "Message history retrieved [{}ms] - messages={}, session={}",
+            history_time, messages.len(), session.id
+        );
         
         // Add user message
         let user_message = ChatMessage::new(session.id.clone(), MessageRole::User, request.message.clone());
         messages.push(user_message.clone());
 
         // Convert to OpenRouter format with enhanced prompts
+        let prompt_start = std::time::Instant::now();
         let openrouter_messages = self.build_enhanced_messages(&messages, &request.message, &context_sources);
+        let prompt_time = prompt_start.elapsed().as_millis();
+        
+        log::info!(
+            "Enhanced messages built [{}ms] - context_sources={}, history_messages={}, user={}",
+            prompt_time, context_sources.len(), messages.len(), user_id
+        );
 
         // Generate streaming AI response
+        let stream_start = std::time::Instant::now();
         let mut stream_receiver = self.openrouter_client.generate_chat_stream(openrouter_messages).await?;
+        let stream_init_time = stream_start.elapsed().as_millis();
+        
+        log::info!(
+            "Streaming initiated [{}ms] - user={}",
+            stream_init_time, user_id
+        );
 
         // Store user message
+        let user_msg_start = std::time::Instant::now();
         self.store_message(conn, &user_message).await?;
         self.vectorize_message(&user_message, user_id).await.ok();
+        let user_msg_time = user_msg_start.elapsed().as_millis();
+        
+        log::info!(
+            "User message stored and vectorized [{}ms] - message_id={}, user={}",
+            user_msg_time, user_message.id, user_id
+        );
 
         // Create assistant message placeholder
         let assistant_message_id = Uuid::new_v4().to_string();
         let assistant_message = ChatMessage {
             id: assistant_message_id.clone(),
-            session_id: session.id.clone(), // ADD THIS
+            session_id: session.id.clone(),
             role: MessageRole::Assistant,
             content: String::new(), // Will be updated as stream progresses
             timestamp: Utc::now(),
@@ -252,6 +368,11 @@ impl AIChatService {
         // Create channel for frontend
         let (frontend_tx, frontend_rx) = tokio::sync::mpsc::channel(100);
         
+        log::info!(
+            "Streaming setup completed - assistant_message_id={}, user={}",
+            assistant_message_id, user_id
+        );
+        
         // Spawn task to accumulate and save content
         let service = self.clone(); // Make service cloneable
         let msg_id = assistant_message_id.clone();
@@ -259,38 +380,88 @@ impl AIChatService {
         let assistant_message_clone = assistant_message.clone();
         tokio::spawn(async move {
             let mut accumulated = String::new();
+            let mut token_count = 0;
+            
+            log::info!("Starting token accumulation for message={}, user={}", msg_id, user_id_clone);
+            
             while let Some(token) = stream_receiver.recv().await {
                 accumulated.push_str(&token);
+                token_count += 1;
                 frontend_tx.send(token).await.ok();
+                
+                // Log progress every 10 tokens
+                if token_count % 10 == 0 {
+                    log::debug!(
+                        "Token accumulation progress - message={}, tokens={}, length={}, user={}",
+                        msg_id, token_count, accumulated.len(), user_id_clone
+                    );
+                }
             }
+            
+            log::info!(
+                "Token accumulation completed - message={}, total_tokens={}, final_length={}, user={}",
+                msg_id, token_count, accumulated.len(), user_id_clone
+            );
             
             // Update database with final content
             if let Ok(Some(conn)) = service.turso_client.get_user_database_connection(&user_id_clone).await {
+                let update_start = std::time::Instant::now();
                 if let Err(e) = service.update_message_content(&conn, &msg_id, accumulated.clone()).await {
                     log::error!("Failed to update message content for message {}: {}", msg_id, e);
                 } else {
-                    log::info!("Successfully updated message content for message {}", msg_id);
+                    let update_time = update_start.elapsed().as_millis();
+                    log::info!(
+                        "Successfully updated message content [{}ms] - message={}, user={}",
+                        update_time, msg_id, user_id_clone
+                    );
                 }
                 
                 // Vectorize the completed message
+                let vectorize_start = std::time::Instant::now();
                 let mut completed_message = assistant_message_clone;
                 completed_message.content = accumulated;
                 if let Err(e) = service.vectorize_message(&completed_message, &user_id_clone).await {
                     log::error!("Failed to vectorize message {}: {}", msg_id, e);
                 } else {
-                    log::info!("Successfully vectorized message {}", msg_id);
+                    let vectorize_time = vectorize_start.elapsed().as_millis();
+                    log::info!(
+                        "Successfully vectorized message [{}ms] - message={}, user={}",
+                        vectorize_time, msg_id, user_id_clone
+                    );
                 }
             } else {
                 log::error!("Failed to get database connection for user {} to save message {}", user_id_clone, msg_id);
             }
         });
 
+        let total_time = start_time.elapsed().as_millis();
+        log::info!(
+            "Streaming response setup completed [{}ms] - session={}ms, context={}ms, stream_init={}ms, user={}",
+            total_time, session_time, context_start.elapsed().as_millis(), stream_init_time, user_id
+        );
+
         Ok((frontend_rx, session.id, assistant_message_id))
     }
 
     /// Vectorize a message and store it in the vector database
     async fn vectorize_message(&self, message: &ChatMessage, user_id: &str) -> Result<()> {
+        let start_time = std::time::Instant::now();
+        let message_preview = message.content.chars().take(100).collect::<String>();
+        
+        log::info!(
+            "Starting vectorization for user={}, message_id={}, role={}, content_preview='{}'",
+            user_id, message.id, message.role, message_preview
+        );
+
+        // Generate embedding
+        let embedding_start = std::time::Instant::now();
         let embedding = self.voyager_client.embed_text(&message.content).await?;
+        let embedding_time = embedding_start.elapsed().as_millis();
+        
+        log::info!(
+            "Embedding generated [{}ms] - dimensions={}, message_id={}",
+            embedding_time, embedding.len(), message.id
+        );
         
         let metadata = crate::turso::vector_client::VectorMetadata {
             user_id: user_id.to_string(),
@@ -300,9 +471,18 @@ impl AIChatService {
             created_at: message.timestamp.to_rfc3339(),
         };
         
+        // Store vector
+        let storage_start = std::time::Instant::now();
         self.vector_client
             .upsert_vector(message.id.clone(), embedding, metadata)
             .await?;
+        let storage_time = storage_start.elapsed().as_millis();
+        
+        let total_time = start_time.elapsed().as_millis();
+        log::info!(
+            "Vectorization completed [{}ms] - embedding={}ms, storage={}ms, message_id={}",
+            total_time, embedding_time, storage_time, message.id
+        );
         
         Ok(())
     }
@@ -314,16 +494,55 @@ impl AIChatService {
         query: &str,
         max_vectors: usize,
     ) -> Result<Vec<ContextSource>> {
+        let start_time = std::time::Instant::now();
+        let query_preview = query.chars().take(100).collect::<String>();
+        
+        log::info!(
+            "Starting context retrieval for user={}, query_preview='{}', max_vectors={}",
+            user_id, query_preview, max_vectors
+        );
+
         // Generate embedding for query
+        let embedding_start = std::time::Instant::now();
         let query_vector = self.voyager_client.embed_text(query).await?;
+        let embedding_time = embedding_start.elapsed().as_millis();
+        
+        log::info!(
+            "Query embedding generated [{}ms] - dimensions={}, user={}",
+            embedding_time, query_vector.len(), user_id
+        );
         
         // Search Upstash Vector (automatically searches all data types)
+        let search_start = std::time::Instant::now();
         let matches = self.vector_client
             .search_similar(query_vector, user_id, max_vectors, None)
             .await?;
+        let search_time = search_start.elapsed().as_millis();
+        
+        log::info!(
+            "Vector search completed [{}ms] - found {} matches, user={}",
+            search_time, matches.len(), user_id
+        );
+        
+        // Log top similarity scores and data types
+        if !matches.is_empty() {
+            let top_scores: Vec<String> = matches.iter()
+                .take(5)
+                .map(|m| format!("{:.3}", m.score))
+                .collect();
+            let data_types: Vec<String> = matches.iter()
+                .take(5)
+                .map(|m| m.metadata.data_type.clone())
+                .collect();
+            
+            log::info!(
+                "Top similarity scores: [{}], data_types: [{}], user={}",
+                top_scores.join(", "), data_types.join(", "), user_id
+            );
+        }
         
         // Convert to ContextSource
-        let context_sources = matches
+        let context_sources: Vec<ContextSource> = matches
             .into_iter()
             .map(|m| ContextSource::new(
                 m.id,
@@ -334,6 +553,12 @@ impl AIChatService {
             ))
             .collect();
         
+        let total_time = start_time.elapsed().as_millis();
+        log::info!(
+            "Context retrieval completed [{}ms] - embedding={}ms, search={}ms, sources={}, user={}",
+            total_time, embedding_time, search_time, context_sources.len(), user_id
+        );
+
         Ok(context_sources)
     }
 
