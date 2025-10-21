@@ -27,6 +27,12 @@ pub use webhook::ClerkWebhookHandler;
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
+use crate::service::ai_chat_service::AIChatService;
+use crate::service::ai_insights_service::AIInsightsService;
+use crate::service::vectorization_service::VectorizationService;
+use crate::service::openrouter_client::OpenRouterClient;
+use crate::service::upstash_vector_client::UpstashVectorClient;
+use crate::service::voyager_client::VoyagerClient;
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -35,6 +41,8 @@ pub struct AppState {
     pub turso_client: Arc<TursoClient>,
     pub webhook_handler: Arc<ClerkWebhookHandler>,
     pub cache_service: Arc<CacheService>,
+    pub ai_chat_service: Arc<AIChatService>,
+    pub ai_insights_service: Arc<AIInsightsService>,
 }
 
 impl AppState {
@@ -66,11 +74,48 @@ impl AppState {
         
         let cache_service = Arc::new(cache_service);
 
+        // Initialize AI services
+        let openrouter_config = crate::turso::vector_config::OpenRouterConfig::from_env()
+            .map_err(|e| format!("Failed to load OpenRouter config: {}", e))?;
+        let openrouter_client = Arc::new(OpenRouterClient::new(openrouter_config)?);
+        
+        let vector_config = crate::turso::vector_config::VectorConfig::from_env()
+            .map_err(|e| format!("Failed to load Vector config: {}", e))?;
+        let upstash_vector_client = Arc::new(UpstashVectorClient::new(vector_config)?);
+        
+        let voyager_config = crate::turso::vector_config::VoyagerConfig::from_env()
+            .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
+        let voyager_client = Arc::new(VoyagerClient::new(voyager_config)?);
+        
+        let ai_config = crate::turso::vector_config::AIConfig::from_env()
+            .map_err(|e| format!("Failed to load AI config: {}", e))?;
+        let vectorization_service = Arc::new(VectorizationService::new(
+            Arc::clone(&voyager_client),
+            Arc::clone(&upstash_vector_client),
+            ai_config,
+        ));
+        
+        let ai_chat_service = Arc::new(AIChatService::new(
+            Arc::clone(&vectorization_service),
+            Arc::clone(&openrouter_client),
+            Arc::clone(&turso_client),
+            10, // max_context_vectors
+        ));
+        
+        let ai_insights_service = Arc::new(AIInsightsService::new(
+            Arc::clone(&vectorization_service),
+            Arc::clone(&openrouter_client),
+            Arc::clone(&turso_client),
+            10, // max_context_vectors
+        ));
+
         Ok(Self {
             config,
             turso_client,
             webhook_handler,
             cache_service,
+            ai_chat_service,
+            ai_insights_service,
         })
     }
 

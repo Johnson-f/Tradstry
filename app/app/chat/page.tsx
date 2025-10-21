@@ -20,23 +20,21 @@ export default function ChatListPage() {
   const router = useRouter();
   const {
     sessions,
-    sessionsLoading, // Use sessionsLoading from the hook
-    sessionsError, // Use sessionsError from the hook
-    refetchSessions, // Use refetchSessions instead of getSessions
+    isLoading,
+    error,
+    loadSessions,
   } = useAIChat();
 
   useEffect(() => {
-    // Call refetchSessions to fetch data when the component mounts
-    // The limit is handled within the useQuery options in useAIChat hook if sessionsParams is provided.
-    // For this page, we are not passing any sessionsParams from here, so it will use defaults defined in the hook.
-    refetchSessions();
-  }, [refetchSessions]);
+    // Load sessions when component mounts
+    loadSessions();
+  }, [loadSessions]);
 
   const handleNewChat = () => {
     router.push("/app/chat/new");
   };
 
-  if (sessionsLoading && !sessions.length) {
+  if (isLoading && !sessions.length) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -44,7 +42,7 @@ export default function ChatListPage() {
     );
   }
 
-  if (sessionsError) {
+  if (error) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Card className="w-96">
@@ -53,9 +51,9 @@ export default function ChatListPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              {sessionsError.message}
+              {error.message}
             </p>
-            <Button onClick={() => refetchSessions()} variant="outline">
+            <Button onClick={() => loadSessions()} variant="outline">
               Try Again
             </Button>
           </CardContent>

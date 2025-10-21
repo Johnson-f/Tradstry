@@ -6,7 +6,7 @@ use crate::models::ai::insights::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::service::vectorization_service::VectorizationService;
-use crate::service::gemini_client::{GeminiClient, MessageRole as GeminiMessageRole};
+use crate::service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
 use crate::service::upstash_vector_client::DataType;
 use crate::turso::client::TursoClient;
 use anyhow::Result;
@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// AI Insights Service for generating trading insights
 pub struct AIInsightsService {
     vectorization_service: Arc<VectorizationService>,
-    gemini_client: Arc<GeminiClient>,
+    openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
     max_context_vectors: usize,
 }
@@ -26,13 +26,13 @@ pub struct AIInsightsService {
 impl AIInsightsService {
     pub fn new(
         vectorization_service: Arc<VectorizationService>,
-        gemini_client: Arc<GeminiClient>,
+        openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
             vectorization_service,
-            gemini_client,
+            openrouter_client,
             turso_client,
             max_context_vectors,
         }
@@ -294,13 +294,13 @@ impl AIInsightsService {
         // Build prompt
         let prompt = self.build_insight_prompt(&template, request, trading_data);
 
-        // Generate content using Gemini
-        let messages = vec![crate::service::gemini_client::ChatMessage {
-            role: GeminiMessageRole::User,
+        // Generate content using OpenRouter
+        let messages = vec![crate::service::openrouter_client::ChatMessage {
+            role: OpenRouterMessageRole::User,
             content: prompt,
         }];
 
-        let response = self.gemini_client.generate_chat(messages).await?;
+        let response = self.openrouter_client.generate_chat(messages).await?;
 
         // Parse response (assuming JSON format)
         let parsed_response: serde_json::Value = serde_json::from_str(&response)?;
@@ -532,7 +532,7 @@ impl AIInsightsService {
     fn clone_for_background(&self) -> Self {
         Self {
             vectorization_service: self.vectorization_service.clone(),
-            gemini_client: self.gemini_client.clone(),
+            openrouter_client: self.openrouter_client.clone(),
             turso_client: self.turso_client.clone(),
             max_context_vectors: self.max_context_vectors,
         }
@@ -587,8 +587,8 @@ mod tests {
                 ).unwrap()),
                 crate::turso::vector_config::AIConfig::from_env().unwrap(),
             )),
-            gemini_client: Arc::new(crate::service::gemini_client::GeminiClient::new(
-                crate::turso::vector_config::GeminiConfig::from_env().unwrap()
+            openrouter_client: Arc::new(crate::service::openrouter_client::OpenRouterClient::new(
+                crate::turso::vector_config::OpenRouterConfig::from_env().unwrap()
             ).unwrap()),
             turso_client: Arc::new(TursoClient::new()),
             max_context_vectors: 10,

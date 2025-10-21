@@ -15,3 +15,5 @@ pub use trade_notes::configure_trade_notes_routes;
 pub use images::configure_images_routes;
 pub use playbook::configure_playbook_routes;
 pub use notebook::configure_notebook_routes;
+pub use ai_chat::configure_ai_chat_routes;
+pub use ai_insights::configure_ai_insights_routes;
