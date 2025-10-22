@@ -5,12 +5,12 @@ use crate::models::ai::chat::{
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
 };
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
+use crate::service::ai_service::hybrid_search_service::HybridSearchService;
 use crate::service::ai_service::vectorization_service::VectorizationService;
 use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
 use crate::service::ai_service::voyager_client::VoyagerClient;
 use crate::turso::client::TursoClient;
-use crate::turso::vector_client::VectorClient;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use chrono::Utc;
 use libsql::{Connection, params};
 use serde_json;
@@ -21,9 +21,9 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AIChatService {
     vectorization_service: Arc<VectorizationService>,
+    hybrid_search_service: Arc<HybridSearchService>,
     openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
-    vector_client: Arc<VectorClient>,
     voyager_client: Arc<VoyagerClient>,
     max_context_vectors: usize,
     prompt_config: ChatPromptConfig,
@@ -32,17 +32,17 @@ pub struct AIChatService {
 impl AIChatService {
     pub fn new(
         vectorization_service: Arc<VectorizationService>,
+        hybrid_search_service: Arc<HybridSearchService>,
         openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
-        vector_client: Arc<VectorClient>,
         voyager_client: Arc<VoyagerClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
             vectorization_service,
+            hybrid_search_service,
             openrouter_client,
             turso_client,
-            vector_client,
             voyager_client,
             max_context_vectors,
             prompt_config: ChatPromptConfig::default(),
@@ -103,13 +103,18 @@ impl AIChatService {
             });
         }
         
-        // Convert existing messages
+        // Convert existing messages, filtering out any existing system messages to prevent duplicates
         for msg in messages {
+            // Skip system messages since we're adding our own enhanced system prompt
+            if matches!(msg.role, MessageRole::System) {
+                continue;
+            }
+            
             openrouter_messages.push(crate::service::ai_service::openrouter_client::ChatMessage {
                 role: match msg.role {
                     MessageRole::User => OpenRouterMessageRole::User,
                     MessageRole::Assistant => OpenRouterMessageRole::Assistant,
-                    MessageRole::System => OpenRouterMessageRole::System,
+                    MessageRole::System => OpenRouterMessageRole::System, // This won't be reached due to continue above
                 },
                 content: msg.content.clone(),
             });
@@ -447,44 +452,40 @@ impl AIChatService {
     async fn vectorize_message(&self, message: &ChatMessage, user_id: &str) -> Result<()> {
         let start_time = std::time::Instant::now();
         let message_preview = message.content.chars().take(100).collect::<String>();
+        let content_length = message.content.len();
         
         log::info!(
-            "Starting vectorization for user={}, message_id={}, role={}, content_preview='{}'",
-            user_id, message.id, message.role, message_preview
+            "Starting vectorization for user={}, message_id={}, role={}, length={}, content_preview='{}'",
+            user_id, message.id, message.role, content_length, message_preview
         );
 
-        // Generate embedding
-        let embedding_start = std::time::Instant::now();
-        let embedding = self.voyager_client.embed_text(&message.content).await?;
-        let embedding_time = embedding_start.elapsed().as_millis();
-        
-        log::info!(
-            "Embedding generated [{}ms] - dimensions={}, message_id={}",
-            embedding_time, embedding.len(), message.id
-        );
-        
-        let metadata = crate::turso::vector_client::VectorMetadata {
-            user_id: user_id.to_string(),
-            data_type: "chat".to_string(),
-            entity_id: message.id.clone(),
-            content_snippet: message.content.chars().take(200).collect(),
-            created_at: message.timestamp.to_rfc3339(),
-        };
-        
-        // Store vector
-        let storage_start = std::time::Instant::now();
-        self.vector_client
-            .upsert_vector(message.id.clone(), embedding, metadata)
-            .await?;
-        let storage_time = storage_start.elapsed().as_millis();
-        
+        // Use the vectorization service to handle both vector and search indexing
+        match self.vectorization_service
+            .vectorize_data(
+                user_id,
+                crate::service::ai_service::upstash_vector_client::DataType::TradeNote,
+                &message.id,
+                &message.content,
+            )
+            .await
+        {
+            Ok(result) => {
         let total_time = start_time.elapsed().as_millis();
         log::info!(
-            "Vectorization completed [{}ms] - embedding={}ms, storage={}ms, message_id={}",
-            total_time, embedding_time, storage_time, message.id
+                    "Vectorization completed [{}ms] - vector_id={}, message_id={}, content_length={}",
+                    total_time, result.vector_id, message.id, content_length
         );
-        
         Ok(())
+            }
+            Err(e) => {
+                let total_time = start_time.elapsed().as_millis();
+                log::error!(
+                    "Vectorization failed [{}ms] - message_id={}, user={}, content_length={}, error={:?}",
+                    total_time, message.id, user_id, content_length, e
+                );
+                Err(e)
+            }
+        }
     }
 
     /// Retrieve relevant context using vector similarity search
@@ -502,61 +503,63 @@ impl AIChatService {
             user_id, query_preview, max_vectors
         );
 
-        // Generate embedding for query
-        let embedding_start = std::time::Instant::now();
-        let query_vector = self.voyager_client.embed_text(query).await?;
-        let embedding_time = embedding_start.elapsed().as_millis();
-        
-        log::info!(
-            "Query embedding generated [{}ms] - dimensions={}, user={}",
-            embedding_time, query_vector.len(), user_id
-        );
-        
-        // Search Upstash Vector (automatically searches all data types)
+        // Use hybrid search with AI reranking for best results
         let search_start = std::time::Instant::now();
-        let matches = self.vector_client
-            .search_similar(query_vector, user_id, max_vectors, None)
-            .await?;
+        log::debug!(
+            "Calling hybrid search service - user={}, query='{}', max_vectors={}",
+            user_id, query_preview, max_vectors
+        );
+
+        let hybrid_results = self.hybrid_search_service
+            .hybrid_search_with_reranking(user_id, query, max_vectors, None)
+            .await
+            .context("Failed to perform vector search")?;
+        
         let search_time = search_start.elapsed().as_millis();
         
         log::info!(
-            "Vector search completed [{}ms] - found {} matches, user={}",
-            search_time, matches.len(), user_id
+            "Hybrid search completed [{}ms] - found {} matches, user={}",
+            search_time, hybrid_results.len(), user_id
         );
         
         // Log top similarity scores and data types
-        if !matches.is_empty() {
-            let top_scores: Vec<String> = matches.iter()
+        if !hybrid_results.is_empty() {
+            let top_scores: Vec<String> = hybrid_results.iter()
                 .take(5)
-                .map(|m| format!("{:.3}", m.score))
+                .map(|r| format!("{:.3}", r.combined_score))
                 .collect();
-            let data_types: Vec<String> = matches.iter()
+            let data_types: Vec<String> = hybrid_results.iter()
                 .take(5)
-                .map(|m| m.metadata.data_type.clone())
+                .map(|r| r.data_type.clone())
                 .collect();
             
             log::info!(
-                "Top similarity scores: [{}], data_types: [{}], user={}",
+                "Top hybrid scores: [{}], data_types: [{}], user={}",
                 top_scores.join(", "), data_types.join(", "), user_id
+            );
+        } else {
+            log::warn!(
+                "No hybrid search results found - user={}, query='{}'",
+                user_id, query_preview
             );
         }
         
-        // Convert to ContextSource
-        let context_sources: Vec<ContextSource> = matches
+        // Convert hybrid results to context sources
+        let context_sources: Vec<ContextSource> = hybrid_results
             .into_iter()
-            .map(|m| ContextSource::new(
-                m.id,
-                m.metadata.data_type,
-                m.metadata.entity_id,
-                m.score,
-                m.metadata.content_snippet,
+            .map(|result| ContextSource::new(
+                result.id,
+                result.data_type,
+                result.entity_id,
+                result.combined_score,
+                result.content_snippet,
             ))
             .collect();
         
         let total_time = start_time.elapsed().as_millis();
         log::info!(
-            "Context retrieval completed [{}ms] - embedding={}ms, search={}ms, sources={}, user={}",
-            total_time, embedding_time, search_time, context_sources.len(), user_id
+            "Context retrieval completed [{}ms] - search={}ms, sources={}, user={}",
+            total_time, search_time, context_sources.len(), user_id
         );
 
         Ok(context_sources)

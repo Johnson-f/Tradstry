@@ -44,11 +44,56 @@ impl VoyagerClient {
             .build()
             .context("Failed to create HTTP client")?;
 
-        Ok(Self { config, client })
+        let instance = Self { config, client };
+        instance.validate_config()?;
+        
+        Ok(instance)
+    }
+
+    /// Validate configuration on initialization
+    pub fn validate_config(&self) -> Result<()> {
+        if self.config.api_key.is_empty() {
+            return Err(anyhow::anyhow!("Voyager API key is empty"));
+        }
+        
+        if self.config.api_key.len() < 20 {
+            log::warn!("Voyager API key seems too short - length={}", self.config.api_key.len());
+        }
+        
+        log::info!(
+            "Voyager client configured - model={}, timeout={}s, batch_size={}, max_retries={}",
+            self.config.model, self.config.timeout_seconds, 
+            self.config.batch_size, self.config.max_retries
+        );
+        
+        Ok(())
+    }
+
+    /// Validate text content before embedding
+    fn validate_content(&self, text: &str) -> Result<()> {
+        const MAX_CHARS: usize = 16000; // Conservative limit
+        
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("Cannot embed empty text"));
+        }
+        
+        if text.len() > MAX_CHARS {
+            log::warn!(
+                "Text exceeds recommended length - actual={}, max={}, text_preview='{}'",
+                text.len(), MAX_CHARS, text.chars().take(100).collect::<String>()
+            );
+            return Err(anyhow::anyhow!(
+                "Text length {} exceeds maximum {} characters",
+                text.len(), MAX_CHARS
+            ));
+        }
+        
+        Ok(())
     }
 
     /// Generate embeddings for a single text
     pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
+        self.validate_content(text)?;
         let embeddings = self.embed_texts(&[text.to_string()]).await?;
         Ok(embeddings.into_iter().next().unwrap_or_default())
     }
@@ -71,6 +116,13 @@ impl VoyagerClient {
 
     /// Generate embeddings for a single batch
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let total_chars: usize = texts.iter().map(|t| t.len()).sum();
+        
+        log::debug!(
+            "Embedding batch - texts={}, total_chars={}, model={}",
+            texts.len(), total_chars, self.config.model
+        );
+
         let request = EmbeddingRequest {
             model: self.config.model.clone(),
             input: texts.to_vec(),
@@ -80,6 +132,10 @@ impl VoyagerClient {
         loop {
             match self.make_request(&request).await {
                 Ok(response) => {
+                    log::debug!(
+                        "Embedding successful - embeddings={}, tokens={}",
+                        response.data.len(), response.usage.total_tokens
+                    );
                     let embeddings: Vec<Vec<f32>> = response
                         .data
                         .into_iter()
@@ -89,13 +145,25 @@ impl VoyagerClient {
                 }
                 Err(e) => {
                     retries += 1;
+                    let delay_ms = 1000 * 2_u64.pow(retries - 1);
+                    
+                    log::warn!(
+                        "Voyager API attempt {}/{} failed: {} - retrying in {}ms",
+                        retries, self.config.max_retries, e, delay_ms
+                    );
+                    
                     if retries >= self.config.max_retries {
-                        return Err(e).context("Max retries exceeded for Voyager API");
+                        log::error!(
+                            "Voyager API max retries exceeded - texts={}, total_chars={}, error={}",
+                            texts.len(), total_chars, e
+                        );
+                        return Err(e).context(format!(
+                            "Max retries ({}) exceeded for Voyager API. Batch size: {}, Total chars: {}",
+                            self.config.max_retries, texts.len(), total_chars
+                        ));
                     }
                     
-                    // Exponential backoff
-                    let delay = Duration::from_millis(1000 * 2_u64.pow(retries - 1));
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                 }
             }
         }
@@ -103,6 +171,17 @@ impl VoyagerClient {
 
     /// Make HTTP request to Voyager API - embedding model 
     async fn make_request(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse> {
+        let text_preview = request.input.iter()
+            .take(2)
+            .map(|s| s.chars().take(50).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(", ");
+        
+        log::debug!(
+            "Voyager API request - model={}, texts={}, preview='{}...'",
+            request.model, request.input.len(), text_preview
+        );
+
         let response = self
             .client
             .post(&self.config.get_embeddings_url())
@@ -113,13 +192,19 @@ impl VoyagerClient {
             .await
             .context("Failed to send request to Voyager API")?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
+        let status = response.status();
+        
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            
+            log::error!(
+                "Voyager API error - status={}, endpoint={}, error_body={}",
+                status, self.config.get_embeddings_url(), error_body
+            );
+            
             return Err(anyhow::anyhow!(
-                "Voyager API error: {} - {}",
-                status,
-                error_text
+                "Voyager API returned error status {}: {}",
+                status, error_body
             ));
         }
 

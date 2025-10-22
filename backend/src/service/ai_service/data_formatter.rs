@@ -5,7 +5,10 @@ use crate::models::options::options::OptionTrade;
 use crate::models::notes::trade_notes::TradeNote;
 use crate::models::notebook::notebook_note::NotebookNote;
 use crate::models::playbook::playbook::Playbook;
+use crate::service::ai_service::upstash_search_client::{Document, DocumentMetadata};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use chrono::Utc;
 
 /// Data type enum for vectorization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,33 +127,234 @@ impl DataFormatter {
         )
     }
 
-    /// Format any data type for embedding
-    pub fn format_for_embedding(data_type: DataType, data: &serde_json::Value) -> Result<String, String> {
+    /// Format stock trade for search document
+    pub fn format_stock_for_search(stock: &Stock) -> Document {
+        let entry_date = stock.entry_date.format("%Y-%m-%d").to_string();
+        let exit_date = stock.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        
+        // Calculate P&L from entry and exit prices
+        let pnl = if let Some(exit_price) = stock.exit_price {
+            (exit_price - stock.entry_price) * stock.number_shares - stock.commissions
+        } else {
+            0.0
+        };
+        
+        let pnl_percentage = if stock.entry_price > 0.0 {
+            (pnl / (stock.entry_price * stock.number_shares)) * 100.0
+        } else {
+            0.0
+        };
+
+        let mut content = HashMap::new();
+        content.insert("title".to_string(), format!("{} {} Trade", stock.symbol, stock.trade_type));
+        content.insert("description".to_string(), format!(
+            "Stock trade: {} {:.2} shares of {} at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Stop Loss: ${:.2}. Commissions: ${:.2}",
+            stock.trade_type,
+            stock.number_shares,
+            stock.symbol,
+            stock.entry_price,
+            entry_date,
+            if stock.exit_price.is_some() { "SELL" } else { "HOLD" },
+            stock.exit_price.unwrap_or(stock.entry_price),
+            exit_date,
+            pnl,
+            pnl_percentage,
+            if pnl >= 0.0 { "gain" } else { "loss" },
+            stock.stop_loss,
+            stock.commissions
+        ));
+        content.insert("symbol".to_string(), stock.symbol.clone());
+        content.insert("trade_type".to_string(), format!("{:?}", stock.trade_type));
+        content.insert("pnl".to_string(), format!("{:.2}", pnl));
+        content.insert("pnl_percentage".to_string(), format!("{:.2}", pnl_percentage));
+        content.insert("entry_price".to_string(), format!("{:.2}", stock.entry_price));
+        content.insert("exit_price".to_string(), stock.exit_price.map(|p| format!("{:.2}", p)).unwrap_or_default());
+        content.insert("shares".to_string(), format!("{:.2}", stock.number_shares));
+        content.insert("stop_loss".to_string(), format!("{:.2}", stock.stop_loss));
+        content.insert("commissions".to_string(), format!("{:.2}", stock.commissions));
+
+        let metadata = DocumentMetadata {
+            user_id: "".to_string(), // Will be set by caller
+            data_type: "stock".to_string(),
+            entity_id: stock.id.to_string(),
+            timestamp: Utc::now(),
+            tags: Self::extract_tags(&content.get("description").unwrap(), &DataType::Stock),
+            content_hash: Self::generate_content_hash(content.get("description").unwrap()),
+        };
+
+        Document {
+            id: format!("stock_{}", stock.id),
+            content,
+            metadata,
+        }
+    }
+
+    /// Format option trade for search document
+    pub fn format_option_for_search(option: &OptionTrade) -> Document {
+        let entry_date = option.entry_date.format("%Y-%m-%d").to_string();
+        let exit_date = option.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        
+        // Calculate P&L from entry and exit prices
+        let pnl = if let Some(exit_price) = option.exit_price {
+            (exit_price - option.entry_price) * option.number_of_contracts as f64 - option.commissions
+        } else {
+            0.0
+        };
+        
+        let pnl_percentage = if option.entry_price > 0.0 {
+            (pnl / (option.entry_price * option.number_of_contracts as f64)) * 100.0
+        } else {
+            0.0
+        };
+
+        let mut content = HashMap::new();
+        content.insert("title".to_string(), format!("{} {} Option Trade", option.symbol, option.strategy_type));
+        content.insert("description".to_string(), format!(
+            "Option trade: {} {} {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}. Commissions: ${:.2}",
+            option.strategy_type,
+            option.number_of_contracts,
+            option.option_type,
+            option.trade_direction,
+            option.symbol,
+            option.strike_price,
+            option.expiration_date.format("%Y-%m-%d"),
+            option.entry_price,
+            entry_date,
+            if option.exit_price.is_some() { "CLOSE" } else { "HOLD" },
+            option.exit_price.unwrap_or(option.entry_price),
+            exit_date,
+            pnl,
+            pnl_percentage,
+            if pnl >= 0.0 { "gain" } else { "loss" },
+            option.total_premium,
+            option.commissions
+        ));
+        content.insert("symbol".to_string(), option.symbol.clone());
+        content.insert("strategy_type".to_string(), option.strategy_type.clone());
+        content.insert("option_type".to_string(), format!("{:?}", option.option_type));
+        content.insert("trade_direction".to_string(), format!("{:?}", option.trade_direction));
+        content.insert("strike_price".to_string(), format!("{:.2}", option.strike_price));
+        content.insert("expiration_date".to_string(), option.expiration_date.format("%Y-%m-%d").to_string());
+        content.insert("contracts".to_string(), option.number_of_contracts.to_string());
+        content.insert("pnl".to_string(), format!("{:.2}", pnl));
+        content.insert("pnl_percentage".to_string(), format!("{:.2}", pnl_percentage));
+        content.insert("premium".to_string(), format!("{:.2}", option.total_premium));
+        content.insert("commissions".to_string(), format!("{:.2}", option.commissions));
+
+        let metadata = DocumentMetadata {
+            user_id: "".to_string(), // Will be set by caller
+            data_type: "option".to_string(),
+            entity_id: option.id.to_string(),
+            timestamp: Utc::now(),
+            tags: Self::extract_tags(&content.get("description").unwrap(), &DataType::Option),
+            content_hash: Self::generate_content_hash(content.get("description").unwrap()),
+        };
+
+        Document {
+            id: format!("option_{}", option.id),
+            content,
+            metadata,
+        }
+    }
+
+    /// Format trade note for search document
+    pub fn format_trade_note_for_search(note: &TradeNote) -> Document {
+        let mut content = HashMap::new();
+        content.insert("title".to_string(), note.name.clone());
+        content.insert("description".to_string(), note.content.clone());
+        content.insert("content".to_string(), note.content.clone());
+
+        let metadata = DocumentMetadata {
+            user_id: "".to_string(), // Will be set by caller
+            data_type: "tradenote".to_string(),
+            entity_id: note.id.clone(),
+            timestamp: Utc::now(),
+            tags: Self::extract_tags(&note.content, &DataType::TradeNote),
+            content_hash: Self::generate_content_hash(&note.content),
+        };
+
+        Document {
+            id: format!("note_{}", note.id),
+            content,
+            metadata,
+        }
+    }
+
+    /// Format notebook entry for search document
+    pub fn format_notebook_for_search(notebook: &NotebookNote) -> Document {
+        let mut content = HashMap::new();
+        content.insert("title".to_string(), notebook.title.clone());
+        content.insert("description".to_string(), notebook.content.clone());
+        content.insert("content".to_string(), notebook.content.clone());
+
+        let metadata = DocumentMetadata {
+            user_id: "".to_string(), // Will be set by caller
+            data_type: "notebookentry".to_string(),
+            entity_id: notebook.id.clone(),
+            timestamp: Utc::now(),
+            tags: Self::extract_tags(&notebook.content, &DataType::NotebookEntry),
+            content_hash: Self::generate_content_hash(&notebook.content),
+        };
+
+        Document {
+            id: format!("notebook_{}", notebook.id),
+            content,
+            metadata,
+        }
+    }
+
+    /// Format playbook strategy for search document
+    pub fn format_playbook_for_search(playbook: &Playbook) -> Document {
+        let description = playbook.description.as_deref().unwrap_or("No description");
+        
+        let mut content = HashMap::new();
+        content.insert("title".to_string(), playbook.name.clone());
+        content.insert("description".to_string(), description.to_string());
+        content.insert("content".to_string(), format!("Trading strategy: {} - {}", playbook.name, description));
+
+        let metadata = DocumentMetadata {
+            user_id: "".to_string(), // Will be set by caller
+            data_type: "playbookstrategy".to_string(),
+            entity_id: playbook.id.clone(),
+            timestamp: Utc::now(),
+            tags: Self::extract_tags(&format!("Trading strategy: {} - {}", playbook.name, description), &DataType::PlaybookStrategy),
+            content_hash: Self::generate_content_hash(&format!("Trading strategy: {} - {}", playbook.name, description)),
+        };
+
+        Document {
+            id: format!("playbook_{}", playbook.id),
+            content,
+            metadata,
+        }
+    }
+
+    /// Format any data type for search document
+    pub fn format_for_search_document(data_type: DataType, data: &serde_json::Value) -> Result<Document, String> {
         match data_type {
             DataType::Stock => {
                 let stock: Stock = serde_json::from_value(data.clone())
                     .map_err(|e| format!("Failed to parse stock data: {}", e))?;
-                Ok(Self::format_stock_for_embedding(&stock))
+                Ok(Self::format_stock_for_search(&stock))
             }
             DataType::Option => {
                 let option: OptionTrade = serde_json::from_value(data.clone())
                     .map_err(|e| format!("Failed to parse option data: {}", e))?;
-                Ok(Self::format_option_for_embedding(&option))
+                Ok(Self::format_option_for_search(&option))
             }
             DataType::TradeNote => {
                 let note: TradeNote = serde_json::from_value(data.clone())
                     .map_err(|e| format!("Failed to parse trade note data: {}", e))?;
-                Ok(Self::format_trade_note_for_embedding(&note))
+                Ok(Self::format_trade_note_for_search(&note))
             }
             DataType::NotebookEntry => {
                 let notebook: NotebookNote = serde_json::from_value(data.clone())
                     .map_err(|e| format!("Failed to parse notebook data: {}", e))?;
-                Ok(Self::format_notebook_for_embedding(&notebook))
+                Ok(Self::format_notebook_for_search(&notebook))
             }
             DataType::PlaybookStrategy => {
                 let playbook: Playbook = serde_json::from_value(data.clone())
                     .map_err(|e| format!("Failed to parse playbook data: {}", e))?;
-                Ok(Self::format_playbook_for_embedding(&playbook))
+                Ok(Self::format_playbook_for_search(&playbook))
             }
         }
     }
