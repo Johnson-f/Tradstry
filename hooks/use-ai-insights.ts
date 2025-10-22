@@ -73,6 +73,12 @@ export function useAIInsights(): UseAIInsightsReturn {
     } else if (error instanceof GenerationError) {
       message = `Generation Error: ${error.message}`;
     } else if (error instanceof AIInsightsError) {
+      // Handle authentication errors gracefully
+      if (error.message.includes('Authentication') || error.message.includes('AUTH_ERROR')) {
+        message = 'Please log in to access AI insights';
+        console.log('Authentication required for AI insights');
+        return; // Don't set error state for auth issues
+      }
       message = `AI Insights Error: ${error.message}`;
     } else if (error.message) {
       message = error.message;
@@ -290,12 +296,28 @@ export function useAIInsights(): UseAIInsightsReturn {
   }, [handleError]);
 
   /**
-   * Load initial insights on mount
+   * Load initial insights on mount (only if authenticated)
    */
   useEffect(() => {
-    getInsights().catch(() => {
-      // Error already handled in getInsights
-    });
+    // Only try to load insights if we have a valid session
+    const checkAuthAndLoad = async () => {
+      try {
+        // Check if user is authenticated before loading insights
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          await getInsights();
+        } else {
+          console.log('User not authenticated, skipping insights load');
+        }
+      } catch (error) {
+        console.log('Authentication check failed, skipping insights load:', error);
+      }
+    };
+
+    checkAuthAndLoad();
   }, [getInsights]);
 
   return {
