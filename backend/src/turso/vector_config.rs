@@ -139,6 +139,34 @@ impl SearchConfig {
     }
 }
 
+/// Configuration for Qdrant Cloud
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QdrantConfig {
+    pub url: String,
+    pub api_key: String,
+    pub collection_prefix: String,
+    pub max_retries: u32,
+    pub timeout_seconds: u64,
+}
+
+impl QdrantConfig {
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(QdrantConfig {
+            url: env::var("QDRANT_URL")
+                .map_err(|_| "QDRANT_URL environment variable not set")?,
+            api_key: env::var("QDRANT_API_KEY")
+                .map_err(|_| "QDRANT_API_KEY environment variable not set")?,
+            collection_prefix: "tradistry".to_string(),
+            max_retries: 3,
+            timeout_seconds: 30,
+        })
+    }
+
+    pub fn get_collection_name(&self, user_id: &str) -> String {
+        format!("{}_{}", self.collection_prefix, user_id)
+    }
+}
+
 /// Hybrid search configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridSearchConfig {
@@ -180,7 +208,7 @@ impl HybridSearchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfig {
     pub vector_config: VectorConfig,
-    pub search_config: SearchConfig,
+    pub qdrant_config: QdrantConfig,
     pub voyager_config: VoyagerConfig,
     pub openrouter_config: OpenRouterConfig,
     pub hybrid_config: HybridSearchConfig,
@@ -194,7 +222,7 @@ impl AIConfig {
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(AIConfig {
             vector_config: VectorConfig::from_env()?,
-            search_config: SearchConfig::from_env()?,
+            qdrant_config: QdrantConfig::from_env()?,
             voyager_config: VoyagerConfig::from_env()?,
             openrouter_config: OpenRouterConfig::from_env()?,
             hybrid_config: HybridSearchConfig::from_env(),

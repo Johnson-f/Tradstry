@@ -2,7 +2,7 @@
 
 use crate::service::ai_service::voyager_client::VoyagerClient;
 use crate::service::ai_service::upstash_vector_client::{UpstashVectorClient, VectorMetadata, DataType};
-use crate::service::ai_service::upstash_search_client::{UpstashSearchClient, Document};
+use crate::service::ai_service::qdrant_client::{QdrantDocumentClient, Document, DocumentMetadata};
 use crate::service::ai_service::data_formatter::{DataFormatter, DataType as FormatterDataType};
 use crate::turso::vector_config::AIConfig;
 use anyhow::{Context, Result};
@@ -55,7 +55,7 @@ pub struct VectorizationResult {
 pub struct VectorizationService {
     voyager_client: Arc<VoyagerClient>,
     upstash_vector: Arc<UpstashVectorClient>,
-    upstash_search: Arc<UpstashSearchClient>,
+    qdrant_client: Arc<QdrantDocumentClient>,
     config: AIConfig,
 }
 
@@ -63,13 +63,13 @@ impl VectorizationService {
     pub fn new(
         voyager_client: Arc<VoyagerClient>,
         upstash_vector: Arc<UpstashVectorClient>,
-        upstash_search: Arc<UpstashSearchClient>,
+        qdrant_client: Arc<QdrantDocumentClient>,
         config: AIConfig,
     ) -> Self {
         Self {
             voyager_client,
             upstash_vector,
-            upstash_search,
+            qdrant_client,
             config,
         }
     }
@@ -144,7 +144,7 @@ impl VectorizationService {
         let mut search_doc = Document {
             id: vector_id.clone(),
             content: std::collections::HashMap::new(),
-            metadata: crate::service::ai_service::upstash_search_client::DocumentMetadata {
+            metadata: DocumentMetadata {
                 user_id: user_id.to_string(),
                 data_type: format!("{:?}", data_type).to_lowercase(),
                 entity_id: entity_id.to_string(),
@@ -158,35 +158,27 @@ impl VectorizationService {
         search_doc.content.insert("content".to_string(), content.to_string());
         search_doc.content.insert("title".to_string(), format!("{:?} {}", data_type, entity_id));
 
-        // Store in search database (with error handling)
-        // Note: Upstash Search API endpoints may not be available or configured correctly
-        // For now, we'll skip search document storage and rely on vector search only
-        let search_namespace = self.upstash_search.get_user_namespace(user_id);
+        // Store in Qdrant for keyword search
         log::info!(
-            "Skipping search document storage - user={}, namespace={}, vector_id={} (API endpoints not available)",
-            user_id, search_namespace, vector_id
+            "Attempting to store search document - user={}, vector_id={}",
+            user_id, vector_id
         );
 
-        // TODO: Re-enable when Upstash Search API is properly configured
-        // The current API endpoints are returning 404 errors, indicating they may not exist
-        // or the API structure is different from what we're implementing
-        /*
-        if let Err(search_err) = self.upstash_search
-            .upsert_documents(&search_namespace, vec![search_doc])
+        if let Err(search_err) = self.qdrant_client
+            .upsert_documents(user_id, vec![search_doc])
             .await
         {
             log::error!(
-                "Failed to store search document for user {}: {} - namespace={}, vector_id={}, error_details={:?}",
-                user_id, search_err, search_namespace, vector_id, search_err
+                "Failed to store search document for user {}: {} - vector_id={}, error_details={:?}",
+                user_id, search_err, vector_id, search_err
             );
             // Continue without failing the entire operation
         } else {
             log::info!(
-                "Successfully stored search document - user={}, namespace={}, vector_id={}",
-                user_id, search_namespace, vector_id
+                "Successfully stored search document - user={}, vector_id={}",
+                user_id, vector_id
             );
         }
-        */
 
         let processing_time = start_time.elapsed().as_millis() as u64;
 
@@ -314,25 +306,16 @@ impl VectorizationService {
             .await
             .context("Failed to delete vectors")?;
 
-        // Also delete from search database (with error handling)
-        // Note: Upstash Search API endpoints may not be available or configured correctly
-        // For now, we'll skip search document deletion and rely on vector deletion only
-        let search_namespace = self.upstash_search.get_user_namespace(user_id);
-        log::info!(
-            "Skipping search document deletion - user={}, namespace={}, vector_ids={:?} (API endpoints not available)",
-            user_id, search_namespace, vector_ids
-        );
-
-        // TODO: Re-enable when Upstash Search API is properly configured
-        /*
-        if let Err(search_err) = self.upstash_search
-            .delete_documents(&search_namespace, &vector_ids)
+        // Also delete from Qdrant search database
+        if let Err(search_err) = self.qdrant_client
+            .delete_documents(user_id, &vector_ids)
             .await
         {
             log::warn!("Failed to delete search documents for user {}: {}", user_id, search_err);
             // Continue without failing the entire operation
+        } else {
+            log::info!("Successfully deleted search documents for user {}", user_id);
         }
-        */
 
         Ok(())
     }

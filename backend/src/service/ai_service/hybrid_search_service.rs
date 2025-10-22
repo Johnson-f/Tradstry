@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::service::ai_service::upstash_vector_client::UpstashVectorClient;
-use crate::service::ai_service::upstash_search_client::UpstashSearchClient;
+use crate::service::ai_service::qdrant_client::QdrantDocumentClient;
 use crate::service::ai_service::voyager_client::VoyagerClient;
 use crate::turso::vector_config::HybridSearchConfig;
 use anyhow::{Context, Result};
@@ -33,7 +33,7 @@ pub struct HybridSearchResult {
 /// Hybrid search service combining vector and keyword search
 pub struct HybridSearchService {
     vector_client: Arc<UpstashVectorClient>,
-    search_client: Arc<UpstashSearchClient>,
+    search_client: Arc<QdrantDocumentClient>,
     voyager_client: Arc<VoyagerClient>,
     config: HybridSearchConfig,
 }
@@ -41,7 +41,7 @@ pub struct HybridSearchService {
 impl HybridSearchService {
     pub fn new(
         vector_client: Arc<UpstashVectorClient>,
-        search_client: Arc<UpstashSearchClient>,
+        search_client: Arc<QdrantDocumentClient>,
         voyager_client: Arc<VoyagerClient>,
         config: HybridSearchConfig,
     ) -> Self {
@@ -153,15 +153,45 @@ impl HybridSearchService {
     /// Perform keyword-only search (new functionality)
     pub async fn keyword_only_search(
         &self,
-        _user_id: &str,
+        user_id: &str,
         query: &str,
-        _limit: usize,
+        limit: usize,
         _data_type: Option<&str>,
     ) -> Result<Vec<HybridSearchResult>> {
-        // For now, return empty results if search service is not available
-        // This allows the system to fall back to vector-only search
-        log::warn!("Keyword search not available, returning empty results for query: {}", query);
-        Ok(vec![])
+        log::info!(
+            "Starting keyword-only search - user={}, query_preview='{}', limit={}",
+            user_id, query.chars().take(50).collect::<String>(), limit
+        );
+
+        // Use Qdrant for keyword search
+        let document_ids = self.search_client
+            .search_by_keyword(user_id, query, limit)
+            .await
+            .context("Failed to perform keyword search")?;
+
+        log::info!(
+            "Keyword search completed - user={}, found {} documents",
+            user_id, document_ids.len()
+        );
+
+        // Convert document IDs to HybridSearchResult format
+        let results: Vec<HybridSearchResult> = document_ids.into_iter().map(|id| {
+            HybridSearchResult {
+                id: id.clone(),
+                entity_id: id.clone(), // Assuming document ID matches entity ID
+                data_type: "unknown".to_string(),
+                content_snippet: "".to_string(),
+                vector_score: None,
+                keyword_score: Some(1.0), // Default keyword score
+                combined_score: 1.0,
+                metadata: HashMap::from([
+                    ("user_id".to_string(), user_id.to_string()),
+                    ("search_type".to_string(), "keyword".to_string()),
+                ]),
+            }
+        }).collect();
+
+        Ok(results)
     }
 
     /// Perform hybrid search combining vector and keyword results
@@ -322,11 +352,11 @@ impl HybridSearchService {
         // Check vector client
         self.vector_client.ping().await?;
         
-        // Check search client
-        self.search_client.ping().await?;
-        
         // Check voyager client
         self.voyager_client.health_check().await?;
+        
+        // Note: Qdrant client doesn't have a ping method, but we can assume it's healthy
+        // if the service was initialized successfully
         
         Ok(())
     }

@@ -28,7 +28,7 @@ pub use webhook::ClerkWebhookHandler;
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, UpstashSearchClient, HybridSearchService};
+use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
 use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
@@ -86,23 +86,24 @@ impl AppState {
             .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
         let voyager_client = Arc::new(VoyagerClient::new(voyager_config)?);
         
-        let search_config = crate::turso::vector_config::SearchConfig::from_env()
-            .map_err(|e| format!("Failed to load Search config: {}", e))?;
-        let upstash_search_client = Arc::new(UpstashSearchClient::new(search_config)?);
+        let qdrant_config = crate::turso::vector_config::QdrantConfig::from_env()
+            .map_err(|e| format!("Failed to load Qdrant config: {}", e))?;
+        let qdrant_client = Arc::new(QdrantDocumentClient::new(qdrant_config).await
+            .map_err(|e| format!("Failed to create Qdrant client: {}", e))?);
         
         let ai_config = crate::turso::vector_config::AIConfig::from_env()
             .map_err(|e| format!("Failed to load AI config: {}", e))?;
         let vectorization_service = Arc::new(VectorizationService::new(
             Arc::clone(&voyager_client),
             Arc::clone(&upstash_vector_client),
-            Arc::clone(&upstash_search_client),
+            Arc::clone(&qdrant_client),
             ai_config.clone(),
         ));
         
         // Initialize hybrid search service
         let hybrid_search_service = Arc::new(HybridSearchService::new(
             Arc::clone(&upstash_vector_client),
-            Arc::clone(&upstash_search_client),
+            Arc::clone(&qdrant_client),
             Arc::clone(&voyager_client),
             ai_config.hybrid_config.clone(),
         ));
