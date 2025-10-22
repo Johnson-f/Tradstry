@@ -156,6 +156,9 @@ impl AIInsightsService {
         limit: Option<u32>,
         offset: Option<u32>,
     ) -> Result<InsightListResponse> {
+        log::info!("Starting get_user_insights for user: {}, time_range: {:?}, insight_type: {:?}, limit: {:?}, offset: {:?}", 
+                  user_id, time_range, insight_type, limit, offset);
+
         let limit = limit.unwrap_or(20);
         let offset = offset.unwrap_or(0);
 
@@ -166,16 +169,21 @@ impl AIInsightsService {
         if let Some(ref tr) = time_range {
             query.push_str(" AND time_range = ?");
             params.push(format!("{:?}", tr));
+            log::info!("Added time_range filter: {:?}", tr);
         }
 
         if let Some(ref it) = insight_type {
             query.push_str(" AND insight_type = ?");
             params.push(format!("{:?}", it));
+            log::info!("Added insight_type filter: {:?}", it);
         }
 
         query.push_str(" ORDER BY generated_at DESC LIMIT ? OFFSET ?");
         params.push(limit.to_string());
         params.push(offset.to_string());
+
+        log::info!("Final query: {}", query);
+        log::info!("Query params: {:?}", params);
 
         // Get total count
         let mut count_query = "SELECT COUNT(*) FROM ai_insights WHERE user_id = ?".to_string();
@@ -191,19 +199,79 @@ impl AIInsightsService {
             count_params.push(format!("{:?}", it));
         }
 
-        let mut count_stmt = conn.prepare(&count_query).await?;
-        let row = count_stmt.query_row(count_params.iter().map(|s| s.as_str()).collect::<Vec<_>>()).await?;
-        let total_count: u32 = row.get(0)?;
+        log::info!("Count query: {}", count_query);
+        log::info!("Count params: {:?}", count_params);
+
+        // Execute count query
+        let total_count = match conn.prepare(&count_query).await {
+            Ok(mut count_stmt) => {
+                match count_stmt.query_row(count_params.iter().map(|s| s.as_str()).collect::<Vec<_>>()).await {
+                    Ok(row) => {
+                        match row.get::<u32>(0) {
+                            Ok(count) => {
+                                log::info!("Successfully got total count: {}", count);
+                                count
+                            }
+                            Err(e) => {
+                                log::error!("Failed to get count from row: {}", e);
+                                return Err(anyhow::anyhow!("Failed to get count from row: {}", e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to execute count query: {}", e);
+                        return Err(anyhow::anyhow!("Failed to execute count query: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to prepare count statement: {}", e);
+                return Err(anyhow::anyhow!("Failed to prepare count statement: {}", e));
+            }
+        };
 
         // Get insights
-        let stmt = conn.prepare(&query).await?;
-        let mut rows = stmt.query(params.iter().map(|s| s.as_str()).collect::<Vec<_>>()).await?;
+        let stmt = match conn.prepare(&query).await {
+            Ok(stmt) => {
+                log::info!("Successfully prepared main query");
+                stmt
+            }
+            Err(e) => {
+                log::error!("Failed to prepare main query: {}", e);
+                return Err(anyhow::anyhow!("Failed to prepare main query: {}", e));
+            }
+        };
+
+        let mut rows = match stmt.query(params.iter().map(|s| s.as_str()).collect::<Vec<_>>()).await {
+            Ok(rows) => {
+                log::info!("Successfully executed main query");
+                rows
+            }
+            Err(e) => {
+                log::error!("Failed to execute main query: {}", e);
+                return Err(anyhow::anyhow!("Failed to execute main query: {}", e));
+            }
+        };
 
         let mut insights = Vec::new();
+        let mut row_count = 0;
         while let Some(row) = rows.next().await? {
-            let insight = self.row_to_insight(&row)?;
+            row_count += 1;
+            log::debug!("Processing row {}", row_count);
+            
+            match self.row_to_insight(&row) {
+                Ok(insight) => {
             insights.push(InsightSummary::from(insight));
+                    log::debug!("Successfully converted row {} to insight", row_count);
+                }
+                Err(e) => {
+                    log::error!("Failed to convert row {} to insight: {}", row_count, e);
+                    return Err(anyhow::anyhow!("Failed to convert row {} to insight: {}", row_count, e));
+                }
+            }
         }
+
+        log::info!("Successfully processed {} rows, returning {} insights", row_count, insights.len());
 
         Ok(InsightListResponse {
             insights,
@@ -388,40 +456,267 @@ impl AIInsightsService {
 
     /// Convert database row to Insight
     fn row_to_insight(&self, row: &libsql::Row) -> Result<Insight> {
-        let key_findings: Option<String> = row.get(6)?;
-        let recommendations: Option<String> = row.get(7)?;
-        let data_sources: Option<String> = row.get(8)?;
-        let metadata: Option<String> = row.get(12)?;
+        log::debug!("Starting row_to_insight conversion");
+        
+        // Get raw values first
+        let id: String = match row.get(0) {
+            Ok(val) => {
+                log::debug!("Got id: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get id from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get id from row: {}", e));
+            }
+        };
 
-        Ok(Insight {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            time_range: serde_json::from_str(&row.get::<String>(2)?)?,
-            insight_type: serde_json::from_str(&row.get::<String>(3)?)?,
-            title: row.get(4)?,
-            content: row.get(5)?,
-            key_findings: if let Some(kf) = key_findings {
-                serde_json::from_str(&kf)?
+        let user_id: String = match row.get(1) {
+            Ok(val) => {
+                log::debug!("Got user_id: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get user_id from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get user_id from row: {}", e));
+            }
+        };
+
+        let time_range_str: String = match row.get(2) {
+            Ok(val) => {
+                log::debug!("Got time_range_str: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get time_range from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get time_range from row: {}", e));
+            }
+        };
+
+        let insight_type_str: String = match row.get(3) {
+            Ok(val) => {
+                log::debug!("Got insight_type_str: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get insight_type from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get insight_type from row: {}", e));
+            }
+        };
+
+        let title: String = match row.get(4) {
+            Ok(val) => {
+                log::debug!("Got title: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get title from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get title from row: {}", e));
+            }
+        };
+
+        let content: String = match row.get::<String>(5) {
+            Ok(val) => {
+                log::debug!("Got content (length: {})", val.len());
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get content from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get content from row: {}", e));
+            }
+        };
+
+        // Parse JSON fields
+        let time_range: TimeRange = match serde_json::from_str(&time_range_str) {
+            Ok(tr) => {
+                log::debug!("Successfully parsed time_range: {:?}", tr);
+                tr
+            }
+            Err(e) => {
+                log::error!("Failed to parse time_range JSON '{}': {}", time_range_str, e);
+                return Err(anyhow::anyhow!("Failed to parse time_range JSON: {}", e));
+            }
+        };
+
+        let insight_type: InsightType = match serde_json::from_str(&insight_type_str) {
+            Ok(it) => {
+                log::debug!("Successfully parsed insight_type: {:?}", it);
+                it
+            }
+            Err(e) => {
+                log::error!("Failed to parse insight_type JSON '{}': {}", insight_type_str, e);
+                return Err(anyhow::anyhow!("Failed to parse insight_type JSON: {}", e));
+            }
+        };
+
+        // Get optional fields
+        let key_findings: Option<String> = match row.get(6) {
+            Ok(val) => {
+                log::debug!("Got key_findings: {:?}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get key_findings from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get key_findings from row: {}", e));
+            }
+        };
+
+        let recommendations: Option<String> = match row.get(7) {
+            Ok(val) => {
+                log::debug!("Got recommendations: {:?}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get recommendations from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get recommendations from row: {}", e));
+            }
+        };
+
+        let data_sources: Option<String> = match row.get(8) {
+            Ok(val) => {
+                log::debug!("Got data_sources: {:?}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get data_sources from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get data_sources from row: {}", e));
+            }
+        };
+
+        let confidence_score: f64 = match row.get(9) {
+            Ok(val) => {
+                log::debug!("Got confidence_score: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get confidence_score from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get confidence_score from row: {}", e));
+            }
+        };
+
+        let generated_at_str: String = match row.get(10) {
+            Ok(val) => {
+                log::debug!("Got generated_at_str: {}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get generated_at from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get generated_at from row: {}", e));
+            }
+        };
+
+        let expires_at_str: Option<String> = match row.get(11) {
+            Ok(val) => {
+                log::debug!("Got expires_at_str: {:?}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get expires_at from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get expires_at from row: {}", e));
+            }
+        };
+
+        let metadata_str: Option<String> = match row.get(12) {
+            Ok(val) => {
+                log::debug!("Got metadata_str: {:?}", val);
+                val
+            }
+            Err(e) => {
+                log::error!("Failed to get metadata from row: {}", e);
+                return Err(anyhow::anyhow!("Failed to get metadata from row: {}", e));
+            }
+        };
+
+        // Parse JSON arrays
+        let key_findings_vec = if let Some(kf) = key_findings {
+            match serde_json::from_str::<Vec<String>>(&kf) {
+                Ok(vec) => {
+                    log::debug!("Successfully parsed key_findings: {} items", vec.len());
+                    vec
+                }
+                Err(e) => {
+                    log::error!("Failed to parse key_findings JSON '{}': {}", kf, e);
+                    return Err(anyhow::anyhow!("Failed to parse key_findings JSON: {}", e));
+                }
+            }
             } else {
+            log::debug!("No key_findings, using empty vec");
                 Vec::new()
-            },
-            recommendations: if let Some(rec) = recommendations {
-                serde_json::from_str(&rec)?
+        };
+
+        let recommendations_vec = if let Some(rec) = recommendations {
+            match serde_json::from_str::<Vec<String>>(&rec) {
+                Ok(vec) => {
+                    log::debug!("Successfully parsed recommendations: {} items", vec.len());
+                    vec
+                }
+                Err(e) => {
+                    log::error!("Failed to parse recommendations JSON '{}': {}", rec, e);
+                    return Err(anyhow::anyhow!("Failed to parse recommendations JSON: {}", e));
+                }
+            }
             } else {
+            log::debug!("No recommendations, using empty vec");
                 Vec::new()
-            },
-            data_sources: if let Some(ds) = data_sources {
-                serde_json::from_str(&ds)?
+        };
+
+        let data_sources_vec = if let Some(ds) = data_sources {
+            match serde_json::from_str::<Vec<String>>(&ds) {
+                Ok(vec) => {
+                    log::debug!("Successfully parsed data_sources: {} items", vec.len());
+                    vec
+                }
+                Err(e) => {
+                    log::error!("Failed to parse data_sources JSON '{}': {}", ds, e);
+                    return Err(anyhow::anyhow!("Failed to parse data_sources JSON: {}", e));
+                }
+            }
             } else {
+            log::debug!("No data_sources, using empty vec");
                 Vec::new()
-            },
-            confidence_score: row.get::<f64>(9)? as f32,
-            generated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String>(10)?)?.with_timezone(&Utc),
-            expires_at: row.get::<Option<String>>(11)?
-                .map(|s| chrono::DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)),
-            metadata: if let Some(meta) = metadata {
-                serde_json::from_str(&meta)?
+        };
+
+        // Parse timestamps
+        let generated_at = match chrono::DateTime::parse_from_rfc3339(&generated_at_str) {
+            Ok(dt) => {
+                log::debug!("Successfully parsed generated_at: {}", dt);
+                dt.with_timezone(&Utc)
+            }
+            Err(e) => {
+                log::error!("Failed to parse generated_at '{}': {}", generated_at_str, e);
+                return Err(anyhow::anyhow!("Failed to parse generated_at: {}", e));
+            }
+        };
+
+        let expires_at = if let Some(exp_str) = expires_at_str {
+            match chrono::DateTime::parse_from_rfc3339(&exp_str) {
+                Ok(dt) => {
+                    log::debug!("Successfully parsed expires_at: {}", dt);
+                    Some(dt.with_timezone(&Utc))
+                }
+                Err(e) => {
+                    log::error!("Failed to parse expires_at '{}': {}", exp_str, e);
+                    return Err(anyhow::anyhow!("Failed to parse expires_at: {}", e));
+                }
+            }
+        } else {
+            log::debug!("No expires_at");
+            None
+        };
+
+        // Parse metadata
+        let metadata = if let Some(meta_str) = metadata_str {
+            match serde_json::from_str::<InsightMetadata>(&meta_str) {
+                Ok(meta) => {
+                    log::debug!("Successfully parsed metadata");
+                    meta
+                }
+                Err(e) => {
+                    log::error!("Failed to parse metadata JSON '{}': {}", meta_str, e);
+                    return Err(anyhow::anyhow!("Failed to parse metadata JSON: {}", e));
+                }
+            }
             } else {
+            log::debug!("No metadata, using default");
                 InsightMetadata {
                     trade_count: 0,
                     analysis_period_days: 0,
@@ -429,7 +724,24 @@ impl AIInsightsService {
                     processing_time_ms: 0,
                     data_quality_score: 0.0,
                 }
-            },
+        };
+
+        log::debug!("Successfully converted row to insight: {}", id);
+
+        Ok(Insight {
+            id,
+            user_id,
+            time_range,
+            insight_type,
+            title,
+            content,
+            key_findings: key_findings_vec,
+            recommendations: recommendations_vec,
+            data_sources: data_sources_vec,
+            confidence_score: confidence_score as f32,
+            generated_at,
+            expires_at,
+            metadata,
         })
     }
 

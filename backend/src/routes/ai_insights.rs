@@ -206,24 +206,69 @@ pub async fn get_insights(
     supabase_config: web::Data<SupabaseConfig>,
     ai_insights_service: web::Data<Arc<AIInsightsService>>,
 ) -> Result<HttpResponse> {
-    info!("Getting insights for user");
+    info!("Getting insights for user - query params: {:?}", query);
 
-    let conn = get_user_database_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?;
+    // Step 1: Authenticate user
+    let user_id = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(uid) => {
+            info!("Successfully authenticated user: {}", uid);
+            uid
+        }
+        Err(e) => {
+            error!("Authentication failed: {}", e);
+            return Err(e);
+        }
+    };
 
-    // Parse optional filters
+    // Step 2: Get database connection
+    let conn = match get_user_database_connection(&req, &turso_client, &supabase_config).await {
+        Ok(connection) => {
+            info!("Successfully got database connection for user: {}", user_id);
+            connection
+        }
+        Err(e) => {
+            error!("Failed to get database connection for user {}: {}", user_id, e);
+            return Err(e);
+        }
+    };
+
+    // Step 3: Parse optional filters
     let time_range = if let Some(tr) = &query.time_range {
-        Some(parse_time_range(tr)?)
+        match parse_time_range(tr) {
+            Ok(tr_parsed) => {
+                info!("Parsed time range: {:?}", tr_parsed);
+                Some(tr_parsed)
+            }
+            Err(e) => {
+                error!("Failed to parse time range '{}': {}", tr, e);
+                return Err(e);
+            }
+        }
     } else {
+        info!("No time range filter provided");
         None
     };
 
     let insight_type = if let Some(it) = &query.insight_type {
-        Some(parse_insight_type(it)?)
+        match parse_insight_type(it) {
+            Ok(it_parsed) => {
+                info!("Parsed insight type: {:?}", it_parsed);
+                Some(it_parsed)
+            }
+            Err(e) => {
+                error!("Failed to parse insight type '{}': {}", it, e);
+                return Err(e);
+            }
+        }
     } else {
+        info!("No insight type filter provided");
         None
     };
 
+    info!("Calling get_user_insights with params: user_id={}, time_range={:?}, insight_type={:?}, limit={:?}, offset={:?}", 
+          user_id, time_range, insight_type, query.limit, query.offset);
+
+    // Step 4: Get insights from service
     match ai_insights_service.get_user_insights(
         &conn,
         &user_id,
@@ -238,8 +283,9 @@ pub async fn get_insights(
         }
         Err(e) => {
             error!("Failed to get insights for user {}: {}", user_id, e);
+            error!("Error details: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                "Failed to get insights".to_string()
+                format!("Failed to get insights: {}", e)
             )))
         }
     }

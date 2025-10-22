@@ -17,6 +17,7 @@ export type InsightType =
   | 'behavioral_analysis'
   | 'market_analysis'
   | 'opportunity_detection';
+  
 
 export type InsightGenerationStatus = 
   | 'pending'
