@@ -5,7 +5,7 @@ use crate::models::options::options::OptionTrade;
 use crate::models::notes::trade_notes::TradeNote;
 use crate::models::notebook::notebook_note::NotebookNote;
 use crate::models::playbook::playbook::Playbook;
-use crate::service::ai_service::upstash_search_client::{Document, DocumentMetadata};
+use crate::service::ai_service::qdrant_client::{Document, DocumentMetadata};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::Utc;

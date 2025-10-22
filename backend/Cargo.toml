@@ -58,6 +58,8 @@ genai = "0.4.0" # Unified interface for Gemini and other LLMs
 # Additional serialization
 bincode = "1.3" # For efficient binary vector storage
 
+# Qdrant vector database client
+qdrant-client = "1.7"
 
 # LRU Cache for multi-level caching
 lru = "0.12"
