@@ -12,7 +12,6 @@ pub mod config;
 pub mod webhook;
 pub mod redis;
 pub mod vector_config;
-pub mod vector_client; // ADD THIS
 pub mod jwt_cache;
 
 // Re-export commonly used items
@@ -26,11 +25,10 @@ pub use auth::{
 pub use client::TursoClient;
 pub use config::{TursoConfig, ClerkClaims, SupabaseClaims};
 pub use webhook::ClerkWebhookHandler;
-pub use vector_client::VectorClient; // ADD THIS
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient};
+use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, UpstashSearchClient, HybridSearchService};
 use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
@@ -88,25 +86,32 @@ impl AppState {
             .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
         let voyager_client = Arc::new(VoyagerClient::new(voyager_config)?);
         
+        let search_config = crate::turso::vector_config::SearchConfig::from_env()
+            .map_err(|e| format!("Failed to load Search config: {}", e))?;
+        let upstash_search_client = Arc::new(UpstashSearchClient::new(search_config)?);
+        
         let ai_config = crate::turso::vector_config::AIConfig::from_env()
             .map_err(|e| format!("Failed to load AI config: {}", e))?;
         let vectorization_service = Arc::new(VectorizationService::new(
             Arc::clone(&voyager_client),
             Arc::clone(&upstash_vector_client),
-            ai_config,
+            Arc::clone(&upstash_search_client),
+            ai_config.clone(),
         ));
         
-        // Initialize vector client
-        let vector_client = Arc::new(VectorClient::new(
-            config.vector.rest_url.clone(),
-            config.vector.rest_token.clone(),
+        // Initialize hybrid search service
+        let hybrid_search_service = Arc::new(HybridSearchService::new(
+            Arc::clone(&upstash_vector_client),
+            Arc::clone(&upstash_search_client),
+            Arc::clone(&voyager_client),
+            ai_config.hybrid_config.clone(),
         ));
         
         let ai_chat_service = Arc::new(AIChatService::new(
             Arc::clone(&vectorization_service),
+            Arc::clone(&hybrid_search_service),
             Arc::clone(&openrouter_client),
             Arc::clone(&turso_client),
-            Arc::clone(&vector_client),
             Arc::clone(&voyager_client),
             10, // max_context_vectors
         ));

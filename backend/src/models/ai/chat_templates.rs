@@ -248,8 +248,8 @@ impl ContextFormatter {
         let mut formatted = String::new();
         formatted.push_str("## Relevant Trading Data:\n\n");
         
-        // Group by data type
-        let mut grouped: std::collections::HashMap<String, Vec<&crate::models::ai::chat::ContextSource>> = std::collections::HashMap::new();
+        // Group by data type using BTreeMap for consistent ordering
+        let mut grouped: std::collections::BTreeMap<String, Vec<&crate::models::ai::chat::ContextSource>> = std::collections::BTreeMap::new();
         for source in sources {
             grouped.entry(source.data_type.clone())
                 .or_insert_with(Vec::new)
@@ -258,7 +258,7 @@ impl ContextFormatter {
         
         let mut current_length = formatted.len();
         
-        for (data_type, sources) in grouped {
+        for (data_type, source_items) in grouped {
             let section_header = format!("### {} Data:\n", data_type);
             if current_length + section_header.len() > max_length {
                 break;
@@ -267,14 +267,14 @@ impl ContextFormatter {
             formatted.push_str(&section_header);
             current_length += section_header.len();
             
-            for source in sources {
+            for source_item in source_items {
                 let score_text = if include_scores {
-                    format!(" (Relevance: {:.2})", source.similarity_score)
+                    format!(" (Relevance: {:.2})", source_item.similarity_score)
                 } else {
                     String::new()
                 };
                 
-                let source_text = format!("- {}{}: {}\n", source.entity_id, score_text, source.snippet);
+                let source_text = format!("- {}{}: {}\n", source_item.entity_id, score_text, source_item.snippet);
                 
                 if current_length + source_text.len() > max_length {
                     formatted.push_str("... (truncated)\n");

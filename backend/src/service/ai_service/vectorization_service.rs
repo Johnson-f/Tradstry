@@ -2,6 +2,7 @@
 
 use crate::service::ai_service::voyager_client::VoyagerClient;
 use crate::service::ai_service::upstash_vector_client::{UpstashVectorClient, VectorMetadata, DataType};
+use crate::service::ai_service::upstash_search_client::{UpstashSearchClient, Document};
 use crate::service::ai_service::data_formatter::{DataFormatter, DataType as FormatterDataType};
 use crate::turso::vector_config::AIConfig;
 use anyhow::{Context, Result};
@@ -54,6 +55,7 @@ pub struct VectorizationResult {
 pub struct VectorizationService {
     voyager_client: Arc<VoyagerClient>,
     upstash_vector: Arc<UpstashVectorClient>,
+    upstash_search: Arc<UpstashSearchClient>,
     config: AIConfig,
 }
 
@@ -61,11 +63,13 @@ impl VectorizationService {
     pub fn new(
         voyager_client: Arc<VoyagerClient>,
         upstash_vector: Arc<UpstashVectorClient>,
+        upstash_search: Arc<UpstashSearchClient>,
         config: AIConfig,
     ) -> Self {
         Self {
             voyager_client,
             upstash_vector,
+            upstash_search,
             config,
         }
     }
@@ -90,10 +94,19 @@ impl VectorizationService {
         let content_hash = DataFormatter::generate_content_hash(content);
 
         // Generate embedding
+        log::info!(
+            "Generating embedding for user={}, entity_id={}, content_length={}",
+            user_id, entity_id, content.len()
+        );
         let embedding = self.voyager_client
             .embed_text(content)
             .await
             .context("Failed to generate embedding")?;
+
+        log::info!(
+            "Embedding generated successfully - user={}, entity_id={}, embedding_dim={}",
+            user_id, entity_id, embedding.len()
+        );
 
         // Create metadata
         let metadata = VectorMetadata {
@@ -102,15 +115,78 @@ impl VectorizationService {
             entity_id: entity_id.to_string(),
             timestamp: Utc::now(),
             tags: DataFormatter::extract_tags(content, &convert_data_type(&data_type)),
-            content_hash,
+            content_hash: content_hash.clone(),
         };
+
+        log::debug!(
+            "Created vector metadata - user={}, entity_id={}, data_type={:?}, tags={:?}",
+            user_id, entity_id, metadata.data_type, metadata.tags
+        );
 
         // Store in vector database
         let namespace = self.upstash_vector.get_user_namespace(user_id);
+        log::info!(
+            "Storing vector in database - user={}, namespace={}, vector_id={}",
+            user_id, namespace, vector_id
+        );
+
         self.upstash_vector
             .upsert_vectors(&namespace, vec![(vector_id.clone(), embedding, metadata)])
             .await
             .context("Failed to store vector")?;
+
+        log::info!(
+            "Vector stored successfully - user={}, namespace={}, vector_id={}",
+            user_id, namespace, vector_id
+        );
+
+        // Create search document
+        let mut search_doc = Document {
+            id: vector_id.clone(),
+            content: std::collections::HashMap::new(),
+            metadata: crate::service::ai_service::upstash_search_client::DocumentMetadata {
+                user_id: user_id.to_string(),
+                data_type: format!("{:?}", data_type).to_lowercase(),
+                entity_id: entity_id.to_string(),
+                timestamp: Utc::now(),
+                tags: DataFormatter::extract_tags(content, &convert_data_type(&data_type)),
+                content_hash,
+            },
+        };
+
+        // Add content to search document
+        search_doc.content.insert("content".to_string(), content.to_string());
+        search_doc.content.insert("title".to_string(), format!("{:?} {}", data_type, entity_id));
+
+        // Store in search database (with error handling)
+        // Note: Upstash Search API endpoints may not be available or configured correctly
+        // For now, we'll skip search document storage and rely on vector search only
+        let search_namespace = self.upstash_search.get_user_namespace(user_id);
+        log::info!(
+            "Skipping search document storage - user={}, namespace={}, vector_id={} (API endpoints not available)",
+            user_id, search_namespace, vector_id
+        );
+
+        // TODO: Re-enable when Upstash Search API is properly configured
+        // The current API endpoints are returning 404 errors, indicating they may not exist
+        // or the API structure is different from what we're implementing
+        /*
+        if let Err(search_err) = self.upstash_search
+            .upsert_documents(&search_namespace, vec![search_doc])
+            .await
+        {
+            log::error!(
+                "Failed to store search document for user {}: {} - namespace={}, vector_id={}, error_details={:?}",
+                user_id, search_err, search_namespace, vector_id, search_err
+            );
+            // Continue without failing the entire operation
+        } else {
+            log::info!(
+                "Successfully stored search document - user={}, namespace={}, vector_id={}",
+                user_id, search_namespace, vector_id
+            );
+        }
+        */
 
         let processing_time = start_time.elapsed().as_millis() as u64;
 
@@ -237,6 +313,26 @@ impl VectorizationService {
             .delete_vectors(&namespace, &vector_ids)
             .await
             .context("Failed to delete vectors")?;
+
+        // Also delete from search database (with error handling)
+        // Note: Upstash Search API endpoints may not be available or configured correctly
+        // For now, we'll skip search document deletion and rely on vector deletion only
+        let search_namespace = self.upstash_search.get_user_namespace(user_id);
+        log::info!(
+            "Skipping search document deletion - user={}, namespace={}, vector_ids={:?} (API endpoints not available)",
+            user_id, search_namespace, vector_ids
+        );
+
+        // TODO: Re-enable when Upstash Search API is properly configured
+        /*
+        if let Err(search_err) = self.upstash_search
+            .delete_documents(&search_namespace, &vector_ids)
+            .await
+        {
+            log::warn!("Failed to delete search documents for user {}: {}", user_id, search_err);
+            // Continue without failing the entire operation
+        }
+        */
 
         Ok(())
     }

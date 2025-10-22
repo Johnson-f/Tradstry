@@ -35,7 +35,7 @@ impl VectorConfig {
 
     /// Get the base URL for vector operations
     pub fn get_base_url(&self) -> String {
-        format!("{}/vectors", self.url)
+        self.url.clone()
     }
 }
 
@@ -105,12 +105,85 @@ impl OpenRouterConfig {
     }
 }
 
+/// Configuration for Upstash Search database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchConfig {
+    pub url: String,
+    pub token: String,
+    pub max_retries: u32,
+    pub timeout_seconds: u64,
+    pub namespace_prefix: String,
+}
+
+impl SearchConfig {
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(SearchConfig {
+            url: env::var("UPSTASH_SEARCH_REST_URL")
+                .map_err(|_| "UPSTASH_SEARCH_REST_URL environment variable not set")?,
+            token: env::var("UPSTASH_SEARCH_REST_TOKEN")
+                .map_err(|_| "UPSTASH_SEARCH_REST_TOKEN environment variable not set")?,
+            max_retries: 3,
+            timeout_seconds: 30,
+            namespace_prefix: "user".to_string(),
+        })
+    }
+
+    /// Generate namespace for a specific user
+    pub fn get_user_namespace(&self, user_id: &str) -> String {
+        format!("{}_{}", self.namespace_prefix, user_id)
+    }
+
+    /// Get the base URL for search operations
+    pub fn get_base_url(&self) -> String {
+        self.url.clone()
+    }
+}
+
+/// Hybrid search configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HybridSearchConfig {
+    pub enabled: bool,
+    pub ai_reranking_enabled: bool,
+    pub vector_weight: f32,
+    pub keyword_weight: f32,
+    pub max_results: usize,
+}
+
+impl HybridSearchConfig {
+    pub fn from_env() -> Self {
+        Self {
+            enabled: env::var("HYBRID_SEARCH_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            ai_reranking_enabled: env::var("AI_RERANKING_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            vector_weight: env::var("HYBRID_VECTOR_WEIGHT")
+                .unwrap_or_else(|_| "0.6".to_string())
+                .parse()
+                .unwrap_or(0.6),
+            keyword_weight: env::var("HYBRID_KEYWORD_WEIGHT")
+                .unwrap_or_else(|_| "0.4".to_string())
+                .parse()
+                .unwrap_or(0.4),
+            max_results: env::var("HYBRID_MAX_RESULTS")
+                .unwrap_or_else(|_| "20".to_string())
+                .parse()
+                .unwrap_or(20),
+        }
+    }
+}
+
 /// AI Configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfig {
     pub vector_config: VectorConfig,
+    pub search_config: SearchConfig,
     pub voyager_config: VoyagerConfig,
     pub openrouter_config: OpenRouterConfig,
+    pub hybrid_config: HybridSearchConfig,
     pub max_context_vectors: usize,
     pub insights_schedule_enabled: bool,
     pub insights_schedule_hour: u8,
@@ -121,8 +194,10 @@ impl AIConfig {
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(AIConfig {
             vector_config: VectorConfig::from_env()?,
+            search_config: SearchConfig::from_env()?,
             voyager_config: VoyagerConfig::from_env()?,
             openrouter_config: OpenRouterConfig::from_env()?,
+            hybrid_config: HybridSearchConfig::from_env(),
             max_context_vectors: env::var("MAX_CONTEXT_VECTORS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
