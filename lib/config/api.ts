@@ -190,6 +190,15 @@ export const apiConfig = {
           byId: (taskId: string) => `/ai/insights/tasks/${taskId}`,
         },
       },
+      reports: {
+        base: "/ai/reports",
+        generate: "/ai/reports",
+        generateAsync: "/ai/reports/async",
+        byId: (id: string) => `/ai/reports/${id}`,
+        tasks: {
+          byId: (taskId: string) => `/ai/reports/tasks/${taskId}`,
+        },
+      },
     },
 
     // Market Data endpoints

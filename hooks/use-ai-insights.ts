@@ -1,305 +1,413 @@
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { aiInsightsService } from '@/lib/services/ai-insights-service';
 import type {
-  AIInsight,
-  AIInsightCreate,
-  AIInsightUpdate,
-  AIInsightGenerateRequest,
-  InsightDeleteResponse,
-  InsightExpireResponse,
-  PriorityInsightsResponse,
-  ActionableInsightsResponse
-} from '@/lib/services/ai-insights-service';
+  Insight,
+  InsightRequest,
+  InsightSummary,
+  InsightListResponse,
+  InsightGenerationTask,
+  InsightFilters,
+  UseAIInsightsReturn,
+} from '@/lib/types/ai-insights';
+import {
+  AIInsightsError,
+  ValidationError,
+  GenerationError,
+  DEFAULT_INSIGHT_FILTERS,
+} from '@/lib/types/ai-insights';
 
-// Query keys for TanStack Query
-export const aiInsightsKeys = {
-  all: ['ai-insights'] as const,
-  insights: () => [...aiInsightsKeys.all, 'insights'] as const,
-  insightsList: (params?: {
-    insight_type?: string;
-    priority?: string;
-    actionable?: boolean;
-    tags?: string[];
-    search_query?: string;
-    limit?: number;
-    offset?: number;
-    order_by?: string;
-    order_direction?: 'ASC' | 'DESC';
-  }) => [...aiInsightsKeys.insights(), 'list', params] as const,
-  insight: (id: string) => [...aiInsightsKeys.insights(), id] as const,
-  priorityInsights: (limit?: number) => [...aiInsightsKeys.insights(), 'priority', limit] as const,
-  actionableInsights: (limit?: number) => [...aiInsightsKeys.insights(), 'actionable', limit] as const,
-  searchInsights: (params: {
-    query: string;
-    insight_type?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  }) => [...aiInsightsKeys.insights(), 'search', params] as const,
-} as const;
+/**
+ * Custom hook for AI Insights
+ * Provides state management and API interactions for AI insights functionality
+ */
+export function useAIInsights(): UseAIInsightsReturn {
+  // State
+  const [insights, setInsights] = useState<InsightSummary[]>([]);
+  const [currentInsight, setCurrentInsight] = useState<Insight | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-interface UseAIInsightsState {
-  currentInsight: AIInsight | null;
-  isGenerating: boolean;
-}
+  // Refs for cleanup
+  const pollingRefs = useRef<Set<string>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-interface UseAIInsightsReturn extends UseAIInsightsState {
-  // Query states
-  insights: AIInsight[];
-  insightsLoading: boolean;
-  insightsError: Error | null;
-  
-  priorityInsights: PriorityInsightsResponse[];
-  priorityInsightsLoading: boolean;
-  priorityInsightsError: Error | null;
-  
-  actionableInsights: ActionableInsightsResponse[];
-  actionableInsightsLoading: boolean;
-  actionableInsightsError: Error | null;
-  
-  searchResults: AIInsight[];
-  searchLoading: boolean;
-  searchError: Error | null;
-
-  // Mutations
-  createInsight: {
-    mutate: (insightData: AIInsightCreate) => void;
-    mutateAsync: (insightData: AIInsightCreate) => Promise<{ success: boolean; data: AIInsight }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  updateInsight: {
-    mutate: (variables: { insightId: string; insightData: AIInsightUpdate }) => void;
-    mutateAsync: (variables: { insightId: string; insightData: AIInsightUpdate }) => Promise<{ success: boolean; data: AIInsight }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  deleteInsight: {
-    mutate: (variables: { insightId: string; softDelete?: boolean }) => void;
-    mutateAsync: (variables: { insightId: string; softDelete?: boolean }) => Promise<InsightDeleteResponse>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  expireInsight: {
-    mutate: (insightId: string) => void;
-    mutateAsync: (insightId: string) => Promise<InsightExpireResponse>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  generateInsights: {
-    mutate: (request: AIInsightGenerateRequest) => void;
-    mutateAsync: (request: AIInsightGenerateRequest) => Promise<{ success: boolean; message: string; data: AIInsight[] }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-
-  // Query functions
-  refetchInsights: () => void;
-  refetchPriorityInsights: () => void;
-  refetchActionableInsights: () => void;
-  searchInsights: (params: {
-    query: string;
-    insight_type?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  }) => void;
-
-  // Utility
-  setCurrentInsight: (insight: AIInsight | null) => void;
-}
-
-interface UseAIInsightsParams {
-  insightsParams?: {
-    insight_type?: string;
-    priority?: string;
-    actionable?: boolean;
-    tags?: string[];
-    search_query?: string;
-    limit?: number;
-    offset?: number;
-    order_by?: string;
-    order_direction?: 'ASC' | 'DESC';
-  };
-  priorityLimit?: number;
-  actionableLimit?: number;
-}
-
-export function useAIInsights(params: UseAIInsightsParams = {}): UseAIInsightsReturn {
-  const { insightsParams, priorityLimit, actionableLimit } = params;
-  const queryClient = useQueryClient();
-  
-  const [localState, setLocalState] = useState<UseAIInsightsState>({
-    currentInsight: null,
-    isGenerating: false,
-  });
-
-  const setCurrentInsight = useCallback((insight: AIInsight | null) => {
-    setLocalState(prev => ({ ...prev, currentInsight: insight }));
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cancel any ongoing requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Clear polling refs
+      pollingRefs.current.clear();
+    };
   }, []);
 
-  // Queries
-  const {
-    data: insights = [],
-    isLoading: insightsLoading,
-    error: insightsError,
-    refetch: refetchInsights,
-  } = useQuery({
-    queryKey: aiInsightsKeys.insightsList(insightsParams),
-    queryFn: () => aiInsightsService.getInsights(insightsParams),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  /**
+   * Clear error state
+   */
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
-  const {
-    data: priorityInsights = [],
-    isLoading: priorityInsightsLoading,
-    error: priorityInsightsError,
-    refetch: refetchPriorityInsights,
-  } = useQuery({
-    queryKey: aiInsightsKeys.priorityInsights(priorityLimit),
-    queryFn: () => aiInsightsService.getPriorityInsights(priorityLimit),
-    staleTime: 3 * 60 * 1000, // 3 minutes
-  });
+  /**
+   * Clear current insight
+   */
+  const clearCurrentInsight = useCallback(() => {
+    setCurrentInsight(null);
+  }, []);
 
-  const {
-    data: actionableInsights = [],
-    isLoading: actionableInsightsLoading,
-    error: actionableInsightsError,
-    refetch: refetchActionableInsights,
-  } = useQuery({
-    queryKey: aiInsightsKeys.actionableInsights(actionableLimit),
-    queryFn: () => aiInsightsService.getActionableInsights(actionableLimit),
-    staleTime: 3 * 60 * 1000, // 3 minutes
-  });
+  /**
+   * Handle errors with toast notifications
+   */
+  const handleError = useCallback((error: Error, context?: string) => {
+    console.error(`AI Insights Error${context ? ` (${context})` : ''}:`, error);
+    
+    let message = 'An unexpected error occurred';
+    
+    if (error instanceof ValidationError) {
+      message = `Validation Error: ${error.message}`;
+    } else if (error instanceof GenerationError) {
+      message = `Generation Error: ${error.message}`;
+    } else if (error instanceof AIInsightsError) {
+      message = `AI Insights Error: ${error.message}`;
+    } else if (error.message) {
+      message = error.message;
+    }
+    
+    setError(error);
+    toast.error(message);
+  }, []);
 
-  const [searchParams, setSearchParams] = useState<{
-    query: string;
-    insight_type?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  } | null>(null);
+  /**
+   * Generate insights synchronously
+   */
+  const generateInsights = useCallback(async (request: InsightRequest): Promise<void> => {
+    try {
+      setGenerating(true);
+      setError(null);
+      
+      const insight = await aiInsightsService.generateInsights(request);
+      
+      // Add to insights list
+      const insightSummary: InsightSummary = {
+        id: insight.id,
+        insight_type: insight.insight_type,
+        title: insight.title,
+        time_range: insight.time_range,
+        confidence_score: insight.confidence_score,
+        generated_at: insight.generated_at,
+        expires_at: insight.expires_at,
+        key_findings_count: insight.key_findings.length,
+        recommendations_count: insight.recommendations.length,
+      };
+      
+      setInsights(prev => [insightSummary, ...prev]);
+      
+      // Set as current insight
+      setCurrentInsight(insight);
+      
+      toast.success('Insights generated successfully!');
+      
+    } catch (error) {
+      handleError(error as Error, 'generateInsights');
+      throw error;
+    } finally {
+      setGenerating(false);
+    }
+  }, [handleError]);
 
-  const {
-    data: searchResults = [],
-    isLoading: searchLoading,
-    error: searchError,
-  } = useQuery({
-    queryKey: aiInsightsKeys.searchInsights(searchParams!),
-    queryFn: () => aiInsightsService.searchInsights(searchParams!),
-    enabled: !!searchParams,
-    staleTime: 1 * 60 * 1000, // 1 minute
-  });
+  /**
+   * Generate insights asynchronously
+   */
+  const generateInsightsAsync = useCallback(async (request: InsightRequest): Promise<string> => {
+    try {
+      setGenerating(true);
+      setError(null);
+      
+      const taskId = await aiInsightsService.generateInsightsAsync(request);
+      
+      toast.success('Insight generation started!');
+      
+      return taskId;
+      
+    } catch (error) {
+      handleError(error as Error, 'generateInsightsAsync');
+      throw error;
+    } finally {
+      setGenerating(false);
+    }
+  }, [handleError]);
 
-  // Mutations
-  const createInsightMutation = useMutation({
-    mutationFn: (insightData: AIInsightCreate) => aiInsightsService.createInsight(insightData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insights() });
-    },
-  });
+  /**
+   * Get insights with filters
+   */
+  const getInsights = useCallback(async (filters: InsightFilters = DEFAULT_INSIGHT_FILTERS): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await aiInsightsService.getInsights(filters);
+      
+      setInsights(response.insights);
+      
+    } catch (error) {
+      handleError(error as Error, 'getInsights');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [handleError]);
 
-  const updateInsightMutation = useMutation({
-    mutationFn: ({ insightId, insightData }: { insightId: string; insightData: AIInsightUpdate }) =>
-      aiInsightsService.updateInsight(insightId, insightData),
-    onSuccess: (_, { insightId }) => {
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insights() });
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insight(insightId) });
-    },
-  });
+  /**
+   * Get specific insight by ID
+   */
+  const getInsight = useCallback(async (insightId: string): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const insight = await aiInsightsService.getInsight(insightId);
+      
+      setCurrentInsight(insight);
+      
+    } catch (error) {
+      handleError(error as Error, 'getInsight');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [handleError]);
 
-  const deleteInsightMutation = useMutation({
-    mutationFn: ({ insightId, softDelete }: { insightId: string; softDelete?: boolean }) =>
-      aiInsightsService.deleteInsight(insightId, softDelete),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insights() });
-    },
-  });
+  /**
+   * Delete insight
+   */
+  const deleteInsight = useCallback(async (insightId: string): Promise<void> => {
+    try {
+      setError(null);
+      
+      await aiInsightsService.deleteInsight(insightId);
+      
+      // Remove from insights list
+      setInsights(prev => prev.filter(insight => insight.id !== insightId));
+      
+      // Clear current insight if it's the deleted one
+      if (currentInsight?.id === insightId) {
+        setCurrentInsight(null);
+      }
+      
+      toast.success('Insight deleted successfully');
+      
+    } catch (error) {
+      handleError(error as Error, 'deleteInsight');
+      throw error;
+    }
+  }, [currentInsight, handleError]);
 
-  const expireInsightMutation = useMutation({
-    mutationFn: (insightId: string) => aiInsightsService.expireInsight(insightId),
-    onSuccess: (_, insightId) => {
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insights() });
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insight(insightId) });
-    },
-  });
+  /**
+   * Refresh insights list
+   */
+  const refreshInsights = useCallback(async (): Promise<void> => {
+    try {
+      await getInsights();
+      toast.success('Insights refreshed');
+    } catch (error) {
+      // Error already handled in getInsights
+    }
+  }, [getInsights]);
 
-  const generateInsightsMutation = useMutation({
-    mutationFn: (request: AIInsightGenerateRequest) => {
-      setLocalState(prev => ({ ...prev, isGenerating: true }));
-      return aiInsightsService.generateInsights(request);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiInsightsKeys.insights() });
-    },
-    onSettled: () => {
-      setLocalState(prev => ({ ...prev, isGenerating: false }));
-    },
-  });
+  /**
+   * Get task status
+   */
+  const getTaskStatus = useCallback(async (taskId: string): Promise<InsightGenerationTask> => {
+    try {
+      setError(null);
+      
+      const task = await aiInsightsService.getGenerationTask(taskId);
+      
+      return task;
+      
+    } catch (error) {
+      handleError(error as Error, 'getTaskStatus');
+      throw error;
+    }
+  }, [handleError]);
 
-  const searchInsights = useCallback((params: {
-    query: string;
-    insight_type?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  }) => {
-    setSearchParams(params);
+  /**
+   * Poll task status until completion
+   */
+  const pollTaskStatus = useCallback(async (
+    taskId: string,
+    onComplete?: (insight: Insight) => void
+  ): Promise<void> => {
+    try {
+      setError(null);
+      
+      // Add to polling refs for cleanup
+      pollingRefs.current.add(taskId);
+      
+      const insight = await aiInsightsService.pollTaskStatus(
+        taskId,
+        (completedInsight) => {
+          // Add to insights list
+          const insightSummary: InsightSummary = {
+            id: completedInsight.id,
+            insight_type: completedInsight.insight_type,
+            title: completedInsight.title,
+            time_range: completedInsight.time_range,
+            confidence_score: completedInsight.confidence_score,
+            generated_at: completedInsight.generated_at,
+            expires_at: completedInsight.expires_at,
+            key_findings_count: completedInsight.key_findings.length,
+            recommendations_count: completedInsight.recommendations.length,
+          };
+          
+          setInsights(prev => [insightSummary, ...prev]);
+          
+          // Set as current insight
+          setCurrentInsight(completedInsight);
+          
+          // Call completion callback
+          onComplete?.(completedInsight);
+          
+          toast.success('Insight generation completed!');
+        },
+        (error) => {
+          handleError(error, 'pollTaskStatus');
+        }
+      );
+      
+    } catch (error) {
+      handleError(error as Error, 'pollTaskStatus');
+      throw error;
+    } finally {
+      // Remove from polling refs
+      pollingRefs.current.delete(taskId);
+    }
+  }, [handleError]);
+
+  /**
+   * Load initial insights on mount
+   */
+  useEffect(() => {
+    getInsights().catch(() => {
+      // Error already handled in getInsights
+    });
+  }, [getInsights]);
+
+  return {
+    // State
+    insights,
+    currentInsight,
+    loading,
+    generating,
+    error,
+    
+    // Actions
+    generateInsights,
+    generateInsightsAsync,
+    getInsights,
+    getInsight,
+    deleteInsight,
+    refreshInsights,
+    
+    // Task management
+    getTaskStatus,
+    pollTaskStatus,
+    
+    // Utilities
+    clearError,
+    clearCurrentInsight,
+  };
+}
+
+/**
+ * Hook for managing insight generation with polling
+ * Useful for components that need to track async generation
+ */
+export function useInsightGeneration() {
+  const [isPolling, setIsPolling] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const { pollTaskStatus, getTaskStatus } = useAIInsights();
+
+  const startGeneration = useCallback(async (
+    request: InsightRequest,
+    onComplete?: (insight: Insight) => void
+  ): Promise<string> => {
+    try {
+      setIsPolling(true);
+      
+      // Start async generation
+      const { generateInsightsAsync } = useAIInsights();
+      const taskId = await generateInsightsAsync(request);
+      
+      setCurrentTaskId(taskId);
+      
+      // Start polling
+      await pollTaskStatus(taskId, onComplete);
+      
+      return taskId;
+      
+    } catch (error) {
+      setIsPolling(false);
+      setCurrentTaskId(null);
+      throw error;
+    } finally {
+      setIsPolling(false);
+      setCurrentTaskId(null);
+    }
+  }, [pollTaskStatus]);
+
+  const stopPolling = useCallback(() => {
+    setIsPolling(false);
+    setCurrentTaskId(null);
   }, []);
 
   return {
-    ...localState,
-    // Query states
-    insights,
-    insightsLoading,
-    insightsError,
-    priorityInsights,
-    priorityInsightsLoading,
-    priorityInsightsError,
-    actionableInsights,
-    actionableInsightsLoading,
-    actionableInsightsError,
-    searchResults,
-    searchLoading,
-    searchError,
-    // Mutations
-    createInsight: {
-      mutate: createInsightMutation.mutate,
-      mutateAsync: createInsightMutation.mutateAsync,
-      isPending: createInsightMutation.isPending,
-      error: createInsightMutation.error,
-    },
-    updateInsight: {
-      mutate: updateInsightMutation.mutate,
-      mutateAsync: updateInsightMutation.mutateAsync,
-      isPending: updateInsightMutation.isPending,
-      error: updateInsightMutation.error,
-    },
-    deleteInsight: {
-      mutate: deleteInsightMutation.mutate,
-      mutateAsync: deleteInsightMutation.mutateAsync,
-      isPending: deleteInsightMutation.isPending,
-      error: deleteInsightMutation.error,
-    },
-    expireInsight: {
-      mutate: expireInsightMutation.mutate,
-      mutateAsync: expireInsightMutation.mutateAsync,
-      isPending: expireInsightMutation.isPending,
-      error: expireInsightMutation.error,
-    },
-    generateInsights: {
-      mutate: generateInsightsMutation.mutate,
-      mutateAsync: generateInsightsMutation.mutateAsync,
-      isPending: generateInsightsMutation.isPending,
-      error: generateInsightsMutation.error,
-    },
-    // Query functions
-    refetchInsights,
-    refetchPriorityInsights,
-    refetchActionableInsights,
-    searchInsights,
-    // Utility
-    setCurrentInsight,
+    isPolling,
+    currentTaskId,
+    startGeneration,
+    stopPolling,
+    getTaskStatus,
   };
+}
+
+/**
+ * Hook for insight analytics and statistics
+ */
+export function useInsightAnalytics() {
+  const { insights } = useAIInsights();
+  
+  const analytics = useCallback(() => {
+    const totalInsights = insights.length;
+    const insightsByType = insights.reduce((acc, insight) => {
+      acc[insight.insight_type] = (acc[insight.insight_type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const avgConfidenceScore = insights.length > 0 
+      ? insights.reduce((sum, insight) => sum + insight.confidence_score, 0) / insights.length
+      : 0;
+    
+    const recentInsights = insights.filter(insight => {
+      const generatedAt = new Date(insight.generated_at);
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return generatedAt > oneWeekAgo;
+    });
+    
+    const generationFrequency = recentInsights.length / 7; // insights per day
+    
+    return {
+      totalInsights,
+      insightsByType,
+      avgConfidenceScore,
+      generationFrequency,
+      recentInsightsCount: recentInsights.length,
+    };
+  }, [insights]);
+  
+  return analytics();
 }
