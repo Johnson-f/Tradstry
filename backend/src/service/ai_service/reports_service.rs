@@ -5,7 +5,9 @@ use crate::models::ai::reports::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::models::ai::insights::{Insight, InsightRequest, InsightType};
+use crate::models::analytics::{AnalyticsOptions};
 use crate::service::ai_service::AIInsightsService;
+use crate::service::analytics_engine::AnalyticsEngine as AnalyticsEngineService;
 use crate::turso::TursoClient;
 use anyhow::Result as AnyhowResult;
 use chrono::{DateTime, Utc, Datelike, TimeZone};
@@ -20,6 +22,7 @@ pub struct AiReportsService {
     #[allow(dead_code)]
     turso_client: Arc<TursoClient>,
     ai_insights_service: Arc<AIInsightsService>,
+    analytics_engine: AnalyticsEngineService,
 }
 
 impl AiReportsService {
@@ -27,6 +30,7 @@ impl AiReportsService {
         Self { 
             turso_client,
             ai_insights_service,
+            analytics_engine: AnalyticsEngineService::new(),
         }
     }
 
@@ -93,140 +97,39 @@ impl AiReportsService {
         Ok(report)
     }
 
-    /// Generate analytics data from user's trading data
+    /// Generate analytics data using the new analytics engine
     async fn generate_analytics_data(
         &self,
         conn: &Connection,
         _user_id: &str,
         time_range: &TimeRange,
     ) -> AnyhowResult<AnalyticsData> {
-        let (start_date, end_date) = self.get_date_range(time_range);
-        
-        // Query stock trades
-        let stock_query = "
-            SELECT 
-                COUNT(*) as total_trades,
-                SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
-                SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
-                SUM(CASE WHEN pnl = 0 THEN 1 ELSE 0 END) as break_even_trades,
-                SUM(pnl) as total_pnl,
-                AVG(CASE WHEN pnl > 0 THEN pnl END) as avg_gain,
-                AVG(CASE WHEN pnl < 0 THEN pnl END) as avg_loss,
-                MAX(pnl) as biggest_winner,
-                MIN(pnl) as biggest_loser,
-                AVG(position_size) as avg_position_size
-            FROM stocks 
-            WHERE created_at >= ? AND created_at <= ?
-        ";
+        // Use the new analytics engine to calculate comprehensive metrics
+        let options = AnalyticsOptions::default();
+        let comprehensive_analytics = self.analytics_engine
+            .calculate_comprehensive_analytics(conn, time_range, options)
+            .await?;
 
-        let stock_stmt = conn.prepare(stock_query).await?;
-        let mut stock_rows = stock_stmt.query([
-            start_date.as_str(),
-            end_date.as_str(),
-        ]).await?;
-
-        let mut analytics = AnalyticsData {
-            total_pnl: 0.0,
-            win_rate: 0.0,
-            profit_factor: 0.0,
-            avg_gain: 0.0,
-            avg_loss: 0.0,
-            biggest_winner: 0.0,
-            biggest_loser: 0.0,
-            avg_hold_time_winners: 0.0,
-            avg_hold_time_losers: 0.0,
-            risk_reward_ratio: 0.0,
-            trade_expectancy: 0.0,
-            avg_position_size: 0.0,
-            net_pnl: 0.0,
-            total_trades: 0,
-            winning_trades: 0,
-            losing_trades: 0,
-            break_even_trades: 0,
+        // Convert comprehensive analytics to the legacy AnalyticsData format
+        let analytics = AnalyticsData {
+            total_pnl: comprehensive_analytics.core_metrics.total_pnl,
+            win_rate: comprehensive_analytics.core_metrics.win_rate,
+            profit_factor: comprehensive_analytics.core_metrics.profit_factor,
+            avg_gain: comprehensive_analytics.core_metrics.average_win,
+            avg_loss: comprehensive_analytics.core_metrics.average_loss,
+            biggest_winner: comprehensive_analytics.core_metrics.biggest_winner,
+            biggest_loser: comprehensive_analytics.core_metrics.biggest_loser,
+            avg_hold_time_winners: comprehensive_analytics.performance_metrics.average_hold_time_winners_days,
+            avg_hold_time_losers: comprehensive_analytics.performance_metrics.average_hold_time_losers_days,
+            risk_reward_ratio: comprehensive_analytics.risk_metrics.risk_reward_ratio,
+            trade_expectancy: comprehensive_analytics.performance_metrics.trade_expectancy,
+            avg_position_size: comprehensive_analytics.core_metrics.average_position_size,
+            net_pnl: comprehensive_analytics.core_metrics.net_profit_loss,
+            total_trades: comprehensive_analytics.core_metrics.total_trades,
+            winning_trades: comprehensive_analytics.core_metrics.winning_trades,
+            losing_trades: comprehensive_analytics.core_metrics.losing_trades,
+            break_even_trades: comprehensive_analytics.core_metrics.break_even_trades,
         };
-
-        if let Some(row) = stock_rows.next().await? {
-            analytics.total_trades = row.get::<i64>(0).unwrap_or(0) as u32;
-            analytics.winning_trades = row.get::<i64>(1).unwrap_or(0) as u32;
-            analytics.losing_trades = row.get::<i64>(2).unwrap_or(0) as u32;
-            analytics.break_even_trades = row.get::<i64>(3).unwrap_or(0) as u32;
-            analytics.total_pnl = row.get::<f64>(4).unwrap_or(0.0);
-            analytics.avg_gain = row.get::<f64>(5).unwrap_or(0.0);
-            analytics.avg_loss = row.get::<f64>(6).unwrap_or(0.0);
-            analytics.biggest_winner = row.get::<f64>(7).unwrap_or(0.0);
-            analytics.biggest_loser = row.get::<f64>(8).unwrap_or(0.0);
-            analytics.avg_position_size = row.get::<f64>(9).unwrap_or(0.0);
-        }
-
-        // Query options trades
-        let options_query = "
-            SELECT 
-                COUNT(*) as total_trades,
-                SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
-                SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
-                SUM(CASE WHEN pnl = 0 THEN 1 ELSE 0 END) as break_even_trades,
-                SUM(pnl) as total_pnl,
-                AVG(CASE WHEN pnl > 0 THEN pnl END) as avg_gain,
-                AVG(CASE WHEN pnl < 0 THEN pnl END) as avg_loss,
-                MAX(pnl) as biggest_winner,
-                MIN(pnl) as biggest_loser,
-                AVG(position_size) as avg_position_size
-            FROM options 
-            WHERE created_at >= ? AND created_at <= ?
-        ";
-
-        let options_stmt = conn.prepare(options_query).await?;
-        let mut options_rows = options_stmt.query([
-            start_date.as_str(),
-            end_date.as_str(),
-        ]).await?;
-
-        if let Some(row) = options_rows.next().await? {
-            let options_total_trades = row.get::<i64>(0).unwrap_or(0) as u32;
-            let options_winning_trades = row.get::<i64>(1).unwrap_or(0) as u32;
-            let options_losing_trades = row.get::<i64>(2).unwrap_or(0) as u32;
-            let options_break_even_trades = row.get::<i64>(3).unwrap_or(0) as u32;
-            let options_total_pnl = row.get::<f64>(4).unwrap_or(0.0);
-            let options_avg_gain = row.get::<f64>(5).unwrap_or(0.0);
-            let options_avg_loss = row.get::<f64>(6).unwrap_or(0.0);
-            let options_biggest_winner = row.get::<f64>(7).unwrap_or(0.0);
-            let options_biggest_loser = row.get::<f64>(8).unwrap_or(0.0);
-            let options_avg_position_size = row.get::<f64>(9).unwrap_or(0.0);
-
-            // Combine stock and options data
-            analytics.total_trades += options_total_trades;
-            analytics.winning_trades += options_winning_trades;
-            analytics.losing_trades += options_losing_trades;
-            analytics.break_even_trades += options_break_even_trades;
-            analytics.total_pnl += options_total_pnl;
-            analytics.net_pnl = analytics.total_pnl;
-
-            // Update averages (weighted)
-            if analytics.total_trades > 0 {
-                let stock_weight = (analytics.total_trades - options_total_trades) as f64 / analytics.total_trades as f64;
-                let options_weight = options_total_trades as f64 / analytics.total_trades as f64;
-                
-                analytics.avg_gain = analytics.avg_gain * stock_weight + options_avg_gain * options_weight;
-                analytics.avg_loss = analytics.avg_loss * stock_weight + options_avg_loss * options_weight;
-                analytics.avg_position_size = analytics.avg_position_size * stock_weight + options_avg_position_size * options_weight;
-            }
-
-            // Update biggest winner/loser
-            analytics.biggest_winner = analytics.biggest_winner.max(options_biggest_winner);
-            analytics.biggest_loser = analytics.biggest_loser.min(options_biggest_loser);
-        }
-
-        // Calculate derived metrics
-        if analytics.total_trades > 0 {
-            analytics.win_rate = (analytics.winning_trades as f64 / analytics.total_trades as f64) * 100.0;
-            
-            if analytics.avg_loss != 0.0 {
-                analytics.profit_factor = analytics.avg_gain.abs() / analytics.avg_loss.abs();
-                analytics.risk_reward_ratio = analytics.avg_gain.abs() / analytics.avg_loss.abs();
-            }
-            
-            analytics.trade_expectancy = analytics.total_pnl / analytics.total_trades as f64;
-        }
 
         Ok(analytics)
     }
@@ -606,7 +509,7 @@ impl AiReportsService {
         let summary: String = row.get(4)?;
         let analytics: AnalyticsData = serde_json::from_str(&row.get::<String>(5)?)?;
         let insights: Vec<Insight> = serde_json::from_str(&row.get::<String>(6)?)?;
-        let trades: Vec<TradeData> = serde_json::from_str(&row.get::<String>(7)?)?; 
+        let trades: Vec<TradeData> = serde_json::from_str(&row.get::<String>(7)?)?;
         let recommendations: Vec<String> = serde_json::from_str(&row.get::<String>(8)?)?;
         let patterns: Vec<crate::models::ai::reports::TradingPattern> = serde_json::from_str(&row.get::<String>(9)?)?;
         let risk_metrics: crate::models::ai::reports::RiskMetrics = serde_json::from_str(&row.get::<String>(10)?)?;
