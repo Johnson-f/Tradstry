@@ -354,42 +354,96 @@ impl AIInsightsService {
         })
     }
 
-    /// Generate insight content using AI
-    async fn generate_insight_content(
-        &self,
-        request: &InsightRequest,
-        trading_data: &TradingDataSummary,
-    ) -> Result<InsightContent> {
-        let template = self.get_insight_template(&request.insight_type);
-        
-        // Build prompt
-        let prompt = self.build_insight_prompt(&template, request, trading_data);
-
-        // Generate content using OpenRouter
-        let messages = vec![crate::service::ai_service::openrouter_client::ChatMessage {
-            role: OpenRouterMessageRole::User,
-            content: prompt,
-        }];
-
-        let response = self.openrouter_client.generate_chat(messages).await?;
-
-        // Parse response (assuming JSON format)
-        let parsed_response: serde_json::Value = serde_json::from_str(&response)?;
-
-        Ok(InsightContent {
-            title: parsed_response["title"].as_str().unwrap_or("Trading Insight").to_string(),
-            content: parsed_response["content"].as_str().unwrap_or(&response).to_string(),
-            key_findings: parsed_response["key_findings"]
-                .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect())
-                .unwrap_or_default(),
-            recommendations: parsed_response["recommendations"]
-                .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect())
-                .unwrap_or_default(),
-            confidence_score: parsed_response["confidence_score"].as_f64().unwrap_or(0.8) as f32,
-        })
+  /// Generate insight content using AI
+async fn generate_insight_content(
+    &self,
+    request: &InsightRequest,
+    trading_data: &TradingDataSummary,
+) -> Result<InsightContent> {
+    // Check if we have enough data
+    if trading_data.vector_matches.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No trading data available to generate insights. Please add some trades first."
+        ));
     }
+
+    let template = self.get_insight_template(&request.insight_type);
+    
+    // Build prompt
+    let prompt = self.build_insight_prompt(&template, request, trading_data);
+
+    // Generate content using OpenRouter
+    let messages = vec![crate::service::ai_service::openrouter_client::ChatMessage {
+        role: OpenRouterMessageRole::User,
+        content: prompt,
+    }];
+
+    let response = self.openrouter_client.generate_chat(messages).await?;
+
+    // Check if response is empty
+    if response.trim().is_empty() {
+        return Err(anyhow::anyhow!("AI service returned empty response"));
+    }
+
+    log::info!("OpenRouter response (first 200 chars): {}", 
+               response.chars().take(200).collect::<String>());
+
+    // Try to parse as JSON, but handle failure gracefully
+    match serde_json::from_str::<serde_json::Value>(&response) {
+        Ok(parsed_response) => {
+            // Successfully parsed as JSON
+            Ok(InsightContent {
+                title: parsed_response["title"]
+                    .as_str()
+                    .unwrap_or("Trading Insight")
+                    .to_string(),
+                content: parsed_response["content"]
+                    .as_str()
+                    .unwrap_or(&response)
+                    .to_string(),
+                key_findings: parsed_response["key_findings"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                recommendations: parsed_response["recommendations"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                confidence_score: parsed_response["confidence_score"]
+                    .as_f64()
+                    .unwrap_or(0.8) as f32,
+            })
+        }
+        Err(e) => {
+            // Failed to parse as JSON - treat as plain text response
+            log::warn!("Failed to parse AI response as JSON: {}. Treating as plain text.", e);
+            log::debug!("Raw response: {}", response);
+            
+            // Create a basic insight from the plain text response
+            Ok(InsightContent {
+                title: format!("{:?} Analysis", request.insight_type),
+                content: response.clone(),
+                key_findings: vec![
+                    "Analysis based on available trading data".to_string()
+                ],
+                recommendations: vec![
+                    "Review the detailed analysis above".to_string()
+                ],
+                confidence_score: 0.7,
+            })
+        }
+    }
+}
 
     /// Build insight prompt
     fn build_insight_prompt(
