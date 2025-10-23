@@ -48,6 +48,7 @@ pub struct GoogleConfig {
 
 /// Vector database configuration
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct VectorConfig {
     pub rest_url: String,
     pub rest_token: String,

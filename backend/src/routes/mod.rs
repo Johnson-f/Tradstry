@@ -7,6 +7,7 @@ pub mod playbook;
 pub mod notebook;
 pub mod ai_chat;
 pub mod ai_insights;
+pub mod ai_reports;
 
 pub use user::configure_user_routes;
 pub use options::configure_options_routes;
@@ -17,3 +18,4 @@ pub use playbook::configure_playbook_routes;
 pub use notebook::configure_notebook_routes;
 pub use ai_chat::configure_ai_chat_routes;
 pub use ai_insights::configure_ai_insights_routes;
+pub use ai_reports::configure_ai_reports_routes;

@@ -194,6 +194,7 @@ export const apiConfig = {
         base: "/ai/reports",
         generate: "/ai/reports",
         generateAsync: "/ai/reports/async",
+        list: "/ai/reports", // GET endpoint for listing reports
         byId: (id: string) => `/ai/reports/${id}`,
         tasks: {
           byId: (taskId: string) => `/ai/reports/tasks/${taskId}`,

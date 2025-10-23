@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 /// Report type enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ReportType {
     Comprehensive,
     Performance,
@@ -32,6 +33,7 @@ impl std::fmt::Display for ReportType {
 
 /// Report section enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ReportSection {
     Summary,
     Analytics,

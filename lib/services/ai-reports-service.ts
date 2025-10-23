@@ -1,4 +1,5 @@
 import { apiConfig, getFullUrl } from '@/lib/config/api';
+import { createClient } from '@/lib/supabase/client';
 import type {
   TradingReport,
   ReportRequest,
@@ -21,9 +22,11 @@ import {
  */
 export class AIReportsService {
   private baseUrl: string;
+  private supabase;
 
   constructor() {
     this.baseUrl = getFullUrl(apiConfig.endpoints.ai.reports.base);
+    this.supabase = createClient();
   }
 
   /**
@@ -33,11 +36,16 @@ export class AIReportsService {
     try {
       this.validateReportRequest(request);
 
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(request),
       });
@@ -81,11 +89,16 @@ export class AIReportsService {
     try {
       this.validateReportRequest(request);
 
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+
       const response = await fetch(getFullUrl(apiConfig.endpoints.ai.reports.generateAsync), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(request),
       });
@@ -126,6 +139,8 @@ export class AIReportsService {
    */
   async getReports(filters: ReportFilters = {}): Promise<ReportListResponse> {
     try {
+      console.log('AIReportsService.getReports called with filters:', filters);
+      
       const queryParams = new URLSearchParams();
       
       if (filters.time_range) {
@@ -142,16 +157,27 @@ export class AIReportsService {
       }
 
       const url = `${this.baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      console.log('Making request to URL:', url);
       
+      const token = await this.getAuthToken();
+      if (!token) {
+        console.error('No authentication token available');
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+      
+      console.log('Making fetch request...');
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
+      console.log('Response received:', response.status, response.statusText);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('API error response:', errorData);
         throw new AIReportsError(
           errorData.message || `HTTP ${response.status}: ${response.statusText}`,
           'FETCH_ERROR',
@@ -160,16 +186,20 @@ export class AIReportsService {
       }
 
       const result: ApiResponse<ReportListResponse> = await response.json();
+      console.log('API response data:', result);
       
       if (!result.success || !result.data) {
+        console.error('API returned unsuccessful response:', result);
         throw new AIReportsError(
           result.error || 'Failed to fetch reports',
           'FETCH_ERROR'
         );
       }
 
+      console.log('Successfully fetched reports:', result.data);
       return result.data;
     } catch (error) {
+      console.error('Error in getReports:', error);
       if (error instanceof AIReportsError) {
         throw error;
       }
@@ -192,10 +222,15 @@ export class AIReportsService {
 
       const url = getFullUrl(apiConfig.endpoints.ai.reports.byId(reportId));
       
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -249,10 +284,15 @@ export class AIReportsService {
 
       const url = getFullUrl(apiConfig.endpoints.ai.reports.tasks.byId(taskId));
       
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -306,10 +346,15 @@ export class AIReportsService {
 
       const url = getFullUrl(apiConfig.endpoints.ai.reports.byId(reportId));
       
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIReportsError('Authentication required', 'AUTH_ERROR');
+      }
+      
       const response = await fetch(url, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${this.getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -470,17 +515,47 @@ export class AIReportsService {
   }
 
   /**
-   * Get authentication token
-   * This should be implemented based on your auth system
+   * Get authentication token from Supabase session with refresh capability
    */
-  private getAuthToken(): string {
-    // TODO: Implement proper auth token retrieval
-    // This could be from localStorage, cookies, or auth context
-    const token = localStorage.getItem('auth_token');
-    if (!token) {
-      throw new AIReportsError('Authentication token not found', 'AUTH_ERROR');
+  private async getAuthToken(): Promise<string | null> {
+    try {
+      const { data: { session }, error } = await this.supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Error getting session:', error);
+        return null;
+      }
+      
+      if (!session?.access_token) {
+        console.log('No authentication token found - user not logged in');
+        return null;
+      }
+      
+      // Check if token expires soon (within 5 minutes)
+      const tokenExpiry = session.expires_at ? new Date(session.expires_at * 1000) : null;
+      const now = new Date();
+      const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+      
+      if (tokenExpiry && tokenExpiry < fiveMinutesFromNow) {
+        console.log('Token expires soon, refreshing...');
+        const { data: { session: refreshedSession }, error: refreshError } = await this.supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.error('Error refreshing session:', refreshError);
+          return null;
+        }
+        
+        if (refreshedSession?.access_token) {
+          console.log('Token refreshed successfully');
+          return refreshedSession.access_token;
+        }
+      }
+      
+      return session.access_token;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
     }
-    return token;
   }
 }
 
