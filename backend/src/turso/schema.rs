@@ -490,7 +490,6 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         r#"
         CREATE TABLE IF NOT EXISTS ai_reports (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
             time_range TEXT NOT NULL CHECK (time_range IN ('7d', '30d', '90d', 'ytd', '1y')),
             report_type TEXT NOT NULL CHECK (report_type IN ('comprehensive', 'performance', 'risk', 'trading', 'behavioral', 'market')),
             title TEXT NOT NULL,
@@ -512,7 +511,6 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         "#,
         libsql::params![],
     ).await?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_user_id ON ai_reports(user_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_time_range ON ai_reports(time_range)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_type ON ai_reports(report_type)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reports_generated_at ON ai_reports(generated_at)", libsql::params![]).await?;
@@ -522,7 +520,6 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         r#"
         CREATE TABLE IF NOT EXISTS report_generation_tasks (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
             time_range TEXT NOT NULL,
             report_type TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'expired')),
@@ -537,7 +534,6 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         "#,
         libsql::params![],
     ).await?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_user_id ON report_generation_tasks(user_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_status ON report_generation_tasks(status)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_report_tasks_created_at ON report_generation_tasks(created_at)", libsql::params![]).await?;
 
@@ -665,8 +661,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for AI features)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.12".to_string(),
-        description: "Added AI chat, insights, and reports tables".to_string(),
+        version: "0.0.13".to_string(),
+        description: "Removed user_id to AI reports and report generation tasks tables".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -933,7 +929,6 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         name: "ai_reports".to_string(),
         columns: vec![
             ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
-            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "report_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
@@ -953,7 +948,6 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
         ],
         indexes: vec![
-            IndexInfo { name: "idx_ai_reports_user_id".to_string(), table_name: "ai_reports".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
             IndexInfo { name: "idx_ai_reports_time_range".to_string(), table_name: "ai_reports".to_string(), columns: vec!["time_range".to_string()], is_unique: false },
             IndexInfo { name: "idx_ai_reports_type".to_string(), table_name: "ai_reports".to_string(), columns: vec!["report_type".to_string()], is_unique: false },
             IndexInfo { name: "idx_ai_reports_generated_at".to_string(), table_name: "ai_reports".to_string(), columns: vec!["generated_at".to_string()], is_unique: false },
@@ -966,7 +960,6 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         name: "report_generation_tasks".to_string(),
         columns: vec![
             ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
-            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "time_range".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "report_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
             ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'pending'".to_string()), is_primary_key: false },
@@ -978,7 +971,6 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             ColumnInfo { name: "result_report_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
         ],
         indexes: vec![
-            IndexInfo { name: "idx_report_tasks_user_id".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
             IndexInfo { name: "idx_report_tasks_status".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["status".to_string()], is_unique: false },
             IndexInfo { name: "idx_report_tasks_created_at".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
         ],

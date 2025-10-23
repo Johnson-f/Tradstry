@@ -28,7 +28,7 @@ pub use webhook::ClerkWebhookHandler;
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
 use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
@@ -41,6 +41,8 @@ pub struct AppState {
     pub ai_chat_service: Arc<AIChatService>,
     #[allow(dead_code)]
     pub ai_insights_service: Arc<AIInsightsService>,
+    #[allow(dead_code)]
+    pub ai_reports_service: Arc<AiReportsService>,
     pub jwt_cache: Arc<JwtCache>,
 }
 
@@ -124,6 +126,11 @@ impl AppState {
             10, // max_context_vectors
         ));
 
+        let ai_reports_service = Arc::new(AiReportsService::new(
+            Arc::clone(&turso_client),
+            Arc::clone(&ai_insights_service),
+        ));
+
         // Initialize JWT cache
         let cache_duration_seconds = std::env::var("JWT_CACHE_DURATION_SECONDS")
             .unwrap_or_else(|_| "30".to_string())
@@ -140,6 +147,7 @@ impl AppState {
             cache_service,
             ai_chat_service,
             ai_insights_service,
+            ai_reports_service,
             jwt_cache,
         })
     }
