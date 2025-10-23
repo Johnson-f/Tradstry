@@ -159,6 +159,9 @@ impl AIInsightsService {
         log::info!("Starting get_user_insights for user: {}, time_range: {:?}, insight_type: {:?}, limit: {:?}, offset: {:?}", 
                   user_id, time_range, insight_type, limit, offset);
 
+        // Ensure table exists
+        self.ensure_table_exists(conn).await?;
+
         let limit = limit.unwrap_or(20);
         let offset = offset.unwrap_or(0);
 
@@ -168,13 +171,13 @@ impl AIInsightsService {
 
         if let Some(ref tr) = time_range {
             query.push_str(" AND time_range = ?");
-            params.push(format!("{:?}", tr));
+            params.push(serde_json::to_string(&tr)?);
             log::info!("Added time_range filter: {:?}", tr);
         }
 
         if let Some(ref it) = insight_type {
             query.push_str(" AND insight_type = ?");
-            params.push(format!("{:?}", it));
+            params.push(serde_json::to_string(&it)?);
             log::info!("Added insight_type filter: {:?}", it);
         }
 
@@ -191,12 +194,12 @@ impl AIInsightsService {
 
         if let Some(tr) = time_range {
             count_query.push_str(" AND time_range = ?");
-            count_params.push(format!("{:?}", tr));
+            count_params.push(serde_json::to_string(&tr)?);
         }
 
         if let Some(it) = insight_type {
             count_query.push_str(" AND insight_type = ?");
-            count_params.push(format!("{:?}", it));
+            count_params.push(serde_json::to_string(&it)?);
         }
 
         log::info!("Count query: {}", count_query);
@@ -443,8 +446,8 @@ impl AIInsightsService {
         
         let mut rows = stmt.query([
             user_id,
-            &format!("{:?}", time_range),
-            &format!("{:?}", insight_type),
+            &serde_json::to_string(&time_range)?,
+            &serde_json::to_string(&insight_type)?,
         ]).await?;
         
         if let Some(row) = rows.next().await? {
@@ -838,6 +841,21 @@ impl AIInsightsService {
         } else {
             Err(anyhow::anyhow!("Generation task not found"))
         }
+    }
+
+    /// Ensure ai_insights table exists in user database
+    async fn ensure_table_exists(&self, conn: &Connection) -> Result<()> {
+        let stmt = conn.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_insights'"
+        ).await?;
+        
+        let mut rows = stmt.query(libsql::params![]).await?;
+        
+        if rows.next().await?.is_none() {
+            return Err(anyhow::anyhow!("ai_insights table does not exist in user database"));
+        }
+        
+        Ok(())
     }
 
     /// Clone service for background processing

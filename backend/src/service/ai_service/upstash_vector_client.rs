@@ -203,10 +203,29 @@ impl UpstashVectorClient {
             "Starting vector similarity query - namespace={}, vector_dim={}, top_k={}, filter={:?}",
             namespace, query_vector.len(), top_k, filter
         );
-
-        // Convert filter to string format if provided
-        let filter_string = filter.map(|f| f.to_string());
-
+    
+        // Convert filter to proper Upstash Vector SQL-like format
+        let filter_string = filter.map(|f| {
+            if let Some(obj) = f.as_object() {
+                if let Some(data_type) = obj.get("data_type") {
+                    if let Some(in_obj) = data_type.as_object() {
+                        if let Some(in_array) = in_obj.get("$in") {
+                            if let Some(array) = in_array.as_array() {
+                                let values: Vec<String> = array.iter()
+                                    .filter_map(|v| v.as_str())
+                                    .map(|s| format!("'{}'", s))
+                                    .collect();
+                                return format!("data_type IN ({})", values.join(", "));
+                            }
+                        }
+                    }
+                }
+            }
+            f.to_string()
+        });
+    
+        log::debug!("Converted filter string: {:?}", filter_string);
+    
         let request = QueryRequest {
             vector: query_vector.to_vec(),
             top_k,

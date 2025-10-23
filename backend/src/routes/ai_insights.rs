@@ -9,9 +9,13 @@ use crate::turso::client::TursoClient;
 use crate::turso::config::SupabaseConfig;
 use crate::turso::auth::validate_supabase_jwt_token;
 use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_web_httpauth::middleware::HttpAuthentication;
 use log::{info, error};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+// Import jwt_validator from main module
+use crate::jwt_validator;
 
 /// Authenticate user and get user ID
 async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseConfig) -> Result<String> {
@@ -284,6 +288,7 @@ pub async fn get_insights(
         Err(e) => {
             error!("Failed to get insights for user {}: {}", user_id, e);
             error!("Error details: {:?}", e);
+            error!("Error source: {:?}", e.source());
             Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
                 format!("Failed to get insights: {}", e)
             )))
@@ -424,6 +429,7 @@ fn parse_insight_type(insight_type: &str) -> Result<InsightType> {
 pub fn configure_ai_insights_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/ai/insights")
+            .wrap(HttpAuthentication::bearer(jwt_validator))
             .route("", web::post().to(generate_insights))
             .route("/async", web::post().to(generate_insights_async))
             .route("", web::get().to(get_insights))
