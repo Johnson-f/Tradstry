@@ -104,6 +104,7 @@ export interface ChatError {
 // Hook state types
 export interface ChatState {
   sessions: ChatSessionSummary[];
+  totalSessionsCount: number;
   currentSession: ChatSession | null;
   messages: ChatMessage[];
   isLoading: boolean;

@@ -145,23 +145,6 @@ export function TradingPatternsCard({ timeRange = '30d', className }: TradingPat
                 {formatTimeRange(timeRange)} Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateInsights}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="h-4 w-4" />
-                  Generate Insights
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -171,9 +154,6 @@ export function TradingPatternsCard({ timeRange = '30d', className }: TradingPat
             <p className="text-muted-foreground mb-4">
               Generate insights to discover patterns in your trading behavior.
             </p>
-            <Button onClick={handleGenerateInsights} disabled={generating}>
-              {generating ? 'Generating...' : 'Generate Trading Patterns'}
-            </Button>
           </div>
         </CardContent>
       </Card>

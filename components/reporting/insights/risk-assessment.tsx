@@ -157,23 +157,6 @@ export function RiskAssessmentCard({ timeRange = '30d', className }: RiskAssessm
                 {formatTimeRange(timeRange)} Risk Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateInsights}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Shield className="h-4 w-4" />
-                  Generate Assessment
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -183,9 +166,6 @@ export function RiskAssessmentCard({ timeRange = '30d', className }: RiskAssessm
             <p className="text-muted-foreground mb-4">
               Generate a risk assessment to identify potential portfolio risks and vulnerabilities.
             </p>
-            <Button onClick={handleGenerateInsights} disabled={generating}>
-              {generating ? 'Generating...' : 'Generate Risk Assessment'}
-            </Button>
           </div>
         </CardContent>
       </Card>

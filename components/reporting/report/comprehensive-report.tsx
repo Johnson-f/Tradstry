@@ -195,23 +195,6 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
                 {formatTimeRange(timeRange)} Complete Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <FileText className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -222,9 +205,6 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
               Generate a comprehensive report to get a complete analysis of your trading performance, 
               risk metrics, behavioral patterns, and market insights.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Comprehensive Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
