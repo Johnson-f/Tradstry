@@ -51,17 +51,19 @@ export function useAIChat(): UseAIChatReturn {
 
   // Queries
   const {
-    data: sessions = [],
+    data: sessionsData,
     isLoading: isLoadingSessions,
     error: sessionsError,
     refetch: refetchSessions,
   } = useQuery({
     queryKey: QUERY_KEYS.sessions,
     queryFn: () => aiChatService.getSessions({ limit: 50 }),
-    select: (data) => data.sessions,
     staleTime: 30 * 1000, // 30 seconds
     enabled: isAuthenticated === true, // Only run when authenticated
   });
+
+  const sessions = sessionsData?.sessions || [];
+  const totalSessionsCount = sessionsData?.total_count || 0;
 
   const {
     data: currentSessionData,
@@ -278,6 +280,7 @@ export function useAIChat(): UseAIChatReturn {
   return {
     // State
     sessions,
+    totalSessionsCount,
     currentSession,
     messages: allMessages,
     isLoading,

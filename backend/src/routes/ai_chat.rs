@@ -321,6 +321,33 @@ pub async fn delete_chat_session(
     }
 }
 
+/// Fix message counts for all chat sessions
+async fn fix_message_counts(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse> {
+    info!("Fixing message counts for all chat sessions");
+
+    let conn = get_user_database_connection(&req, &app_state).await?;
+
+    match app_state.ai_chat_service.fix_message_counts(&conn).await {
+        Ok(updated_count) => {
+            info!("Successfully fixed message counts - {} sessions updated", updated_count);
+            Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "success": true,
+                "message": format!("Message counts fixed for {} sessions", updated_count),
+                "updated_sessions": updated_count
+            }))))
+        }
+        Err(e) => {
+            error!("Failed to fix message counts: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                "Failed to fix message counts".to_string()
+            )))
+        }
+    }
+}
+
 /// Configure AI chat routes
 pub fn configure_ai_chat_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -332,6 +359,7 @@ pub fn configure_ai_chat_routes(cfg: &mut web::ServiceConfig) {
             .route("/sessions/{id}", web::get().to(get_chat_session))
             .route("/sessions/{id}/title", web::put().to(update_chat_session_title))
             .route("/sessions/{id}", web::delete().to(delete_chat_session))
+            .route("/fix-message-counts", web::post().to(fix_message_counts))
     );
 }
 

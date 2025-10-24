@@ -184,23 +184,6 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
                 {formatTimeRange(timeRange)} Performance Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -211,9 +194,6 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
               Generate a performance report to analyze your trading metrics, profitability, 
               and key performance indicators.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Performance Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -261,23 +241,6 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
                 {formatTimeRange(timeRange)} Performance Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -288,9 +251,6 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
               Generate a performance report to analyze your trading metrics, profitability, 
               and key performance indicators.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Performance Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>

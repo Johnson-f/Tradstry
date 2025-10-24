@@ -357,7 +357,18 @@ export default function ChatPage() {
                   >
                     <p className="text-sm">{msg.content}</p>
                     <p className="text-xs opacity-70 mt-1">
-                      {new Date(msg.created_at).toLocaleTimeString()}
+                      {(() => {
+                        try {
+                          const date = new Date(msg.created_at);
+                          if (isNaN(date.getTime())) {
+                            return "Invalid Date";
+                          }
+                          return date.toLocaleTimeString();
+                        } catch (error) {
+                          console.error("Error formatting timestamp:", msg.created_at, error);
+                          return "Invalid Date";
+                        }
+                      })()}
                     </p>
                     {msg.isOptimistic && (
                       <div className="flex items-center gap-1 mt-1">

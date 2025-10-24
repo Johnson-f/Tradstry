@@ -202,23 +202,6 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
                 {formatTimeRange(timeRange)} Market Conditions Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Globe className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -229,9 +212,6 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
               Generate a market analysis report to understand current market conditions, 
               sector performance, and market trends affecting your trades.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Market Analysis Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -279,23 +259,6 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
                 {formatTimeRange(timeRange)} Market Conditions Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Globe className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -306,9 +269,6 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
               Generate a market analysis report to understand current market conditions, 
               sector performance, and market trends affecting your trades.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Market Analysis Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>

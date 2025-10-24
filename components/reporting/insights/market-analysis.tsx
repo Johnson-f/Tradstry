@@ -157,23 +157,6 @@ export function MarketAnalysisCard({ timeRange = '30d', className }: MarketAnaly
                 {formatTimeRange(timeRange)} Market Review
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateInsights}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Globe className="h-4 w-4" />
-                  Analyze Market
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -183,9 +166,6 @@ export function MarketAnalysisCard({ timeRange = '30d', className }: MarketAnaly
             <p className="text-muted-foreground mb-4">
               Generate market analysis to understand current market conditions and sector performance.
             </p>
-            <Button onClick={handleGenerateInsights} disabled={generating}>
-              {generating ? 'Generating...' : 'Analyze Market'}
-            </Button>
           </div>
         </CardContent>
       </Card>
