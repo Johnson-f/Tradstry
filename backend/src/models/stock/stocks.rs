@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use libsql::{Connection, params};
 
 /// Time range enum for calculations
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TimeRange {
     #[serde(rename = "7d")]
     SevenDays,

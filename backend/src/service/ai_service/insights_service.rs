@@ -944,6 +944,7 @@ struct InsightContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::service::ai_service::{VoyagerClient, UpstashVectorClient, QdrantDocumentClient};
 
     #[test]
     fn test_insight_creation() {
@@ -959,22 +960,23 @@ mod tests {
         assert_eq!(insight.insight_type, InsightType::TradingPatterns);
     }
 
-    #[test]
-    fn test_get_period_days() {
+    #[tokio::test]
+    async fn test_get_period_days() {
         let service = AIInsightsService {
             vectorization_service: Arc::new(VectorizationService::new(
-                Arc::new(crate::service::voyager_client::VoyagerClient::new(
+                Arc::new(VoyagerClient::new(
                     crate::turso::vector_config::VoyagerConfig::from_env().unwrap()
                 ).unwrap()),
-                Arc::new(crate::service::upstash_vector_client::UpstashVectorClient::new(
+                Arc::new(UpstashVectorClient::new(
                     crate::turso::vector_config::VectorConfig::from_env().unwrap()
                 ).unwrap()),
+                Arc::new(QdrantDocumentClient::new(crate::turso::vector_config::QdrantConfig::from_env().unwrap()).await.unwrap()),
                 crate::turso::vector_config::AIConfig::from_env().unwrap(),
             )),
-            openrouter_client: Arc::new(crate::service::openrouter_client::OpenRouterClient::new(
+            openrouter_client: Arc::new(OpenRouterClient::new(
                 crate::turso::vector_config::OpenRouterConfig::from_env().unwrap()
             ).unwrap()),
-            turso_client: Arc::new(TursoClient::new()),
+            turso_client: Arc::new(TursoClient::new(crate::turso::config::TursoConfig::from_env().unwrap()).await.unwrap()),
             max_context_vectors: 10,
         };
 

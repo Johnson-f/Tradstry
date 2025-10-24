@@ -169,7 +169,7 @@ impl From<Insight> for InsightSummary {
 }
 
 /// Insight generation status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum InsightGenerationStatus {
     Pending,
     Processing,

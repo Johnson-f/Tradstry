@@ -441,21 +441,25 @@ mod tests {
         let stock = Stock {
             id: 1,
             symbol: "AAPL".to_string(),
-            quantity: 100,
+            trade_type: crate::models::stock::stocks::TradeType::BUY,
+            order_type: crate::models::stock::stocks::OrderType::MARKET,
             entry_price: 150.0,
             exit_price: Some(160.0),
+            stop_loss: 140.0,
+            commissions: 5.0,
+            number_shares: 100.0,
+            take_profit: Some(170.0),
             entry_date: Utc::now(),
             exit_date: Some(Utc::now()),
-            trade_type: crate::models::stock::stocks::TradeType::BUY,
-            pnl: Some(1000.0),
-            notes: Some("Strong earnings beat".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let formatted = DataFormatter::format_stock_for_embedding(&stock);
         assert!(formatted.contains("AAPL"));
         assert!(formatted.contains("BUY"));
-        assert!(formatted.contains("1000.00"));
-        assert!(formatted.contains("Strong earnings beat"));
+        assert!(formatted.contains("100.00"));
+        assert!(formatted.contains("150.00"));
     }
 
     #[test]

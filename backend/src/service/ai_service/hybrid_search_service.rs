@@ -371,8 +371,8 @@ impl HybridSearchService {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_calculate_combined_score() {
+    #[tokio::test]
+    async fn test_calculate_combined_score() {
         let config = HybridSearchConfig {
             enabled: true,
             ai_reranking_enabled: true,
@@ -383,7 +383,7 @@ mod tests {
 
         let service = HybridSearchService {
             vector_client: Arc::new(UpstashVectorClient::new(crate::turso::vector_config::VectorConfig::from_env().unwrap()).unwrap()),
-            search_client: Arc::new(UpstashSearchClient::new(crate::turso::vector_config::SearchConfig::from_env().unwrap()).unwrap()),
+            search_client: Arc::new(QdrantDocumentClient::new(crate::turso::vector_config::QdrantConfig::from_env().unwrap()).await.unwrap()),
             voyager_client: Arc::new(VoyagerClient::new(crate::turso::vector_config::VoyagerConfig::from_env().unwrap()).unwrap()),
             config,
         };

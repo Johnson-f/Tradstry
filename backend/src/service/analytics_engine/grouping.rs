@@ -2,7 +2,6 @@ use anyhow::Result;
 use libsql::Connection;
 use std::collections::HashMap;
 use crate::models::analytics::{GroupedMetrics, GroupType, AnalyticsOptions, CoreMetrics, RiskMetrics, PerformanceMetrics};
-use crate::models::analytics::options::GroupingType;
 use crate::models::stock::stocks::TimeRange;
 
 /// Calculate grouped analytics by symbol, strategy, or other criteria
@@ -231,10 +230,10 @@ async fn calculate_period_grouped_analytics(
 
 // Helper functions for calculating metrics by symbol
 async fn calculate_symbol_core_metrics(
-    conn: &Connection,
-    symbol: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _symbol: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<CoreMetrics> {
     // Similar to the main core metrics calculation but filtered by symbol
     // Implementation would be similar to calculate_stocks_core_metrics but with symbol filter
@@ -242,20 +241,20 @@ async fn calculate_symbol_core_metrics(
 }
 
 async fn calculate_symbol_risk_metrics(
-    conn: &Connection,
-    symbol: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _symbol: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<RiskMetrics> {
     // Similar to the main risk metrics calculation but filtered by symbol
     Ok(RiskMetrics::default())
 }
 
 async fn calculate_symbol_performance_metrics(
-    conn: &Connection,
-    symbol: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _symbol: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<PerformanceMetrics> {
     // Similar to the main performance metrics calculation but filtered by symbol
     Ok(PerformanceMetrics::default())
@@ -263,30 +262,30 @@ async fn calculate_symbol_performance_metrics(
 
 // Helper functions for calculating metrics by strategy
 async fn calculate_strategy_core_metrics(
-    conn: &Connection,
-    strategy: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _strategy: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<CoreMetrics> {
     // Similar to the main core metrics calculation but filtered by strategy
     Ok(CoreMetrics::default())
 }
 
 async fn calculate_strategy_risk_metrics(
-    conn: &Connection,
-    strategy: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _strategy: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<RiskMetrics> {
     // Similar to the main risk metrics calculation but filtered by strategy
     Ok(RiskMetrics::default())
 }
 
 async fn calculate_strategy_performance_metrics(
-    conn: &Connection,
-    strategy: &str,
-    time_condition: &str,
-    time_params: &[chrono::DateTime<chrono::Utc>],
+    _conn: &Connection,
+    _strategy: &str,
+    _time_condition: &str,
+    _time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<PerformanceMetrics> {
     // Similar to the main performance metrics calculation but filtered by strategy
     Ok(PerformanceMetrics::default())
@@ -294,27 +293,27 @@ async fn calculate_strategy_performance_metrics(
 
 // Helper functions for calculating metrics by direction
 async fn calculate_direction_core_metrics(
-    conn: &Connection,
-    direction: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _direction: &str,
+    _time_range: &TimeRange,
 ) -> Result<CoreMetrics> {
     // Calculate core metrics for bullish/bearish trades
     Ok(CoreMetrics::default())
 }
 
 async fn calculate_direction_risk_metrics(
-    conn: &Connection,
-    direction: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _direction: &str,
+    _time_range: &TimeRange,
 ) -> Result<RiskMetrics> {
     // Calculate risk metrics for bullish/bearish trades
     Ok(RiskMetrics::default())
 }
 
 async fn calculate_direction_performance_metrics(
-    conn: &Connection,
-    direction: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _direction: &str,
+    _time_range: &TimeRange,
 ) -> Result<PerformanceMetrics> {
     // Calculate performance metrics for bullish/bearish trades
     Ok(PerformanceMetrics::default())
@@ -322,27 +321,27 @@ async fn calculate_direction_performance_metrics(
 
 // Helper functions for calculating metrics by time period
 async fn calculate_period_core_metrics(
-    conn: &Connection,
-    period: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _period: &str,
+    _time_range: &TimeRange,
 ) -> Result<CoreMetrics> {
     // Calculate core metrics for different time periods
     Ok(CoreMetrics::default())
 }
 
 async fn calculate_period_risk_metrics(
-    conn: &Connection,
-    period: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _period: &str,
+    _time_range: &TimeRange,
 ) -> Result<RiskMetrics> {
     // Calculate risk metrics for different time periods
     Ok(RiskMetrics::default())
 }
 
 async fn calculate_period_performance_metrics(
-    conn: &Connection,
-    period: &str,
-    time_range: &TimeRange,
+    _conn: &Connection,
+    _period: &str,
+    _time_range: &TimeRange,
 ) -> Result<PerformanceMetrics> {
     // Calculate performance metrics for different time periods
     Ok(PerformanceMetrics::default())

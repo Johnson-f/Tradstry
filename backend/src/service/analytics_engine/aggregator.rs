@@ -1,6 +1,8 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use libsql::Connection;
-use crate::models::analytics::{CoreMetrics, RiskMetrics, PerformanceMetrics};
+use crate::models::analytics::CoreMetrics;
 use crate::models::stock::stocks::TimeRange;
 
 /// Aggregator for combining stocks and options data into unified analytics

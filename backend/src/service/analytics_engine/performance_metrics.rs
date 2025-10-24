@@ -66,14 +66,14 @@ async fn calculate_stocks_performance_metrics(
     let mut avg_hold_time_days = 0.0;
     let mut avg_position_size = 0.0;
     let mut position_size_std_dev = 0.0;
-    let mut avg_commission_per_trade = 0.0;
+    let mut _avg_commission_per_trade = 0.0;
     let mut commission_impact_percentage = 0.0;
 
     if let Some(row) = rows.next().await? {
         avg_hold_time_days = row.get::<f64>(0).unwrap_or(0.0);
         avg_position_size = row.get::<f64>(1).unwrap_or(0.0);
         position_size_std_dev = row.get::<f64>(2).unwrap_or(0.0);
-        avg_commission_per_trade = row.get::<f64>(3).unwrap_or(0.0);
+        _avg_commission_per_trade = row.get::<f64>(3).unwrap_or(0.0);
         commission_impact_percentage = row.get::<f64>(4).unwrap_or(0.0);
     }
 
@@ -82,7 +82,7 @@ async fn calculate_stocks_performance_metrics(
     let losers_hold_time = calculate_losers_hold_time(conn, time_condition, time_params).await?;
 
     // Calculate average risk per trade
-    let avg_risk_per_trade = calculate_average_risk_per_trade(conn, time_condition, time_params).await?;
+    let _avg_risk_per_trade = calculate_average_risk_per_trade(conn, time_condition, time_params).await?;
 
     Ok(PerformanceMetrics {
         trade_expectancy: 0.0, // Will be calculated from core metrics
@@ -255,14 +255,14 @@ async fn calculate_options_performance_metrics(
     let mut avg_hold_time_days = 0.0;
     let mut avg_position_size = 0.0;
     let mut position_size_std_dev = 0.0;
-    let mut avg_commission_per_trade = 0.0;
+    let mut _avg_commission_per_trade = 0.0;
     let mut commission_impact_percentage = 0.0;
 
     if let Some(row) = rows.next().await? {
         avg_hold_time_days = row.get::<f64>(0).unwrap_or(0.0);
         avg_position_size = row.get::<f64>(1).unwrap_or(0.0);
         position_size_std_dev = row.get::<f64>(2).unwrap_or(0.0);
-        avg_commission_per_trade = row.get::<f64>(3).unwrap_or(0.0);
+        _avg_commission_per_trade = row.get::<f64>(3).unwrap_or(0.0);
         commission_impact_percentage = row.get::<f64>(4).unwrap_or(0.0);
     }
 
