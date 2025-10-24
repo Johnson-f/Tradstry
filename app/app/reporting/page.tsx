@@ -1,18 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Plus, Brain, FileText, Zap, TrendingUp, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { InsightsTab, ReportTab } from "@/components/reporting";
+import { InsightsTabRef } from "@/components/reporting/insights/tab";
+import { ReportTabRef } from "@/components/reporting/report/tab";
 import { TimeRange } from "@/lib/types/ai-reports";
+import { toast } from "sonner";
 
 export default function ReportingPage() {
   const [activeTab, setActiveTab] = useState("insights");
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>("30d");
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Refs to access child component methods
+  const insightsTabRef = useRef<InsightsTabRef | null>(null);
+  const reportTabRef = useRef<ReportTabRef | null>(null);
 
   const timeRangeOptions = [
     { value: '7d', label: 'Last 7 Days', description: 'Recent week analysis' },
@@ -21,6 +30,42 @@ export default function ReportingPage() {
     { value: 'ytd', label: 'Year to Date', description: 'Current year performance' },
     { value: '1y', label: 'Last Year', description: 'Annual comparison' },
   ];
+
+  const handleGenerateAnalysis = async () => {
+    if (isGenerating) return;
+    
+    setIsGenerating(true);
+    
+    try {
+      if (activeTab === "insights") {
+        // Get the current active insight tab from the InsightsTab component
+        const currentInsightTab = insightsTabRef.current?.getCurrentTab() || 'trading-patterns';
+        console.log('Generating insight for tab:', currentInsightTab);
+        
+        if (insightsTabRef.current?.generateInsight) {
+          await insightsTabRef.current.generateInsight(currentInsightTab);
+          toast.success(`Generating ${currentInsightTab.replace('-', ' ')} insight...`);
+        } else {
+          toast.error("Insights generation not available");
+        }
+      } else if (activeTab === "reports") {
+        // Get the current active report tab from the ReportTab component
+        const currentReportTab = reportTabRef.current?.getCurrentTab() || 'comprehensive';
+        
+        if (reportTabRef.current?.generateReport) {
+          await reportTabRef.current.generateReport(currentReportTab);
+          toast.success(`Generating ${currentReportTab} report...`);
+        } else {
+          toast.error("Report generation not available");
+        }
+      }
+    } catch (error) {
+      console.error('Error generating analysis:', error);
+      toast.error("Failed to generate analysis. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col">
@@ -41,17 +86,30 @@ export default function ReportingPage() {
               <Zap className="h-3 w-3" />
               AI-Powered
             </Badge>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Generate Analysis
+            <Button 
+              className="flex items-center gap-2"
+              onClick={handleGenerateAnalysis}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Generate Analysis
+                </>
+              )}
             </Button>
           </div>
         </div>
       </div>
       
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               {/* Tab Navigation with Time Period Switch */}
@@ -140,15 +198,21 @@ export default function ReportingPage() {
 
               {/* Tab Content */}
               <TabsContent value="insights" className="mt-0">
-                <InsightsTab timeRange={selectedTimeRange} />
+                <InsightsTab 
+                  ref={insightsTabRef}
+                  timeRange={selectedTimeRange} 
+                />
               </TabsContent>
 
               <TabsContent value="reports" className="mt-0">
-                <ReportTab timeRange={selectedTimeRange} />
+                <ReportTab 
+                  ref={reportTabRef}
+                  timeRange={selectedTimeRange} 
+                />
               </TabsContent>
             </Tabs>
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

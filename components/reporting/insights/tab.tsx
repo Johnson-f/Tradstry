@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,15 +27,53 @@ import { BehavioralAnalysisCard } from './behavioural-analysis';
 import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useAIInsights } from '@/hooks/use-ai-insights';
 
 interface InsightsTabProps {
   timeRange?: TimeRange;
   className?: string;
 }
 
-export function InsightsTab({ timeRange = '30d', className }: InsightsTabProps) {
+export interface InsightsTabRef {
+  generateInsight: (tabName: string) => Promise<void>;
+  getCurrentTab: () => string;
+}
+
+export const InsightsTab = forwardRef<InsightsTabRef, InsightsTabProps>(({ timeRange = '30d', className }, ref) => {
   const [activeTab, setActiveTab] = useState('trading-patterns');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  const { generateInsights } = useAIInsights();
+
+  // Map tab names to insight types
+  const tabToInsightTypeMap: Record<string, string> = {
+    'trading-patterns': 'trading_patterns',
+    'risk-assessment': 'risk_assessment',
+    'performance-analysis': 'performance_analysis',
+    'market-analysis': 'market_analysis',
+    'opportunity-detection': 'opportunity_detection',
+    'behavioral-analysis': 'behavioral_analysis',
+  };
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    generateInsight: async (tabName: string) => {
+      try {
+        const insightType = tabToInsightTypeMap[tabName] || tabName;
+        console.log('Generating insight:', { tabName, insightType, timeRange });
+        await generateInsights({
+          time_range: timeRange,
+          insight_type: insightType as any,
+          include_predictions: true,
+          force_regenerate: false,
+        });
+      } catch (error) {
+        console.error('Error generating insight:', error);
+        throw error;
+      }
+    },
+    getCurrentTab: () => activeTab,
+  }));
 
   // Check authentication status
   useEffect(() => {
@@ -308,4 +346,6 @@ export function InsightsTab({ timeRange = '30d', className }: InsightsTabProps) 
       )}
     </div>
   );
-}
+});
+
+InsightsTab.displayName = 'InsightsTab';

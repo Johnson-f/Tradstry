@@ -176,23 +176,6 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
                 {formatTimeRange(timeRange)} Trading Strategy Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -203,9 +186,6 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
               Generate a trading analysis report to examine your trading patterns, 
               strategies, and execution performance.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Trading Analysis Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -253,23 +233,6 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
                 {formatTimeRange(timeRange)} Trading Strategy Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -280,9 +243,6 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
               Generate a trading analysis report to examine your trading patterns, 
               strategies, and execution performance.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Trading Analysis Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>

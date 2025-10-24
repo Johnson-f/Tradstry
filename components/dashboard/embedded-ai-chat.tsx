@@ -18,6 +18,7 @@ interface Message {
   role: "user" | "assistant" | string;
   content: string;
   created_at: string;
+  message_type?: string; // Add optional message_type field
 }
 
 interface QuickAction {
@@ -40,10 +41,19 @@ const MAX_MESSAGE_LENGTH = 4000;
 
 // Utility functions
 const formatMessageTime = (timestamp: string): string => {
-  return new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      return "Invalid Date";
+    }
+    return date.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (error) {
+    console.error("Error formatting timestamp:", timestamp, error);
+    return "Invalid Date";
+  }
 };
 
 // Components

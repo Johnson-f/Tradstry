@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,15 +30,44 @@ import {
 import { TimeRange, ReportType } from '@/lib/types/ai-reports';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useAIReports } from '@/hooks/use-ai-reports';
 
 interface ReportTabProps {
   timeRange?: TimeRange;
   className?: string;
 }
 
-export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
+export interface ReportTabRef {
+  generateReport: (reportType: string) => Promise<void>;
+  getCurrentTab: () => string;
+}
+
+export const ReportTab = forwardRef<ReportTabRef, ReportTabProps>(({ timeRange = '30d', className }, ref) => {
   const [activeTab, setActiveTab] = useState<ReportType>('comprehensive');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  const { generateReport } = useAIReports();
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    generateReport: async (reportType: string) => {
+      try {
+        await generateReport({
+          time_range: timeRange,
+          report_type: reportType as ReportType,
+          include_trades: true,
+          include_patterns: true,
+          include_risk_analysis: true,
+          include_behavioral_analysis: true,
+          include_market_analysis: true,
+        });
+      } catch (error) {
+        console.error('Error generating report:', error);
+        throw error;
+      }
+    },
+    getCurrentTab: () => activeTab,
+  }));
 
   // Check authentication status
   useEffect(() => {
@@ -192,6 +221,7 @@ export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
       {isAuthenticated === true && (
         <>
           {/* Reports Header */}
+          {/*
           <div className="mb-6">
             <Card className="border-0 shadow-none bg-muted/30">
               <CardHeader className="pb-4">
@@ -207,6 +237,7 @@ export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
               </CardHeader>
             </Card>
           </div>
+          */}
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ReportType)} className="w-full">
             {/* Tab Navigation */}
@@ -258,12 +289,7 @@ export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
                         </CardDescription>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                      </Button>
-                    </div>
+                    
                   </div>
                 </CardHeader>
               </Card>
@@ -317,4 +343,6 @@ export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
       )}
     </div>
   );
-}
+});
+
+ReportTab.displayName = 'ReportTab';

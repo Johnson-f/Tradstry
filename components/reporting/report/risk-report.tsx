@@ -189,23 +189,6 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
                 {formatTimeRange(timeRange)} Risk Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Shield className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -216,9 +199,6 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
               Generate a risk assessment report to analyze portfolio risks, 
               vulnerabilities, and risk management recommendations.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Risk Assessment Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -266,23 +246,6 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
                 {formatTimeRange(timeRange)} Risk Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Shield className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -293,9 +256,6 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
               Generate a risk assessment report to analyze portfolio risks, 
               vulnerabilities, and risk management recommendations.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Risk Assessment Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>
