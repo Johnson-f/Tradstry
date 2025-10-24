@@ -155,7 +155,8 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
     }
   };
 
-  if (loading && !behavioralReport && !currentReport) {
+  // Show loading skeleton only when initially loading reports list
+  if (loading && reports.length === 0) {
     return (
       <Card className={cn("w-full", className)}>
         <CardHeader>
@@ -176,7 +177,7 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
     );
   }
 
-  // Show generate option when no reports exist (not loading and no reports found)
+  // Show generate option when no reports exist for this time range
   if (!loading && !behavioralReport && !currentReport) {
     return (
       <Card className={cn("w-full", className)}>

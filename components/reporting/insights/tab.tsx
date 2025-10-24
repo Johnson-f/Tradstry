@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { 
   TrendingUp, 
@@ -34,9 +33,8 @@ interface InsightsTabProps {
   className?: string;
 }
 
-export function InsightsTab({ timeRange: initialTimeRange = '30d', className }: InsightsTabProps) {
+export function InsightsTab({ timeRange = '30d', className }: InsightsTabProps) {
   const [activeTab, setActiveTab] = useState('trading-patterns');
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>(initialTimeRange);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // Check authentication status
@@ -63,17 +61,21 @@ export function InsightsTab({ timeRange: initialTimeRange = '30d', className }: 
     return () => subscription.unsubscribe();
   }, []);
 
-  const timeRangeOptions = [
-    { value: '7d', label: 'Last 7 Days', description: 'Recent week analysis' },
-    { value: '30d', label: 'Last 30 Days', description: 'Monthly overview' },
-    { value: '90d', label: 'Last 90 Days', description: 'Quarterly analysis' },
-    { value: 'ytd', label: 'Year to Date', description: 'Current year performance' },
-    { value: '1y', label: 'Last Year', description: 'Annual comparison' },
-  ];
-
   const formatTimeRange = (range: TimeRange): string => {
-    const option = timeRangeOptions.find(opt => opt.value === range);
-    return option ? option.label : 'Custom Range';
+    switch (range) {
+      case '7d':
+        return 'Last 7 Days';
+      case '30d':
+        return 'Last 30 Days';
+      case '90d':
+        return 'Last 90 Days';
+      case 'ytd':
+        return 'Year to Date';
+      case '1y':
+        return 'Last Year';
+      default:
+        return 'Custom Range';
+    }
   };
 
   const tabs = [
@@ -186,46 +188,25 @@ export function InsightsTab({ timeRange: initialTimeRange = '30d', className }: 
       {/* Main Content - Only show if authenticated */}
       {isAuthenticated === true && (
         <>
-          {/* Date Filter Header */}
+          {/* Insights Header */}
+          {/*
           <div className="mb-6">
-        <Card className="border-0 shadow-none bg-muted/30">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-blue-600" />
-                <div>
-                  <CardTitle className="text-lg">AI Insights Dashboard</CardTitle>
-                  <CardDescription>
-                    Select a time range to analyze your trading patterns and performance
-                  </CardDescription>
+            <Card className="border-0 shadow-none bg-muted/30">
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <CardTitle className="text-lg">AI Insights Dashboard</CardTitle>
+                    <CardDescription>
+                      Analyze your trading patterns and performance for {formatTimeRange(timeRange)}
+                    </CardDescription>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Time Range:</span>
-                </div>
-                <Select value={selectedTimeRange} onValueChange={(value: TimeRange) => setSelectedTimeRange(value)}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Select time range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeRangeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{option.label}</span>
-                          <span className="text-xs text-muted-foreground">{option.description}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-      </div>
-
+              </CardHeader>
+            </Card>
+          </div>
+          */}
+          
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {/* Tab Navigation */}
         <div className="mb-6">
@@ -280,27 +261,27 @@ export function InsightsTab({ timeRange: initialTimeRange = '30d', className }: 
 
           {/* Tab Content Cards */}
           <TabsContent value="trading-patterns" className="mt-0">
-            <TradingPatternsCard timeRange={selectedTimeRange} />
+            <TradingPatternsCard timeRange={timeRange} />
           </TabsContent>
 
           <TabsContent value="risk-assessment" className="mt-0">
-            <RiskAssessmentCard timeRange={selectedTimeRange} />
+            <RiskAssessmentCard timeRange={timeRange} />
           </TabsContent>
 
           <TabsContent value="performance-analysis" className="mt-0">
-            <PerformanceAnalysisCard timeRange={selectedTimeRange} />
+            <PerformanceAnalysisCard timeRange={timeRange} />
           </TabsContent>
 
           <TabsContent value="market-analysis" className="mt-0">
-            <MarketAnalysisCard timeRange={selectedTimeRange} />
+            <MarketAnalysisCard timeRange={timeRange} />
           </TabsContent>
 
           <TabsContent value="opportunity-detection" className="mt-0">
-            <OpportunityDetectionCard timeRange={selectedTimeRange} />
+            <OpportunityDetectionCard timeRange={timeRange} />
           </TabsContent>
 
           <TabsContent value="behavioral-analysis" className="mt-0">
-            <BehavioralAnalysisCard timeRange={selectedTimeRange} />
+            <BehavioralAnalysisCard timeRange={timeRange} />
           </TabsContent>
         </div>
 
@@ -309,7 +290,7 @@ export function InsightsTab({ timeRange: initialTimeRange = '30d', className }: 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
-              <span>Analysis Period: {formatTimeRange(selectedTimeRange)}</span>
+              <span>Analysis Period: {formatTimeRange(timeRange)}</span>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1">

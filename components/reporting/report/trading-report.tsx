@@ -139,7 +139,8 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
     return 'text-gray-600 bg-gray-50 border-gray-200';
   };
 
-  if (loading && !tradingReport && !currentReport) {
+  // Show loading skeleton only when initially loading reports list
+  if (loading && reports.length === 0) {
     return (
       <Card className={cn("w-full", className)}>
         <CardHeader>
@@ -160,7 +161,7 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
     );
   }
 
-  // Show generate option when no reports exist (not loading and no reports found)
+  // Show generate option when no reports exist for this time range
   if (!loading && !tradingReport && !currentReport) {
     return (
       <Card className={cn("w-full", className)}>

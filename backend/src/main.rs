@@ -114,6 +114,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().cache_service.clone()))
             // CRITICAL: Add AIInsightsService as separate app_data for AI insights routes
             .app_data(Data::new(app_data.as_ref().ai_insights_service.clone()))
+            // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
+            .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging

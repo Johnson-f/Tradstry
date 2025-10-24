@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { 
   FileText, 
@@ -37,9 +36,8 @@ interface ReportTabProps {
   className?: string;
 }
 
-export function ReportTab({ timeRange: initialTimeRange = '30d', className }: ReportTabProps) {
+export function ReportTab({ timeRange = '30d', className }: ReportTabProps) {
   const [activeTab, setActiveTab] = useState<ReportType>('comprehensive');
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>(initialTimeRange);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // Check authentication status
@@ -66,17 +64,21 @@ export function ReportTab({ timeRange: initialTimeRange = '30d', className }: Re
     return () => subscription.unsubscribe();
   }, []);
 
-  const timeRangeOptions = [
-    { value: '7d', label: 'Last 7 Days', description: 'Recent week analysis' },
-    { value: '30d', label: 'Last 30 Days', description: 'Monthly overview' },
-    { value: '90d', label: 'Last 90 Days', description: 'Quarterly analysis' },
-    { value: 'ytd', label: 'Year to Date', description: 'Current year performance' },
-    { value: '1y', label: 'Last Year', description: 'Annual comparison' },
-  ];
-
   const formatTimeRange = (range: TimeRange): string => {
-    const option = timeRangeOptions.find(opt => opt.value === range);
-    return option ? option.label : 'Custom Range';
+    switch (range) {
+      case '7d':
+        return 'Last 7 Days';
+      case '30d':
+        return 'Last 30 Days';
+      case '90d':
+        return 'Last 90 Days';
+      case 'ytd':
+        return 'Year to Date';
+      case '1y':
+        return 'Last Year';
+      default:
+        return 'Custom Range';
+    }
   };
 
   const reportTabs = [
@@ -189,40 +191,17 @@ export function ReportTab({ timeRange: initialTimeRange = '30d', className }: Re
       {/* Main Content - Only show if authenticated */}
       {isAuthenticated === true && (
         <>
-          {/* Date Filter Header */}
+          {/* Reports Header */}
           <div className="mb-6">
             <Card className="border-0 shadow-none bg-muted/30">
               <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                    <div>
-                      <CardTitle className="text-lg">AI Reports Dashboard</CardTitle>
-                      <CardDescription>
-                        Generate comprehensive trading reports with AI-powered analysis and insights
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Time Range:</span>
-                    </div>
-                    <Select value={selectedTimeRange} onValueChange={(value: TimeRange) => setSelectedTimeRange(value)}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select time range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {timeRangeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{option.label}</span>
-                              <span className="text-xs text-muted-foreground">{option.description}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="flex items-center gap-3">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <CardTitle className="text-lg">AI Reports Dashboard</CardTitle>
+                    <CardDescription>
+                      Generate comprehensive trading reports with AI-powered analysis and insights for {formatTimeRange(timeRange)}
+                    </CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -291,27 +270,27 @@ export function ReportTab({ timeRange: initialTimeRange = '30d', className }: Re
 
               {/* Tab Content Cards */}
               <TabsContent value="comprehensive" className="mt-0">
-                <ComprehensiveReportCard timeRange={selectedTimeRange} />
+                <ComprehensiveReportCard timeRange={timeRange} />
               </TabsContent>
 
               <TabsContent value="performance" className="mt-0">
-                <PerformanceReportCard timeRange={selectedTimeRange} />
+                <PerformanceReportCard timeRange={timeRange} />
               </TabsContent>
 
               <TabsContent value="risk" className="mt-0">
-                <RiskReportCard timeRange={selectedTimeRange} />
+                <RiskReportCard timeRange={timeRange} />
               </TabsContent>
 
               <TabsContent value="trading" className="mt-0">
-                <TradingReportCard timeRange={selectedTimeRange} />
+                <TradingReportCard timeRange={timeRange} />
               </TabsContent>
 
               <TabsContent value="behavioral" className="mt-0">
-                <BehavioralReportCard timeRange={selectedTimeRange} />
+                <BehavioralReportCard timeRange={timeRange} />
               </TabsContent>
 
               <TabsContent value="market" className="mt-0">
-                <MarketReportCard timeRange={selectedTimeRange} />
+                <MarketReportCard timeRange={timeRange} />
               </TabsContent>
             </div>
 
@@ -320,7 +299,7 @@ export function ReportTab({ timeRange: initialTimeRange = '30d', className }: Re
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  <span>Report Period: {formatTimeRange(selectedTimeRange)}</span>
+                  <span>Report Period: {formatTimeRange(timeRange)}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">

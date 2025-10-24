@@ -152,7 +152,8 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
     return 'bg-green-500';
   };
 
-  if (loading && !riskReport && !currentReport) {
+  // Show loading skeleton only when initially loading reports list
+  if (loading && reports.length === 0) {
     return (
       <Card className={cn("w-full", className)}>
         <CardHeader>
@@ -173,7 +174,7 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
     );
   }
 
-  // Show generate option when no reports exist (not loading and no reports found)
+  // Show generate option when no reports exist for this time range
   if (!loading && !riskReport && !currentReport) {
     return (
       <Card className={cn("w-full", className)}>

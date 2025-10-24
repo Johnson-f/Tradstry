@@ -2,65 +2,44 @@ use crate::models::ai::reports::{
     ReportRequest, ReportType
 };
 use crate::models::stock::stocks::TimeRange;
-use crate::turso::{AppState, config::SupabaseConfig, SupabaseClaims};
+use crate::turso::{AppState, config::SupabaseConfig};
 use actix_web::{HttpRequest, Result, HttpResponse, web};
 use log::{info, error};
 use serde::{Deserialize, Serialize};
-use libsql::Connection;
-use base64::Engine;
+use actix_web_httpauth::middleware::HttpAuthentication;
 
-/// Parse JWT claims without full validation (for middleware)
-fn parse_jwt_claims(token: &str) -> Result<SupabaseClaims, actix_web::Error> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return Err(actix_web::error::ErrorUnauthorized("Invalid token format"));
-    }
+// Import jwt_validator from main module
+use crate::jwt_validator;
 
-    let payload = parts[1];
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload)
-        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid token encoding"))?;
+/// Authenticate user and get user ID
+async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseConfig) -> Result<String> {
+    let auth_header = req.headers().get("Authorization")
+        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing Authorization header"))?
+        .to_str()
+        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid Authorization header"))?;
 
-    let claims: SupabaseClaims = serde_json::from_slice(&decoded)
-        .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid token claims"))?;
+    let token = auth_header.strip_prefix("Bearer ")
+        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Invalid token format"))?;
 
-    Ok(claims)
-}
+    let claims = crate::turso::auth::validate_supabase_jwt_token(token, supabase_config)
+        .await
+        .map_err(|e| {
+            error!("JWT validation failed: {}", e);
+            actix_web::error::ErrorUnauthorized("Invalid or expired authentication token")
+        })?;
 
-/// Extract JWT token from Authorization header
-fn extract_token_from_request(req: &HttpRequest) -> Option<String> {
-    req.headers()
-        .get("Authorization")
-        .and_then(|header| header.to_str().ok())
-        .and_then(|auth_header| {
-            if auth_header.starts_with("Bearer ") {
-                Some(auth_header[7..].to_string())
-            } else {
-                None
-            }
-        })
-}
-
-/// Get authenticated user from request
-async fn get_authenticated_user(
-    req: &HttpRequest,
-    _supabase_config: &SupabaseConfig,
-) -> Result<String, actix_web::Error> {
-    let token = extract_token_from_request(req)
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing or invalid authorization header"))?;
-
-    let claims = parse_jwt_claims(&token)?;
     Ok(claims.sub)
 }
 
-/// Get user database connection
+/// Get user's database connection with authentication
 async fn get_user_database_connection(
     req: &HttpRequest,
-    app_state: &AppState,
-) -> Result<Connection, actix_web::Error> {
-    let user_id = get_authenticated_user(req, &app_state.config.supabase).await?;
+    turso_client: &crate::turso::client::TursoClient,
+    supabase_config: &SupabaseConfig,
+) -> Result<libsql::Connection> {
+    let user_id = get_authenticated_user(req, supabase_config).await?;
     
-    let conn = app_state.turso_client.get_user_database_connection(&user_id).await
+    let conn = turso_client.get_user_database_connection(&user_id).await
         .map_err(|e| {
             error!("Failed to get database connection for user {}: {}", user_id, e);
             actix_web::error::ErrorInternalServerError("Database connection failed")
@@ -91,7 +70,7 @@ pub async fn generate_report(
 ) -> Result<HttpResponse> {
     info!("Generating AI report");
 
-    let conn = get_user_database_connection(&req, &app_state).await?;
+    let conn = get_user_database_connection(&req, &app_state.turso_client, &app_state.config.supabase).await?;
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     match app_state.ai_reports_service.generate_report(&conn, &user_id, report_request.into_inner()).await {
@@ -137,7 +116,7 @@ pub async fn get_reports(
 ) -> Result<HttpResponse> {
     info!("Getting reports for user");
 
-    let conn = get_user_database_connection(&req, &app_state).await?;
+    let conn = get_user_database_connection(&req, &app_state.turso_client, &app_state.config.supabase).await?;
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     match app_state.ai_reports_service.get_reports(&conn, query.limit, query.offset).await {
@@ -163,7 +142,7 @@ pub async fn get_report(
     let report_id = path.into_inner();
     info!("Getting report: {}", report_id);
 
-    let conn = get_user_database_connection(&req, &app_state).await?;
+    let conn = get_user_database_connection(&req, &app_state.turso_client, &app_state.config.supabase).await?;
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     match app_state.ai_reports_service.get_report(&conn, &report_id).await {
@@ -195,7 +174,7 @@ pub async fn delete_report(
     let report_id = path.into_inner();
     info!("Deleting report: {}", report_id);
 
-    let conn = get_user_database_connection(&req, &app_state).await?;
+    let conn = get_user_database_connection(&req, &app_state.turso_client, &app_state.config.supabase).await?;
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
     match app_state.ai_reports_service.delete_report(&conn, &report_id).await {
@@ -274,6 +253,7 @@ fn parse_report_type(report_type: &str) -> Result<ReportType> {
 pub fn configure_ai_reports_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/ai/reports")
+            .wrap(HttpAuthentication::bearer(jwt_validator))
             .route("", web::post().to(generate_report))
             .route("/async", web::post().to(generate_report_async))
             .route("", web::get().to(get_reports))
