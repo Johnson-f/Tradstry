@@ -158,7 +158,8 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     return 'Low Risk';
   };
 
-  if (loading && !comprehensiveReport && !currentReport) {
+  // Show loading skeleton only when initially loading reports list
+  if (loading && reports.length === 0) {
     return (
       <Card className={cn("w-full", className)}>
         <CardHeader>
@@ -179,7 +180,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     );
   }
 
-  // Show generate option when no reports exist (not loading and no reports found)
+  // Show generate option when no reports exist for this time range
   if (!loading && !comprehensiveReport && !currentReport) {
     return (
       <Card className={cn("w-full", className)}>
