@@ -3,6 +3,25 @@ use libsql::Connection;
 use crate::models::analytics::CoreMetrics;
 use crate::models::stock::stocks::TimeRange;
 
+/// Helper function to safely extract f64 from libsql::Value
+fn get_f64_value(row: &libsql::Row, index: usize) -> f64 {
+    match row.get::<libsql::Value>(index as i32) {
+        Ok(libsql::Value::Integer(i)) => i as f64,
+        Ok(libsql::Value::Real(f)) => f,
+        Ok(libsql::Value::Null) => 0.0,
+        _ => 0.0,
+    }
+}
+
+/// Helper function to safely extract i64 from libsql::Value
+fn get_i64_value(row: &libsql::Row, index: usize) -> i64 {
+    match row.get::<libsql::Value>(index as i32) {
+        Ok(libsql::Value::Integer(i)) => i,
+        Ok(libsql::Value::Null) => 0,
+        _ => 0,
+    }
+}
+
 /// Calculate core trading metrics from stocks and options tables
 pub async fn calculate_core_metrics(
     conn: &Connection,
@@ -72,20 +91,20 @@ async fn calculate_stocks_core_metrics(
         .await?;
 
     if let Some(row) = rows.next().await? {
-        let total_trades = row.get::<i64>(0).unwrap_or(0) as u32;
-        let winning_trades = row.get::<i64>(1).unwrap_or(0) as u32;
-        let losing_trades = row.get::<i64>(2).unwrap_or(0) as u32;
-        let break_even_trades = row.get::<i64>(3).unwrap_or(0) as u32;
-        let total_pnl = row.get::<f64>(4).unwrap_or(0.0);
-        let gross_profit = row.get::<f64>(5).unwrap_or(0.0);
-        let gross_loss = row.get::<f64>(6).unwrap_or(0.0);
-        let average_win = row.get::<f64>(7).unwrap_or(0.0);
-        let average_loss = row.get::<f64>(8).unwrap_or(0.0);
-        let biggest_winner = row.get::<f64>(9).unwrap_or(0.0);
-        let biggest_loser = row.get::<f64>(10).unwrap_or(0.0);
-        let total_commissions = row.get::<f64>(11).unwrap_or(0.0);
-        let average_commission_per_trade = row.get::<f64>(12).unwrap_or(0.0);
-        let average_position_size = row.get::<f64>(13).unwrap_or(0.0);
+        let total_trades = get_i64_value(&row, 0) as u32;
+        let winning_trades = get_i64_value(&row, 1) as u32;
+        let losing_trades = get_i64_value(&row, 2) as u32;
+        let break_even_trades = get_i64_value(&row, 3) as u32;
+        let total_pnl = get_f64_value(&row, 4);
+        let gross_profit = get_f64_value(&row, 5);
+        let gross_loss = get_f64_value(&row, 6);
+        let average_win = get_f64_value(&row, 7);
+        let average_loss = get_f64_value(&row, 8);
+        let biggest_winner = get_f64_value(&row, 9);
+        let biggest_loser = get_f64_value(&row, 10);
+        let total_commissions = get_f64_value(&row, 11);
+        let average_commission_per_trade = get_f64_value(&row, 12);
+        let average_position_size = get_f64_value(&row, 13);
 
         // Calculate derived metrics
         let win_rate = if total_trades > 0 {
@@ -194,20 +213,20 @@ async fn calculate_options_core_metrics(
         .await?;
 
     if let Some(row) = rows.next().await? {
-        let total_trades = row.get::<i64>(0).unwrap_or(0) as u32;
-        let winning_trades = row.get::<i64>(1).unwrap_or(0) as u32;
-        let losing_trades = row.get::<i64>(2).unwrap_or(0) as u32;
-        let break_even_trades = row.get::<i64>(3).unwrap_or(0) as u32;
-        let total_pnl = row.get::<f64>(4).unwrap_or(0.0);
-        let gross_profit = row.get::<f64>(5).unwrap_or(0.0);
-        let gross_loss = row.get::<f64>(6).unwrap_or(0.0);
-        let average_win = row.get::<f64>(7).unwrap_or(0.0);
-        let average_loss = row.get::<f64>(8).unwrap_or(0.0);
-        let biggest_winner = row.get::<f64>(9).unwrap_or(0.0);
-        let biggest_loser = row.get::<f64>(10).unwrap_or(0.0);
-        let total_commissions = row.get::<f64>(11).unwrap_or(0.0);
-        let average_commission_per_trade = row.get::<f64>(12).unwrap_or(0.0);
-        let average_position_size = row.get::<f64>(13).unwrap_or(0.0);
+        let total_trades = get_i64_value(&row, 0) as u32;
+        let winning_trades = get_i64_value(&row, 1) as u32;
+        let losing_trades = get_i64_value(&row, 2) as u32;
+        let break_even_trades = get_i64_value(&row, 3) as u32;
+        let total_pnl = get_f64_value(&row, 4);
+        let gross_profit = get_f64_value(&row, 5);
+        let gross_loss = get_f64_value(&row, 6);
+        let average_win = get_f64_value(&row, 7);
+        let average_loss = get_f64_value(&row, 8);
+        let biggest_winner = get_f64_value(&row, 9);
+        let biggest_loser = get_f64_value(&row, 10);
+        let total_commissions = get_f64_value(&row, 11);
+        let average_commission_per_trade = get_f64_value(&row, 12);
+        let average_position_size = get_f64_value(&row, 13);
 
         // Calculate derived metrics
         let win_rate = if total_trades > 0 {

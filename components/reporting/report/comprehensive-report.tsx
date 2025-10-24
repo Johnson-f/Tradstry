@@ -137,6 +137,15 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     return `${(value * 100).toFixed(2)}%`;
   };
 
+  // Safe property accessors with fallbacks
+  const safeGetAnalyticsValue = (value: number | undefined, fallback: number = 0): number => {
+    return typeof value === 'number' && !isNaN(value) ? value : fallback;
+  };
+
+  const safeGetStringValue = (value: string | undefined, fallback: string = 'N/A'): string => {
+    return value || fallback;
+  };
+
   const getRiskScoreColor = (score: number): string => {
     if (score >= 0.8) return 'text-red-600 bg-red-50';
     if (score >= 0.6) return 'text-yellow-600 bg-yellow-50';
@@ -319,7 +328,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
                 <span className="text-xs font-medium text-green-900">Total P&L</span>
               </div>
               <p className="text-lg font-semibold text-green-800">
-                {formatCurrency(currentReport.analytics.total_pnl)}
+                {formatCurrency(safeGetAnalyticsValue(currentReport.analytics.total_pnl))}
               </p>
             </div>
 
@@ -329,7 +338,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
                 <span className="text-xs font-medium text-blue-900">Win Rate</span>
               </div>
               <p className="text-lg font-semibold text-blue-800">
-                {formatPercentage(currentReport.analytics.win_rate)}
+                {formatPercentage(safeGetAnalyticsValue(currentReport.analytics.win_rate))}
               </p>
             </div>
 
@@ -339,7 +348,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
                 <span className="text-xs font-medium text-purple-900">Total Trades</span>
               </div>
               <p className="text-lg font-semibold text-purple-800">
-                {currentReport.analytics.total_trades}
+                {safeGetAnalyticsValue(currentReport.analytics.total_trades)}
               </p>
             </div>
 
@@ -349,8 +358,8 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
                 <span className="text-xs font-medium text-gray-900">Risk Score</span>
               </div>
               <div className="flex items-center gap-2">
-                <p className={cn("text-lg font-semibold px-2 py-1 rounded", getRiskScoreColor(currentReport.risk_metrics.risk_score))}>
-                  {getRiskScoreText(currentReport.risk_metrics.risk_score)}
+                <p className={cn("text-lg font-semibold px-2 py-1 rounded", getRiskScoreColor(safeGetAnalyticsValue(currentReport.risk_metrics?.risk_score, 0.5)))}>
+                  {getRiskScoreText(safeGetAnalyticsValue(currentReport.risk_metrics?.risk_score, 0.5))}
                 </p>
               </div>
             </div>
@@ -367,22 +376,22 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="space-y-1">
                 <p className="text-muted-foreground">Sharpe Ratio</p>
-                <p className="font-medium">{currentReport.analytics.sharpe_ratio.toFixed(2)}</p>
+                <p className="font-medium">{safeGetAnalyticsValue(currentReport.analytics?.sharpe_ratio).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Max Drawdown</p>
                 <p className="font-medium text-red-600">
-                  {formatPercentage(currentReport.analytics.max_drawdown)}
+                  {formatPercentage(safeGetAnalyticsValue(currentReport.analytics?.max_drawdown))}
                 </p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Profit Factor</p>
-                <p className="font-medium">{currentReport.analytics.profit_factor.toFixed(2)}</p>
+                <p className="font-medium">{safeGetAnalyticsValue(currentReport.analytics?.profit_factor).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Average Trade</p>
                 <p className="font-medium">
-                  {formatCurrency(currentReport.analytics.average_gain - currentReport.analytics.average_loss)}
+                  {formatCurrency(safeGetAnalyticsValue(currentReport.analytics?.average_gain) - safeGetAnalyticsValue(currentReport.analytics?.average_loss))}
                 </p>
               </div>
             </div>
@@ -463,21 +472,21 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="space-y-1">
                 <p className="text-muted-foreground">Trades Analyzed</p>
-                <p className="font-medium">{currentReport.metadata.trade_count}</p>
+                <p className="font-medium">{safeGetAnalyticsValue(currentReport.metadata.trade_count)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Analysis Period</p>
-                <p className="font-medium">{currentReport.metadata.analysis_period_days} days</p>
+                <p className="font-medium">{safeGetAnalyticsValue(currentReport.metadata.analysis_period_days)} days</p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Data Quality</p>
                 <p className="font-medium text-green-600">
-                  {formatPercentage(currentReport.metadata.data_quality_score)}
+                  {formatPercentage(safeGetAnalyticsValue(currentReport.metadata.data_quality_score))}
                 </p>
               </div>
               <div className="space-y-1">
                 <p className="text-muted-foreground">Processing Time</p>
-                <p className="font-medium">{currentReport.metadata.generation_time_ms}ms</p>
+                <p className="font-medium">{safeGetAnalyticsValue(currentReport.metadata.generation_time_ms)}ms</p>
               </div>
             </div>
           </div>
