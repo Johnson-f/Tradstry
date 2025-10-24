@@ -284,16 +284,19 @@ impl DataFormatter {
     pub fn format_notebook_for_search(notebook: &NotebookNote) -> Document {
         let mut content = HashMap::new();
         content.insert("title".to_string(), notebook.title.clone());
-        content.insert("description".to_string(), notebook.content.clone());
-        content.insert("content".to_string(), notebook.content.clone());
+        
+        // Convert JSON content to string for storage
+        let content_str = serde_json::to_string(&notebook.content).unwrap_or_else(|_| "".to_string());
+        content.insert("description".to_string(), content_str.clone());
+        content.insert("content".to_string(), content_str.clone());
 
         let metadata = DocumentMetadata {
             user_id: "".to_string(), // Will be set by caller
             data_type: "notebookentry".to_string(),
             entity_id: notebook.id.clone(),
             timestamp: Utc::now(),
-            tags: Self::extract_tags(&notebook.content, &DataType::NotebookEntry),
-            content_hash: Self::generate_content_hash(&notebook.content),
+            tags: Self::extract_tags(&content_str, &DataType::NotebookEntry),
+            content_hash: Self::generate_content_hash(&content_str),
         };
 
         Document {

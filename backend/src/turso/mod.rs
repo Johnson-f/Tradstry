@@ -19,7 +19,7 @@ pub use auth::{
     get_user_id,
     get_supabase_user_id,
     validate_jwt_token,
-    validate_supabase_jwt_token_cached,
+    validate_supabase_jwt_token,
     AuthError,
 };
 pub use client::TursoClient;
@@ -29,7 +29,6 @@ pub use webhook::ClerkWebhookHandler;
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
 use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
-use crate::turso::jwt_cache::JwtCache;
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -43,7 +42,6 @@ pub struct AppState {
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
-    pub jwt_cache: Arc<JwtCache>,
 }
 
 impl AppState {
@@ -131,15 +129,6 @@ impl AppState {
             Arc::clone(&ai_insights_service),
         ));
 
-        // Initialize JWT cache
-        let cache_duration_seconds = std::env::var("JWT_CACHE_DURATION_SECONDS")
-            .unwrap_or_else(|_| "30".to_string())
-            .parse::<i64>()
-            .unwrap_or(30);
-        
-        let jwt_cache = Arc::new(JwtCache::new(cache_duration_seconds));
-        log::info!("JWT Cache initialized with {}s TTL", cache_duration_seconds);
-
         Ok(Self {
             config,
             turso_client,
@@ -148,7 +137,6 @@ impl AppState {
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,
-            jwt_cache,
         })
     }
 

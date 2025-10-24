@@ -9,19 +9,36 @@ use log::{debug, info};
 #[derive(Clone, Debug)]
 pub struct CachedToken {
     pub claims: SupabaseClaims,
-    pub expires_at: DateTime<Utc>,
+    pub cached_at: DateTime<Utc>,
+    pub cache_duration_seconds: i64,
 }
 
 impl CachedToken {
     pub fn new(claims: SupabaseClaims, cache_duration_seconds: i64) -> Self {
         Self {
             claims,
-            expires_at: Utc::now() + Duration::seconds(cache_duration_seconds),
+            cached_at: Utc::now(),
+            cache_duration_seconds,
         }
     }
 
     pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at
+        let now = Utc::now();
+        
+        // Check if cache TTL has expired
+        let cache_expires_at = self.cached_at + Duration::seconds(self.cache_duration_seconds);
+        if now > cache_expires_at {
+            return true;
+        }
+        
+        // Check if the actual JWT token has expired
+        // The JWT exp claim is in seconds since epoch
+        let jwt_expires_at = DateTime::from_timestamp(self.claims.exp, 0).unwrap_or(Utc::now());
+        if now > jwt_expires_at {
+            return true;
+        }
+        
+        false
     }
 }
 
@@ -33,6 +50,8 @@ pub struct CacheStats {
     pub cache_hits: u64,
     pub cache_misses: u64,
     pub cache_errors: u64,
+    pub jwt_expired_entries: u64,
+    pub cache_ttl_expired_entries: u64,
     pub total_entries: usize,
     pub expired_entries: usize,
 }
@@ -44,6 +63,8 @@ impl Default for CacheStats {
             cache_hits: 0,
             cache_misses: 0,
             cache_errors: 0,
+            jwt_expired_entries: 0,
+            cache_ttl_expired_entries: 0,
             total_entries: 0,
             expired_entries: 0,
         }
@@ -73,17 +94,30 @@ impl JwtCache {
         let token_hash = Self::hash_token(token);
         
         if let Some(cached) = self.cache.get(&token_hash) {
-            if !cached.is_expired() {
-                // Cache hit
-                self.increment_stat("cache_hits");
-                debug!("JWT Cache Hit: user_id={} (saved Supabase API call)", cached.claims.sub);
-                return Some(cached.claims.clone());
-            } else {
-                // Token expired, remove it
+            let now = Utc::now();
+            let cache_expires_at = cached.cached_at + Duration::seconds(cached.cache_duration_seconds);
+            
+            // Check cache TTL first
+            if now > cache_expires_at {
                 self.cache.remove(&token_hash);
-                self.increment_stat("expired_entries");
-                debug!("JWT Cache: expired token removed for user_id={}", cached.claims.sub);
+                self.increment_stat("cache_ttl_expired_entries");
+                debug!("JWT Cache: cache TTL expired for user_id={}", cached.claims.sub);
+                return None;
             }
+            
+            // Check JWT expiration
+            let jwt_expires_at = DateTime::from_timestamp(cached.claims.exp, 0).unwrap_or(Utc::now());
+            if now > jwt_expires_at {
+                self.cache.remove(&token_hash);
+                self.increment_stat("jwt_expired_entries");
+                debug!("JWT Cache: JWT token expired for user_id={}", cached.claims.sub);
+                return None;
+            }
+            
+            // Cache hit - token is still valid
+            self.increment_stat("cache_hits");
+            debug!("JWT Cache Hit: user_id={} (saved Supabase API call)", cached.claims.sub);
+            return Some(cached.claims.clone());
         }
         
         // Cache miss
@@ -132,6 +166,8 @@ impl JwtCache {
         let cache_hits = self.stats.get("cache_hits").map(|v| *v).unwrap_or(0);
         let cache_misses = self.stats.get("cache_misses").map(|v| *v).unwrap_or(0);
         let cache_errors = self.stats.get("cache_errors").map(|v| *v).unwrap_or(0);
+        let jwt_expired_entries = self.stats.get("jwt_expired_entries").map(|v| *v).unwrap_or(0);
+        let cache_ttl_expired_entries = self.stats.get("cache_ttl_expired_entries").map(|v| *v).unwrap_or(0);
         
         let total_entries = self.cache.len();
         let expired_entries = self.cache.iter()
@@ -143,6 +179,8 @@ impl JwtCache {
             cache_hits,
             cache_misses,
             cache_errors,
+            jwt_expired_entries,
+            cache_ttl_expired_entries,
             total_entries,
             expired_entries,
         }

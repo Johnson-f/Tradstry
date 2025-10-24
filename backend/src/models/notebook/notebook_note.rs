@@ -2,13 +2,14 @@ use anyhow::Result;
 use chrono::Utc;
 use libsql::{Connection, params};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotebookNote {
     pub id: String,
     pub parent_id: Option<String>,
     pub title: String,
-    pub content: String,
+    pub content: Value,
     pub position: i64,
     pub is_deleted: bool,
     pub created_at: String,
@@ -19,14 +20,14 @@ pub struct NotebookNote {
 pub struct CreateNoteRequest {
     pub parent_id: Option<String>,
     pub title: String,
-    pub content: Option<String>,
+    pub content: Option<Value>,
     pub position: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateNoteRequest {
     pub title: Option<String>,
-    pub content: Option<String>,
+    pub content: Option<Value>,
     pub parent_id: Option<Option<String>>, // Some(None) means set to null
     pub position: Option<i64>,
     pub is_deleted: Option<bool>,
@@ -37,12 +38,13 @@ impl NotebookNote {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         let position = if let Some(pos) = req.position { pos } else { 0 };
-        let content = req.content.unwrap_or_default();
+        let content = req.content.unwrap_or_else(|| Value::Array(vec![]));
+        let content_str = serde_json::to_string(&content)?;
 
         conn.execute(
             r#"INSERT INTO notebook_notes (id, parent_id, title, content, position, is_deleted, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, 0, ?, ?)"#,
-            params![id.clone(), req.parent_id, req.title, content, position, now.clone(), now],
+            params![id.clone(), req.parent_id, req.title, content_str, position, now.clone(), now],
         ).await?;
 
         Self::find_by_id(conn, &id).await
@@ -111,7 +113,10 @@ impl NotebookNote {
 
     pub async fn update(conn: &Connection, id: &str, updates: UpdateNoteRequest) -> Result<Self> {
         if let Some(title) = updates.title { conn.execute("UPDATE notebook_notes SET title = ?, updated_at = ? WHERE id = ?", params![title, Utc::now().to_rfc3339(), id]).await?; }
-        if let Some(content) = updates.content { conn.execute("UPDATE notebook_notes SET content = ?, updated_at = ? WHERE id = ?", params![content, Utc::now().to_rfc3339(), id]).await?; }
+        if let Some(content) = updates.content { 
+            let content_str = serde_json::to_string(&content)?;
+            conn.execute("UPDATE notebook_notes SET content = ?, updated_at = ? WHERE id = ?", params![content_str, Utc::now().to_rfc3339(), id]).await?; 
+        }
         if let Some(pos) = updates.position { conn.execute("UPDATE notebook_notes SET position = ?, updated_at = ? WHERE id = ?", params![pos, Utc::now().to_rfc3339(), id]).await?; }
         if let Some(is_deleted) = updates.is_deleted { conn.execute("UPDATE notebook_notes SET is_deleted = ?, updated_at = ? WHERE id = ?", params![if is_deleted {1} else {0}, Utc::now().to_rfc3339(), id]).await?; }
         if let Some(parent_opt) = updates.parent_id {
@@ -156,11 +161,14 @@ impl NotebookNote {
     }
 
     fn from_row(row: libsql::Row) -> Result<Self> {
+        let content_str: String = row.get(3)?;
+        let content = serde_json::from_str(&content_str).unwrap_or_else(|_| Value::String(content_str));
+        
         Ok(Self {
             id: row.get(0)?,
             parent_id: row.get(1)?,
             title: row.get(2)?,
-            content: row.get(3)?,
+            content,
             position: row.get(4)?,
             is_deleted: match row.get::<i64>(5)? { 0 => false, _ => true },
             created_at: row.get(6)?,

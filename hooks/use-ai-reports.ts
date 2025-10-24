@@ -36,6 +36,7 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
   const [currentReport, setCurrentReport] = useState<TradingReport | null>(null);
   const [generating, setGenerating] = useState(false);
   const [localError, setLocalError] = useState<Error | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // Refs for cleanup
   const pollingRefs = useRef<Set<string>>(new Set());
@@ -67,6 +68,12 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
     } else if (error instanceof GenerationError) {
       message = `Generation Error: ${error.message}`;
     } else if (error instanceof AIReportsError) {
+      // Handle authentication errors gracefully
+      if (error.message.includes('Authentication') || error.message.includes('AUTH_ERROR')) {
+        message = 'Please log in to access AI reports';
+        console.log('Authentication required for AI reports');
+        return; // Don't set error state for auth issues
+      }
       message = `AI Reports Error: ${error.message}`;
     } else if (error.message) {
       message = error.message;
@@ -76,7 +83,7 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
     toast.error(message);
   }, []);
 
-  // Query for reports list
+  // Query for reports list - only enabled when authenticated
   const {
     data: reportsData,
     isLoading: loading,
@@ -88,6 +95,7 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
       console.log('Fetching reports with filters:', filters);
       return aiReportsService.getReports(filters);
     },
+    enabled: isAuthenticated === true, // Only enable when we know user is authenticated
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: (failureCount, error) => {
       if (error instanceof AIReportsError && error.code === 'AUTH_ERROR') {
@@ -374,16 +382,44 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
   // Combine errors
   const error = localError || reportsError;
 
+  /**
+   * Check authentication status on mount
+   */
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check if user is authenticated
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          console.log('User authenticated, enabling reports query...');
+          setIsAuthenticated(true);
+        } else {
+          console.log('User not authenticated, disabling reports query');
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.log('Authentication check failed:', error);
+        setIsAuthenticated(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
   // Debug logging
   useEffect(() => {
     console.log('useAIReports hook state:', {
+      isAuthenticated,
       loading,
       reportsCount: reportsData?.reports?.length || 0,
       reports: reportsData?.reports || [],
       error: error?.message,
       filters
     });
-  }, [loading, reportsData, error, filters]);
+  }, [isAuthenticated, loading, reportsData, error, filters]);
 
   return {
     // State

@@ -3,7 +3,7 @@
 import { useNote, useUpdateNote } from "@/lib/hooks/use-notebook";
 import BlockEditor from "@/components/notebook/BlockEditor";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Spinner } from "@/notion-clone/components/spinner";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function NotebookEditor({ docId }: { docId: string }) {
   const { note, isLoading } = useNote(docId);
