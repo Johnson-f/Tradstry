@@ -1,172 +1,526 @@
-import { apiClient } from './api-client';
+import { apiConfig, getFullUrl } from '@/lib/config/api';
+import { createClient } from '@/lib/supabase/client';
+import type {
+  Insight,
+  InsightRequest,
+  InsightListResponse,
+  InsightGenerationTask,
+  InsightFilters,
+  ApiResponse,
+} from '@/lib/types/ai-insights';
+import {
+  AIInsightsError,
+  ValidationError,
+  GenerationError,
+  POLLING_INTERVAL,
+  MAX_POLLING_ATTEMPTS,
+} from '@/lib/types/ai-insights';
 
-// AI Insights Service Types
-export interface AIInsight {
-  id: string;
-  user_id: string;
-  content: string;
-  insight_type: string;
-  priority: string;
-  actionable: boolean;
-  tags?: string[];
-  confidence_score?: number;
-  expires_at?: string;
-  created_at: string;
-  updated_at?: string;
-}
-
-export interface AIInsightCreate {
-  content: string;
-  insight_type: string;
-  priority?: string;
-  actionable?: boolean;
-  tags?: string[];
-  confidence_score?: number;
-  expires_at?: string;
-}
-
-export interface AIInsightUpdate {
-  content?: string;
-  insight_type?: string;
-  priority?: string;
-  actionable?: boolean;
-  tags?: string[];
-  confidence_score?: number;
-  expires_at?: string;
-}
-
-export interface AIInsightGenerateRequest {
-  insight_types?: string[];
-  time_range?: string;
-  min_confidence?: number;
-}
-
-export interface InsightDeleteResponse {
-  success: boolean;
-  message: string;
-}
-
-export interface InsightExpireResponse {
-  success: boolean;
-  message: string;
-}
-
-export interface PriorityInsightsResponse extends AIInsight {
-  priority_score?: number;
-}
-
-export interface ActionableInsightsResponse extends AIInsight {
-  action_items?: string[];
-}
-
+/**
+ * AI Insights Service
+ * Handles all API calls to the backend AI insights endpoints
+ */
 export class AIInsightsService {
-  private baseUrl = '/ai/insights';
+  private baseUrl: string;
+  private supabase;
 
-  // Create a new AI insight
-  async createInsight(insightData: AIInsightCreate): Promise<{ success: boolean; data: AIInsight }> {
-    return apiClient.post(`${this.baseUrl}/`, insightData);
+  constructor() {
+    this.baseUrl = getFullUrl(apiConfig.endpoints.ai.insights.base);
+    this.supabase = createClient();
   }
 
-  // Get AI insights with filtering and pagination
-  async getInsights(params?: {
-    insight_type?: string;
-    priority?: string;
-    actionable?: boolean;
-    tags?: string[];
-    search_query?: string;
-    limit?: number;
-    offset?: number;
-    order_by?: string;
-    order_direction?: 'ASC' | 'DESC';
-  }): Promise<AIInsight[]> {
-    const queryParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
-          if (Array.isArray(value)) {
-            value.forEach(item => queryParams.append(key, item));
-          } else {
-            queryParams.append(key, value.toString());
-          }
-        }
-      });
-    }
-    const queryString = queryParams.toString();
-    const url = queryString ? `${this.baseUrl}/?${queryString}` : `${this.baseUrl}/`;
-    return apiClient.get(url);
-  }
+  /**
+   * Generate insights synchronously
+   */
+  async generateInsights(request: InsightRequest): Promise<Insight> {
+    try {
+      this.validateInsightRequest(request);
 
-  // Get high-priority insights
-  async getPriorityInsights(limit?: number): Promise<PriorityInsightsResponse[]> {
-    const queryParams = new URLSearchParams();
-    if (limit !== undefined) {
-      queryParams.append('limit', limit.toString());
-    }
-    const queryString = queryParams.toString();
-    const url = queryString ? `${this.baseUrl}/priority?${queryString}` : `${this.baseUrl}/priority`;
-    return apiClient.get(url);
-  }
-
-  // Get actionable insights
-  async getActionableInsights(limit?: number): Promise<ActionableInsightsResponse[]> {
-    const queryParams = new URLSearchParams();
-    if (limit !== undefined) {
-      queryParams.append('limit', limit.toString());
-    }
-    const queryString = queryParams.toString();
-    const url = queryString ? `${this.baseUrl}/actionable?${queryString}` : `${this.baseUrl}/actionable`;
-    return apiClient.get(url);
-  }
-
-  // Get a specific AI insight by ID
-  async getInsight(insightId: string): Promise<AIInsight> {
-    return apiClient.get(`${this.baseUrl}/${insightId}`);
-  }
-
-  // Update an existing AI insight
-  async updateInsight(insightId: string, insightData: AIInsightUpdate): Promise<{ success: boolean; data: AIInsight }> {
-    return apiClient.put(`${this.baseUrl}/${insightId}`, insightData);
-  }
-
-  // Delete an AI insight
-  async deleteInsight(insightId: string, softDelete?: boolean): Promise<InsightDeleteResponse> {
-    const queryParams = new URLSearchParams();
-    if (softDelete !== undefined) {
-      queryParams.append('soft_delete', softDelete.toString());
-    }
-    const queryString = queryParams.toString();
-    const url = queryString ? `${this.baseUrl}/${insightId}?${queryString}` : `${this.baseUrl}/${insightId}`;
-    return apiClient.delete(url);
-  }
-
-  // Expire an AI insight
-  async expireInsight(insightId: string): Promise<InsightExpireResponse> {
-    return apiClient.post(`${this.baseUrl}/${insightId}/expire`);
-  }
-
-  // Generate AI insights using the AI orchestrator
-  async generateInsights(request: AIInsightGenerateRequest): Promise<{ success: boolean; message: string; data: AIInsight[] }> {
-    return apiClient.post(`${this.baseUrl}/generate`, request);
-  }
-
-  // Search insights using vector similarity
-  async searchInsights(params: {
-    query: string;
-    insight_type?: string;
-    limit?: number;
-    similarity_threshold?: number;
-  }): Promise<AIInsight[]> {
-    const queryParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        queryParams.append(key, value.toString());
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
-    });
-    const url = `${this.baseUrl}/search?${queryParams.toString()}`;
-    return apiClient.get(url);
+
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'GENERATION_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<Insight> = await response.json();
+      
+      if (!result.success || !result.data) {
+        throw new AIInsightsError(
+          result.error || 'Failed to generate insights',
+          'GENERATION_ERROR'
+        );
+      }
+
+      return result.data;
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to generate insights: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Generate insights asynchronously
+   * Returns task ID for polling
+   */
+  async generateInsightsAsync(request: InsightRequest): Promise<string> {
+    try {
+      this.validateInsightRequest(request);
+
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
+      }
+
+      const response = await fetch(getFullUrl(apiConfig.endpoints.ai.insights.generateAsync), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'ASYNC_GENERATION_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<{ task_id: string }> = await response.json();
+      
+      if (!result.success || !result.data?.task_id) {
+        throw new AIInsightsError(
+          result.error || 'Failed to start async insight generation',
+          'ASYNC_GENERATION_ERROR'
+        );
+      }
+
+      return result.data.task_id;
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to start async insight generation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Get user's insights with optional filters
+   */
+  async getInsights(filters: InsightFilters = {}): Promise<InsightListResponse> {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (filters.time_range) {
+        queryParams.append('time_range', filters.time_range);
+      }
+      if (filters.insight_type) {
+        queryParams.append('insight_type', filters.insight_type);
+      }
+      if (filters.limit) {
+        queryParams.append('limit', filters.limit.toString());
+      }
+      if (filters.offset) {
+        queryParams.append('offset', filters.offset.toString());
+      }
+
+      const url = `${this.baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
+      }
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'FETCH_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<InsightListResponse> = await response.json();
+      
+      if (!result.success || !result.data) {
+        throw new AIInsightsError(
+          result.error || 'Failed to fetch insights',
+          'FETCH_ERROR'
+        );
+      }
+
+      return result.data;
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to fetch insights: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Get specific insight by ID
+   */
+  async getInsight(insightId: string): Promise<Insight> {
+    try {
+      if (!insightId) {
+        throw new ValidationError('Insight ID is required', 'insightId');
+      }
+
+      const url = getFullUrl(apiConfig.endpoints.ai.insights.byId(insightId));
+      
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
+      }
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new AIInsightsError(
+            'Insight not found',
+            'NOT_FOUND',
+            { insightId }
+          );
+        }
+        
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'FETCH_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<Insight> = await response.json();
+      
+      if (!result.success || !result.data) {
+        throw new AIInsightsError(
+          result.error || 'Failed to fetch insight',
+          'FETCH_ERROR'
+        );
+      }
+
+      return result.data;
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to fetch insight: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Get generation task status
+   */
+  async getGenerationTask(taskId: string): Promise<InsightGenerationTask> {
+    try {
+      if (!taskId) {
+        throw new ValidationError('Task ID is required', 'taskId');
+      }
+
+      const url = getFullUrl(apiConfig.endpoints.ai.insights.tasks.byId(taskId));
+      
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
+      }
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new AIInsightsError(
+            'Generation task not found',
+            'TASK_NOT_FOUND',
+            { taskId }
+          );
+        }
+        
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'TASK_FETCH_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<InsightGenerationTask> = await response.json();
+      
+      if (!result.success || !result.data) {
+        throw new AIInsightsError(
+          result.error || 'Failed to fetch generation task',
+          'TASK_FETCH_ERROR'
+        );
+      }
+
+      return result.data;
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to fetch generation task: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Delete insight
+   */
+  async deleteInsight(insightId: string): Promise<void> {
+    try {
+      if (!insightId) {
+        throw new ValidationError('Insight ID is required', 'insightId');
+      }
+
+      const url = getFullUrl(apiConfig.endpoints.ai.insights.byId(insightId));
+      
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
+      }
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new AIInsightsError(
+            'Insight not found',
+            'NOT_FOUND',
+            { insightId }
+          );
+        }
+        
+        const errorData = await response.json().catch(() => ({}));
+        throw new AIInsightsError(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          'DELETE_ERROR',
+          { status: response.status, statusText: response.statusText }
+        );
+      }
+
+      const result: ApiResponse<void> = await response.json();
+      
+      if (!result.success) {
+        throw new AIInsightsError(
+          result.error || 'Failed to delete insight',
+          'DELETE_ERROR'
+        );
+      }
+    } catch (error) {
+      if (error instanceof AIInsightsError) {
+        throw error;
+      }
+      throw new AIInsightsError(
+        `Failed to delete insight: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Poll task status until completion
+   */
+  async pollTaskStatus(
+    taskId: string,
+    onComplete?: (insight: Insight) => void,
+    onError?: (error: Error) => void
+  ): Promise<Insight> {
+    let attempts = 0;
+    
+    while (attempts < MAX_POLLING_ATTEMPTS) {
+      try {
+        const task = await this.getGenerationTask(taskId);
+        
+        switch (task.status) {
+          case 'completed':
+            if (task.result_insight_id) {
+              const insight = await this.getInsight(task.result_insight_id);
+              onComplete?.(insight);
+              return insight;
+            } else {
+              throw new GenerationError('Task completed but no insight ID found', taskId);
+            }
+            
+          case 'failed':
+            const errorMessage = task.error_message || 'Task failed without error message';
+            const error = new GenerationError(errorMessage, taskId);
+            onError?.(error);
+            throw error;
+            
+          case 'expired':
+            const expiredError = new GenerationError('Task expired', taskId);
+            onError?.(expiredError);
+            throw expiredError;
+            
+          case 'pending':
+          case 'processing':
+            // Continue polling
+            break;
+        }
+        
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
+        
+      } catch (error) {
+        if (error instanceof GenerationError) {
+          throw error;
+        }
+        
+        // Network error, retry
+        attempts++;
+        if (attempts >= MAX_POLLING_ATTEMPTS) {
+          const timeoutError = new GenerationError('Task polling timeout', taskId);
+          onError?.(timeoutError);
+          throw timeoutError;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
+      }
+    }
+    
+    throw new GenerationError('Maximum polling attempts reached', taskId);
+  }
+
+  /**
+   * Validate insight request
+   */
+  private validateInsightRequest(request: InsightRequest): void {
+    if (!request.time_range) {
+      throw new ValidationError('Time range is required', 'time_range');
+    }
+    
+    if (!request.insight_type) {
+      throw new ValidationError('Insight type is required', 'insight_type');
+    }
+    
+    const validTimeRanges = ['7d', '30d', '90d', '1y', 'ytd', 'custom', 'all_time'];
+    if (!validTimeRanges.includes(request.time_range)) {
+      throw new ValidationError(`Invalid time range: ${request.time_range}`, 'time_range');
+    }
+    
+    const validInsightTypes = [
+      'trading_patterns',
+      'performance_analysis',
+      'risk_assessment',
+      'behavioral_analysis',
+      'market_analysis',
+      'opportunity_detection'
+    ];
+    if (!validInsightTypes.includes(request.insight_type)) {
+      throw new ValidationError(`Invalid insight type: ${request.insight_type}`, 'insight_type');
+    }
+  }
+
+  /**
+   * Get authentication token from Supabase session with refresh capability
+   */
+  private async getAuthToken(): Promise<string | null> {
+    try {
+      const { data: { session }, error } = await this.supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Error getting session:', error);
+        return null;
+      }
+      
+      if (!session?.access_token) {
+        console.log('No authentication token found - user not logged in');
+        return null;
+      }
+      
+      // Check if token expires soon (within 5 minutes)
+      const tokenExpiry = session.expires_at ? new Date(session.expires_at * 1000) : null;
+      const now = new Date();
+      const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+      
+      if (tokenExpiry && tokenExpiry < fiveMinutesFromNow) {
+        console.log('Token expires soon, refreshing...');
+        const { data: { session: refreshedSession }, error: refreshError } = await this.supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.error('Error refreshing session:', refreshError);
+          return null;
+        }
+        
+        if (refreshedSession?.access_token) {
+          console.log('Token refreshed successfully');
+          return refreshedSession.access_token;
+        }
+      }
+      
+      return session.access_token;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
   }
 }
 
 // Export singleton instance
 export const aiInsightsService = new AIInsightsService();
-export default aiInsightsService;

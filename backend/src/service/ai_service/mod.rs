@@ -1,0 +1,22 @@
+// AI service module - centralized AI functionality
+pub mod chat_service;
+pub mod insights_service;
+pub mod reports_service;
+pub mod openrouter_client;
+pub mod voyager_client;
+pub mod upstash_vector_client;
+pub mod qdrant_client;
+pub mod hybrid_search_service;
+pub mod vectorization_service;
+pub mod data_formatter;
+
+// Re-export commonly used types
+pub use chat_service::AIChatService;
+pub use insights_service::AIInsightsService;
+pub use reports_service::AiReportsService;
+pub use vectorization_service::VectorizationService;
+pub use openrouter_client::OpenRouterClient;
+pub use voyager_client::VoyagerClient;
+pub use upstash_vector_client::UpstashVectorClient;
+pub use qdrant_client::QdrantDocumentClient;
+pub use hybrid_search_service::HybridSearchService;

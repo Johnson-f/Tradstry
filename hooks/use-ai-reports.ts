@@ -1,222 +1,604 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiReportsService } from '@/lib/services/ai-reports-service';
 import type {
-  AIReport,
-  AIReportCreate,
-  AIReportUpdate,
-  AIReportGenerateRequest,
-  DeleteResponse
-} from '@/lib/services/ai-reports-service';
+  TradingReport,
+  ReportRequest,
+  ReportSummary,
+  ReportListResponse,
+  ReportGenerationTask,
+  ReportFilters,
+  UseAIReportsReturn,
+} from '@/lib/types/ai-reports';
+import {
+  AIReportsError,
+  ValidationError,
+  GenerationError,
+  DEFAULT_REPORT_FILTERS,
+} from '@/lib/types/ai-reports';
 
-// Query keys for TanStack Query
-export const aiReportsKeys = {
-  all: ['ai-reports'] as const,
-  reports: () => [...aiReportsKeys.all, 'reports'] as const,
-  reportsList: (params?: {
-    report_type?: string;
-    status?: string;
-    date_range_start?: string;
-    date_range_end?: string;
-    search_query?: string;
-    limit?: number;
-    offset?: number;
-    order_by?: string;
-    order_direction?: 'ASC' | 'DESC';
-  }) => [...aiReportsKeys.reports(), 'list', params] as const,
-  report: (id: string) => [...aiReportsKeys.reports(), id] as const,
-  tradingContext: (params?: {
-    time_range?: string;
-    custom_start_date?: string;
-    custom_end_date?: string;
-  }) => [...aiReportsKeys.all, 'trading-context', params] as const,
+// Query keys
+const QUERY_KEYS = {
+  reports: (filters?: ReportFilters) => ['ai-reports', 'reports', filters] as const,
+  report: (id: string) => ['ai-reports', 'report', id] as const,
+  task: (id: string) => ['ai-reports', 'task', id] as const,
 } as const;
 
-interface UseAIReportsState {
-  currentReport: AIReport | null;
-  isGenerating: boolean;
-}
-
-interface UseAIReportsReturn extends UseAIReportsState {
-  // Query states
-  reports: AIReport[];
-  reportsLoading: boolean;
-  reportsError: Error | null;
-  
-  tradingContext: any | null;
-  tradingContextLoading: boolean;
-  tradingContextError: Error | null;
-
-  // Mutations
-  createReport: {
-    mutate: (reportData: AIReportCreate) => void;
-    mutateAsync: (reportData: AIReportCreate) => Promise<{ success: boolean; data: AIReport }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  updateReport: {
-    mutate: (variables: { reportId: string; reportData: AIReportUpdate }) => void;
-    mutateAsync: (variables: { reportId: string; reportData: AIReportUpdate }) => Promise<{ success: boolean; data: AIReport }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  deleteReport: {
-    mutate: (variables: { reportId: string; softDelete?: boolean }) => void;
-    mutateAsync: (variables: { reportId: string; softDelete?: boolean }) => Promise<DeleteResponse>;
-    isPending: boolean;
-    error: Error | null;
-  };
-  
-  generateReport: {
-    mutate: (request: AIReportGenerateRequest) => void;
-    mutateAsync: (request: AIReportGenerateRequest) => Promise<{ success: boolean; message: string; data: AIReport }>;
-    isPending: boolean;
-    error: Error | null;
-  };
-
-  // Query functions
-  refetchReports: () => void;
-  refetchTradingContext: () => void;
-
-  // Utility
-  setCurrentReport: (report: AIReport | null) => void;
-}
-
-interface UseAIReportsParams {
-  reportsParams?: {
-    report_type?: string;
-    status?: string;
-    date_range_start?: string;
-    date_range_end?: string;
-    search_query?: string;
-    limit?: number;
-    offset?: number;
-    order_by?: string;
-    order_direction?: 'ASC' | 'DESC';
-  };
-  tradingContextParams?: {
-    time_range?: string;
-    custom_start_date?: string;
-    custom_end_date?: string;
-  };
-}
-
-export function useAIReports(params: UseAIReportsParams = {}): UseAIReportsReturn {
-  const { reportsParams, tradingContextParams } = params;
+/**
+ * Custom hook for AI Reports
+ * Provides state management and API interactions for AI reports functionality using TanStack Query
+ */
+export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): UseAIReportsReturn {
   const queryClient = useQueryClient();
   
-  const [localState, setLocalState] = useState<UseAIReportsState>({
-    currentReport: null,
-    isGenerating: false,
-  });
+  // Local state for current report and generating status
+  const [currentReport, setCurrentReport] = useState<TradingReport | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [localError, setLocalError] = useState<Error | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  const setCurrentReport = useCallback((report: AIReport | null) => {
-    setLocalState(prev => ({ ...prev, currentReport: report }));
+  // Refs for cleanup
+  const pollingRefs = useRef<Set<string>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cancel any ongoing requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Clear polling refs
+      pollingRefs.current.clear();
+    };
   }, []);
 
-  // Queries
+  /**
+   * Handle errors with toast notifications
+   */
+  const handleError = useCallback((error: Error, context?: string) => {
+    console.error(`AI Reports Error${context ? ` (${context})` : ''}:`, error);
+    
+    let message = 'An unexpected error occurred';
+    
+    if (error instanceof ValidationError) {
+      message = `Validation Error: ${error.message}`;
+    } else if (error instanceof GenerationError) {
+      message = `Generation Error: ${error.message}`;
+    } else if (error instanceof AIReportsError) {
+      // Handle authentication errors gracefully
+      if (error.message.includes('Authentication') || error.message.includes('AUTH_ERROR')) {
+        message = 'Please log in to access AI reports';
+        console.log('Authentication required for AI reports');
+        return; // Don't set error state for auth issues
+      }
+      message = `AI Reports Error: ${error.message}`;
+    } else if (error.message) {
+      message = error.message;
+    }
+    
+    setLocalError(error);
+    toast.error(message);
+  }, []);
+
+  // Query for reports list - only enabled when authenticated
   const {
-    data: reports = [],
-    isLoading: reportsLoading,
+    data: reportsData,
+    isLoading: loading,
     error: reportsError,
     refetch: refetchReports,
   } = useQuery({
-    queryKey: aiReportsKeys.reportsList(reportsParams),
-    queryFn: () => aiReportsService.getReports(reportsParams),
+    queryKey: QUERY_KEYS.reports(filters),
+    queryFn: () => {
+      console.log('Fetching reports with filters:', filters);
+      return aiReportsService.getReports(filters);
+    },
+    enabled: isAuthenticated === true, // Only enable when we know user is authenticated
     staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-
-  const {
-    data: tradingContextData,
-    isLoading: tradingContextLoading,
-    error: tradingContextError,
-    refetch: refetchTradingContext,
-  } = useQuery({
-    queryKey: aiReportsKeys.tradingContext(tradingContextParams),
-    queryFn: () => aiReportsService.getTradingContext(tradingContextParams),
-    staleTime: 10 * 60 * 1000, // 10 minutes
-  });
-
-  const tradingContext = tradingContextData?.data || null;
-
-  // Mutations
-  const createReportMutation = useMutation({
-    mutationFn: (reportData: AIReportCreate) => aiReportsService.createReport(reportData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiReportsKeys.reports() });
+    retry: (failureCount, error) => {
+      if (error instanceof AIReportsError && error.code === 'AUTH_ERROR') {
+        return false; // Don't retry auth errors
+      }
+      return failureCount < 3;
     },
   });
 
-  const updateReportMutation = useMutation({
-    mutationFn: ({ reportId, reportData }: { reportId: string; reportData: AIReportUpdate }) =>
-      aiReportsService.updateReport(reportId, reportData),
-    onSuccess: (_, { reportId }) => {
-      queryClient.invalidateQueries({ queryKey: aiReportsKeys.reports() });
-      queryClient.invalidateQueries({ queryKey: aiReportsKeys.report(reportId) });
-    },
-  });
+  // Handle query success/error with useEffect
+  useEffect(() => {
+    if (reportsData) {
+      console.log('Reports loaded successfully:', reportsData);
+    }
+  }, [reportsData]);
 
-  const deleteReportMutation = useMutation({
-    mutationFn: ({ reportId, softDelete }: { reportId: string; softDelete?: boolean }) =>
-      aiReportsService.deleteReport(reportId, softDelete),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiReportsKeys.reports() });
-    },
-  });
+  useEffect(() => {
+    if (reportsError) {
+      console.error('Failed to load reports:', reportsError);
+      handleError(reportsError as Error, 'fetchReports');
+    }
+  }, [reportsError, handleError]);
 
+  // Generate report mutation
   const generateReportMutation = useMutation({
-    mutationFn: (request: AIReportGenerateRequest) => {
-      setLocalState(prev => ({ ...prev, isGenerating: true }));
-      return aiReportsService.generateReport(request);
+    mutationFn: (request: ReportRequest) => aiReportsService.generateReport(request),
+    onMutate: () => {
+      setGenerating(true);
+      setLocalError(null);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: aiReportsKeys.reports() });
+    onSuccess: (report) => {
+      // Add to reports list
+      const reportSummary: ReportSummary = {
+        id: report.id,
+        report_type: report.report_type,
+        title: report.title,
+        time_range: report.time_range,
+        summary: report.summary,
+        generated_at: report.generated_at,
+        expires_at: report.expires_at,
+        trade_count: report.analytics.total_trades,
+        total_pnl: report.analytics.total_pnl,
+        win_rate: report.analytics.win_rate,
+        risk_score: report.risk_metrics.risk_score,
+        sections_count: Object.keys(report).length,
+      };
+      
+      // Update reports cache
+      queryClient.setQueryData(QUERY_KEYS.reports(filters), (old: ReportListResponse | undefined) => {
+        if (!old) return { reports: [reportSummary], total_count: 1, has_more: false };
+        return {
+          ...old,
+          reports: [reportSummary, ...old.reports],
+          total_count: old.total_count + 1,
+        };
+      });
+      
+      // Set as current report
+      setCurrentReport(report);
+      
+      toast.success('Report generated successfully!');
+    },
+    onError: (error) => {
+      handleError(error as Error, 'generateReport');
     },
     onSettled: () => {
-      setLocalState(prev => ({ ...prev, isGenerating: false }));
+      setGenerating(false);
     },
   });
 
+  // Generate report async mutation
+  const generateReportAsyncMutation = useMutation({
+    mutationFn: (request: ReportRequest) => aiReportsService.generateReportAsync(request),
+    onMutate: () => {
+      setGenerating(true);
+      setLocalError(null);
+    },
+    onSuccess: () => {
+      toast.success('Report generation started!');
+    },
+    onError: (error) => {
+      handleError(error as Error, 'generateReportAsync');
+    },
+    onSettled: () => {
+      setGenerating(false);
+    },
+  });
+
+  // Delete report mutation
+  const deleteReportMutation = useMutation({
+    mutationFn: (reportId: string) => aiReportsService.deleteReport(reportId),
+    onSuccess: (_, reportId) => {
+      // Update reports cache
+      queryClient.setQueryData(QUERY_KEYS.reports(filters), (old: ReportListResponse | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          reports: old.reports.filter(report => report.id !== reportId),
+          total_count: old.total_count - 1,
+        };
+      });
+      
+      // Clear current report if it's the deleted one
+      if (currentReport?.id === reportId) {
+        setCurrentReport(null);
+      }
+      
+      toast.success('Report deleted successfully');
+    },
+    onError: (error) => {
+      handleError(error as Error, 'deleteReport');
+    },
+  });
+
+  /**
+   * Clear error state
+   */
+  const clearError = useCallback(() => {
+    setLocalError(null);
+  }, []);
+
+  /**
+   * Clear current report
+   */
+  const clearCurrentReport = useCallback(() => {
+    setCurrentReport(null);
+  }, []);
+
+  /**
+   * Generate report synchronously
+   */
+  const generateReport = useCallback(async (request: ReportRequest): Promise<void> => {
+    try {
+      await generateReportMutation.mutateAsync(request);
+    } catch (error) {
+      throw error;
+    }
+  }, [generateReportMutation]);
+
+  /**
+   * Generate report asynchronously
+   */
+  const generateReportAsync = useCallback(async (request: ReportRequest): Promise<string> => {
+    try {
+      return await generateReportAsyncMutation.mutateAsync(request);
+    } catch (error) {
+      throw error;
+    }
+  }, [generateReportAsyncMutation]);
+
+  /**
+   * Get reports with filters
+   */
+  const getReports = useCallback(async (newFilters: ReportFilters = DEFAULT_REPORT_FILTERS): Promise<void> => {
+    try {
+      await refetchReports();
+    } catch (error) {
+      throw error;
+    }
+  }, [refetchReports]);
+
+  /**
+   * Get specific report by ID
+   */
+  const getReport = useCallback(async (reportId: string): Promise<void> => {
+    try {
+      console.log('Attempting to load report:', reportId);
+      setLocalError(null); // Clear any previous errors
+      const report = await aiReportsService.getReport(reportId);
+      setCurrentReport(report);
+      console.log('Successfully loaded report:', reportId);
+    } catch (error) {
+      console.error('Failed to load report:', reportId, error);
+      setCurrentReport(null); // Clear current report on error
+      handleError(error as Error, 'getReport');
+      throw error;
+    }
+  }, [handleError]);
+
+  /**
+   * Delete report
+   */
+  const deleteReport = useCallback(async (reportId: string): Promise<void> => {
+    try {
+      await deleteReportMutation.mutateAsync(reportId);
+    } catch (error) {
+      throw error;
+    }
+  }, [deleteReportMutation]);
+
+  /**
+   * Refresh reports list
+   */
+  const refreshReports = useCallback(async (): Promise<void> => {
+    try {
+      await refetchReports();
+      toast.success('Reports refreshed');
+    } catch (error) {
+      // Error already handled in refetchReports
+    }
+  }, [refetchReports]);
+
+  /**
+   * Get task status
+   */
+  const getTaskStatus = useCallback(async (taskId: string): Promise<ReportGenerationTask> => {
+    try {
+      setLocalError(null);
+      return await aiReportsService.getGenerationTask(taskId);
+    } catch (error) {
+      handleError(error as Error, 'getTaskStatus');
+      throw error;
+    }
+  }, [handleError]);
+
+  /**
+   * Poll task status until completion
+   */
+  const pollTaskStatus = useCallback(async (
+    taskId: string,
+    onComplete?: (report: TradingReport) => void
+  ): Promise<void> => {
+    try {
+      setLocalError(null);
+      
+      // Add to polling refs for cleanup
+      pollingRefs.current.add(taskId);
+      
+      await aiReportsService.pollTaskStatus(
+        taskId,
+        (completedReport) => {
+          // Add to reports list
+          const reportSummary: ReportSummary = {
+            id: completedReport.id,
+            report_type: completedReport.report_type,
+            title: completedReport.title,
+            time_range: completedReport.time_range,
+            summary: completedReport.summary,
+            generated_at: completedReport.generated_at,
+            expires_at: completedReport.expires_at,
+            trade_count: completedReport.analytics.total_trades,
+            total_pnl: completedReport.analytics.total_pnl,
+            win_rate: completedReport.analytics.win_rate,
+            risk_score: completedReport.risk_metrics.risk_score,
+            sections_count: Object.keys(completedReport).length,
+          };
+          
+          // Update reports cache
+          queryClient.setQueryData(QUERY_KEYS.reports(filters), (old: ReportListResponse | undefined) => {
+            if (!old) return { reports: [reportSummary], total_count: 1, has_more: false };
+            return {
+              ...old,
+              reports: [reportSummary, ...old.reports],
+              total_count: old.total_count + 1,
+            };
+          });
+          
+          // Set as current report
+          setCurrentReport(completedReport);
+          
+          // Call completion callback
+          onComplete?.(completedReport);
+          
+          toast.success('Report generation completed!');
+        },
+        (error) => {
+          handleError(error, 'pollTaskStatus');
+        },
+        (progress) => {
+          // Could emit progress updates here if needed
+          console.log(`Report generation progress: ${progress}%`);
+        }
+      );
+      
+    } catch (error) {
+      handleError(error as Error, 'pollTaskStatus');
+      throw error;
+    } finally {
+      // Remove from polling refs
+      pollingRefs.current.delete(taskId);
+    }
+  }, [handleError, queryClient, filters]);
+
+  // Combine errors
+  const error = localError || reportsError;
+
+  /**
+   * Check authentication status on mount
+   */
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check if user is authenticated
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          console.log('User authenticated, enabling reports query...');
+          setIsAuthenticated(true);
+        } else {
+          console.log('User not authenticated, disabling reports query');
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.log('Authentication check failed:', error);
+        setIsAuthenticated(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('useAIReports hook state:', {
+      isAuthenticated,
+      loading,
+      reportsCount: reportsData?.reports?.length || 0,
+      reports: reportsData?.reports || [],
+      error: error?.message,
+      filters
+    });
+  }, [isAuthenticated, loading, reportsData, error, filters]);
+
   return {
-    ...localState,
-    // Query states
-    reports,
-    reportsLoading,
-    reportsError,
-    tradingContext,
-    tradingContextLoading,
-    tradingContextError,
-    // Mutations
-    createReport: {
-      mutate: createReportMutation.mutate,
-      mutateAsync: createReportMutation.mutateAsync,
-      isPending: createReportMutation.isPending,
-      error: createReportMutation.error,
-    },
-    updateReport: {
-      mutate: updateReportMutation.mutate,
-      mutateAsync: updateReportMutation.mutateAsync,
-      isPending: updateReportMutation.isPending,
-      error: updateReportMutation.error,
-    },
-    deleteReport: {
-      mutate: deleteReportMutation.mutate,
-      mutateAsync: deleteReportMutation.mutateAsync,
-      isPending: deleteReportMutation.isPending,
-      error: deleteReportMutation.error,
-    },
-    generateReport: {
-      mutate: generateReportMutation.mutate,
-      mutateAsync: generateReportMutation.mutateAsync,
-      isPending: generateReportMutation.isPending,
-      error: generateReportMutation.error,
-    },
-    // Query functions
-    refetchReports,
-    refetchTradingContext,
-    // Utility
-    setCurrentReport,
+    // State
+    reports: reportsData?.reports || [],
+    currentReport,
+    loading,
+    generating,
+    error,
+    
+    // Actions
+    generateReport,
+    generateReportAsync,
+    getReports,
+    getReport,
+    deleteReport,
+    refreshReports,
+    
+    // Task management
+    getTaskStatus,
+    pollTaskStatus,
+    
+    // Utilities
+    clearError,
+    clearCurrentReport,
   };
+}
+
+/**
+ * Hook for managing report generation with polling
+ * Useful for components that need to track async generation
+ */
+export function useReportGeneration() {
+  const [isPolling, setIsPolling] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const aiReports = useAIReports();
+
+  const startGeneration = useCallback(async (
+    request: ReportRequest,
+    onComplete?: (report: TradingReport) => void
+  ): Promise<string> => {
+    try {
+      setIsPolling(true);
+      setProgress(0);
+      
+      // Start async generation
+      const taskId = await aiReports.generateReportAsync(request);
+      
+      setCurrentTaskId(taskId);
+      
+      // Start polling with progress updates
+      await aiReports.pollTaskStatus(taskId, onComplete);
+      
+      return taskId;
+      
+    } catch (error) {
+      setIsPolling(false);
+      setCurrentTaskId(null);
+      setProgress(0);
+      throw error;
+    } finally {
+      setIsPolling(false);
+      setCurrentTaskId(null);
+      setProgress(0);
+    }
+  }, [aiReports]);
+
+  const stopPolling = useCallback(() => {
+    setIsPolling(false);
+    setCurrentTaskId(null);
+    setProgress(0);
+  }, []);
+
+  return {
+    isPolling,
+    currentTaskId,
+    progress,
+    startGeneration,
+    stopPolling,
+    getTaskStatus: aiReports.getTaskStatus,
+  };
+}
+
+/**
+ * Hook for report analytics and statistics
+ */
+export function useReportAnalytics() {
+  const { reports } = useAIReports();
+  
+  const analytics = useCallback(() => {
+    const totalReports = reports.length;
+    const reportsByType = reports.reduce((acc, report) => {
+      acc[report.report_type] = (acc[report.report_type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const avgRiskScore = reports.length > 0 
+      ? reports.reduce((sum, report) => sum + report.risk_score, 0) / reports.length
+      : 0;
+    
+    const avgWinRate = reports.length > 0 
+      ? reports.reduce((sum, report) => sum + report.win_rate, 0) / reports.length
+      : 0;
+    
+    const totalPnl = reports.reduce((sum, report) => sum + report.total_pnl, 0);
+    
+    const recentReports = reports.filter(report => {
+      const generatedAt = new Date(report.generated_at);
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return generatedAt > oneWeekAgo;
+    });
+    
+    const generationFrequency = recentReports.length / 7; // reports per day
+    
+    return {
+      totalReports,
+      reportsByType,
+      avgRiskScore,
+      avgWinRate,
+      totalPnl,
+      generationFrequency,
+      recentReportsCount: recentReports.length,
+    };
+  }, [reports]);
+  
+  return analytics();
+}
+
+/**
+ * Hook for getting a specific report by ID with caching
+ */
+export function useReport(reportId: string) {
+  return useQuery({
+    queryKey: QUERY_KEYS.report(reportId),
+    queryFn: () => aiReportsService.getReport(reportId),
+    enabled: !!reportId,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    retry: (failureCount, error) => {
+      if (error instanceof AIReportsError && error.code === 'NOT_FOUND') {
+        return false; // Don't retry if report not found
+      }
+      return failureCount < 3;
+    },
+  });
+}
+
+/**
+ * Hook for getting task status with polling
+ */
+export function useTaskStatus(taskId: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: QUERY_KEYS.task(taskId),
+    queryFn: () => aiReportsService.getGenerationTask(taskId),
+    enabled: enabled && !!taskId,
+    refetchInterval: (query) => {
+      // Poll every 2 seconds if task is pending or processing
+      const data = query.state.data as ReportGenerationTask | undefined;
+      if (data?.status === 'pending' || data?.status === 'processing') {
+        return 2000;
+      }
+      return false; // Stop polling if completed, failed, or expired
+    },
+    staleTime: 0, // Always consider stale for real-time updates
+  });
+}
+
+/**
+ * Hook for reports with filters using TanStack Query
+ */
+export function useReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS) {
+  return useQuery({
+    queryKey: QUERY_KEYS.reports(filters),
+    queryFn: () => aiReportsService.getReports(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: (failureCount, error) => {
+      if (error instanceof AIReportsError && error.code === 'AUTH_ERROR') {
+        return false; // Don't retry auth errors
+      }
+      return failureCount < 3;
+    },
+  });
 }

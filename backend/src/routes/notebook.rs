@@ -1,7 +1,7 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use chrono::{Utc, Datelike};
-// use log::info;
+use log::{info, error};
 use std::sync::Arc;
 use libsql::{Connection, Builder};
 
@@ -17,6 +17,7 @@ use crate::models::notebook::{
 };
 use crate::service::calendar_service::CalendarService;
 use crate::service::holidays_service::HolidaysService;
+use crate::service::cache_service::CacheService;
 
 #[derive(Debug, Serialize)]
 struct ApiList<T> { success: bool, message: String, data: Option<Vec<T>> }
@@ -59,35 +60,83 @@ async fn get_user_database_connection(
 }
 
 // ==== Notes ====
+/// Create a note with cache invalidation
 pub async fn create_note(
     req: HttpRequest,
     payload: web::Json<CreateNoteRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     match NotebookNote::create(&conn, payload.into_inner()).await {
-        Ok(note) => Ok(HttpResponse::Created().json(ApiItem { success: true, message: "Note created".into(), data: Some(note) })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiItem::<NotebookNote> { success: false, message: e.to_string(), data: None })),
+        Ok(note) => {
+            // Invalidate cache after successful creation
+            let cache_service_clone = cache_service.get_ref().clone();
+            let user_id_clone = claims.sub.clone();
+            
+            tokio::spawn(async move {
+                match cache_service_clone.invalidate_table_cache(&user_id_clone, "notebook_notes").await {
+                    Ok(count) => info!("Invalidated {} notebook notes cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate notebook notes cache for user {}: {}", user_id_clone, e),
+                }
+            });
+            
+            Ok(HttpResponse::Created().json(ApiItem { 
+                success: true, 
+                message: "Note created".into(), 
+                data: Some(note) 
+            }))
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiItem::<NotebookNote> { 
+            success: false, 
+            message: e.to_string(), 
+            data: None 
+        })),
     }
 }
 
 #[derive(Deserialize)]
 pub struct NotesQuery { parent_id: Option<String> }
 
+/// List notes with caching
 pub async fn list_notes(
     req: HttpRequest,
     query: web::Query<NotesQuery>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     let parent_opt = query.parent_id.as_deref();
-    match NotebookNote::find_all(&conn, parent_opt).await {
-        Ok(notes) => Ok(HttpResponse::Ok().json(ApiList { success: true, message: "Notes".into(), data: Some(notes) })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiList::<NotebookNote> { success: false, message: e.to_string(), data: None })),
+
+    // Generate cache key based on query parameters
+    let query_hash = format!("{:?}", query.parent_id);
+    let cache_key = format!("db:{}:notebook_notes:list:{}", claims.sub, query_hash);
+    
+    // Try to get from cache first (10 min TTL as per plan)
+    match cache_service.get_or_fetch(&cache_key, 600, || async {
+        info!("Cache miss for notebook notes list, fetching from database");
+        NotebookNote::find_all(&conn, parent_opt).await.map_err(|e| anyhow::anyhow!("{}", e))
+    }).await {
+        Ok(notes) => {
+            info!("✓ Retrieved {} notebook notes (cached)", notes.len());
+            Ok(HttpResponse::Ok().json(ApiList { 
+                success: true, 
+                message: "Notes".into(), 
+                data: Some(notes) 
+            }))
+        }
+        Err(e) => {
+            error!("Failed to get notebook notes: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiList::<NotebookNote> { 
+                success: false, 
+                message: e.to_string(), 
+                data: None 
+            }))
+        }
     }
 }
 

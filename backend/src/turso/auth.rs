@@ -93,11 +93,13 @@ impl SupabaseAuth {
         use std::time::Duration;
         
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30)) // Increased from 10s to 30s
             .build()
             .map_err(|_| AuthError::NetworkError)?;
 
         let url = format!("{}/auth/v1/user", self.config.project_url);
+        
+        log::info!("Validating token with Supabase API at: {}", url);
         
         let response = client
             .get(&url)
@@ -110,11 +112,16 @@ impl SupabaseAuth {
                 AuthError::NetworkError
             })?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        let response_body = response.text().await.unwrap_or_default();
+        
+        log::info!("Supabase validation response: {} - {}", status, response_body);
+
+        if status.is_success() {
             log::info!("Token validated successfully with Supabase API");
             Ok(())
         } else {
-            log::error!("Token validation failed: {}", response.status());
+            log::error!("Token validation failed: {} - {}", status, response_body);
             Err(AuthError::InvalidToken)
         }
     }
@@ -210,10 +217,13 @@ pub fn get_user_id(claims: ClerkClaims) -> Result<String, anyhow::Error> {
     Ok(claims.sub)
 }
 
-/// Validate Supabase JWT token for Actix-Web
+/// Validate Supabase JWT token for Actix-Web (no caching)
 pub async fn validate_supabase_jwt_token(token: &str, config: &SupabaseConfig) -> Result<SupabaseClaims, AuthError> {
+    log::debug!("Validating JWT token with Supabase (no caching)");
     let supabase_auth = SupabaseAuth::new(config.clone());
-    supabase_auth.validate_token(token).await
+    let claims = supabase_auth.validate_token(token).await?;
+    log::debug!("JWT validation successful for user_id={}", claims.sub);
+    Ok(claims)
 }
 
 /// Legacy: Validate JWT token for Actix-Web (Clerk)
