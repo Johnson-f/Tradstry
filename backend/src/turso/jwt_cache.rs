@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc, Duration};
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -253,11 +255,19 @@ mod tests {
     fn create_test_claims() -> SupabaseClaims {
         SupabaseClaims {
             sub: "test-user-123".to_string(),
-            email: "test@example.com".to_string(),
+            email: Some("test@example.com".to_string()),
             aud: "authenticated".to_string(),
             role: "authenticated".to_string(),
             iat: 1234567890,
             exp: 1234567890 + 3600, // 1 hour from iat
+            iss: "https://test.supabase.co/auth/v1".to_string(),
+            phone: None,
+            aal: "aal1".to_string(),
+            amr: vec![],
+            session_id: "test-session-123".to_string(),
+            is_anonymous: Some(false),
+            user_metadata: None,
+            app_metadata: None,
         }
     }
 

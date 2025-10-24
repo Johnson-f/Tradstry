@@ -7,7 +7,6 @@ pub mod aggregator;
 
 use anyhow::Result;
 use libsql::Connection;
-use std::sync::Arc;
 use crate::models::analytics::{
     ComprehensiveAnalytics, AnalyticsOptions, CoreMetrics, RiskMetrics, 
     PerformanceMetrics, TimeSeriesData

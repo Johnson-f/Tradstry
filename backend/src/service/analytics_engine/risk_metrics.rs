@@ -231,7 +231,7 @@ async fn calculate_drawdown_metrics(daily_returns: &[f64]) -> Result<DrawdownMet
 }
 
 /// Calculate Value at Risk and Expected Shortfall
-async fn calculate_var_metrics(daily_returns: &[f64], confidence_levels: &[f64]) -> Result<VarMetrics> {
+async fn calculate_var_metrics(daily_returns: &[f64], _confidence_levels: &[f64]) -> Result<VarMetrics> {
     if daily_returns.is_empty() {
         return Ok(VarMetrics::default());
     }
