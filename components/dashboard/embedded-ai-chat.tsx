@@ -26,18 +26,6 @@ interface QuickAction {
   prompt: string;
 }
 
-interface ChatRequest {
-  message: string;
-  context_limit: number;
-  session_id?: string;
-}
-
-interface ChatResponse {
-  session_id: string;
-  message?: string;
-  // Add other response fields as needed
-}
-
 interface EmbeddedAIChatProps {
   className?: string;
   defaultExpanded?: boolean;
@@ -183,21 +171,25 @@ export default function EmbeddedAIChat({
   // Hooks
   const router = useRouter();
   const {
+    sessions,
+    currentSession,
     messages,
-    messagesLoading,
-    messagesError,
-    isChatting,
+    isLoading,
     isStreaming,
-    streamingContent,
-    streamingError,
-    chatWithAI,
-    chatWithAIStream,
-    cancelStream,
-    refetchMessages,
-  } = useAIChat({
-    sessionId: currentSessionId || undefined,
-    messagesLimit: MESSAGES_LIMIT,
-  });
+    error,
+    sendMessage,
+    sendStreamingMessage,
+    createSession,
+    loadSession,
+    clearError,
+  } = useAIChat();
+
+  // Load session when currentSessionId changes
+  useEffect(() => {
+    if (currentSessionId) {
+      loadSession(currentSessionId);
+    }
+  }, [currentSessionId, loadSession]);
 
   // Enhanced scrolling function
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth", force: boolean = false) => {
@@ -245,7 +237,7 @@ export default function EmbeddedAIChat({
 
   // Enhanced auto-scroll during streaming with better throttling
   useEffect(() => {
-    if (isStreaming && streamingContent) {
+    if (isStreaming) {
       // Clear any existing timeout
       if (autoScrollTimeoutRef.current) {
         clearTimeout(autoScrollTimeoutRef.current);
@@ -262,7 +254,7 @@ export default function EmbeddedAIChat({
         }
       };
     }
-  }, [streamingContent, isStreaming, scrollToBottom]);
+  }, [isStreaming, scrollToBottom]);
 
   // Auto-scroll when streaming starts
   useEffect(() => {
@@ -277,7 +269,7 @@ export default function EmbeddedAIChat({
     if (!isStreaming && !userScrolled) {
       scrollToBottom("auto");
     }
-  }, [messages, isChatting, isStreaming, userScrolled, scrollToBottom]);
+  }, [messages, isLoading, isStreaming, userScrolled, scrollToBottom]);
 
   // Handle content height changes during streaming
   useEffect(() => {
@@ -302,10 +294,10 @@ export default function EmbeddedAIChat({
 
   // Focus input when component mounts
   useEffect(() => {
-    if (inputRef.current && !isChatting) {
+    if (inputRef.current && !isLoading) {
       inputRef.current.focus();
     }
-  }, [isChatting]);
+  }, [isLoading]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -329,15 +321,6 @@ export default function EmbeddedAIChat({
         // Reset scroll state when sending a new message
         setUserScrolled(false);
 
-        const request: ChatRequest = {
-          message: textToSend,
-          context_limit: CONTEXT_LIMIT,
-        };
-
-        if (currentSessionId) {
-          request.session_id = currentSessionId;
-        }
-
         // Clear the input immediately - message goes directly to chat page
         setMessage("");
         
@@ -349,40 +332,36 @@ export default function EmbeddedAIChat({
         // For existing sessions, redirect immediately without waiting
         if (currentSessionId) {
           console.log('Existing session, redirecting to continue conversation:', currentSessionId);
-          router.push(`/protected/chat/${currentSessionId}`);
+          router.push(`/app/chat/${currentSessionId}`);
           return;
         }
 
-        // For new chats, use streaming API just to get the session ID, then redirect
-        await chatWithAIStream(request, (chunk) => {
-          // Redirect immediately when we get session info for new chats
-          if (chunk.type === 'session_info' && chunk.session_id && !currentSessionId) {
-            console.log('New chat session info received, redirecting immediately to:', chunk.session_id);
-            
-            // Save user message to localStorage so it appears immediately on the chat page
-            localChatCache.saveMessageLocally(chunk.session_id, {
-              session_id: chunk.session_id,
-              content: textToSend,
-              message_type: 'user_question',
-              role: 'user',
-              created_at: new Date().toISOString(),
-            });
-            
-            // Set session ID for state management
-            setCurrentSessionId(chunk.session_id);
-
-            // Redirect immediately - the AI response will stream on the chat page
-            router.push(`/protected/chat/${chunk.session_id}`);
-            return;
-          }
+        // For new chats, create session and redirect
+        console.log('Creating new chat session...');
+        const sessionId = await createSession("New Chat");
+        
+        // Save user message to localStorage so it appears immediately on the chat page
+        localChatCache.saveMessageLocally(sessionId, {
+          session_id: sessionId,
+          content: textToSend,
+          message_type: 'user_question',
+          role: 'user',
+          created_at: new Date().toISOString(),
         });
+        
+        // Set session ID for state management
+        setCurrentSessionId(sessionId);
+
+        // Redirect immediately - the AI response will stream on the chat page
+        router.push(`/app/chat/${sessionId}`);
+        
       } catch (error) {
         console.error("Failed to send message:", error);
         setIsMinimizing(false); // Reset minimizing state on error
-        // Error is handled by the streaming hook
+        // Error is handled by the hook
       }
     },
-    [message, currentSessionId, chatWithAIStream, router],
+    [message, currentSessionId, createSession, router],
   );
 
   const handleQuickAction = useCallback(
@@ -412,7 +391,7 @@ export default function EmbeddedAIChat({
   }, []);
 
   const handleViewAllChats = useCallback(() => {
-    router.push("/protected/chat");
+    router.push("/app/chat");
   }, [router]);
 
   const handleInputChange = useCallback(
@@ -427,7 +406,7 @@ export default function EmbeddedAIChat({
 
   // Validation
   const canSendMessage =
-    !isChatting && !isStreaming && !isMinimizing && message.trim().length > 0;
+    !isLoading && !isStreaming && !isMinimizing && message.trim().length > 0;
   const hasMessages = messages.length > 0;
 
   return (
@@ -445,7 +424,7 @@ export default function EmbeddedAIChat({
       {/* Main Chat Area */}
       <main className="px-6 pb-8">
         {/* Messages */}
-        {(hasMessages || isChatting || isStreaming || streamingContent) && (
+        {(hasMessages || isLoading || isStreaming) && (
           <section className="mb-6" aria-label="Chat messages">
             <ScrollArea 
               className="h-[650px] px-6" 
@@ -456,9 +435,9 @@ export default function EmbeddedAIChat({
                 {messages.map((msg) => (
                   <ChatMessage key={msg.id} message={msg} />
                 ))}
-                {isChatting && !isStreaming && !streamingContent && <LoadingMessage />}
-                {(isStreaming || streamingContent) && (
-                  <StreamingMessage content={streamingContent} />
+                {isLoading && !isStreaming && <LoadingMessage />}
+                {isStreaming && (
+                  <StreamingMessage content="AI is responding..." />
                 )}
                 {/* Invisible div to mark the end of messages */}
                 <div ref={messagesEndRef} className="h-1" data-messages-end />
@@ -494,7 +473,7 @@ export default function EmbeddedAIChat({
                 value={message}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyPress}
-                disabled={isChatting || isStreaming || isMinimizing}
+                disabled={isLoading || isStreaming || isMinimizing}
                 maxLength={MAX_MESSAGE_LENGTH}
                 className="bg-transparent border-0 text-white placeholder:text-gray-400 px-4 py-4 text-base rounded-2xl focus:ring-0 focus-visible:ring-0 resize-none"
                 aria-label="Type your message"
@@ -515,7 +494,7 @@ export default function EmbeddedAIChat({
                 variant="ghost"
                 size="icon"
                 onClick={handleNewChat}
-                disabled={isChatting || isStreaming || isMinimizing}
+                disabled={isLoading || isStreaming || isMinimizing}
                 className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full"
                 aria-label="Start new chat"
               >
@@ -529,7 +508,7 @@ export default function EmbeddedAIChat({
                 className="h-8 w-8 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 rounded-full transition-colors"
                 aria-label="Send message"
               >
-                {isChatting || isStreaming || isMinimizing ? (
+                {isLoading || isStreaming || isMinimizing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />
@@ -556,23 +535,8 @@ export default function EmbeddedAIChat({
         )}
 
         {/* Error Display */}
-        {messagesError && (
-          <ErrorDisplay error={messagesError} onRetry={refetchMessages} />
-        )}
-        {streamingError && (
-          <div className="mt-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
-            <div className="flex items-center justify-center gap-2">
-              <span>Streaming Error: {streamingError}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={cancelStream}
-                className="ml-2 text-red-300 hover:text-white"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
+        {error && (
+          <ErrorDisplay error={error} onRetry={clearError} />
         )}
 
         {/* Minimizing Status */}

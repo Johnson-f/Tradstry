@@ -30,7 +30,7 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
-use routes::{configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes};
+use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
 use replicache::{handle_push, handle_pull};
 
 #[derive(Serialize)]
@@ -110,6 +110,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
             // CRITICAL: Add SupabaseConfig as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().config.supabase.clone()))
+            // CRITICAL: Add CacheService as separate app_data for user routes
+            .app_data(Data::new(app_data.as_ref().cache_service.clone()))
+            // CRITICAL: Add AIInsightsService as separate app_data for AI insights routes
+            .app_data(Data::new(app_data.as_ref().ai_insights_service.clone()))
+            // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
+            .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging
@@ -146,6 +152,14 @@ async fn main() -> std::io::Result<()> {
             .configure(|cfg| {
                 log::info!("Configuring notebook routes");
                 configure_notebook_routes(cfg);
+                
+                // AI Routes
+                configure_ai_chat_routes(cfg);
+                configure_ai_insights_routes(cfg);
+                configure_ai_reports_routes(cfg);
+                
+                // Analytics Routes
+                configure_analytics_routes(cfg);
             })
             // Register replicache routes
             .configure(|cfg| {
@@ -201,8 +215,11 @@ async fn jwt_validator(
         .app_data::<Data<AppState>>()
         .expect("AppState not found");
 
-    // Try Supabase JWT validation first
-    match validate_supabase_jwt_token(credentials.token(), &app_state.config.supabase).await {
+    // Try Supabase JWT validation first (no caching)
+    match validate_supabase_jwt_token(
+        credentials.token(),
+        &app_state.config.supabase
+    ).await {
         Ok(claims) => {
             // Store Supabase claims in request extensions
             req.extensions_mut().insert(claims);

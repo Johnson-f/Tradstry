@@ -169,6 +169,39 @@ export const apiConfig = {
       monthlyMetrics: "/analytics/metrics/monthly",
 
 
+    // AI endpoints
+    ai: {
+      chat: {
+        base: "/ai/chat",
+        send: "/ai/chat",
+        stream: "/ai/chat/stream",
+        sessions: {
+          base: "/ai/chat/sessions",
+          byId: (id: string) => `/ai/chat/sessions/${id}`,
+          updateTitle: (id: string) => `/ai/chat/sessions/${id}/title`,
+        },
+      },
+      insights: {
+        base: "/ai/insights",
+        generate: "/ai/insights",
+        generateAsync: "/ai/insights/async",
+        byId: (id: string) => `/ai/insights/${id}`,
+        tasks: {
+          byId: (taskId: string) => `/ai/insights/tasks/${taskId}`,
+        },
+      },
+      reports: {
+        base: "/ai/reports",
+        generate: "/ai/reports",
+        generateAsync: "/ai/reports/async",
+        list: "/ai/reports", // GET endpoint for listing reports
+        byId: (id: string) => `/ai/reports/${id}`,
+        tasks: {
+          byId: (taskId: string) => `/ai/reports/tasks/${taskId}`,
+        },
+      },
+    },
+
     // Market Data endpoints
     marketData: {
       base: "/market-data",
@@ -267,42 +300,6 @@ export const apiConfig = {
         cashFlow: (symbol: string) =>
           `/market-data/financials/cash-flow/${symbol}`,
       },
-    },
-    aiSummary: {
-      generate: "/ai-summary/generate",
-      quickInsights: "/ai-summary/quick-insights",
-      status: "/ai-summary/status",
-      resetChat: "/ai-summary/chat/reset",
-      reports: {
-        base: "/ai-summary/reports",
-        byId: (id: string) => `/ai-summary/reports/${id}`,
-        searchSimilar: "/ai-summary/reports/search-similar",
-        stats: "/ai-summary/reports/stats",
-      },
-      chat: {
-        base: "/ai-summary/chat",
-        history: "/ai-summary/chat/history",
-        searchSimilar: "/ai-summary/chat/search-similar",
-        stats: "/ai-summary/chat/stats",
-        deleteQA: (qaId: string) => `/ai-summary/chat/history/${qaId}`,
-      },
-      health: "/ai-summary/health",
-    },
-    // AI Dynamic endpoints
-    aiDynamic: {
-      versioned: {
-        generate: (version: string) => `/ai-dynamic/${version}/generate`,
-        chat: (version: string) => `/ai-dynamic/${version}/chat`,
-      },
-      service: {
-        base: (serviceType: string) => `/ai-dynamic/service/${serviceType}`,
-        action: (serviceType: string, action: string) =>
-          `/ai-dynamic/service/${serviceType}/${action}`,
-      },
-      features: {
-        base: (featureName: string) => `/ai-dynamic/features/${featureName}`,
-      },
-      dynamic: (path: string) => `/ai-dynamic/dynamic/${path}`,
     },
   },
   timeout: 30000, // 5 minutes

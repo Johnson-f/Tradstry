@@ -44,6 +44,17 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co:5432/postgres
 JWT_SECRET=your-jwt-secret-here
 PORT=3000
+
+# OpenRouter Configuration (replaces Gemini)
+OPENROUTER_API_KEY=your-openrouter-api-key-here
+OPENROUTER_MODEL=deepseek/deepseek-chat-v3.1:free
+OPENROUTER_SITE_URL=https://your-site.com
+OPENROUTER_SITE_NAME=Your Application Name
+
+# Vector Database Configuration
+UPSTASH_VECTOR_URL=your-upstash-vector-url
+UPSTASH_VECTOR_TOKEN=your-upstash-vector-token
+VOYAGER_API_KEY=your-voyager-api-key
 ```
 
 ### 3. Run the Application
@@ -98,6 +109,13 @@ This backend is designed to work with Supabase Auth on the frontend:
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
 | `JWT_SECRET` | ✅ | JWT secret from Supabase settings |
+| `OPENROUTER_API_KEY` | ✅ | OpenRouter API key for AI models |
+| `OPENROUTER_MODEL` | ❌ | AI model to use (default: deepseek/deepseek-chat-v3.1:free) |
+| `OPENROUTER_SITE_URL` | ❌ | Your site URL for OpenRouter rankings |
+| `OPENROUTER_SITE_NAME` | ❌ | Your application name for OpenRouter rankings |
+| `UPSTASH_VECTOR_URL` | ✅ | Upstash Vector database URL |
+| `UPSTASH_VECTOR_TOKEN` | ✅ | Upstash Vector database token |
+| `VOYAGER_API_KEY` | ✅ | Voyager API key for embeddings |
 | `PORT` | ❌ | Server port (default: 3000) |
 | `RUST_LOG` | ❌ | Log level (default: debug) |
 
@@ -112,6 +130,15 @@ This backend is designed to work with Supabase Auth on the frontend:
    - **service_role key**: `SUPABASE_SERVICE_ROLE_KEY`
 5. For `JWT_SECRET`: Go to **Settings** → **API** → **JWT Settings** → Copy the **JWT Secret**
 6. For `DATABASE_URL`: Go to **Settings** → **Database** → Connection string (URI)
+
+### Getting OpenRouter Credentials
+
+1. Go to [OpenRouter](https://openrouter.ai/) and create an account
+2. Navigate to **API Keys** section
+3. Generate a new API key
+4. Copy the API key for `OPENROUTER_API_KEY`
+5. Choose your preferred model (default: `deepseek/deepseek-chat-v3.1:free`)
+6. Optional: Set your site URL and name for model rankings
 
 ## 🏗️ Architecture
 

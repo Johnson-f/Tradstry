@@ -29,7 +29,7 @@ pub struct UpdateTradeNoteRequest {
 }
 
 /// Trade note query parameters for filtering and pagination
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TradeNoteQuery {
     pub name: Option<String>,
     pub search: Option<String>, // Search in both name and content

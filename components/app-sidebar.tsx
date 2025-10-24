@@ -32,7 +32,7 @@ import {
 import { useUserProfile } from "@/hooks/use-user-profile"
 import { cn } from "@/lib/utils"
 
-// Tradistry navigation data
+// Tradstry navigation data
 const navItems = [
   { title: "Home", url: "/app", icon: Home },
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
@@ -40,7 +40,7 @@ const navItems = [
   { title: "Playbook", url: "/app/playbook", icon: Library },
   { title: "Notebook", url: "/app/notebook", icon: Notebook },
   { title: "Analytics", url: "/app/analytics", icon: PieChart },
-  { title: "AI Reports", url: "/app/ai-reports", icon: ChartNoAxesColumnIncreasing },
+  { title: "Reporting", url: "/app/reporting", icon: ChartNoAxesColumnIncreasing },
   { title: "Mindset Lab", url: "/app/mindset", icon: BrainCog },
   { title: "Markets", url: "/app/markets", icon: ChartCandlestick },
   { title: "Brokerage", url: "/app/brokerage", icon: Wallet },
@@ -57,7 +57,7 @@ export function AppSidebar({
   onCollapsedChange?: (collapsed: boolean) => void
 } & React.ComponentProps<typeof Sidebar>) {
   const { firstName, email, loading } = useUserProfile()
-  
+
   // Initialize collapsed state from localStorage immediately
   const [collapsed, setCollapsed] = useState(() => {
     // Check if we're in the browser (not SSR)
@@ -74,7 +74,7 @@ export function AppSidebar({
   // Handle external collapsed prop changes
   useEffect(() => {
     setMounted(true)
-    
+
     // If external collapsed prop is provided, use it and save to localStorage
     if (externalCollapsed !== undefined) {
       setCollapsed(externalCollapsed)
@@ -90,7 +90,7 @@ export function AppSidebar({
     }
 
     window.addEventListener('sidebar-toggle', handleSidebarToggle as EventListener)
-    
+
     return () => {
       window.removeEventListener('sidebar-toggle', handleSidebarToggle as EventListener)
     }
@@ -99,10 +99,10 @@ export function AppSidebar({
   // Handle collapse toggle
   const handleCollapsedChange = (newCollapsed: boolean) => {
     setCollapsed(newCollapsed)
-    
+
     // Save to localStorage
     localStorage.setItem('sidebar-collapsed', JSON.stringify(newCollapsed))
-    
+
     // Call external handler if provided (for backward compatibility)
     onCollapsedChange?.(newCollapsed)
   }
