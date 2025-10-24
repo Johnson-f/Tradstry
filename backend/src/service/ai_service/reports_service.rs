@@ -5,9 +5,9 @@ use crate::models::ai::reports::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::models::ai::insights::{Insight, InsightRequest, InsightType};
-use crate::models::analytics::{AnalyticsOptions};
 use crate::service::ai_service::AIInsightsService;
-use crate::service::analytics_engine::AnalyticsEngine as AnalyticsEngineService;
+use crate::service::analytics_engine::AnalyticsEngine;
+use crate::models::analytics::CoreMetrics;
 use crate::turso::TursoClient;
 use anyhow::Result as AnyhowResult;
 use chrono::{DateTime, Utc, Datelike, TimeZone};
@@ -22,7 +22,7 @@ pub struct AiReportsService {
     #[allow(dead_code)]
     turso_client: Arc<TursoClient>,
     ai_insights_service: Arc<AIInsightsService>,
-    analytics_engine: AnalyticsEngineService,
+    analytics_engine: Arc<AnalyticsEngine>,
 }
 
 impl AiReportsService {
@@ -30,7 +30,7 @@ impl AiReportsService {
         Self { 
             turso_client,
             ai_insights_service,
-            analytics_engine: AnalyticsEngineService::new(),
+            analytics_engine: Arc::new(AnalyticsEngine::new()),
         }
     }
 
@@ -97,41 +97,53 @@ impl AiReportsService {
         Ok(report)
     }
 
-    /// Generate analytics data using the new analytics engine
+    /// Convert CoreMetrics from analytics engine to AnalyticsData for reports
+    fn map_core_metrics_to_analytics_data(&self, core_metrics: CoreMetrics) -> AnalyticsData {
+        AnalyticsData {
+            total_pnl: core_metrics.total_pnl,
+            win_rate: core_metrics.win_rate,
+            profit_factor: core_metrics.profit_factor,
+            avg_gain: core_metrics.average_win,
+            avg_loss: core_metrics.average_loss,
+            biggest_winner: core_metrics.biggest_winner,
+            biggest_loser: core_metrics.biggest_loser,
+            avg_hold_time_winners: 0.0, // Not provided by CoreMetrics, needs separate calculation
+            avg_hold_time_losers: 0.0,  // Not provided by CoreMetrics, needs separate calculation
+            risk_reward_ratio: core_metrics.win_loss_ratio,
+            trade_expectancy: if core_metrics.total_trades > 0 {
+                core_metrics.total_pnl / core_metrics.total_trades as f64
+            } else {
+                0.0
+            },
+            avg_position_size: core_metrics.average_position_size,
+            net_pnl: core_metrics.net_profit_loss,
+            total_trades: core_metrics.total_trades,
+            winning_trades: core_metrics.winning_trades,
+            losing_trades: core_metrics.losing_trades,
+            break_even_trades: core_metrics.break_even_trades,
+        }
+    }
+
+    /// Generate analytics data using the analytics engine
     async fn generate_analytics_data(
         &self,
         conn: &Connection,
         _user_id: &str,
         time_range: &TimeRange,
     ) -> AnyhowResult<AnalyticsData> {
-        // Use the new analytics engine to calculate comprehensive metrics
-        let options = AnalyticsOptions::default();
-        let comprehensive_analytics = self.analytics_engine
-            .calculate_comprehensive_analytics(conn, time_range, options)
+        log::info!("Generating analytics data using AnalyticsEngine");
+        
+        // Use the analytics engine to calculate core metrics
+        let core_metrics = self.analytics_engine
+            .calculate_core_metrics(conn, time_range)
             .await?;
-
-        // Convert comprehensive analytics to the legacy AnalyticsData format
-        let analytics = AnalyticsData {
-            total_pnl: comprehensive_analytics.core_metrics.total_pnl,
-            win_rate: comprehensive_analytics.core_metrics.win_rate,
-            profit_factor: comprehensive_analytics.core_metrics.profit_factor,
-            avg_gain: comprehensive_analytics.core_metrics.average_win,
-            avg_loss: comprehensive_analytics.core_metrics.average_loss,
-            biggest_winner: comprehensive_analytics.core_metrics.biggest_winner,
-            biggest_loser: comprehensive_analytics.core_metrics.biggest_loser,
-            avg_hold_time_winners: comprehensive_analytics.performance_metrics.average_hold_time_winners_days,
-            avg_hold_time_losers: comprehensive_analytics.performance_metrics.average_hold_time_losers_days,
-            risk_reward_ratio: comprehensive_analytics.risk_metrics.risk_reward_ratio,
-            trade_expectancy: comprehensive_analytics.performance_metrics.trade_expectancy,
-            avg_position_size: comprehensive_analytics.core_metrics.average_position_size,
-            net_pnl: comprehensive_analytics.core_metrics.net_profit_loss,
-            total_trades: comprehensive_analytics.core_metrics.total_trades,
-            winning_trades: comprehensive_analytics.core_metrics.winning_trades,
-            losing_trades: comprehensive_analytics.core_metrics.losing_trades,
-            break_even_trades: comprehensive_analytics.core_metrics.break_even_trades,
-        };
-
-        Ok(analytics)
+        
+        log::info!("Successfully calculated core metrics: {} trades", core_metrics.total_trades);
+        
+        // Convert CoreMetrics to AnalyticsData
+        let analytics_data = self.map_core_metrics_to_analytics_data(core_metrics);
+        
+        Ok(analytics_data)
     }
 
     /// Generate insights for the report
@@ -175,82 +187,164 @@ impl AiReportsService {
         Ok(insights)
     }
 
+
     /// Generate trade data for the report
-    async fn generate_trade_data(
-        &self,
-        conn: &Connection,
-        _user_id: &str,
-        time_range: &TimeRange,
-    ) -> AnyhowResult<Vec<TradeData>> {
-        let (start_date, end_date) = self.get_date_range(time_range);
-        let mut trades = Vec::new();
+async fn generate_trade_data(
+    &self,
+    conn: &Connection,
+    _user_id: &str,
+    time_range: &TimeRange,
+) -> AnyhowResult<Vec<TradeData>> {
+    let (start_date, end_date) = self.get_date_range(time_range);
+    let mut trades = Vec::new();
 
-        // Get stock trades
-        let stock_query = "
-            SELECT id, symbol, quantity, entry_price, exit_price, pnl, 
-                   created_at, updated_at, notes
-            FROM stocks 
-            WHERE created_at >= ? AND created_at <= ?
-            ORDER BY created_at DESC
-        ";
+    // Get stock trades
+    let stock_query = "
+        SELECT id, symbol, number_shares, entry_price, exit_price, 
+               created_at, exit_date
+        FROM stocks 
+        WHERE created_at >= ? AND created_at <= ?
+        ORDER BY created_at DESC
+    ";
 
-        let stock_stmt = conn.prepare(stock_query).await?;
-        let mut stock_rows = stock_stmt.query([
-            start_date.as_str(),
-            end_date.as_str(),
-        ]).await?;
+    let stock_stmt = conn.prepare(stock_query).await?;
+    let mut stock_rows = stock_stmt.query([
+        start_date.as_str(),
+        end_date.as_str(),
+    ]).await?;
 
-        while let Some(row) = stock_rows.next().await? {
-            trades.push(TradeData {
-                id: row.get::<String>(0)?,
-                symbol: row.get::<String>(1)?,
-                trade_type: "stock".to_string(),
-                quantity: row.get::<i32>(2)?,
-                entry_price: row.get::<f64>(3)?,
-                exit_price: row.get::<Option<f64>>(4)?,
-                pnl: row.get::<Option<f64>>(5)?,
-                entry_date: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
-                exit_date: row.get::<Option<String>>(7)?.map(|s: String| 
-                    DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)
-                ),
-                notes: row.get::<Option<String>>(8)?,
-            });
-        }
-
-        // Get options trades
-        let options_query = "
-            SELECT id, symbol, quantity, entry_price, exit_price, pnl, 
-                   created_at, updated_at, notes
-            FROM options 
-            WHERE created_at >= ? AND created_at <= ?
-            ORDER BY created_at DESC
-        ";
-
-        let options_stmt = conn.prepare(options_query).await?;
-        let mut options_rows = options_stmt.query([
-            start_date.as_str(),
-            end_date.as_str(),
-        ]).await?;
-
-        while let Some(row) = options_rows.next().await? {
-            trades.push(TradeData {
-                id: row.get::<String>(0)?,
-                symbol: row.get::<String>(1)?,
-                trade_type: "option".to_string(),
-                quantity: row.get::<i32>(2)?,
-                entry_price: row.get::<f64>(3)?,
-                exit_price: row.get::<Option<f64>>(4)?,
-                pnl: row.get::<Option<f64>>(5)?,
-                entry_date: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
-                exit_date: row.get::<Option<String>>(7)?.map(|s: String| 
-                    DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)
-                ),
-                notes: row.get::<Option<String>>(8)?,
-            });
-        }
-
-        Ok(trades)
+    while let Some(row) = stock_rows.next().await? {
+        // ID is INTEGER in the schema, convert to String
+        let id: i64 = row.get(0)?;
+        let id = id.to_string();
+        let symbol: String = row.get(1)?;
+        
+        // Handle numeric types carefully - libsql might return different types
+        let number_shares: f64 = match row.get::<libsql::Value>(2)? {
+            libsql::Value::Integer(i) => i as f64,
+            libsql::Value::Real(f) => f,
+            _ => 0.0,
+        };
+        
+        let entry_price: f64 = match row.get::<libsql::Value>(3)? {
+            libsql::Value::Integer(i) => i as f64,
+            libsql::Value::Real(f) => f,
+            _ => 0.0,
+        };
+        
+        let exit_price: Option<f64> = match row.get::<libsql::Value>(4)? {
+            libsql::Value::Null => None,
+            libsql::Value::Integer(i) => Some(i as f64),
+            libsql::Value::Real(f) => Some(f),
+            _ => None,
+        };
+        
+        let created_at: String = row.get(5)?;
+        
+        let exit_date: Option<String> = match row.get::<libsql::Value>(6)? {
+            libsql::Value::Null => None,
+            libsql::Value::Text(s) => Some(s),
+            _ => None,
+        };
+        
+        // Calculate PNL if we have exit price
+        let pnl = exit_price.map(|exit| (exit - entry_price) * number_shares);
+        
+        trades.push(TradeData {
+            id,
+            symbol,
+            trade_type: "stock".to_string(),
+            quantity: number_shares as i32,
+            entry_price,
+            exit_price,
+            pnl,
+            entry_date: DateTime::parse_from_rfc3339(&created_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+            exit_date: exit_date.and_then(|s| 
+                DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            ),
+            notes: None,
+        });
     }
+
+    // Get options trades
+    let options_query = "
+        SELECT id, symbol, number_of_contracts, entry_price, exit_price, 
+               created_at, exit_date
+        FROM options 
+        WHERE created_at >= ? AND created_at <= ?
+        ORDER BY created_at DESC
+    ";
+
+    let options_stmt = conn.prepare(options_query).await?;
+    let mut options_rows = options_stmt.query([
+        start_date.as_str(),
+        end_date.as_str(),
+    ]).await?;
+
+    while let Some(row) = options_rows.next().await? {
+        // ID is INTEGER in the schema, convert to String
+        let id: i64 = row.get(0)?;
+        let id = id.to_string();
+        let symbol: String = row.get(1)?;
+        
+        // Handle numeric types carefully
+        let number_of_contracts: i64 = match row.get::<libsql::Value>(2)? {
+            libsql::Value::Integer(i) => i,
+            libsql::Value::Real(f) => f as i64,
+            _ => 0,
+        };
+        
+        let entry_price: f64 = match row.get::<libsql::Value>(3)? {
+            libsql::Value::Integer(i) => i as f64,
+            libsql::Value::Real(f) => f,
+            _ => 0.0,
+        };
+        
+        let exit_price: Option<f64> = match row.get::<libsql::Value>(4)? {
+            libsql::Value::Null => None,
+            libsql::Value::Integer(i) => Some(i as f64),
+            libsql::Value::Real(f) => Some(f),
+            _ => None,
+        };
+        
+        let created_at: String = row.get(5)?;
+        
+        let exit_date: Option<String> = match row.get::<libsql::Value>(6)? {
+            libsql::Value::Null => None,
+            libsql::Value::Text(s) => Some(s),
+            _ => None,
+        };
+        
+        // Calculate PNL if we have exit price (for options, 1 contract = 100 shares)
+        let pnl = exit_price.map(|exit| (exit - entry_price) * (number_of_contracts as f64) * 100.0);
+        
+        trades.push(TradeData {
+            id,
+            symbol,
+            trade_type: "option".to_string(),
+            quantity: number_of_contracts as i32,
+            entry_price,
+            exit_price,
+            pnl,
+            entry_date: DateTime::parse_from_rfc3339(&created_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+            exit_date: exit_date.and_then(|s| 
+                DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            ),
+            notes: None,
+        });
+    }
+
+    log::info!("Successfully generated {} trade records", trades.len());
+    Ok(trades)
+}
 
     /// Generate recommendations based on the report data
     async fn generate_recommendations(&self, report: &TradingReport) -> AnyhowResult<Vec<String>> {
@@ -473,8 +567,8 @@ impl AiReportsService {
                 analytics, insights, trades, recommendations,
                 patterns, risk_metrics, performance_metrics,
                 behavioral_insights, market_analysis, generated_at,
-                expires_at, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                expires_at, metadata, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ).await?;
 
         stmt.execute([
@@ -495,6 +589,7 @@ impl AiReportsService {
             &report.generated_at.to_rfc3339(),
             &report.expires_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
             &serde_json::to_string(&report.metadata)?,
+            &chrono::Utc::now().to_rfc3339(), // created_at
         ]).await?;
 
         Ok(())
@@ -502,32 +597,215 @@ impl AiReportsService {
 
     /// Deserialize a report from a database row
     fn deserialize_report_from_row(&self, row: libsql::Row) -> AnyhowResult<TradingReport> {
+        log::info!("Starting report deserialization");
+        
         let id: String = row.get(0)?;
+        log::info!("Deserialized id: {}", id);
+        
         let time_range: TimeRange = serde_json::from_str(&row.get::<String>(1)?)?;
+        log::info!("Deserialized time_range");
+        
         let report_type: ReportType = serde_json::from_str(&row.get::<String>(2)?)?;
+        log::info!("Deserialized report_type");
+        
         let title: String = row.get(3)?;
+        log::info!("Deserialized title: {}", title);
+        
         let summary: String = row.get(4)?;
+        log::info!("Deserialized summary");
+        
         let analytics: AnalyticsData = serde_json::from_str(&row.get::<String>(5)?)?;
+        log::info!("Deserialized analytics");
+        
         let insights: Vec<Insight> = serde_json::from_str(&row.get::<String>(6)?)?;
+        log::info!("Deserialized insights");
+        
         let trades: Vec<TradeData> = serde_json::from_str(&row.get::<String>(7)?)?;
+        log::info!("Deserialized trades");
+        
         let recommendations: Vec<String> = serde_json::from_str(&row.get::<String>(8)?)?;
-        let patterns: Vec<crate::models::ai::reports::TradingPattern> = serde_json::from_str(&row.get::<String>(9)?)?;
-        let risk_metrics: crate::models::ai::reports::RiskMetrics = serde_json::from_str(&row.get::<String>(10)?)?;
-        let performance_metrics: crate::models::ai::reports::PerformanceMetrics = serde_json::from_str(&row.get::<String>(11)?)?;
-        let behavioral_insights: Vec<crate::models::ai::reports::BehavioralInsight> = serde_json::from_str(&row.get::<String>(12)?)?;
-        let market_analysis: Option<crate::models::ai::reports::MarketAnalysis> = serde_json::from_str(&row.get::<String>(13)?)?;
+        log::info!("Deserialized recommendations");
+        
+        // Handle nullable fields with detailed logging
+        log::info!("Attempting to deserialize patterns (column 9)");
+        let patterns: Vec<crate::models::ai::reports::TradingPattern> = 
+            match row.get::<Option<String>>(9)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Patterns data found, deserializing JSON");
+                    serde_json::from_str(&s)?
+                },
+                Some(_s) => {
+                    log::info!("Patterns data is empty string");
+                    Vec::new()
+                },
+                None => {
+                    log::info!("Patterns data is NULL");
+                    Vec::new()
+                },
+            };
+        log::info!("Successfully deserialized patterns");
+        
+        log::info!("Attempting to deserialize risk_metrics (column 10)");
+        let risk_metrics: crate::models::ai::reports::RiskMetrics = 
+            match row.get::<Option<String>>(10)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Risk metrics data found, deserializing JSON");
+                    serde_json::from_str(&s)?
+                },
+                Some(_s) => {
+                    log::info!("Risk metrics data is empty string");
+                    crate::models::ai::reports::RiskMetrics {
+                        max_drawdown: 0.0,
+                        sharpe_ratio: 0.0,
+                        volatility: 0.0,
+                        var_95: 0.0,
+                        var_99: 0.0,
+                        risk_score: 0.0,
+                        concentration_risk: 0.0,
+                        leverage_risk: 0.0,
+                    }
+                },
+                None => {
+                    log::info!("Risk metrics data is NULL");
+                    crate::models::ai::reports::RiskMetrics {
+                        max_drawdown: 0.0,
+                        sharpe_ratio: 0.0,
+                        volatility: 0.0,
+                        var_95: 0.0,
+                        var_99: 0.0,
+                        risk_score: 0.0,
+                        concentration_risk: 0.0,
+                        leverage_risk: 0.0,
+                    }
+                },
+            };
+        log::info!("Successfully deserialized risk_metrics");
+        
+        log::info!("Attempting to deserialize performance_metrics (column 11)");
+        let performance_metrics: crate::models::ai::reports::PerformanceMetrics = 
+            match row.get::<Option<String>>(11)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Performance metrics data found, deserializing JSON");
+                    serde_json::from_str(&s)?
+                },
+                Some(_s) => {
+                    log::info!("Performance metrics data is empty string");
+                    crate::models::ai::reports::PerformanceMetrics {
+                        monthly_returns: Vec::new(),
+                        quarterly_returns: Vec::new(),
+                        yearly_returns: Vec::new(),
+                        best_month: 0.0,
+                        worst_month: 0.0,
+                        consistency_score: 0.0,
+                        trend_direction: "neutral".to_string(),
+                        momentum_score: 0.0,
+                    }
+                },
+                None => {
+                    log::info!("Performance metrics data is NULL");
+                    crate::models::ai::reports::PerformanceMetrics {
+                        monthly_returns: Vec::new(),
+                        quarterly_returns: Vec::new(),
+                        yearly_returns: Vec::new(),
+                        best_month: 0.0,
+                        worst_month: 0.0,
+                        consistency_score: 0.0,
+                        trend_direction: "neutral".to_string(),
+                        momentum_score: 0.0,
+                    }
+                },
+            };
+        log::info!("Successfully deserialized performance_metrics");
+        
+        log::info!("Attempting to deserialize behavioral_insights (column 12)");
+        let behavioral_insights: Vec<crate::models::ai::reports::BehavioralInsight> = 
+            match row.get::<Option<String>>(12)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Behavioral insights data found, deserializing JSON");
+                    serde_json::from_str(&s)?
+                },
+                Some(_s) => {
+                    log::info!("Behavioral insights data is empty string");
+                    Vec::new()
+                },
+                None => {
+                    log::info!("Behavioral insights data is NULL");
+                    Vec::new()
+                },
+            };
+        log::info!("Successfully deserialized behavioral_insights");
+        
+        log::info!("Attempting to deserialize market_analysis (column 13)");
+        let market_analysis: Option<crate::models::ai::reports::MarketAnalysis> = 
+            match row.get::<Option<String>>(13)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Market analysis data found, deserializing JSON");
+                    serde_json::from_str(&s).ok()
+                },
+                Some(_s) => {
+                    log::info!("Market analysis data is empty string");
+                    None
+                },
+                None => {
+                    log::info!("Market analysis data is NULL");
+                    None
+                },
+            };
+        log::info!("Successfully deserialized market_analysis");
+        
+        log::info!("Attempting to deserialize generated_at (column 14)");
         let generated_at: DateTime<Utc> = DateTime::parse_from_rfc3339(&row.get::<String>(14)?)?.with_timezone(&Utc);
+        log::info!("Successfully deserialized generated_at");
+        
+        log::info!("Attempting to deserialize expires_at (column 15)");
         let expires_at: Option<DateTime<Utc>> = {
             let expires_str: String = row.get(15)?;
             if expires_str.is_empty() {
+                log::info!("Expires_at is empty string");
                 None
             } else {
+                log::info!("Expires_at data found, parsing");
                 Some(DateTime::parse_from_rfc3339(&expires_str)?.with_timezone(&Utc))
             }
         };
-        let metadata: ReportMetadata = serde_json::from_str(&row.get::<String>(16)?)?;
+        log::info!("Successfully deserialized expires_at");
+        
+        log::info!("Attempting to deserialize metadata (column 16)");
+        let metadata: ReportMetadata = 
+            match row.get::<Option<String>>(16)? {
+                Some(s) if !s.is_empty() => {
+                    log::info!("Metadata data found, deserializing JSON");
+                    serde_json::from_str(&s)?
+                },
+                Some(_s) => {
+                    log::info!("Metadata data is empty string");
+                    ReportMetadata {
+                        trade_count: 0,
+                        analysis_period_days: 0,
+                        model_version: "1.0".to_string(),
+                        processing_time_ms: 0,
+                        data_quality_score: 0.0,
+                        sections_included: Vec::new(),
+                        charts_generated: 0,
+                    }
+                },
+                None => {
+                    log::info!("Metadata data is NULL");
+                    ReportMetadata {
+                        trade_count: 0,
+                        analysis_period_days: 0,
+                        model_version: "1.0".to_string(),
+                        processing_time_ms: 0,
+                        data_quality_score: 0.0,
+                        sections_included: Vec::new(),
+                        charts_generated: 0,
+                    }
+                },
+            };
+        log::info!("Successfully deserialized metadata");
 
-        Ok(TradingReport {
+        log::info!("Creating TradingReport struct");
+        let report = TradingReport {
             id,
             user_id: "default".to_string(), // Since each user has their own database, we don't need user_id
             time_range,
@@ -546,7 +824,10 @@ impl AiReportsService {
             generated_at,
             expires_at,
             metadata,
-        })
+        };
+        
+        log::info!("Successfully created TradingReport with id: {}", report.id);
+        Ok(report)
     }
 }
 
