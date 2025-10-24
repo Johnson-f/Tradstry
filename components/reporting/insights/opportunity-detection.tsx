@@ -157,23 +157,6 @@ export function OpportunityDetectionCard({ timeRange = '30d', className }: Oppor
                 {formatTimeRange(timeRange)} Opportunity Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateInsights}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Search className="h-4 w-4" />
-                  Detect Opportunities
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -183,9 +166,6 @@ export function OpportunityDetectionCard({ timeRange = '30d', className }: Oppor
             <p className="text-muted-foreground mb-4">
               Generate opportunity detection to identify potential trading opportunities and market inefficiencies.
             </p>
-            <Button onClick={handleGenerateInsights} disabled={generating}>
-              {generating ? 'Generating...' : 'Detect Opportunities'}
-            </Button>
           </div>
         </CardContent>
       </Card>

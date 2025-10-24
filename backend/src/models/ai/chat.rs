@@ -29,6 +29,7 @@ pub struct ChatMessage {
     pub session_id: String, // ADD THIS
     pub role: MessageRole,
     pub content: String,
+    #[serde(rename = "created_at")]
     pub timestamp: DateTime<Utc>,
     pub context_vectors: Option<Vec<String>>, // Vector IDs used for context
     pub token_count: Option<u32>,

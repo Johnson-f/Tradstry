@@ -157,23 +157,6 @@ export function PerformanceAnalysisCard({ timeRange = '30d', className }: Perfor
                 {formatTimeRange(timeRange)} Performance Review
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateInsights}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  Generate Analysis
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -183,9 +166,6 @@ export function PerformanceAnalysisCard({ timeRange = '30d', className }: Perfor
             <p className="text-muted-foreground mb-4">
               Generate a performance analysis to review your trading metrics and profitability.
             </p>
-            <Button onClick={handleGenerateInsights} disabled={generating}>
-              {generating ? 'Generating...' : 'Generate Performance Analysis'}
-            </Button>
           </div>
         </CardContent>
       </Card>

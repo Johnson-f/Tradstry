@@ -192,23 +192,6 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
                 {formatTimeRange(timeRange)} Psychology Analysis
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="flex items-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Brain className="h-4 w-4" />
-                  Generate Report
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -219,9 +202,6 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
               Generate a behavioral analysis report to understand your trading psychology, 
               emotional patterns, and decision-making processes.
             </p>
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? 'Generating Report...' : 'Generate Behavioral Analysis Report'}
-            </Button>
           </div>
         </CardContent>
       </Card>

@@ -143,7 +143,8 @@ impl AIChatService {
         let session = if let Some(session_id) = request.session_id {
             self.get_session(conn, &session_id, user_id).await?
         } else {
-            self.create_session(conn, user_id, None).await?
+            // Create session with a temporary title, will be updated after first message
+            self.create_session(conn, user_id, Some("New Chat".to_string())).await?
         };
         let session_time = session_start.elapsed().as_millis();
         
@@ -234,6 +235,13 @@ impl AIChatService {
         // Update session
         self.update_session_last_message(conn, &session.id).await?;
 
+        // If this is a new session (title is "New Chat"), update it with a summary of the first message
+        if session.title.as_ref().map_or(false, |t| t == "New Chat") {
+            if let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await {
+                log::warn!("Failed to update session title: {}", e);
+            }
+        }
+
         let processing_time = start_time.elapsed().as_millis() as u64;
         
         log::info!(
@@ -271,7 +279,8 @@ impl AIChatService {
         let session = if let Some(session_id) = request.session_id {
             self.get_session(conn, &session_id, user_id).await?
         } else {
-            self.create_session(conn, user_id, None).await?
+            // Create session with a temporary title, will be updated after first message
+            self.create_session(conn, user_id, Some("New Chat".to_string())).await?
         };
         let session_time = session_start.elapsed().as_millis();
         
@@ -370,6 +379,13 @@ impl AIChatService {
         // Update session
         self.update_session_last_message(conn, &session.id).await?;
 
+        // If this is a new session (title is "New Chat"), update it with a summary of the first message
+        if session.title.as_ref().map_or(false, |t| t == "New Chat") {
+            if let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await {
+                log::warn!("Failed to update session title: {}", e);
+            }
+        }
+
         // Create channel for frontend
         let (frontend_tx, frontend_rx) = tokio::sync::mpsc::channel(100);
         
@@ -458,6 +474,15 @@ impl AIChatService {
             "Starting vectorization for user={}, message_id={}, role={}, length={}, content_preview='{}'",
             user_id, message.id, message.role, content_length, message_preview
         );
+
+        // Skip vectorization for empty messages
+        if message.content.trim().is_empty() {
+            log::info!(
+                "Skipping vectorization for empty message - user={}, message_id={}, role={}",
+                user_id, message.id, message.role
+            );
+            return Ok(());
+        }
 
         // Use the vectorization service to handle both vector and search indexing
         match self.vectorization_service
@@ -777,10 +802,10 @@ impl AIChatService {
         Ok(())
     }
 
-    /// Update session's last message timestamp
+    /// Update session's last message timestamp and increment message count
     async fn update_session_last_message(&self, conn: &Connection, session_id: &str) -> Result<()> {
         conn.execute(
-            "UPDATE chat_sessions SET last_message_at = ?, updated_at = ? WHERE id = ?",
+            "UPDATE chat_sessions SET last_message_at = ?, updated_at = ?, message_count = message_count + 2 WHERE id = ?",
             params![Utc::now().to_rfc3339(), Utc::now().to_rfc3339(), session_id],
         ).await?;
 
@@ -819,6 +844,81 @@ impl AIChatService {
         ).await?;
 
         Ok(())
+    }
+
+    /// Update session title based on the first message
+    async fn update_session_title_from_message(
+        &self,
+        conn: &Connection,
+        session_id: &str,
+        user_id: &str,
+        first_message: &str,
+    ) -> Result<()> {
+        log::info!("Updating session title from first message for session: {}", session_id);
+        
+        // Generate a title from the first message
+        let title = self.generate_title_from_message(first_message).await?;
+        
+        // Update the session title
+        self.update_session_title(conn, session_id, user_id, title.clone()).await?;
+        
+        log::info!("Successfully updated session title to: {}", title);
+        Ok(())
+    }
+
+    /// Generate a concise title from a message
+    async fn generate_title_from_message(&self, message: &str) -> Result<String> {
+        // Simple title generation - take first 50 characters and clean up
+        let mut title = message.trim().to_string();
+        
+        // Remove common question words at the beginning
+        let question_words = ["what", "how", "why", "when", "where", "can", "could", "would", "should", "is", "are", "do", "does", "did"];
+        let words: Vec<&str> = title.split_whitespace().collect();
+        
+        if words.len() > 1 {
+            let first_word = words[0].to_lowercase();
+            if question_words.contains(&first_word.as_str()) {
+                title = words[1..].join(" ");
+            }
+        }
+        
+        // Truncate to 50 characters and add ellipsis if needed
+        if title.len() > 50 {
+            title = title.chars().take(47).collect::<String>() + "...";
+        }
+        
+        // Capitalize first letter
+        if !title.is_empty() {
+            let mut chars = title.chars();
+            if let Some(first_char) = chars.next() {
+                title = first_char.to_uppercase().collect::<String>() + &chars.as_str();
+            }
+        }
+        
+        Ok(title)
+    }
+
+    /// Fix message counts for all sessions by recalculating from actual messages
+    pub async fn fix_message_counts(&self, conn: &Connection) -> Result<u64> {
+        log::info!("Starting message count fix for all sessions");
+        
+        let result = conn.execute(
+            "UPDATE chat_sessions 
+             SET message_count = (
+                 SELECT COUNT(*) 
+                 FROM chat_messages 
+                 WHERE chat_messages.session_id = chat_sessions.id
+             )
+             WHERE EXISTS (
+                 SELECT 1 
+                 FROM chat_messages 
+                 WHERE chat_messages.session_id = chat_sessions.id
+             )",
+            params![],
+        ).await?;
+        
+        log::info!("Message count fix completed - {} sessions updated", result);
+        Ok(result)
     }
 
     /// Health check for AI chat service
