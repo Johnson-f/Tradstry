@@ -98,11 +98,36 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         log::info!("Creating new App instance");
 
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600);
+        // Production CORS configuration - only allow https://tradstry.com
+        let allowed_origins = std::env::var("ALLOWED_ORIGINS")
+            .unwrap_or_else(|_| "https://tradstry.com".to_string());
+        
+        let cors = if std::env::var("RUST_ENV").unwrap_or_default() == "production" {
+            // Production: strict CORS
+            Cors::default()
+                .allowed_origin(&allowed_origins)
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::AUTHORIZATION,
+                    actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::HeaderName::from_static("x-requested-with"),
+                ])
+                .allow_credentials(true)
+                .max_age(3600)
+        } else {
+            // Development: allow localhost
+            Cors::default()
+                .allowed_origin("http://localhost:3000")
+                .allowed_origin("https://tradstry.com")
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::AUTHORIZATION,
+                    actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::HeaderName::from_static("x-requested-with"),
+                ])
+                .allow_credentials(true)
+                .max_age(3600)
+        };
 
         App::new()
             .app_data(app_data.clone())
