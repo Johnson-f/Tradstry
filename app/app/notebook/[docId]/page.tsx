@@ -5,6 +5,8 @@ import NotebookEditor from "@/components/notebook/Editor";
 import Toolbar from "@/components/notebook/Toolbar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+export const dynamic = 'force-dynamic';
+
 export default function NotebookDocPage() {
   const params = useParams();
   const docId = params?.docId as string;

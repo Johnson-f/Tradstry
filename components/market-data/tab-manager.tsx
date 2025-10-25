@@ -41,26 +41,6 @@ const TabButton: React.FC<TabButtonProps> = ({
   );
 };
 
-// US Flag icon component - remove dead code 
-/*
-const USFlag: React.FC = () => (
-  <div className="w-4 h-3 rounded-sm overflow-hidden border border-slate-300/50 shadow-sm">
-    <div className="w-full h-full relative bg-white">
-
-      <div className="absolute inset-0">
-        <div className="h-full w-full bg-gradient-to-b from-red-500 to-red-600"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-      </div>
-      <div className="absolute top-0 left-0 w-1.5 h-1.5 bg-gradient-to-br from-blue-600 to-blue-700 rounded-sm"></div>
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
-    </div>
-  </div>
-);
-*/
-
-
-
-
 // Main component
 export const TabManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState('us-markets');

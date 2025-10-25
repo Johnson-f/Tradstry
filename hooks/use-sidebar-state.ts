@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, createContext, useContext } from 'react';
 
 interface SidebarContextType {
   collapsed: boolean;

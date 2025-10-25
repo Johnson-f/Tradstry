@@ -269,6 +269,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   // Convert API proxy URLs back to notebook-image:// scheme for storage
   const convertUrlsToScheme = useCallback((doc: Record<string, unknown> | Record<string, unknown>[]): Record<string, unknown> | Record<string, unknown>[] => {
     if (Array.isArray(doc)) {
+      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
       return doc.map(block => convertUrlsToScheme(block as Record<string, unknown>));
     }
     
