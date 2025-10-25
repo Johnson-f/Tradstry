@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { Providers } from "./providers";
+import { AuthWrapper } from "@/components/auth-wrapper";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -59,8 +60,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <AuthWrapper>{children}</AuthWrapper>
+        </Providers>
       </body>
     </html>
   );
 }
+

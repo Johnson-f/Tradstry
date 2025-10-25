@@ -1,3 +1,5 @@
+'use client';
+
 import type { WriteTransaction } from 'replicache';
 import type { Note, NewNote } from '@/lib/replicache/schemas/notes';
 import { nanoid } from 'nanoid';

@@ -1,3 +1,4 @@
+'use client';
 import { Replicache } from "replicache";
 import { mutators } from "./mutators";
 import { apiConfig, getFullUrl } from "@/lib/config/api";

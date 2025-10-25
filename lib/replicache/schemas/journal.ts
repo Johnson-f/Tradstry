@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Journal Schema for Browser SQLite using Drizzle ORM
  * Separate tables for stocks and options

@@ -1,3 +1,5 @@
+'use client';
+
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
 import type { Stock } from '@/lib/replicache/schemas/journal';
