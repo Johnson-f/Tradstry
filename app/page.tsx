@@ -2,6 +2,10 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
+// Force this page to be static - because of SEO 
+export const dynamic = 'force-static';
+export const revalidate = 3600; // Revalidate every hour (optional)
+
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center">

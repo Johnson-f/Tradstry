@@ -1,3 +1,5 @@
+'use client';
+
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
 

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Playbook Schema - Types for Replicache
  * Trading setups and strategies

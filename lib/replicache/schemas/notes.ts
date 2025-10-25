@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Notes Schema for Browser SQLite using Drizzle ORM
  * Trading notes with UUID identification

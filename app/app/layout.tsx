@@ -7,6 +7,10 @@ import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
+// Add these two lines to disable SSR for all /app/app/* routes
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+
 export default function ProtectedLayout({
   children,
 }: {

@@ -1,3 +1,5 @@
+'use client';
+
 // Push Request from client to server
 export interface PushRequest {
   clientGroupID: string;

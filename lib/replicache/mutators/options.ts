@@ -1,3 +1,5 @@
+'use client';
+
 import type { WriteTransaction } from 'replicache';
 import type { Option, NewOption } from '@/lib/replicache/schemas/journal';
 

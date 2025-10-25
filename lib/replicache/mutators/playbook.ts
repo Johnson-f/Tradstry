@@ -1,3 +1,5 @@
+'use client';
+
 import type { WriteTransaction } from 'replicache';
 import type { Playbook, NewPlaybook } from '@/lib/replicache/schemas/playbook';
 import { nanoid } from 'nanoid';
