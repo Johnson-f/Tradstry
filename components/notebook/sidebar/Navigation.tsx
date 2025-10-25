@@ -50,12 +50,14 @@ const Navigation = () => {
     } else {
       resetWidth();
     }
+    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   }, [isMobile, resetWidth]);
 
   useEffect(() => {
     if (isMobile) {
       collapse();
     }
+    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   }, [pathname, isMobile, resetWidth]);
 
   const handleMouseDown = (

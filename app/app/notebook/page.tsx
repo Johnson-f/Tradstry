@@ -1,6 +1,8 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileText, Plus } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default function NotebookHomePage() {
   return (
     <ScrollArea className="h-full">

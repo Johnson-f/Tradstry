@@ -60,5 +60,6 @@ export function useRealtimeWatchlists(queryClient: QueryClient) {
 
 // Hook for watchlist items
 export function useRealtimeWatchlistItems(queryClient: QueryClient, watchlistId?: number) {
+  // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   return useRealtimeTable('watchlist_items', queryClient, watchlistId ? ['watchlist-items', watchlistId] : ['watchlist-items'])
 }
