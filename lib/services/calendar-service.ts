@@ -1,8 +1,7 @@
 import { apiClient } from '@/lib/services/api-client';
-import { apiConfig, getFullUrl } from '@/lib/config/api';
+import { apiConfig } from '@/lib/config/api';
 import { 
   CalendarConnection, 
-  ExternalCalendarEvent, 
   SyncResult, 
   CalendarEventsResponse 
 } from '@/lib/types/calendar';

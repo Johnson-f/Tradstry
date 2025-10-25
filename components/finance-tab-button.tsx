@@ -24,7 +24,7 @@ interface FinanceTabButtonProps
 }
 
 const FinanceTabButton = React.forwardRef<HTMLButtonElement, FinanceTabButtonProps>(
-  ({ className, variant, active, children, ...props }, ref) => {
+  ({ className, active, children, ...props }, ref) => {
     const buttonVariant = active ? "active" : "inactive"
 
     return (

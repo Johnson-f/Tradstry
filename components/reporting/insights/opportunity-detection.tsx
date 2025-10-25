@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Search, TrendingUp, Target, Lightbulb, Clock, Zap, Star, Compass } from 'lucide-react';
 import { useAIInsights } from '@/hooks/use-ai-insights';
-import { InsightType, TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 
 interface OpportunityDetectionCardProps {
@@ -49,7 +49,7 @@ export function OpportunityDetectionCard({ timeRange = '30d', className }: Oppor
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };

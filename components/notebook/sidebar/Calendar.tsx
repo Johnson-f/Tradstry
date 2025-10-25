@@ -30,7 +30,7 @@ export default function CalendarApp({ onCreateNote }: CalendarAppProps) {
     disconnect,
     syncConnection,
   } = useCalendarConnections()
-  const { events: externalEvents, loading: eventsLoading } = useExternalEvents(selectedDate)
+  const { events: externalEvents } = useExternalEvents(selectedDate)
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date)

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Globe, TrendingUp, Target, Lightbulb, Clock, BarChart3, Activity, Building2 } from 'lucide-react';
 import { useAIInsights } from '@/hooks/use-ai-insights';
-import { InsightType, TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 
 interface MarketAnalysisCardProps {
@@ -49,7 +49,7 @@ export function MarketAnalysisCard({ timeRange = '30d', className }: MarketAnaly
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };

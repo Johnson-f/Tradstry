@@ -3,7 +3,7 @@
 import React from 'react';
 import { useLatestSymbolNews } from '@/lib/hooks/use-market-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, ExternalLink, TrendingUp } from 'lucide-react';
+import { ExternalLink, TrendingUp } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 
 interface RecentDevelopmentsProps {

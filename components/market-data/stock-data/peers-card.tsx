@@ -36,11 +36,10 @@ const parsePrice = (price: string | number | undefined | null): number => {
 // Peer stock item component
 interface PeerItemProps {
   peer: StockPeerWithPrices
-  rank: number
   onClick?: () => void
 }
 
-const PeerItem: React.FC<PeerItemProps> = ({ peer, rank, onClick }) => {
+const PeerItem: React.FC<PeerItemProps> = ({ peer, onClick }) => {
   // Parse percent_change string (e.g., "2.45%") to number, fallback to 0
   const percentChangeStr = peer.percent_change ?? "0"
   const percentChange = Number.parseFloat(percentChangeStr.replace("%", "")) || 0
@@ -204,7 +203,6 @@ export const PeersCard: React.FC<PeersCardProps> = ({ symbol, limit = 25, classN
               <div key={peer.peer_symbol}>
                 <PeerItem 
                   peer={peer} 
-                  rank={index + 1} 
                   onClick={() => handlePeerClick(peer.peer_symbol)} 
                 />
                 {index < peersWithPrices.length - 1 && <Separator />}

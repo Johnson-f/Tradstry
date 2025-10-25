@@ -3,11 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
-import { cn } from "@/lib/utils";
 import Navigation from "@/components/notebook/sidebar/Navigation";
 import NotebookNavbar from "@/components/notebook/Navbar";
 import NewNoteButton from "@/components/notebook/NewNoteButton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Menu } from "lucide-react";
 
 export default function NotebookLayout({ children }: { children: React.ReactNode }) {

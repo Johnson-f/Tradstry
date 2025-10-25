@@ -1,7 +1,7 @@
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
 
-export function useNotes(userId: string) {
+export function useNotes() {
   const { rep, isInitialized } = useReplicache();
 
   const notes = useSubscribe(
@@ -13,27 +13,27 @@ export function useNotes(userId: string) {
         .toArray();
 
       return list
-        .map(([_, value]) => value as any)
+        .map(([, value]) => value as Record<string, unknown>)
         .sort((a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          new Date((b as Record<string, unknown>).createdAt as string).getTime() - new Date((a as Record<string, unknown>).createdAt as string).getTime()
         );
     },
     [] // Default to empty array if undefined
   );
 
-  const createNote = async (note: any) => {
+  const createNote = async (note: Record<string, unknown>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.createNote(note);
+    return await (rep as { mutate: { createNote: (note: Record<string, unknown>) => Promise<unknown> } }).mutate.createNote(note);
   };
 
-  const updateNote = async (id: string, updates: any) => {
+  const updateNote = async (id: string, updates: Record<string, unknown>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.updateNote({ id, updates });
+    return await (rep as { mutate: { updateNote: (params: { id: string; updates: Record<string, unknown> }) => Promise<unknown> } }).mutate.updateNote({ id, updates });
   };
 
   const deleteNote = async (id: string) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.deleteNote(id);
+    return await (rep as { mutate: { deleteNote: (id: string) => Promise<unknown> } }).mutate.deleteNote(id);
   };
 
   return {

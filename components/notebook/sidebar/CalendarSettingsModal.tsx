@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Settings2, RefreshCw, Trash2 } from "lucide-react";
 import { useCalendarConnections } from "@/hooks/use-calendar-connections";
-import { CalendarConnection } from "@/lib/types/calendar";
 
 interface CalendarSettingsModalProps {
   children?: React.ReactNode;

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { Loader2, Send, MessageCircle, ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { MessageRole } from "@/lib/types/ai-chat";
 
 // Type for optimistic messages
 interface OptimisticMessage {
@@ -21,30 +20,17 @@ interface OptimisticMessage {
   isOptimistic?: boolean;
 }
 
-// Streaming Message Component
-const StreamingMessage = ({ content }: { content: string }) => (
-  <div className="flex justify-start">
-    <div className="bg-muted rounded-lg px-4 py-2 max-w-[70%]">
-      <p className="text-sm whitespace-pre-wrap">
-        {content}
-        <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse" />
-      </p>
-    </div>
-  </div>
-);
 
 export default function ChatPage() {
   const params = useParams();
   const chatId = params.chatId as string;
 
   const {
-    sessions,
     currentSession,
     messages,
     isLoading,
     isStreaming,
     error,
-    sendMessage,
     sendStreamingMessage,
     createSession,
     loadSession,
@@ -54,7 +40,6 @@ export default function ChatPage() {
   // State
   const [message, setMessage] = useState("");
   const [userScrolled, setUserScrolled] = useState(false);
-  const [lastScrollHeight, setLastScrollHeight] = useState(0);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
 
   // Refs
@@ -65,7 +50,6 @@ export default function ChatPage() {
   const autoScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Constants
-  const CONTEXT_LIMIT = 10;
   const MAX_MESSAGE_LENGTH = 4000;
 
   // Load session when chatId changes
@@ -76,7 +60,7 @@ export default function ChatPage() {
   }, [chatId, loadSession]);
 
   // Combine real messages with optimistic messages
-  const allMessages = [...messages, ...optimisticMessages];
+  const allMessages = useMemo(() => [...messages, ...optimisticMessages], [messages, optimisticMessages]);
 
   // Enhanced scrolling function
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth", force: boolean = false) => {
@@ -118,8 +102,6 @@ export default function ChatPage() {
     } else if (isAtBottom) {
       setUserScrolled(false);
     }
-
-    setLastScrollHeight(scrollHeight);
   }, [isStreaming]);
 
   // Enhanced auto-scroll during streaming with better throttling
@@ -338,7 +320,7 @@ export default function ChatPage() {
                 <p className="text-sm">Ask about your trading data, strategies, or analysis</p>
               </div>
             ) : (
-              allMessages.map((msg, index) => (
+              allMessages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex ${
@@ -352,7 +334,7 @@ export default function ChatPage() {
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted",
                       // Add slight opacity to optimistic messages
-                      msg.isOptimistic && "opacity-70"
+                      'isOptimistic' in msg && msg.isOptimistic && "opacity-70"
                     )}
                   >
                     <p className="text-sm">{msg.content}</p>
@@ -370,7 +352,7 @@ export default function ChatPage() {
                         }
                       })()}
                     </p>
-                    {msg.isOptimistic && (
+                    {'isOptimistic' in msg && msg.isOptimistic && (
                       <div className="flex items-center gap-1 mt-1">
                         <Loader2 className="h-3 w-3 animate-spin opacity-50" />
                         <span className="text-xs opacity-50">Sending...</span>

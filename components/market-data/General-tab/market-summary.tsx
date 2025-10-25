@@ -37,8 +37,7 @@ interface NewsItemProps {
 const NewsItem: React.FC<NewsItemProps> = ({ 
   title, 
   summary, 
-  content, 
-  publishedAt
+  content
 }) => {
   const displayText = summary || content || '';
   

@@ -83,7 +83,7 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
         include_behavioral_analysis: false,
         include_market_analysis: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -100,7 +100,7 @@ export function PerformanceReportCard({ timeRange = '30d', className }: Performa
     if (performanceReport) {
       try {
         await deleteReport(performanceReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }

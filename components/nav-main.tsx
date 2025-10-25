@@ -4,14 +4,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { type LucideIcon } from "lucide-react"
 
-import {
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar"
-
 export function NavMain({
   items,
   collapsed = false,

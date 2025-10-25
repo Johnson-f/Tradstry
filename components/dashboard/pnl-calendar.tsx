@@ -1,3 +1,4 @@
+/*
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,19 +139,20 @@ export function PnLCalendar({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-7 gap-1">
-          {/* Weekday headers */}
+          
+          {/*
           {weekdays.map(day => (
             <div key={day} className="text-xs text-center font-medium text-muted-foreground pb-1">
               {day[0]}
             </div>
           ))}
           
-          {/* Empty cells for days before the 1st of the month */}
+          
           {Array.from({ length: monthStart.getDay() }).map((_, i) => (
             <div key={`empty-${i}`} className="h-16" />
           ))}
           
-          {/* Calendar days */}
+          
           {daysInMonth.map((day) => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const dayData = pnlByDate.get(dateStr);
@@ -187,9 +189,8 @@ export function PnLCalendar({
               </div>
             );
           })}
-        </div>
         
-        {/* Legend */}
+        {/*
         <div className="mt-4 flex justify-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-sm bg-green-100"></span>
@@ -204,7 +205,4 @@ export function PnLCalendar({
             <span>No Trades</span>
           </div>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+        */

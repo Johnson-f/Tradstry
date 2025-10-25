@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useBalanceSheet } from '@/lib/hooks/use-market-data';
-import { Sheet, TrendingUp, TrendingDown, Building2 } from 'lucide-react';
+import { Sheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BalanceSheetProps {
@@ -17,7 +17,7 @@ interface BalanceSheetProps {
 }
 
 // Format currency values
-const formatCurrency = (value: any): string => {
+const formatCurrency = (value: string | number | undefined | null): string => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return '$0.00';
 
@@ -43,7 +43,7 @@ const formatDate = (dateString: string): string => {
 };
 
 export function BalanceSheet({ symbol, frequency = 'annual', className = '' }: BalanceSheetProps) {
-  const [limit, setLimit] = useState(4);
+  const [limit] = useState(4);
   
   const { balanceSheet, isLoading, error, refetch } = useBalanceSheet({
     symbol,
@@ -276,7 +276,7 @@ export function BalanceSheet({ symbol, frequency = 'annual', className = '' }: B
                 </TableRow>
                 
                 <TableRow>
-                  <TableCell className="pl-8">Total Stockholders' Equity</TableCell>
+                  <TableCell className="pl-8">Total Stockholders&apos; Equity</TableCell>
                   {balanceSheet.slice(0, 4).map((statement, index) => (
                     <TableCell key={index} className="text-right font-mono font-bold">
                       {formatCurrency(statement.stockholders_equity)}

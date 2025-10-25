@@ -4,14 +4,8 @@ import { useState } from "react";
 import { 
   TrendingUp, 
   Target, 
-  PieChart, 
-  BarChart3, 
-  ScatterChart, 
   Activity,
-  DollarSign,
-  Percent,
   TrendingDown,
-  Calendar,
   RefreshCw
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -31,8 +25,6 @@ import {
   Radar,
   ScatterChart as RechartsScatterChart,
   Scatter,
-  AreaChart,
-  Area,
   PieChart as RechartsPieChart,
   Pie,
   Cell,
@@ -51,6 +43,14 @@ import {
   useCombinedPortfolioAnalytics
 } from "@/lib/hooks/use-analytics";
 import type { AnalyticsFilters } from "@/lib/types/analytics";
+
+// Define types locally since the module is empty
+interface AnalyticsFilters {
+  periodType: string;
+  customStartDate: Date | null;
+  customEndDate: Date | null;
+}
+
 
 interface AdvancedTabProps {
   filters: AnalyticsFilters;
@@ -72,7 +72,6 @@ const PIE_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b
 
 export function AdvancedTab({ filters }: AdvancedTabProps) {
   const [activeChartTab, setActiveChartTab] = useState('performance');
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Data hooks
   const stocksAnalytics = useAnalytics('stocks', filters);
@@ -88,7 +87,6 @@ export function AdvancedTab({ filters }: AdvancedTabProps) {
     dailyPnLData.error || tickerData.error || combinedAnalytics.error;
 
   const handleRefresh = async () => {
-    setRefreshKey(prev => prev + 1);
     await Promise.all([
       stocksAnalytics.refetch(),
       optionsAnalytics.refetch(),
@@ -197,27 +195,6 @@ export function AdvancedTab({ filters }: AdvancedTabProps) {
     netPnl: ticker.netPnl
   })) || [];
 
-  // Monthly performance area chart data (mock data based on daily)
-  const monthlyPerformanceData = pnlTrendData.reduce((acc: any[], curr, index) => {
-    const monthKey = new Date(curr.date).getMonth();
-    if (!acc[monthKey]) {
-      acc[monthKey] = {
-        month: new Date(0, monthKey).toLocaleDateString('en-US', { month: 'short' }),
-        stocks: 0,
-        options: 0,
-        total: 0
-      };
-    }
-    
-    const stocksPnl = (curr.stockTrades / (curr.trades || 1)) * curr.pnl;
-    const optionsPnl = (curr.optionTrades / (curr.trades || 1)) * curr.pnl;
-    
-    acc[monthKey].stocks += stocksPnl;
-    acc[monthKey].options += optionsPnl;
-    acc[monthKey].total += curr.pnl;
-    
-    return acc;
-  }, []).filter(Boolean);
 
   // Trade volume distribution
   const volumeDistributionData = [
@@ -553,7 +530,7 @@ export function AdvancedTab({ filters }: AdvancedTabProps) {
                 ?.filter(ticker => ticker.netPnl > 0)
                 .sort((a, b) => b.netPnl - a.netPnl)
                 .slice(0, 5)
-                .map((ticker, index) => (
+                .map((ticker) => (
                   <div key={ticker.symbol} className="flex items-center justify-between p-2 rounded-lg bg-green-50">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -594,7 +571,7 @@ export function AdvancedTab({ filters }: AdvancedTabProps) {
                 ?.filter(ticker => ticker.netPnl < 0)
                 .sort((a, b) => a.netPnl - b.netPnl)
                 .slice(0, 5)
-                .map((ticker, index) => (
+                .map((ticker) => (
                   <div key={ticker.symbol} className="flex items-center justify-between p-2 rounded-lg bg-red-50">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">

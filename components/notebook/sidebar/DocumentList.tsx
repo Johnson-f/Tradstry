@@ -53,7 +53,7 @@ export function DocumentList({ parentId, level = 0 }: { parentId?: string; level
             onClick={() => router.push(`/app/notebook/${n.id}`)}
             onAddChild={async () => {
               const res = await createNote({ title: "Untitled", parent_id: n.id });
-              const id = (res?.data as any)?.id as string | undefined;
+              const id = (res?.data as Record<string, unknown>)?.id as string | undefined;
               if (id) router.push(`/app/notebook/${id}`);
             }}
             onRename={() => router.push(`/app/notebook/${n.id}`)}

@@ -82,7 +82,7 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
         include_behavioral_analysis: false,
         include_market_analysis: true,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -99,7 +99,7 @@ export function MarketReportCard({ timeRange = '30d', className }: MarketReportC
     if (marketReport) {
       try {
         await deleteReport(marketReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }

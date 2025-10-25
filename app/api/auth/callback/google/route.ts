@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.redirect(new URL('/app/notebook/calendar?success=google_connected', request.url));
-  } catch (error) {
+  } catch {
     return NextResponse.redirect(new URL('/app/notebook/calendar?error=exchange_failed', request.url));
   }
 }

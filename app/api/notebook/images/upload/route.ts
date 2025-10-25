@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const fileBuffer = new Uint8Array(fileArrayBuffer);
 
     // Upload to Supabase Storage with proper content type and options
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('notebook-images')
       .upload(filePath, fileBuffer, {
         contentType: file.type,
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create metadata record in database
-    const { data: imageData, error: dbError } = await supabase
+    const { error: dbError } = await supabase
       .from('notebook_images')
       .insert({
         id: imageId,
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate signed URL with longer expiry
-    const { data: urlData, error: urlError } = await supabase.storage
+    const { error: urlError } = await supabase.storage
       .from('notebook-images')
       .createSignedUrl(filePath, 3600 * 24); // 24 hours
 

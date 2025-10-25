@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import Image from 'next/image';
 import { Filter } from 'lucide-react';
 import { useWatchlistsWithPrices, useWatchlistByIdWithPrices } from '@/lib/hooks/use-market-data';
 import { cn } from '@/lib/utils';
@@ -57,9 +57,11 @@ const StockItem: React.FC<StockItemProps> = ({ item, isTopPick = false, onClick 
           isTopPick ? "w-12 h-12 bg-red-500" : "w-10 h-10 bg-gray-200 dark:bg-gray-800"
         )}>
           {item.logo ? (
-            <img 
+            <Image 
               src={item.logo} 
               alt={`${item.symbol} logo`} 
+              width={isTopPick ? 48 : 40}
+              height={isTopPick ? 48 : 40}
               className="w-full h-full rounded-lg object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -135,7 +137,6 @@ const StockItemSkeleton: React.FC<{ isTopPick?: boolean }> = ({ isTopPick = fals
 
 // Main component
 export const WatchlistCard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('gainers');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { navigateToSymbol } = useSymbolNavigation();
   
@@ -153,36 +154,15 @@ export const WatchlistCard: React.FC = () => {
     navigateToSymbol(symbol);
   };
   
-  // Sort items based on active tab
+  // Sort items based on performance (gainers)
   const sortedItems = [...items].sort((a, b) => {
     const aChange = parseFloat(a.percent_change?.toString().replace('%', '') || '0');
     const bChange = parseFloat(b.percent_change?.toString().replace('%', '') || '0');
-    
-    if (activeTab === 'gainers') {
-      return bChange - aChange; // Highest to lowest
-    } else if (activeTab === 'losers') {
-      return aChange - bChange; // Lowest to highest
-    } else {
-      // Active - sort by volume or price
-      const aPrice = parsePrice(a.price);
-      const bPrice = parsePrice(b.price);
-      return bPrice - aPrice;
-    }
-  });
-  
-  // Filter based on tab
-  const filteredItems = sortedItems.filter((item) => {
-    const change = parseFloat(item.percent_change?.toString().replace('%', '') || '0');
-    if (activeTab === 'gainers') return change > 0;
-    if (activeTab === 'losers') return change < 0;
-    return true; // Active shows all
+    return bChange - aChange; // Highest to lowest
   });
   
   // Top 2 picks (shown above tabs)
   const topPicks = sortedItems.slice(0, 2);
-  
-  // Remaining items for tabs
-  const tabItems = filteredItems.slice(0, 10);
 
   return (
     <div className="w-full">

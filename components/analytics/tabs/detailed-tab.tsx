@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertCircle, PieChart, BarChart3, Calendar } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CombinedAnalytics, AnalyticsQuery, AnalyticsFilters } from "@/lib/types/analytics";
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { 
   BarChart, 
   Bar, 
@@ -506,7 +506,7 @@ export function DetailedTab({ filters }: DetailedTabProps) {
                       dataKey="value"
                       radius={[4, 4, 0, 0]}
                     >
-                      {(apiData?.daily_performance || mockData.dailyPerformance).map((entry: any, index: number) => {
+                      {(apiData?.daily_performance || mockData.dailyPerformance).map((entry: Record<string, unknown>, index: number) => {
                         const value = entry.value || 0;
                         const color = value >= 0 
                           ? (value > 1000 ? '#10b981' : '#86efac') 

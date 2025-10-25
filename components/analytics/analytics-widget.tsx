@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp,
-  TrendingDown,
   DollarSign,
   Target,
   BarChart3,

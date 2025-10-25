@@ -82,7 +82,7 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
         include_behavioral_analysis: false,
         include_market_analysis: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -99,7 +99,7 @@ export function RiskReportCard({ timeRange = '30d', className }: RiskReportCardP
     if (riskReport) {
       try {
         await deleteReport(riskReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }

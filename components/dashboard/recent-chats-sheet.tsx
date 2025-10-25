@@ -40,7 +40,6 @@ export default function RecentChatsSheet({ children }: RecentChatsSheetProps) {
   const [sessionToDelete, setSessionToDelete] = useState<{ id: string; title: string } | null>(null);
   const {
     sessions,
-    totalSessionsCount,
     isLoading: loading,
     error,
     deleteSession,
@@ -227,7 +226,7 @@ export default function RecentChatsSheet({ children }: RecentChatsSheetProps) {
           <DialogHeader>
             <DialogTitle>Delete Chat Session</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{sessionToDelete?.title || 'Untitled Chat'}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{sessionToDelete?.title || 'Untitled Chat'}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -13,7 +13,7 @@ export default function TrashBox() {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
-    return (notes || []).filter((n: any) => (n?.title || "").toLowerCase().includes(q.toLowerCase()));
+    return (notes || []).filter((n: Record<string, unknown>) => ((n?.title as string) || "").toLowerCase().includes(q.toLowerCase()));
   }, [notes, q]);
 
   const onRestore = async (id: string) => {
@@ -48,16 +48,16 @@ export default function TrashBox() {
         {filtered?.length === 0 && (
           <p className="px-1 py-2 text-center text-xs text-muted-foreground">No documents found.</p>
         )}
-        {filtered?.map((d: any) => (
-          <div key={d.id} className="flex items-center justify-between rounded px-1 py-1 hover:bg-primary/5">
-            <button onClick={() => router.push(`/app/notebook/${d.id}`)} className="truncate text-left">
-              {d.title}
+        {filtered?.map((d: Record<string, unknown>) => (
+          <div key={d.id as string} className="flex items-center justify-between rounded px-1 py-1 hover:bg-primary/5">
+            <button onClick={() => router.push(`/app/notebook/${d.id as string}`)} className="truncate text-left">
+              {d.title as string}
             </button>
             <div className="flex items-center gap-2">
-              <button onClick={() => onRestore(d.id)} className="rounded border px-2 py-1 text-xs">
+              <button onClick={() => onRestore(d.id as string)} className="rounded border px-2 py-1 text-xs">
                 Restore
               </button>
-              <button onClick={() => onRemove(d.id)} className="rounded border px-2 py-1 text-xs">
+              <button onClick={() => onRemove(d.id as string)} className="rounded border px-2 py-1 text-xs">
                 Delete
               </button>
             </div>

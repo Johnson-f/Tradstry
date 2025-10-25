@@ -7,16 +7,12 @@ import type {
   NotebookNote,
   CreateNoteRequest,
   UpdateNoteRequest,
-  NotebookTag,
   CreateTagRequest,
   UpdateTagRequest,
-  NotebookTemplate,
   CreateTemplateRequest,
   UpdateTemplateRequest,
-  NotebookReminder,
   CreateReminderRequest,
   UpdateReminderRequest,
-  CalendarEvent,
 } from '@/lib/types/notebook';
 
 // Notes

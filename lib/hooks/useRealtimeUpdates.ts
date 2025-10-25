@@ -1,14 +1,11 @@
 'use client'
 
 import { useEffect } from 'react'
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { QueryClient } from '@tanstack/react-query'
 
-type Callback<T> = (payload: RealtimePostgresChangesPayload<T>) => void
-
 // Generic hook for real-time subscriptions
-export function useRealtimeTable<T = any>(
+export function useRealtimeTable(
   table: string, 
   queryClient: QueryClient,
   queryKey: string[]    

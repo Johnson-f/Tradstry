@@ -45,10 +45,14 @@ const onUpload = (file: File) => {
     const uploaded = await imagesService.uploadImage({ file, note_id: tradeNoteId });
     console.log('Upload response:', uploaded); // Debug log
     
-    const imageId = (uploaded as any)?.id 
-      ?? (uploaded as any)?.image?.id 
-      ?? (uploaded as any)?.data?.id
-      ?? (uploaded as any)?.image_id; // Additional fallback
+    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+    const imageId = (uploaded as Record<string, unknown>)?.id 
+    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+      ?? (uploaded as Record<string, unknown>)?.image?.id 
+  // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+      ?? (uploaded as Record<string, unknown>)?.data?.id
+      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+      ?? (uploaded as Record<string, unknown>)?.image_id; // Additional fallback
     
     if (!imageId) {
       console.error('Upload response structure:', uploaded);

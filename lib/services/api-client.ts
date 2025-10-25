@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { createClient } from '@/lib/supabase/client';
 import { apiConfig, getFullUrl } from '@/lib/config/api';
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data: T;
   message?: string;
   status: number;
@@ -11,7 +11,7 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   message: string;
   status: number;
-  details?: any;
+  details?: unknown;
 }
 
 class ApiClient {
@@ -80,7 +80,7 @@ class ApiClient {
             // Retry the original request with new token
             error.config.headers.Authorization = `Bearer ${newSession.access_token}`;
             return this.axiosInstance.request(error.config);
-          } catch (refreshError) {
+          } catch {
             window.location.href = '/auth/login';
             return Promise.reject(error);
           }
@@ -109,7 +109,7 @@ class ApiClient {
       }
       
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[API] Error from ${config.url}:`, error.response?.data || error.message);
       const apiError: ApiError = {
         message: error.response?.data?.detail || error.message || 'An error occurred',
@@ -125,15 +125,15 @@ class ApiClient {
     return this.request<T>({ ...config, method: 'GET', url: getFullUrl(url) });
   }
 
-  async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     return this.request<T>({ ...config, method: 'POST', url: getFullUrl(url), data });
   }
 
-  async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     return this.request<T>({ ...config, method: 'PUT', url: getFullUrl(url), data });
   }
 
-  async patch<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     return this.request<T>({ ...config, method: 'PATCH', url: getFullUrl(url), data });
   }
 

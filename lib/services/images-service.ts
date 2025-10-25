@@ -7,7 +7,6 @@ import apiClient from './api-client';
 import { apiConfig } from '@/lib/config/api';
 import {
   Image,
-  ImageCreate,
   ImageUpdate,
   ImageUpsertResponse,
   ImageDeleteResponse,

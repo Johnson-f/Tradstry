@@ -3,19 +3,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from "@/lib/services/market-data-service";
-import type { IndexData, HistoricalDataPoint, MarketMoverWithPrices, MarketMoversRequest, 
-  CompanyLogosRequest, CompanyLogo, EarningsCalendarLogosRequest, HistoricalPrice, 
-  HistoricalPriceSummary, LatestHistoricalPrice, HistoricalPriceRange, HistoricalPriceRequest, 
+import type { IndexData, HistoricalDataPoint, MarketMoversRequest, 
+  CompanyLogosRequest, EarningsCalendarLogosRequest, HistoricalPriceRequest, 
   HistoricalPriceSummaryRequest, LatestHistoricalPriceRequest, HistoricalPriceRangeRequest, 
-  SymbolHistoricalOverview, WatchlistItemWithPrices, WatchlistWithItemsAndPrices, 
-  CreateWatchlistRequest, AddWatchlistItemRequest, StockPeerWithPrices, StockPeersRequest, 
-  KeyStats, IncomeStatement, BalanceSheet, CashFlow, FinancialStatementRequest, KeyStatsRequest, 
-  StockQuoteWithPrices, HistoricalDataRequest, HistoricalDataResponse, SingleSymbolDataRequest, 
-  HolderData, InstitutionalHolder, MutualFundHolder, InsiderTransaction, InsiderPurchasesSummary,
-  InsiderRoster, HolderStatistics, HolderSearchResult, HolderParticipant, EarningsTranscript, 
-  EarningsTranscriptMetadata, TranscriptSearchResult, TranscriptStatistics, TranscriptParticipant, 
-  TranscriptQuarter, HoldersRequest, InsiderTransactionsRequest, HoldersSearchRequest, 
-  HoldersPaginatedRequest, TranscriptsRequest, TranscriptSearchRequest, TranscriptsByDateRequest, 
+  HistoricalDataRequest, SingleSymbolDataRequest,
+  FinancialStatementRequest, KeyStatsRequest, 
+  HoldersPaginatedRequest, 
   TranscriptsPaginatedRequest } from "@/lib/types/market-data";
 
 // =====================================================

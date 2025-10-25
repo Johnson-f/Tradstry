@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Progress } from '@/components/ui/progress';
 import { 
   AlertCircle, 
   FileText, 
@@ -19,12 +18,11 @@ import {
   Percent,
   Shield,
   Brain,
-  Download,
   Eye,
   Trash2
 } from 'lucide-react';
 import { useAIReports } from '@/hooks/use-ai-reports';
-import { TimeRange, ReportType } from '@/lib/types/ai-reports';
+import { TimeRange } from '@/lib/types/ai-reports';
 import { cn } from '@/lib/utils';
 
 interface ComprehensiveReportCardProps {
@@ -43,7 +41,6 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     getReport,
     deleteReport,
     clearError,
-    clearCurrentReport,
   } = useAIReports();
 
   // Find comprehensive report for the specified time range
@@ -85,7 +82,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -102,7 +99,7 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     if (comprehensiveReport) {
       try {
         await deleteReport(comprehensiveReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }
@@ -142,9 +139,6 @@ export function ComprehensiveReportCard({ timeRange = '30d', className }: Compre
     return typeof value === 'number' && !isNaN(value) ? value : fallback;
   };
 
-  const safeGetStringValue = (value: string | undefined, fallback: string = 'N/A'): string => {
-    return value || fallback;
-  };
 
   const getRiskScoreColor = (score: number): string => {
     if (score >= 0.8) return 'text-red-600 bg-red-50';

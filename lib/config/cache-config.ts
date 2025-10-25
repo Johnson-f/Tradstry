@@ -3,6 +3,13 @@
  * Centralized cache settings for optimal performance
  */
 
+import { QueryClient } from '@tanstack/react-query';
+
+// Define a generic service interface for type safety
+interface NotesService {
+  getNote: (id: string) => Promise<unknown>;
+}
+
 export const cacheConfig = {
   // Default cache times
   defaultStaleTime: 5 * 60 * 1000, // 5 minutes
@@ -65,27 +72,27 @@ export const cacheConfig = {
  */
 export const cacheInvalidation = {
   // Invalidate all notes-related queries
-  invalidateAllNotes: (queryClient: any) => {
+  invalidateAllNotes: (queryClient: QueryClient) => {
     queryClient.invalidateQueries({ queryKey: ['notes'] });
   },
   
   // Invalidate specific note
-  invalidateNote: (queryClient: any, noteId: string) => {
+  invalidateNote: (queryClient: QueryClient, noteId: string) => {
     queryClient.invalidateQueries({ queryKey: ['notes', 'detail', noteId] });
   },
   
   // Invalidate notes list
-  invalidateNotesList: (queryClient: any) => {
+  invalidateNotesList: (queryClient: QueryClient) => {
     queryClient.invalidateQueries({ queryKey: ['notes', 'list'] });
   },
   
   // Invalidate folders
-  invalidateFolders: (queryClient: any) => {
+  invalidateFolders: (queryClient: QueryClient) => {
     queryClient.invalidateQueries({ queryKey: ['notes', 'folders'] });
   },
   
   // Prefetch note for better UX
-  prefetchNote: (queryClient: any, noteId: string, notesService: any) => {
+  prefetchNote: (queryClient: QueryClient, noteId: string, notesService: NotesService) => {
     queryClient.prefetchQuery({
       queryKey: ['notes', 'detail', noteId],
       queryFn: () => notesService.getNote(noteId),

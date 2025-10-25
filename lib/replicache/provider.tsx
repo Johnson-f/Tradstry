@@ -12,7 +12,6 @@ import { Replicache } from 'replicache';
 import { createReplicache } from './config';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 import { initializeUser } from '@/lib/services/user-service';
 
 interface ReplicacheContextType {
@@ -35,8 +34,7 @@ export function ReplicacheProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading: authLoading, signOut } = useAuth();
-  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [replicache, setReplicache] = useState<Replicache | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -204,7 +202,7 @@ export function ReplicacheProvider({
 
     // Store the promise to prevent concurrent initializations
     initializationPromiseRef.current = initializeReplicache();
-  }, [user, authLoading]);
+  }, [user, authLoading, pullWithRetry]);
 
   // Cleanup on unmount
   useEffect(() => {

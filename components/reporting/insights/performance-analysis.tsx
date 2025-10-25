@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, BarChart3, TrendingUp, Target, Lightbulb, Clock, DollarSign, Percent, Activity } from 'lucide-react';
+import { AlertCircle, BarChart3, TrendingUp, Target, Lightbulb, Clock, DollarSign, Activity } from 'lucide-react';
 import { useAIInsights } from '@/hooks/use-ai-insights';
-import { InsightType, TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 
 interface PerformanceAnalysisCardProps {
@@ -49,7 +49,7 @@ export function PerformanceAnalysisCard({ timeRange = '30d', className }: Perfor
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };

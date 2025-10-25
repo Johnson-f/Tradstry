@@ -333,12 +333,12 @@ export type { LocalChatMessage, LocalChatSession };
 
 // Add to global scope for debugging
 if (typeof window !== 'undefined') {
-  (window as any).localChatCache = localChatCache;
-  (window as any).clearChatDuplicates = (sessionId: string) => {
+  (window as Record<string, unknown>).localChatCache = localChatCache;
+  (window as Record<string, unknown>).clearChatDuplicates = (sessionId: string) => {
     localChatCache.removeDuplicateMessages(sessionId);
     console.log(`Cleared duplicates for session: ${sessionId}`);
   };
-  (window as any).clearAllChatData = (sessionId: string) => {
+  (window as Record<string, unknown>).clearAllChatData = (sessionId: string) => {
     localChatCache.clearSessionData(sessionId);
     console.log(`Cleared all data for session: ${sessionId}`);
   };

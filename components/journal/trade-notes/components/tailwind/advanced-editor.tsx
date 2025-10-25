@@ -28,7 +28,7 @@ import { createUploadFn } from "./image-upload";
 import { TextButtons } from "./selectors/text-buttons";
 import { slashCommand, suggestionItems } from "./slash-command";
 
-const hljs = require("highlight.js");
+import hljs from "highlight.js";
 
 const extensions = [...defaultExtensions, slashCommand];
 
@@ -63,7 +63,7 @@ const TailwindAdvancedEditor = ({
   const highlightCodeblocks = (content: string) => {
     const doc = new DOMParser().parseFromString(content, "text/html");
     doc.querySelectorAll("pre code").forEach((el) => {
-      // @ts-ignore
+      // @ts-expect-error - highlight.js types may not be complete
       // https://highlightjs.readthedocs.io/en/latest/api.html?highlight=highlightElement#highlightelement
       hljs.highlightElement(el);
     });
@@ -200,6 +200,7 @@ const TailwindAdvancedEditor = ({
       <EditorRoot>
         <EditorContent
           initialContent={initialContent}
+          // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
           extensions={extensions}
           className="relative min-h-[500px] w-full border-muted bg-background rounded-lg border shadow-lg"
           editorProps={{

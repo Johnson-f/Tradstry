@@ -18,7 +18,7 @@ export interface ImageBase {
 }
 
 // Image creation request
-export interface ImageCreate extends ImageBase {}
+export type ImageCreate = ImageBase;
 
 // Image update request (all fields optional)
 export interface ImageUpdate {
@@ -43,7 +43,7 @@ export interface Image extends ImageBase {
 }
 
 // Image upsert response
-export interface ImageUpsertResponse extends Image {}
+export type ImageUpsertResponse = Image;
 
 // Image delete response
 export interface ImageDeleteResponse {

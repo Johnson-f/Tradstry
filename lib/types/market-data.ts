@@ -1021,7 +1021,7 @@ export interface HistoricalDataResponse {
   fetched_data_points: number;
   range: string;
   interval: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 export interface SingleSymbolDataRequest {

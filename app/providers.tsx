@@ -1,13 +1,11 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { usePathname } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 import { ReactNode, useState } from "react";
 import { Toaster } from "sonner";
 import { ReplicacheProvider } from "@/lib/replicache";
-import { useAuth } from "@/lib/hooks/use-auth";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -34,7 +32,6 @@ export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname.startsWith("/auth");
   const isLandingPage = pathname === "/";
-  const { isAuthenticated } = useAuth();
 
   return (
     <QueryClientProvider client={queryClient}>

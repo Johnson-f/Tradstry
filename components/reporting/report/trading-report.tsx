@@ -81,7 +81,7 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
         include_behavioral_analysis: false,
         include_market_analysis: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -98,7 +98,7 @@ export function TradingReportCard({ timeRange = '30d', className }: TradingRepor
     if (tradingReport) {
       try {
         await deleteReport(tradingReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }

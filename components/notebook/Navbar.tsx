@@ -1,11 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useNote, useUpdateNote } from "@/lib/hooks/use-notebook";
 import { useRef, useState, ChangeEvent } from "react";
 
 export default function NotebookNavbar() {
-  const router = useRouter();
   const params = useParams();
   const docId = params?.docId as string | undefined;
   const { note } = useNote(docId || "");
