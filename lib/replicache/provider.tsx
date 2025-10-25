@@ -40,6 +40,7 @@ export function ReplicacheProvider({
   const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initializationAttemptsRef = useRef(0);
   const maxRetries = 5;
@@ -47,6 +48,11 @@ export function ReplicacheProvider({
   // Track initialization state per user to prevent re-initialization
   const initializedUsersRef = useRef<Set<string>>(new Set());
   const initializationPromiseRef = useRef<Promise<void> | null>(null);
+
+  // Ensure we only run client-side code after mount
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const pullWithRetry = useCallback(async (rep: Replicache, retryCount = 0): Promise<void> => {
     try {
@@ -114,8 +120,8 @@ export function ReplicacheProvider({
 
   // Handle user changes (login/logout)
   useEffect(() => {
-    // If auth is still loading, don't do anything
-    if (authLoading) {
+    // If not mounted yet or auth is still loading, don't do anything
+    if (!isMounted || authLoading) {
       return;
     }
 
@@ -202,7 +208,7 @@ export function ReplicacheProvider({
 
     // Store the promise to prevent concurrent initializations
     initializationPromiseRef.current = initializeReplicache();
-  }, [user, authLoading, pullWithRetry]);
+  }, [user, authLoading, pullWithRetry, isMounted]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -229,7 +235,23 @@ export function ReplicacheProvider({
 
 export function useReplicache() {
   const context = useContext(ReplicacheContext);
+  
+  // During SSR, context might be undefined, so provide safe defaults
   if (context === undefined) {
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined') {
+      // SSR - return safe defaults
+      return {
+        rep: null,
+        replicache: null,
+        isLoading: true,
+        isInitialized: false,
+        error: null,
+        pull: async () => {},
+        isInitializing: false,
+      };
+    }
+    // Client-side but no provider - this is an error
     throw new Error('useReplicache must be used within a ReplicacheProvider');
   }
   return context;

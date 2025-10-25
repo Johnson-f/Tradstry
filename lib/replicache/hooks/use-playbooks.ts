@@ -7,6 +7,9 @@ export function usePlaybooks() {
   const playbooks = useSubscribe(
     rep,
     async (tx) => {
+      // If no replicache instance, return empty array
+      if (!tx) return [];
+      
       const list = await tx
         .scan({ prefix: 'playbook/' })
         .entries()
@@ -18,7 +21,10 @@ export function usePlaybooks() {
           // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
-    }
+    },
+    // Provide default value for SSR
+     // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+    []
   );
 
   const createPlaybook = async (playbook: Record<string, unknown>) => {
