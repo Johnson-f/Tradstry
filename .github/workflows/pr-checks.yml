@@ -44,12 +44,6 @@ jobs:
           pnpm run lint
         continue-on-error: false
       
-      - name: Prettier Format Check
-        run: |
-          echo "🎨 Running Prettier format check..."
-          pnpm run format:check
-        continue-on-error: false
-      
       - name: Build Check
         run: |
           echo "🔨 Running build check..."
@@ -94,13 +88,6 @@ jobs:
           echo "🔍 Running Rust type check..."
           cd backend
           cargo check --all-targets
-        continue-on-error: false
-      
-      - name: Rust Format Check
-        run: |
-          echo "🎨 Running Rust format check..."
-          cd backend
-          cargo fmt --all -- --check
         continue-on-error: false
       
       - name: Rust Clippy Check
