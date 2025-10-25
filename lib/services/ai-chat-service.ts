@@ -10,7 +10,6 @@ import type {
   ChatSession,
   ChatSessionDetailsResponse,
   ChatSessionListResponse,
-  UpdateSessionTitleRequest,
   CreateSessionRequest,
   SessionListQuery,
   ApiResponse,

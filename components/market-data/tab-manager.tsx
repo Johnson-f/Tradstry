@@ -58,17 +58,7 @@ const USFlag: React.FC = () => (
 );
 */
 
-// Chevron down icon
-const ChevronDown: React.FC = () => (
-  <svg 
-    className="w-3 h-3 text-current transition-transform duration-200" 
-    fill="none" 
-    stroke="currentColor" 
-    viewBox="0 0 24 24"
-  >
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-  </svg>
-);
+
 
 
 // Main component

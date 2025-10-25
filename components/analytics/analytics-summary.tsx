@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useRealtimeTable } from "@/lib/hooks/useRealtimeUpdates";
@@ -25,9 +25,6 @@ export function AnalyticsSummary({
   netPnl,
   tradeExpectancy,
   totalTrades,
-  averageGain = null,
-  averageLoss = null,
-  riskRewardRatio = null,
   isLoading
 }: AnalyticsSummaryProps) {
   const queryClient = useQueryClient();

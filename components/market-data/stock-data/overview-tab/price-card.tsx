@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+
+
 import { useCompanyInfo, useStockQuotesWithPrices } from '@/lib/hooks/use-market-data';
-import { TrendingUp, TrendingDown, Sun, Moon, Clock } from 'lucide-react';
+import { TrendingUp, Sun, Moon, Clock } from 'lucide-react';
 
 interface PriceCardProps {
   symbol: string;
@@ -147,20 +147,7 @@ const SessionIcon: React.FC<{ session: MarketSession }> = ({ session }) => {
 };
 
 // Extended hours price card component
-interface ExtendedHoursPriceProps {
-  symbol: string;
-  session: MarketSession;
-  sessionLabel: string;
-}
 
-// This component is now simplified as it's integrated into the main display
-const ExtendedHoursPrice: React.FC<ExtendedHoursPriceProps> = ({ 
-  symbol, 
-  session, 
-  sessionLabel 
-}) => {
-  return null; // Component integrated into main price display
-};
 
 // Compact price card skeleton
 const PriceCardSkeleton: React.FC = () => (
@@ -185,7 +172,7 @@ export const PriceCard: React.FC<PriceCardProps> = ({
 }) => {
   const [marketHours, setMarketHours] = useState<MarketHours>(getMarketHours());
   
-  const { companyInfo } = useCompanyInfo(symbol, dataProvider);
+  useCompanyInfo(symbol, dataProvider);
   const { stockQuoteWithPrices, isLoading, error } = useStockQuotesWithPrices(symbol);
 
   // Update market hours every minute

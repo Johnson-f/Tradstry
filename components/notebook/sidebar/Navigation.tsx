@@ -1,6 +1,6 @@
 "use client";
 
-import React, { ElementRef, useEffect, useRef, useState } from "react";
+import React, { ElementRef, useEffect, useRef, useState, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,7 +17,6 @@ import {
   ChevronsLeft,
   MenuIcon,
   Plus,
-  PlusCircle,
   Search,
   Settings,
   Trash,
@@ -51,13 +50,13 @@ const Navigation = () => {
     } else {
       resetWidth();
     }
-  }, [isMobile]);
+  }, [isMobile, resetWidth]);
 
   useEffect(() => {
     if (isMobile) {
       collapse();
     }
-  }, [pathname, isMobile]);
+  }, [pathname, isMobile, resetWidth]);
 
   const handleMouseDown = (
     event: React.MouseEvent<HTMLDivElement, MouseEvent>,
@@ -95,7 +94,7 @@ const Navigation = () => {
     document.removeEventListener("mouseup", handleMouseUp);
   };
 
-  const resetWidth = () => {
+  const resetWidth = useCallback(() => {
     if (sidebarRef.current && navbarRef.current) {
       setIsCollapsed(false);
       setIsResetting(true);
@@ -112,7 +111,7 @@ const Navigation = () => {
       window.dispatchEvent(new CustomEvent("notebook:sidebar-width", { detail: width }));
       setTimeout(() => setIsResetting(false), 300);
     }
-  };
+  }, [isMobile]);
 
   const collapse = () => {
     if (sidebarRef.current && navbarRef.current) {
@@ -135,7 +134,7 @@ const Navigation = () => {
     };
     window.addEventListener("notebook:sidebar-open", openHandler);
     return () => window.removeEventListener("notebook:sidebar-open", openHandler);
-  }, []);
+  }, [resetWidth]);
 
   const handleCreate = () => {
     const promise = createNote({ title: "Untitled" }).then((note) => {

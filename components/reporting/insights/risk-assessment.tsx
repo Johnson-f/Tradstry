@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Shield, AlertTriangle, Target, Lightbulb, Clock, BarChart3, TrendingDown } from 'lucide-react';
+import { AlertCircle, Shield, AlertTriangle, Lightbulb, Clock, BarChart3, TrendingDown } from 'lucide-react';
 import { useAIInsights } from '@/hooks/use-ai-insights';
-import { InsightType, TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 
 interface RiskAssessmentCardProps {
@@ -49,7 +49,7 @@ export function RiskAssessmentCard({ timeRange = '30d', className }: RiskAssessm
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };

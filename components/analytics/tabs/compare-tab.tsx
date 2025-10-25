@@ -88,7 +88,7 @@ export function CompareTab({ filters }: CompareTabProps) {
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
     enabled: true,
-    onError: (error: any) => {
+    onError: (error: Error) => {
       console.error('[CompareTab] Query error:', error);
     },
     onSuccess: (data) => {
@@ -114,30 +114,10 @@ export function CompareTab({ filters }: CompareTabProps) {
   const stockData = data?.stocks;
   const optionData = data?.options;
   
-  // Type guard to check if the data is in snake_case format
-  type SnakeCaseData = {
-    net_pnl?: number;
-    win_rate?: number;
-    profit_factor?: number;
-    average_gain?: number;
-    average_loss?: number;
-    risk_reward_ratio?: number;
-    biggest_winner?: number;
-    biggest_loser?: number;
-    avg_hold_time_winners?: number;
-    avg_hold_time_losers?: number;
-    trade_expectancy?: number;
-    average_position_size?: number;
-    average_risk_per_trade?: number;
-    loss_rate?: number;
-  };
-  
-  const stockApiData = stockData as unknown as SnakeCaseData | undefined;
-  const optionApiData = optionData as unknown as SnakeCaseData | undefined;
-  
   // Helper function to safely get number values with fallback
-  const getNumberValue = (data: any, snakeKey: keyof SnakeCaseData, camelKey: keyof StockAnalytics | keyof OptionAnalytics): number | undefined => {
-    const value = data?.[snakeKey] ?? data?.[camelKey];
+  const getNumberValue = (data: StockAnalytics | OptionAnalytics | undefined, snakeKey: string, camelKey: string): number | undefined => {
+    if (!data) return undefined;
+    const value = (data as Record<string, unknown>)?.[snakeKey] ?? (data as Record<string, unknown>)?.[camelKey];
     return typeof value === 'number' ? value : undefined;
   };
   
@@ -371,7 +351,7 @@ export function CompareTab({ filters }: CompareTabProps) {
   ];
 
   if (error) {
-    const errorMessage = (error as any)?.message || 'Unknown error occurred';
+    const errorMessage = (error as Error)?.message || 'Unknown error occurred';
     const isAuthError = errorMessage.includes('Authorization') || errorMessage.includes('401');
     
     return (

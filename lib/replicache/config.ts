@@ -1,7 +1,7 @@
 import { Replicache } from "replicache";
 import { mutators } from "./mutators";
 import { apiConfig, getFullUrl } from "@/lib/config/api";
-import { createClient } from "@/lib/supabase/client";
+
 
 export const REPLICACHE_CONFIG = {
   pushURL: getFullUrl(apiConfig.endpoints.replicache.push),

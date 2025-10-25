@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { Search, TrendingUp, Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -248,20 +249,22 @@ export function SymbolSearch({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         {/* Company logo */}
-                        <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                        <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center relative">
                           {getCompanyLogo(result.symbol) ? (
-                            <img
-                              src={getCompanyLogo(result.symbol)}
+                            <Image
+                              src={getCompanyLogo(result.symbol) || ''}
                               alt={`${result.symbol} logo`}
+                              width={40}
+                              height={40}
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
-                                target.nextElementSibling?.classList.remove('hidden');
                               }}
                             />
-                          ) : null}
-                          <Building2 className={`w-5 h-5 text-muted-foreground ${getCompanyLogo(result.symbol) ? 'hidden' : ''}`} />
+                          ) : (
+                            <Building2 className="w-5 h-5 text-muted-foreground" />
+                          )}
                         </div>
 
                         <div className="flex-1 min-w-0">

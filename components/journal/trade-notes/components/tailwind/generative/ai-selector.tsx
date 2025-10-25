@@ -2,7 +2,6 @@
 
 import { Command, CommandInput } from "@/components/ui/command";
 import { ArrowUp } from "lucide-react";
-import { useEditor } from "novel";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,8 +12,7 @@ interface AISelectorProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function AISelector({ onOpenChange }: AISelectorProps) {
-  const { editor } = useEditor();
+export function AISelector({}: AISelectorProps) {
   const [inputValue, setInputValue] = useState("");
 
   const handleAIRequest = () => {

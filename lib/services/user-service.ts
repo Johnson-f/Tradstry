@@ -54,7 +54,7 @@ async function performInitialization(
   retryCount: number,
   retryDelay: number
 ): Promise<UserInitializationResponse> {
-  let lastError: any = null;
+  let lastError: unknown = null;
   
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
@@ -76,14 +76,14 @@ async function performInitialization(
         // If the API returns success: false, treat it as an error
         throw new Error(response.message || 'Initialization failed');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
       console.error(`User initialization attempt ${attempt} failed:`, error);
       
       // If this is the last attempt, return the error
       if (attempt === retryCount) {
-        const errorMessage = error.response?.data?.message || 
-                           error.message || 
+        const errorMessage = (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || 
+                           (error as { message?: string })?.message || 
                            'Failed to initialize user account after multiple attempts';
         
         return {
@@ -109,7 +109,7 @@ async function performInitialization(
 /**
  * Check if a user has been properly initialized
  */
-export const checkUserInitialization = async (userId: string): Promise<boolean> => {
+export const checkUserInitialization = async (): Promise<boolean> => {
   try {
     // This would call a backend endpoint to check user initialization status
     // For now, we'll assume the user needs to be initialized if this function is called

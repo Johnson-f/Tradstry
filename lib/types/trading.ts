@@ -28,7 +28,7 @@ export interface StockBase {
   exchange?: string;
 }
 
-export interface StockCreate extends StockBase {}
+export type StockCreate = StockBase;
 
 export interface StockUpdate {
   exit_price?: number;
@@ -74,7 +74,7 @@ export interface OptionBase {
   gamma?: number;
 }
 
-export interface OptionCreate extends OptionBase {}
+export type OptionCreate = OptionBase;
 
 export interface OptionUpdate {
   exit_price?: number;
@@ -92,7 +92,7 @@ export interface OptionInDB extends OptionBase {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data: T;
   message?: string;
   status: number;
@@ -101,7 +101,7 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   message: string;
   status: number;
-  details?: any;
+  details?: unknown;
 }
 
 // Filter Types

@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import React, { useState, useMemo, useCallback } from 'react';
+import Image from 'next/image';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDailyEarningsSummary, useEarningsCalendarLogos } from '@/lib/hooks/use-market-data';
-import { Calendar, ChevronLeft, ChevronRight, Building2, TrendingUp, TrendingDown } from 'lucide-react';
-import type { EarningsCompany, DailyEarningsSummary } from '@/lib/types/market-data';
+import { Calendar, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import type { EarningsCompany } from '@/lib/types/market-data';
 
 // Date utility functions
 const formatDate = (date: Date): string => {
@@ -69,9 +70,11 @@ const CompanyCard: React.FC<CompanyCardProps> = ({ company, logo }) => {
           <div className="w-10 h-10 rounded-lg overflow-hidden bg-blue-600 flex items-center justify-center flex-shrink-0 relative">
             {logo ? (
               <>
-                <img
+                <Image
                   src={logo}
                   alt={`${company.symbol} logo`}
+                  width={40}
+                  height={40}
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
@@ -180,9 +183,11 @@ const DateCard: React.FC<DateCardProps> = ({ date, isSelected, isToday, onClick,
                   }}
                 >
                   {logo ? (
-                    <img
+                    <Image
                       src={logo}
                       alt={`${company.symbol} logo`}
+                      width={24}
+                      height={24}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
@@ -226,17 +231,6 @@ const DateCard: React.FC<DateCardProps> = ({ date, isSelected, isToday, onClick,
   );
 };
 
-// Loading skeleton for date cards
-const DateCardSkeleton: React.FC = () => (
-  <Card className="bg-gray-900 border-gray-700">
-    <CardContent className="p-4 text-center">
-      <Skeleton className="w-8 h-4 mx-auto mb-1 bg-gray-700" />
-      <Skeleton className="w-12 h-5 mx-auto mb-2 bg-gray-700" />
-      <Skeleton className="w-10 h-3 mx-auto bg-gray-700" />
-    </CardContent>
-  </Card>
-);
-
 // Main earnings calendar component
 export const EarningsCalendar: React.FC = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -274,7 +268,7 @@ export const EarningsCalendar: React.FC = () => {
 
   // Combine all week earnings data
   const weekEarningsData = useMemo(() => {
-    const data: Record<string, any> = {};
+    const data: Record<string, typeof earnings0> = {};
     const earningsArray = [earnings0, earnings1, earnings2, earnings3, earnings4, earnings5, earnings6];
     
     weekDates.forEach((date, index) => {
@@ -296,7 +290,7 @@ export const EarningsCalendar: React.FC = () => {
   }, [earningsSummary]);
 
   // Get companies for a specific date using real database data
-  const getCompaniesForDate = (date: Date): EarningsCompany[] => {
+  const getCompaniesForDate = useCallback((date: Date): EarningsCompany[] => {
     const dateStr = formatDate(date);
     const earningsData = weekEarningsData[dateStr];
     
@@ -307,7 +301,7 @@ export const EarningsCalendar: React.FC = () => {
     
     // Combine and limit to 4 companies for calendar grid display
     return [...scheduled, ...reported].slice(0, 4);
-  };
+  }, [weekEarningsData]);
 
   // Get all unique symbols for logo fetching
   const allSymbols = useMemo(() => {
@@ -322,7 +316,7 @@ export const EarningsCalendar: React.FC = () => {
     });
     
     return Array.from(symbolSet);
-  }, [companies, weekDates, selectedDate]);
+  }, [companies, weekDates, getCompaniesForDate]);
 
   // Fetch company logos for all companies
   const { logos } = useEarningsCalendarLogos({ 

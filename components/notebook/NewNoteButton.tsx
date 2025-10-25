@@ -9,7 +9,7 @@ export default function NewNoteButton({ parentId }: { parentId?: string }) {
 
   const onCreate = async () => {
     const res = await createNote({ title: "Untitled", parent_id: parentId });
-    const id = (res?.data as any)?.id as string | undefined;
+    const id = (res?.data as Record<string, unknown>)?.id as string | undefined;
     if (id) router.push(`/app/notebook/${id}`);
   };
 

@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useIncomeStatement } from '@/lib/hooks/use-market-data';
-import { FileText, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface IncomeStatementProps {
@@ -17,7 +17,7 @@ interface IncomeStatementProps {
 }
 
 // Format currency values
-const formatCurrency = (value: any): string => {
+const formatCurrency = (value: string | number | undefined | null): string => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return '$0.00';
 
@@ -34,7 +34,7 @@ const formatCurrency = (value: any): string => {
 };
 
 // Format percentage
-const formatPercentage = (numerator: any, denominator: any): string => {
+const formatPercentage = (numerator: string | number | undefined | null, denominator: string | number | undefined | null): string => {
   const numNumerator = parseFloat(numerator);
   const numDenominator = parseFloat(denominator);
 
@@ -54,7 +54,7 @@ const formatDate = (dateString: string): string => {
 };
 
 // Get trend indicator for income values
-const getTrendIndicator = (value: any) => {
+const getTrendIndicator = (value: string | number | undefined | null) => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return null;
   return num > 0 ? (
@@ -65,7 +65,7 @@ const getTrendIndicator = (value: any) => {
 };
 
 export function IncomeStatement({ symbol, frequency = 'annual', className = '' }: IncomeStatementProps) {
-  const [limit, setLimit] = useState(4);
+  const [limit] = useState(4);
   
   const { incomeStatement, isLoading, error, refetch } = useIncomeStatement({
     symbol,

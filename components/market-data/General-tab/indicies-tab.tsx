@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -224,16 +224,7 @@ const IndexCardSkeleton: React.FC = () => (
 export const IndicesTab: React.FC = () => {
   const { majorIndicesData, isLoading, error, refetch } = useMajorIndicesData(100);
 
-  const formatLastUpdated = (timestamp: string) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit',
-      hour12: false 
-    });
-  };
+
 
   if (error) {
     return (

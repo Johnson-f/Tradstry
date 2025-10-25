@@ -1,25 +1,18 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   BadgeCheck,
   Bell,
   ChevronsUpDown,
-  CreditCard,
   LogOut,
   Settings,
   Moon,
   Sun,
 } from "lucide-react"
-
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,

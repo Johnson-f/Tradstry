@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Define valid sortable columns for the images table
+type SortableColumn = 'created_at' | 'updated_at' | 'original_filename' | 'mime_type' | 'file_size' | 'position_in_note';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ noteId: string }> }
@@ -28,8 +31,13 @@ export async function GET(
     const mimeType = searchParams.get('mimeType');
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
     const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
-    const sortBy = searchParams.get('sortBy') || 'created_at';
+    const sortByParam = searchParams.get('sortBy') || 'created_at';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
+    
+    // Validate and cast sortBy to a valid column name
+    const sortBy: SortableColumn = ['created_at', 'updated_at', 'original_filename', 'mime_type', 'file_size', 'position_in_note'].includes(sortByParam) 
+      ? sortByParam as SortableColumn 
+      : 'created_at';
 
     // Get images for the note from the database
     let query = supabase
@@ -38,7 +46,7 @@ export async function GET(
       .eq('trade_note_id', noteId)
       .eq('user_id', user.id)
       .eq('is_deleted', false)
-      .order(sortBy as any, { ascending: sortOrder === 'asc' });
+      .order(sortBy, { ascending: sortOrder === 'asc' });
 
     // Apply optional filters
     if (mimeType) {

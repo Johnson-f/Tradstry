@@ -2,7 +2,6 @@
 
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { initializeUser } from "@/lib/services/user-service";
 import { Button } from "@/components/ui/button";
 import {
   Card,

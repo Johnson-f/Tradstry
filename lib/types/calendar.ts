@@ -25,7 +25,7 @@ export interface SyncResult {
 
 export interface CalendarEventsResponse {
   success: boolean;
-  local_events: any[];
+  local_events: unknown[];
   external_events: ExternalCalendarEvent[];
 }
 

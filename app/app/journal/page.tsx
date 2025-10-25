@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { FileText, TrendingUp, TrendingDown, DollarSign, Target, BarChart3 } from "lucide-react";
+import { FileText } from "lucide-react";
 import { StocksTable } from "@/components/journal/stocks-table";
 import { OptionsTable } from "@/components/journal/options-table";
 import { TradeNotesHistoryModal } from "@/components/journal/trade-notes-history-modal";
@@ -16,7 +13,6 @@ import { useAuth } from "@/lib/hooks/use-auth";
 // import { syncStocks, debugSyncState, resetJournalDatabase } from "@/lib/sync/journal/stocks";
 
 export default function JournalPage() {
-  const [activeTab, setActiveTab] = useState<"stocks" | "options">("stocks");
   const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
   const { user } = useAuth();
 
@@ -502,9 +498,6 @@ export default function JournalPage() {
             <Tabs
               defaultValue="stocks"
               className="space-y-4"
-              onValueChange={(value) =>
-                setActiveTab(value as "stocks" | "options")
-              }
             >
               <div className="flex items-center justify-between">
                 <TabsList>

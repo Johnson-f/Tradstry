@@ -37,7 +37,7 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
     // This would need to be implemented based on how trade-playbook associations are stored
     // For now, we'll use an empty array as we need to understand the data structure
     setCurrentPlaybooks([]);
-  }, [isInitialized, playbooks, tradeId, tradeType]);
+  }, [isInitialized, playbooks]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -59,7 +59,7 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
     setIsLoading(true);
     try {
       // Use Replicache mutation to tag trade with playbook
-      await (rep as any).mutate.tagTrade({
+      await (rep as Record<string, unknown>).mutate.tagTrade({
         trade_id: tradeId,
         trade_type: tradeType,
         setup_id: selectedPlaybookId,
@@ -86,7 +86,7 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
 
     try {
       // Use Replicache mutation to untag trade from playbook
-      await (rep as any).mutate.untagTrade({
+      await (rep as Record<string, unknown>).mutate.untagTrade({
         trade_id: tradeId,
         setup_id: playbookId,
         trade_type: tradeType,

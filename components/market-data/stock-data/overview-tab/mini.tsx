@@ -15,7 +15,7 @@ interface MetricItemProps {
   isRange?: boolean;
 }
 
-const MetricItem = ({ label, value, isRange = false }: MetricItemProps) => {
+const MetricItem = ({ label, value }: MetricItemProps) => {
   const formatValue = (val: string | number | null | undefined): string => {
     if (val === null || val === undefined) return '—';
     

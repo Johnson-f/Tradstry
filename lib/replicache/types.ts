@@ -8,7 +8,7 @@ export interface Mutation {
   id: number;
   clientID: string;
   name: string;
-  args: any;
+  args: unknown;
   timestamp: number;
 }
 
@@ -28,7 +28,7 @@ export interface PullResponse {
 export interface PatchOperation {
   op: 'put' | 'del' | 'clear';
   key: string;
-  value?: any;
+  value?: unknown;
 }
 
 // Client state tracking

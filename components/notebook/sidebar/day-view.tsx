@@ -176,31 +176,31 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
   }, [isToday, currentTime, viewMode]);
 
   // Process calendar events from the API
-  const localEvents: Event[] = (calendarEvents as any)?.local_events?.map((event: any) => {
+  const localEvents: Event[] = (calendarEvents as Record<string, unknown>)?.local_events?.map((event: Record<string, unknown>) => {
     // Extract time from start_time or event_description
     let eventTime = '00:00';
     if (event.start_time) {
-      eventTime = event.start_time;
-    } else if (event.event_description && event.event_description.includes(':')) {
+      eventTime = event.start_time as string;
+    } else if (event.event_description && typeof event.event_description === 'string' && event.event_description.includes(':')) {
       // Extract time from description like "09:00 - 10:00"
-      const timeMatch = event.event_description.match(/(\d{2}:\d{2})/);
+      const timeMatch = (event.event_description as string).match(/(\d{2}:\d{2})/);
       if (timeMatch) {
         eventTime = timeMatch[1];
       }
     }
     
     return {
-      id: event.id,
-      title: event.event_title,
+      id: event.id as string,
+      title: event.event_title as string,
       time: eventTime,
-      date: event.start_date, // Add the date from the event
+      date: event.start_date as string, // Add the date from the event
       type: 'event' as const,
       isExternal: false
     };
   }) || [];
 
   // Convert external events to display format
-  const externalEventsFormatted: Event[] = (calendarEvents as any)?.external_events?.map((event: any) => {
+  const externalEventsFormatted: Event[] = (calendarEvents as Record<string, unknown>)?.external_events?.map((event: Record<string, unknown>) => {
     let eventTime = '00:00';
     if (event.start_time) {
       // Handle different time formats
@@ -216,10 +216,10 @@ function DayView({ selectedDate, onCreateNote, viewMode = "day", onDateSelect, o
     }
     
     return {
-      id: event.id,
-      title: event.title || event.event_title,
+      id: event.id as string,
+      title: (event.title || event.event_title) as string,
       time: eventTime,
-      date: event.start_time ? event.start_time.split('T')[0] : new Date().toISOString().split('T')[0], // Extract date from ISO string
+      date: event.start_time ? (event.start_time as string).split('T')[0] : new Date().toISOString().split('T')[0], // Extract date from ISO string
       type: 'event' as const,
       isExternal: true
     };

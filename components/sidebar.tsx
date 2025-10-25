@@ -45,10 +45,8 @@ const navItems = [
 
 export default function Sidebar({
   collapsed: externalCollapsed,
-  onCollapsedChange,
 }: {
   collapsed?: boolean;
-  onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -79,17 +77,6 @@ export default function Sidebar({
       }
     }
   }, [externalCollapsed]);
-
-  // Handle collapse toggle
-  const handleCollapsedChange = (newCollapsed: boolean) => {
-    setCollapsed(newCollapsed);
-    
-    // Save to localStorage
-    localStorage.setItem('sidebar-collapsed', JSON.stringify(newCollapsed));
-    
-    // Call external handler if provided (for backward compatibility)
-    onCollapsedChange?.(newCollapsed);
-  };
 
   const handleLogout = async () => {
     const supabase = createClient();

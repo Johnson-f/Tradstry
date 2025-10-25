@@ -14,7 +14,7 @@ export function SetupTab() {
   const [setups, setSetups] = useState<SetupSummary[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedSetup, setSelectedSetup] = useState<SetupInDB | null>(null);
-  const [setupDetails, setSetupDetails] = useState<Record<number, any>>({});
+  const [setupDetails, setSetupDetails] = useState<Record<number, unknown>>({});
 
   useEffect(() => {
     const fetchSetups = async () => {
@@ -24,7 +24,7 @@ export function SetupTab() {
         setSetups(data);
         
         // Fetch details for each setup
-        const details: Record<number, any> = {};
+        const details: Record<number, unknown> = {};
         for (const setup of data) {
           try {
             const performance = await setupsService.getSetupPerformance(setup.id);

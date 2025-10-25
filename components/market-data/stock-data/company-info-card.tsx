@@ -56,7 +56,7 @@ const formatDate = (dateString: string | undefined | null): string => {
 interface InfoRowProps {
   label: string;
   value: string | number | undefined | null;
-  formatter?: (value: any) => string;
+  formatter?: (value: string | number | undefined | null) => string;
 }
 
 const InfoRow: React.FC<InfoRowProps> = ({ label, value, formatter }) => {

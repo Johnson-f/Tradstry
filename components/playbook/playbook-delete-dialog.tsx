@@ -77,7 +77,7 @@ export function PlaybookDeleteDialog({
             Delete Playbook
           </DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete "{playbook.name}"? This action cannot be undone.
+            Are you sure you want to delete &quot;{playbook.name}&quot;? This action cannot be undone.
             Any trades associated with this playbook will have their associations removed.
           </DialogDescription>
         </DialogHeader>

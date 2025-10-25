@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { Edit, Trash2, Plus, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { Edit, Trash2, Plus, TrendingUp, Activity } from 'lucide-react';
 import { SetupInDB, TradeBySetup, SetupAnalytics, SetupCategory } from '@/lib/types/setups';
 import { setupsService } from '@/lib/services/setups-service';
 import { toast } from 'sonner';
@@ -27,9 +27,9 @@ export function SetupDetail({ setup, onEdit, onDelete }: SetupDetailProps) {
 
   useEffect(() => {
     loadSetupData();
-  }, [setup.id]);
+  }, [setup.id, loadSetupData]);
 
-  const loadSetupData = async () => {
+  const loadSetupData = useCallback(async () => {
     try {
       setLoading(true);
       const [tradesData, analyticsData] = await Promise.all([
@@ -44,7 +44,7 @@ export function SetupDetail({ setup, onEdit, onDelete }: SetupDetailProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setup.id]);
 
   const getCategoryColor = (category: SetupCategory) => {
     const colors = {

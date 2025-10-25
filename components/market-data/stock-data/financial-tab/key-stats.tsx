@@ -4,7 +4,6 @@ import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useKeyStats } from '@/lib/hooks/use-market-data';
 import { cn } from '@/lib/utils';
 
@@ -15,7 +14,7 @@ interface KeyStatsProps {
 }
 
 // Format currency values
-const formatCurrency = (value: any): string => {
+const formatCurrency = (value: string | number | undefined | null): string => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return 'N/A';
 
@@ -30,29 +29,6 @@ const formatCurrency = (value: any): string => {
   }
   return `$${num.toFixed(2)}`;
 };
-
-// Format numbers with appropriate suffixes
-const formatNumber = (value: any): string => {
-  const num = parseFloat(value);
-  if (isNaN(num) || num === 0) return 'N/A';
-
-  if (Math.abs(num) >= 1e9) {
-    return `${(num / 1e9).toFixed(2)}B`;
-  } else if (Math.abs(num) >= 1e6) {
-    return `${(num / 1e6).toFixed(2)}M`;
-  } else if (Math.abs(num) >= 1e3) {
-    return `${(num / 1e3).toFixed(2)}K`;
-  }
-  return num.toFixed(2);
-};
-
-// Format percentage values
-const formatPercentage = (value: any): string => {
-  const num = parseFloat(value);
-  if (isNaN(num) || num === 0) return 'N/A';
-  return `${num.toFixed(2)}%`;
-};
-
 
 export function KeyStats({ symbol, frequency = 'annual', className = '' }: KeyStatsProps) {
   const { keyStats, isLoading, error, refetch } = useKeyStats({
@@ -173,9 +149,9 @@ function TableContent({
   formatCurrency 
 }: {
   periods: string[];
-  keyStats: any;
+  keyStats: Record<string, unknown>;
   generateMockData: (baseValue: number, periods: string[]) => number[];
-  formatCurrency: (value: any) => string;
+  formatCurrency: (value: string | number | undefined | null) => string;
 }) {
   return (
     <>

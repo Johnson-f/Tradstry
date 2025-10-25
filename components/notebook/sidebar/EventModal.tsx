@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Clock, X } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { useCreateReminder } from "@/lib/hooks/use-notebook";
 import { toast } from "sonner";

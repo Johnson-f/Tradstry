@@ -48,11 +48,6 @@ export function HoldersTab({ symbol, className = '' }: HoldersTabProps) {
     }).format(value);
   };
 
-  const formatPercentage = (value: number | null | undefined): string => {
-    if (value === null || value === undefined) return '--';
-    return `${value.toFixed(2)}%`;
-  };
-
   const formatDate = (date: string | null | undefined): string => {
     if (!date) return '--';
     return new Date(date).toLocaleDateString('en-US', { 

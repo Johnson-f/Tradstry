@@ -2,6 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -123,28 +124,6 @@ export default function StockSymbolPage() {
     } finally {
       setIsCreating(false);
     }
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(value);
-  };
-
-  const formatNumber = (value: number) => {
-    if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
-    if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-    if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-    if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-    return `$${value.toFixed(2)}`;
-  };
-
-  const formatVolume = (value: number) => {
-    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
-    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
-    if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`;
-    return value.toLocaleString();
   };
 
   if (!symbol) {
@@ -323,17 +302,23 @@ export default function StockSymbolPage() {
                   <div className="flex-shrink-0">
                     {logos.length > 0 && logos[0]?.logo ? (
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                        <img
+                        <Image
                           src={logos[0].logo}
                           alt={`${symbol} logo`}
+                          width={40}
+                          height={40}
                           className="w-10 h-10 object-contain"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
-                            target.nextElementSibling?.classList.remove('hidden');
+                            const fallback = target.nextElementSibling as HTMLElement;
+                            if (fallback) {
+                              fallback.classList.remove('hidden');
+                              fallback.classList.add('flex');
+                            }
                           }}
                         />
-                        <div className="hidden w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded flex items-center justify-center text-white font-bold text-lg">
+                        <div className="hidden w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded items-center justify-center text-white font-bold text-lg">
                           {symbol.charAt(0)}
                         </div>
                       </div>

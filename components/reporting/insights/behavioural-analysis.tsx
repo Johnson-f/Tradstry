@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Brain, TrendingUp, Target, Lightbulb, Clock, Heart, Activity, Users } from 'lucide-react';
 import { useAIInsights } from '@/hooks/use-ai-insights';
-import { InsightType, TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 
 interface BehavioralAnalysisCardProps {
@@ -21,7 +21,6 @@ export function BehavioralAnalysisCard({ timeRange = '30d', className }: Behavio
     currentInsight,
     loading,
     generating,
-    error,
     generateInsights,
     getInsight,
     clearError,
@@ -49,7 +48,7 @@ export function BehavioralAnalysisCard({ timeRange = '30d', className }: Behavio
         include_predictions: true,
         force_regenerate: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -304,7 +303,7 @@ export function BehavioralAnalysisCard({ timeRange = '30d', className }: Behavio
           <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
             <Users className="h-4 w-4 text-green-600" />
             <p className="text-sm text-green-800 font-medium">
-              Healthy trading behavior detected! You're making rational, disciplined decisions.
+              Healthy trading behavior detected! You&apos;re making rational, disciplined decisions.
             </p>
           </div>
         )}

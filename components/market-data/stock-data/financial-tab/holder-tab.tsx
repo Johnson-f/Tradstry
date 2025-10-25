@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { KeyStats } from './key-stats';

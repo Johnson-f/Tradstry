@@ -2,7 +2,7 @@ import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
 import type { Stock } from '@/lib/replicache/schemas/journal';
 
-export function useStocks(userId: string) {
+export function useStocks() {
   const { rep, isInitialized } = useReplicache();
 
   const stocks = useSubscribe(
@@ -14,7 +14,7 @@ export function useStocks(userId: string) {
         .toArray();
       
       return list
-        .map(([_, value]) => value as Stock)
+        .map(([, value]) => value as Stock)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
@@ -41,17 +41,17 @@ export function useStocks(userId: string) {
       exit_date: stock.exitDate,
     } as const;
 
-    return await (rep as any).mutate.createStock(args);
+    return await (rep as { mutate: { createStock: (args: { symbol: string; trade_type: string; order_type: string; entry_price: number; exit_price: number; stop_loss: number; commissions: number; number_shares: number; take_profit: number; entry_date: string; exit_date: string; }) => Promise<unknown> } }).mutate.createStock(args);
   };
 
   const updateStock = async (id: number, updates: Partial<Stock>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.updateStock({ id, updates });
+    return await (rep as { mutate: { updateStock: (params: { id: number; updates: Partial<Stock> }) => Promise<unknown> } }).mutate.updateStock({ id, updates });
   };
 
   const deleteStock = async (id: number) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.deleteStock(id);
+    return await (rep as { mutate: { deleteStock: (id: number) => Promise<unknown> } }).mutate.deleteStock(id);
   };
 
   return {

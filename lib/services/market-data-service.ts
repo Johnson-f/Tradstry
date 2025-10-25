@@ -52,7 +52,6 @@ import type {
   QuoteResponse,
   CreateWatchlistRequest,
   AddWatchlistItemRequest,
-  DeleteWatchlistItemRequest,
   WatchlistResponse,
   DeleteResponse,
   StockPeersRequest,
@@ -80,7 +79,6 @@ import type {
   InsiderRoster,
   HolderStatistics,
   HolderSearchResult,
-  HolderParticipant,
   // Earnings Transcripts Types
   EarningsTranscript,
   EarningsTranscriptMetadata,
@@ -89,37 +87,8 @@ import type {
   TranscriptParticipant,
   TranscriptQuarter,
   // Request Types
-  HoldersRequest,
-  InsiderTransactionsRequest,
-  HoldersSearchRequest,
   HoldersPaginatedRequest,
-  TranscriptsRequest,
-  TranscriptSearchRequest,
-  TranscriptsByDateRequest,
-  TranscriptsPaginatedRequest,
 } from "@/lib/types/market-data";
-
-// Raw API response type for market movers (strings that need to be transformed to numbers)
-interface RawMarketMover {
-  symbol: string;
-  name?: string;
-  price: string;
-  change: string;
-  percent_change: string;
-  fetch_timestamp?: string;
-  logo?: string;
-}
-
-// External API response types for legacy endpoints
-interface ExternalMoverData {
-  name?: string;
-  price?: string | number;
-  change?: string | number;
-  changePercent?: string | number;
-  percentChange?: string | number;
-  change_percent?: string | number;
-  percent_change?: string | number;
-}
 
 class MarketDataService {
   // =====================================================
@@ -396,8 +365,8 @@ class MarketDataService {
     );
   }
 
-  async getMarketMoversOverviewWithPrices(params?: MarketMoversRequest): Promise<Record<string, any>> {
-    return apiClient.get<Record<string, any>>(
+  async getMarketMoversOverviewWithPrices(params?: MarketMoversRequest): Promise<Record<string, unknown>> {
+    return apiClient.get<Record<string, unknown>>(
       apiConfig.endpoints.marketData.movers.overviewWithPrices,
       { params },
     );
@@ -635,15 +604,15 @@ class MarketDataService {
     );
   }
 
-  async fetchSingleSymbolData(request: SingleSymbolDataRequest): Promise<Record<string, any> | null> {
-    return apiClient.post<Record<string, any> | null>(
+  async fetchSingleSymbolData(request: SingleSymbolDataRequest): Promise<Record<string, unknown> | null> {
+    return apiClient.post<Record<string, unknown> | null>(
       apiConfig.endpoints.marketData.cache.singleSymbol,
       request,
     );
   }
 
-  async getSymbolHistoricalSummary(symbol: string, periodType: string = "5m"): Promise<Record<string, any> | null> {
-    return apiClient.get<Record<string, any> | null>(
+  async getSymbolHistoricalSummary(symbol: string, periodType: string = "5m"): Promise<Record<string, unknown> | null> {
+    return apiClient.get<Record<string, unknown> | null>(
       apiConfig.endpoints.marketData.cache.historicalSummary(symbol),
       { params: { period_type: periodType } },
     );

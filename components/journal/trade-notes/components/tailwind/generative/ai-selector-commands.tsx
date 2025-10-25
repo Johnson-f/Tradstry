@@ -38,7 +38,6 @@ const AISelectorCommands = ({ onSelect }: AISelectorCommandsProps) => {
         {options.map((option) => (
           <CommandItem
             onSelect={(value) => {
-              const slice = editor.state.selection.content();
               // Using HTML content instead of markdown serialization
               const text = editor.getHTML();
               onSelect(text, value);

@@ -15,7 +15,6 @@ import {
   Activity,
   Clock,
   Zap,
-  Calendar,
   LogIn
 } from 'lucide-react';
 import { TradingPatternsCard } from './trading-patterns';
@@ -24,7 +23,7 @@ import { PerformanceAnalysisCard } from './performance-analysis';
 import { MarketAnalysisCard } from './market-analysis';
 import { OpportunityDetectionCard } from './opportunity-detection';
 import { BehavioralAnalysisCard } from './behavioural-analysis';
-import { TimeRange } from '@/lib/types/ai-insights';
+import { TimeRange, InsightType } from '@/lib/types/ai-insights';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useAIInsights } from '@/hooks/use-ai-insights';
@@ -63,7 +62,7 @@ export const InsightsTab = forwardRef<InsightsTabRef, InsightsTabProps>(({ timeR
         console.log('Generating insight:', { tabName, insightType, timeRange });
         await generateInsights({
           time_range: timeRange,
-          insight_type: insightType as any,
+          insight_type: insightType as InsightType,
           include_predictions: true,
           force_regenerate: false,
         });

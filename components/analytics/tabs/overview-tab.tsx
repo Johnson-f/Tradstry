@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, MoreVertical, Target, TrendingUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, MoreVertical, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -65,8 +65,6 @@ export function OverviewTab({ dateRange }: OverviewTabProps) {
   // Get weekly combined portfolio analytics for performance metrics (fallback)
   const {
     combinedData: weeklyAnalytics,
-    isLoading: weeklyAnalyticsLoading,
-    error: weeklyAnalyticsError,
   } = useCombinedPortfolioAnalytics({
     periodType: 'custom',
     customStartDate: currentWeekStart,
@@ -79,7 +77,7 @@ export function OverviewTab({ dateRange }: OverviewTabProps) {
   });
 
   // Convert error objects to string messages
-  const getErrorMessage = (error: any): string | null => {
+  const getErrorMessage = (error: unknown): string | null => {
     if (!error) return null;
     if (typeof error === 'string') return error;
     if (error.message) return error.message;
@@ -165,11 +163,6 @@ export function OverviewTab({ dateRange }: OverviewTabProps) {
     unprofitableTrades: weeklyTradingMetrics?.unprofitable_trades ?? null,
     maxDrawdown: weeklyTradingMetrics?.max_drawdown ?? null
   };
-
-  // Goals and risk utilization - could come from user settings in the future
-  const monthlyGoal = 10000; // $10k monthly goal
-  const monthlyProgress = Math.max(0, Math.min(100, (realWeeklyStats.totalPnl / monthlyGoal) * 100));
-  const riskUtilization = Math.min(100, (realWeeklyStats.totalTrades / 50) * 100); // Assuming 50 trades is max risk
 
   const navigateWeek = (direction: 'prev' | 'next') => {
     const newWeekStart = new Date(currentWeekStart);
@@ -359,7 +352,7 @@ export function OverviewTab({ dateRange }: OverviewTabProps) {
               const isToday = date.toDateString() === today.toDateString();
 
               // Generate mock sparkline data (in real app, this would come from actual trade data)
-              const sparklineData = Array.from({ length: 8 }, (_, i) => ({
+              const sparklineData = Array.from({ length: 8 }, () => ({
                 value: pnl === 0 ? 0 : pnl + (Math.random() - 0.5) * (pnl * 0.3)
               }));
               
@@ -839,7 +832,7 @@ export function OverviewTab({ dateRange }: OverviewTabProps) {
                     {/* Mini Performance Chart */}
                     <div className="mt-4 h-12 bg-gray-50 rounded border overflow-hidden">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={Array.from({ length: 12 }, (_, i) => ({
+                        <LineChart data={Array.from({ length: 12 }, () => ({
                           value: ticker.total_profit + (Math.random() - 0.5) * (ticker.total_profit * 0.2)
                         }))}>
                           <Line 

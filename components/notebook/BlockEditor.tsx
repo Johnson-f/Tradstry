@@ -42,13 +42,13 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   }, []);
 
   // Helper function to extract all image IDs from editor document
-  const extractImageIds = useCallback((doc: any): Set<string> => {
+  const extractImageIds = useCallback((doc: Record<string, unknown> | Record<string, unknown>[]): Set<string> => {
     const imageIds = new Set<string>();
     
-    const traverse = (blocks: any[]) => {
+    const traverse = (blocks: Record<string, unknown>[]) => {
       for (const block of blocks) {
-        if (block.type === 'image' && block.props?.url) {
-          const url = block.props.url;
+        if (block.type === 'image' && block.props && typeof block.props === 'object' && 'url' in block.props) {
+          const url = block.props.url as string;
           // Extract image ID from both schemes
           if (url.startsWith('notebook-image://')) {
             imageIds.add(url.replace('notebook-image://', ''));
@@ -58,13 +58,13 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
             if (match) imageIds.add(match[1]);
           }
         }
-        if (block.children) {
-          traverse(block.children);
+        if (block.children && Array.isArray(block.children)) {
+          traverse(block.children as Record<string, unknown>[]);
         }
       }
     };
     
-    traverse(Array.isArray(doc) ? doc : [doc]);
+    traverse(Array.isArray(doc) ? doc as Record<string, unknown>[] : [doc as Record<string, unknown>]);
     return imageIds;
   }, []);
 
@@ -267,17 +267,17 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
   };
 
   // Convert API proxy URLs back to notebook-image:// scheme for storage
-  const convertUrlsToScheme = useCallback((doc: any): any => {
+  const convertUrlsToScheme = useCallback((doc: Record<string, unknown> | Record<string, unknown>[]): Record<string, unknown> | Record<string, unknown>[] => {
     if (Array.isArray(doc)) {
-      return doc.map(block => convertUrlsToScheme(block));
+      return doc.map(block => convertUrlsToScheme(block as Record<string, unknown>));
     }
     
     if (doc && typeof doc === 'object') {
       const newDoc = { ...doc };
       
       // If it's an image block, convert the URL
-      if (newDoc.type === 'image' && newDoc.props?.url) {
-        const url = newDoc.props.url;
+      if (newDoc.type === 'image' && newDoc.props && typeof newDoc.props === 'object' && 'url' in newDoc.props) {
+        const url = newDoc.props.url as string;
         // Only convert if it's not already in the notebook-image:// scheme
         if (!url.startsWith('notebook-image://')) {
           const imageId = extractImageIdFromUrl(url);
@@ -291,8 +291,8 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
       }
       
       // Recursively process children
-      if (newDoc.children) {
-        newDoc.children = convertUrlsToScheme(newDoc.children);
+      if (newDoc.children && Array.isArray(newDoc.children)) {
+        newDoc.children = convertUrlsToScheme(newDoc.children as Record<string, unknown>[]);
       }
       
       return newDoc;
@@ -339,24 +339,25 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
     }
   }, [onChange, convertUrlsToScheme, extractImageIds, docId]);
 
-  const extractFirstHeadingText = (doc: any): string | undefined => {
+  const extractFirstHeadingText = useCallback((doc: Record<string, unknown> | Record<string, unknown>[]): string | undefined => {
     try {
-      const blocks: any[] = Array.isArray(doc) ? doc : doc?.children || [];
+      const blocks: Record<string, unknown>[] = Array.isArray(doc) ? doc as Record<string, unknown>[] : (doc && typeof doc === 'object' && 'children' in doc && Array.isArray(doc.children)) ? doc.children as Record<string, unknown>[] : [];
       for (const block of blocks) {
-        if (block?.type === "heading" && (!block?.props?.level || block?.props?.level === 1)) {
-          const spans = Array.isArray(block?.content) ? block.content : [];
-          const text = spans.map((s: any) => s?.text ?? "").join("").trim();
+        if (block && typeof block === 'object' && 'type' in block && block.type === "heading" && 
+            (!('props' in block) || !block.props || typeof block.props !== 'object' || !('level' in block.props) || block.props.level === 1)) {
+          const spans = ('content' in block && Array.isArray(block.content)) ? block.content : [];
+          const text = spans.map((s: Record<string, unknown>) => ('text' in s ? s.text as string : "")).join("").trim();
           if (text) return text;
         }
         // search nested
-        if (block?.children?.length) {
-          const nested = extractFirstHeadingText(block.children);
+        if (block && typeof block === 'object' && 'children' in block && Array.isArray(block.children) && block.children.length > 0) {
+          const nested = extractFirstHeadingText(block.children as Record<string, unknown>[]);
           if (nested) return nested;
         }
       }
     } catch {}
     return undefined;
-  };
+  }, []);
 
   const handleEditorChange = useCallback(() => {
     const content = JSON.stringify(editor.document, null, 2);
@@ -379,7 +380,7 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         onTitleChange(title);
       }
     }
-  }, [editor, onTitleChange, saveToLocalStorage, syncToBackend]);
+  }, [editor, onTitleChange, saveToLocalStorage, syncToBackend, extractFirstHeadingText]);
 
   // Set up periodic sync to backend
   useEffect(() => {

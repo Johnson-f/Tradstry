@@ -15,9 +15,7 @@ import {
   Activity,
   Clock,
   Zap,
-  Calendar,
-  LogIn,
-  Download
+  LogIn
 } from 'lucide-react';
 import { 
   ComprehensiveReportCard,
@@ -55,11 +53,7 @@ export const ReportTab = forwardRef<ReportTabRef, ReportTabProps>(({ timeRange =
         await generateReport({
           time_range: timeRange,
           report_type: reportType as ReportType,
-          include_trades: true,
-          include_patterns: true,
-          include_risk_analysis: true,
-          include_behavioral_analysis: true,
-          include_market_analysis: true,
+          sections: ['summary', 'analytics', 'insights', 'recommendations'],
         });
       } catch (error) {
         console.error('Error generating report:', error);
@@ -220,25 +214,6 @@ export const ReportTab = forwardRef<ReportTabRef, ReportTabProps>(({ timeRange =
       {/* Main Content - Only show if authenticated */}
       {isAuthenticated === true && (
         <>
-          {/* Reports Header */}
-          {/*
-          <div className="mb-6">
-            <Card className="border-0 shadow-none bg-muted/30">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-blue-600" />
-                  <div>
-                    <CardTitle className="text-lg">AI Reports Dashboard</CardTitle>
-                    <CardDescription>
-                      Generate comprehensive trading reports with AI-powered analysis and insights for {formatTimeRange(timeRange)}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          </div>
-          */}
-
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ReportType)} className="w-full">
             {/* Tab Navigation */}
             <div className="mb-6">

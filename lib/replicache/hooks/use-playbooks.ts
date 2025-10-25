@@ -1,7 +1,7 @@
 import { useSubscribe } from 'replicache-react';
 import { useReplicache } from '../provider';
 
-export function usePlaybooks(userId: string) {
+export function usePlaybooks() {
   const { rep, isInitialized } = useReplicache();
 
   const playbooks = useSubscribe(
@@ -13,26 +13,26 @@ export function usePlaybooks(userId: string) {
         .toArray();
       
       return list
-        .map(([_, value]) => value as any)
+        .map(([, value]) => value as Record<string, unknown>)
         .sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
     }
   );
 
-  const createPlaybook = async (playbook: any) => {
+  const createPlaybook = async (playbook: Record<string, unknown>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.createPlaybook(playbook);
+    return await (rep as { mutate: { createPlaybook: (playbook: Record<string, unknown>) => Promise<unknown> } }).mutate.createPlaybook(playbook);
   };
 
-  const updatePlaybook = async (id: string, updates: any) => {
+  const updatePlaybook = async (id: string, updates: Record<string, unknown>) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.updatePlaybook({ id, updates });
+    return await (rep as { mutate: { updatePlaybook: (params: { id: string; updates: Record<string, unknown> }) => Promise<unknown> } }).mutate.updatePlaybook({ id, updates });
   };
 
   const deletePlaybook = async (id: string) => {
     if (!rep) throw new Error('Replicache not initialized');
-    return await (rep as any).mutate.deletePlaybook(id);
+    return await (rep as { mutate: { deletePlaybook: (id: string) => Promise<unknown> } }).mutate.deletePlaybook(id);
   };
 
   return {

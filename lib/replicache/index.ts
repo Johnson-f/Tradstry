@@ -9,9 +9,44 @@ export { useOptions } from './hooks/use-options';
 export { useNotes } from './hooks/use-notes';
 export { usePlaybooks } from './hooks/use-playbooks';
 
+// Import mutator functions for grouped exports
+import { createStock, updateStock, deleteStock } from './mutators/stocks';
+import { createOption, updateOption, deleteOption } from './mutators/options';
+import { createNote, updateNote, deleteNote } from './mutators/notes';
+import { createPlaybook, updatePlaybook, deletePlaybook, tagTrade, untagTrade } from './mutators/playbook';
+
 // Mutators
-export { registerMutators } from './mutators';
-export { stockMutators } from './mutators/stocks';
-export { optionMutators } from './mutators/options';
-export { noteMutators } from './mutators/notes';
-export { playbookMutators } from './mutators/playbook';
+export { mutators as registerMutators } from './mutators';
+
+// Individual mutator functions
+export { createStock, updateStock, deleteStock } from './mutators/stocks';
+export { createOption, updateOption, deleteOption } from './mutators/options';
+export { createNote, updateNote, deleteNote } from './mutators/notes';
+export { createPlaybook, updatePlaybook, deletePlaybook, tagTrade, untagTrade } from './mutators/playbook';
+
+// Grouped mutators for convenience
+export const stockMutators = {
+  createStock,
+  updateStock,
+  deleteStock,
+};
+
+export const optionMutators = {
+  createOption,
+  updateOption,
+  deleteOption,
+};
+
+export const noteMutators = {
+  createNote,
+  updateNote,
+  deleteNote,
+};
+
+export const playbookMutators = {
+  createPlaybook,
+  updatePlaybook,
+  deletePlaybook,
+  tagTrade,
+  untagTrade,
+};

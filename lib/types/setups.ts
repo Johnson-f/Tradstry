@@ -7,10 +7,10 @@ export interface SetupBase {
   category: SetupCategory;
   is_active: boolean;
   tags: string[];
-  setup_conditions: Record<string, any>;
+  setup_conditions: Record<string, unknown>;
 }
 
-export interface SetupCreate extends SetupBase {}
+export type SetupCreate = SetupBase;
 
 export interface SetupUpdate {
   name?: string;
@@ -18,7 +18,7 @@ export interface SetupUpdate {
   category?: SetupCategory;
   is_active?: boolean;
   tags?: string[];
-  setup_conditions?: Record<string, any>;
+  setup_conditions?: Record<string, unknown>;
 }
 
 export interface SetupInDB extends SetupBase {
@@ -109,7 +109,7 @@ export interface SetupSummary {
 }
 
 // API Response Types
-export interface SetupApiResponse<T = any> {
+export interface SetupApiResponse<T = unknown> {
   data: T;
   message?: string;
   status: number;

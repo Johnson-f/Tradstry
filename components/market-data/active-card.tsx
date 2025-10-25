@@ -23,24 +23,9 @@ const formatPrice = (value: number | undefined | null): string => {
   return numValue.toFixed(2)
 }
 
-const formatChange = (value: number | undefined | null): string => {
-  const numValue = typeof value === "number" && !isNaN(value) ? value : 0
-  return numValue.toFixed(2)
-}
-
 const formatPercentChange = (value: number | undefined | null): string => {
   const numValue = typeof value === "number" && !isNaN(value) ? value : 0
   return `${numValue.toFixed(2)}%`
-}
-
-const formatVolume = (volume: number | undefined | null): string => {
-  const numValue = typeof volume === "number" && !isNaN(volume) ? volume : 0
-  if (numValue >= 1000000) {
-    return `${(numValue / 1000000).toFixed(1)}M`
-  } else if (numValue >= 1000) {
-    return `${(numValue / 1000).toFixed(1)}K`
-  }
-  return numValue.toString()
 }
 
 // Convert price from backend (string or number) to number for calculations
@@ -53,11 +38,10 @@ const parsePrice = (price: string | number | undefined | null): number => {
 // Stock item component
 interface StockItemProps {
   stock: MarketMoverWithPrices
-  rank: number
   onClick?: () => void
 }
 
-const StockItem: React.FC<StockItemProps> = ({ stock, rank, onClick }) => {
+const StockItem: React.FC<StockItemProps> = ({ stock, onClick }) => {
   // Parse percent_change string (e.g., "2.45%") to number, fallback to 0
   const percentChangeStr = stock.percent_change ?? "0"
   const percentChange = Number.parseFloat(percentChangeStr.replace("%", "")) || 0
@@ -169,7 +153,7 @@ const TabContent: React.FC<TabContentProps> = ({ stocks, isLoading, error, type,
       <div>
         {stocks.map((stock, index) => (
           <div key={stock.symbol}>
-            <StockItem stock={stock} rank={index + 1} onClick={() => onStockClick(stock.symbol)} />
+            <StockItem stock={stock} onClick={() => onStockClick(stock.symbol)} />
             {index < stocks.length - 1 && <Separator />}
           </div>
         ))}
@@ -195,19 +179,6 @@ export const ActiveCard: React.FC = () => {
   const { gainers, isLoading: gainersLoading, error: gainersError } = useTopGainersWithPrices({ limit: 25 })
   const { losers, isLoading: losersLoading, error: losersError } = useTopLosersWithPrices({ limit: 25 })
   const { mostActive: actives, isLoading: activesLoading, error: activesError } = useMostActiveWithPrices({ limit: 25 })
-
-  const getTabIcon = (tab: string) => {
-    switch (tab) {
-      case "gainers":
-        return <TrendingUp className="w-4 h-4" />
-      case "losers":
-        return <TrendingDown className="w-4 h-4" />
-      case "actives":
-        return <Activity className="w-4 h-4" />
-      default:
-        return null
-    }
-  }
 
   return (
     <Card className="w-full max-w-4xl">

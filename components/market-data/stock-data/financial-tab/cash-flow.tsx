@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCashFlow } from '@/lib/hooks/use-market-data';
-import { Banknote, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
+import { Banknote, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CashFlowProps {
@@ -17,7 +17,7 @@ interface CashFlowProps {
 }
 
 // Format currency values
-const formatCurrency = (value: any): string => {
+const formatCurrency = (value: string | number | undefined | null): string => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return '$0.00';
 
@@ -43,7 +43,7 @@ const formatDate = (dateString: string): string => {
 };
 
 // Get trend indicator for cash flow values
-const getTrendIndicator = (value: any) => {
+const getTrendIndicator = (value: string | number | undefined | null) => {
   const num = parseFloat(value);
   if (isNaN(num) || num === 0) return null;
   return num > 0 ? (
@@ -54,7 +54,7 @@ const getTrendIndicator = (value: any) => {
 };
 
 export function CashFlow({ symbol, frequency = 'annual', className = '' }: CashFlowProps) {
-  const [limit, setLimit] = useState(4);
+  const [limit] = useState(4);
   
   const { cashFlow, isLoading, error, refetch } = useCashFlow({
     symbol,

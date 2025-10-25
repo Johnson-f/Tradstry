@@ -22,12 +22,6 @@ import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useUserProfile } from "@/hooks/use-user-profile"
 import { cn } from "@/lib/utils"
@@ -51,7 +45,6 @@ const navItems = [
 export function AppSidebar({
   collapsed: externalCollapsed,
   onCollapsedChange,
-  ...props
 }: {
   collapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
@@ -69,11 +62,8 @@ export function AppSidebar({
     }
     return false // Default to uncollapsed
   })
-  const [mounted, setMounted] = useState(false)
-
   // Handle external collapsed prop changes
   useEffect(() => {
-    setMounted(true)
 
     // If external collapsed prop is provided, use it and save to localStorage
     if (externalCollapsed !== undefined) {

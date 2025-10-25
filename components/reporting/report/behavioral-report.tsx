@@ -14,7 +14,6 @@ import {
   Activity,
   Heart,
   Users,
-  Zap,
   Eye,
   Trash2
 } from 'lucide-react';
@@ -81,7 +80,7 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
         include_behavioral_analysis: true,
         include_market_analysis: false,
       });
-    } catch (error) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -99,7 +98,7 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
     if (behavioralReport) {
       try {
         await deleteReport(behavioralReport.id);
-      } catch (error) {
+      } catch {
         // Error handled by hook
       }
     }
@@ -503,7 +502,7 @@ export function BehavioralReportCard({ timeRange = '30d', className }: Behaviora
           <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
             <Users className="h-4 w-4 text-green-600" />
             <p className="text-sm text-green-800 font-medium">
-              Excellent psychological discipline detected! You're maintaining rational, disciplined trading behavior.
+              Excellent psychological discipline detected! You&apos;re maintaining rational, disciplined trading behavior.
             </p>
           </div>
         )}

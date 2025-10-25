@@ -3,8 +3,15 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Filter, Calendar, X } from "lucide-react";
-import { PeriodType, AnalyticsFilters as AnalyticsFiltersType } from "@/lib/types/analytics";
 import { format, subDays, startOfYear } from 'date-fns';
+
+type PeriodType = '7d' | '30d' | '90d' | '1y' | 'all_time' | 'custom';
+
+interface AnalyticsFiltersType {
+  periodType: PeriodType;
+  customStartDate: Date | null;
+  customEndDate: Date | null;
+}
 
 interface AnalyticsFiltersProps {
   onFiltersChange?: (filters: AnalyticsFiltersType) => void;
@@ -88,7 +95,7 @@ export function AnalyticsFilters({ onFiltersChange, initialFilters }: AnalyticsF
     if (onFiltersChange) {
       onFiltersChange(filters);
     }
-  }, []);
+  }, [filters, onFiltersChange]);
 
   const currentDateRange = getDateRange(filters.periodType || '30d');
   const displayDateRange = currentDateRange.start && currentDateRange.end 
