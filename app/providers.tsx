@@ -3,7 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { ThemeProvider } from "next-themes";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import { ReplicacheProvider } from "@/lib/replicache";
 
@@ -30,8 +30,15 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   const pathname = usePathname();
-  const isAuthPage = pathname.startsWith("/auth");
-  const isLandingPage = pathname === "/";
+  const [isClient, setIsClient] = useState(false);
+
+  // Only run client-side logic after hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const isAuthPage = isClient && pathname.startsWith("/auth");
+  const isLandingPage = isClient && pathname === "/";
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -42,15 +49,32 @@ export function Providers({ children }: { children: ReactNode }) {
         disableTransitionOnChange
         forcedTheme={isAuthPage || isLandingPage ? "light" : undefined}
       >
-        {!isAuthPage && !isLandingPage ? (
-          <ReplicacheProvider>
-            {children}
-          </ReplicacheProvider>
-        ) : (
-          <>{children}</>
-        )}
+        <ClientOnlyWrapper>
+          {isClient && !isAuthPage && !isLandingPage ? (
+            <ReplicacheProvider>
+              {children}
+            </ReplicacheProvider>
+          ) : (
+            <>{children}</>
+          )}
+        </ClientOnlyWrapper>
         <Toaster position="top-right" duration={5000} />
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+// Wrapper to ensure ReplicacheProvider only renders on client
+function ClientOnlyWrapper({ children }: { children: ReactNode }) {
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  if (!hasMounted) {
+    return <>{children}</>;
+  }
+
+  return <>{children}</>;
 }

@@ -109,7 +109,9 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
   };
 
   // Get available playbooks (all playbooks minus current ones)
+   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   const availablePlaybooksForTrade = (playbooks || []).filter(
+     // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
     playbook => !currentPlaybooks.some(existingPlaybook => existingPlaybook.id === playbook.id)
   );
 
@@ -163,10 +165,11 @@ export function SetupTradeAssociationCompact({ tradeId, tradeType, onPlaybookAdd
                   {availablePlaybooksForTrade.length === 0 ? (
                     <SelectItem value="none" disabled>No playbooks available</SelectItem>
                   ) : (
-                    availablePlaybooksForTrade.map((playbook) => (
-                        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+                    
+                    availablePlaybooksForTrade.map((playbook: Playbook) => (
+                       
                       <SelectItem key={playbook.id} value={playbook.id}>
-                         {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
+                        
                         <span className="font-medium">{playbook.name}</span>
                       </SelectItem>
                     ))

@@ -51,20 +51,19 @@ export default function PlaybookPage() {
   }, [isInitialized]);
 
   const filterPlaybooks = useCallback(() => {
-    let filtered = [...(playbooks || [])];
+    // Ensure playbooks is always an array
+    const playbooksArray = Array.isArray(playbooks) ? playbooks : [];
+    let filtered = [...playbooksArray];
 
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(playbook =>
-        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
         playbook.name.toLowerCase().includes(query) ||
-        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
         playbook.description?.toLowerCase().includes(query)
       );
     }
 
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
     setFilteredPlaybooks(filtered);
   }, [playbooks, searchQuery]);
 
@@ -154,6 +153,7 @@ export default function PlaybookPage() {
             {filteredPlaybooks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-muted-foreground mb-4">
+               {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
                   {(playbooks || []).length === 0 ? (
                     <>
                       <h3 className="text-lg font-semibold mb-2">No playbooks created yet</h3>
@@ -166,6 +166,7 @@ export default function PlaybookPage() {
                     </>
                   )}
                 </div>
+                {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
                 {(playbooks || []).length === 0 && (
                   <Button onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />

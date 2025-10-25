@@ -1,8 +1,8 @@
 # Multi-stage build for production Rust backend
-FROM rust:1.75-slim as builder
+FROM rust:1.85-slim as builder
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --fix-missing && apt-get install -y \
     pkg-config \
     libssl-dev \
     ca-certificates \
@@ -31,7 +31,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --fix-missing && apt-get install -y \
     ca-certificates \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
