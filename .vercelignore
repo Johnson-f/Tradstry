@@ -1,24 +1,4 @@
-# Dependencies (Vercel installs these automatically)
-node_modules/
-.pnp
-.pnp.js
 
-# Build output (handled by Vercel)
-.next/
-out/
-dist/
-build/
-
-# TypeScript build info
-*.tsbuildinfo
-tsconfig.tsbuildinfo
-
-# Rust backend (not deployed on Vercel)
-backend/
-*.rs
-Cargo.toml
-Cargo.lock
-target/
 
 # Environment files (use Vercel's env vars instead)
 .env
@@ -136,9 +116,7 @@ nginx/logs/*.log
 *.cache
 .next/cache
 
-# Package manager locks (keep pnpm-lock.yaml)
-yarn.lock
-package-lock.json
+
 
 # Backend Rust lock
 Cargo.lock
