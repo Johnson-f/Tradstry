@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
-import { Providers } from "./providers";
 import { AuthWrapper } from "@/components/auth-wrapper";
 import "./globals.css";
 
@@ -11,7 +10,7 @@ const defaultUrl = process.env.VERCEL_URL
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Tradstry",
-  description: "An AI-powered trading journalfor traders and investors",
+  description: "An AI-powered trading journal for traders and investors",
   icons: {
     icon: [
       {
@@ -60,11 +59,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
-        <Providers>
-          <AuthWrapper>{children}</AuthWrapper>
-        </Providers>
+        <AuthWrapper>{children}</AuthWrapper>
       </body>
     </html>
   );
 }
-

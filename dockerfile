@@ -42,15 +42,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy built application
-COPY --from=builder /app/public ./public
-
 # Set the correct permission for prerender cache
-RUN mkdir .next
+RUN mkdir -p .next
 RUN chown nextjs:nodejs .next
 
 # Automatically leverage output traces to reduce image size
