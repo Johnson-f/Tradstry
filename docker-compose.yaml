@@ -3,6 +3,8 @@ services:
     image: johnsonf/tradstry-frontend:latest
     container_name: tradstry-frontend
     restart: unless-stopped
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
     env_file:
@@ -26,9 +28,13 @@ services:
     image: johnsonf/tradstry-backend:latest
     container_name: tradstry-backend
     restart: unless-stopped
+    expose:
+      - "8080"
     environment:
       - RUST_ENV=production
       - RUST_LOG=info
+      - PORT=8080
+      - HOST=0.0.0.0
     env_file:
       - backend/.env.production
     networks:
@@ -59,8 +65,10 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx/logs:/var/log/nginx
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     networks:
       - tradstry-network
     healthcheck:
