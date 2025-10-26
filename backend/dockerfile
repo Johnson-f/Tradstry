@@ -26,11 +26,6 @@ COPY backend/src ./src
 # Build the actual application
 RUN touch src/main.rs && cargo build --release
 
-# Verify the binary name
-RUN ls -la /app/target/release/ && \
-    echo "Binary files:" && \
-    find /app/target/release -maxdepth 1 -type f -executable
-
 # Production stage
 FROM debian:bookworm-slim
 
@@ -48,8 +43,8 @@ RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 # Set working directory
 WORKDIR /app
 
-# Copy the binary - Rust converts package name to lowercase with underscores
-COPY --from=builder /app/target/release/tradstry_backend /app/tradstry-backend
+# Copy the binary with correct name (hyphen, not underscore)
+COPY --from=builder /app/target/release/tradstry-backend /app/tradstry-backend
 
 # Make binary executable
 RUN chmod +x /app/tradstry-backend
