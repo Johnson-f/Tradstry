@@ -206,22 +206,20 @@ impl UpstashVectorClient {
     
         // Convert filter to proper Upstash Vector SQL-like format
         let filter_string = filter.map(|f| {
-            if let Some(obj) = f.as_object() {
-                if let Some(data_type) = obj.get("data_type") {
-                    if let Some(in_obj) = data_type.as_object() {
-                        if let Some(in_array) = in_obj.get("$in") {
-                            if let Some(array) = in_array.as_array() {
-                                let values: Vec<String> = array.iter()
-                                    .filter_map(|v| v.as_str())
-                                    .map(|s| format!("'{}'", s))
-                                    .collect();
-                                return format!("data_type IN ({})", values.join(", "));
-                            }
-                        }
-                    }
-                }
+            if let Some(obj) = f.as_object()
+                && let Some(data_type) = obj.get("data_type")
+                && let Some(in_obj) = data_type.as_object()
+                && let Some(in_array) = in_obj.get("$in")
+                && let Some(array) = in_array.as_array()
+            {
+                let values: Vec<String> = array.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| format!("'{}'", s))
+                    .collect();
+                format!("data_type IN ({})", values.join(", "))
+            } else {
+                f.to_string()
             }
-            f.to_string()
         });
     
         log::debug!("Converted filter string: {:?}", filter_string);

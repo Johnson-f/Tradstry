@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use crate::models::stock::stocks::Stock;
-use crate::models::options::options::OptionTrade;
+use crate::models::options::OptionTrade;
 use crate::models::notes::trade_notes::TradeNote;
 use crate::models::notebook::notebook_note::NotebookNote;
-use crate::models::playbook::playbook::Playbook;
+use crate::models::playbook::Playbook;
 use crate::service::ai_service::qdrant_client::{Document, DocumentMetadata};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -178,7 +178,7 @@ impl DataFormatter {
             data_type: "stock".to_string(),
             entity_id: stock.id.to_string(),
             timestamp: Utc::now(),
-            tags: Self::extract_tags(&content.get("description").unwrap(), &DataType::Stock),
+            tags: Self::extract_tags(content.get("description").unwrap(), &DataType::Stock),
             content_hash: Self::generate_content_hash(content.get("description").unwrap()),
         };
 
@@ -246,7 +246,7 @@ impl DataFormatter {
             data_type: "option".to_string(),
             entity_id: option.id.to_string(),
             timestamp: Utc::now(),
-            tags: Self::extract_tags(&content.get("description").unwrap(), &DataType::Option),
+            tags: Self::extract_tags(content.get("description").unwrap(), &DataType::Option),
             content_hash: Self::generate_content_hash(content.get("description").unwrap()),
         };
 

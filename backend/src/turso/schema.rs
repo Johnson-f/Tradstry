@@ -1075,7 +1075,7 @@ pub async fn create_table(conn: &Connection, table_schema: &TableSchema) -> Resu
     }).collect();
     create_sql.push_str(&column_definitions.join(", "));
     if primary_keys.len() > 1 { create_sql.push_str(&format!(", PRIMARY KEY ({})", primary_keys.join(", "))); }
-    create_sql.push_str(")");
+    create_sql.push(')');
     conn.execute(&create_sql, libsql::params![]).await?;
     Ok(())
 }

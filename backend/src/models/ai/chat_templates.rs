@@ -252,7 +252,7 @@ impl ContextFormatter {
         let mut grouped: std::collections::BTreeMap<String, Vec<&crate::models::ai::chat::ContextSource>> = std::collections::BTreeMap::new();
         for source in sources {
             grouped.entry(source.data_type.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(source);
         }
         

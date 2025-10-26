@@ -184,7 +184,7 @@ impl VoyagerClient {
 
         let response = self
             .client
-            .post(&self.config.get_embeddings_url())
+            .post(self.config.get_embeddings_url())
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(request)

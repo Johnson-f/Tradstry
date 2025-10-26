@@ -114,7 +114,7 @@ async fn main() -> std::io::Result<()> {
             
             // Add each allowed origin
             for origin in &origins {
-                cors = cors.allowed_origin(*origin);
+                cors = cors.allowed_origin(origin);
             }
             
             cors
@@ -348,19 +348,20 @@ async fn get_current_user(
     app_state: Data<AppState>,
     req: actix_web::HttpRequest,
 ) -> ActixResult<Json<ApiResponse<serde_json::Value>>> {
-    let extensions = req.extensions();
-
-    let (user_id, _email, auth_provider) = if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
-        // Handle Supabase claims
-        let user_id = get_supabase_user_id(supabase_claims);
-        (user_id, supabase_claims.email.clone(), "supabase")
-    } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
-        // Handle Clerk claims (legacy)
-        let user_id = get_user_id(clerk_claims.clone()).map_err(|_|
-            actix_web::error::ErrorBadRequest("Invalid user ID"))?;
-        (user_id, clerk_claims.email.clone(), "clerk")
-    } else {
-        return Err(actix_web::error::ErrorUnauthorized("No authentication claims found"));
+    let (user_id, _email, auth_provider) = {
+        let extensions = req.extensions();
+        if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
+            // Handle Supabase claims
+            let user_id = get_supabase_user_id(supabase_claims);
+            (user_id, supabase_claims.email.clone(), "supabase")
+        } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
+            // Handle Clerk claims (legacy)
+            let user_id = get_user_id(clerk_claims.clone()).map_err(|_|
+                actix_web::error::ErrorBadRequest("Invalid user ID"))?;
+            (user_id, clerk_claims.email.clone(), "clerk")
+        } else {
+            return Err(actix_web::error::ErrorUnauthorized("No authentication claims found"));
+        }
     };
 
     // Get user database entry from registry
@@ -385,17 +386,18 @@ async fn get_user_data(
     app_state: Data<AppState>,
     req: actix_web::HttpRequest,
 ) -> ActixResult<Json<ApiResponse<serde_json::Value>>> {
-    let extensions = req.extensions();
-
-    let user_id = if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
-        // Handle Supabase claims
-        get_supabase_user_id(supabase_claims)
-    } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
-        // Handle Clerk claims (legacy)
-        get_user_id(clerk_claims.clone()).map_err(|_|
-            actix_web::error::ErrorBadRequest("Invalid user ID"))?
-    } else {
-        return Err(actix_web::error::ErrorUnauthorized("No authentication claims found"));
+    let user_id = {
+        let extensions = req.extensions();
+        if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
+            // Handle Supabase claims
+            get_supabase_user_id(supabase_claims)
+        } else if let Some(clerk_claims) = extensions.get::<turso::ClerkClaims>() {
+            // Handle Clerk claims (legacy)
+            get_user_id(clerk_claims.clone()).map_err(|_|
+                actix_web::error::ErrorBadRequest("Invalid user ID"))?
+        } else {
+            return Err(actix_web::error::ErrorUnauthorized("No authentication claims found"));
+        }
     };
 
     // Get user's database connection

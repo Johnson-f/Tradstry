@@ -295,7 +295,7 @@ impl HybridSearchService {
         &self,
         _user_id: &str,
         _query: &str,
-        results: &mut Vec<HybridSearchResult>,
+        results: &mut [HybridSearchResult],
     ) -> Result<()> {
         // For now, just log that reranking would happen here
         // In a full implementation, this would call Upstash Search's reranking API

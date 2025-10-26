@@ -45,7 +45,7 @@ impl CachedToken {
 }
 
 /// Cache statistics for monitoring
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct CacheStats {
     pub total_requests: u64,
@@ -56,21 +56,6 @@ pub struct CacheStats {
     pub cache_ttl_expired_entries: u64,
     pub total_entries: usize,
     pub expired_entries: usize,
-}
-
-impl Default for CacheStats {
-    fn default() -> Self {
-        Self {
-            total_requests: 0,
-            cache_hits: 0,
-            cache_misses: 0,
-            cache_errors: 0,
-            jwt_expired_entries: 0,
-            cache_ttl_expired_entries: 0,
-            total_entries: 0,
-            expired_entries: 0,
-        }
-    }
 }
 
 /// In-memory JWT cache using DashMap for thread-safe operations

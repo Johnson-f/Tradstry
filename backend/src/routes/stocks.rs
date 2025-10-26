@@ -503,7 +503,7 @@ pub async fn get_stocks_analytics(
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
     // Generate cache key for this analytics request
-    let cache_key = format!("analytics:db:{}:stocks:{}", user_id, format!("{:?}", time_range));
+    let cache_key = format!("analytics:db:{}:stocks:{:?}", user_id, time_range);
     
     // Try to get from cache first
     match cache_service.get_or_fetch(&cache_key, 900, || async {
@@ -604,7 +604,7 @@ pub async fn get_profit_factor(
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
     // Generate cache key for profit factor
-    let cache_key = format!("analytics:db:{}:stocks:profit_factor:{}", user_id, format!("{:?}", time_range));
+    let cache_key = format!("analytics:db:{}:stocks:profit_factor:{:?}", user_id, time_range);
     
     match cache_service.get_or_fetch(&cache_key, 900, || async {
         info!("Cache miss for profit factor, calculating from database");

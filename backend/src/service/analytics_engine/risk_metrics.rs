@@ -207,7 +207,7 @@ async fn calculate_drawdown_metrics(daily_returns: &[f64]) -> Result<DrawdownMet
         }
     }
 
-    let ulcer_index = if daily_returns.len() > 0 {
+    let ulcer_index = if !daily_returns.is_empty() {
         (ulcer_sum / daily_returns.len() as f64).sqrt()
     } else {
         0.0
@@ -224,7 +224,7 @@ async fn calculate_drawdown_metrics(daily_returns: &[f64]) -> Result<DrawdownMet
         maximum_drawdown: max_drawdown,
         maximum_drawdown_percentage: max_drawdown_percentage,
         maximum_drawdown_duration_days: max_drawdown_duration,
-        current_drawdown: current_drawdown,
+        current_drawdown,
         ulcer_index,
         recovery_factor,
     })

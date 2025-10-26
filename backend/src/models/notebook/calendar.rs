@@ -64,8 +64,8 @@ impl CalendarEvent {
                 end_date: row.get(5)?,
                 start_time: row.get(6)?,
                 end_time: row.get(7)?,
-                is_all_day: match row.get::<i64>(8)? { 0 => false, _ => true },
-                is_synced: match row.get::<i64>(9)? { 0 => false, _ => true },
+                is_all_day: !matches!(row.get::<i64>(8)?, 0),
+                is_synced: !matches!(row.get::<i64>(9)?, 0),
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
             });

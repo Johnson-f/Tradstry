@@ -126,10 +126,10 @@ impl ClerkWebhookHandler {
         for signature in signatures {
             let signature_bytes = signature.strip_prefix("v1,").unwrap();
             
-            if let Ok(expected_signature) = base64::prelude::BASE64_STANDARD.decode(signature_bytes) {
-                if self.verify_signature(&signed_payload, &expected_signature).is_ok() {
-                    return Ok(());
-                }
+            if let Ok(expected_signature) = base64::prelude::BASE64_STANDARD.decode(signature_bytes)
+                && self.verify_signature(&signed_payload, &expected_signature).is_ok()
+            {
+                return Ok(());
             }
         }
 

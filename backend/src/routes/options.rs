@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
-use crate::models::options::options::{
+use crate::models::options::{
     OptionTrade, CreateOptionRequest, UpdateOptionRequest, OptionQuery
 };
 use crate::models::stock::stocks::TimeRange;

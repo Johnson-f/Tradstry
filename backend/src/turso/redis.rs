@@ -51,7 +51,7 @@ impl RedisClient {
         T: for<'de> Deserialize<'de>,
     {
         let response = self.client
-            .get(&format!("{}/get/{}", self.base_url, key))
+            .get(format!("{}/get/{}", self.base_url, key))
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .await?;
@@ -76,7 +76,7 @@ impl RedisClient {
         let serialized = serde_json::to_string(value)?;
         
         self.client
-            .post(&format!("{}/setex/{}/{}", self.base_url, key, ttl_seconds))
+            .post(format!("{}/setex/{}/{}", self.base_url, key, ttl_seconds))
             .header("Authorization", format!("Bearer {}", self.token))
             .body(serialized)
             .send()
@@ -89,7 +89,7 @@ impl RedisClient {
     /// Delete a key from Redis
     pub async fn del(&self, key: &str) -> Result<()> {
         self.client
-            .post(&format!("{}/del/{}", self.base_url, key))
+            .post(format!("{}/del/{}", self.base_url, key))
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .await?
@@ -101,7 +101,7 @@ impl RedisClient {
     /// Set expiration time for a key
     pub async fn expire(&self, key: &str, ttl_seconds: usize) -> Result<()> {
         self.client
-            .post(&format!("{}/expire/{}/{}", self.base_url, key, ttl_seconds))
+            .post(format!("{}/expire/{}/{}", self.base_url, key, ttl_seconds))
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .await?
@@ -114,7 +114,7 @@ impl RedisClient {
     pub async fn del_pattern(&self, pattern: &str) -> Result<usize> {
         // Get keys matching pattern
         let response = self.client
-            .get(&format!("{}/keys/{}", self.base_url, pattern))
+            .get(format!("{}/keys/{}", self.base_url, pattern))
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .await?;
@@ -140,7 +140,7 @@ impl RedisClient {
     /// Health check for Redis connection
     pub async fn health_check(&self) -> Result<()> {
         self.client
-            .get(&format!("{}/ping", self.base_url))
+            .get(format!("{}/ping", self.base_url))
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .await?
