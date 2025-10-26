@@ -45,7 +45,7 @@ jobs:
         env:
           NODE_ENV: test
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_API_URL: http://localhost:8080
 
   # Backend CI
@@ -116,33 +116,67 @@ jobs:
           NODE_ENV: production
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_USE_REPLICACHE_JOURNAL: true
+          NEXT_PUBLIC_USE_REPLICACHE_NOTES: true
+          NEXT_PUBLIC_USE_REPLICACHE_PLAYBOOK: true
+          NEXT_TELEMETRY_DISABLED: 1
           NEXT_PUBLIC_API_URL: https://tradstry.com/api
 
       - name: Deploy to VPS
         run: |
+          set -e
+          
           # Add VPS to known hosts
+          mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           
+          # Test SSH connection
+          echo "Testing SSH connection..."
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection successful'"
+          
           # Copy files to VPS
+          echo "Copying files to VPS..."
           rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
             --exclude 'node_modules' \
             --exclude '.git' \
             --exclude '.next' \
             --exclude 'target' \
+            --exclude '.github' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/tradstry/
           
           # Deploy on VPS
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          echo "Deploying on VPS..."
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << 'EOF'
+            set -e
             cd /opt/tradstry
             
             # Stop existing containers
-            docker-compose down
+            echo "Stopping existing containers..."
+            docker-compose down || true
+            
+            # Copy environment files if they don't exist
+            if [ ! -f ".env.production" ]; then
+              echo "Creating .env.production..."
+              cp env-templates/frontend.env.production .env.production || true
+            fi
+            
+            if [ ! -f "backend/.env.production" ]; then
+              echo "Creating backend/.env.production..."
+              cp env-templates/backend.env.production backend/.env.production || true
+            fi
             
             # Build and start services
+            echo "Building and starting services..."
             docker-compose up -d --build
             
             # Check health
-            sleep 10
+            echo "Waiting for services to be healthy..."
+            sleep 15
+            
+            echo "Checking service status..."
             docker-compose ps
+            
+            echo "Deployment complete!"
           EOF
 
