@@ -30,4 +30,3 @@ services:
 networks:
   default:
     name: tradstry-backend-network
-

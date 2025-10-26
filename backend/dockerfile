@@ -2,7 +2,7 @@
 FROM rust:latest AS builder
 
 # Install system dependencies
-RUN apt-get update --fix-missing && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     ca-certificates \
@@ -11,43 +11,51 @@ RUN apt-get update --fix-missing && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files first (for layer caching)
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # Create a dummy main.rs to cache dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs
 
 # Build dependencies (this layer will be cached)
-RUN cargo build --release
+RUN cargo build --release && rm -rf src
 
-# Remove dummy main.rs and copy actual source
-RUN rm src/main.rs
+# Copy actual source code
 COPY backend/src ./src
 
 # Build the actual application
-RUN cargo build --release
+RUN touch src/main.rs && cargo build --release
+
+# Verify the binary name
+RUN ls -la /app/target/release/ && \
+    echo "Binary files:" && \
+    find /app/target/release -maxdepth 1 -type f -executable
 
 # Production stage
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apt-get update --fix-missing && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 
 # Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/target/release/Tradstry-backend /app/tradstry-backend
+# Copy the binary - Rust converts package name to lowercase with underscores
+COPY --from=builder /app/target/release/tradstry_backend /app/tradstry-backend
+
+# Make binary executable
+RUN chmod +x /app/tradstry-backend
 
 # Copy production environment file
-COPY env-templates/backend.env.production backend/.env.production
+COPY backend/.env.production /app/.env
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
@@ -55,11 +63,17 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
+# Set environment variables
+ENV RUST_LOG=info
+ENV PORT=8080
+ENV HOST=0.0.0.0
+ENV RUST_BACKTRACE=1
+
 # Expose port
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application

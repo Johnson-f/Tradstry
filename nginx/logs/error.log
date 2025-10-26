@@ -1,0 +1,78 @@
+2025/10/26 15:40:55 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:41:10 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 15:41:10 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 15:41:40 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:42:07 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 15:42:07 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 15:42:27 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 15:42:27 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 15:42:37 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:42:53 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 15:42:53 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 15:43:06 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:43:14 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:43:23 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:43:31 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:43:44 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:44:04 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:44:36 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 15:45:35 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:29:59 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:30:24 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:30:24 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:30:28 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:30:28 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:30:32 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:30:32 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:30:36 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:30:40 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:30:44 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:30:48 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:30:56 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:31:09 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:31:36 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:32:29 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:33:30 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:34:30 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:35:30 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:36:33 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:37:27 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:37:27 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:37:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:37:31 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:37:33 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:37:37 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:37:40 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:37:44 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:37:44 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:37:48 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:37:56 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:38:09 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:38:36 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:39:28 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:40:30 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:41:32 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:42:37 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:43:58 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:05 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:16 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:26 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:39 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:47 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:44:47 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:44:50 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/conf.d/tradstry.conf:34
+2025/10/26 16:44:50 [emerg] 1#1: cannot load certificate "/etc/nginx/ssl/tradstry.com.crt": BIO_new_file() failed (SSL: error:80000002:system library::No such file or directory:calling fopen(/etc/nginx/ssl/tradstry.com.crt, r) error:10000080:BIO routines::no such file)
+2025/10/26 16:44:55 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:44:59 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:45:03 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:45:07 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:45:17 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:45:31 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:08 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:10 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:12 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:13 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:14 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:17 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:21 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12
+2025/10/26 16:49:30 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/conf.d/tradstry.conf:12

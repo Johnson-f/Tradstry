@@ -12,7 +12,7 @@ services:
     networks:
       - tradstry-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -32,19 +32,20 @@ services:
       - "8080"
     environment:
       - RUST_ENV=production
-      - RUST_LOG=info
-      - PORT=8080
+      - RUST_LOG=debug
+      - PORT=8080  # Make sure this matches
       - HOST=0.0.0.0
+      - RUST_BACKTRACE=1
     env_file:
-      - backend/.env.production
+      - ./backend/.env.production  # Fixed path
     networks:
       - tradstry-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 120s
     deploy:
       resources:
         limits:
@@ -65,9 +66,9 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx/logs:/var/log/nginx
     depends_on:
-      frontend:
-        condition: service_healthy
       backend:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
     networks:
       - tradstry-network
