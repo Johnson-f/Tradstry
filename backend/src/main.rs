@@ -124,7 +124,7 @@ async fn main() -> std::io::Result<()> {
                     actix_web::http::header::CONTENT_TYPE,
                     actix_web::http::header::HeaderName::from_static("x-requested-with"),
                 ])
-                .allow_credentials(true)
+                .supports_credentials()
                 .max_age(3600)
         } else {
             // Development: allow localhost and production domains
@@ -137,7 +137,7 @@ async fn main() -> std::io::Result<()> {
                     actix_web::http::header::CONTENT_TYPE,
                     actix_web::http::header::HeaderName::from_static("x-requested-with"),
                 ])
-                .allow_credentials(true)
+                .supports_credentials()
                 .max_age(3600)
         };
 
