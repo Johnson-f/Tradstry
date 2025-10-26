@@ -80,103 +80,13 @@ jobs:
           DATABASE_URL: libsql://test.turso.io
           TURSO_AUTH_TOKEN: test-token
 
-  # Deploy to VPS
-  deploy:
-    name: Deploy to VPS
-    needs: [frontend-ci, backend-ci]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build
-        env:
-          NODE_ENV: production
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY }}
-          NEXT_PUBLIC_USE_REPLICACHE_JOURNAL: true
-          NEXT_PUBLIC_USE_REPLICACHE_NOTES: true
-          NEXT_PUBLIC_USE_REPLICACHE_PLAYBOOK: true
-          NEXT_TELEMETRY_DISABLED: 1
-          NEXT_PUBLIC_API_URL: https://tradstry.com/api
-
-      - name: Deploy to VPS
-        run: |
-          set -e
-          
-          # Add VPS to known hosts
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-          
-          # Test SSH connection
-          echo "Testing SSH connection..."
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection successful'"
-          
-          # Copy files to VPS
-          echo "Copying files to VPS..."
-          rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no" \
-            --exclude 'node_modules' \
-            --exclude '.git' \
-            --exclude '.next' \
-            --exclude 'target' \
-            --exclude '.github' \
-            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/tradstry/
-          
-          # Deploy on VPS
-          echo "Deploying on VPS..."
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << 'EOF'
-            set -e
-            cd /opt/tradstry
-            
-            # Stop existing containers
-            echo "Stopping existing containers..."
-            docker-compose down || true
-            
-            # Copy environment files if they don't exist
-            if [ ! -f ".env.production" ]; then
-              echo "Creating .env.production..."
-              cp env-templates/frontend.env.production .env.production || true
-            fi
-            
-            if [ ! -f "backend/.env.production" ]; then
-              echo "Creating backend/.env.production..."
-              cp env-templates/backend.env.production backend/.env.production || true
-            fi
-            
-            # Build and start services
-            echo "Building and starting services..."
-            docker-compose up -d --build
-            
-            # Check health
-            echo "Waiting for services to be healthy..."
-            sleep 15
-            
-            echo "Checking service status..."
-            docker-compose ps
-            
-            echo "Deployment complete!"
-          EOF
+  # NOTE: Deployment to VPS is now handled by .github/workflows/cd-release.yml
+  # The CD pipeline triggers on tagged releases (e.g., v1.0.0) and automatically
+  # builds Docker images, pushes them to Docker Hub, and deploys to the VPS.
+  #
+  # To create a release:
+  #   1. git tag -a v1.0.0 -m "Release version 1.0.0"
+  #   2. git push origin v1.0.0
+  #
+  # The CD pipeline will automatically build images and deploy to production.
 
