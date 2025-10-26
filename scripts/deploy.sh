@@ -1,7 +1,20 @@
 #!/bin/bash
 
-# Deployment Script for Tradistry
-# Run this script to deploy updates to your VPS
+# Manual/Development Deployment Script for Tradistry
+# 
+# This script uses rsync to copy the codebase and builds images on the VPS.
+# This is suitable for manual deployments or quick development iterations.
+#
+# For production deployments, use:
+#   1. Registry-based CD pipeline (automatic on tagged releases)
+#      - Git tag: git tag -a v1.0.0 -m "Release" && git push origin v1.0.0
+#      - See: .github/workflows/cd-release.yml
+#
+#   2. Registry-based manual deployment:
+#      - ./scripts/deploy-registry.sh
+#      - Pulls pre-built images from Docker Hub
+#
+# This script (deploy.sh) is kept for development/debugging scenarios.
 
 set -e
 
@@ -19,9 +32,17 @@ if [ ! -f "docker-compose.yaml" ]; then
     exit 1
 fi
 
-# Build images locally (optional - you can also build on VPS)
-echo "🔨 Building Docker images..."
-docker-compose build
+# Build frontend (optional - can be done on VPS instead)
+echo "🔨 Building frontend..."
+NODE_ENV=production \
+NEXT_PUBLIC_SUPABASE_URL=$(grep NEXT_PUBLIC_SUPABASE_URL env-templates/frontend.env.production | cut -d '=' -f2) \
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY=$(grep NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY env-templates/frontend.env.production | cut -d '=' -f2) \
+NEXT_PUBLIC_API_URL=https://tradstry.com/api \
+NEXT_PUBLIC_USE_REPLICACHE_JOURNAL=true \
+NEXT_PUBLIC_USE_REPLICACHE_NOTES=true \
+NEXT_PUBLIC_USE_REPLICACHE_PLAYBOOK=true \
+NEXT_TELEMETRY_DISABLED=1 \
+pnpm build || echo "⚠️ Local build failed, will build on VPS"
 
 # Copy files to VPS
 echo "📤 Copying files to VPS..."
@@ -50,13 +71,9 @@ ssh "$VPS_USER@$VPS_IP" << EOF
     # Pull latest images (if using registry)
     # docker-compose pull
     
-    # Build images on VPS
-    echo "🔨 Building images on VPS..."
-    docker-compose build --no-cache
-    
-    # Start services
+    # Start services (images already built locally)
     echo "▶️ Starting services..."
-    docker-compose up -d
+    docker-compose up -d --build
     
     # Wait for services to be healthy
     echo "⏳ Waiting for services to be healthy..."
