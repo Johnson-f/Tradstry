@@ -38,7 +38,7 @@ pub async fn calculate_time_series_data(
     let drawdown_curve = calculate_drawdown_curve(&daily_pnl).await?;
     
     // Calculate cumulative metrics
-    let cumulative_return = daily_pnl.iter().map(|p| p.cumulative_value).last().unwrap_or(0.0);
+    let cumulative_return = daily_pnl.iter().map(|p| p.cumulative_value).next_back().unwrap_or(0.0);
     let total_return_percentage = if cumulative_return != 0.0 {
         (cumulative_return / daily_pnl.first().map(|p| p.cumulative_value).unwrap_or(1.0)) * 100.0
     } else {
@@ -349,7 +349,7 @@ async fn calculate_rolling_win_rate(
     // Calculate rolling win rate in Rust
     let mut rolling_win_rate = Vec::new();
     for i in 0..daily_data.len() {
-        let start_idx = if i >= window_size as usize { i - window_size as usize } else { 0 };
+        let start_idx = i.saturating_sub(window_size as usize);
         let end_idx = i + 1;
         
         let window_data = &daily_data[start_idx..end_idx];
@@ -387,7 +387,7 @@ async fn calculate_rolling_sharpe_ratio(
     let daily_risk_free_rate = risk_free_rate / 365.0;
     
     for i in 0..daily_returns.len() {
-        let start_idx = if i >= window_size as usize { i - window_size as usize } else { 0 };
+        let start_idx = i.saturating_sub(window_size as usize);
         let end_idx = i + 1;
         
         let window_returns: Vec<f64> = daily_returns[start_idx..end_idx]
@@ -486,10 +486,10 @@ async fn calculate_profit_by_day_of_week(
         let day_num = row.get::<String>(0).unwrap_or_default();
         let profit = row.get::<f64>(1).unwrap_or(0.0);
         
-        if let Ok(day_index) = day_num.parse::<usize>() {
-            if day_index < day_names.len() {
-                profit_by_day.insert(day_names[day_index].to_string(), profit);
-            }
+        if let Ok(day_index) = day_num.parse::<usize>()
+            && day_index < day_names.len()
+        {
+            profit_by_day.insert(day_names[day_index].to_string(), profit);
         }
     }
 
@@ -556,10 +556,10 @@ async fn calculate_profit_by_month(
         let month_num = row.get::<String>(0).unwrap_or_default();
         let profit = row.get::<f64>(1).unwrap_or(0.0);
         
-        if let Ok(month_index) = month_num.parse::<usize>() {
-            if month_index >= 1 && month_index <= 12 {
-                profit_by_month.insert(month_names[month_index - 1].to_string(), profit);
-            }
+        if let Ok(month_index) = month_num.parse::<usize>()
+            && (1..=12).contains(&month_index)
+        {
+            profit_by_month.insert(month_names[month_index - 1].to_string(), profit);
         }
     }
 

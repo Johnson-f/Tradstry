@@ -973,8 +973,8 @@ impl OptionTrade {
     pub async fn get_playbooks(
         &self,
         conn: &Connection,
-    ) -> Result<Vec<crate::models::playbook::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::get_option_trade_playbooks(conn, self.id).await
+    ) -> Result<Vec<crate::models::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::Playbook::get_option_trade_playbooks(conn, self.id).await
     }
 
     /// Tag this option trade with a playbook setup
@@ -983,8 +983,8 @@ impl OptionTrade {
         &self,
         conn: &Connection,
         setup_id: &str,
-    ) -> Result<crate::models::playbook::playbook::OptionTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::tag_option_trade(conn, self.id, setup_id).await
+    ) -> Result<crate::models::playbook::OptionTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::Playbook::tag_option_trade(conn, self.id, setup_id).await
     }
 
     /// Remove a playbook tag from this option trade
@@ -994,7 +994,7 @@ impl OptionTrade {
         conn: &Connection,
         setup_id: &str,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::untag_option_trade(conn, self.id, setup_id).await
+        crate::models::playbook::Playbook::untag_option_trade(conn, self.id, setup_id).await
     }
 
     fn from_row(row: &libsql::Row) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {

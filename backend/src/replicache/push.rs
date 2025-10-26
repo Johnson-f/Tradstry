@@ -40,7 +40,7 @@ async fn process_mutation(
     apply_mutation_to_db(conn, user_id, &mutation.name, mutation.args.clone()).await
         .map_err(|e| {
             log::error!("Mutation {} failed: {}", mutation.name, e);
-            MutationError::GenericError(e.into())
+            MutationError::Generic(e.into())
         })
 }
 

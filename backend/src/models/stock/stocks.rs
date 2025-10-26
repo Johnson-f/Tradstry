@@ -73,6 +73,7 @@ impl TimeRange {
 /// Trade type enum matching the PostgreSQL enum in your schema
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
+#[allow(clippy::upper_case_acronyms)]
 pub enum TradeType {
     BUY,
     SELL,
@@ -102,6 +103,7 @@ impl std::str::FromStr for TradeType {
 /// Order type enum matching the PostgreSQL enum in your schema
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
+#[allow(clippy::upper_case_acronyms)]
 pub enum OrderType {
     MARKET,
     LIMIT,
@@ -218,10 +220,10 @@ impl Stock {
             return Ok(v.unwrap_or(0) as f64);
         }
         // Try as String
-        if let Ok(s) = row.get::<String>(i) {
-            if let Ok(parsed) = s.parse::<f64>() {
-                return Ok(parsed);
-            }
+        if let Ok(s) = row.get::<String>(i)
+            && let Ok(parsed) = s.parse::<f64>()
+        {
+            return Ok(parsed);
         }
         // Fallback to 0.0
         Ok(0.0)
@@ -246,10 +248,10 @@ impl Stock {
             return Ok(Some(v as f64));
         }
         // Try String
-        if let Ok(s) = row.get::<String>(i) {
-            if let Ok(parsed) = s.parse::<f64>() {
-                return Ok(Some(parsed));
-            }
+        if let Ok(s) = row.get::<String>(i)
+            && let Ok(parsed) = s.parse::<f64>()
+        {
+            return Ok(Some(parsed));
         }
         Ok(None)
     }
@@ -1092,8 +1094,8 @@ impl Stock {
     pub async fn get_playbooks(
         &self,
         conn: &Connection,
-    ) -> Result<Vec<crate::models::playbook::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::get_stock_trade_playbooks(conn, self.id).await
+    ) -> Result<Vec<crate::models::playbook::Playbook>, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::Playbook::get_stock_trade_playbooks(conn, self.id).await
     }
 
     /// Tag this stock trade with a playbook setup
@@ -1102,8 +1104,8 @@ impl Stock {
         &self,
         conn: &Connection,
         setup_id: &str,
-    ) -> Result<crate::models::playbook::playbook::StockTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::tag_stock_trade(conn, self.id, setup_id).await
+    ) -> Result<crate::models::playbook::StockTradePlaybook, Box<dyn std::error::Error + Send + Sync>> {
+        crate::models::playbook::Playbook::tag_stock_trade(conn, self.id, setup_id).await
     }
 
     /// Remove a playbook tag from this stock trade
@@ -1113,7 +1115,7 @@ impl Stock {
         conn: &Connection,
         setup_id: &str,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        crate::models::playbook::playbook::Playbook::untag_stock_trade(conn, self.id, setup_id).await
+        crate::models::playbook::Playbook::untag_stock_trade(conn, self.id, setup_id).await
     }
 
     fn from_row(row: &libsql::Row) -> Result<Stock, Box<dyn std::error::Error + Send + Sync>> {

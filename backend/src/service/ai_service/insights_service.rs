@@ -48,12 +48,11 @@ impl AIInsightsService {
         let start_time = std::time::Instant::now();
 
         // Check if recent insight exists and force_regenerate is false
-        if !request.force_regenerate.unwrap_or(false) {
-            if let Some(existing_insight) = self.get_recent_insight(conn, user_id, &request.time_range, &request.insight_type).await? {
-                if !existing_insight.is_expired() {
-                    return Ok(existing_insight);
-                }
-            }
+        if !request.force_regenerate.unwrap_or(false)
+            && let Some(existing_insight) = self.get_recent_insight(conn, user_id, &request.time_range, &request.insight_type).await?
+            && !existing_insight.is_expired()
+        {
+            return Ok(existing_insight);
         }
 
         // Create generation task
@@ -452,14 +451,11 @@ async fn generate_insight_content(
         request: &InsightRequest,
         trading_data: &TradingDataSummary,
     ) -> String {
-        format!(
-            "{}",
-            template.prompt_template
-                .replace("{time_range}", &format!("{:?}", request.time_range))
-                .replace("{insight_type}", &format!("{:?}", request.insight_type))
-                .replace("{trade_count}", &trading_data.trade_count.to_string())
-                .replace("{data_quality}", &trading_data.data_quality_score.to_string())
-        )
+        template.prompt_template
+            .replace("{time_range}", &format!("{:?}", request.time_range))
+            .replace("{insight_type}", &format!("{:?}", request.insight_type))
+            .replace("{trade_count}", &trading_data.trade_count.to_string())
+            .replace("{data_quality}", &trading_data.data_quality_score.to_string())
     }
 
     /// Get insight template

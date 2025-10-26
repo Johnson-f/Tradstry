@@ -123,7 +123,7 @@ impl NotebookReminder {
             title: row.get(2)?,
             description: row.get(3)?,
             reminder_time: row.get(4)?,
-            is_completed: match row.get::<i64>(5)? { 0 => false, _ => true },
+            is_completed: !matches!(row.get::<i64>(5)?, 0),
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
         })

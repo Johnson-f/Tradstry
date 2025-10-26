@@ -191,28 +191,22 @@ impl CacheService {
     async fn table_has_column(conn: &Connection, table_name: &str, column_name: &str) -> bool {
         let query = format!("PRAGMA table_info({})", table_name);
         
-        match conn.prepare(&query).await {
-            Ok(stmt) => {
-                match stmt.query(libsql::params![]).await {
-                    Ok(mut rows) => {
-                        loop {
-                            match rows.next().await {
-                                Ok(Some(row)) => {
-                                    if let Ok(col_name) = row.get::<String>(1) { // Column name is at index 1
-                                        if col_name == column_name {
-                                            return true;
-                                        }
-                                    }
-                                }
-                                Ok(None) => break,
-                                Err(_) => break,
+        if let Ok(stmt) = conn.prepare(&query).await
+            && let Ok(mut rows) = stmt.query(libsql::params![]).await
+        {
+            loop {
+                match rows.next().await {
+                    Ok(Some(row)) => {
+                        if let Ok(col_name) = row.get::<String>(1) { // Column name is at index 1
+                            if col_name == column_name {
+                                return true;
                             }
                         }
                     }
-                    Err(_) => {}
+                    Ok(None) => break,
+                    Err(_) => break,
                 }
             }
-            Err(_) => {}
         }
         
         false
@@ -281,7 +275,7 @@ impl CacheService {
                 .context(format!("Failed to get column name for index {}", i))?;
             
             // Get value based on column type
-            let value = Self::get_column_value(row, i as usize, table_name, &column_name)?;
+            let value = Self::get_column_value(row, i as usize, table_name, column_name)?;
             record.insert(column_name.to_string(), value);
         }
         

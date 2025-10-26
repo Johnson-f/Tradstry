@@ -89,10 +89,10 @@ async fn calculate_symbol_grouped_analytics(
         .await?;
 
     while let Some(row) = rows.next().await? {
-        if let Ok(symbol) = row.get::<String>(0) {
-            if !symbols.contains(&symbol) {
-                symbols.push(symbol);
-            }
+        if let Ok(symbol) = row.get::<String>(0)
+            && !symbols.contains(&symbol)
+        {
+            symbols.push(symbol);
         }
     }
 

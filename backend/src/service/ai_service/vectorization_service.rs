@@ -205,7 +205,7 @@ impl VectorizationService {
         let mut by_user: std::collections::HashMap<String, Vec<VectorizationTask>> = std::collections::HashMap::new();
 
         for task in tasks {
-            by_user.entry(task.user_id.clone()).or_insert_with(Vec::new).push(task);
+            by_user.entry(task.user_id.clone()).or_default().push(task);
         }
 
         // Process each user's data

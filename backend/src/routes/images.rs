@@ -596,10 +596,10 @@ pub async fn delete_image(
             info!("✓ Image deleted successfully: {}", image_id);
             
             // Optionally delete from Supabase Storage as well
-            if let Ok(storage_config) = SupabaseStorageConfig::from_env() {
-                if let Ok(upload_service) = ImageUploadService::new(storage_config) {
-                    let _ = upload_service.delete_file(&image.uploadcare_file_id).await;
-                }
+            if let Ok(storage_config) = SupabaseStorageConfig::from_env()
+                && let Ok(upload_service) = ImageUploadService::new(storage_config)
+            {
+                let _ = upload_service.delete_file(&image.uploadcare_file_id).await;
             }
             
             Ok(HttpResponse::Ok().json(serde_json::json!({

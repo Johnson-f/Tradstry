@@ -153,15 +153,16 @@ pub struct Patch {
 
 // Mutation processing errors
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::enum_variant_names)]
 pub enum MutationError {
     #[error("Database error: {0}")]
-    DatabaseError(#[from] libsql::Error),
+    Database(#[from] libsql::Error),
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    Serialization(#[from] serde_json::Error),
     #[error("Chrono parse error: {0}")]
-    ChronoParseError(#[from] chrono::ParseError),
+    ChronoParse(#[from] chrono::ParseError),
     #[error("Generic error: {0}")]
-    GenericError(#[from] Box<dyn std::error::Error + Send + Sync>),
+    Generic(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub type MutationResult<T> = Result<T, MutationError>;

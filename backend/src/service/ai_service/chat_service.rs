@@ -236,10 +236,10 @@ impl AIChatService {
         self.update_session_last_message(conn, &session.id).await?;
 
         // If this is a new session (title is "New Chat"), update it with a summary of the first message
-        if session.title.as_ref().map_or(false, |t| t == "New Chat") {
-            if let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await {
-                log::warn!("Failed to update session title: {}", e);
-            }
+        if session.title.as_ref().is_some_and(|t| t == "New Chat")
+            && let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await
+        {
+            log::warn!("Failed to update session title: {}", e);
         }
 
         let processing_time = start_time.elapsed().as_millis() as u64;
@@ -380,10 +380,10 @@ impl AIChatService {
         self.update_session_last_message(conn, &session.id).await?;
 
         // If this is a new session (title is "New Chat"), update it with a summary of the first message
-        if session.title.as_ref().map_or(false, |t| t == "New Chat") {
-            if let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await {
-                log::warn!("Failed to update session title: {}", e);
-            }
+        if session.title.as_ref().is_some_and(|t| t == "New Chat")
+            && let Err(e) = self.update_session_title_from_message(conn, &session.id, user_id, &request.message).await
+        {
+            log::warn!("Failed to update session title: {}", e);
         }
 
         // Create channel for frontend
@@ -891,7 +891,7 @@ impl AIChatService {
         if !title.is_empty() {
             let mut chars = title.chars();
             if let Some(first_char) = chars.next() {
-                title = first_char.to_uppercase().collect::<String>() + &chars.as_str();
+                title = first_char.to_uppercase().collect::<String>() + chars.as_str();
             }
         }
         

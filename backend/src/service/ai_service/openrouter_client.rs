@@ -285,8 +285,7 @@ impl OpenRouterClient {
                 log::debug!("Processing line: {}", line);
                 
                 // Parse SSE format: data: {...}
-                if line.starts_with("data: ") {
-                    let json_str = &line[6..]; // Remove "data: " prefix
+                if let Some(json_str) = line.strip_prefix("data: ") {
                     log::debug!("Parsing JSON: {}", json_str);
                     
                     if json_str == "[DONE]" {
@@ -297,13 +296,13 @@ impl OpenRouterClient {
                     match serde_json::from_str::<StreamChunk>(json_str) {
                         Ok(stream_chunk) => {
                             if let Some(choice) = stream_chunk.choices.first() {
-                                if let Some(delta) = &choice.delta {
-                                    if let Some(content) = &delta.content {
-                                        log::debug!("Sending content: {}", content);
-                                        if let Err(e) = tx.send(content.clone()).await {
-                                            log::error!("Failed to send content through channel: {}", e);
-                                            break;
-                                        }
+                                if let Some(delta) = &choice.delta
+                                    && let Some(content) = &delta.content
+                                {
+                                    log::debug!("Sending content: {}", content);
+                                    if let Err(e) = tx.send(content.clone()).await {
+                                        log::error!("Failed to send content through channel: {}", e);
+                                        break;
                                     }
                                 }
                                 
@@ -345,7 +344,7 @@ impl OpenRouterClient {
 
         let response = self
             .client
-            .post(&self.config.get_chat_url())
+            .post(self.config.get_chat_url())
             .headers(headers)
             .json(request)
             .send()
@@ -451,12 +450,12 @@ pub enum MessageRole {
     System,
 }
 
-impl ToString for MessageRole {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MessageRole::User => "user".to_string(),
-            MessageRole::Assistant => "assistant".to_string(),
-            MessageRole::System => "system".to_string(),
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::System => write!(f, "system"),
         }
     }
 }

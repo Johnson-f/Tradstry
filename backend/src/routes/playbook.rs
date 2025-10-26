@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use log::{info, error};
 
-use crate::models::playbook::playbook::{
+use crate::models::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
 };
 use crate::turso::client::TursoClient;
@@ -77,11 +77,8 @@ fn extract_token_from_request(req: &HttpRequest) -> Option<String> {
         .get("Authorization")
         .and_then(|header| header.to_str().ok())
         .and_then(|auth_header| {
-            if auth_header.starts_with("Bearer ") {
-                Some(auth_header[7..].to_string())
-            } else {
-                None
-            }
+            auth_header.strip_prefix("Bearer ")
+                .map(|token| token.to_string())
         })
 }
 
@@ -104,11 +101,11 @@ async fn get_user_database_connection(
     user_id: &str,
     turso_client: &Arc<TursoClient>,
 ) -> Result<Connection, actix_web::Error> {
-    Ok(turso_client
+    turso_client
         .get_user_database_connection(user_id)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {}", e)))?
-        .ok_or_else(|| actix_web::error::ErrorNotFound("User database not found"))?)
+        .ok_or_else(|| actix_web::error::ErrorNotFound("User database not found"))
 }
 
 /// Create a new playbook setup

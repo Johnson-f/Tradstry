@@ -37,7 +37,7 @@ impl NotebookNote {
     pub async fn create(conn: &Connection, req: CreateNoteRequest) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        let position = if let Some(pos) = req.position { pos } else { 0 };
+        let position = req.position.unwrap_or_default();
         let content = req.content.unwrap_or_else(|| Value::Array(vec![]));
         let content_str = serde_json::to_string(&content)?;
 
@@ -162,7 +162,7 @@ impl NotebookNote {
 
     fn from_row(row: libsql::Row) -> Result<Self> {
         let content_str: String = row.get(3)?;
-        let content = serde_json::from_str(&content_str).unwrap_or_else(|_| Value::String(content_str));
+        let content = serde_json::from_str(&content_str).unwrap_or(Value::String(content_str));
         
         Ok(Self {
             id: row.get(0)?,
@@ -170,7 +170,7 @@ impl NotebookNote {
             title: row.get(2)?,
             content,
             position: row.get(4)?,
-            is_deleted: match row.get::<i64>(5)? { 0 => false, _ => true },
+            is_deleted: !matches!(row.get::<i64>(5)?, 0),
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
         })
