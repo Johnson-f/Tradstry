@@ -1,0 +1,160 @@
+# Dependencies (Vercel installs these automatically)
+node_modules/
+.pnp
+.pnp.js
+
+# Build output (handled by Vercel)
+.next/
+out/
+dist/
+build/
+
+# TypeScript build info
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Rust backend (not deployed on Vercel)
+backend/
+*.rs
+Cargo.toml
+Cargo.lock
+target/
+
+# Environment files (use Vercel's env vars instead)
+.env
+.env*.local
+.env.production
+.env.development
+.env.test
+
+# Docker files (not needed for Vercel)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+.dockerignore.backup
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.cursor/
+.cursorignore
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+.vitest/
+jest.config.*
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Documentation
+README.md
+docs/
+*.md
+**/README.md
+**/*.md
+
+# Scripts (not needed on Vercel)
+scripts/
+*.sh
+start.sh
+
+# Nginx (not needed on Vercel)
+nginx/
+*.conf
+
+# Training & Development Data
+backend/training-data/
+**/training-data/
+*.csv
+*.json
+
+# Build Documentation
+backend/build-docs/
+**/build-docs/
+
+# Edge Functions (can deploy separately if needed)
+# Edge Functions/
+
+# Large Media Files
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.webm
+*.avi
+*.flv
+*.mkv
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# Logs
+*.log
+nginx/logs/*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.pid
+*.seed
+*.pid.lock
+*.tmp
+*.cache
+.next/cache
+
+# Package manager locks (keep pnpm-lock.yaml)
+yarn.lock
+package-lock.json
+
+# Backend Rust lock
+Cargo.lock
+
+# Edge Functions Deno lock
+deno.lock
+
+# Other project files
+Production-code.json
+TODO.md
+WARP.md
+GEMINI.md
+QUICK_DEPLOY.md
+*.backup
+*.bak
+index.ts
+
+
+

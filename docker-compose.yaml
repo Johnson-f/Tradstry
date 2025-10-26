@@ -12,7 +12,7 @@ services:
     networks:
       - tradstry-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -25,6 +25,9 @@ services:
           memory: 256M
 
   backend:
+    build:
+      context: .
+      dockerfile: backend/dockerfile
     image: johnsonf/tradstry-backend:latest
     container_name: tradstry-backend
     restart: unless-stopped
@@ -41,7 +44,7 @@ services:
     networks:
       - tradstry-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
       interval: 30s
       timeout: 10s
       retries: 5
