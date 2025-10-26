@@ -208,8 +208,8 @@ async fn main() -> std::io::Result<()> {
                         .route("/pull", web::post().to(handle_pull))
                 );
             })
-            .configure(configure_auth_routes)
             .configure(configure_public_routes)
+            .configure(configure_auth_routes)
     })
     .bind(("0.0.0.0", port))?
     .run()
