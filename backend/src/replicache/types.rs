@@ -55,6 +55,7 @@ pub enum PatchOp {
 
 // Client state tracking
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ClientState {
     #[serde(rename = "clientGroupID")]
     pub client_group_id: String,
@@ -71,6 +72,7 @@ pub struct ClientState {
 
 // Space version tracking
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SpaceVersion {
     pub id: i32,
     pub version: u64,
@@ -78,6 +80,7 @@ pub struct SpaceVersion {
 
 // Data transformation types for key-value storage
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct StockKV {
     pub id: i64,
     pub user_id: String,
@@ -98,6 +101,7 @@ pub struct StockKV {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct OptionKV {
     pub id: i64,
     pub user_id: String,
@@ -122,6 +126,7 @@ pub struct OptionKV {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct NoteKV {
     pub id: String,
     pub user_id: String,
@@ -133,6 +138,7 @@ pub struct NoteKV {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PlaybookKV {
     pub id: String,
     pub user_id: String,
