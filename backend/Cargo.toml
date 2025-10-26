@@ -1,7 +1,11 @@
 [package]
 name = "Tradstry-backend"
 version = "0.0.1"
-edition = "2024"
+edition = "2021"
+
+[[bin]]
+name = "tradstry-backend" 
+path = "src/main.rs"
 
 [dependencies]
 # Actix Web framework
