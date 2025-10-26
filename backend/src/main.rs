@@ -98,15 +98,27 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         log::info!("Creating new App instance");
 
-        // Production CORS configuration - only allow https://tradstry.com
+        // CORS configuration - supports multiple origins for separated deployment
         let allowed_origins = std::env::var("ALLOWED_ORIGINS")
-            .unwrap_or_else(|_| "https://tradstry.com".to_string());
+            .unwrap_or_else(|_| "https://tradstry.com,http://localhost:3000".to_string());
+        
+        // Parse multiple origins from environment variable
+        let origins: Vec<&str> = allowed_origins
+            .split(',')
+            .map(|s| s.trim())
+            .collect();
         
         let cors = if std::env::var("RUST_ENV").unwrap_or_default() == "production" {
-            // Production: strict CORS
-            Cors::default()
-                .allowed_origin(&allowed_origins)
-                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            // Production: strict CORS with multiple allowed origins
+            let mut cors = Cors::default();
+            
+            // Add each allowed origin
+            for origin in &origins {
+                cors = cors.allowed_origin(*origin);
+            }
+            
+            cors
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
                 .allowed_headers(vec![
                     actix_web::http::header::AUTHORIZATION,
                     actix_web::http::header::CONTENT_TYPE,
@@ -115,11 +127,11 @@ async fn main() -> std::io::Result<()> {
                 .allow_credentials(true)
                 .max_age(3600)
         } else {
-            // Development: allow localhost
+            // Development: allow localhost and production domains
             Cors::default()
                 .allowed_origin("http://localhost:3000")
                 .allowed_origin("https://tradstry.com")
-                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
                 .allowed_headers(vec![
                     actix_web::http::header::AUTHORIZATION,
                     actix_web::http::header::CONTENT_TYPE,
@@ -199,7 +211,7 @@ async fn main() -> std::io::Result<()> {
             .configure(configure_auth_routes)
             .configure(configure_public_routes)
     })
-    .bind(("127.0.0.1", port))?
+    .bind(("0.0.0.0", port))?
     .run()
     .await
 }
