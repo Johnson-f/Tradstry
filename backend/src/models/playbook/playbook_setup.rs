@@ -9,6 +9,9 @@ pub struct Playbook {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub icon: Option<String>,
+    pub emoji: Option<String>,
+    pub color: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -18,6 +21,9 @@ pub struct Playbook {
 pub struct CreatePlaybookRequest {
     pub name: String,
     pub description: Option<String>,
+    pub icon: Option<String>,
+    pub emoji: Option<String>,
+    pub color: Option<String>,
 }
 
 /// Data Transfer Object for updating playbook setups
@@ -25,6 +31,9 @@ pub struct CreatePlaybookRequest {
 pub struct UpdatePlaybookRequest {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub icon: Option<String>,
+    pub emoji: Option<String>,
+    pub color: Option<String>,
 }
 
 /// Playbook query parameters for filtering and pagination
@@ -80,11 +89,14 @@ impl Playbook {
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT INTO playbook (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO playbook (id, name, description, icon, emoji, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             libsql::params![
                 id.clone(),
                 request.name,
                 request.description,
+                request.icon,
+                request.emoji,
+                request.color,
                 now.clone(),
                 now
             ],
@@ -99,7 +111,7 @@ impl Playbook {
         playbook_id: &str,
     ) -> Result<Option<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
-            .prepare("SELECT id, name, description, created_at, updated_at FROM playbook WHERE id = ?")
+            .prepare("SELECT id, name, description, icon, emoji, color, created_at, updated_at FROM playbook WHERE id = ?")
             .await?
             .query(libsql::params![playbook_id])
             .await?;
@@ -116,7 +128,7 @@ impl Playbook {
         conn: &Connection,
         query: PlaybookQuery,
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut sql = "SELECT id, name, description, created_at, updated_at FROM playbook".to_string();
+        let mut sql = "SELECT id, name, description, icon, emoji, color, created_at, updated_at FROM playbook".to_string();
         let mut params = Vec::new();
         let mut conditions = Vec::new();
 
@@ -179,6 +191,21 @@ impl Playbook {
         if let Some(description) = request.description {
             set_clauses.push("description = ?");
             params.push(description);
+        }
+
+        if let Some(icon) = request.icon {
+            set_clauses.push("icon = ?");
+            params.push(icon);
+        }
+
+        if let Some(emoji) = request.emoji {
+            set_clauses.push("emoji = ?");
+            params.push(emoji);
+        }
+
+        if let Some(color) = request.color {
+            set_clauses.push("color = ?");
+            params.push(color);
         }
 
         if set_clauses.is_empty() {
@@ -286,7 +313,7 @@ impl Playbook {
         let offset = (page - 1) * page_size;
         
         let mut rows = conn
-            .prepare("SELECT id, name, description, created_at, updated_at FROM playbook ORDER BY updated_at DESC, name LIMIT ? OFFSET ?")
+            .prepare("SELECT id, name, description, icon, emoji, color, created_at, updated_at FROM playbook ORDER BY updated_at DESC, name LIMIT ? OFFSET ?")
             .await?
             .query(libsql::params![page_size, offset])
             .await?;
@@ -479,8 +506,323 @@ impl Playbook {
             id: row.get(0)?,
             name: row.get(1)?,
             description: row.get(2)?,
-            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(3)?)?.with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&row.get::<String>(4)?)?.with_timezone(&Utc),
+            icon: row.get(3)?,
+            emoji: row.get(4)?,
+            color: row.get(5)?,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<String>(7)?)?.with_timezone(&Utc),
+        })
+    }
+}
+
+/// Rule type enum for playbook rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuleType {
+    #[serde(rename = "entry_criteria")]
+    EntryCriteria,
+    #[serde(rename = "exit_criteria")]
+    ExitCriteria,
+    #[serde(rename = "market_factor")]
+    MarketFactor,
+}
+
+/// Playbook rule for trading strategies
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybookRule {
+    pub id: String,
+    pub playbook_id: String,
+    pub rule_type: RuleType,
+    pub title: String,
+    pub description: Option<String>,
+    pub order_position: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Data Transfer Object for creating rules
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateRuleRequest {
+    pub rule_type: RuleType,
+    pub title: String,
+    pub description: Option<String>,
+    pub order_position: Option<i32>,
+}
+
+/// Data Transfer Object for updating rules
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateRuleRequest {
+    pub rule_type: Option<RuleType>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub order_position: Option<i32>,
+}
+
+/// Trade rule compliance tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeRuleCompliance {
+    pub id: String,
+    pub trade_id: i64,
+    pub playbook_id: String,
+    pub rule_id: String,
+    pub is_followed: bool,
+    pub notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Data Transfer Object for updating compliance
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateRuleComplianceRequest {
+    pub rule_id: String,
+    pub is_followed: bool,
+    pub notes: Option<String>,
+}
+
+/// Missed trade opportunity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MissedTrade {
+    pub id: String,
+    pub playbook_id: String,
+    pub symbol: String,
+    pub trade_type: String,
+    pub reason: String,
+    pub potential_entry_price: Option<f64>,
+    pub opportunity_date: DateTime<Utc>,
+    pub notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Data Transfer Object for creating missed trades
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateMissedTradeRequest {
+    pub playbook_id: String,
+    pub symbol: String,
+    pub trade_type: String,
+    pub reason: String,
+    pub potential_entry_price: Option<f64>,
+    pub opportunity_date: DateTime<Utc>,
+    pub notes: Option<String>,
+}
+
+impl PlaybookRule {
+    /// Create a new playbook rule
+    #[allow(dead_code)]
+    pub async fn create(
+        conn: &Connection,
+        playbook_id: &str,
+        request: CreateRuleRequest,
+    ) -> Result<PlaybookRule, Box<dyn std::error::Error + Send + Sync>> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO playbook_rules (id, playbook_id, rule_type, title, description, order_position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            libsql::params![
+                id.clone(),
+                playbook_id,
+                serde_json::to_string(&request.rule_type)?,
+                request.title,
+                request.description,
+                request.order_position.unwrap_or(0),
+                now.clone(),
+                now
+            ],
+        ).await?;
+
+        Self::find_by_id(conn, &id).await?.ok_or_else(|| "Failed to retrieve created rule".into())
+    }
+
+    /// Find a rule by ID
+    #[allow(dead_code)]
+    pub async fn find_by_id(
+        conn: &Connection,
+        rule_id: &str,
+    ) -> Result<Option<PlaybookRule>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare("SELECT id, playbook_id, rule_type, title, description, order_position, created_at, updated_at FROM playbook_rules WHERE id = ?")
+            .await?
+            .query(libsql::params![rule_id])
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            Ok(Some(Self::from_row(&row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Find all rules for a playbook
+    #[allow(dead_code)]
+    pub async fn find_by_playbook_id(
+        conn: &Connection,
+        playbook_id: &str,
+    ) -> Result<Vec<PlaybookRule>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare("SELECT id, playbook_id, rule_type, title, description, order_position, created_at, updated_at FROM playbook_rules WHERE playbook_id = ? ORDER BY order_position")
+            .await?
+            .query(libsql::params![playbook_id])
+            .await?;
+
+        let mut rules = Vec::new();
+        while let Some(row) = rows.next().await? {
+            rules.push(Self::from_row(&row)?);
+        }
+
+        Ok(rules)
+    }
+
+    /// Update a rule
+    #[allow(dead_code)]
+    pub async fn update(
+        conn: &Connection,
+        rule_id: &str,
+        request: UpdateRuleRequest,
+    ) -> Result<PlaybookRule, Box<dyn std::error::Error + Send + Sync>> {
+        let mut updates = Vec::new();
+        let mut params: Vec<libsql::Value> = Vec::new();
+
+        if let Some(rule_type) = request.rule_type {
+            updates.push("rule_type = ?");
+            params.push(libsql::Value::Text(serde_json::to_string(&rule_type)?));
+        }
+
+        if let Some(title) = request.title {
+            updates.push("title = ?");
+            params.push(libsql::Value::Text(title));
+        }
+
+        if let Some(description) = request.description {
+            updates.push("description = ?");
+            params.push(libsql::Value::Text(description));
+        }
+
+        if let Some(order_position) = request.order_position {
+            updates.push("order_position = ?");
+            params.push(libsql::Value::Integer(order_position as i64));
+        }
+
+        if !updates.is_empty() {
+            params.push(libsql::Value::Text(rule_id.to_string()));
+            let sql = format!("UPDATE playbook_rules SET {} WHERE id = ?", updates.join(", "));
+            conn.execute(&sql, libsql::params_from_iter(params)).await?;
+        }
+
+        Self::find_by_id(conn, rule_id).await?.ok_or_else(|| "Failed to retrieve updated rule".into())
+    }
+
+    /// Delete a rule
+    #[allow(dead_code)]
+    pub async fn delete(
+        conn: &Connection,
+        rule_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        conn.execute("DELETE FROM playbook_rules WHERE id = ?", libsql::params![rule_id]).await?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn from_row(row: &libsql::Row) -> Result<PlaybookRule, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(PlaybookRule {
+            id: row.get(0)?,
+            playbook_id: row.get(1)?,
+            rule_type: serde_json::from_str(&row.get::<String>(2)?)?,
+            title: row.get(3)?,
+            description: row.get(4)?,
+            order_position: row.get(5)?,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<String>(7)?)?.with_timezone(&Utc),
+        })
+    }
+}
+
+impl MissedTrade {
+    /// Create a new missed trade
+    #[allow(dead_code)]
+    pub async fn create(
+        conn: &Connection,
+        request: CreateMissedTradeRequest,
+    ) -> Result<MissedTrade, Box<dyn std::error::Error + Send + Sync>> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO missed_trades (id, playbook_id, symbol, trade_type, reason, potential_entry_price, opportunity_date, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            libsql::params![
+                id.clone(),
+                request.playbook_id,
+                request.symbol,
+                request.trade_type,
+                request.reason,
+                request.potential_entry_price,
+                request.opportunity_date.to_rfc3339(),
+                request.notes,
+                now
+            ],
+        ).await?;
+
+        Self::find_by_id(conn, &id).await?.ok_or_else(|| "Failed to retrieve created missed trade".into())
+    }
+
+    /// Find a missed trade by ID
+    #[allow(dead_code)]
+    pub async fn find_by_id(
+        conn: &Connection,
+        missed_id: &str,
+    ) -> Result<Option<MissedTrade>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare("SELECT id, playbook_id, symbol, trade_type, reason, potential_entry_price, opportunity_date, notes, created_at FROM missed_trades WHERE id = ?")
+            .await?
+            .query(libsql::params![missed_id])
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            Ok(Some(Self::from_row(&row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Find all missed trades for a playbook
+    #[allow(dead_code)]
+    pub async fn find_by_playbook_id(
+        conn: &Connection,
+        playbook_id: &str,
+    ) -> Result<Vec<MissedTrade>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare("SELECT id, playbook_id, symbol, trade_type, reason, potential_entry_price, opportunity_date, notes, created_at FROM missed_trades WHERE playbook_id = ? ORDER BY opportunity_date DESC")
+            .await?
+            .query(libsql::params![playbook_id])
+            .await?;
+
+        let mut trades = Vec::new();
+        while let Some(row) = rows.next().await? {
+            trades.push(Self::from_row(&row)?);
+        }
+
+        Ok(trades)
+    }
+
+    /// Delete a missed trade
+    #[allow(dead_code)]
+    pub async fn delete(
+        conn: &Connection,
+        missed_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        conn.execute("DELETE FROM missed_trades WHERE id = ?", libsql::params![missed_id]).await?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn from_row(row: &libsql::Row) -> Result<MissedTrade, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(MissedTrade {
+            id: row.get(0)?,
+            playbook_id: row.get(1)?,
+            symbol: row.get(2)?,
+            trade_type: row.get(3)?,
+            reason: row.get(4)?,
+            potential_entry_price: row.get(5)?,
+            opportunity_date: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
+            notes: row.get(7)?,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(8)?)?.with_timezone(&Utc),
         })
     }
 }

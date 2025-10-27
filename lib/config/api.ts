@@ -108,6 +108,15 @@ export const apiConfig = {
       untag: "/playbooks/untag",
       byTrade: (tradeId: number) => `/playbooks/trades/${tradeId}`,
       trades: (setupId: string) => `/playbooks/${setupId}/trades`,
+      // Rules management
+      rules: (id: string) => `/playbooks/${id}/rules`,
+      rule: (id: string, ruleId: string) => `/playbooks/${id}/rules/${ruleId}`,
+      // Missed trades
+      missedTrades: (id: string) => `/playbooks/${id}/missed-trades`,
+      missedTrade: (id: string, missedId: string) => `/playbooks/${id}/missed-trades/${missedId}`,
+      // Analytics
+      analytics: (id: string) => `/playbooks/${id}/analytics`,
+      allAnalytics: "/playbooks/analytics",
     },
 
     // Replicache endpoints
@@ -152,21 +161,16 @@ export const apiConfig = {
       },
     },
 
-    // Analytics endpoints (Legacy or different service)
-      portfolio: "/analytics/portfolio",
-      portfolioCombined: "/analytics/portfolio/combined",
-      portfolioCombinedSummary: (periodType: string) =>
-        `/analytics/portfolio/combined/summary/${periodType}`,
-      combinedTradeMetrics: "/analytics/combined-trade-metrics",
-      combined: {
-        averagePositionSize: "/analytics/combined/average-position-size",
-        averageRiskPerTrade: "/analytics/combined/average-risk-per-trade",
-        lossRate: "/analytics/combined/loss-rate",
-      },
-      dailyPnLTrades: "/analytics/daily-pnl-trades",
-      tickerProfitSummary: "/analytics/ticker-profit-summary",
-      weeklyMetrics: "/analytics/metrics/weekly",
-      monthlyMetrics: "/analytics/metrics/monthly",
+    // Analytics endpoints
+    analytics: {
+      // Core analytics engine endpoints (from analytics.rs)
+      core: "/analytics/core",
+      risk: "/analytics/risk",
+      performance: "/analytics/performance",
+      timeSeries: "/analytics/time-series",
+      grouped: "/analytics/grouped",
+      comprehensive: "/analytics/comprehensive",
+    },
 
 
     // AI endpoints

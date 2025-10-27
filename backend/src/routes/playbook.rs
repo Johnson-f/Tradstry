@@ -8,10 +8,12 @@ use log::{info, error};
 use crate::models::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
 };
+use crate::models::stock::stocks::TimeRange;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
 use crate::service::cache_service::CacheService;
+use crate::service::analytics_engine::playbook_analytics::calculate_playbook_analytics;
 
 /// Response wrapper for playbook operations
 #[derive(Debug, Serialize)]
@@ -534,6 +536,7 @@ async fn test_playbook_endpoint() -> ActixResult<HttpResponse> {
 pub fn configure_playbook_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/playbooks")
+            // Existing playbook CRUD
             .route("", web::post().to(create_playbook))
             .route("", web::get().to(get_playbooks))
             .route("/count", web::get().to(get_playbooks_count))
@@ -545,5 +548,161 @@ pub fn configure_playbook_routes(cfg: &mut web::ServiceConfig) {
             .route("/untag", web::delete().to(untag_trade))
             .route("/trades/{trade_id}", web::get().to(get_trade_playbooks))
             .route("/{setup_id}/trades", web::get().to(get_playbook_trades))
+            // Rules management
+            .route("/{id}/rules", web::post().to(create_playbook_rule))
+            .route("/{id}/rules", web::get().to(get_playbook_rules))
+            .route("/{id}/rules/{rule_id}", web::put().to(update_playbook_rule))
+            .route("/{id}/rules/{rule_id}", web::delete().to(delete_playbook_rule))
+            // Missed trades
+            .route("/{id}/missed-trades", web::post().to(create_missed_trade))
+            .route("/{id}/missed-trades", web::get().to(get_missed_trades))
+            .route("/{id}/missed-trades/{missed_id}", web::delete().to(delete_missed_trade))
+            // Analytics
+            .route("/{id}/analytics", web::get().to(get_playbook_analytics))
+            .route("/analytics", web::get().to(get_all_playbooks_analytics))
     );
+}
+
+// New route handlers (placeholders - will implement)
+async fn create_playbook_rule() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn get_playbook_rules() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn update_playbook_rule() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn delete_playbook_rule() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn create_missed_trade() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn get_missed_trades() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn delete_missed_trade() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+/// Get analytics for a specific playbook
+async fn get_playbook_analytics(
+    req: HttpRequest,
+    path: web::Path<(String,)>,
+    web::Query(params): web::Query<std::collections::HashMap<String, String>>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let playbook_id = &path.0;
+    info!("Getting analytics for playbook: {}", playbook_id);
+
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    // Parse time range from query params (default to all time)
+    let time_range = params.get("timeRange")
+        .and_then(|s| serde_json::from_str::<TimeRange>(s).ok())
+        .unwrap_or(TimeRange::AllTime);
+
+    match calculate_playbook_analytics(&conn, &playbook_id, &time_range).await {
+        Ok(analytics) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": "Playbook analytics retrieved successfully",
+            "data": analytics
+        }))),
+        Err(e) => {
+            error!("Failed to calculate playbook analytics: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to retrieve playbook analytics: {}", e),
+                "data": null
+            })))
+        }
+    }
+}
+
+/// Get analytics for all playbooks
+async fn get_all_playbooks_analytics(
+    req: HttpRequest,
+    web::Query(params): web::Query<std::collections::HashMap<String, String>>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    info!("Getting analytics for all playbooks");
+
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    // Parse time range from query params (default to all time)
+    let time_range = params.get("timeRange")
+        .and_then(|s| serde_json::from_str::<TimeRange>(s).ok())
+        .unwrap_or(TimeRange::AllTime);
+
+    // Get all playbooks for this user
+    match Playbook::find_all(&conn, PlaybookQuery {
+        name: None,
+        search: None,
+        limit: None,
+        offset: None,
+    }).await {
+        Ok(playbooks) => {
+            let mut all_analytics = Vec::new();
+            
+            for playbook in playbooks {
+                match calculate_playbook_analytics(&conn, &playbook.id, &time_range).await {
+                    Ok(analytics) => all_analytics.push(analytics),
+                    Err(e) => {
+                        error!("Failed to calculate analytics for playbook {}: {}", playbook.id, e);
+                    }
+                }
+            }
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "All playbooks analytics retrieved successfully",
+                "data": all_analytics,
+                "total": all_analytics.len()
+            })))
+        }
+        Err(e) => {
+            error!("Failed to get playbooks: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to retrieve playbooks: {}", e),
+                "data": null
+            })))
+        }
+    }
 }
