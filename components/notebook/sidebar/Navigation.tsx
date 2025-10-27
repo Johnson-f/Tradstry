@@ -51,15 +51,15 @@ const Navigation = () => {
     } else {
       resetWidth();
     }
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  }, [isMobile, resetWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
 
   useEffect(() => {
     if (isMobile) {
       collapse();
     }
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  }, [pathname, isMobile, resetWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const handleMouseDown = (
     event: React.MouseEvent<HTMLDivElement, MouseEvent>,
@@ -137,7 +137,8 @@ const Navigation = () => {
     };
     window.addEventListener("notebook:sidebar-open", openHandler);
     return () => window.removeEventListener("notebook:sidebar-open", openHandler);
-  }, [resetWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreate = () => {
     const promise = createNote({ title: "Untitled" }).then((note) => {
