@@ -98,7 +98,7 @@ impl<T> AnalyticsResponse<T> {
     }
 }
 
-/// Get core analytics metrics
+/// Get core analytics metrics (from core_metrics.rs)
 pub async fn get_core_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -120,7 +120,7 @@ pub async fn get_core_analytics(
     }
 }
 
-/// Get risk analytics metrics
+/// Get risk analytics metrics (from risk_metrics.rs)
 pub async fn get_risk_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -143,7 +143,7 @@ pub async fn get_risk_analytics(
     }
 }
 
-/// Get performance analytics metrics
+/// Get performance analytics metrics (from performance_metrics.rs)
 pub async fn get_performance_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -165,7 +165,7 @@ pub async fn get_performance_analytics(
     }
 }
 
-/// Get time series analytics data
+/// Get time series analytics data (from time_series.rs)
 pub async fn get_time_series_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -188,7 +188,7 @@ pub async fn get_time_series_analytics(
     }
 }
 
-/// Get grouped analytics data
+/// Get grouped analytics data (from grouping.rs)
 pub async fn get_grouped_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -211,7 +211,7 @@ pub async fn get_grouped_analytics(
     }
 }
 
-/// Get comprehensive analytics (all metrics combined)
+/// Get comprehensive analytics (all metrics combined from core_metrics.rs, risk_metrics.rs, performance_metrics.rs, time_series.rs, grouping.rs)
 pub async fn get_comprehensive_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
