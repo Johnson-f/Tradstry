@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Plus, Search, MoreVertical, Edit, Trash2 } from 'lucide-react';
@@ -39,18 +39,13 @@ export default function PlaybookPage() {
     getUser();
   }, []);
 
-  // Filter playbooks when search changes
-  useEffect(() => {
-    filterPlaybooks();
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  }, [filterPlaybooks]);
-
   // Set loading state based on initialization
   useEffect(() => {
     setLoading(!isInitialized);
   }, [isInitialized]);
 
-  const filterPlaybooks = useCallback(() => {
+  // Filter playbooks when search or playbooks change
+  useEffect(() => {
     // Ensure playbooks is always an array
     const playbooksArray = Array.isArray(playbooks) ? playbooks : [];
     let filtered = [...playbooksArray];
