@@ -407,7 +407,8 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [docId, editor, syncToBackend]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]);
 
   // Initialize image tracking when content loads
   useEffect(() => {
@@ -416,7 +417,8 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
       previousImageIdsRef.current = initialImageIds;
       console.log('Initialized image tracking with', initialImageIds.size, 'images');
     }
-  }, [processedInitialContent, extractImageIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processedInitialContent]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -434,7 +436,8 @@ export default function BlockEditor({ onChange, onTitleChange, initialContent, e
         });
       }
     }
-  }, [docId, editor, initialContent, processContentWithImageUrls, extractImageIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId, initialContent]);
 
   return (
     <div 
