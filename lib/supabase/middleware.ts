@@ -41,9 +41,7 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   // Define protected routes that require authentication
-  const isProtectedRoute = 
-    request.nextUrl.pathname.startsWith("/app") &&
-    request.nextUrl.pathname !== "/app";
+  const isProtectedRoute = request.nextUrl.pathname.startsWith("/app");
   
   // Define public routes
   const publicRoutes = [
@@ -63,6 +61,13 @@ export async function updateSession(request: NextRequest) {
   if (isProtectedRoute && !user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+  
+  // Redirect authenticated users away from auth pages (except error pages)
+  if (user && request.nextUrl.pathname.startsWith("/auth") && !request.nextUrl.pathname.includes("/error")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/app";
     return NextResponse.redirect(url);
   }
 
