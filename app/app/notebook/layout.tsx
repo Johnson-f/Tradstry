@@ -8,9 +8,6 @@ import NotebookNavbar from "@/components/notebook/Navbar";
 import NewNoteButton from "@/components/notebook/NewNoteButton";
 import { ArrowLeft, Menu } from "lucide-react";
 
-// Add this line
-export const dynamic = 'force-dynamic';
-
 export default function NotebookLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarWidth, setSidebarWidth] = React.useState<number>(240);
