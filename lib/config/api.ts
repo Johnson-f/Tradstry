@@ -3,7 +3,7 @@ const API_BASE_URL =
 
 export const apiConfig = {
   baseURL: API_BASE_URL,
-  apiPrefix: "",
+  apiPrefix: "/api",
   endpoints: {
     // Root - unimportant endpoint 
     root: "/",
