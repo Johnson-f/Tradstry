@@ -2,23 +2,14 @@
 
 import DashboardContent from "./dashboard-content";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 export default function HomePage() {
-  const { isAuthenticated, loading } = useAuth();
-  const router = useRouter();
+  const { loading } = useAuth();
 
-  useEffect(() => {
-    // Only redirect if we're NOT in loading state AND not authenticated
-    if (!loading && !isAuthenticated) {
-      router.push("/auth/login");
-    }
-  }, [isAuthenticated, loading, router]);
-
-  // Show loading state during auth check
-  if (loading || !isAuthenticated) {
+  // AuthWrapper already handles authentication and redirects
+  // We just need to show loading state while checking
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex items-center gap-2">
@@ -29,5 +20,6 @@ export default function HomePage() {
     );
   }
 
+  // If we reach here, user is authenticated (AuthWrapper ensures this)
   return <DashboardContent />;
 }
