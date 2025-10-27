@@ -3,7 +3,6 @@ pub mod risk_metrics;
 pub mod performance_metrics;
 pub mod time_series;
 pub mod grouping;
-pub mod aggregator;
 
 use anyhow::Result;
 use libsql::Connection;

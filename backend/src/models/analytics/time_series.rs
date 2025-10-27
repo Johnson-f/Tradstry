@@ -29,4 +29,5 @@ pub struct TimeSeriesData {
     pub cumulative_return: f64,
     pub annualized_return: f64,
     pub total_return_percentage: f64,
+    pub total_trades: u32,
 }

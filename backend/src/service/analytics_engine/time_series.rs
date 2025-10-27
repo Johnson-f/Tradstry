@@ -1,3 +1,9 @@
+// Shows portfolio and performance trends as they evolve, answering:
+// Is profitability improving or declining?
+// Which days/months perform best?
+// Are you controlling risk over time?
+
+
 use anyhow::Result;
 use libsql::Connection;
 use std::collections::HashMap;
@@ -54,6 +60,9 @@ pub async fn calculate_time_series_data(
         0.0
     };
 
+    // Calculate total trades
+    let total_trades = daily_pnl.iter().map(|p| p.trade_count).sum();
+
     Ok(TimeSeriesData {
         daily_pnl,
         weekly_pnl,
@@ -69,6 +78,7 @@ pub async fn calculate_time_series_data(
         cumulative_return,
         annualized_return,
         total_return_percentage,
+        total_trades,
     })
 }
 
@@ -82,7 +92,8 @@ async fn calculate_daily_pnl_series(
         r#"
         SELECT 
             DATE(exit_date) as trade_date,
-            SUM(calculated_pnl) as daily_pnl
+            SUM(calculated_pnl) as daily_pnl,
+            COUNT(*) as trade_count
         FROM (
             SELECT 
                 *,
@@ -129,6 +140,7 @@ async fn calculate_daily_pnl_series(
     while let Some(row) = rows.next().await? {
         let date = row.get::<String>(0).unwrap_or_default();
         let daily_pnl = row.get::<f64>(1).unwrap_or(0.0);
+        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
         
         cumulative_value += daily_pnl;
         
@@ -136,6 +148,7 @@ async fn calculate_daily_pnl_series(
             date,
             value: daily_pnl,
             cumulative_value,
+            trade_count,
         });
     }
 
@@ -152,7 +165,8 @@ async fn calculate_weekly_pnl_series(
         r#"
         SELECT 
             strftime('%Y-W%W', exit_date) as week,
-            SUM(calculated_pnl) as weekly_pnl
+            SUM(calculated_pnl) as weekly_pnl,
+            COUNT(*) as trade_count
         FROM (
             SELECT 
                 *,
@@ -199,6 +213,7 @@ async fn calculate_weekly_pnl_series(
     while let Some(row) = rows.next().await? {
         let week = row.get::<String>(0).unwrap_or_default();
         let weekly_pnl = row.get::<f64>(1).unwrap_or(0.0);
+        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
         
         cumulative_value += weekly_pnl;
         
@@ -206,6 +221,7 @@ async fn calculate_weekly_pnl_series(
             date: week,
             value: weekly_pnl,
             cumulative_value,
+            trade_count,
         });
     }
 
@@ -222,7 +238,8 @@ async fn calculate_monthly_pnl_series(
         r#"
         SELECT 
             strftime('%Y-%m', exit_date) as month,
-            SUM(calculated_pnl) as monthly_pnl
+            SUM(calculated_pnl) as monthly_pnl,
+            COUNT(*) as trade_count
         FROM (
             SELECT 
                 *,
@@ -269,6 +286,7 @@ async fn calculate_monthly_pnl_series(
     while let Some(row) = rows.next().await? {
         let month = row.get::<String>(0).unwrap_or_default();
         let monthly_pnl = row.get::<f64>(1).unwrap_or(0.0);
+        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
         
         cumulative_value += monthly_pnl;
         
@@ -276,6 +294,7 @@ async fn calculate_monthly_pnl_series(
             date: month,
             value: monthly_pnl,
             cumulative_value,
+            trade_count,
         });
     }
 
@@ -366,6 +385,7 @@ async fn calculate_rolling_win_rate(
             date: daily_data[i].0.clone(),
             value: win_rate,
             cumulative_value: win_rate,
+            trade_count: window_data.iter().map(|(_, _, total)| total).sum(),
         });
     }
 
@@ -400,6 +420,7 @@ async fn calculate_rolling_sharpe_ratio(
                 date: daily_returns[i].date.clone(),
                 value: 0.0,
                 cumulative_value: 0.0,
+                trade_count: 0,
             });
             continue;
         }
@@ -423,6 +444,7 @@ async fn calculate_rolling_sharpe_ratio(
             date: daily_returns[i].date.clone(),
             value: sharpe_ratio,
             cumulative_value: sharpe_ratio,
+            trade_count: window_returns.len() as u32,
         });
     }
 
@@ -579,6 +601,7 @@ async fn calculate_drawdown_curve(daily_pnl: &[TimeSeriesPoint]) -> Result<Vec<T
             date: point.date.clone(),
             value: drawdown,
             cumulative_value: drawdown,
+            trade_count: point.trade_count,
         });
     }
 
@@ -602,6 +625,7 @@ impl Default for TimeSeriesData {
             cumulative_return: 0.0,
             annualized_return: 0.0,
             total_return_percentage: 0.0,
+            total_trades: 0,
         }
     }
 }

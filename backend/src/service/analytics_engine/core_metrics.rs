@@ -1,3 +1,5 @@
+/// This file is for calculating the stats for both the options & stocks table combined.
+
 use anyhow::Result;
 use libsql::Connection;
 use crate::models::analytics::CoreMetrics;
@@ -135,6 +137,10 @@ async fn calculate_stocks_core_metrics(
             0.0
         };
 
+        // Calculate consecutive streaks for stocks
+        let (max_consecutive_wins, max_consecutive_losses) = 
+            calculate_stocks_consecutive_streaks(conn, time_condition, &time_params).await?;
+
         Ok(CoreMetrics {
             total_trades,
             winning_trades,
@@ -153,8 +159,8 @@ async fn calculate_stocks_core_metrics(
             biggest_loser,
             profit_factor,
             win_loss_ratio,
-            max_consecutive_wins: 0, // Will be calculated separately
-            max_consecutive_losses: 0, // Will be calculated separately
+            max_consecutive_wins,
+            max_consecutive_losses,
             total_commissions,
             average_commission_per_trade,
         })
@@ -257,6 +263,10 @@ async fn calculate_options_core_metrics(
             0.0
         };
 
+        // Calculate consecutive streaks for options
+        let (max_consecutive_wins, max_consecutive_losses) = 
+            calculate_options_consecutive_streaks(conn, time_condition, &time_params).await?;
+
         Ok(CoreMetrics {
             total_trades,
             winning_trades,
@@ -275,14 +285,128 @@ async fn calculate_options_core_metrics(
             biggest_loser,
             profit_factor,
             win_loss_ratio,
-            max_consecutive_wins: 0, // Will be calculated separately
-            max_consecutive_losses: 0, // Will be calculated separately
+            max_consecutive_wins,
+            max_consecutive_losses,
             total_commissions,
             average_commission_per_trade,
         })
     } else {
         Ok(CoreMetrics::default())
     }
+}
+
+/// Calculate consecutive streaks for stocks
+async fn calculate_stocks_consecutive_streaks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(u32, u32)> {
+    // Get all trades ordered by exit_date to track consecutive streaks
+    let sql = format!(
+        r#"
+        SELECT 
+            CASE 
+                WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                ELSE 0
+            END as calculated_pnl
+        FROM stocks
+        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        ORDER BY exit_date ASC
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut trades = Vec::new();
+    while let Some(row) = rows.next().await? {
+        let pnl = get_f64_value(&row, 0);
+        trades.push(pnl);
+    }
+
+    let (max_wins, max_losses) = calculate_streaks(&trades);
+    Ok((max_wins, max_losses))
+}
+
+/// Calculate consecutive streaks for options
+async fn calculate_options_consecutive_streaks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(u32, u32)> {
+    // Get all options trades ordered by exit_date
+    let sql = format!(
+        r#"
+        SELECT 
+            CASE 
+                WHEN exit_price IS NOT NULL THEN 
+                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                ELSE 0
+            END as calculated_pnl
+        FROM options
+        WHERE status = 'closed' AND ({})
+        ORDER BY exit_date ASC
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut trades = Vec::new();
+    while let Some(row) = rows.next().await? {
+        let pnl = get_f64_value(&row, 0);
+        trades.push(pnl);
+    }
+
+    let (max_wins, max_losses) = calculate_streaks(&trades);
+    Ok((max_wins, max_losses))
+}
+
+/// Calculate consecutive win and loss streaks from a sequence of P&L values
+fn calculate_streaks(trades: &[f64]) -> (u32, u32) {
+    let mut current_wins = 0;
+    let mut current_losses = 0;
+    let mut max_wins = 0;
+    let mut max_losses = 0;
+
+    for &pnl in trades {
+        if pnl > 0.0 {
+            // Win
+            current_wins += 1;
+            current_losses = 0;
+            max_wins = max_wins.max(current_wins);
+        } else if pnl < 0.0 {
+            // Loss
+            current_losses += 1;
+            current_wins = 0;
+            max_losses = max_losses.max(current_losses);
+        } else {
+            // Break-even - resets streak
+            current_wins = 0;
+            current_losses = 0;
+        }
+    }
+
+    (max_wins, max_losses)
 }
 
 /// Combine metrics from stocks and options tables
@@ -338,6 +462,10 @@ fn combine_core_metrics(stocks: CoreMetrics, options: CoreMetrics) -> CoreMetric
         0.0
     };
 
+    // Take the maximum consecutive streaks from both stocks and options
+    let max_consecutive_wins = stocks.max_consecutive_wins.max(options.max_consecutive_wins);
+    let max_consecutive_losses = stocks.max_consecutive_losses.max(options.max_consecutive_losses);
+
     CoreMetrics {
         total_trades,
         winning_trades: total_winning_trades,
@@ -356,8 +484,8 @@ fn combine_core_metrics(stocks: CoreMetrics, options: CoreMetrics) -> CoreMetric
         biggest_loser,
         profit_factor,
         win_loss_ratio,
-        max_consecutive_wins: 0, // Will be calculated separately
-        max_consecutive_losses: 0, // Will be calculated separately
+        max_consecutive_wins,
+        max_consecutive_losses,
         total_commissions,
         average_commission_per_trade,
     }

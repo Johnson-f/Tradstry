@@ -1,3 +1,5 @@
+/// One of the most important files for the AI systems for spotting trading patterns 
+
 use anyhow::Result;
 use libsql::Connection;
 use crate::models::analytics::PerformanceMetrics;
