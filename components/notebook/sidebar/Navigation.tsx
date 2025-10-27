@@ -13,6 +13,7 @@ import { useSearch } from "@/components/notebook/hooks/useSearch";
 import { useSettings } from "@/components/notebook/hooks/useSettings";
 import { useCreateNote } from "@/lib/hooks/use-notebook";
 
+
 import {
   ChevronsLeft,
   MenuIcon,

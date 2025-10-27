@@ -12,6 +12,7 @@ export default function NotebookNavbar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note?.title ?? "Untitled");
+  
 
   const enable = () => {
     if (!docId) return;
