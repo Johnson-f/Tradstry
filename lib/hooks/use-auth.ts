@@ -3,12 +3,14 @@
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState, useRef } from "react";
 import { User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const supabaseRef = useRef(createClient());
   const initialCheckDone = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     const supabase = supabaseRef.current;
@@ -42,7 +44,14 @@ export function useAuth() {
         // Only update after initial check is done to avoid race conditions
         if (initialCheckDone.current) {
           setUser(session?.user ?? null);
-          setLoading(false);
+          
+          // Handle sign out event
+          if (event === 'SIGNED_OUT') {
+            setLoading(false);
+            router.push('/auth/login');
+          } else {
+            setLoading(false);
+          }
         }
       }
     );
@@ -51,17 +60,22 @@ export function useAuth() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   return {
     user,
     loading,
     isAuthenticated: !!user,
     signOut: async () => {
-      setLoading(true);
-      await supabaseRef.current.auth.signOut();
-      setUser(null);
-      setLoading(false);
+      try {
+        setLoading(true);
+        await supabaseRef.current.auth.signOut();
+        // Don't set user to null here - let onAuthStateChange handle it
+        // The router.push will happen in the listener
+      } catch (error) {
+        console.error("Sign out error:", error);
+        setLoading(false);
+      }
     },
   };
 }

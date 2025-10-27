@@ -44,19 +44,23 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     // Redirect unauthenticated users trying to access protected routes
     if (!isAuthenticated && !isPublicRoute) {
       setIsRedirecting(true);
-      router.push("/auth/login");
+      // Use replace instead of push to avoid back button issues
+      router.replace("/auth/login");
       return;
     }
 
     // Redirect authenticated users away from auth pages (except error pages)
     if (isAuthenticated && isAuthPage && !pathname.includes("/auth/error")) {
       setIsRedirecting(true);
-      router.push("/app");
+      router.replace("/app");
       return;
     }
 
-    setIsRedirecting(false);
-  }, [isClient, loading, isAuthenticated, pathname, router]);
+    // Clear redirecting state when we're on the correct page
+    if (isRedirecting) {
+      setIsRedirecting(false);
+    }
+  }, [isClient, loading, isAuthenticated, pathname, router, isRedirecting]);
 
   // Don't render anything during SSR
   if (!isClient) {
