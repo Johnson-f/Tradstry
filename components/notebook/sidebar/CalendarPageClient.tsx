@@ -6,28 +6,34 @@ import { useCreateNote } from "@/lib/hooks/use-notebook";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
 
 interface CalendarAppProps {
   onCreateNote: (date: Date) => void;
 }
 
+// Dynamically import calendar to avoid SSR issues
+const CalendarApp = dynamic<CalendarAppProps>(
+  () => import("@/components/notebook/sidebar/Calendar"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+);
+
 export default function CalendarPageClient() {
   const router = useRouter();
   const { createNote } = useCreateNote();
-  const [CalendarApp, setCalendarApp] = useState<React.ComponentType<CalendarAppProps> | null>(null);
-
-  useEffect(() => {
-    // Dynamically import the calendar component only on the client side
-    import("@/components/notebook/sidebar/Calendar")
-      .then((mod) => setCalendarApp(() => mod.default))
-      .catch((err) => console.error("Failed to load calendar:", err));
-  }, []);
 
   const handleCreateNote = async (selectedDate: Date) => {
     try {
       const noteTitle = format(selectedDate, "MMMM dd, yyyy");
-      
-      const promise = createNote({ 
+
+      const promise = createNote({
         title: noteTitle,
         content: `# ${noteTitle}\n\nNotes for ${format(selectedDate, "EEEE, MMMM dd, yyyy")}\n\n## Tasks\n\n## Notes\n\n## Ideas`
       }).then((note) => {
@@ -47,14 +53,5 @@ export default function CalendarPageClient() {
     }
   };
 
-  if (!CalendarApp) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   return <CalendarApp onCreateNote={handleCreateNote} />;
 }
-
