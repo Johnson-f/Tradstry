@@ -3,42 +3,6 @@
 version = 4
 
 [[package]]
-name = "Tradstry-backend"
-version = "0.0.1"
-dependencies = [
- "actix-cors",
- "actix-multipart",
- "actix-rt",
- "actix-web",
- "actix-web-httpauth",
- "anyhow",
- "base64 0.22.1",
- "bigdecimal",
- "bincode",
- "chrono",
- "dashmap",
- "dotenvy",
- "env_logger",
- "futures-util",
- "hex",
- "hmac",
- "libsql",
- "log",
- "lru",
- "qdrant-client",
- "reqwest 0.12.24",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "thiserror 1.0.69",
- "tokio 1.48.0",
- "uploadcare",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
 name = "actix-codec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4491,6 +4455,42 @@ checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
  "pin-project",
  "tracing",
+]
+
+[[package]]
+name = "tradstry-backend"
+version = "0.0.1"
+dependencies = [
+ "actix-cors",
+ "actix-multipart",
+ "actix-rt",
+ "actix-web",
+ "actix-web-httpauth",
+ "anyhow",
+ "base64 0.22.1",
+ "bigdecimal",
+ "bincode",
+ "chrono",
+ "dashmap",
+ "dotenvy",
+ "env_logger",
+ "futures-util",
+ "hex",
+ "hmac",
+ "libsql",
+ "log",
+ "lru",
+ "qdrant-client",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio 1.48.0",
+ "uploadcare",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]
