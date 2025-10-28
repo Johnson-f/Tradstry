@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { initializeUser } from '@/lib/services/user-service';
+import { initializeUser, checkUserInitialization } from '@/lib/services/user-service';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -80,20 +80,71 @@ export function useUserInitialization() {
         const initKey = `${STORAGE_KEY_PREFIX}${user.id}`;
         const storedStatus = localStorage.getItem(initKey);
         
+        // Verify with backend if localStorage says success
         if (storedStatus === 'success') {
-          hasInitializedRef.current = true;
-          if (mounted) {
-            setState({
-              isInitialized: true,
-              isInitializing: false,
-              error: null,
-              needsRefresh: false,
-            });
+          try {
+            // Verify with backend to ensure consistency
+            const isActuallyInitialized = await checkUserInitialization(user.id);
+            
+            if (isActuallyInitialized) {
+              // Backend confirms initialization - good to go
+              hasInitializedRef.current = true;
+              if (mounted) {
+                setState({
+                  isInitialized: true,
+                  isInitializing: false,
+                  error: null,
+                  needsRefresh: false,
+                });
+              }
+              return;
+            } else {
+              // Backend says not initialized but localStorage says success
+              // Clear localStorage and proceed with initialization flow
+              localStorage.removeItem(initKey);
+            }
+          } catch (error) {
+            console.error('Error verifying user initialization:', error);
+            // Fall back to localStorage if backend check fails
+            hasInitializedRef.current = true;
+            if (mounted) {
+              setState({
+                isInitialized: true,
+                isInitializing: false,
+                error: null,
+                needsRefresh: false,
+              });
+            }
+            return;
           }
-          return;
         }
 
+        // If localStorage says failed, try backend check as last resort
         if (storedStatus === 'failed') {
+          try {
+            const isActuallyInitialized = await checkUserInitialization(user.id);
+            
+            if (isActuallyInitialized) {
+              // Backend says user IS initialized - clear failed status
+              localStorage.setItem(initKey, 'success');
+              queryClient.setQueryData(['user', 'initialized', user.id], true);
+              hasInitializedRef.current = true;
+              if (mounted) {
+                setState({
+                  isInitialized: true,
+                  isInitializing: false,
+                  error: null,
+                  needsRefresh: false,
+                });
+              }
+              return;
+            }
+          } catch (error) {
+            console.error('Error checking user initialization:', error);
+            // Continue with failed status if backend check fails
+          }
+          
+          // Backend confirms user is not initialized
           hasInitializedRef.current = true;
           if (mounted) {
             setState({
@@ -142,6 +193,30 @@ export function useUserInitialization() {
           return;
         }
 
+        // Check backend before attempting initialization
+        try {
+          const isInitialized = await checkUserInitialization(user.id);
+          if (isInitialized) {
+            // User is already initialized on backend
+            localStorage.setItem(initKey, 'success');
+            queryClient.setQueryData(['user', 'initialized', user.id], true);
+            
+            if (mounted) {
+              setState({
+                isInitialized: true,
+                isInitializing: false,
+                error: null,
+                needsRefresh: false,
+              });
+            }
+            globalInitializationInProgress = false;
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking user initialization before init attempt:', error);
+          // Continue with initialization if check fails
+        }
+
         // Attempt initialization with retry logic built into the service
         const initResult = await initializeMutation.mutateAsync({ 
           email: user.email!, 
@@ -149,7 +224,8 @@ export function useUserInitialization() {
         });
         
         if (mounted) {
-          if (initResult.success) {
+          // Explicitly check for boolean true
+          if (initResult.success === true) {
             localStorage.setItem(initKey, 'success');
             queryClient.setQueryData(['user', 'initialized', user.id], true);
             
