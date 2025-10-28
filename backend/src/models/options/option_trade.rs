@@ -113,6 +113,7 @@ pub struct OptionTrade {
     pub entry_date: DateTime<Utc>,
     pub exit_date: Option<DateTime<Utc>>,
     pub status: TradeStatus,
+    pub reviewed: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -132,6 +133,7 @@ pub struct CreateOptionRequest {
     pub commissions: f64,
     pub implied_volatility: f64,
     pub entry_date: DateTime<Utc>,
+    pub reviewed: Option<bool>,
 }
 
 /// Data Transfer Object for updating option trades
@@ -152,6 +154,7 @@ pub struct UpdateOptionRequest {
     pub entry_date: Option<DateTime<Utc>>,
     pub exit_date: Option<DateTime<Utc>>,
     pub status: Option<TradeStatus>,
+    pub reviewed: Option<bool>,
 }
 
 /// Option query parameters for filtering and pagination
@@ -183,8 +186,8 @@ impl OptionTrade {
                 symbol, strategy_type, trade_direction, number_of_contracts, 
                 option_type, strike_price, expiration_date, entry_price, 
                 total_premium, commissions, implied_volatility, entry_date, 
-                status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, reviewed, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                      option_type, strike_price, expiration_date, entry_price, exit_price,
                      total_premium, commissions, implied_volatility, entry_date, exit_date,
@@ -206,6 +209,7 @@ impl OptionTrade {
             request.implied_volatility,
             request.entry_date.to_rfc3339(),
             TradeStatus::Open.to_string(),
+            request.reviewed.unwrap_or(false),
             now.clone(),
             now
         ])
@@ -229,7 +233,7 @@ impl OptionTrade {
                 SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,
                        option_type, strike_price, expiration_date, entry_price, exit_price,
                        total_premium, commissions, implied_volatility, entry_date, exit_date,
-                       status, created_at, updated_at
+                       status, reviewed, created_at, updated_at
                 FROM options 
                 WHERE id = ?
                 "#,
@@ -255,7 +259,7 @@ impl OptionTrade {
             SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,
                    option_type, strike_price, expiration_date, entry_price, exit_price,
                    total_premium, commissions, implied_volatility, entry_date, exit_date,
-                   status, created_at, updated_at
+                   status, reviewed, created_at, updated_at
             FROM options 
             WHERE 1=1
             "#,
@@ -360,12 +364,13 @@ impl OptionTrade {
                     entry_date = COALESCE(?, entry_date),
                     exit_date = COALESCE(?, exit_date),
                     status = COALESCE(?, status),
+                    reviewed = COALESCE(?, reviewed),
                     updated_at = ?
                 WHERE id = ?
                 RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                          option_type, strike_price, expiration_date, entry_price, exit_price,
                          total_premium, commissions, implied_volatility, entry_date, exit_date,
-                         status, created_at, updated_at
+                         status, reviewed, created_at, updated_at
                 "#,
             )
             .await?
@@ -385,6 +390,7 @@ impl OptionTrade {
                 request.entry_date.map(|d| d.to_rfc3339()),
                 request.exit_date.map(|d| d.to_rfc3339()),
                 request.status.map(|t| t.to_string()),
+                None::<bool>,
                 now,
                 option_id
             ])
@@ -1015,8 +1021,9 @@ impl OptionTrade {
         let expiration_date_str: String = row.get(7)?;
         let entry_date_str: String = row.get(13)?;
         let exit_date_str: Option<String> = row.get(14)?;
-        let created_at_str: String = row.get(16)?;
-        let updated_at_str: String = row.get(17)?;
+        let reviewed_val: i64 = row.get(16)?;
+        let created_at_str: String = row.get(17)?;
+        let updated_at_str: String = row.get(18)?;
         
         let expiration_date = DateTime::parse_from_rfc3339(&expiration_date_str)
             .map_err(|e| format!("Failed to parse expiration_date: {}", e))?
@@ -1059,6 +1066,7 @@ impl OptionTrade {
             entry_date,
             exit_date,
             status,
+            reviewed: reviewed_val != 0,
             created_at,
             updated_at,
         })

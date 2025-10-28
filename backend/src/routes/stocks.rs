@@ -12,6 +12,8 @@ use crate::service::cache_service::CacheService;
 use crate::service::ai_service::vectorization_service::VectorizationService;
 use crate::service::ai_service::data_formatter::DataFormatter;
 use crate::service::ai_service::upstash_vector_client::DataType;
+use crate::websocket::{broadcast_stock_update, ConnectionManager};
+use tokio::sync::Mutex;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -170,6 +172,7 @@ pub async fn create_stock(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("Creating new stock trade");
 
@@ -195,6 +198,14 @@ pub async fn create_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast real-time create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let stock_ws = stock.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
             });
 
             // Vectorize the new stock trade
@@ -312,6 +323,7 @@ pub async fn update_stock(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
     info!("Updating stock with ID: {}", id);
@@ -338,6 +350,14 @@ pub async fn update_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast real-time update
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let stock_ws = stock.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "updated", &stock_ws).await;
             });
 
             // Re-vectorize the updated stock trade
@@ -385,6 +405,7 @@ pub async fn delete_stock(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
     info!("Deleting stock with ID: {}", id);
@@ -411,6 +432,13 @@ pub async fn delete_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast deletion event
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
             });
 
             // Delete vectors for the deleted stock trade

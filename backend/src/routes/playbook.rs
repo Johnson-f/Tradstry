@@ -14,6 +14,10 @@ use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
 use crate::service::cache_service::CacheService;
 use crate::service::analytics_engine::playbook_analytics::calculate_playbook_analytics;
+use crate::websocket::{broadcast_playbook_update, ConnectionManager};
+use tokio::sync::Mutex;
+use actix_web::web::Data;
+use std::sync::Arc as StdArc;
 
 /// Response wrapper for playbook operations
 #[derive(Debug, Serialize)]
@@ -118,6 +122,7 @@ pub async fn create_playbook(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -137,6 +142,14 @@ pub async fn create_playbook(
                 }
             });
             
+            // Broadcast create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let playbook_ws = playbook.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "created", &playbook_ws).await;
+            });
+
             Ok(HttpResponse::Created().json(PlaybookResponse {
                 success: true,
                 message: "Playbook created successfully".to_string(),
@@ -261,6 +274,7 @@ pub async fn update_playbook(
     payload: web::Json<UpdatePlaybookRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -268,11 +282,20 @@ pub async fn update_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::update(&conn, &playbook_id, payload.into_inner()).await {
-        Ok(Some(playbook)) => Ok(HttpResponse::Ok().json(PlaybookResponse {
-            success: true,
-            message: "Playbook updated successfully".to_string(),
-            data: Some(playbook),
-        })),
+        Ok(Some(playbook)) => {
+            // Broadcast update
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let playbook_ws = playbook.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "updated", &playbook_ws).await;
+            });
+            Ok(HttpResponse::Ok().json(PlaybookResponse {
+                success: true,
+                message: "Playbook updated successfully".to_string(),
+                data: Some(playbook),
+            }))
+        },
         Ok(None) => Ok(HttpResponse::NotFound().json(PlaybookResponse {
             success: false,
             message: "Playbook not found".to_string(),
@@ -295,6 +318,7 @@ pub async fn delete_playbook(
     playbook_id: web::Path<String>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -302,11 +326,20 @@ pub async fn delete_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::delete(&conn, &playbook_id).await {
-        Ok(true) => Ok(HttpResponse::Ok().json(PlaybookResponse {
-            success: true,
-            message: "Playbook deleted successfully".to_string(),
-            data: None,
-        })),
+        Ok(true) => {
+            // Broadcast delete
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let id_ws = playbook_id.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id_ws})).await;
+            });
+            Ok(HttpResponse::Ok().json(PlaybookResponse {
+                success: true,
+                message: "Playbook deleted successfully".to_string(),
+                data: None,
+            }))
+        },
         Ok(false) => Ok(HttpResponse::NotFound().json(PlaybookResponse {
             success: false,
             message: "Playbook not found".to_string(),
