@@ -20,6 +20,7 @@ pub use auth::{
     get_supabase_user_id,
     validate_jwt_token,
     validate_supabase_jwt_token,
+    validate_jwt_token_from_query,
     AuthError,
 };
 pub use client::TursoClient;

@@ -10,6 +10,8 @@ use crate::models::options::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::service::cache_service::CacheService;
+use crate::websocket::{broadcast_option_update, ConnectionManager};
+use tokio::sync::Mutex;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -170,6 +172,7 @@ pub async fn create_option(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("Creating new option trade");
 
@@ -197,6 +200,14 @@ pub async fn create_option(
                 }
             });
             
+            // Broadcast real-time create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let option_ws = option.clone();
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "created", &option_ws).await;
+            });
+
             Ok(HttpResponse::Created().json(ApiResponse::success(option)))
         }
         Err(e) => {
@@ -282,6 +293,7 @@ pub async fn update_option(
     payload: web::Json<UpdateOptionRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Updating option with ID: {}", id);
@@ -291,6 +303,13 @@ pub async fn update_option(
     match OptionTrade::update(&conn, id, payload.into_inner()).await {
         Ok(Some(option)) => {
             info!("Successfully updated option with ID: {}", id);
+            // Broadcast real-time update
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            let option_ws = option.clone();
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "updated", &option_ws).await;
+            });
             Ok(HttpResponse::Ok().json(ApiResponse::success(option)))
         }
         Ok(None) => {
@@ -314,6 +333,7 @@ pub async fn delete_option(
     option_id: web::Path<i64>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Deleting option with ID: {}", id);
@@ -323,6 +343,12 @@ pub async fn delete_option(
     match OptionTrade::delete(&conn, id).await {
         Ok(true) => {
             info!("Successfully deleted option with ID: {}", id);
+            // Broadcast deletion
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
+            });
             Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
                 "deleted": true,
                 "id": id

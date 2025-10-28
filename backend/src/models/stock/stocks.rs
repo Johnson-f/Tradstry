@@ -153,6 +153,7 @@ pub struct Stock {
     pub take_profit: Option<f64>,
     pub entry_date: DateTime<Utc>,
     pub exit_date: Option<DateTime<Utc>>,
+    pub reviewed: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -169,6 +170,7 @@ pub struct CreateStockRequest {
     pub number_shares: f64,
     pub take_profit: Option<f64>,
     pub entry_date: DateTime<Utc>,
+    pub reviewed: Option<bool>,
 }
 
 /// Data Transfer Object for updating stock trades
@@ -185,6 +187,7 @@ pub struct UpdateStockRequest {
     pub take_profit: Option<f64>,
     pub entry_date: Option<DateTime<Utc>>,
     pub exit_date: Option<DateTime<Utc>>,
+    pub reviewed: Option<bool>,
 }
 
 /// Stock query parameters for filtering and pagination
@@ -267,8 +270,8 @@ impl Stock {
             INSERT INTO stocks (
                 symbol, trade_type, order_type, entry_price, 
                 stop_loss, commissions, number_shares, take_profit, 
-                entry_date, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                entry_date, reviewed, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      entry_date, exit_date, created_at, updated_at
@@ -285,6 +288,7 @@ impl Stock {
             request.number_shares,
             request.take_profit,
             request.entry_date.to_rfc3339(),
+            request.reviewed.unwrap_or(false),
             now.clone(),
             now
         ])
@@ -307,7 +311,7 @@ impl Stock {
             r#"
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
-                   entry_date, exit_date, created_at, updated_at
+                   entry_date, exit_date, reviewed, created_at, updated_at
             FROM stocks 
             WHERE id = ?
             "#,
@@ -332,7 +336,7 @@ impl Stock {
             r#"
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
-                   entry_date, exit_date, created_at, updated_at
+                   entry_date, exit_date, reviewed, created_at, updated_at
             FROM stocks 
             WHERE 1=1
             "#,
@@ -423,11 +427,12 @@ impl Stock {
                 take_profit = COALESCE(?, take_profit),
                 entry_date = COALESCE(?, entry_date),
                 exit_date = COALESCE(?, exit_date),
+                reviewed = COALESCE(?, reviewed),
                 updated_at = ?
             WHERE id = ?
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
-                     entry_date, exit_date, created_at, updated_at
+                     entry_date, exit_date, reviewed, created_at, updated_at
             "#,
         )
             .await?
@@ -443,6 +448,7 @@ impl Stock {
                 request.take_profit,
                 request.entry_date.map(|d| d.to_rfc3339()),
                 request.exit_date.map(|d| d.to_rfc3339()),
+                None::<bool>,
                 now,
                 stock_id
             ])
@@ -1131,8 +1137,9 @@ impl Stock {
         // Parse datetime strings
         let entry_date_str: String = row.get(10)?;
         let exit_date_str: Option<String> = row.get(11)?;
-        let created_at_str: String = row.get(12)?;
-        let updated_at_str: String = row.get(13)?;
+        let reviewed_val: i64 = row.get(12)?;
+        let created_at_str: String = row.get(13)?;
+        let updated_at_str: String = row.get(14)?;
         
         let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
             .map_err(|e| format!("Failed to parse entry_date: {}", e))?
@@ -1167,6 +1174,7 @@ impl Stock {
             take_profit: Self::get_opt_f64(row, 9)?,
             entry_date,
             exit_date,
+            reviewed: reviewed_val != 0,
             created_at,
             updated_at,
         })

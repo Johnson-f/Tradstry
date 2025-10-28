@@ -2,7 +2,7 @@ mod turso;
 mod routes;
 mod models;
 mod service;
-mod replicache;
+mod websocket;
 
 use actix_cors::Cors;
 use actix_web::{
@@ -31,7 +31,9 @@ use turso::{
     SupabaseClaims,
 };
 use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
-use replicache::{handle_push, handle_pull};
+use websocket::{ConnectionManager, ws_handler};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Serialize)]
 struct ApiResponse<T> {
@@ -84,6 +86,10 @@ async fn main() -> std::io::Result<()> {
     // Initialize application state
     let app_state = AppState::new().await.expect("Failed to initialize app state");
     let app_data = Data::new(app_state);
+    
+    // Initialize WebSocket connection manager
+    let ws_manager = Arc::new(Mutex::new(ConnectionManager::new()));
+    let ws_manager_data = Data::new(Arc::clone(&ws_manager));
 
     // Get port from environment or default
     let port = std::env::var("PORT")
@@ -95,6 +101,8 @@ async fn main() -> std::io::Result<()> {
     log::info!("Registering routes...");
 
     // Start HTTP server
+    let _ws_manager_clone = Arc::clone(&ws_manager);
+    
     HttpServer::new(move || {
         log::info!("Creating new App instance");
 
@@ -142,6 +150,7 @@ async fn main() -> std::io::Result<()> {
         };
 
         App::new()
+            .app_data(ws_manager_data.clone())
             .app_data(app_data.clone())
             // CRITICAL: Add TursoClient as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
@@ -198,15 +207,10 @@ async fn main() -> std::io::Result<()> {
                 // Analytics Routes
                 configure_analytics_routes(cfg);
             })
-            // Register replicache routes
+            // Register WebSocket routes
             .configure(|cfg| {
-                log::info!("Configuring replicache routes");
-                cfg.service(
-                    web::scope("/api/replicache")
-                        .wrap(HttpAuthentication::bearer(jwt_validator))
-                        .route("/push", web::post().to(handle_push))
-                        .route("/pull", web::post().to(handle_pull))
-                );
+                log::info!("Configuring WebSocket routes");
+                cfg.route("/api/ws", web::get().to(ws_handler));
             })
             .configure(configure_public_routes)
             .configure(configure_auth_routes)
