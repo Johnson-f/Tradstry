@@ -17,14 +17,20 @@ interface UseWebSocketReturn {
   subscribe: (event: WebSocketEventType, handler: WebSocketHandler) => () => void;
 }
 
-export function useWebSocket(): UseWebSocketReturn {
+export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const handlersRef = useRef<Map<WebSocketEventType, Set<WebSocketHandler>>>(new Map());
-  const [state, setState] = useState<WebSocketConnectionState>('connecting');
+  const [state, setState] = useState<WebSocketConnectionState>(shouldConnect ? 'connecting' : 'disconnected');
   const [error, setError] = useState<Error | null>(null);
 
   const connect = useCallback(async () => {
+    // Don't connect if we shouldn't be connecting
+    if (!shouldConnect) {
+      setState('disconnected');
+      return;
+    }
+
     try {
       setState('connecting');
       setError(null);
@@ -46,7 +52,7 @@ export function useWebSocket(): UseWebSocketReturn {
       ws.onmessage = (event) => {
         try {
           const envelope = JSON.parse(event.data) as WebSocketEnvelope;
-          const { event: ev, data } = envelope as any;
+          const { event: ev, data } = envelope;
           // Normalize server event names like "stock_created" -> "stock:created"
           const normalized: WebSocketEventType = (typeof ev === 'string'
             ? (ev as string).replace('_', ':')
@@ -55,7 +61,7 @@ export function useWebSocket(): UseWebSocketReturn {
           if (set) {
             set.forEach((handler) => handler(data));
           }
-        } catch (e) {
+        } catch {
           // Non-enveloped message; ignore
         }
       };
@@ -67,24 +73,36 @@ export function useWebSocket(): UseWebSocketReturn {
 
       ws.onclose = () => {
         setState('disconnected');
-        // Reconnect with exponential backoff up to ~10s
-        const attempt = reconnectAttemptsRef.current++;
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-        setTimeout(() => connect(), delay);
+        
+        // Only reconnect if shouldConnect is still true
+        if (shouldConnect) {
+          // Reconnect with exponential backoff up to ~10s
+          const attempt = reconnectAttemptsRef.current++;
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          setTimeout(() => connect(), delay);
+        }
       };
     } catch (e) {
       setError(e as Error);
       setState('error');
     }
-  }, []);
+  }, [shouldConnect]);
 
   useEffect(() => {
-    connect();
+    if (shouldConnect) {
+      connect();
+    } else {
+      // If we shouldn't connect, close any existing connection
+      wsRef.current?.close();
+      wsRef.current = null;
+      setState('disconnected');
+    }
+    
     return () => {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [connect]);
+  }, [connect, shouldConnect]);
 
   const send = useCallback((message: unknown) => {
     if (wsRef.current && state === 'connected') {

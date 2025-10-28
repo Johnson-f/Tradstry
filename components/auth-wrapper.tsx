@@ -3,7 +3,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { WebSocketProvider } from "@/lib/websocket/provider";
 import { Loader2 } from "lucide-react";
 
 interface AuthWrapperProps {
@@ -16,13 +15,12 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const router = useRouter();
   const [isClient, setIsClient] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  // const isAppRoute = pathname.startsWith("/app");
 
-  // Only run client-side logic after hydration
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Handle redirects in useEffect to avoid rendering issues
   useEffect(() => {
     if (!isClient || loading) return;
 
@@ -39,35 +37,28 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
     const isPublicRoute = publicRoutes.includes(pathname);
     const isAuthPage = pathname.startsWith("/auth");
-    //const isAppRoute = pathname.startsWith("/app");
 
-    // Redirect unauthenticated users trying to access protected routes
     if (!isAuthenticated && !isPublicRoute) {
       setIsRedirecting(true);
-      // Use replace instead of push to avoid back button issues
       router.replace("/auth/login");
       return;
     }
 
-    // Redirect authenticated users away from auth pages (except error pages)
     if (isAuthenticated && isAuthPage && !pathname.includes("/auth/error")) {
       setIsRedirecting(true);
       router.replace("/app");
       return;
     }
 
-    // Clear redirecting state when we're on the correct page
     if (isRedirecting) {
       setIsRedirecting(false);
     }
   }, [isClient, loading, isAuthenticated, pathname, router, isRedirecting]);
 
-  // Don't render anything during SSR
   if (!isClient) {
     return <>{children}</>;
   }
 
-  // Show loading state while checking authentication or redirecting
   if (loading || isRedirecting) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -79,13 +70,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  const isAppRoute = pathname.startsWith("/app");
-
-  // For authenticated users in app routes, wrap with WebSocketProvider
-  if (isAuthenticated && isAppRoute) {
-    return <WebSocketProvider>{children}</WebSocketProvider>;
-  }
-
-  // For public routes or authenticated users on landing page
+  // Remove WebSocketProvider from here - it will be added in ProtectedLayout
   return <>{children}</>;
 }
