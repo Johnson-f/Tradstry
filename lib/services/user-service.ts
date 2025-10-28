@@ -9,9 +9,16 @@ export interface UserInitializationRequest {
   user_id: string;
 }
 
+// Updated to match backend response structure exactly
 export interface UserInitializationResponse {
   success: boolean;
-  message?: string;
+  message: string;  // REQUIRED field from backend
+  database_url?: string;
+  database_token?: string;
+  schema_synced?: boolean;
+  schema_version?: string;
+  cache_preloaded?: boolean;
+  cache_status?: string;
   user_id?: string;
 }
 
@@ -29,7 +36,6 @@ export const initializeUser = async (
   // Check if there's already an ongoing request for this user
   const requestKey = `init-${userId}`;
   if (ongoingRequests.has(requestKey)) {
-    console.log(`User initialization already in progress for user: ${userId}, returning existing promise`);
     return ongoingRequests.get(requestKey)!;
   }
 
@@ -58,8 +64,6 @@ async function performInitialization(
   
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
-      console.log(`Attempting user initialization (attempt ${attempt}/${retryCount}) for user: ${email}`);
-      
       const response = await apiClient.post<UserInitializationResponse>(
         apiConfig.endpoints.user.initialize,
         {
@@ -70,7 +74,6 @@ async function performInitialization(
 
       // Check if the response indicates success
       if (response.success) {
-        console.log('User initialization successful:', response);
         return response;
       } else {
         // If the API returns success: false, treat it as an error
@@ -78,13 +81,26 @@ async function performInitialization(
       }
     } catch (error: unknown) {
       lastError = error;
-      console.error(`User initialization attempt ${attempt} failed:`, error);
       
-      // If this is the last attempt, return the error
+      // Extract error message from various error types
+      const getErrorMessage = (err: unknown): string => {
+        if (err && typeof err === 'object') {
+          if ('message' in err && typeof err.message === 'string') {
+            return err.message;
+          }
+          if ('response' in err && err.response && typeof err.response === 'object') {
+            const response = err.response as { data?: { message?: string } };
+            if (response.data?.message) {
+              return response.data.message;
+            }
+          }
+        }
+        return 'Failed to initialize user account';
+      };
+      
+      // If this is the last attempt, return the error response
       if (attempt === retryCount) {
-        const errorMessage = (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || 
-                           (error as { message?: string })?.message || 
-                           'Failed to initialize user account after multiple attempts';
+        const errorMessage = getErrorMessage(error);
         
         return {
           success: false,
@@ -94,29 +110,60 @@ async function performInitialization(
       
       // Wait before retrying (exponential backoff)
       const delay = retryDelay * Math.pow(2, attempt - 1);
-      console.log(`Waiting ${delay}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
-  // This should never be reached, but TypeScript requires it
+  // Fallback return (should never be reached)
+  const getFallbackMessage = (err: unknown): string => {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return 'Unexpected error during user initialization';
+  };
+  
   return {
     success: false,
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    message: lastError?.message || 'Unexpected error during user initialization',
+    message: getFallbackMessage(lastError),
   };
 }
 
 /**
- * Check if a user has been properly initialized
+ * Response from the check endpoint
  */
-export const checkUserInitialization = async (): Promise<boolean> => {
+interface CheckUserResponse {
+  exists: boolean;
+  database_url?: string;
+  created_at?: string;
+}
+
+/**
+ * Check if a user has been properly initialized
+ * @param userId - The user ID to check
+ * @returns true if the user database exists and is initialized, false otherwise
+ */
+export const checkUserInitialization = async (userId: string): Promise<boolean> => {
   try {
-    // This would call a backend endpoint to check user initialization status
-    // For now, we'll assume the user needs to be initialized if this function is called
-    return false;
-  } catch (error) {
-    console.error('Error checking user initialization:', error);
+    const response = await apiClient.get<CheckUserResponse>(
+      apiConfig.endpoints.user.check(userId)
+    );
+    
+    return response.exists;
+  } catch (error: unknown) {
+    const getErrorMessage = (err: unknown): string => {
+      if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+        return err.message;
+      }
+      if (err && typeof err === 'object' && 'response' in err && err.response && typeof err.response === 'object') {
+        const response = err.response as { data?: { error?: string } };
+        if (response.data?.error) {
+          return response.data.error;
+        }
+      }
+      return 'Failed to check user initialization status';
+    };
+    
+    console.error('Error checking user initialization:', getErrorMessage(error));
     return false;
   }
-};
+}
