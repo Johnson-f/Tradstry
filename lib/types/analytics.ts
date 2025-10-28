@@ -89,6 +89,8 @@ export interface PerformanceMetrics {
 export interface TimeSeriesPoint {
   date: string;
   value: number;
+  cumulative_value: number;
+  trade_count: number;
 }
 
 // Time Series Data
@@ -238,6 +240,65 @@ export interface UseAnalyticsGroupedReturn {
 
 export interface UseAnalyticsComprehensiveReturn {
   data: ComprehensiveAnalytics | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+// Individual Trade Analytics (uses new columns: profit_target, stop_loss, etc.)
+export interface IndividualTradeAnalytics {
+  trade_id: number;
+  trade_type: string; // "stock" or "option"
+  symbol: string;
+  net_pnl: number;
+  planned_risk_to_reward: number | null;
+  realized_risk_to_reward: number | null;
+  commission_impact: number;
+}
+
+// Symbol-level Aggregate Analytics
+export interface SymbolAnalytics {
+  symbol: string;
+  total_trades: number;
+  stock_trades: number;
+  option_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  net_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  average_gain: number; // Average of winning trades
+  average_loss: number; // Average of losing trades (absolute value)
+  profit_factor: number;
+  win_rate: number;
+  expectancy: number;
+  biggest_winner: number;
+  biggest_loser: number;
+}
+
+// Response types
+export interface IndividualTradeAnalyticsResponse {
+  success: boolean;
+  data: IndividualTradeAnalytics;
+  error?: string;
+}
+
+export interface SymbolAnalyticsResponse {
+  success: boolean;
+  data: SymbolAnalytics;
+  error?: string;
+}
+
+// Hook return types
+export interface UseIndividualTradeAnalyticsReturn {
+  data: IndividualTradeAnalytics | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+export interface UseSymbolAnalyticsReturn {
+  data: SymbolAnalytics | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
