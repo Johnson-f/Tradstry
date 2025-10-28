@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { ReactNode, useState } from "react";
 import { Toaster } from "sonner";
+import { WebSocketProvider } from '@/lib/websocket/provider';
 
 // Create a stable QueryClient instance that works in both SSR and client
 function makeQueryClient() {
@@ -42,7 +43,9 @@ export function Providers({ children }: { children: ReactNode }) {
         enableSystem
         disableTransitionOnChange
       >
-        {children}
+        <WebSocketProvider>
+          {children}
+        </WebSocketProvider>
         <Toaster position="top-right" duration={5000} />
       </ThemeProvider>
     </QueryClientProvider>

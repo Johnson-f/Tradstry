@@ -122,7 +122,7 @@ export function AppSidebar({
             {!collapsed && (
               <div>
                 <div className="text-foreground font-bold text-base leading-tight">
-                  Tradistry
+                  Tradstry
                 </div>
                 <div className="text-xs text-muted-foreground leading-tight">
                   Journal & Analytics

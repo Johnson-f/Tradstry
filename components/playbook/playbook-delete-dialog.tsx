@@ -12,11 +12,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
-import type { Playbook } from '@/lib/replicache/schemas/playbook';
-import { useUserProfile } from '@/hooks/use-user-profile';
+
+import { usePlaybooks } from '@/lib/hooks/use-playbooks';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
+import type { Playbook } from '@/lib/types/playbook';
+
+function formatDateSafe(value?: string | null): string {
+  const raw = value || '';
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+}
+
+function getCreatedAt(pb: Playbook): string | null {
+  const snake = (pb as unknown as { created_at?: string }).created_at;
+  if (typeof snake === 'string') return snake;
+  const camel = (pb as unknown as { createdAt?: string }).createdAt;
+  return typeof camel === 'string' ? camel : null;
+}
 
 interface PlaybookDeleteDialogProps {
   open: boolean;
@@ -31,10 +44,7 @@ export function PlaybookDeleteDialog({
   playbook,
   onPlaybookDeleted,
 }: PlaybookDeleteDialogProps) {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  const { userId } = useUserProfile();
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  const { deletePlaybook } = usePlaybooks(userId);
+  const { deletePlaybook } = usePlaybooks();
   
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +80,8 @@ export function PlaybookDeleteDialog({
     return null;
   }
 
+  const created = formatDateSafe(getCreatedAt(playbook));
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -87,16 +99,25 @@ export function PlaybookDeleteDialog({
         <div className="py-4">
           <div className="bg-muted p-4 rounded-lg">
             <h4 className="font-medium mb-2">Playbook Details:</h4>
-            <p className="text-sm text-muted-foreground">
-              <strong>Name:</strong> {playbook.name}
-            </p>
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="h-10 w-10 rounded-full border flex items-center justify-center text-xl"
+                style={{ backgroundColor: playbook.color || 'var(--muted)' }}
+                aria-label="Playbook icon"
+              >
+                {playbook.emoji || ''}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <strong>Name:</strong> {playbook.name}
+              </p>
+            </div>
             {playbook.description && (
               <p className="text-sm text-muted-foreground">
                 <strong>Description:</strong> {playbook.description}
               </p>
             )}
             <p className="text-sm text-muted-foreground">
-              <strong>Created:</strong> {new Date(playbook.createdAt).toLocaleDateString()}
+              <strong>Created:</strong> {created || 'Unavailable'}
             </p>
           </div>
           

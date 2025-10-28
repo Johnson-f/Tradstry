@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use libsql::Connection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -233,7 +233,7 @@ impl Playbook {
         let result = conn
             .execute("DELETE FROM playbook WHERE id = ?", libsql::params![playbook_id])
             .await?;
-        
+
         Ok(result > 0)
     }
 
@@ -311,7 +311,7 @@ impl Playbook {
         page_size: i64,
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let offset = (page - 1) * page_size;
-        
+
         let mut rows = conn
             .prepare("SELECT id, name, description, icon, emoji, color, created_at, updated_at FROM playbook ORDER BY updated_at DESC, name LIMIT ? OFFSET ?")
             .await?
@@ -398,7 +398,7 @@ impl Playbook {
                 libsql::params![stock_trade_id, setup_id],
             )
             .await?;
-        
+
         Ok(result > 0)
     }
 
@@ -414,7 +414,7 @@ impl Playbook {
                 libsql::params![option_trade_id, setup_id],
             )
             .await?;
-        
+
         Ok(result > 0)
     }
 
@@ -425,10 +425,10 @@ impl Playbook {
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
             .prepare(
-                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at 
-                 FROM playbook p 
-                 INNER JOIN stock_trade_playbook stp ON p.id = stp.setup_id 
-                 WHERE stp.stock_trade_id = ? 
+                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
+                 FROM playbook p
+                 INNER JOIN stock_trade_playbook stp ON p.id = stp.setup_id
+                 WHERE stp.stock_trade_id = ?
                  ORDER BY p.name"
             )
             .await?
@@ -450,10 +450,10 @@ impl Playbook {
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
             .prepare(
-                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at 
-                 FROM playbook p 
-                 INNER JOIN option_trade_playbook otp ON p.id = otp.setup_id 
-                 WHERE otp.option_trade_id = ? 
+                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
+                 FROM playbook p
+                 INNER JOIN option_trade_playbook otp ON p.id = otp.setup_id
+                 WHERE otp.option_trade_id = ?
                  ORDER BY p.name"
             )
             .await?
@@ -500,17 +500,40 @@ impl Playbook {
         Ok((stock_trades, option_trades))
     }
 
+
     /// Helper method to convert database row to Playbook struct
     fn from_row(row: &libsql::Row) -> Result<Playbook, Box<dyn std::error::Error + Send + Sync>> {
+        let id: String = row.get(0)?;
+        let name: String = row.get(1)?;
+        let description: Option<String> = row.get(2)?;
+        let icon: Option<String> = row.get(3)?;
+        let emoji: Option<String> = row.get(4)?;
+        let color: Option<String> = row.get(5)?;
+        let created_at_str: String = row.get(6)?;
+        let updated_at_str: String = row.get(7)?;
+
+        // Parse timestamps with flexible parsing and informative errors
+        let created_at = parse_flexible_datetime(&created_at_str)
+            .map_err(|e| format!(
+                "Failed to parse created_at '{}' for playbook '{}' (id: {}): {}",
+                created_at_str, name, id, e
+            ))?;
+
+        let updated_at = parse_flexible_datetime(&updated_at_str)
+            .map_err(|e| format!(
+                "Failed to parse updated_at '{}' for playbook '{}' (id: {}): {}",
+                updated_at_str, name, id, e
+            ))?;
+
         Ok(Playbook {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-            icon: row.get(3)?,
-            emoji: row.get(4)?,
-            color: row.get(5)?,
-            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&row.get::<String>(7)?)?.with_timezone(&Utc),
+            id,
+            name,
+            description,
+            icon,
+            emoji,
+            color,
+            created_at,
+            updated_at,
         })
     }
 }
@@ -728,8 +751,8 @@ impl PlaybookRule {
             title: row.get(3)?,
             description: row.get(4)?,
             order_position: row.get(5)?,
-            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&row.get::<String>(7)?)?.with_timezone(&Utc),
+            created_at: parse_flexible_datetime(&row.get::<String>(6)?)?,
+            updated_at: parse_flexible_datetime(&row.get::<String>(7)?)?,
         })
     }
 }
@@ -820,9 +843,24 @@ impl MissedTrade {
             trade_type: row.get(3)?,
             reason: row.get(4)?,
             potential_entry_price: row.get(5)?,
-            opportunity_date: DateTime::parse_from_rfc3339(&row.get::<String>(6)?)?.with_timezone(&Utc),
+            opportunity_date: parse_flexible_datetime(&row.get::<String>(6)?)?,
             notes: row.get(7)?,
-            created_at: DateTime::parse_from_rfc3339(&row.get::<String>(8)?)?.with_timezone(&Utc),
+            created_at: parse_flexible_datetime(&row.get::<String>(8)?)?,
         })
     }
+}
+
+/// Parse a timestamp string in multiple common formats into UTC DateTime
+fn parse_flexible_datetime(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
+    // Try RFC3339 first (e.g., 2025-10-28T14:42:54.714421+00:00 or ...Z)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+
+    // Try SQLite-like: "YYYY-MM-DD HH:MM:SS[.fraction]" and assume UTC
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
+        return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+    }
+
+    Err(format!("Unable to parse datetime: '{}'", s).into())
 }
