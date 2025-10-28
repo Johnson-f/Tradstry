@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { ReplicacheProvider } from "@/lib/replicache";
+import { WebSocketProvider } from "@/lib/websocket/provider";
 import { Loader2 } from "lucide-react";
 
 interface AuthWrapperProps {
@@ -81,9 +81,9 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
   const isAppRoute = pathname.startsWith("/app");
 
-  // For authenticated users in app routes, wrap with ReplicacheProvider
+  // For authenticated users in app routes, wrap with WebSocketProvider
   if (isAuthenticated && isAppRoute) {
-    return <ReplicacheProvider>{children}</ReplicacheProvider>;
+    return <WebSocketProvider>{children}</WebSocketProvider>;
   }
 
   // For public routes or authenticated users on landing page

@@ -4,6 +4,9 @@ const API_BASE_URL =
 export const apiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
+  ws: {
+    url: (token: string) => `${API_BASE_URL.replace('http', 'ws')}/api/ws?token=${encodeURIComponent(token)}`,
+  },
   endpoints: {
     // Root - unimportant endpoint 
     root: "/",
@@ -119,11 +122,7 @@ export const apiConfig = {
       allAnalytics: "/playbooks/analytics",
     },
 
-    // Replicache endpoints
-    replicache: {
-      push: "/replicache/push",
-      pull: "/replicache/pull",
-    },
+ 
 
     // Notebook endpoints
     notebook: {

@@ -6,9 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { usePlaybooks } from '@/lib/replicache/hooks/use-playbooks';
-import { useReplicache } from '@/lib/replicache/provider';
-import type { Playbook } from '@/lib/replicache/schemas/playbook';
+
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';
