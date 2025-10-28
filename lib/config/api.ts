@@ -169,6 +169,9 @@ export const apiConfig = {
       timeSeries: "/analytics/time-series",
       grouped: "/analytics/grouped",
       comprehensive: "/analytics/comprehensive",
+      // Individual trade & symbol analytics (from core_metrics.rs)
+      trade: "/analytics/trade",
+      symbol: "/analytics/symbol",
     },
 
 

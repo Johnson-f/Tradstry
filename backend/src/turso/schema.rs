@@ -71,9 +71,13 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             commissions DECIMAL(10,4) NOT NULL DEFAULT 0.00,
             number_shares DECIMAL(15,8) NOT NULL,
             take_profit DECIMAL(15,8),
+            initial_target DECIMAL(15,8),
+            profit_target DECIMAL(15,8),
+            trade_ratings INTEGER CHECK (trade_ratings >= 1 AND trade_ratings <= 5),
             entry_date TIMESTAMP NOT NULL,
             exit_date TIMESTAMP,
             reviewed BOOLEAN NOT NULL DEFAULT false,
+            mistakes TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -122,7 +126,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             entry_date TIMESTAMP NOT NULL,
             exit_date TIMESTAMP,
             status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+            initial_target DECIMAL(15,8),
+            profit_target DECIMAL(15,8),
+            trade_ratings INTEGER CHECK (trade_ratings >= 1 AND trade_ratings <= 5),
             reviewed BOOLEAN NOT NULL DEFAULT false,
+            mistakes TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -735,8 +743,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for playbook redesign)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.15".to_string(),
-        description: "Added reviewed column to stocks and options tables".to_string(),
+        version: "0.0.16".to_string(),
+        description: "Added initial_target, profit_target, trade_ratings, and mistakes columns to stocks and options tables".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -758,9 +766,13 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "commissions".to_string(), data_type: "DECIMAL(10,4)".to_string(), is_nullable: false, default_value: Some("0.00".to_string()), is_primary_key: false },
                 ColumnInfo { name: "number_shares".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "take_profit".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "initial_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "profit_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_ratings".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "entry_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
+                ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
@@ -796,7 +808,11 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "entry_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'open'".to_string()), is_primary_key: false },
+                ColumnInfo { name: "initial_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "profit_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_ratings".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
+                ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },

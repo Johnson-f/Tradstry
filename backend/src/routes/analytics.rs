@@ -3,6 +3,11 @@ use crate::models::analytics::{AnalyticsOptions, TimeSeriesInterval};
 use crate::models::analytics::options::GroupingType;
 use crate::models::stock::stocks::TimeRange;
 use crate::service::analytics_engine::AnalyticsEngine;
+use crate::service::analytics_engine::core_metrics::{
+    calculate_individual_stock_trade_analytics,
+    calculate_individual_option_trade_analytics,
+    calculate_symbol_analytics,
+};
 use crate::turso::{AppState, config::SupabaseConfig, SupabaseClaims};
 use serde::{Deserialize, Serialize};
 use base64::Engine;
@@ -102,7 +107,7 @@ impl<T> AnalyticsResponse<T> {
 pub async fn get_core_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
 ) -> Result<HttpResponse> {
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
@@ -111,7 +116,8 @@ pub async fn get_core_analytics(
         .await?
         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
 
-    let time_range = parse_time_range(&query.time_range);
+    let request = payload.as_deref();
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
     let analytics_service = AnalyticsService::new();
 
     match analytics_service.analytics_engine.calculate_core_metrics(&conn, &time_range).await {
@@ -124,7 +130,7 @@ pub async fn get_core_analytics(
 pub async fn get_risk_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
 ) -> Result<HttpResponse> {
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
@@ -133,8 +139,9 @@ pub async fn get_risk_analytics(
         .await?
         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
 
-    let time_range = parse_time_range(&query.time_range);
-    let options = parse_analytics_options(&query);
+    let request = payload.as_deref();
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+    let options = parse_analytics_options_from_request(request);
     let analytics_service = AnalyticsService::new();
 
     match analytics_service.analytics_engine.calculate_risk_metrics(&conn, &time_range, &options).await {
@@ -147,7 +154,7 @@ pub async fn get_risk_analytics(
 pub async fn get_performance_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
 ) -> Result<HttpResponse> {
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
@@ -156,7 +163,8 @@ pub async fn get_performance_analytics(
         .await?
         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
 
-    let time_range = parse_time_range(&query.time_range);
+    let request = payload.as_deref();
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
     let analytics_service = AnalyticsService::new();
 
     match analytics_service.analytics_engine.calculate_performance_metrics(&conn, &time_range).await {
@@ -166,25 +174,98 @@ pub async fn get_performance_analytics(
 }
 
 /// Get time series analytics data (from time_series.rs)
+// pub async fn get_time_series_analytics(
+//     req: HttpRequest,
+//     app_state: web::Data<AppState>,
+//     payload: Option<web::Json<AnalyticsRequest>>,
+// ) -> Result<HttpResponse> {
+//     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
+
+//     let conn = app_state
+//         .get_user_db_connection(&user_id)
+//         .await?
+//         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
+
+//     let request = payload.as_deref();
+//     let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+//     let options = parse_analytics_options_from_request(request);
+//     let analytics_service = AnalyticsService::new();
+
+//     match analytics_service.analytics_engine.calculate_time_series_data(&conn, &time_range, &options).await {
+//         Ok(data) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data))),
+//         Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+//     }
+// }
+
+/// Logging version of get_time_series_analytics
+/// This version logs all the steps and data points to help with debugging
 pub async fn get_time_series_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
 ) -> Result<HttpResponse> {
-    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
+    log::info!("=== get_time_series_analytics called ===");
+    
+    // Log authentication attempt
+    log::info!("Attempting to authenticate user");
+    let user_id = match get_authenticated_user(&req, &app_state.config.supabase).await {
+        Ok(id) => {
+            log::info!("User authenticated successfully: {}", id);
+            id
+        }
+        Err(e) => {
+            log::error!("Authentication failed: {:?}", e);
+            return Err(e);
+        }
+    };
 
-    let conn = app_state
-        .get_user_db_connection(&user_id)
-        .await?
-        .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
+    // Log database connection attempt
+    log::info!("Attempting to get database connection for user: {}", user_id);
+    let conn = match app_state.get_user_db_connection(&user_id).await {
+        Ok(Some(conn)) => {
+            log::info!("Database connection obtained successfully");
+            conn
+        }
+        Ok(None) => {
+            log::error!("User database not found for user_id: {}", user_id);
+            return Err(actix_web::error::ErrorBadRequest("User database not found"));
+        }
+        Err(e) => {
+            log::error!("Failed to get database connection: {:?}", e);
+            return Err(actix_web::error::ErrorInternalServerError(e));
+        }
+    };
 
-    let time_range = parse_time_range(&query.time_range);
-    let options = parse_analytics_options(&query);
+    // Log request parsing
+    log::info!("Parsing request payload");
+    let request = payload.as_deref();
+    log::debug!("Request payload: {:?}", request);
+    
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+    log::info!("Parsed time range: {:?}", time_range);
+    
+    let options = parse_analytics_options_from_request(request);
+    log::info!("Parsed analytics options: {:?}", options);
+    
+    // Log analytics service creation
+    log::info!("Creating AnalyticsService");
     let analytics_service = AnalyticsService::new();
 
+    // Log analytics calculation attempt
+    log::info!("Starting time series data calculation");
     match analytics_service.analytics_engine.calculate_time_series_data(&conn, &time_range, &options).await {
-        Ok(data) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data))),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+        Ok(data) => {
+            log::info!("Time series data calculated successfully, data points: {}", 
+                      serde_json::to_string(&data).map(|s| s.len()).unwrap_or(0));
+            log::debug!("Response data: {:?}", data);
+            Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data)))
+        }
+        Err(e) => {
+            log::error!("Failed to calculate time series data: {:?}", e);
+            log::error!("Error details - Type: {}, Message: {}", 
+                       std::any::type_name_of_val(&e), e.to_string());
+            Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string())))
+        }
     }
 }
 
@@ -192,7 +273,7 @@ pub async fn get_time_series_analytics(
 pub async fn get_grouped_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
 ) -> Result<HttpResponse> {
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
@@ -201,8 +282,9 @@ pub async fn get_grouped_analytics(
         .await?
         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
 
-    let time_range = parse_time_range(&query.time_range);
-    let options = parse_analytics_options(&query);
+    let request = payload.as_deref();
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+    let options = parse_analytics_options_from_request(request);
     let analytics_service = AnalyticsService::new();
 
     match analytics_service.analytics_engine.calculate_grouped_analytics(&conn, &time_range, &options).await {
@@ -215,7 +297,75 @@ pub async fn get_grouped_analytics(
 pub async fn get_comprehensive_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
-    query: web::Query<AnalyticsRequest>,
+    payload: Option<web::Json<AnalyticsRequest>>,
+) -> Result<HttpResponse> {
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
+
+    let conn = app_state
+        .get_user_db_connection(&user_id)
+        .await?
+        .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
+
+    let request = payload.as_deref();
+    let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+    let options = parse_analytics_options_from_request(request);
+    let analytics_service = AnalyticsService::new();
+
+    match analytics_service.analytics_engine.calculate_comprehensive_analytics(&conn, &time_range, options).await {
+        Ok(data) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data))),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+    }
+}
+
+/// Request parameters for individual trade analytics
+#[derive(Debug, Deserialize)]
+pub struct IndividualTradeAnalyticsRequest {
+    pub trade_id: i64,
+    pub trade_type: String, // "stock" or "option"
+}
+
+/// Get analytics for an individual trade (stock or option)
+pub async fn get_individual_trade_analytics(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+    query: web::Query<IndividualTradeAnalyticsRequest>,
+) -> Result<HttpResponse> {
+    let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
+
+    let conn = app_state
+        .get_user_db_connection(&user_id)
+        .await?
+        .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
+
+    match query.trade_type.as_str() {
+        "stock" => {
+            match calculate_individual_stock_trade_analytics(&conn, query.trade_id).await {
+                Ok(analytics) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(analytics))),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+            }
+        },
+        "option" => {
+            match calculate_individual_option_trade_analytics(&conn, query.trade_id).await {
+                Ok(analytics) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(analytics))),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+            }
+        },
+        _ => Ok(HttpResponse::BadRequest().json(AnalyticsResponse::<()>::error("Invalid trade_type. Must be 'stock' or 'option'".to_string()))),
+    }
+}
+
+/// Request parameters for symbol analytics
+#[derive(Debug, Deserialize)]
+pub struct SymbolAnalyticsRequest {
+    pub symbol: String,
+    pub time_range: Option<String>,
+}
+
+/// Get analytics for a specific symbol across all trades
+pub async fn get_symbol_analytics(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+    query: web::Query<SymbolAnalyticsRequest>,
 ) -> Result<HttpResponse> {
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
@@ -225,11 +375,9 @@ pub async fn get_comprehensive_analytics(
         .ok_or_else(|| actix_web::error::ErrorBadRequest("User database not found"))?;
 
     let time_range = parse_time_range(&query.time_range);
-    let options = parse_analytics_options(&query);
-    let analytics_service = AnalyticsService::new();
 
-    match analytics_service.analytics_engine.calculate_comprehensive_analytics(&conn, &time_range, options).await {
-        Ok(data) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data))),
+    match calculate_symbol_analytics(&conn, &query.symbol, &time_range).await {
+        Ok(analytics) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(analytics))),
         Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
     }
 }
@@ -250,7 +398,7 @@ fn parse_time_range(time_range_str: &Option<String>) -> TimeRange {
     }
 }
 
-/// Parse analytics options from query parameters
+/// Parse analytics options from request (works with both query and body)
 fn parse_analytics_options(query: &AnalyticsRequest) -> AnalyticsOptions {
     let time_range = parse_time_range(&query.time_range);
     
@@ -285,15 +433,35 @@ fn parse_analytics_options(query: &AnalyticsRequest) -> AnalyticsOptions {
     }
 }
 
+/// Parse analytics options from optional request payload
+fn parse_analytics_options_from_request(request: Option<&AnalyticsRequest>) -> AnalyticsOptions {
+    if let Some(req) = request {
+        parse_analytics_options(req)
+    } else {
+        // Default options
+        AnalyticsOptions {
+            time_range: TimeRange::AllTime,
+            include_time_series: true,
+            time_series_interval: TimeSeriesInterval::Daily,
+            include_grouped_analytics: false,
+            grouping_types: vec![GroupingType::Symbol],
+            risk_free_rate: 0.02,
+            confidence_levels: vec![0.95, 0.99],
+        }
+    }
+}
+
 /// Configure analytics routes
 pub fn configure_analytics_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/analytics")
-            .route("/core", web::get().to(get_core_analytics))
-            .route("/risk", web::get().to(get_risk_analytics))
-            .route("/performance", web::get().to(get_performance_analytics))
-            .route("/time-series", web::get().to(get_time_series_analytics))
-            .route("/grouped", web::get().to(get_grouped_analytics))
-            .route("/comprehensive", web::get().to(get_comprehensive_analytics))
+            .route("/core", web::post().to(get_core_analytics))
+            .route("/risk", web::post().to(get_risk_analytics))
+            .route("/performance", web::post().to(get_performance_analytics))
+            .route("/time-series", web::post().to(get_time_series_analytics))
+            .route("/grouped", web::post().to(get_grouped_analytics))
+            .route("/comprehensive", web::post().to(get_comprehensive_analytics))
+            .route("/trade", web::get().to(get_individual_trade_analytics))
+            .route("/symbol", web::get().to(get_symbol_analytics))
     );
 }

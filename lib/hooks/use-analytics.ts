@@ -8,6 +8,8 @@ import {
   getTimeSeriesAnalytics,
   getGroupedAnalytics,
   getComprehensiveAnalytics,
+  getIndividualTradeAnalytics,
+  getSymbolAnalytics,
 } from '@/lib/services/analytics-service';
 import type {
   AnalyticsRequest,
@@ -17,6 +19,8 @@ import type {
   UseAnalyticsTimeSeriesReturn,
   UseAnalyticsGroupedReturn,
   UseAnalyticsComprehensiveReturn,
+  UseIndividualTradeAnalyticsReturn,
+  UseSymbolAnalyticsReturn,
 } from '@/lib/types/analytics';
 
 /**
@@ -219,6 +223,76 @@ export function useAnalytics(request?: AnalyticsRequest) {
       performance.refetch();
       timeSeries.refetch();
       grouped.refetch();
+    },
+  };
+}
+
+/**
+ * Hook to fetch individual trade analytics
+ * Gets analytics for a single trade including risk-to-reward ratios
+ * Uses new columns: profit_target, initial_target, stop_loss
+ */
+export function useIndividualTradeAnalytics(
+  tradeId: number,
+  tradeType: 'stock' | 'option',
+  enabled: boolean = true
+): UseIndividualTradeAnalyticsReturn {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['analytics', 'trade', tradeId, tradeType],
+    queryFn: async () => {
+      const response = await getIndividualTradeAnalytics(tradeId, tradeType);
+      if (response.success) {
+        return response.data;
+      }
+      throw new Error(response.error || 'Failed to fetch individual trade analytics');
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
+  });
+
+  return {
+    data: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch: () => {
+      void refetch();
+    },
+  };
+}
+
+/**
+ * Hook to fetch symbol-level analytics
+ * Gets aggregated analytics for all trades on a specific symbol
+ * Useful for analyzing repeated trades on the same symbol (e.g., AAPL)
+ */
+export function useSymbolAnalytics(
+  symbol: string,
+  timeRange?: string,
+  enabled: boolean = true
+): UseSymbolAnalyticsReturn {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['analytics', 'symbol', symbol, timeRange],
+    queryFn: async () => {
+      const response = await getSymbolAnalytics(symbol, timeRange);
+      if (response.success) {
+        return response.data;
+      }
+      throw new Error(response.error || 'Failed to fetch symbol analytics');
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
+  });
+
+  return {
+    data: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch: () => {
+      void refetch();
     },
   };
 }

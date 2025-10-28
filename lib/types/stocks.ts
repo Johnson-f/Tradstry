@@ -9,11 +9,15 @@ export interface Stock {
   commissions: string;
   numberShares: string;
   takeProfit?: string | null;
+  initialTarget?: string | null;
+  profitTarget?: string | null;
+  tradeRatings?: number | null; // 1-5 stars
   entryDate: string; // ISO datetime
   exitDate?: string | null; // ISO datetime
   createdAt: string; // ISO datetime
   updatedAt: string; // ISO datetime
   reviewed: boolean;
+  mistakes?: string | null;
 }
 
 export interface CreateStockRequest {
@@ -25,8 +29,12 @@ export interface CreateStockRequest {
   commissions?: number;
   numberShares: number;
   takeProfit?: number;
+  initialTarget?: number;
+  profitTarget?: number;
+  tradeRatings?: number; // 1-5 stars
   entryDate: string; // ISO
   reviewed?: boolean;
+  mistakes?: string;
 }
 
 export interface UpdateStockRequest {
@@ -39,9 +47,13 @@ export interface UpdateStockRequest {
   commissions?: number;
   numberShares?: number;
   takeProfit?: number | null;
+  initialTarget?: number | null;
+  profitTarget?: number | null;
+  tradeRatings?: number | null; // 1-5 stars
   entryDate?: string;
   exitDate?: string | null;
   reviewed?: boolean;
+  mistakes?: string | null;
 }
 
 

@@ -113,7 +113,11 @@ pub struct OptionTrade {
     pub entry_date: DateTime<Utc>,
     pub exit_date: Option<DateTime<Utc>>,
     pub status: TradeStatus,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub reviewed: bool,
+    pub mistakes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -133,7 +137,11 @@ pub struct CreateOptionRequest {
     pub commissions: f64,
     pub implied_volatility: f64,
     pub entry_date: DateTime<Utc>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub reviewed: Option<bool>,
+    pub mistakes: Option<String>,
 }
 
 /// Data Transfer Object for updating option trades
@@ -154,7 +162,11 @@ pub struct UpdateOptionRequest {
     pub entry_date: Option<DateTime<Utc>>,
     pub exit_date: Option<DateTime<Utc>>,
     pub status: Option<TradeStatus>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub reviewed: Option<bool>,
+    pub mistakes: Option<String>,
 }
 
 /// Option query parameters for filtering and pagination
@@ -167,6 +179,7 @@ pub struct OptionQuery {
     pub status: Option<TradeStatus>,
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
+    pub time_range: Option<TimeRange>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -186,12 +199,14 @@ impl OptionTrade {
                 symbol, strategy_type, trade_direction, number_of_contracts, 
                 option_type, strike_price, expiration_date, entry_price, 
                 total_premium, commissions, implied_volatility, entry_date, 
-                status, reviewed, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, initial_target, profit_target, trade_ratings,
+                reviewed, mistakes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                      option_type, strike_price, expiration_date, entry_price, exit_price,
                      total_premium, commissions, implied_volatility, entry_date, exit_date,
-                     status, created_at, updated_at
+                     status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
+                     created_at, updated_at
             "#,
         )
         .await?
@@ -209,7 +224,11 @@ impl OptionTrade {
             request.implied_volatility,
             request.entry_date.to_rfc3339(),
             TradeStatus::Open.to_string(),
+            request.initial_target,
+            request.profit_target,
+            request.trade_ratings,
             request.reviewed.unwrap_or(false),
+            request.mistakes,
             now.clone(),
             now
         ])
@@ -233,7 +252,8 @@ impl OptionTrade {
                 SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,
                        option_type, strike_price, expiration_date, entry_price, exit_price,
                        total_premium, commissions, implied_volatility, entry_date, exit_date,
-                       status, reviewed, created_at, updated_at
+                       status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
+                       created_at, updated_at
                 FROM options 
                 WHERE id = ?
                 "#,
@@ -259,7 +279,8 @@ impl OptionTrade {
             SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,
                    option_type, strike_price, expiration_date, entry_price, exit_price,
                    total_premium, commissions, implied_volatility, entry_date, exit_date,
-                   status, reviewed, created_at, updated_at
+                   status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
+                   created_at, updated_at
             FROM options 
             WHERE 1=1
             "#,
@@ -301,6 +322,19 @@ impl OptionTrade {
         if let Some(end_date) = query.end_date {
             sql.push_str(" AND entry_date <= ?");
             query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+        }
+
+        // Convert time_range to start_date/end_date if provided
+        if let Some(time_range) = &query.time_range {
+            let (start, end) = time_range.to_dates();
+            if let Some(start_date) = start {
+                sql.push_str(" AND entry_date >= ?");
+                query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
+            }
+            if let Some(end_date) = end {
+                sql.push_str(" AND entry_date <= ?");
+                query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+            }
         }
 
         sql.push_str(" ORDER BY entry_date DESC");
@@ -364,13 +398,18 @@ impl OptionTrade {
                     entry_date = COALESCE(?, entry_date),
                     exit_date = COALESCE(?, exit_date),
                     status = COALESCE(?, status),
+                    initial_target = COALESCE(?, initial_target),
+                    profit_target = COALESCE(?, profit_target),
+                    trade_ratings = COALESCE(?, trade_ratings),
                     reviewed = COALESCE(?, reviewed),
+                    mistakes = COALESCE(?, mistakes),
                     updated_at = ?
                 WHERE id = ?
                 RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                          option_type, strike_price, expiration_date, entry_price, exit_price,
                          total_premium, commissions, implied_volatility, entry_date, exit_date,
-                         status, reviewed, created_at, updated_at
+                         status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
+                         created_at, updated_at
                 "#,
             )
             .await?
@@ -390,7 +429,11 @@ impl OptionTrade {
                 request.entry_date.map(|d| d.to_rfc3339()),
                 request.exit_date.map(|d| d.to_rfc3339()),
                 request.status.map(|t| t.to_string()),
+                request.initial_target,
+                request.profit_target,
+                request.trade_ratings,
                 None::<bool>,
+                request.mistakes,
                 now,
                 option_id
             ])
@@ -1006,7 +1049,7 @@ impl OptionTrade {
     fn from_row(row: &libsql::Row) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {
         let trade_direction_str: String = row.get(3)?;
         let option_type_str: String = row.get(5)?;
-        let status_str: String = row.get(15)?;
+        let status_str: String = row.get(16)?;
         
         let trade_direction = trade_direction_str.parse::<TradeDirection>()
             .map_err(|e| format!("Invalid trade direction: {}", e))?;
@@ -1019,11 +1062,12 @@ impl OptionTrade {
 
         // Parse datetime strings
         let expiration_date_str: String = row.get(7)?;
-        let entry_date_str: String = row.get(13)?;
-        let exit_date_str: Option<String> = row.get(14)?;
-        let reviewed_val: i64 = row.get(16)?;
-        let created_at_str: String = row.get(17)?;
-        let updated_at_str: String = row.get(18)?;
+        let entry_date_str: String = row.get(14)?;
+        let exit_date_str: Option<String> = row.get(15)?;
+        let reviewed_val: i64 = row.get(20)?;
+        let mistakes_str: Option<String> = row.get(21)?;
+        let created_at_str: String = row.get(22)?;
+        let updated_at_str: String = row.get(23)?;
         
         let expiration_date = DateTime::parse_from_rfc3339(&expiration_date_str)
             .map_err(|e| format!("Failed to parse expiration_date: {}", e))?
@@ -1066,7 +1110,11 @@ impl OptionTrade {
             entry_date,
             exit_date,
             status,
+            initial_target: row.get(17)?,
+            profit_target: row.get(18)?,
+            trade_ratings: row.get(19)?,
             reviewed: reviewed_val != 0,
+            mistakes: mistakes_str,
             created_at,
             updated_at,
         })

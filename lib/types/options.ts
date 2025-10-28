@@ -19,9 +19,13 @@ export interface OptionTrade {
   entryDate: string; // ISO
   exitDate?: string | null; // ISO
   status: OptionTradeStatus;
+  initialTarget?: string | null;
+  profitTarget?: string | null;
+  tradeRatings?: number | null; // 1-5 stars
   createdAt: string;
   updatedAt: string;
   reviewed: boolean;
+  mistakes?: string | null;
 }
 
 export interface CreateOptionRequest {
@@ -37,7 +41,11 @@ export interface CreateOptionRequest {
   commissions?: number;
   impliedVolatility: number;
   entryDate: string; // ISO
+  initialTarget?: number;
+  profitTarget?: number;
+  tradeRatings?: number; // 1-5 stars
   reviewed?: boolean;
+  mistakes?: string;
 }
 
 export interface UpdateOptionRequest {
@@ -56,7 +64,11 @@ export interface UpdateOptionRequest {
   entryDate?: string;
   exitDate?: string | null;
   status?: OptionTradeStatus;
+  initialTarget?: number | null;
+  profitTarget?: number | null;
+  tradeRatings?: number | null; // 1-5 stars
   reviewed?: boolean;
+  mistakes?: string | null;
 }
 
 

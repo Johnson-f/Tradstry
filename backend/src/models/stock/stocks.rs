@@ -68,6 +68,36 @@ impl TimeRange {
             TimeRange::AllTime => ("1=1".to_string(), vec![]),
         }
     }
+
+    /// Convert TimeRange to start_date and end_date for filtering by entry_date
+    pub fn to_dates(&self) -> (Option<DateTime<Utc>>, Option<DateTime<Utc>>) {
+        let now = Utc::now();
+        
+        match self {
+            TimeRange::SevenDays => {
+                let start = now - chrono::Duration::days(7);
+                (Some(start), Some(now))
+            },
+            TimeRange::ThirtyDays => {
+                let start = now - chrono::Duration::days(30);
+                (Some(start), Some(now))
+            },
+            TimeRange::NinetyDays => {
+                let start = now - chrono::Duration::days(90);
+                (Some(start), Some(now))
+            },
+            TimeRange::OneYear => {
+                let start = now - chrono::Duration::days(365);
+                (Some(start), Some(now))
+            },
+            TimeRange::YearToDate => {
+                let start = now.date_naive().and_hms_opt(1, 0, 0).unwrap().and_utc();
+                (Some(start), Some(now))
+            },
+            TimeRange::Custom { start_date, end_date } => (*start_date, *end_date),
+            TimeRange::AllTime => (None, None),
+        }
+    }
 }
 
 /// Trade type enum matching the PostgreSQL enum in your schema
@@ -151,9 +181,13 @@ pub struct Stock {
     pub commissions: f64,
     pub number_shares: f64,
     pub take_profit: Option<f64>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub entry_date: DateTime<Utc>,
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: bool,
+    pub mistakes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -169,8 +203,12 @@ pub struct CreateStockRequest {
     pub commissions: f64,
     pub number_shares: f64,
     pub take_profit: Option<f64>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub entry_date: DateTime<Utc>,
     pub reviewed: Option<bool>,
+    pub mistakes: Option<String>,
 }
 
 /// Data Transfer Object for updating stock trades
@@ -185,9 +223,13 @@ pub struct UpdateStockRequest {
     pub commissions: Option<f64>,
     pub number_shares: Option<f64>,
     pub take_profit: Option<f64>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
     pub entry_date: Option<DateTime<Utc>>,
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: Option<bool>,
+    pub mistakes: Option<String>,
 }
 
 /// Stock query parameters for filtering and pagination
@@ -198,6 +240,7 @@ pub struct StockQuery {
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub updated_after: Option<DateTime<Utc>>,
+    pub time_range: Option<TimeRange>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -270,11 +313,13 @@ impl Stock {
             INSERT INTO stocks (
                 symbol, trade_type, order_type, entry_price, 
                 stop_loss, commissions, number_shares, take_profit, 
-                entry_date, reviewed, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                initial_target, profit_target, trade_ratings,
+                entry_date, reviewed, mistakes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
-                     entry_date, exit_date, created_at, updated_at
+                     initial_target, profit_target, trade_ratings,
+                     entry_date, exit_date, reviewed, mistakes, created_at, updated_at
             "#,
         )
         .await?
@@ -287,8 +332,12 @@ impl Stock {
             request.commissions,
             request.number_shares,
             request.take_profit,
+            request.initial_target,
+            request.profit_target,
+            request.trade_ratings,
             request.entry_date.to_rfc3339(),
             request.reviewed.unwrap_or(false),
+            request.mistakes,
             now.clone(),
             now
         ])
@@ -311,7 +360,8 @@ impl Stock {
             r#"
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
-                   entry_date, exit_date, reviewed, created_at, updated_at
+                   initial_target, profit_target, trade_ratings,
+                   entry_date, exit_date, reviewed, mistakes, created_at, updated_at
             FROM stocks 
             WHERE id = ?
             "#,
@@ -336,7 +386,8 @@ impl Stock {
             r#"
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
-                   entry_date, exit_date, reviewed, created_at, updated_at
+                   initial_target, profit_target, trade_ratings,
+                   entry_date, exit_date, reviewed, mistakes, created_at, updated_at
             FROM stocks 
             WHERE 1=1
             "#,
@@ -368,6 +419,19 @@ impl Stock {
         if let Some(updated_after) = query.updated_after {
             sql.push_str(" AND updated_at >= ?");
             query_params.push(libsql::Value::Text(updated_after.to_rfc3339()));
+        }
+
+        // Convert time_range to start_date/end_date if provided
+        if let Some(time_range) = &query.time_range {
+            let (start, end) = time_range.to_dates();
+            if let Some(start_date) = start {
+                sql.push_str(" AND entry_date >= ?");
+                query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
+            }
+            if let Some(end_date) = end {
+                sql.push_str(" AND entry_date <= ?");
+                query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+            }
         }
 
         sql.push_str(" ORDER BY entry_date DESC");
@@ -425,14 +489,19 @@ impl Stock {
                 commissions = COALESCE(?, commissions),
                 number_shares = COALESCE(?, number_shares),
                 take_profit = COALESCE(?, take_profit),
+                initial_target = COALESCE(?, initial_target),
+                profit_target = COALESCE(?, profit_target),
+                trade_ratings = COALESCE(?, trade_ratings),
                 entry_date = COALESCE(?, entry_date),
                 exit_date = COALESCE(?, exit_date),
                 reviewed = COALESCE(?, reviewed),
+                mistakes = COALESCE(?, mistakes),
                 updated_at = ?
             WHERE id = ?
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
-                     entry_date, exit_date, reviewed, created_at, updated_at
+                     initial_target, profit_target, trade_ratings,
+                     entry_date, exit_date, reviewed, mistakes, created_at, updated_at
             "#,
         )
             .await?
@@ -446,9 +515,13 @@ impl Stock {
                 request.commissions,
                 request.number_shares,
                 request.take_profit,
+                request.initial_target,
+                request.profit_target,
+                request.trade_ratings,
                 request.entry_date.map(|d| d.to_rfc3339()),
                 request.exit_date.map(|d| d.to_rfc3339()),
                 None::<bool>,
+                request.mistakes,
                 now,
                 stock_id
             ])
@@ -1135,11 +1208,12 @@ impl Stock {
             .map_err(|e| format!("Invalid order type: {}", e))?;
 
         // Parse datetime strings
-        let entry_date_str: String = row.get(10)?;
-        let exit_date_str: Option<String> = row.get(11)?;
-        let reviewed_val: i64 = row.get(12)?;
-        let created_at_str: String = row.get(13)?;
-        let updated_at_str: String = row.get(14)?;
+        let entry_date_str: String = row.get(13)?;
+        let exit_date_str: Option<String> = row.get(14)?;
+        let reviewed_val: i64 = row.get(16)?;
+        let mistakes_str: Option<String> = row.get(17)?;
+        let created_at_str: String = row.get(18)?;
+        let updated_at_str: String = row.get(19)?;
         
         let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
             .map_err(|e| format!("Failed to parse entry_date: {}", e))?
@@ -1172,9 +1246,13 @@ impl Stock {
             commissions: Self::get_f64(row, 7)?,
             number_shares: Self::get_f64(row, 8)?,
             take_profit: Self::get_opt_f64(row, 9)?,
+            initial_target: Self::get_opt_f64(row, 10)?,
+            profit_target: Self::get_opt_f64(row, 11)?,
+            trade_ratings: row.get::<Option<i32>>(12)?,
             entry_date,
             exit_date,
             reviewed: reviewed_val != 0,
+            mistakes: mistakes_str,
             created_at,
             updated_at,
         })

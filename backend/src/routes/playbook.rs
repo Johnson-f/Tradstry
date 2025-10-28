@@ -7,7 +7,7 @@ use log::{info, error, debug};
 
 use crate::models::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
-    CreateRuleRequest, UpdateRuleRequest, PlaybookRule,
+    CreateRuleRequest, PlaybookRule,
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::turso::client::TursoClient;
@@ -778,7 +778,7 @@ async fn delete_playbook_rule(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
 ) -> ActixResult<HttpResponse> {
-    let (playbook_id, rule_id) = paths.into_inner();
+    let (_playbook_id, rule_id) = paths.into_inner();
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
