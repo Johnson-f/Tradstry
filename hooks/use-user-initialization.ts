@@ -59,6 +59,7 @@ export function useUserInitialization() {
 
   useEffect(() => {
     let mounted = true;
+    const supabase = createClient();
 
     const initializeUserOnLogin = async () => {
       // Prevent double initialization in React strict mode
@@ -66,13 +67,12 @@ export function useUserInitialization() {
         return;
       }
 
-      const supabase = createClient();
-      
       try {
         // Get current user session
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
+          // No user yet; wait for auth state change
           return;
         }
 
@@ -279,8 +279,18 @@ export function useUserInitialization() {
 
     initializeUserOnLogin();
 
+    // If no user at first, listen for auth state changes to trigger initialization later
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (hasInitializedRef.current) return;
+      if (session?.user) {
+        initializeUserOnLogin();
+      }
+    });
+
     return () => {
       mounted = false;
+      authListener.subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - run only once on mount

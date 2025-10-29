@@ -19,7 +19,7 @@
 set -e
 
 # Configuration
-VPS_IP="37.27.200.227"
+VPS_IP="95.216.219.131"
 VPS_USER="root"  # Change this to your VPS username
 APP_DIR="/opt/tradstry"
 LOCAL_DIR="$(pwd)"

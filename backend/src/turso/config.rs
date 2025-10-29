@@ -23,6 +23,8 @@ pub struct TursoConfig {
     pub cron_secret: String,
     /// Vector database configuration
     pub vector: VectorConfig,
+    /// FinanceQuery market data configuration
+    pub finance_query: FinanceQueryConfig,
 }
 
 /// Supabase authentication configuration
@@ -60,6 +62,7 @@ impl TursoConfig {
         let supabase_config = SupabaseConfig::from_env()?;
         let google_config = GoogleConfig::from_env()?;
         let vector_config = VectorConfig::from_env()?;
+        let finance_query_config = FinanceQueryConfig::from_env()?;
         
         Ok(Self {
             registry_db_url: env::var("REGISTRY_DB_URL")
@@ -76,6 +79,7 @@ impl TursoConfig {
             cron_secret: env::var("CRON_SECRET")
                 .map_err(|_| "CRON_SECRET environment variable not set")?,
             vector: vector_config,
+            finance_query: finance_query_config,
         })
     }
 }
@@ -125,6 +129,24 @@ impl VectorConfig {
                 .map_err(|_| "UPSTASH_VECTOR_REST_URL environment variable not set")?,
             rest_token: env::var("UPSTASH_VECTOR_REST_TOKEN")
                 .map_err(|_| "UPSTASH_VECTOR_REST_TOKEN environment variable not set")?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct FinanceQueryConfig {
+    pub base_url: String,
+    pub api_key: Option<String>,
+}
+
+impl FinanceQueryConfig {
+    /// Load FinanceQuery configuration from environment variables
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            base_url: env::var("FINANCEQUERY_BASE_URL")
+                .map_err(|_| "FINANCEQUERY_BASE_URL environment variable not set")?,
+            api_key: env::var("FINANCEQUERY_API_KEY").ok(), // Optional - FinanceQuery may not require auth
         })
     }
 }

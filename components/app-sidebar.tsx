@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils"
 const navItems = [
   { title: "Home", url: "/app", icon: Home },
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
-  { title: "Journal", url: "/app/journal", icon: NotebookPen },
+  { title: "Journaling", url: "/app/journaling", icon: NotebookPen },
   { title: "Playbook", url: "/app/playbook", icon: Library },
   { title: "Notebook", url: "/app/notebook", icon: Notebook },
   { title: "Analytics", url: "/app/analytics", icon: PieChart },
@@ -122,7 +122,7 @@ export function AppSidebar({
             {!collapsed && (
               <div>
                 <div className="text-foreground font-bold text-base leading-tight">
-                  Tradistry
+                  Tradstry
                 </div>
                 <div className="text-xs text-muted-foreground leading-tight">
                   Journal & Analytics

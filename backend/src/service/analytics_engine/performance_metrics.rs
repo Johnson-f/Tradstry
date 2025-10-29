@@ -1,7 +1,11 @@
+/// One of the most important files for the AI systems for spotting trading patterns 
+
 use anyhow::Result;
 use libsql::Connection;
 use crate::models::analytics::PerformanceMetrics;
 use crate::models::stock::stocks::TimeRange;
+use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 /// Calculate performance metrics including hold times for winners and losers
 pub async fn calculate_performance_metrics(
@@ -60,7 +64,7 @@ async fn calculate_stocks_performance_metrics(
     let mut rows = conn
         .prepare(&sql)
         .await?
-        .query(libsql::params_from_iter(query_params))
+        .query(libsql::params_from_iter(query_params.clone()))
         .await?;
 
     let mut avg_hold_time_days = 0.0;
@@ -81,28 +85,33 @@ async fn calculate_stocks_performance_metrics(
     let winners_hold_time = calculate_winners_hold_time(conn, time_condition, time_params).await?;
     let losers_hold_time = calculate_losers_hold_time(conn, time_condition, time_params).await?;
 
-    // Calculate average risk per trade
-    let _avg_risk_per_trade = calculate_average_risk_per_trade(conn, time_condition, time_params).await?;
+    // Calculate advanced metrics
+    let (trade_expectancy, edge, payoff_ratio) = calculate_expectancy_and_edge_stocks(conn, time_condition, time_params).await?;
+    let kelly_criterion = calculate_kelly_criterion_stocks(conn, time_condition, time_params).await?;
+    let (avg_r_multiple, r_multiple_std_dev, positive_r_count, negative_r_count) = calculate_r_multiples_stocks(conn, time_condition, time_params).await?;
+    let consistency_ratio = calculate_consistency_ratio_stocks(conn, time_condition, time_params).await?;
+    let (monthly_win_rate, quarterly_win_rate) = calculate_periodic_win_rates_stocks(conn, time_condition, time_params).await?;
+    let system_quality_number = calculate_system_quality_number_stocks(conn, time_condition, time_params).await?;
 
     Ok(PerformanceMetrics {
-        trade_expectancy: 0.0, // Will be calculated from core metrics
-        edge: 0.0, // Will be calculated from core metrics
+        trade_expectancy,
+        edge,
         average_hold_time_days: avg_hold_time_days,
         average_hold_time_winners_days: winners_hold_time,
         average_hold_time_losers_days: losers_hold_time,
         average_position_size: avg_position_size,
         position_size_standard_deviation: position_size_std_dev,
         position_size_variability: if avg_position_size > 0.0 { position_size_std_dev / avg_position_size } else { 0.0 },
-        kelly_criterion: 0.0, // Will be calculated separately
-        system_quality_number: 0.0, // Will be calculated separately
-        payoff_ratio: 0.0, // Will be calculated from core metrics
-        average_r_multiple: 0.0, // Will be calculated separately
-        r_multiple_standard_deviation: 0.0, // Will be calculated separately
-        positive_r_multiple_count: 0, // Will be calculated separately
-        negative_r_multiple_count: 0, // Will be calculated separately
-        consistency_ratio: 0.0, // Will be calculated separately
-        monthly_win_rate: 0.0, // Will be calculated separately
-        quarterly_win_rate: 0.0, // Will be calculated separately
+        kelly_criterion,
+        system_quality_number,
+        payoff_ratio,
+        average_r_multiple: avg_r_multiple,
+        r_multiple_standard_deviation: r_multiple_std_dev,
+        positive_r_multiple_count: positive_r_count,
+        negative_r_multiple_count: negative_r_count,
+        consistency_ratio,
+        monthly_win_rate,
+        quarterly_win_rate,
         average_slippage: 0.0, // Not available in current schema
         commission_impact_percentage,
     })
@@ -179,6 +188,7 @@ async fn calculate_losers_hold_time(
 }
 
 /// Calculate average risk per trade (entry - stop_loss) * position_size
+#[allow(dead_code)]
 async fn calculate_average_risk_per_trade(
     conn: &Connection,
     time_condition: &str,
@@ -270,25 +280,33 @@ async fn calculate_options_performance_metrics(
     let winners_hold_time = calculate_options_winners_hold_time(conn, time_condition, time_params).await?;
     let losers_hold_time = calculate_options_losers_hold_time(conn, time_condition, time_params).await?;
 
+    // Calculate advanced metrics for options
+    let (trade_expectancy, edge, payoff_ratio) = calculate_expectancy_and_edge_options(conn, time_condition, time_params).await?;
+    let kelly_criterion = calculate_kelly_criterion_options(conn, time_condition, time_params).await?;
+    let (avg_r_multiple, r_multiple_std_dev, positive_r_count, negative_r_count) = calculate_r_multiples_options(conn, time_condition, time_params).await?;
+    let consistency_ratio = calculate_consistency_ratio_options(conn, time_condition, time_params).await?;
+    let (monthly_win_rate, quarterly_win_rate) = calculate_periodic_win_rates_options(conn, time_condition, time_params).await?;
+    let system_quality_number = calculate_system_quality_number_options(conn, time_condition, time_params).await?;
+
     Ok(PerformanceMetrics {
-        trade_expectancy: 0.0, // Will be calculated from core metrics
-        edge: 0.0, // Will be calculated from core metrics
+        trade_expectancy,
+        edge,
         average_hold_time_days: avg_hold_time_days,
         average_hold_time_winners_days: winners_hold_time,
         average_hold_time_losers_days: losers_hold_time,
         average_position_size: avg_position_size,
         position_size_standard_deviation: position_size_std_dev,
         position_size_variability: if avg_position_size > 0.0 { position_size_std_dev / avg_position_size } else { 0.0 },
-        kelly_criterion: 0.0, // Will be calculated separately
-        system_quality_number: 0.0, // Will be calculated separately
-        payoff_ratio: 0.0, // Will be calculated from core metrics
-        average_r_multiple: 0.0, // Will be calculated separately
-        r_multiple_standard_deviation: 0.0, // Will be calculated separately
-        positive_r_multiple_count: 0, // Will be calculated separately
-        negative_r_multiple_count: 0, // Will be calculated separately
-        consistency_ratio: 0.0, // Will be calculated separately
-        monthly_win_rate: 0.0, // Will be calculated separately
-        quarterly_win_rate: 0.0, // Will be calculated separately
+        kelly_criterion,
+        system_quality_number,
+        payoff_ratio,
+        average_r_multiple: avg_r_multiple,
+        r_multiple_standard_deviation: r_multiple_std_dev,
+        positive_r_multiple_count: positive_r_count,
+        negative_r_multiple_count: negative_r_count,
+        consistency_ratio,
+        monthly_win_rate,
+        quarterly_win_rate,
         average_slippage: 0.0, // Not available in current schema
         commission_impact_percentage,
     })
@@ -376,24 +394,24 @@ fn combine_performance_metrics(stocks: PerformanceMetrics, options: PerformanceM
     let options_weight = 1.0 - stocks_weight;
 
     PerformanceMetrics {
-        trade_expectancy: 0.0, // Will be calculated from core metrics
-        edge: 0.0, // Will be calculated from core metrics
+        trade_expectancy: stocks.trade_expectancy * stocks_weight + options.trade_expectancy * options_weight,
+        edge: stocks.edge * stocks_weight + options.edge * options_weight,
         average_hold_time_days: stocks.average_hold_time_days * stocks_weight + options.average_hold_time_days * options_weight,
         average_hold_time_winners_days: stocks.average_hold_time_winners_days * stocks_weight + options.average_hold_time_winners_days * options_weight,
         average_hold_time_losers_days: stocks.average_hold_time_losers_days * stocks_weight + options.average_hold_time_losers_days * options_weight,
         average_position_size: stocks.average_position_size * stocks_weight + options.average_position_size * options_weight,
         position_size_standard_deviation: stocks.position_size_standard_deviation * stocks_weight + options.position_size_standard_deviation * options_weight,
         position_size_variability: stocks.position_size_variability * stocks_weight + options.position_size_variability * options_weight,
-        kelly_criterion: 0.0, // Will be calculated separately
-        system_quality_number: 0.0, // Will be calculated separately
-        payoff_ratio: 0.0, // Will be calculated from core metrics
-        average_r_multiple: 0.0, // Will be calculated separately
-        r_multiple_standard_deviation: 0.0, // Will be calculated separately
-        positive_r_multiple_count: 0, // Will be calculated separately
-        negative_r_multiple_count: 0, // Will be calculated separately
-        consistency_ratio: 0.0, // Will be calculated separately
-        monthly_win_rate: 0.0, // Will be calculated separately
-        quarterly_win_rate: 0.0, // Will be calculated separately
+        kelly_criterion: stocks.kelly_criterion * stocks_weight + options.kelly_criterion * options_weight,
+        system_quality_number: stocks.system_quality_number * stocks_weight + options.system_quality_number * options_weight,
+        payoff_ratio: stocks.payoff_ratio * stocks_weight + options.payoff_ratio * options_weight,
+        average_r_multiple: stocks.average_r_multiple * stocks_weight + options.average_r_multiple * options_weight,
+        r_multiple_standard_deviation: stocks.r_multiple_standard_deviation * stocks_weight + options.r_multiple_standard_deviation * options_weight,
+        positive_r_multiple_count: stocks.positive_r_multiple_count + options.positive_r_multiple_count,
+        negative_r_multiple_count: stocks.negative_r_multiple_count + options.negative_r_multiple_count,
+        consistency_ratio: stocks.consistency_ratio * stocks_weight + options.consistency_ratio * options_weight,
+        monthly_win_rate: stocks.monthly_win_rate * stocks_weight + options.monthly_win_rate * options_weight,
+        quarterly_win_rate: stocks.quarterly_win_rate * stocks_weight + options.quarterly_win_rate * options_weight,
         average_slippage: 0.0, // Not available in current schema
         commission_impact_percentage: stocks.commission_impact_percentage * stocks_weight + options.commission_impact_percentage * options_weight,
     }
@@ -424,4 +442,1296 @@ impl Default for PerformanceMetrics {
             commission_impact_percentage: 0.0,
         }
     }
+}
+
+/// Risk management behavioral patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RiskBehaviorMetrics {
+    pub stop_loss_hit_percentage: f64,
+    pub stop_loss_adherence_rate: f64,
+    pub avg_position_size_after_win: f64,
+    pub avg_position_size_after_loss: f64,
+    pub position_size_consistency_score: f64,
+    pub avg_risk_reward_ratio: f64,
+    pub risk_reward_consistency: f64,
+}
+
+/// Timing behavioral patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimingBehaviorMetrics {
+    pub best_performing_day: String,
+    pub worst_performing_day: String,
+    pub trades_per_day_of_week: HashMap<String, u32>,
+    pub pnl_per_day_of_week: HashMap<String, f64>,
+    pub avg_entry_time_morning: f64,
+    pub avg_entry_time_afternoon: f64,
+    pub avg_entry_time_evening: f64,
+    pub early_exit_percentage: f64,
+    pub late_exit_percentage: f64,
+}
+
+/// Trading frequency behavioral patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingFrequencyMetrics {
+    pub trades_per_week: f64,
+    pub over_trading_days: u32,
+    pub under_trading_days: u32,
+    pub optimal_trading_frequency: f64,
+    pub trading_consistency_score: f64,
+    pub avg_trades_per_winning_day: f64,
+    pub avg_trades_per_losing_day: f64,
+}
+
+/// Profitability distribution patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfitabilityDistributionMetrics {
+    pub best_trade_pct_of_total_profit: f64,
+    pub worst_trade_pct_of_total_loss: f64,
+    pub profit_distribution_score: f64,
+    pub outlier_trades_count: u32,
+    pub largest_win_drawdown: f64,
+    pub worst_trade_recovery_time: f64,
+    pub consecutive_wins_avg_profit: f64,
+    pub consecutive_losses_avg_loss: f64,
+}
+
+/// Comprehensive behavioral patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehavioralPatterns {
+    pub risk_behavior: RiskBehaviorMetrics,
+    pub timing_behavior: TimingBehaviorMetrics,
+    pub trading_frequency: TradingFrequencyMetrics,
+    pub profitability_distribution: ProfitabilityDistributionMetrics,
+}
+
+/// Calculate all behavioral patterns
+#[allow(dead_code)]
+pub async fn calculate_behavioral_patterns(
+    conn: &Connection,
+    time_range: &TimeRange,
+) -> Result<BehavioralPatterns> {
+    let (time_condition, time_params) = time_range.to_sql_condition();
+    
+    // Calculate each pattern category
+    let risk_behavior = calculate_risk_behavior(conn, &time_condition, &time_params).await?;
+    let timing_behavior = calculate_timing_behavior(conn, &time_condition, &time_params).await?;
+    let trading_frequency = calculate_trading_frequency_behavior(conn, &time_condition, &time_params).await?;
+    let profitability_distribution = calculate_profitability_distribution(conn, &time_condition, &time_params).await?;
+    
+    Ok(BehavioralPatterns {
+        risk_behavior,
+        timing_behavior,
+        trading_frequency,
+        profitability_distribution,
+    })
+}
+
+/// Calculate risk management behavioral patterns
+#[allow(dead_code)]
+async fn calculate_risk_behavior(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<RiskBehaviorMetrics> {
+    // Calculate stop loss adherence - using SQLite-specific functions
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(CASE WHEN stop_loss IS NOT NULL THEN 1 ELSE 0 END) as trades_with_stop
+        FROM stocks
+        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut stop_loss_adherence = 0.0;
+    let stop_loss_hit_pct = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        let total: i64 = row.get(0)?;
+        let with_stop: i64 = row.get(1)?;
+
+        if total > 0 {
+            stop_loss_adherence = (with_stop as f64 / total as f64) * 100.0;
+        }
+    }
+
+    // Simplified position size patterns - using subquery instead of window functions
+    let sql = format!(
+        r#"
+        SELECT 
+            AVG(position_size) as avg_after_win,
+            AVG(position_size) as avg_after_loss,
+            STDDEV(position_size) / NULLIF(AVG(position_size), 0) * 100 as consistency
+        FROM (
+            SELECT 
+                entry_price * number_shares as position_size,
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut avg_size_after_win = 0.0;
+    let mut avg_size_after_loss = 0.0;
+    let mut position_consistency = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        avg_size_after_win = row.get::<f64>(0).unwrap_or(0.0);
+        avg_size_after_loss = row.get::<f64>(1).unwrap_or(0.0);
+        position_consistency = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    // Calculate risk-reward ratio consistency
+    let sql = format!(
+        r#"
+        SELECT 
+            AVG(CASE 
+                WHEN ABS(entry_price - stop_loss) > 0 
+                THEN ABS(calculated_pnl) / ABS(entry_price - stop_loss) 
+                ELSE 0 
+            END) as avg_rr_ratio
+        FROM (
+            SELECT 
+                *,
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL 
+              AND stop_loss IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut avg_rr_ratio = 0.0;
+    let rr_consistency = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        avg_rr_ratio = row.get::<f64>(0).unwrap_or(0.0);
+    }
+
+    Ok(RiskBehaviorMetrics {
+        stop_loss_hit_percentage: stop_loss_hit_pct,
+        stop_loss_adherence_rate: stop_loss_adherence,
+        avg_position_size_after_win: avg_size_after_win,
+        avg_position_size_after_loss: avg_size_after_loss,
+        position_size_consistency_score: 100.0 - position_consistency.min(100.0).max(0.0),
+        avg_risk_reward_ratio: avg_rr_ratio,
+        risk_reward_consistency: rr_consistency,
+    })
+}
+
+/// Calculate timing behavioral patterns
+#[allow(dead_code)]
+async fn calculate_timing_behavior(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<TimingBehaviorMetrics> {
+    // Get day of week performance
+    let sql = format!(
+        r#"
+        SELECT 
+            CASE 
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 0 THEN 'Sunday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 1 THEN 'Monday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 2 THEN 'Tuesday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 3 THEN 'Wednesday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 4 THEN 'Thursday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 5 THEN 'Friday'
+                WHEN CAST(strftime('%%w', entry_date) AS INTEGER) = 6 THEN 'Saturday'
+                ELSE 'Unknown'
+            END as day_of_week,
+            COUNT(*) as trade_count,
+            SUM(CASE 
+                WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                ELSE 0
+            END) as total_pnl
+        FROM stocks
+        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        GROUP BY day_of_week
+        ORDER BY total_pnl DESC
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut trades_per_day = HashMap::new();
+    let mut pnl_per_day = HashMap::new();
+    let mut best_day = "None".to_string();
+    let mut worst_day = "None".to_string();
+    let mut best_pnl = f64::MIN;
+    let mut worst_pnl = f64::MAX;
+
+    while let Some(row) = rows.next().await? {
+        let day: String = row.get(0)?;
+        let count: i64 = row.get(1)?;
+        let pnl: f64 = row.get(2)?;
+
+        trades_per_day.insert(day.clone(), count as u32);
+        pnl_per_day.insert(day.clone(), pnl);
+
+        if pnl > best_pnl {
+            best_pnl = pnl;
+            best_day = day.clone();
+        }
+        if pnl < worst_pnl {
+            worst_pnl = pnl;
+            worst_day = day.clone();
+        }
+    }
+
+    Ok(TimingBehaviorMetrics {
+        best_performing_day: best_day,
+        worst_performing_day: worst_day,
+        trades_per_day_of_week: trades_per_day,
+        pnl_per_day_of_week: pnl_per_day,
+        avg_entry_time_morning: 0.0,
+        avg_entry_time_afternoon: 0.0,
+        avg_entry_time_evening: 0.0,
+        early_exit_percentage: 0.0,
+        late_exit_percentage: 0.0,
+    })
+}
+
+/// Calculate trading frequency behavioral patterns
+#[allow(dead_code)]
+async fn calculate_trading_frequency_behavior(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<TradingFrequencyMetrics> {
+    // Calculate trades per week
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            CAST(JULIANDAY(MAX(exit_date)) - JULIANDAY(MIN(entry_date)) AS REAL) as days_span,
+            COUNT(*) / CAST(JULIANDAY(MAX(exit_date)) - JULIANDAY(MIN(entry_date)) AS REAL) * 7.0 as trades_per_week
+        FROM stocks
+        WHERE entry_date IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut trades_per_week = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        trades_per_week = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    // Count over-trading days (days with more than 3 trades)
+    let sql = format!(
+        r#"
+        SELECT COUNT(*) 
+        FROM (
+            SELECT DATE(entry_date) as trade_date
+            FROM stocks
+            WHERE entry_date IS NOT NULL AND ({})
+            GROUP BY trade_date
+            HAVING COUNT(*) > 3
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut over_trading_days = 0;
+    if let Some(row) = rows.next().await? {
+        over_trading_days = row.get::<i64>(0).unwrap_or(0) as u32;
+    }
+
+    // Calculate optimal trading frequency
+    let sql = format!(
+        r#"
+        SELECT 
+            AVG(trades_per_day) as avg_trades,
+            AVG(CASE WHEN avg_pnl > 0 THEN trades_per_day ELSE NULL END) as avg_trades_on_winning_days,
+            AVG(CASE WHEN avg_pnl < 0 THEN trades_per_day ELSE NULL END) as avg_trades_on_losing_days
+        FROM (
+            SELECT 
+                DATE(entry_date) as trade_date,
+                COUNT(*) as trades_per_day,
+                AVG(CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END) as avg_pnl
+            FROM stocks
+            WHERE entry_date IS NOT NULL AND exit_date IS NOT NULL AND ({})
+            GROUP BY trade_date
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut optimal_frequency = 0.0;
+    let mut avg_trades_winning = 0.0;
+    let mut avg_trades_losing = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        optimal_frequency = row.get::<f64>(0).unwrap_or(0.0);
+        avg_trades_winning = row.get::<f64>(1).unwrap_or(0.0);
+        avg_trades_losing = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    Ok(TradingFrequencyMetrics {
+        trades_per_week,
+        over_trading_days,
+        under_trading_days: 0,
+        optimal_trading_frequency: optimal_frequency,
+        trading_consistency_score: 0.0,
+        avg_trades_per_winning_day: avg_trades_winning,
+        avg_trades_per_losing_day: avg_trades_losing,
+    })
+}
+
+/// Calculate profitability distribution patterns
+#[allow(dead_code)]
+async fn calculate_profitability_distribution(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<ProfitabilityDistributionMetrics> {
+    // Calculate best and worst trade impact
+    let sql = format!(
+        r#"
+        SELECT 
+            MAX(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as best_trade,
+            MIN(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as worst_trade,
+            SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_profit,
+            SUM(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE 0 END) as total_loss
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut best_trade = 0.0;
+    let mut worst_trade = 0.0;
+    let mut total_profit = 0.0;
+    let mut total_loss = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        best_trade = row.get::<f64>(0).unwrap_or(0.0);
+        worst_trade = row.get::<f64>(1).unwrap_or(0.0);
+        total_profit = row.get::<f64>(2).unwrap_or(0.0);
+        total_loss = row.get::<f64>(3).unwrap_or(0.0).abs();
+    }
+
+    let best_trade_pct = if total_profit > 0.0 {
+        (best_trade / total_profit) * 100.0
+    } else {
+        0.0
+    };
+
+    let worst_trade_pct = if total_loss > 0.0 {
+        (worst_trade.abs() / total_loss) * 100.0
+    } else {
+        0.0
+    };
+
+    let profit_distribution_score = 100.0 - best_trade_pct;
+
+    Ok(ProfitabilityDistributionMetrics {
+        best_trade_pct_of_total_profit: best_trade_pct,
+        worst_trade_pct_of_total_loss: worst_trade_pct,
+        profit_distribution_score,
+        outlier_trades_count: 0,
+        largest_win_drawdown: 0.0,
+        worst_trade_recovery_time: 0.0,
+        consecutive_wins_avg_profit: 0.0,
+        consecutive_losses_avg_loss: 0.0,
+    })
+}
+
+/// Calculate expectancy, edge, and payoff ratio for stocks
+async fn calculate_expectancy_and_edge_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, f64)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+            SUM(CASE WHEN calculated_pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
+            AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
+            AVG(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as avg_loser,
+            SUM(calculated_pnl) as total_pnl
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut total_trades = 0.0;
+    let mut winning_trades = 0.0;
+    let mut losing_trades = 0.0;
+    let mut avg_winner = 0.0;
+    let mut avg_loser = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        total_trades = row.get::<f64>(0).unwrap_or(0.0);
+        winning_trades = row.get::<f64>(1).unwrap_or(0.0);
+        losing_trades = row.get::<f64>(2).unwrap_or(0.0);
+        avg_winner = row.get::<f64>(3).unwrap_or(0.0);
+        avg_loser = row.get::<f64>(4).unwrap_or(0.0);
+    }
+
+    // Calculate expectancy = (win rate * avg winner) + (loss rate * avg loser)
+    let win_rate = if total_trades > 0.0 { winning_trades / total_trades } else { 0.0 };
+    let loss_rate = if total_trades > 0.0 { losing_trades / total_trades } else { 0.0 };
+    let expectancy = (win_rate * avg_winner) + (loss_rate * avg_loser);
+
+    // Calculate edge (similar to expectancy, percentage form)
+    let edge = if avg_loser != 0.0 {
+        ((win_rate * avg_winner) + (loss_rate * avg_loser)) / avg_loser.abs()
+    } else {
+        0.0
+    };
+
+    // Calculate payoff ratio (avg winner / avg loser)
+    let payoff_ratio = if avg_loser != 0.0 {
+        avg_winner / avg_loser.abs()
+    } else {
+        0.0
+    };
+
+    Ok((expectancy, edge, payoff_ratio))
+}
+
+/// Calculate Kelly Criterion for stocks
+/// Kelly % = W - [(1-W) / R]
+/// Where W = win rate, R = avg winner / avg loser
+async fn calculate_kelly_criterion_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let sql = format!(
+        r#"
+        SELECT 
+            AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
+            AVG(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE NULL END) as avg_loser,
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut avg_winner = 0.0;
+    let mut avg_loser = 0.0;
+    let mut win_rate = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        avg_winner = row.get::<f64>(0).unwrap_or(0.0);
+        avg_loser = row.get::<f64>(1).unwrap_or(0.0);
+        win_rate = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    // Kelly = W - [(1-W) / R] where R = avg_winner / avg_loser
+    let kelly = if avg_loser > 0.0 {
+        let r = avg_winner / avg_loser;
+        win_rate - ((1.0 - win_rate) / r)
+    } else {
+        0.0
+    };
+
+    Ok(kelly)
+}
+
+/// Calculate R-Multiples for stocks
+async fn calculate_r_multiples_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, u32, u32)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            CASE 
+                WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                ELSE 0
+            END as pnl,
+            ABS(entry_price - stop_loss) * number_shares as risk
+        FROM stocks
+        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL 
+          AND stop_loss IS NOT NULL AND ({})
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut r_multiples = Vec::new();
+    let mut positive_count = 0;
+    let mut negative_count = 0;
+
+    while let Some(row) = rows.next().await? {
+        let pnl = row.get::<f64>(0).unwrap_or(0.0);
+        let risk = row.get::<f64>(1).unwrap_or(1.0); // Avoid division by zero
+
+        if risk > 0.0 {
+            let r_multiple = pnl / risk;
+            r_multiples.push(r_multiple);
+            if r_multiple > 0.0 {
+                positive_count += 1;
+            } else if r_multiple < 0.0 {
+                negative_count += 1;
+            }
+        }
+    }
+
+    let avg_r_multiple = if !r_multiples.is_empty() {
+        r_multiples.iter().sum::<f64>() / r_multiples.len() as f64
+    } else {
+        0.0
+    };
+
+    let variance = if !r_multiples.is_empty() {
+        let mean = avg_r_multiple;
+        r_multiples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / r_multiples.len() as f64
+    } else {
+        0.0
+    };
+
+    let std_dev = variance.sqrt();
+
+    Ok((avg_r_multiple, std_dev, positive_count as u32, negative_count as u32))
+}
+
+/// Calculate consistency ratio for stocks
+/// Ratio = Winning trades / Total trades - (Absolute sum of losses / Absolute sum of wins)
+async fn calculate_consistency_ratio_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
+            SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_wins,
+            SUM(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE 0 END) as total_losses
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut win_rate = 0.0;
+    let mut total_wins = 0.0;
+    let mut total_losses = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        win_rate = row.get::<f64>(0).unwrap_or(0.0);
+        total_wins = row.get::<f64>(1).unwrap_or(0.0);
+        total_losses = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    let consistency_ratio = if total_wins > 0.0 && total_losses > 0.0 {
+        win_rate * (1.0 - (total_losses / total_wins))
+    } else {
+        0.0
+    };
+
+    Ok(consistency_ratio)
+}
+
+/// Calculate monthly and quarterly win rates for stocks
+async fn calculate_periodic_win_rates_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64)> {
+    // Monthly win rate
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                *,
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+            AND JULIANDAY('now') - JULIANDAY(exit_date) <= 30
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut monthly_win_rate = 0.0;
+    if let Some(row) = rows.next().await? {
+        monthly_win_rate = row.get::<f64>(0).unwrap_or(0.0);
+    }
+
+    // Quarterly win rate
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                *,
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+            AND JULIANDAY('now') - JULIANDAY(exit_date) <= 90
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut quarterly_win_rate = 0.0;
+    if let Some(row) = rows.next().await? {
+        quarterly_win_rate = row.get::<f64>(0).unwrap_or(0.0);
+    }
+
+    Ok((monthly_win_rate, quarterly_win_rate))
+}
+
+/// Calculate System Quality Number (SQN) for stocks
+/// SQN = (Expectancy / StdDev of R-Multiples) * sqrt(Number of Trades)
+async fn calculate_system_quality_number_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let (expectancy, _, _, _) = calculate_r_multiples_stocks(conn, time_condition, time_params).await?;
+    let (_, _, total_trades) = get_basic_stats_stocks(conn, time_condition, time_params).await?;
+
+    if total_trades > 0.0 && expectancy > 0.0 {
+        Ok(expectancy * total_trades.sqrt())
+    } else {
+        Ok(0.0)
+    }
+}
+
+/// Helper function to get basic stats
+async fn get_basic_stats_stocks(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, f64)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(calculated_pnl) as total_pnl,
+            AVG(calculated_pnl) as avg_pnl
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
+                    WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM stocks
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut total_trades = 0.0;
+    let mut total_pnl = 0.0;
+    let mut avg_pnl = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        total_trades = row.get::<f64>(0).unwrap_or(0.0);
+        total_pnl = row.get::<f64>(1).unwrap_or(0.0);
+        avg_pnl = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    Ok((total_trades, total_pnl, avg_pnl))
+}
+
+/// Options equivalents of all the stocks calculation functions
+
+/// Calculate expectancy, edge, and payoff ratio for options
+async fn calculate_expectancy_and_edge_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, f64)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+            SUM(CASE WHEN calculated_pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
+            AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
+            AVG(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as avg_loser
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut total_trades = 0.0;
+    let mut winning_trades = 0.0;
+    let mut losing_trades = 0.0;
+    let mut avg_winner = 0.0;
+    let mut avg_loser = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        total_trades = row.get::<f64>(0).unwrap_or(0.0);
+        winning_trades = row.get::<f64>(1).unwrap_or(0.0);
+        losing_trades = row.get::<f64>(2).unwrap_or(0.0);
+        avg_winner = row.get::<f64>(3).unwrap_or(0.0);
+        avg_loser = row.get::<f64>(4).unwrap_or(0.0);
+    }
+
+    let win_rate = if total_trades > 0.0 { winning_trades / total_trades } else { 0.0 };
+    let loss_rate = if total_trades > 0.0 { losing_trades / total_trades } else { 0.0 };
+    let expectancy = (win_rate * avg_winner) + (loss_rate * avg_loser);
+
+    let edge = if avg_loser != 0.0 {
+        ((win_rate * avg_winner) + (loss_rate * avg_loser)) / avg_loser.abs()
+    } else {
+        0.0
+    };
+
+    let payoff_ratio = if avg_loser != 0.0 {
+        avg_winner / avg_loser.abs()
+    } else {
+        0.0
+    };
+
+    Ok((expectancy, edge, payoff_ratio))
+}
+
+/// Calculate Kelly Criterion for options
+async fn calculate_kelly_criterion_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let sql = format!(
+        r#"
+        SELECT 
+            AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
+            AVG(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE NULL END) as avg_loser,
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut avg_winner = 0.0;
+    let mut avg_loser = 0.0;
+    let mut win_rate = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        avg_winner = row.get::<f64>(0).unwrap_or(0.0);
+        avg_loser = row.get::<f64>(1).unwrap_or(0.0);
+        win_rate = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    let kelly = if avg_loser > 0.0 {
+        let r = avg_winner / avg_loser;
+        win_rate - ((1.0 - win_rate) / r)
+    } else {
+        0.0
+    };
+
+    Ok(kelly)
+}
+
+/// Calculate R-Multiples for options
+async fn calculate_r_multiples_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, u32, u32)> {
+    // For options, use total_premium as the risk (cost basis)
+    let sql = format!(
+        r#"
+        SELECT 
+            CASE 
+                WHEN exit_price IS NOT NULL THEN 
+                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                ELSE 0
+            END as pnl,
+            total_premium as risk
+        FROM options
+        WHERE status = 'closed' AND exit_price IS NOT NULL AND ({})
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut r_multiples = Vec::new();
+    let mut positive_count = 0;
+    let mut negative_count = 0;
+
+    while let Some(row) = rows.next().await? {
+        let pnl = row.get::<f64>(0).unwrap_or(0.0);
+        let risk = row.get::<f64>(1).unwrap_or(1.0);
+
+        if risk > 0.0 {
+            let r_multiple = pnl / risk;
+            r_multiples.push(r_multiple);
+            if r_multiple > 0.0 {
+                positive_count += 1;
+            } else if r_multiple < 0.0 {
+                negative_count += 1;
+            }
+        }
+    }
+
+    let avg_r_multiple = if !r_multiples.is_empty() {
+        r_multiples.iter().sum::<f64>() / r_multiples.len() as f64
+    } else {
+        0.0
+    };
+
+    let variance = if !r_multiples.is_empty() {
+        let mean = avg_r_multiple;
+        r_multiples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / r_multiples.len() as f64
+    } else {
+        0.0
+    };
+
+    let std_dev = variance.sqrt();
+
+    Ok((avg_r_multiple, std_dev, positive_count as u32, negative_count as u32))
+}
+
+/// Calculate consistency ratio for options
+async fn calculate_consistency_ratio_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
+            SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_wins,
+            SUM(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE 0 END) as total_losses
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut win_rate = 0.0;
+    let mut total_wins = 0.0;
+    let mut total_losses = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        win_rate = row.get::<f64>(0).unwrap_or(0.0);
+        total_wins = row.get::<f64>(1).unwrap_or(0.0);
+        total_losses = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    let consistency_ratio = if total_wins > 0.0 && total_losses > 0.0 {
+        win_rate * (1.0 - (total_losses / total_wins))
+    } else {
+        0.0
+    };
+
+    Ok(consistency_ratio)
+}
+
+/// Calculate monthly and quarterly win rates for options
+async fn calculate_periodic_win_rates_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+            AND JULIANDAY('now') - JULIANDAY(exit_date) <= 30
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params.clone()))
+        .await?;
+
+    let mut monthly_win_rate = 0.0;
+    if let Some(row) = rows.next().await? {
+        monthly_win_rate = row.get::<f64>(0).unwrap_or(0.0);
+    }
+
+    let sql = format!(
+        r#"
+        SELECT 
+            CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+            AND JULIANDAY('now') - JULIANDAY(exit_date) <= 90
+        )
+        "#,
+        time_condition
+    );
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut quarterly_win_rate = 0.0;
+    if let Some(row) = rows.next().await? {
+        quarterly_win_rate = row.get::<f64>(0).unwrap_or(0.0);
+    }
+
+    Ok((monthly_win_rate, quarterly_win_rate))
+}
+
+/// Calculate System Quality Number for options
+async fn calculate_system_quality_number_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<f64> {
+    let (expectancy, _, _, _) = calculate_r_multiples_options(conn, time_condition, time_params).await?;
+    let (total_trades, _, _) = get_basic_stats_options(conn, time_condition, time_params).await?;
+
+    if total_trades > 0.0 && expectancy > 0.0 {
+        Ok(expectancy * total_trades.sqrt())
+    } else {
+        Ok(0.0)
+    }
+}
+
+/// Helper function to get basic stats for options
+async fn get_basic_stats_options(
+    conn: &Connection,
+    time_condition: &str,
+    time_params: &[chrono::DateTime<chrono::Utc>],
+) -> Result<(f64, f64, f64)> {
+    let sql = format!(
+        r#"
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(calculated_pnl) as total_pnl,
+            AVG(calculated_pnl) as avg_pnl
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN exit_price IS NOT NULL THEN 
+                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    ELSE 0
+                END as calculated_pnl
+            FROM options
+            WHERE status = 'closed' AND ({})
+        )
+        "#,
+        time_condition
+    );
+
+    let mut query_params = Vec::new();
+    for param in time_params {
+        query_params.push(libsql::Value::Text(param.to_rfc3339()));
+    }
+
+    let mut rows = conn
+        .prepare(&sql)
+        .await?
+        .query(libsql::params_from_iter(query_params))
+        .await?;
+
+    let mut total_trades = 0.0;
+    let mut total_pnl = 0.0;
+    let mut avg_pnl = 0.0;
+
+    if let Some(row) = rows.next().await? {
+        total_trades = row.get::<f64>(0).unwrap_or(0.0);
+        total_pnl = row.get::<f64>(1).unwrap_or(0.0);
+        avg_pnl = row.get::<f64>(2).unwrap_or(0.0);
+    }
+
+    Ok((total_trades, total_pnl, avg_pnl))
 }

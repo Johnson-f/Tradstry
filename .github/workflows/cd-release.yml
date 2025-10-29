@@ -3,57 +3,15 @@ name: CD Pipeline - Tagged Releases
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*'  # Deploy on version tags like v1.0.0, v2.1.3, etc.
 
 env:
   REGISTRY: docker.io
-  FRONTEND_IMAGE: johnsonf/tradstry-frontend
   BACKEND_IMAGE: johnsonf/tradstry-backend
   VERSION: ${{ github.ref_name }}
 
 jobs:
-  # Build and push frontend image
-  build-and-push-frontend:
-    name: Build and Push Frontend
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.FRONTEND_IMAGE }}
-          tags: |
-            type=ref,event=tag
-            type=raw,value=latest
-
-      - name: Build and push frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./dockerfile
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Build and push backend image
+  # Build and push backend image only
   build-and-push-backend:
     name: Build and Push Backend
     runs-on: ubuntu-latest
@@ -82,6 +40,7 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=latest
+            type=raw,value=${{ github.ref_name }}
 
       - name: Build and push backend
         uses: docker/build-push-action@v5
@@ -96,8 +55,8 @@ jobs:
 
   # Deploy to VPS
   deploy:
-    name: Deploy to VPS
-    needs: [build-and-push-frontend, build-and-push-backend]
+    name: Deploy Backend to VPS
+    needs: [build-and-push-backend]
     runs-on: ubuntu-latest
     if: success()
 
@@ -119,35 +78,38 @@ jobs:
         run: |
           set -e
           
-          echo "Deploying to VPS..."
+          echo "🚀 Deploying backend to VPS..."
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << 'EOF'
             set -e
             cd /opt/tradstry
             
-            echo "Pulling latest images..."
-            docker-compose pull
+            echo "📥 Pulling latest backend image..."
+            docker pull johnsonf/tradstry-backend:latest
             
-            echo "Stopping existing containers..."
-            docker-compose down || true
+            echo "🛑 Stopping existing backend..."
+            docker compose -f docker-compose.backend.yaml down || true
             
-            echo "Starting services..."
-            docker-compose up -d
+            echo "▶️ Starting backend service..."
+            docker compose -f docker-compose.backend.yaml up -d
             
-            echo "Waiting for services to be healthy..."
-            sleep 30
+            echo "⏳ Waiting for backend to be healthy..."
+            sleep 60
             
-            echo "Checking service status..."
-            docker-compose ps
+            echo "🏥 Checking service status..."
+            docker compose -f docker-compose.backend.yaml ps
             
-            echo "Recent logs:"
-            docker-compose logs --tail=50
+            echo "📋 Recent logs:"
+            docker compose -f docker-compose.backend.yaml logs --tail=20
             
-            echo "Deployment complete!"
+            echo "🧪 Testing health endpoint..."
+            curl -f http://localhost/health || echo "Health check failed"
+            
+            echo "✅ Deployment complete!"
           EOF
 
       - name: Verify deployment
         run: |
-          echo "Checking if services are running..."
+          echo "🔍 Verifying deployment..."
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cd /opt/tradstry && docker-compose ps"
+            "cd /opt/tradstry && docker compose -f docker-compose.backend.yaml ps && curl -s http://localhost/health"
 

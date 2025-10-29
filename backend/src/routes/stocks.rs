@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
-use log::{info, error};
+use log::{info, error, warn};
 use std::sync::Arc;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
@@ -12,6 +12,8 @@ use crate::service::cache_service::CacheService;
 use crate::service::ai_service::vectorization_service::VectorizationService;
 use crate::service::ai_service::data_formatter::DataFormatter;
 use crate::service::ai_service::upstash_vector_client::DataType;
+use crate::websocket::{broadcast_stock_update, ConnectionManager};
+use tokio::sync::Mutex;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -162,7 +164,8 @@ async fn get_user_db_connection(
 
 // CRUD Route Handlers
 
-/// Create a new stock trade with cache invalidation
+/// Create a new stock trade with cache invalidation - DEPRECATED
+/*
 pub async fn create_stock(
     req: HttpRequest,
     payload: web::Json<CreateStockRequest>,
@@ -170,6 +173,7 @@ pub async fn create_stock(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("Creating new stock trade");
 
@@ -195,6 +199,110 @@ pub async fn create_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast real-time create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let stock_ws = stock.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
+            });
+
+            // Vectorize the new stock trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let stock_clone = stock.clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
+                match vectorization_service_clone.vectorize_data(
+                    &user_id_clone,
+                    DataType::Stock,
+                    &stock_clone.id.to_string(),
+                    &content,
+                ).await {
+                    Ok(result) => info!("Successfully vectorized stock {} for user {}: {}ms", 
+                        stock_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to vectorize stock {} for user {}: {}", 
+                        stock_clone.id, user_id_clone, e),
+                }
+            });
+            
+            Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
+        }
+        Err(e) => {
+            error!("Failed to create stock: {}", e);
+            Ok(HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to create stock trade")
+            ))
+        }
+    }
+}
+*/
+
+pub async fn create_stock(
+    req: HttpRequest,
+    body: web::Bytes,  // Changed from web::Json to get raw bytes
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+    cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
+) -> Result<HttpResponse> {
+    // Log raw request body
+    info!("📦 Raw request body: {}", String::from_utf8_lossy(&body));
+    
+    // Try to deserialize manually and log any errors
+    let payload: CreateStockRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ Successfully deserialized payload: {:?}", p);
+            p
+        }
+        Err(e) => {
+            error!("❌ Deserialization error: {}", e);
+            error!("❌ Error at line: {}, column: {}", e.line(), e.column());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column()
+            })));
+        }
+    };
+
+    info!("Creating new stock trade");
+
+    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+
+    match Stock::create(&conn, payload).await {
+        Ok(stock) => {
+            info!("Successfully created stock with ID: {}", stock.id);
+            
+            // Invalidate cache after successful creation
+            let cache_service_clone = cache_service.get_ref().clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                match cache_service_clone.invalidate_table_cache(&user_id_clone, "stocks").await {
+                    Ok(count) => info!("Invalidated {} stock cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate stock cache for user {}: {}", user_id_clone, e),
+                }
+                
+                // Also invalidate analytics cache
+                match cache_service_clone.invalidate_user_analytics(&user_id_clone).await {
+                    Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
+                }
+            });
+
+            // Broadcast real-time create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let stock_ws = stock.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
             });
 
             // Vectorize the new stock trade
@@ -276,26 +384,69 @@ pub async fn get_all_stocks(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
-    info!("Fetching stocks with query: {:?}", query);
+    info!("get_all_stocks: Received request with query params: {:?}", query);
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    // Log: start getting DB connection
+    info!("get_all_stocks: Attempting to get user DB connection");
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(conn) => {
+            info!("get_all_stocks: Acquired user DB connection successfully.");
+            conn
+        },
+        Err(e) => {
+            error!("get_all_stocks: Failed to get DB connection: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Log: try get user id
+    info!("get_all_stocks: Attempting to authenticate user.");
+    let user_id = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(user) => {
+            info!("get_all_stocks: Authenticated user with id: {}", user.sub);
+            user.sub
+        }, 
+        Err(e) => {
+            error!("get_all_stocks: User authentication failed: {}", e);
+            return Err(e);
+        }
+    };
+
     let stock_query = query.into_inner();
+    info!("get_all_stocks: Stock query to be used: {:?}", stock_query);
 
     // Generate cache key based on query parameters
     let query_hash = format!("{:?}", stock_query);
     let cache_key = format!("db:{}:stocks:list:{}", user_id, query_hash);
-    
+    info!("get_all_stocks: Using cache key: {}", cache_key);
+
+    // Try using cache
+    info!("get_all_stocks: Checking cache for stocks list");
     match cache_service.get_or_fetch(&cache_key, 1800, || async {
-        info!("Cache miss for stocks list, fetching from database");
-        Stock::find_all(&conn, stock_query).await.map_err(|e| anyhow::anyhow!("{}", e))
+        info!(
+            "get_all_stocks: Cache miss for stocks list; fetching from DB for user {} with query {:?}",
+            user_id, stock_query
+        );
+        match Stock::find_all(&conn, stock_query).await {
+            Ok(stocks) => {
+                info!(
+                    "get_all_stocks: Successfully fetched {} stocks from DB",
+                    stocks.len()
+                );
+                Ok(stocks)
+            },
+            Err(e) => {
+                error!("get_all_stocks: DB error when fetching stocks: {}", e);
+                Err(anyhow::anyhow!("{}", e))
+            }
+        }
     }).await {
         Ok(stocks) => {
-            info!("Found {} stocks (cached)", stocks.len());
+            info!("get_all_stocks: Returning {} stocks to client (may be cached)", stocks.len());
             Ok(HttpResponse::Ok().json(ApiResponse::success(stocks)))
         }
         Err(e) => {
-            error!("Failed to fetch stocks: {}", e);
+            error!("get_all_stocks: Failed to fetch stocks: {}", e);
             Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to fetch stocks")
             ))
@@ -307,21 +458,69 @@ pub async fn get_all_stocks(
 pub async fn update_stock(
     req: HttpRequest,
     stock_id: web::Path<i64>,
-    payload: web::Json<UpdateStockRequest>,
+    body: web::Bytes,  // Changed from web::Json to get raw bytes for logging
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
-    info!("Updating stock with ID: {}", id);
+    info!("🔄 [UPDATE_STOCK] Starting update for stock ID: {}", id);
+    
+    // Log raw request body
+    let body_str = String::from_utf8_lossy(&body);
+    info!("📦 [UPDATE_STOCK] Raw request body: {}", body_str);
+    
+    // Try to deserialize manually and log any errors
+    let payload: UpdateStockRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ [UPDATE_STOCK] Successfully deserialized payload: {:?}", p);
+            p
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Deserialization error: {}", e);
+            error!("❌ [UPDATE_STOCK] Error at line: {}, column: {}", e.line(), e.column());
+            error!("❌ [UPDATE_STOCK] Error path: {}", e.to_string());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column(),
+                "path": e.to_string()
+            })));
+        }
+    };
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    info!("🔐 [UPDATE_STOCK] Getting database connection for user");
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(c) => {
+            info!("✅ [UPDATE_STOCK] Successfully obtained database connection");
+            c
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Failed to get database connection: {}", e);
+            return Err(e);
+        }
+    };
+    
+    info!("👤 [UPDATE_STOCK] Getting authenticated user");
+    let user_id = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(claims) => {
+            info!("✅ [UPDATE_STOCK] Authenticated user: {}", claims.sub);
+            claims.sub
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Authentication failed: {}", e);
+            return Err(e);
+        }
+    };
 
-    match Stock::update(&conn, id, payload.into_inner()).await {
+    info!("💾 [UPDATE_STOCK] Calling Stock::update with payload: {:?}", payload);
+    match Stock::update(&conn, id, payload).await {
         Ok(Some(stock)) => {
-            info!("Successfully updated stock with ID: {}", id);
+            info!("✅ [UPDATE_STOCK] Successfully updated stock with ID: {}", id);
+            info!("✅ [UPDATE_STOCK] Updated stock data: {:?}", stock);
             
             // Invalidate cache after successful update
             let cache_service_clone = cache_service.get_ref().clone();
@@ -338,6 +537,14 @@ pub async fn update_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast real-time update
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let stock_ws = stock.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "updated", &stock_ws).await;
             });
 
             // Re-vectorize the updated stock trade
@@ -363,15 +570,16 @@ pub async fn update_stock(
             Ok(HttpResponse::Ok().json(ApiResponse::success(stock)))
         }
         Ok(None) => {
-            info!("Stock with ID {} not found for update", id);
+            warn!("⚠️ [UPDATE_STOCK] Stock with ID {} not found for update", id);
             Ok(HttpResponse::NotFound().json(
                 ApiResponse::<()>::error("Stock not found")
             ))
         }
         Err(e) => {
-            error!("Failed to update stock {}: {}", id, e);
+            error!("❌ [UPDATE_STOCK] Failed to update stock {}: {}", id, e);
+            error!("❌ [UPDATE_STOCK] Error details: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update stock")
+                ApiResponse::<()>::error(&format!("Failed to update stock: {}", e))
             ))
         }
     }
@@ -385,6 +593,7 @@ pub async fn delete_stock(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
     info!("Deleting stock with ID: {}", id);
@@ -411,6 +620,13 @@ pub async fn delete_stock(
                     Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
                     Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
+            });
+
+            // Broadcast deletion event
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            tokio::spawn(async move {
+                broadcast_stock_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
             });
 
             // Delete vectors for the deleted stock trade
@@ -497,8 +713,40 @@ pub async fn get_stocks_analytics(
     cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("Generating stocks analytics");
-
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    // Attempt to get user DB connection; if not found, return empty analytics instead of 404
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(c) => c,
+        Err(e) => {
+            if e.as_response_error().status_code() == actix_web::http::StatusCode::NOT_FOUND {
+                let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
+                let user_id = match get_authenticated_user(&req, &supabase_config).await {
+                    Ok(claims) => claims.sub,
+                    Err(_) => "unknown".to_string(),
+                };
+                let cache_key = format!("analytics:db:{}:stocks:{:?}", user_id, time_range);
+                // Return zeroed analytics (and do not cache)
+                let analytics = StocksAnalytics {
+                    total_pnl: "0".to_string(),
+                    profit_factor: "0".to_string(),
+                    win_rate: "0".to_string(),
+                    loss_rate: "0".to_string(),
+                    avg_gain: "0".to_string(),
+                    avg_loss: "0".to_string(),
+                    biggest_winner: "0".to_string(),
+                    biggest_loser: "0".to_string(),
+                    avg_hold_time_winners: "0".to_string(),
+                    avg_hold_time_losers: "0".to_string(),
+                    risk_reward_ratio: "0".to_string(),
+                    trade_expectancy: "0".to_string(),
+                    avg_position_size: "0".to_string(),
+                    net_pnl: "0".to_string(),
+                };
+                info!("User DB not found; returning default stocks analytics for cache key {}", cache_key);
+                return Ok(HttpResponse::Ok().json(ApiResponse::success(analytics)));
+            }
+            return Err(e);
+        }
+    };
     let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 

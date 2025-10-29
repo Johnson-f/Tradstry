@@ -61,7 +61,11 @@ impl RedisClient {
             if result.result.is_null() {
                 return Ok(None);
             }
-            let data: T = serde_json::from_value(result.result)?;
+            // Upstash may return our stored JSON as a raw string. Handle both cases.
+            let data: T = match &result.result {
+                serde_json::Value::String(s) => serde_json::from_str(s)?,
+                other => serde_json::from_value(other.clone())?,
+            };
             Ok(Some(data))
         } else {
             Ok(None)
