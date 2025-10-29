@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
-import { localChatCache } from "@/lib/services/local-chat-cache";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -342,13 +342,36 @@ export default function EmbeddedAIChat({
         const sessionId = await createSession("New Chat");
         
         // Save user message to localStorage so it appears immediately on the chat page
-        localChatCache.saveMessageLocally(sessionId, {
-          session_id: sessionId,
-          content: textToSend,
-          message_type: 'user_question',
-          role: 'user',
-          created_at: new Date().toISOString(),
-        });
+        try {
+          const storageKey = `ai_chat:${sessionId}:messages`;
+          const existingRaw = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+          const existingMessages: unknown = existingRaw ? JSON.parse(existingRaw) : [];
+
+          const isArray = Array.isArray(existingMessages);
+          const messagesArray = isArray ? (existingMessages as unknown[]) : [];
+
+          const generatedId =
+            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+              ? crypto.randomUUID()
+              : `local-${Date.now()}`;
+
+          const localMessage = {
+            id: generatedId,
+            session_id: sessionId,
+            content: textToSend,
+            message_type: "user_question",
+            role: "user",
+            created_at: new Date().toISOString(),
+          };
+
+          messagesArray.push(localMessage);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(storageKey, JSON.stringify(messagesArray));
+          }
+        } catch (e) {
+          // Non-fatal: if localStorage is unavailable, continue without blocking UX
+          console.error("Failed to persist message locally", e);
+        }
         
         // Set session ID for state management
         setCurrentSessionId(sessionId);

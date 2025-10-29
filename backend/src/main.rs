@@ -2,7 +2,7 @@ mod turso;
 mod routes;
 mod models;
 mod service;
-mod replicache;
+mod websocket;
 
 use actix_cors::Cors;
 use actix_web::{
@@ -30,8 +30,11 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
+use crate::service::market_engine::ws_proxy::MarketWsProxy;
 use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
-use replicache::{handle_push, handle_pull};
+use websocket::{ConnectionManager, ws_handler};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Serialize)]
 struct ApiResponse<T> {
@@ -84,6 +87,28 @@ async fn main() -> std::io::Result<()> {
     // Initialize application state
     let app_state = AppState::new().await.expect("Failed to initialize app state");
     let app_data = Data::new(app_state);
+    
+    // Initialize WebSocket connection manager
+    let ws_manager = Arc::new(Mutex::new(ConnectionManager::new()));
+    let ws_manager_data = Data::new(Arc::clone(&ws_manager));
+
+    // Initialize Market WebSocket Proxy for real-time quotes
+    let config = app_data.as_ref().config.clone();
+    let market_proxy = Arc::new(MarketWsProxy::new(
+        Arc::clone(&ws_manager),
+        config.finance_query.base_url.clone(),
+        config.finance_query.api_key.clone(),
+    ));
+    
+    // Start the market proxy background task
+    let proxy_for_start = Arc::clone(&market_proxy);
+    tokio::spawn(async move {
+        if let Err(e) = proxy_for_start.start().await {
+            log::error!("Failed to start market WebSocket proxy: {}", e);
+        }
+    });
+    
+    let market_proxy_data = Data::new(market_proxy);
 
     // Get port from environment or default
     let port = std::env::var("PORT")
@@ -95,6 +120,8 @@ async fn main() -> std::io::Result<()> {
     log::info!("Registering routes...");
 
     // Start HTTP server
+    let _ws_manager_clone = Arc::clone(&ws_manager);
+    
     HttpServer::new(move || {
         log::info!("Creating new App instance");
 
@@ -142,7 +169,9 @@ async fn main() -> std::io::Result<()> {
         };
 
         App::new()
+            .app_data(ws_manager_data.clone())
             .app_data(app_data.clone())
+            .app_data(market_proxy_data.clone())
             // CRITICAL: Add TursoClient as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
             // CRITICAL: Add SupabaseConfig as separate app_data for user routes
@@ -153,6 +182,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().ai_insights_service.clone()))
             // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
             .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
+            // CRITICAL: Add VectorizationService as separate app_data for stocks routes
+            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))  
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging
@@ -198,15 +229,10 @@ async fn main() -> std::io::Result<()> {
                 // Analytics Routes
                 configure_analytics_routes(cfg);
             })
-            // Register replicache routes
+            // Register WebSocket routes
             .configure(|cfg| {
-                log::info!("Configuring replicache routes");
-                cfg.service(
-                    web::scope("/api/replicache")
-                        .wrap(HttpAuthentication::bearer(jwt_validator))
-                        .route("/push", web::post().to(handle_push))
-                        .route("/pull", web::post().to(handle_pull))
-                );
+                log::info!("Configuring WebSocket routes");
+                cfg.route("/api/ws", web::get().to(ws_handler));
             })
             .configure(configure_public_routes)
             .configure(configure_auth_routes)
@@ -224,7 +250,9 @@ fn configure_public_routes(cfg: &mut web::ServiceConfig) {
         .route("/health", web::get().to(health_check))
         .route("/webhooks/supabase", web::post().to(supabase_webhook_handler))
         .route("/webhooks/clerk", web::post().to(clerk_webhook_handler))
-        .route("/profile", web::get().to(get_profile));
+        .route("/profile", web::get().to(get_profile))
+        // Market Data public routes
+        .configure(crate::routes::market::configure_market_routes);
 }
 
 // Protected routes configuration

@@ -48,6 +48,7 @@ pub struct TimeSeriesPoint {
     pub date: String,
     pub value: f64,
     pub cumulative_value: f64,
+    pub trade_count: u32, // Number of trades in this time period
 }
 
 /// Time series interval

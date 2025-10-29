@@ -28,7 +28,7 @@ import { SettingsDialog } from "./settings-dialog";
 const navItems = [
   { label: "Home", icon: Home, href: "/app" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/app/dashboard" },
-  { label: "Journal", icon: NotebookPen, href: "/app/journal" },
+  { label: "Journaling", icon: NotebookPen, href: "/app/journaling" },
   { label: "Playbook", icon: Library, href: "/app/playbook" },
   { label: "Notebook", icon: Notebook, href: "/app/notebook" },
   { label: "Analytics", icon: PieChart, href: "/app/analytics" },
@@ -68,7 +68,7 @@ export default function Sidebar({
   // Handle external collapsed prop changes
   useEffect(() => {
     setMounted(true);
-    
+
     // If external collapsed prop is provided, use it and save to localStorage
     if (externalCollapsed !== undefined) {
       setCollapsed(externalCollapsed);

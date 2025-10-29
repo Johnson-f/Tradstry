@@ -71,11 +71,15 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             commissions DECIMAL(10,4) NOT NULL DEFAULT 0.00,
             number_shares DECIMAL(15,8) NOT NULL,
             take_profit DECIMAL(15,8),
+            initial_target DECIMAL(15,8),
+            profit_target DECIMAL(15,8),
+            trade_ratings INTEGER CHECK (trade_ratings >= 1 AND trade_ratings <= 5),
             entry_date TIMESTAMP NOT NULL,
             exit_date TIMESTAMP,
+            reviewed BOOLEAN NOT NULL DEFAULT false,
+            mistakes TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            version INTEGER NOT NULL DEFAULT 0,
             is_deleted INTEGER NOT NULL DEFAULT 0
         )
         "#,
@@ -122,9 +126,13 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             entry_date TIMESTAMP NOT NULL,
             exit_date TIMESTAMP,
             status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+            initial_target DECIMAL(15,8),
+            profit_target DECIMAL(15,8),
+            trade_ratings INTEGER CHECK (trade_ratings >= 1 AND trade_ratings <= 5),
+            reviewed BOOLEAN NOT NULL DEFAULT false,
+            mistakes TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            version INTEGER NOT NULL DEFAULT 0,
             is_deleted INTEGER NOT NULL DEFAULT 0
         )
         "#,
@@ -148,8 +156,7 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             name TEXT NOT NULL,
             content TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-            version INTEGER NOT NULL DEFAULT 0
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
         "#,
         libsql::params![],
@@ -183,13 +190,16 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_images_is_deleted ON images(is_deleted)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_images_position ON images(trade_note_id, position_in_note)", libsql::params![]).await?;
 
-    // Playbook (existing)
+    // Playbook (existing with new fields)
     conn.execute(
         r#"
         CREATE TABLE IF NOT EXISTS playbook (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT,
+            icon TEXT,
+            emoji TEXT,
+            color TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             version INTEGER NOT NULL DEFAULT 0
@@ -199,6 +209,78 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     ).await?;
     conn.execute("CREATE TABLE IF NOT EXISTS stock_trade_playbook (stock_trade_id INTEGER NOT NULL, setup_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (stock_trade_id, setup_id), FOREIGN KEY (stock_trade_id) REFERENCES stocks(id) ON DELETE CASCADE, FOREIGN KEY (setup_id) REFERENCES playbook(id) ON DELETE CASCADE)", libsql::params![]).await?;
     conn.execute("CREATE TABLE IF NOT EXISTS option_trade_playbook (option_trade_id INTEGER NOT NULL, setup_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (option_trade_id, setup_id), FOREIGN KEY (option_trade_id) REFERENCES options(id) ON DELETE CASCADE, FOREIGN KEY (setup_id) REFERENCES playbook(id) ON DELETE CASCADE)", libsql::params![]).await?;
+
+    // Playbook rules
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS playbook_rules (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL,
+            rule_type TEXT NOT NULL CHECK (rule_type IN ('entry_criteria', 'exit_criteria', 'market_factor')),
+            title TEXT NOT NULL,
+            description TEXT,
+            order_position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (playbook_id) REFERENCES playbook(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_playbook_rules_playbook_id ON playbook_rules(playbook_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_playbook_rules_type ON playbook_rules(rule_type)", libsql::params![]).await?;
+
+    // Trade rule compliance
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS stock_trade_rule_compliance (
+            id TEXT PRIMARY KEY,
+            stock_trade_id INTEGER NOT NULL,
+            playbook_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            is_followed BOOLEAN NOT NULL DEFAULT false,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (stock_trade_id) REFERENCES stocks(id) ON DELETE CASCADE,
+            FOREIGN KEY (playbook_id) REFERENCES playbook(id) ON DELETE CASCADE,
+            FOREIGN KEY (rule_id) REFERENCES playbook_rules(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE TABLE IF NOT EXISTS option_trade_rule_compliance (
+            id TEXT PRIMARY KEY,
+            option_trade_id INTEGER NOT NULL,
+            playbook_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            is_followed BOOLEAN NOT NULL DEFAULT false,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (option_trade_id) REFERENCES options(id) ON DELETE CASCADE,
+            FOREIGN KEY (playbook_id) REFERENCES playbook(id) ON DELETE CASCADE,
+            FOREIGN KEY (rule_id) REFERENCES playbook_rules(id) ON DELETE CASCADE
+        )", libsql::params![]).await?;
+
+    // Missed trades
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS missed_trades (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            trade_type TEXT NOT NULL CHECK (trade_type IN ('stock', 'option')),
+            reason TEXT NOT NULL,
+            potential_entry_price REAL,
+            opportunity_date TEXT NOT NULL,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (playbook_id) REFERENCES playbook(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_missed_trades_playbook_id ON missed_trades(playbook_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_missed_trades_opportunity_date ON missed_trades(opportunity_date)", libsql::params![]).await?;
 
     // Replicache (existing)
     conn.execute(
@@ -658,11 +740,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     Ok(())
 }
 
-/// Current schema version (bumped for AI features)
+/// Current schema version (bumped for playbook redesign)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.13".to_string(),
-        description: "Removed user_id to AI reports and report generation tasks tables".to_string(),
+        version: "0.0.16".to_string(),
+        description: "Added initial_target, profit_target, trade_ratings, and mistakes columns to stocks and options tables".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -684,11 +766,15 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "commissions".to_string(), data_type: "DECIMAL(10,4)".to_string(), is_nullable: false, default_value: Some("0.00".to_string()), is_primary_key: false },
                 ColumnInfo { name: "number_shares".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "take_profit".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "initial_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "profit_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_ratings".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "entry_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
+                ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
-                ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
             ],
             indexes: vec![
@@ -722,9 +808,13 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "entry_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'open'".to_string()), is_primary_key: false },
+                ColumnInfo { name: "initial_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "profit_target".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_ratings".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
+                ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
-                ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
             ],
             indexes: vec![
@@ -751,7 +841,6 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "content".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: Some("''".to_string()), is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
-                ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
             ],
             indexes: vec![ IndexInfo { name: "idx_trade_notes_updated_at".to_string(), table_name: "trade_notes".to_string(), columns: vec!["updated_at".to_string()], is_unique: false } ],
             triggers: vec![ TriggerInfo { name: "update_trade_notes_timestamp".to_string(), table_name: "trade_notes".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE trade_notes SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ],
@@ -811,9 +900,19 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             triggers: vec![ TriggerInfo { name: "update_images_timestamp".to_string(), table_name: "images".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE images SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ],
         },
         // Playbook + junction tables
-        TableSchema { name: "playbook".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_playbook_updated_at".to_string(), table_name: "playbook".to_string(), columns: vec!["updated_at".to_string()], is_unique: false } ], triggers: vec![ TriggerInfo { name: "update_playbook_timestamp".to_string(), table_name: "playbook".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ] },
+        TableSchema { name: "playbook".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "icon".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "emoji".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "color".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "version".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_playbook_updated_at".to_string(), table_name: "playbook".to_string(), columns: vec!["updated_at".to_string()], is_unique: false } ], triggers: vec![ TriggerInfo { name: "update_playbook_timestamp".to_string(), table_name: "playbook".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE playbook SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ] },
         TableSchema { name: "stock_trade_playbook".to_string(), columns: vec![ ColumnInfo { name: "stock_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "setup_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_stock_trade_playbook_stock_trade_id".to_string(), table_name: "stock_trade_playbook".to_string(), columns: vec!["stock_trade_id".to_string()], is_unique: false }, IndexInfo { name: "idx_stock_trade_playbook_setup_id".to_string(), table_name: "stock_trade_playbook".to_string(), columns: vec!["setup_id".to_string()], is_unique: false } ], triggers: vec![] },
         TableSchema { name: "option_trade_playbook".to_string(), columns: vec![ ColumnInfo { name: "option_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "setup_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_option_trade_playbook_option_trade_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: false }, IndexInfo { name: "idx_option_trade_playbook_setup_id".to_string(), table_name: "option_trade_playbook".to_string(), columns: vec!["setup_id".to_string()], is_unique: false } ], triggers: vec![] },
+
+        // Playbook rules
+        TableSchema { name: "playbook_rules".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "playbook_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "rule_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "title".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "order_position".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_playbook_rules_playbook_id".to_string(), table_name: "playbook_rules".to_string(), columns: vec!["playbook_id".to_string()], is_unique: false }, IndexInfo { name: "idx_playbook_rules_type".to_string(), table_name: "playbook_rules".to_string(), columns: vec!["rule_type".to_string()], is_unique: false } ], triggers: vec![] },
+
+        // Trade rule compliance
+        TableSchema { name: "stock_trade_rule_compliance".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "stock_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "playbook_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "rule_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_followed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "notes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![], triggers: vec![] },
+        TableSchema { name: "option_trade_rule_compliance".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "option_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "playbook_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "rule_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_followed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false }, ColumnInfo { name: "notes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![], triggers: vec![] },
+
+        // Missed trades
+        TableSchema { name: "missed_trades".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "playbook_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "trade_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "reason".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "potential_entry_price".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "opportunity_date".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "notes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_missed_trades_playbook_id".to_string(), table_name: "missed_trades".to_string(), columns: vec!["playbook_id".to_string()], is_unique: false }, IndexInfo { name: "idx_missed_trades_opportunity_date".to_string(), table_name: "missed_trades".to_string(), columns: vec!["opportunity_date".to_string()], is_unique: false } ], triggers: vec![] },
     ];
 
     // Notebook tables

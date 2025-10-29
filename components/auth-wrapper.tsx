@@ -3,7 +3,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { ReplicacheProvider } from "@/lib/replicache";
 import { Loader2 } from "lucide-react";
 
 interface AuthWrapperProps {
@@ -39,12 +38,10 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
     const isPublicRoute = publicRoutes.includes(pathname);
     const isAuthPage = pathname.startsWith("/auth");
-    //const isAppRoute = pathname.startsWith("/app");
 
     // Redirect unauthenticated users trying to access protected routes
     if (!isAuthenticated && !isPublicRoute) {
       setIsRedirecting(true);
-      // Use replace instead of push to avoid back button issues
       router.replace("/auth/login");
       return;
     }
@@ -79,13 +76,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  const isAppRoute = pathname.startsWith("/app");
-
-  // For authenticated users in app routes, wrap with ReplicacheProvider
-  if (isAuthenticated && isAppRoute) {
-    return <ReplicacheProvider>{children}</ReplicacheProvider>;
-  }
-
-  // For public routes or authenticated users on landing page
+  // No WebSocketProvider here anymore - it's in ProtectedLayout
   return <>{children}</>;
 }

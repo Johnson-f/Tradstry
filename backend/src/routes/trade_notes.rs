@@ -12,6 +12,10 @@ use crate::models::notes::{
     TradeNote, CreateTradeNoteRequest, UpdateTradeNoteRequest, TradeNoteQuery
 };
 use crate::service::cache_service::CacheService;
+use crate::websocket::{broadcast_note_update, ConnectionManager};
+use tokio::sync::Mutex;
+use actix_web::web::Data;
+use std::sync::Arc as StdArc;
 
 /// Response wrapper for trade notes operations
 #[derive(Debug, Serialize)]
@@ -168,6 +172,7 @@ pub async fn create_trade_note(
     payload: web::Json<CreateTradeNoteRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("=== Create Trade Note Called ===");
     info!("Note name: {}", payload.name);
@@ -184,6 +189,13 @@ pub async fn create_trade_note(
     match TradeNote::create(&conn, payload.into_inner()).await {
         Ok(note) => {
             info!("✓ Trade note created successfully: {}", note.id);
+            // Broadcast WebSocket event
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = claims.sub.clone();
+            let note_ws = note.clone();
+            tokio::spawn(async move {
+                broadcast_note_update(ws_manager_clone, &user_id_ws, "created", &note_ws).await;
+            });
             Ok(HttpResponse::Created().json(TradeNoteResponse {
                 success: true,
                 message: "Trade note created successfully".to_string(),
@@ -334,6 +346,7 @@ pub async fn update_trade_note(
     payload: web::Json<UpdateTradeNoteRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("=== Update Trade Note Called ===");
     info!("Note ID: {}", note_id);
@@ -350,6 +363,13 @@ pub async fn update_trade_note(
     match TradeNote::update(&conn, &note_id, payload.into_inner()).await {
         Ok(Some(note)) => {
             info!("✓ Trade note updated successfully: {}", note.id);
+            // Broadcast WebSocket event
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = claims.sub.clone();
+            let note_ws = note.clone();
+            tokio::spawn(async move {
+                broadcast_note_update(ws_manager_clone, &user_id_ws, "updated", &note_ws).await;
+            });
             Ok(HttpResponse::Ok().json(TradeNoteResponse {
                 success: true,
                 message: "Trade note updated successfully".to_string(),
@@ -381,6 +401,7 @@ pub async fn delete_trade_note(
     note_id: web::Path<String>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("=== Delete Trade Note Called ===");
     info!("Note ID: {}", note_id);
@@ -397,6 +418,13 @@ pub async fn delete_trade_note(
     match TradeNote::delete(&conn, &note_id).await {
         Ok(true) => {
             info!("✓ Trade note deleted successfully: {}", note_id);
+            // Broadcast WebSocket event
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = claims.sub.clone();
+            let id_ws = note_id.clone();
+            tokio::spawn(async move {
+                broadcast_note_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id_ws})).await;
+            });
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
                 "message": "Trade note deleted successfully"

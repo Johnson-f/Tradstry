@@ -232,3 +232,17 @@ pub async fn validate_jwt_token(token: &str, config: &TursoConfig) -> Result<Cle
     clerk_auth.validate_token(token)
 }
 
+/// Validate JWT token from query parameter (for WebSocket connections)
+pub async fn validate_jwt_token_from_query(token: &str) -> Result<SupabaseClaims, AuthError> {
+    // Decode and validate basic JWT structure
+    let claims = decode_jwt_payload::<SupabaseClaims>(token)?;
+    
+    // Check expiration
+    let now = chrono::Utc::now().timestamp();
+    if claims.exp < now {
+        return Err(AuthError::TokenExpired);
+    }
+    
+    Ok(claims)
+}
+

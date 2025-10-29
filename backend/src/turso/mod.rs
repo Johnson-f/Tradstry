@@ -20,6 +20,7 @@ pub use auth::{
     get_supabase_user_id,
     validate_jwt_token,
     validate_supabase_jwt_token,
+    validate_jwt_token_from_query,
     AuthError,
 };
 pub use client::TursoClient;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
+    pub vectorization_service: Arc<VectorizationService>,
 }
 
 impl AppState {
@@ -137,6 +139,7 @@ impl AppState {
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,
+            vectorization_service,
         })
     }
 

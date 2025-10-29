@@ -12,7 +12,7 @@ This repository includes GitHub Actions workflows to ensure code quality and cat
 - When PR is opened, updated, or reopened
 
 **What it checks**:
-- ✅ TypeScript type checking (`pnpm run type-check`)
+- ✅ TypeScript type checking (`bun run type-check`)
 - ✅ Rust type checking (`cargo check --all-targets`)
 
 ### 2. Full Quality Checks (`pr-checks.yml`)
@@ -56,7 +56,7 @@ Your `tsconfig.json` should have:
 
 1. **When you open a PR**: The workflows automatically run
 2. **Type errors**: Will fail the check and prevent merging
-3. **Linting issues**: Will fail the check (run `pnpm run lint` to fix)
+3. **Linting issues**: Will fail the check (run `bun run lint` to fix)
 4. **Security issues**: Will show warnings but won't block merging
 
 ## Local Development
@@ -65,13 +65,13 @@ Before pushing, run these commands locally:
 
 ```bash
 # Type check
-pnpm run type-check
+bun run type-check
 
 # Lint code
-pnpm run lint
+bun run lint
 
 # Build check
-pnpm run build
+bun run build
 
 # Rust checks
 cd backend
@@ -117,7 +117,7 @@ To skip checks in a commit message, use:
 
 1. **TypeScript errors**: Fix type issues in your code
 2. **Rust errors**: Fix compilation errors in Rust code
-3. **Dependency issues**: Update `pnpm-lock.yaml` or `Cargo.lock`
+3. **Dependency issues**: Update `bun.lockb` or `Cargo.lock`
 
 ### Getting Help
 

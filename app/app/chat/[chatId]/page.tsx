@@ -20,6 +20,16 @@ interface OptimisticMessage {
   isOptimistic?: boolean;
 }
 
+// Local storage message shape (from embedded-ai-chat)
+interface LocalMsg {
+  id: string;
+  session_id: string;
+  content: string;
+  message_type?: string;
+  role: 'user' | 'assistant' | string;
+  created_at: string;
+}
+
 
 export default function ChatPage() {
   const params = useParams();
@@ -41,6 +51,7 @@ export default function ChatPage() {
   const [message, setMessage] = useState("");
   const [userScrolled, setUserScrolled] = useState(false);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
+  const [localMessages, setLocalMessages] = useState<OptimisticMessage[]>([]);
 
   // Refs
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -59,8 +70,35 @@ export default function ChatPage() {
     }
   }, [chatId, loadSession]);
 
-  // Combine real messages with optimistic messages
-  const allMessages = useMemo(() => [...messages, ...optimisticMessages], [messages, optimisticMessages]);
+  // Hydrate local messages saved by the embedded chat before redirect
+  useEffect(() => {
+    try {
+      if (!chatId || chatId === "new" || chatId === "undefined") return;
+      const storageKey = `ai_chat:${chatId}:messages`;
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        const mapped = (parsed as LocalMsg[]).map((m) => ({
+          id: m.id ?? `local-${Date.now()}`,
+          content: m.content,
+          role: (m.role === 'user' || m.role === 'assistant') ? m.role : 'user',
+          created_at: m.created_at,
+          isOptimistic: true,
+        } satisfies OptimisticMessage));
+        setLocalMessages(mapped);
+      } else {
+        setLocalMessages([]);
+      }
+    } catch {
+      setLocalMessages([]);
+    }
+  }, [chatId]);
+
+  // Combine local (hydrated) messages, real messages, and optimistic messages
+  const allMessages = useMemo(
+    () => [...localMessages, ...messages, ...optimisticMessages],
+    [localMessages, messages, optimisticMessages]
+  );
 
   // Enhanced scrolling function
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth", force: boolean = false) => {
@@ -185,6 +223,23 @@ export default function ChatPage() {
       setOptimisticMessages([]);
     }
   }, [messages, optimisticMessages.length, isStreaming]);
+
+  // Clear locally hydrated messages (and storage) once real messages arrive
+  useEffect(() => {
+    if (messages.length > 0 && localMessages.length > 0 && !isStreaming) {
+      setLocalMessages([]);
+      try {
+        if (chatId && chatId !== "new" && chatId !== "undefined") {
+          const storageKey = `ai_chat:${chatId}:messages`;
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(storageKey);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [messages.length, localMessages.length, isStreaming, chatId]);
 
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || message.trim().length > MAX_MESSAGE_LENGTH) return;

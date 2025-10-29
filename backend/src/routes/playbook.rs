@@ -3,15 +3,22 @@ use chrono::Utc;
 use libsql::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use log::{info, error};
+use log::{info, error, debug};
 
 use crate::models::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
+    CreateRuleRequest, PlaybookRule,
 };
+use crate::models::stock::stocks::TimeRange;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
 use crate::service::cache_service::CacheService;
+use crate::service::analytics_engine::playbook_analytics::calculate_playbook_analytics;
+use crate::websocket::{broadcast_playbook_update, ConnectionManager};
+use tokio::sync::Mutex;
+use actix_web::web::Data;
+use std::sync::Arc as StdArc;
 
 /// Response wrapper for playbook operations
 #[derive(Debug, Serialize)]
@@ -116,6 +123,7 @@ pub async fn create_playbook(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -135,6 +143,14 @@ pub async fn create_playbook(
                 }
             });
             
+            // Broadcast create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let playbook_ws = playbook.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "created", &playbook_ws).await;
+            });
+
             Ok(HttpResponse::Created().json(PlaybookResponse {
                 success: true,
                 message: "Playbook created successfully".to_string(),
@@ -165,11 +181,16 @@ pub async fn get_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::find_by_id(&conn, &playbook_id).await {
-        Ok(Some(playbook)) => Ok(HttpResponse::Ok().json(PlaybookResponse {
+        Ok(Some(playbook)) => {
+            if let Ok(json) = serde_json::to_string_pretty(&playbook) {
+                info!("Playbook fetched. Sample payload:\n{}", json);
+            }
+            Ok(HttpResponse::Ok().json(PlaybookResponse {
             success: true,
             message: "Playbook retrieved successfully".to_string(),
             data: Some(playbook),
-        })),
+            }))
+        },
         Ok(None) => Ok(HttpResponse::NotFound().json(PlaybookResponse {
             success: false,
             message: "Playbook not found".to_string(),
@@ -195,10 +216,31 @@ pub async fn get_playbooks(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
 ) -> ActixResult<HttpResponse> {
-    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    info!("🔵 Starting get_playbooks request");
+    
+    let claims = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(claims) => {
+            info!("✓ User authenticated: {}", claims.sub);
+            claims
+        }
+        Err(e) => {
+            error!("❌ Authentication failed: {:?}", e);
+            return Err(e);
+        }
+    };
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    info!("🔵 Getting database connection for user: {}", user_id);
+    let conn = match get_user_database_connection(user_id, &turso_client).await {
+        Ok(conn) => {
+            info!("✓ Database connection established");
+            conn
+        }
+        Err(e) => {
+            error!("❌ Failed to get database connection: {:?}", e);
+            return Err(e);
+        }
+    };
 
     let playbook_query = PlaybookQuery {
         name: query.name.clone(),
@@ -210,36 +252,91 @@ pub async fn get_playbooks(
             })
         }),
     };
+    info!("🔵 Query parameters: {:?}", playbook_query);
 
     // Generate cache key based on query parameters
     let query_hash = format!("{:?}", playbook_query);
     let cache_key = format!("db:{}:playbook:list:{}", user_id, query_hash);
+    info!("🔵 Cache key: {}", cache_key);
     
     // Try to get from cache first (1 hour TTL as per plan)
+    info!("🔵 Attempting to fetch from cache or database...");
     match cache_service.get_or_fetch(&cache_key, 3600, || async {
-        info!("Cache miss for playbooks list, fetching from database");
+        info!("⚠️ Cache miss for playbooks list, fetching from database");
         
+        info!("🔵 Calling Playbook::find_all...");
         let playbooks_result = Playbook::find_all(&conn, playbook_query.clone()).await;
+        
+        match &playbooks_result {
+            Ok(playbooks) => info!("✓ Playbook::find_all returned {} playbooks", playbooks.len()),
+            Err(e) => error!("❌ Playbook::find_all failed: {}", e),
+        }
+        
+        info!("🔵 Calling Playbook::total_count...");
         let total_result = Playbook::total_count(&conn).await;
         
+        match &total_result {
+            Ok(total) => info!("✓ Playbook::total_count returned: {}", total),
+            Err(e) => error!("❌ Playbook::total_count failed: {}", e),
+        }
+        
         match (playbooks_result, total_result) {
-            (Ok(playbooks), Ok(total)) => Ok((playbooks, total)),
-            (Err(e), _) | (_, Err(e)) => Err(anyhow::anyhow!("{}", e)),
+            (Ok(playbooks), Ok(total)) => {
+                info!("✓ Both database queries succeeded");
+                Ok((playbooks, total))
+            },
+            (Err(e), _) => {
+                error!("❌ Playbook::find_all error: {}", e);
+                Err(anyhow::anyhow!("{}", e))
+            },
+            (_, Err(e)) => {
+                error!("❌ Playbook::total_count error: {}", e);
+                Err(anyhow::anyhow!("{}", e))
+            }
         }
     }).await {
         Ok((playbooks, total)) => {
-            info!("✓ Retrieved {} playbooks (cached)", playbooks.len());
-            Ok(HttpResponse::Ok().json(PlaybookListResponse {
+            info!("✅ Successfully retrieved {} playbooks (total: {})", playbooks.len(), total);
+            
+            if let Some(first) = playbooks.get(0) {
+                info!("🔵 Serializing first playbook for logging...");
+                if let Ok(json) = serde_json::to_string_pretty(first) {
+                    info!("Playbooks list sample (first item):\n{}", json);
+                } else {
+                    error!("❌ Failed to serialize first playbook");
+                }
+            } else {
+                debug!("Playbooks list is empty");
+            }
+            
+            info!("🔵 Creating response JSON...");
+            let response = PlaybookListResponse {
                 success: true,
                 message: "Playbooks retrieved successfully".to_string(),
                 data: Some(playbooks),
                 total: Some(total),
                 page: query.page,
                 page_size: query.page_size,
-            }))
+            };
+            
+            info!("🔵 Serializing response...");
+            match serde_json::to_string(&response) {
+                Ok(json_str) => {
+                    info!("✓ Response serialized successfully, length: {} bytes", json_str.len());
+                    info!("Response preview (first 500 chars): {}", 
+                        if json_str.len() > 500 { &json_str[..500] } else { &json_str });
+                }
+                Err(e) => {
+                    error!("❌ CRITICAL: Failed to serialize response: {}", e);
+                }
+            }
+            
+            info!("✅ Returning HTTP 200 response");
+            Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => {
-            log::error!("Failed to get playbooks: {}", e);
+            error!("❌ FINAL ERROR: Failed to get playbooks: {}", e);
+            error!("Error details: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(PlaybookListResponse {
                 success: false,
                 message: "Failed to retrieve playbooks".to_string(),
@@ -259,6 +356,7 @@ pub async fn update_playbook(
     payload: web::Json<UpdatePlaybookRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -266,11 +364,20 @@ pub async fn update_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::update(&conn, &playbook_id, payload.into_inner()).await {
-        Ok(Some(playbook)) => Ok(HttpResponse::Ok().json(PlaybookResponse {
-            success: true,
-            message: "Playbook updated successfully".to_string(),
-            data: Some(playbook),
-        })),
+        Ok(Some(playbook)) => {
+            // Broadcast update via WebSocket
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let playbook_ws = playbook.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "updated", &playbook_ws).await;
+            });
+            Ok(HttpResponse::Ok().json(PlaybookResponse {
+                success: true,
+                message: "Playbook updated successfully".to_string(),
+                data: Some(playbook),
+            }))
+        },
         Ok(None) => Ok(HttpResponse::NotFound().json(PlaybookResponse {
             success: false,
             message: "Playbook not found".to_string(),
@@ -293,6 +400,7 @@ pub async fn delete_playbook(
     playbook_id: web::Path<String>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -300,11 +408,20 @@ pub async fn delete_playbook(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::delete(&conn, &playbook_id).await {
-        Ok(true) => Ok(HttpResponse::Ok().json(PlaybookResponse {
-            success: true,
-            message: "Playbook deleted successfully".to_string(),
-            data: None,
-        })),
+        Ok(true) => {
+            // Broadcast delete
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let id_ws = playbook_id.clone();
+            tokio::spawn(async move {
+                broadcast_playbook_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id_ws})).await;
+            });
+            Ok(HttpResponse::Ok().json(PlaybookResponse {
+                success: true,
+                message: "Playbook deleted successfully".to_string(),
+                data: None,
+            }))
+        },
         Ok(false) => Ok(HttpResponse::NotFound().json(PlaybookResponse {
             success: false,
             message: "Playbook not found".to_string(),
@@ -431,14 +548,24 @@ pub async fn get_trade_playbooks(
     };
 
     match result {
-        Ok(playbooks) => Ok(HttpResponse::Ok().json(PlaybookListResponse {
-            success: true,
-            message: "Trade playbooks retrieved successfully".to_string(),
-            data: Some(playbooks),
-            total: None,
-            page: None,
-            page_size: None,
-        })),
+        Ok(playbooks) => {
+            info!("Retrieved {} playbooks for trade {}", playbooks.len(), *trade_id);
+            if let Some(first) = playbooks.get(0) {
+                if let Ok(json) = serde_json::to_string_pretty(first) {
+                    info!("Trade playbooks sample (first item):\n{}", json);
+                }
+            } else {
+                debug!("No playbooks associated with this trade");
+            }
+            Ok(HttpResponse::Ok().json(PlaybookListResponse {
+                success: true,
+                message: "Trade playbooks retrieved successfully".to_string(),
+                data: Some(playbooks),
+                total: None,
+                page: None,
+                page_size: None,
+            }))
+        },
         Err(e) => {
             log::error!("Failed to get trade playbooks: {}", e);
             Ok(HttpResponse::InternalServerError().json(PlaybookListResponse {
@@ -471,6 +598,9 @@ pub async fn get_playbook_trades(
                 "stock_trades": stock_trades,
                 "option_trades": option_trades
             });
+            if let Ok(json) = serde_json::to_string_pretty(&data) {
+                info!("Playbook trades payload sample:\n{}", json);
+            }
 
             Ok(HttpResponse::Ok().json(TagTradeResponse {
                 success: true,
@@ -501,13 +631,16 @@ pub async fn get_playbooks_count(
     let conn = get_user_database_connection(user_id, &turso_client).await?;
 
     match Playbook::total_count(&conn).await {
-        Ok(count) => Ok(HttpResponse::Ok().json(serde_json::json!({
-            "success": true,
-            "message": "Playbooks count retrieved successfully",
-            "data": {
-                "count": count
-            }
-        }))),
+        Ok(count) => {
+            info!("Playbooks count: {}", count);
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Playbooks count retrieved successfully",
+                "data": {
+                    "count": count
+                }
+            })))
+        },
         Err(e) => {
             log::error!("Failed to get playbooks count: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
@@ -534,10 +667,15 @@ async fn test_playbook_endpoint() -> ActixResult<HttpResponse> {
 pub fn configure_playbook_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/playbooks")
+            // Existing playbook CRUD
             .route("", web::post().to(create_playbook))
             .route("", web::get().to(get_playbooks))
             .route("/count", web::get().to(get_playbooks_count))
             .route("/test", web::get().to(test_playbook_endpoint))
+            // Analytics (place static route BEFORE dynamic `/{id}` to avoid shadowing)
+            .route("/analytics", web::get().to(get_all_playbooks_analytics))
+            .route("/{id}/analytics", web::get().to(get_playbook_analytics))
+            // Dynamic ID routes
             .route("/{id}", web::get().to(get_playbook))
             .route("/{id}", web::put().to(update_playbook))
             .route("/{id}", web::delete().to(delete_playbook))
@@ -545,5 +683,234 @@ pub fn configure_playbook_routes(cfg: &mut web::ServiceConfig) {
             .route("/untag", web::delete().to(untag_trade))
             .route("/trades/{trade_id}", web::get().to(get_trade_playbooks))
             .route("/{setup_id}/trades", web::get().to(get_playbook_trades))
+            // Rules management
+            .route("/{id}/rules", web::post().to(create_playbook_rule))
+            .route("/{id}/rules", web::get().to(get_playbook_rules))
+            .route("/{id}/rules/{rule_id}", web::put().to(update_playbook_rule))
+            .route("/{id}/rules/{rule_id}", web::delete().to(delete_playbook_rule))
+            // Missed trades
+            .route("/{id}/missed-trades", web::post().to(create_missed_trade))
+            .route("/{id}/missed-trades", web::get().to(get_missed_trades))
+            .route("/{id}/missed-trades/{missed_id}", web::delete().to(delete_missed_trade))
     );
+}
+
+// New route handlers
+async fn create_playbook_rule(
+    req: HttpRequest,
+    path: web::Path<String>,
+    payload: web::Json<CreateRuleRequest>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let playbook_id = path.into_inner();
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    match PlaybookRule::create(&conn, &playbook_id, payload.into_inner()).await {
+        Ok(rule) => Ok(HttpResponse::Created().json(serde_json::json!({
+            "success": true,
+            "message": "Rule created successfully",
+            "data": rule
+        }))),
+        Err(e) => {
+            error!("Failed to create rule: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to create rule: {}", e),
+                "data": null
+            })))
+        }
+    }
+}
+
+async fn get_playbook_rules(
+    req: HttpRequest,
+    path: web::Path<String>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let playbook_id = path.into_inner();
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    match PlaybookRule::find_by_playbook_id(&conn, &playbook_id).await {
+        Ok(rules) => {
+            info!("Retrieved {} rules for playbook {}", rules.len(), playbook_id);
+            if let Some(first) = rules.get(0) {
+                if let Ok(json) = serde_json::to_string_pretty(first) {
+                    info!("Rules list sample (first item):\n{}", json);
+                }
+            } else {
+                debug!("No rules found for playbook");
+            }
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Rules retrieved successfully",
+                "data": rules
+            })))
+        },
+        Err(e) => {
+            error!("Failed to get rules: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to retrieve rules: {}", e),
+                "data": null
+            })))
+        }
+    }
+}
+
+async fn update_playbook_rule() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn delete_playbook_rule(
+    req: HttpRequest,
+    paths: web::Path<(String, String)>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let (_playbook_id, rule_id) = paths.into_inner();
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    match PlaybookRule::delete(&conn, &rule_id).await {
+        Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": "Rule deleted successfully"
+        }))),
+        Err(e) => {
+            error!("Failed to delete rule: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to delete rule: {}", e),
+                "data": null
+            })))
+        }
+    }
+}
+
+async fn create_missed_trade() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn get_missed_trades() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+async fn delete_missed_trade() -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Not implemented yet"
+    })))
+}
+
+/// Get analytics for a specific playbook
+async fn get_playbook_analytics(
+    req: HttpRequest,
+    path: web::Path<(String,)>,
+    web::Query(params): web::Query<std::collections::HashMap<String, String>>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let playbook_id = &path.0;
+    info!("Getting analytics for playbook: {}", playbook_id);
+
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    // Parse time range from query params (default to all time)
+    let time_range = params.get("timeRange")
+        .and_then(|s| serde_json::from_str::<TimeRange>(s).ok())
+        .unwrap_or(TimeRange::AllTime);
+
+    match calculate_playbook_analytics(&conn, &playbook_id, &time_range).await {
+        Ok(analytics) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": "Playbook analytics retrieved successfully",
+            "data": analytics
+        }))),
+        Err(e) => {
+            error!("Failed to calculate playbook analytics: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to retrieve playbook analytics: {}", e),
+                "data": null
+            })))
+        }
+    }
+}
+
+/// Get analytics for all playbooks
+async fn get_all_playbooks_analytics(
+    req: HttpRequest,
+    web::Query(params): web::Query<std::collections::HashMap<String, String>>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    info!("Getting analytics for all playbooks");
+
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &turso_client).await?;
+
+    // Parse time range from query params (default to all time)
+    let time_range = params.get("timeRange")
+        .and_then(|s| serde_json::from_str::<TimeRange>(s).ok())
+        .unwrap_or(TimeRange::AllTime);
+
+    // Get all playbooks for this user
+    match Playbook::find_all(&conn, PlaybookQuery {
+        name: None,
+        search: None,
+        limit: None,
+        offset: None,
+    }).await {
+        Ok(playbooks) => {
+            let mut all_analytics = Vec::new();
+            
+            for playbook in playbooks {
+                match calculate_playbook_analytics(&conn, &playbook.id, &time_range).await {
+                    Ok(analytics) => all_analytics.push(analytics),
+                    Err(e) => {
+                        error!("Failed to calculate analytics for playbook {}: {}", playbook.id, e);
+                    }
+                }
+            }
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "All playbooks analytics retrieved successfully",
+                "data": all_analytics,
+                "total": all_analytics.len()
+            })))
+        }
+        Err(e) => {
+            error!("Failed to get playbooks: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to retrieve playbooks: {}", e),
+                "data": null
+            })))
+        }
+    }
 }

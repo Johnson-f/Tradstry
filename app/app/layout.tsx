@@ -2,10 +2,15 @@
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { useUserInitialization } from "@/hooks/use-user-initialization";
+import { WebSocketProvider } from "@/lib/websocket/provider";
+import { WebSocketConnectionControl } from "@/components/websocket-connection-control";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Providers } from "../providers";
+import { InitializationContext } from "@/contexts/initialization-context";
+
+// InitializationContext moved to '@/contexts/initialization-context'
 
 export default function ProtectedLayout({
   children,
@@ -14,7 +19,9 @@ export default function ProtectedLayout({
 }) {
   return (
     <Providers>
-      <ProtectedLayoutInner>{children}</ProtectedLayoutInner>
+      <WebSocketProvider>
+        <ProtectedLayoutInner>{children}</ProtectedLayoutInner>
+      </WebSocketProvider>
     </Providers>
   );
 }
@@ -41,46 +48,50 @@ function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
   }, [isInitializing, isInitialized, error]);
 
   return (
-    <div className="min-h-screen">
-      {!isNotebook && (
-        <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
-      )}
-      <div
-        className={`transition-all duration-500 ease-out ${
-          isNotebook ? '' : isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
-        } ml-0`}
-      >
-        {/* User Initialization Status */}
-        {showInitializationStatus && (
-          <div className="fixed top-4 right-4 z-50 bg-background border rounded-lg shadow-lg p-4 max-w-sm">
-            {isInitializing && (
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Setting up your account...</span>
-              </div>
-            )}
-            {isInitialized && !isInitializing && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <div className="h-2 w-2 bg-green-600 rounded-full" />
-                <span>Account setup complete!</span>
-              </div>
-            )}
-            {error && !isInitializing && (
-              <div className="text-sm text-red-600">
-                <p>Setup failed: {error}</p>
-                {needsRefresh ? (
-                  <p className="text-xs mt-1 text-muted-foreground">
-                    Please refresh the page to try again
-                  </p>
-                ) : (
-                  <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
-                )}
-              </div>
-            )}
-          </div>
+    <InitializationContext.Provider value={{ isInitialized, isInitializing, error }}>
+      {/* WebSocketConnectionControl is now inside WebSocketProvider */}
+      <WebSocketConnectionControl />
+      <div className="min-h-screen">
+        {!isNotebook && (
+          <AppSidebar collapsed={isSidebarCollapsed} onCollapsedChange={setIsSidebarCollapsed} />
         )}
-        {children}
+        <div
+          className={`transition-all duration-500 ease-out ${
+            isNotebook ? '' : isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+          } ml-0`}
+        >
+          {/* User Initialization Status */}
+          {showInitializationStatus && (
+            <div className="fixed top-4 right-4 z-50 bg-background border rounded-lg shadow-lg p-4 max-w-sm">
+              {isInitializing && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Setting up your account...</span>
+                </div>
+              )}
+              {isInitialized && !isInitializing && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <div className="h-2 w-2 bg-green-600 rounded-full" />
+                  <span>Account setup complete!</span>
+                </div>
+              )}
+              {error && !isInitializing && (
+                <div className="text-sm text-red-600">
+                  <p>Setup failed: {error}</p>
+                  {needsRefresh ? (
+                    <p className="text-xs mt-1 text-muted-foreground">
+                      Please refresh the page to try again
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-1 text-muted-foreground">You can still use the app</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {children}
+        </div>
       </div>
-    </div>
+    </InitializationContext.Provider>
   );
 }

@@ -10,6 +10,11 @@ use crate::models::options::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::service::cache_service::CacheService;
+use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::data_formatter::DataFormatter;
+use crate::service::ai_service::upstash_vector_client::DataType;
+use crate::websocket::{broadcast_option_update, ConnectionManager};
+use tokio::sync::Mutex;
 
 /// Response wrapper for API responses
 #[derive(Debug, Serialize)]
@@ -166,17 +171,40 @@ async fn get_user_db_connection(
 /// Create a new option trade with cache invalidation
 pub async fn create_option(
     req: HttpRequest,
-    payload: web::Json<CreateOptionRequest>,
+    body: web::Bytes,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
+    // Log raw request body
+    info!("📦 Raw request body: {}", String::from_utf8_lossy(&body));
+    
+    // Try to deserialize manually and log any errors
+    let payload: CreateOptionRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ Successfully deserialized payload: {:?}", p);
+            p
+        }
+        Err(e) => {
+            error!("❌ Deserialization error: {}", e);
+            error!("❌ Error at line: {}, column: {}", e.line(), e.column());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column()
+            })));
+        }
+    };
+
     info!("Creating new option trade");
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
-    match OptionTrade::create(&conn, payload.into_inner()).await {
+    match OptionTrade::create(&conn, payload).await {
         Ok(option) => {
             info!("Successfully created option with ID: {}", option.id);
             
@@ -197,6 +225,34 @@ pub async fn create_option(
                 }
             });
             
+            // Broadcast real-time create
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = user_id.clone();
+            let option_ws = option.clone();
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "created", &option_ws).await;
+            });
+
+            // Vectorize the new option trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let option_clone = option.clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                let content = DataFormatter::format_option_for_embedding(&option_clone);
+                match vectorization_service_clone.vectorize_data(
+                    &user_id_clone,
+                    DataType::Option,
+                    &option_clone.id.to_string(),
+                    &content,
+                ).await {
+                    Ok(result) => info!("Successfully vectorized option {} for user {}: {}ms", 
+                        option_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to vectorize option {} for user {}: {}", 
+                        option_clone.id, user_id_clone, e),
+                }
+            });
+
             Ok(HttpResponse::Created().json(ApiResponse::success(option)))
         }
         Err(e) => {
@@ -282,6 +338,7 @@ pub async fn update_option(
     payload: web::Json<UpdateOptionRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Updating option with ID: {}", id);
@@ -291,6 +348,13 @@ pub async fn update_option(
     match OptionTrade::update(&conn, id, payload.into_inner()).await {
         Ok(Some(option)) => {
             info!("Successfully updated option with ID: {}", id);
+            // Broadcast real-time update
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            let option_ws = option.clone();
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "updated", &option_ws).await;
+            });
             Ok(HttpResponse::Ok().json(ApiResponse::success(option)))
         }
         Ok(None) => {
@@ -314,6 +378,7 @@ pub async fn delete_option(
     option_id: web::Path<i64>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Deleting option with ID: {}", id);
@@ -323,6 +388,12 @@ pub async fn delete_option(
     match OptionTrade::delete(&conn, id).await {
         Ok(true) => {
             info!("Successfully deleted option with ID: {}", id);
+            // Broadcast deletion
+            let ws_manager_clone = ws_manager.clone();
+            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            tokio::spawn(async move {
+                broadcast_option_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
+            });
             Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
                 "deleted": true,
                 "id": id
@@ -380,8 +451,40 @@ pub async fn get_options_analytics(
     supabase_config: web::Data<SupabaseConfig>,
 ) -> Result<HttpResponse> {
     info!("Generating options analytics");
-
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    // Attempt to get user DB connection; if not found, return empty analytics instead of 404
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(c) => c,
+        Err(e) => {
+            if e.as_response_error().status_code() == actix_web::http::StatusCode::NOT_FOUND {
+                let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
+                let user_id = match get_authenticated_user(&req, &supabase_config).await {
+                    Ok(claims) => claims.sub,
+                    Err(_) => "unknown".to_string(),
+                };
+                let _cache_key = format!("analytics:db:{}:options:{:?}", user_id, time_range);
+                // Return zeroed analytics (and do not cache)
+                let analytics = OptionsAnalytics {
+                    total_pnl: "0".to_string(),
+                    profit_factor: "0".to_string(),
+                    win_rate: "0".to_string(),
+                    loss_rate: "0".to_string(),
+                    avg_gain: "0".to_string(),
+                    avg_loss: "0".to_string(),
+                    biggest_winner: "0".to_string(),
+                    biggest_loser: "0".to_string(),
+                    avg_hold_time_winners: "0".to_string(),
+                    avg_hold_time_losers: "0".to_string(),
+                    risk_reward_ratio: "0".to_string(),
+                    trade_expectancy: "0".to_string(),
+                    avg_position_size: "0".to_string(),
+                    net_pnl: "0".to_string(),
+                };
+                info!("User DB not found; returning default options analytics");
+                return Ok(HttpResponse::Ok().json(ApiResponse::success(analytics)));
+            }
+            return Err(e);
+        }
+    };
     let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
 
     // Collect all analytics in parallel for better performance
