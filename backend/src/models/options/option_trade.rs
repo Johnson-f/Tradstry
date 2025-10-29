@@ -189,7 +189,7 @@ pub struct OptionQuery {
 impl OptionTrade {
     fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        
+
         // Get the raw value first to check its type
         match row.get::<libsql::Value>(i) {
             Ok(libsql::Value::Real(v)) => Ok(v),
@@ -205,7 +205,7 @@ impl OptionTrade {
 
     fn get_opt_f64(row: &libsql::Row, idx: usize) -> Result<Option<f64>, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        
+
         // Get the raw value first to check its type
         match row.get::<libsql::Value>(i) {
             Ok(libsql::Value::Real(v)) => Ok(Some(v)),
@@ -398,20 +398,27 @@ impl OptionTrade {
     }
 
     /// Update an option trade
+    /// Update an option trade
     pub async fn update(
         conn: &Connection,
         option_id: i64,
         request: UpdateOptionRequest,
     ) -> Result<Option<OptionTrade>, Box<dyn std::error::Error + Send + Sync>> {
+        log::info!("=== Starting update for option_id: {} ===", option_id);
+        log::info!("Update request: {:?}", request);
+
         // Check if option exists first
         let current_option = Self::find_by_id(conn, option_id).await?;
 
         if current_option.is_none() {
+            log::warn!("Option {} not found", option_id);
             return Ok(None);
         }
 
         let now = Utc::now().to_rfc3339();
+        log::info!("Generated timestamp: {}", now);
 
+        log::info!("Preparing UPDATE query...");
         let mut rows = conn
             .prepare(
                 r#"
@@ -465,16 +472,39 @@ impl OptionTrade {
                 request.initial_target,
                 request.profit_target,
                 request.trade_ratings,
-                request.reviewed,  
+                request.reviewed,
                 request.mistakes,
                 now,
                 option_id
             ])
             .await?;
 
+        log::info!("Query executed successfully, fetching results...");
+
         if let Some(row) = rows.next().await? {
-            Ok(Some(OptionTrade::from_row(&row)?))
+            log::info!("Row returned from UPDATE query");
+
+            // Log each column value
+            for i in 0..24 {
+                match row.get::<libsql::Value>(i as i32) {
+                    Ok(val) => log::info!("Column {}: {:?}", i, val),
+                    Err(e) => log::warn!("Column {} error: {}", i, e),
+                }
+            }
+
+            log::info!("Attempting to parse row...");
+            match OptionTrade::from_row(&row) {
+                Ok(option) => {
+                    log::info!("Successfully parsed option with id: {}", option.id);
+                    Ok(Some(option))
+                },
+                Err(e) => {
+                    log::error!("Failed to parse row: {}", e);
+                    Err(e)
+                }
+            }
         } else {
+            log::warn!("No row returned from UPDATE query");
             Ok(None)
         }
     }
@@ -1078,53 +1108,56 @@ impl OptionTrade {
         crate::models::playbook::Playbook::untag_option_trade(conn, self.id, setup_id).await
     }
 
+
     /// Convert from libsql row to OptionTrade struct
     fn from_row(row: &libsql::Row) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {
+        log::info!("=== Starting from_row parsing ===");
+
         // Safely get enum strings with fallback
         let trade_direction_str = match row.get::<libsql::Value>(3) {
             Ok(libsql::Value::Text(s)) => s,
             Ok(libsql::Value::Null) | Err(_) => "Neutral".to_string(),
             Ok(_) => "Neutral".to_string(),
         };
-        
+
         let option_type_str = match row.get::<libsql::Value>(5) {
             Ok(libsql::Value::Text(s)) => s,
             Ok(libsql::Value::Null) | Err(_) => "Call".to_string(),
             Ok(_) => "Call".to_string(),
         };
-        
+
         let status_str = match row.get::<libsql::Value>(15) {
             Ok(libsql::Value::Text(s)) => s,
             Ok(libsql::Value::Null) | Err(_) => "open".to_string(),
             Ok(_) => "open".to_string(),
         };
-    
+
         let trade_direction = trade_direction_str.parse::<TradeDirection>()
             .map_err(|e| format!("Invalid trade direction: {}", e))?;
-    
+
         let option_type = option_type_str.parse::<OptionType>()
             .map_err(|e| format!("Invalid option type: {}", e))?;
-    
+
         let status = status_str.parse::<TradeStatus>()
             .map_err(|e| format!("Invalid trade status: {}", e))?;
-    
+
         // Parse datetime strings with safe handling
         let expiration_date_str = match row.get::<libsql::Value>(7) {
             Ok(libsql::Value::Text(s)) => s,
             _ => return Err("Failed to get expiration_date".into()),
         };
-        
+
         let entry_date_str = match row.get::<libsql::Value>(13) {
             Ok(libsql::Value::Text(s)) => s,
             _ => return Err("Failed to get entry_date".into()),
         };
-        
+
         let exit_date_str: Option<String> = match row.get::<libsql::Value>(14) {
             Ok(libsql::Value::Text(s)) => Some(s),
             Ok(libsql::Value::Null) => None,
             _ => None,
         };
-        
+
         // Handle reviewed field - could be NULL or 0/1
         let reviewed_val: Option<i64> = match row.get::<libsql::Value>(19) {
             Ok(libsql::Value::Integer(val)) => Some(val),
@@ -1133,21 +1166,43 @@ impl OptionTrade {
             _ => None,
         };
         let reviewed = reviewed_val.map(|v| v != 0).unwrap_or(false);
-        
+
         let mistakes_str: Option<String> = match row.get::<libsql::Value>(20) {
             Ok(libsql::Value::Text(s)) => Some(s),
             Ok(libsql::Value::Null) => None,
             _ => None,
         };
-        
+
+        log::info!("Parsing created_at from column 21...");
         let created_at_str = match row.get::<libsql::Value>(21) {
-            Ok(libsql::Value::Text(s)) => s,
-            _ => return Err("Failed to get created_at".into()),
+            Ok(libsql::Value::Text(s)) => {
+                log::info!("created_at string: '{}'", s);
+                s
+            },
+            Ok(val) => {
+                log::error!("created_at unexpected type: {:?}", val);
+                return Err("Failed to get created_at".into());
+            },
+            Err(e) => {
+                log::error!("created_at error: {}", e);
+                return Err("Failed to get created_at".into());
+            },
         };
-        
+
+        log::info!("Parsing updated_at from column 22...");
         let updated_at_str = match row.get::<libsql::Value>(22) {
-            Ok(libsql::Value::Text(s)) => s,
-            _ => return Err("Failed to get updated_at".into()),
+            Ok(libsql::Value::Text(s)) => {
+                log::info!("updated_at string: '{}' (length: {})", s, s.len());
+                s
+            },
+            Ok(val) => {
+                log::error!("updated_at unexpected type: {:?}", val);
+                return Err(format!("Failed to get updated_at: unexpected type {:?}", val).into());
+            },
+            Err(e) => {
+                log::error!("updated_at error: {}", e);
+                return Err(format!("Failed to get updated_at: {}", e).into());
+            },
         };
 
         // Handle is_deleted field (index 23)
@@ -1156,31 +1211,43 @@ impl OptionTrade {
             Ok(libsql::Value::Null) => false,
             _ => false,
         };
-    
-        let expiration_date = DateTime::parse_from_rfc3339(&expiration_date_str)
-            .map_err(|e| format!("Failed to parse expiration_date: {}", e))?
-            .with_timezone(&Utc);
-    
-        let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
-            .map_err(|e| format!("Failed to parse entry_date: {}", e))?
-            .with_timezone(&Utc);
-    
+
+        // Helper function to parse datetime that can be in either RFC3339 or SQLite format
+        let parse_datetime = |datetime_str: &str, field_name: &str| -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
+                    if datetime_str.contains('T') {
+                        // RFC3339 format: "2025-10-15T20:55:53.148886+00:00"
+                        Ok(
+                            DateTime::parse_from_rfc3339(datetime_str)
+                                .map_err(|e| format!("Failed to parse {} as RFC3339: {}", field_name, e))?
+                                .with_timezone(&Utc)
+                        )
+                    } else {
+                        // SQLite datetime format: "2025-10-29 07:17:16"
+                        Ok(
+                            chrono::NaiveDateTime::parse_from_str(datetime_str, "%Y-%m-%d %H:%M:%S")
+                                .map_err(|e| format!("Failed to parse {} as SQLite datetime: {}", field_name, e))?
+                                .and_utc()
+                        )
+                    }
+                };
+
+        let expiration_date = parse_datetime(&expiration_date_str, "expiration_date")?;
+        let entry_date = parse_datetime(&entry_date_str, "entry_date")?;
+
         let exit_date = if let Some(exit_str) = exit_date_str {
-            Some(DateTime::parse_from_rfc3339(&exit_str)
-                .map_err(|e| format!("Failed to parse exit_date: {}", e))?
-                .with_timezone(&Utc))
+            Some(parse_datetime(&exit_str, "exit_date")?)
         } else {
             None
         };
-    
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| format!("Failed to parse created_at: {}", e))?
-            .with_timezone(&Utc);
-    
-        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| format!("Failed to parse updated_at: {}", e))?
-            .with_timezone(&Utc);
-    
+
+        log::info!("About to parse created_at: '{}'", created_at_str);
+        let created_at = parse_datetime(&created_at_str, "created_at")?;
+
+        log::info!("About to parse updated_at: '{}'", updated_at_str);
+        let updated_at = parse_datetime(&updated_at_str, "updated_at")?;
+
+        log::info!("Successfully parsed all datetime fields");
+
         Ok(OptionTrade {
             id: match row.get::<libsql::Value>(0) {
                 Ok(libsql::Value::Integer(val)) => val,

@@ -170,6 +170,7 @@ impl std::str::FromStr for OrderType {
 /// Stock trade model for user's isolated database
 /// No user_id needed since each user has their own database
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Stock {
     pub id: i64,
     pub symbol: String,
@@ -194,6 +195,7 @@ pub struct Stock {
 
 /// Data Transfer Object for creating new stock trades
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")] 
 pub struct CreateStockRequest {
     pub symbol: String,
     pub trade_type: TradeType,
@@ -213,6 +215,7 @@ pub struct CreateStockRequest {
 
 /// Data Transfer Object for updating stock trades
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateStockRequest {
     pub symbol: Option<String>,
     pub trade_type: Option<TradeType>,
@@ -234,6 +237,7 @@ pub struct UpdateStockRequest {
 
 /// Stock query parameters for filtering and pagination
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StockQuery {
     pub symbol: Option<String>,
     pub trade_type: Option<TradeType>,

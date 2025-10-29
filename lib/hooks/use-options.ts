@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useWs } from '@/lib/websocket/provider';
 import apiConfig, { getFullUrl } from '@/lib/config/api';
 import { createClient } from '@/lib/supabase/client';
-import type { OptionTrade } from '@/lib/types/options';
+import type { OptionTrade, CreateOptionRequest, UpdateOptionRequest } from '@/lib/types/options';
 
 async function fetchOptions(): Promise<OptionTrade[]> {
   const supabase = createClient();
@@ -62,6 +62,66 @@ export function useOptions() {
   }, [subscribe, queryClient]);
 
   return query;
+}
+
+
+async function authHeader() {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('User not authenticated');
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } as const;
+}
+
+export function useCreateOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateOptionRequest) => {
+      const headers = await authHeader();
+      const res = await fetch(getFullUrl(apiConfig.endpoints.options.base), {
+        method: 'POST', headers, body: JSON.stringify(payload), credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to create option');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['options'] });
+    },
+  });
+}
+
+export function useUpdateOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: UpdateOptionRequest }) => {
+      const headers = await authHeader();
+      const res = await fetch(getFullUrl(apiConfig.endpoints.options.byId(id)), {
+        method: 'PUT', headers, body: JSON.stringify(updates), credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to update option');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['options'] });
+    },
+  });
+}
+
+export function useDeleteOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const headers = await authHeader();
+      const res = await fetch(getFullUrl(apiConfig.endpoints.options.byId(id)), {
+        method: 'DELETE', headers, credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to delete option');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['options'] });
+    },
+  });
 }
 
 

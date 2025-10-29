@@ -9,6 +9,15 @@ import { Switch } from '@/components/ui/switch';
 import { useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import apiConfig, { getFullUrl } from '@/lib/config/api';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationLink,
+} from '@/components/ui/pagination';
 import {
   Table,
   TableBody,
@@ -21,6 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2 } from 'lucide-react';
+import CreateTradeModal from './create-trade-modal';
 import type { Stock } from '@/lib/types/stocks';
 import type { OptionTrade } from '@/lib/types/options';
 
@@ -94,9 +104,12 @@ function formatDate(dateString: string): string {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return '-';
   return new Intl.DateTimeFormat('en-US', {
-    month: '2-digit',
-    day: '2-digit',
     year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   }).format(date);
 }
 
@@ -114,6 +127,10 @@ export function TradeTable() {
   const isLoading = stocksLoading || optionsLoading;
   
   const supabase = React.useMemo(() => createClient(), []);
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  const [page, setPage] = React.useState(1);
+  const perPage = 15;
 
   const updateReviewed = React.useCallback(async (trade: TradeData, next: boolean) => {
     if (trade.tradeId == null) return;
@@ -147,7 +164,7 @@ export function TradeTable() {
       }
     }
   }, [queryClient, supabase]);
-
+  
   
   // Combine and transform data
   const trades: TradeData[] = React.useMemo(() => {
@@ -197,6 +214,14 @@ export function TradeTable() {
     );
   }, [stocks, options]);
   
+  const totalPages = Math.max(1, Math.ceil(trades.length / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * perPage;
+  const pageTrades = trades.slice(pageStart, pageStart + perPage);
+  
+  const goPrev = React.useCallback(() => setPage(p => Math.max(1, p - 1)), []);
+  const goNext = React.useCallback(() => setPage(p => Math.min(totalPages, p + 1)), [totalPages]);
+  
   return (
     <Card>
       <CardHeader>
@@ -206,7 +231,7 @@ export function TradeTable() {
             
           </div>
           <CardAction>
-            <Button size="sm">
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" />
               Add trade
             </Button>
@@ -219,6 +244,8 @@ export function TradeTable() {
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
+          <>
+            <ScrollArea className="w-full h-[420px]">
           <Table>
             <TableHeader>
               <TableRow>
@@ -230,20 +257,20 @@ export function TradeTable() {
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="text-right">Symbol P&L</TableHead>
                 <TableHead className="text-center">Risk:Reward</TableHead>
-                <TableHead className="text-center">Duration</TableHead>
-                <TableHead className="text-center">Reviewed</TableHead>
+                    <TableHead className="text-center">Duration</TableHead>
+                    <TableHead className="text-center">Reviewed</TableHead>
                 <TableHead>Mistakes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {trades.length === 0 ? (
+                  {pageTrades.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     No trades found
                   </TableCell>
                 </TableRow>
               ) : (
-                trades.map((trade) => (
+                    pageTrades.map((trade) => (
                   <TableRow key={trade.id}>
                     <TableCell>
                       <div className="flex items-center justify-center">
@@ -328,8 +355,39 @@ export function TradeTable() {
               )}
             </TableBody>
           </Table>
+            </ScrollArea>
+            <div className="mt-3">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); goPrev(); }} />
+                  </PaginationItem>
+                  {/* Simple three-page window */}
+                  {Array.from({ length: totalPages }).slice(Math.max(0, currentPage - 2), Math.max(0, currentPage - 2) + 3).map((_, idx) => {
+                    const pageNum = Math.max(1, currentPage - 1) + idx;
+                    if (pageNum > totalPages) return null;
+                    return (
+                      <PaginationItem key={pageNum}>
+                        <PaginationLink
+                          href="#"
+                          isActive={pageNum === currentPage}
+                          onClick={(e) => { e.preventDefault(); setPage(pageNum); }}
+                        >
+                          {pageNum}
+                        </PaginationLink>
+                      </PaginationItem>
+                    );
+                  })}
+                  <PaginationItem>
+                    <PaginationNext href="#" onClick={(e) => { e.preventDefault(); goNext(); }} />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          </>
         )}
       </CardContent>
+      <CreateTradeModal open={createOpen} onOpenChange={setCreateOpen} />
     </Card>
   );
 }
