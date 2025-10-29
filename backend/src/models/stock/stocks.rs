@@ -256,9 +256,9 @@ pub struct UpdateStockRequest {
     pub initial_target: Option<f64>,
     pub profit_target: Option<f64>,
     pub trade_ratings: Option<i32>,
-    #[serde(deserialize_with = "deserialize_optional_datetime")]
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub entry_date: Option<DateTime<Utc>>,
-    #[serde(deserialize_with = "deserialize_optional_datetime")]
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,

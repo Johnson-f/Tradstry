@@ -425,7 +425,7 @@ impl Playbook {
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
             .prepare(
-                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
+                "SELECT p.id, p.name, p.description, p.icon, p.emoji, p.color, p.created_at, p.updated_at
                  FROM playbook p
                  INNER JOIN stock_trade_playbook stp ON p.id = stp.setup_id
                  WHERE stp.stock_trade_id = ?
@@ -450,7 +450,7 @@ impl Playbook {
     ) -> Result<Vec<Playbook>, Box<dyn std::error::Error + Send + Sync>> {
         let mut rows = conn
             .prepare(
-                "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
+                "SELECT p.id, p.name, p.description, p.icon, p.emoji, p.color, p.created_at, p.updated_at
                  FROM playbook p
                  INNER JOIN option_trade_playbook otp ON p.id = otp.setup_id
                  WHERE otp.option_trade_id = ?
