@@ -1,12 +1,23 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import * as d3 from "d3"
-import { useAnalyticsTimeSeries, useAnalyticsCore } from "@/lib/hooks/use-analytics"
+import { useStocksAnalytics, useOptionsAnalytics } from "@/lib/hooks/use-analytics"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Info } from "lucide-react"
 
 type TimeRangeOption = "7d" | "30d" | "90d" | "1y" | "ytd" | "all_time"
+
+interface TimeSeriesPoint {
+  date: string
+  value: number
+  cumulative_value: number
+  trade_count: number
+}
+
+interface TimeSeriesData {
+  daily_pnl: TimeSeriesPoint[]
+}
 
 interface BasicAnalyticsProps {
   initialTimeRange?: TimeRangeOption
@@ -16,23 +27,20 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  // Reduced chart height from 200 to 120
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   const {
-    data: timeSeriesData,
-    isLoading: isLoadingTimeSeries,
-    error: timeSeriesError,
-  } = useAnalyticsTimeSeries({
-    time_range: initialTimeRange,
-  })
+    data: stocksAnalytics,
+    isLoading: isLoadingStocks,
+    error: stocksError,
+  } = useStocksAnalytics(initialTimeRange)
 
   const {
-    data: coreMetrics,
-    isLoading: isLoadingCore,
-    error: coreError,
-  } = useAnalyticsCore({
-    time_range: initialTimeRange,
-  })
+    data: optionsAnalytics,
+    isLoading: isLoadingOptions,
+    error: optionsError,
+  } = useOptionsAnalytics(initialTimeRange)
 
   // Setup responsive dimensions
   useEffect(() => {
@@ -40,7 +48,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       if (containerRef.current) {
         setDimensions({
           width: containerRef.current.offsetWidth,
-          height: 300,
+          height: 120, // Reduced height for chart in card 1
         })
       }
     }
@@ -49,6 +57,50 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     window.addEventListener("resize", updateDimensions)
     return () => window.removeEventListener("resize", updateDimensions)
   }, [])
+
+  // Combine stocks and options analytics
+  const combinedMetrics = useMemo(() => {
+    if (!stocksAnalytics && !optionsAnalytics) return null;
+    
+    // Extract metrics from the response
+    const stocks = stocksAnalytics || {};
+    const options = optionsAnalytics || {};
+    
+    // Calculate combined metrics
+    const totalPnl = (stocks.total_pnl ? parseFloat(stocks.total_pnl) : 0) + 
+                     (options.total_pnl ? parseFloat(options.total_pnl) : 0);
+    
+    const winningTrades = (stocks.winning_trades || 0) + (options.winning_trades || 0);
+    const losingTrades = (stocks.losing_trades || 0) + (options.losing_trades || 0);
+    const totalTrades = winningTrades + losingTrades;
+    
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    
+    const grossProfit = (stocks.gross_profit ? parseFloat(stocks.gross_profit) : 0) +
+                        (options.gross_profit ? parseFloat(options.gross_profit) : 0);
+    const grossLoss = (stocks.gross_loss ? parseFloat(stocks.gross_loss) : 0) +
+                      (options.gross_loss ? parseFloat(options.gross_loss) : 0);
+    
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
+    
+    const averageWin = (stocks.avg_gain ? parseFloat(stocks.avg_gain) : 0);
+    const averageLoss = (stocks.avg_loss ? parseFloat(stocks.avg_loss) : 0);
+    
+    return {
+      total_pnl: totalPnl,
+      profit_factor: profitFactor,
+      win_rate: winRate,
+      winning_trades: winningTrades,
+      losing_trades: losingTrades,
+      average_win: averageWin,
+      average_loss: averageLoss,
+    };
+  }, [stocksAnalytics, optionsAnalytics]);
+
+  // Mock time series data for now (you may want to implement this properly later)
+  const timeSeriesData: TimeSeriesData = useMemo(() => ({
+    daily_pnl: [] // Empty for now
+  }), []);
 
   // Render D3 chart
   useEffect(() => {
@@ -67,7 +119,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     d3.select(svgRef.current).selectAll("*").remove()
 
     const svg = d3.select(svgRef.current)
-    const margin = { top: 10, right: 10, bottom: 10, left: 10 }
+    const margin = { top: 6, right: 8, bottom: 6, left: 8 }
     const width = dimensions.width - margin.left - margin.right
     const height = dimensions.height - margin.top - margin.bottom
 
@@ -99,7 +151,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
 
     // Create area generator
     const area = d3
-      .area<{ date: string; cumulative_value: number; value: number; trade_count: number }>()
+      .area<TimeSeriesPoint>()
       .x((d) => xScale(new Date(d.date)))
       .y0(yScale(Math.max(0, Math.min(...yDomain))))
       .y1((d) => yScale(d.cumulative_value))
@@ -107,7 +159,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
 
     // Create line generator
     const line = d3
-      .line<{ date: string; cumulative_value: number; value: number; trade_count: number }>()
+      .line<TimeSeriesPoint>()
       .x((d) => xScale(new Date(d.date)))
       .y((d) => yScale(d.cumulative_value))
       .curve(d3.curveMonotoneX)
@@ -177,35 +229,35 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       })
   }, [timeSeriesData, dimensions.width, dimensions.height])
 
-  if (timeSeriesError || coreError) {
+  if (stocksError || optionsError) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <p className="text-red-600">Error loading analytics: {(timeSeriesError || coreError)?.message}</p>
+        <CardContent className="pt-4"> {/* Reduced top padding */}
+          <p className="text-red-600">Error loading analytics: {(stocksError || optionsError)?.message}</p>
         </CardContent>
       </Card>
     )
   }
 
-  if (isLoadingTimeSeries || isLoadingCore || !timeSeriesData || !coreMetrics) {
+  if (isLoadingStocks || isLoadingOptions || !timeSeriesData || !combinedMetrics) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-2"> {/* Reduced vertical gap between loading skeletons */}
         <Card className="col-span-full animate-pulse">
           <CardHeader>
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
           </CardHeader>
           <CardContent>
-            <div className="h-64 bg-gray-100 rounded"></div>
+            <div className="h-28 bg-gray-100 rounded"></div>
           </CardContent>
         </Card>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardHeader>
-                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-6 bg-gray-200 rounded w-1/2"></div>
               </CardHeader>
               <CardContent>
-                <div className="h-12 bg-gray-100 rounded"></div>
+                <div className="h-8 bg-gray-100 rounded"></div>
               </CardContent>
             </Card>
           ))}
@@ -226,21 +278,22 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
         style={{ fontSize: "12px" }}
       />
 
-      <div className="flex gap-4 overflow-x-auto">
+      {/* Reduce gap and add a smaller min-h to cards */}
+      <div className="flex gap-2 overflow-x-auto items-stretch">
         {/* Card 1: Net Cumulative P&L */}
-        <Card className="flex-1 min-w-[300px] bg-white">
-          <CardHeader className="pb-2">
+        <Card className="flex-1 min-w-[230px] bg-white min-h-[138px]">
+          <CardHeader className="pb-1">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-sm font-normal text-gray-600">Net Cumulative P&L</CardTitle>
-                <CardDescription className="text-sm font-medium text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
+                <CardTitle className="text-xs font-normal text-gray-600">Net Cumulative P&L</CardTitle>
+                <CardDescription className="text-xs font-medium text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
                   {dataPointCount}
                 </CardDescription>
               </div>
-              <div className="text-3xl font-bold text-gray-900">${currentPnl.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-gray-900">${currentPnl.toFixed(2)}</div>
             </div>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="pt-0 pb-1">
             <div ref={containerRef} className="w-full">
               <svg
                 ref={svgRef}
@@ -254,52 +307,53 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
         </Card>
 
         {/* Card 2: Profit Factor */}
-        <div className="flex-1 min-w-[250px]">
-          <ProfitFactorCard profitFactor={coreMetrics.profit_factor} />
+        <div className="flex-1 min-w-[170px]">
+          <ProfitFactorCard profitFactor={combinedMetrics?.profit_factor} />
         </div>
 
         {/* Card 3: Win Rate */}
-        <div className="flex-1 min-w-[250px]">
+        <div className="flex-1 min-w-[170px]">
           <WinRateCard
-            winRate={coreMetrics.win_rate}
-            losingTrades={coreMetrics.losing_trades}
-            winningTrades={coreMetrics.winning_trades}
+            winRate={combinedMetrics?.win_rate}
+            losingTrades={combinedMetrics?.losing_trades}
+            winningTrades={combinedMetrics?.winning_trades}
           />
         </div>
 
         {/* Card 4: Avg Win/Loss */}
-        <div className="flex-1 min-w-[250px]">
-          <AvgWinLossCard averageWin={coreMetrics.average_win} averageLoss={coreMetrics.average_loss} />
+        <div className="flex-1 min-w-[170px]">
+          <AvgWinLossCard averageWin={combinedMetrics?.average_win} averageLoss={combinedMetrics?.average_loss} />
         </div>
       </div>
     </>
   )
 }
 
-function ProfitFactorCard({ profitFactor }: { profitFactor: number }) {
+function ProfitFactorCard({ profitFactor }: { profitFactor: number | null | undefined }) {
   const gaugeRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!gaugeRef.current) return
+    if (!gaugeRef.current || profitFactor == null) return
 
-    const width = 120
-    const height = 80
-    const radius = 50
+    const width = 90
+    const height = 36
+    const radius = 25
 
     const svg = d3.select(gaugeRef.current)
     svg.selectAll("*").remove()
 
-    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height - 10})`)
+    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height - 5})`)
 
     // Background arc
     const backgroundArc = d3
       .arc()
-      .innerRadius(radius - 8)
+      .innerRadius(radius - 7)
       .outerRadius(radius)
       .startAngle(-Math.PI / 2)
       .endAngle(Math.PI / 2)
 
     g.append("path")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .attr("d", backgroundArc as any)
       .attr("fill", "#e5e7eb")
 
@@ -307,27 +361,28 @@ function ProfitFactorCard({ profitFactor }: { profitFactor: number }) {
     const normalizedValue = Math.min(profitFactor / 5, 1) // Normalize to 0-1, max at 5
     const foregroundArc = d3
       .arc()
-      .innerRadius(radius - 8)
+      .innerRadius(radius - 7)
       .outerRadius(radius)
       .startAngle(-Math.PI / 2)
       .endAngle(-Math.PI / 2 + Math.PI * normalizedValue)
 
     g.append("path")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .attr("d", foregroundArc as any)
       .attr("fill", "#ef4444")
   }, [profitFactor])
 
   return (
-    <Card className="bg-white">
-      <CardHeader className="pb-2">
+    <Card className="bg-white min-h-[138px]">
+      <CardHeader className="pb-1">
         <div className="flex items-center gap-1.5">
-          <CardTitle className="text-sm font-normal text-gray-600">Profit Factor</CardTitle>
-          <Info className="w-4 h-4 text-gray-400" />
+          <CardTitle className="text-xs font-normal text-gray-600">Profit Factor</CardTitle>
+          <Info className="w-3 h-3 text-gray-400" />
         </div>
       </CardHeader>
-      <CardContent className="flex items-center justify-between pt-0">
-        <div className="text-3xl font-bold text-gray-900">{profitFactor.toFixed(2)}</div>
-        <svg ref={gaugeRef} width={120} height={80} />
+      <CardContent className="flex items-center justify-between pt-0 pb-1">
+        <div className="text-2xl font-bold text-gray-900">{profitFactor != null ? profitFactor.toFixed(2) : 'N/A'}</div>
+        <svg ref={gaugeRef} width={90} height={36} />
       </CardContent>
     </Card>
   )
@@ -335,26 +390,24 @@ function ProfitFactorCard({ profitFactor }: { profitFactor: number }) {
 
 function WinRateCard({
   winRate,
-  losingTrades,
-  winningTrades,
 }: {
-  winRate: number
-  losingTrades: number
-  winningTrades: number
+  winRate: number | null | undefined
+  losingTrades?: number | null | undefined
+  winningTrades?: number | null | undefined
 }) {
   const gaugeRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!gaugeRef.current) return
+    if (!gaugeRef.current || winRate == null) return
 
-    const width = 120
-    const height = 80
-    const radius = 50
+    const width = 90
+    const height = 36
+    const radius = 25
 
     const svg = d3.select(gaugeRef.current)
     svg.selectAll("*").remove()
 
-    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height - 10})`)
+    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height - 5})`)
 
     const winRateValue = winRate > 1 ? winRate / 100 : winRate
 
@@ -369,32 +422,32 @@ function WinRateCard({
       .attr("y2", "0%")
 
     gradient.append("stop").attr("offset", "0%").attr("stop-color", "#10b981")
-
     gradient.append("stop").attr("offset", "50%").attr("stop-color", "#3b82f6")
-
     gradient.append("stop").attr("offset", "100%").attr("stop-color", "#ef4444")
 
     // Background arc
     const backgroundArc = d3
       .arc()
-      .innerRadius(radius - 8)
+      .innerRadius(radius - 7)
       .outerRadius(radius)
       .startAngle(-Math.PI / 2)
       .endAngle(Math.PI / 2)
 
     g.append("path")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .attr("d", backgroundArc as any)
       .attr("fill", "#e5e7eb")
 
     // Foreground arc
     const foregroundArc = d3
       .arc()
-      .innerRadius(radius - 8)
+      .innerRadius(radius - 7)
       .outerRadius(radius)
       .startAngle(-Math.PI / 2)
       .endAngle(-Math.PI / 2 + Math.PI * winRateValue)
 
     g.append("path")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .attr("d", foregroundArc as any)
       .attr("fill", "url(#gauge-gradient)")
 
@@ -402,8 +455,8 @@ function WinRateCard({
     const tickData = [0, 0.5, 1]
     tickData.forEach((tick) => {
       const angle = -Math.PI / 2 + Math.PI * tick
-      const x1 = Math.cos(angle) * (radius - 12)
-      const y1 = Math.sin(angle) * (radius - 12)
+      const x1 = Math.cos(angle) * (radius - 10)
+      const y1 = Math.sin(angle) * (radius - 10)
       const x2 = Math.cos(angle) * (radius + 2)
       const y2 = Math.sin(angle) * (radius + 2)
 
@@ -418,43 +471,43 @@ function WinRateCard({
 
     // Add labels
     g.append("text")
-      .attr("x", -radius - 5)
-      .attr("y", 5)
+      .attr("x", -radius - 4)
+      .attr("y", 4)
       .attr("text-anchor", "end")
-      .attr("font-size", "10px")
+      .attr("font-size", "9px")
       .attr("fill", "#6b7280")
       .text("0")
 
     g.append("text")
       .attr("x", 0)
-      .attr("y", -radius - 5)
+      .attr("y", -radius - 4)
       .attr("text-anchor", "middle")
-      .attr("font-size", "10px")
+      .attr("font-size", "9px")
       .attr("fill", "#6b7280")
       .text("50")
 
     g.append("text")
-      .attr("x", radius + 5)
-      .attr("y", 5)
+      .attr("x", radius + 4)
+      .attr("y", 4)
       .attr("text-anchor", "start")
-      .attr("font-size", "10px")
+      .attr("font-size", "9px")
       .attr("fill", "#6b7280")
       .text("100")
   }, [winRate])
 
-  const winRatePercent = winRate > 1 ? winRate : winRate * 100
+  const winRatePercent = winRate != null ? (winRate > 1 ? winRate : winRate * 100) : null
 
   return (
-    <Card className="bg-white">
-      <CardHeader className="pb-2">
+    <Card className="bg-white min-h-[138px]">
+      <CardHeader className="pb-1">
         <div className="flex items-center gap-1.5">
-          <CardTitle className="text-sm font-normal text-gray-600">Trade Win %</CardTitle>
-          <Info className="w-4 h-4 text-gray-400" />
+          <CardTitle className="text-xs font-normal text-gray-600">Trade Win %</CardTitle>
+          <Info className="w-3 h-3 text-gray-400" />
         </div>
       </CardHeader>
-      <CardContent className="flex items-center justify-between pt-0">
-        <div className="text-3xl font-bold text-gray-900">{winRatePercent.toFixed(2)}%</div>
-        <svg ref={gaugeRef} width={120} height={80} />
+      <CardContent className="flex items-center justify-between pt-0 pb-1">
+        <div className="text-2xl font-bold text-gray-900">{winRatePercent != null ? `${winRatePercent.toFixed(2)}%` : 'N/A'}</div>
+        <svg ref={gaugeRef} width={90} height={36} />
       </CardContent>
     </Card>
   )
@@ -464,29 +517,30 @@ function AvgWinLossCard({
   averageWin,
   averageLoss,
 }: {
-  averageWin: number
-  averageLoss: number
+  averageWin: number | null | undefined
+  averageLoss: number | null | undefined
 }) {
   const barRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 60 })
+  // Reduce card height for bar chart
+  const [dimensions, setDimensions] = useState({ width: 0, height: 36 })
 
   useEffect(() => {
     if (!containerRef.current) return
 
     const width = containerRef.current.offsetWidth
-    setDimensions({ width, height: 60 })
+    setDimensions({ width, height: 36 })
 
-    if (!barRef.current || width === 0) return
+    if (!barRef.current || width === 0 || averageWin == null || averageLoss == null) return
 
     const svg = d3.select(barRef.current)
     svg.selectAll("*").remove()
 
-    const barHeight = 24
-    const centerY = 30
+    const barHeight = 14
+    const centerY = 18
     const maxVal = Math.max(averageWin, Math.abs(averageLoss))
     const centerX = width / 2
-    const maxBarWidth = width / 2 - 40
+    const maxBarWidth = width / 2 - 18
 
     // Win bar (right side, green)
     const winBarWidth = (averageWin / maxVal) * maxBarWidth
@@ -497,7 +551,7 @@ function AvgWinLossCard({
       .attr("width", winBarWidth)
       .attr("height", barHeight)
       .attr("fill", "#10b981")
-      .attr("rx", 4)
+      .attr("rx", 3)
 
     // Loss bar (left side, red)
     const lossBarWidth = (Math.abs(averageLoss) / maxVal) * maxBarWidth
@@ -508,41 +562,41 @@ function AvgWinLossCard({
       .attr("width", lossBarWidth)
       .attr("height", barHeight)
       .attr("fill", "#ef4444")
-      .attr("rx", 4)
+      .attr("rx", 3)
 
     // Labels
     svg
       .append("text")
-      .attr("x", centerX + winBarWidth + 5)
+      .attr("x", centerX + winBarWidth + 4)
       .attr("y", centerY + 4)
       .attr("fill", "#10b981")
-      .attr("font-size", "11px")
+      .attr("font-size", "9px")
       .attr("font-weight", "600")
       .text(`$${averageWin.toFixed(0)}`)
 
     svg
       .append("text")
-      .attr("x", centerX - lossBarWidth - 5)
+      .attr("x", centerX - lossBarWidth - 4)
       .attr("y", centerY + 4)
       .attr("fill", "#ef4444")
-      .attr("font-size", "11px")
+      .attr("font-size", "9px")
       .attr("font-weight", "600")
       .attr("text-anchor", "end")
       .text(`-$${Math.abs(averageLoss).toFixed(0)}`)
   }, [averageWin, averageLoss, dimensions.width])
 
-  const ratio = averageWin / Math.abs(averageLoss)
+  const ratio = (averageWin != null && averageLoss != null) ? averageWin / Math.abs(averageLoss) : null
 
   return (
-    <Card className="bg-white">
-      <CardHeader className="pb-2">
+    <Card className="bg-white min-h-[138px]">
+      <CardHeader className="pb-1">
         <div className="flex items-center gap-1.5">
-          <CardTitle className="text-sm font-normal text-gray-600">Avg win/loss trade</CardTitle>
-          <Info className="w-4 h-4 text-gray-400" />
+          <CardTitle className="text-xs font-normal text-gray-600">Avg win/loss trade</CardTitle>
+          <Info className="w-3 h-3 text-gray-400" />
         </div>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="text-3xl font-bold text-gray-900 mb-2">{ratio.toFixed(2)}</div>
+      <CardContent className="pt-0 pb-1">
+        <div className="text-2xl font-bold text-gray-900 mb-1">{ratio != null ? ratio.toFixed(2) : 'N/A'}</div>
         <div ref={containerRef} className="w-full">
           <svg ref={barRef} width={dimensions.width} height={dimensions.height} />
         </div>

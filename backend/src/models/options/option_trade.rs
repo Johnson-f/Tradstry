@@ -24,7 +24,7 @@ impl std::fmt::Display for TradeStatus {
 
 impl std::str::FromStr for TradeStatus {
     type Err = &'static str;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "open" => Ok(TradeStatus::Open),
@@ -54,7 +54,7 @@ impl std::fmt::Display for TradeDirection {
 
 impl std::str::FromStr for TradeDirection {
     type Err = &'static str;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Bullish" => Ok(TradeDirection::Bullish),
@@ -83,7 +83,7 @@ impl std::fmt::Display for OptionType {
 
 impl std::str::FromStr for OptionType {
     type Err = &'static str;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Call" => Ok(OptionType::Call),
@@ -120,6 +120,7 @@ pub struct OptionTrade {
     pub mistakes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
 }
 
 /// Data Transfer Object for creating new option trades
@@ -186,19 +187,74 @@ pub struct OptionQuery {
 
 /// Option operations implementation using libsql
 impl OptionTrade {
+    fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        // Try as f64
+        if let Ok(v) = row.get::<f64>(i) {
+            return Ok(v);
+        }
+        // Try as Option<f64>
+        if let Ok(v) = row.get::<Option<f64>>(i) {
+            return Ok(v.unwrap_or(0.0));
+        }
+        // Try as i64
+        if let Ok(v) = row.get::<i64>(i) {
+            return Ok(v as f64);
+        }
+        // Try as Option<i64>
+        if let Ok(v) = row.get::<Option<i64>>(i) {
+            return Ok(v.unwrap_or(0) as f64);
+        }
+        // Try as String
+        if let Ok(s) = row.get::<String>(i)
+            && let Ok(parsed) = s.parse::<f64>()
+        {
+            return Ok(parsed);
+        }
+        // Fallback to 0.0
+        Ok(0.0)
+    }
+
+    fn get_opt_f64(row: &libsql::Row, idx: usize) -> Result<Option<f64>, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        // Try Option<f64>
+        if let Ok(v) = row.get::<Option<f64>>(i) {
+            return Ok(v);
+        }
+        // Try f64
+        if let Ok(v) = row.get::<f64>(i) {
+            return Ok(Some(v));
+        }
+        // Try Option<i64>
+        if let Ok(v) = row.get::<Option<i64>>(i) {
+            return Ok(v.map(|x| x as f64));
+        }
+        // Try i64
+        if let Ok(v) = row.get::<i64>(i) {
+            return Ok(Some(v as f64));
+        }
+        // Try String
+        if let Ok(s) = row.get::<String>(i)
+            && let Ok(parsed) = s.parse::<f64>()
+        {
+            return Ok(Some(parsed));
+        }
+        Ok(None)
+    }
+
     /// Create a new option trade in the user's database
     pub async fn create(
         conn: &Connection,
         request: CreateOptionRequest,
     ) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {
         let now = Utc::now().to_rfc3339();
-        
+
         let mut rows = conn.prepare(
             r#"
             INSERT INTO options (
-                symbol, strategy_type, trade_direction, number_of_contracts, 
-                option_type, strike_price, expiration_date, entry_price, 
-                total_premium, commissions, implied_volatility, entry_date, 
+                symbol, strategy_type, trade_direction, number_of_contracts,
+                option_type, strike_price, expiration_date, entry_price,
+                total_premium, commissions, implied_volatility, entry_date,
                 status, initial_target, profit_target, trade_ratings,
                 reviewed, mistakes, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -206,7 +262,7 @@ impl OptionTrade {
                      option_type, strike_price, expiration_date, entry_price, exit_price,
                      total_premium, commissions, implied_volatility, entry_date, exit_date,
                      status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                     created_at, updated_at
+                     created_at, updated_at, is_deleted
             "#,
         )
         .await?
@@ -253,8 +309,8 @@ impl OptionTrade {
                        option_type, strike_price, expiration_date, entry_price, exit_price,
                        total_premium, commissions, implied_volatility, entry_date, exit_date,
                        status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                       created_at, updated_at
-                FROM options 
+                       created_at, updated_at, is_deleted
+                FROM options
                 WHERE id = ?
                 "#,
             )
@@ -280,45 +336,45 @@ impl OptionTrade {
                    option_type, strike_price, expiration_date, entry_price, exit_price,
                    total_premium, commissions, implied_volatility, entry_date, exit_date,
                    status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                   created_at, updated_at
-            FROM options 
+                   created_at, updated_at, is_deleted
+            FROM options
             WHERE 1=1
             "#,
         );
-        
+
         let mut query_params = Vec::new();
-        
+
         // Add optional filters
         if let Some(symbol) = &query.symbol {
             sql.push_str(" AND symbol = ?");
             query_params.push(libsql::Value::Text(symbol.clone()));
         }
-        
+
         if let Some(strategy_type) = &query.strategy_type {
             sql.push_str(" AND strategy_type = ?");
             query_params.push(libsql::Value::Text(strategy_type.clone()));
         }
-        
+
         if let Some(trade_direction) = &query.trade_direction {
             sql.push_str(" AND trade_direction = ?");
             query_params.push(libsql::Value::Text(trade_direction.to_string()));
         }
-        
+
         if let Some(option_type) = &query.option_type {
             sql.push_str(" AND option_type = ?");
             query_params.push(libsql::Value::Text(option_type.to_string()));
         }
-        
+
         if let Some(status) = &query.status {
             sql.push_str(" AND status = ?");
             query_params.push(libsql::Value::Text(status.to_string()));
         }
-        
+
         if let Some(start_date) = query.start_date {
             sql.push_str(" AND entry_date >= ?");
             query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
         }
-        
+
         if let Some(end_date) = query.end_date {
             sql.push_str(" AND entry_date <= ?");
             query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
@@ -344,7 +400,7 @@ impl OptionTrade {
             sql.push_str(" LIMIT ?");
             query_params.push(libsql::Value::Integer(limit));
         }
-        
+
         if let Some(offset) = query.offset {
             sql.push_str(" OFFSET ?");
             query_params.push(libsql::Value::Integer(offset));
@@ -372,7 +428,7 @@ impl OptionTrade {
     ) -> Result<Option<OptionTrade>, Box<dyn std::error::Error + Send + Sync>> {
         // Check if option exists first
         let current_option = Self::find_by_id(conn, option_id).await?;
-        
+
         if current_option.is_none() {
             return Ok(None);
         }
@@ -382,7 +438,7 @@ impl OptionTrade {
         let mut rows = conn
             .prepare(
                 r#"
-                UPDATE options SET 
+                UPDATE options SET
                     symbol = COALESCE(?, symbol),
                     strategy_type = COALESCE(?, strategy_type),
                     trade_direction = COALESCE(?, trade_direction),
@@ -409,7 +465,7 @@ impl OptionTrade {
                          option_type, strike_price, expiration_date, entry_price, exit_price,
                          total_premium, commissions, implied_volatility, entry_date, exit_date,
                          status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                         created_at, updated_at
+                         created_at, updated_at, is_deleted
                 "#,
             )
             .await?
@@ -432,7 +488,7 @@ impl OptionTrade {
                 request.initial_target,
                 request.profit_target,
                 request.trade_ratings,
-                None::<bool>,
+                request.reviewed,  
                 request.mistakes,
                 now,
                 option_id
@@ -465,38 +521,38 @@ impl OptionTrade {
     ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let mut sql = String::from("SELECT COUNT(*) FROM options WHERE 1=1");
         let mut query_params = Vec::new();
-        
+
         // Add the same filters as in find_all
         if let Some(symbol) = &query.symbol {
             sql.push_str(" AND symbol = ?");
             query_params.push(libsql::Value::Text(symbol.clone()));
         }
-        
+
         if let Some(strategy_type) = &query.strategy_type {
             sql.push_str(" AND strategy_type = ?");
             query_params.push(libsql::Value::Text(strategy_type.clone()));
         }
-        
+
         if let Some(trade_direction) = &query.trade_direction {
             sql.push_str(" AND trade_direction = ?");
             query_params.push(libsql::Value::Text(trade_direction.to_string()));
         }
-        
+
         if let Some(option_type) = &query.option_type {
             sql.push_str(" AND option_type = ?");
             query_params.push(libsql::Value::Text(option_type.to_string()));
         }
-        
+
         if let Some(status) = &query.status {
             sql.push_str(" AND status = ?");
             query_params.push(libsql::Value::Text(status.to_string()));
         }
-        
+
         if let Some(start_date) = query.start_date {
             sql.push_str(" AND entry_date >= ?");
             query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
         }
-        
+
         if let Some(end_date) = query.end_date {
             sql.push_str(" AND entry_date <= ?");
             query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
@@ -515,7 +571,7 @@ impl OptionTrade {
         }
     }
 
-    /// Calculate total P&L for all options in the user's database 
+    /// Calculate total P&L for all options in the user's database
     pub async fn calculate_total_pnl(
         conn: &Connection,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
@@ -523,8 +579,8 @@ impl OptionTrade {
             .prepare(
                 r#"
                 SELECT SUM(
-                    CASE 
-                        WHEN exit_price IS NOT NULL THEN 
+                    CASE
+                        WHEN exit_price IS NOT NULL THEN
                             (exit_price - entry_price) * number_of_contracts * 100 - commissions
                         ELSE 0
                     END
@@ -549,14 +605,14 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
             WITH trade_profits AS (
                 SELECT
                     (exit_price - entry_price) * number_of_contracts * 100 - commissions AS profit
                 FROM options
-                WHERE exit_date IS NOT NULL 
+                WHERE exit_date IS NOT NULL
                   AND exit_price IS NOT NULL
                   AND status = 'closed'
                   AND ({})
@@ -604,7 +660,7 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
             WITH trade_results AS (
@@ -659,10 +715,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(ROUND(AVG(
                     (exit_price - entry_price) * number_of_contracts * 100 - commissions
                 ), 2), 0) as avg_gain
@@ -700,10 +756,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(ROUND(AVG(
                     (exit_price - entry_price) * number_of_contracts * 100 - commissions
                 ), 2), 0) as avg_loss
@@ -741,10 +797,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(MAX(
                     (exit_price - entry_price) * number_of_contracts * 100 - commissions
                 ), 0) as biggest_winner
@@ -782,10 +838,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(MIN(
                     (exit_price - entry_price) * number_of_contracts * 100 - commissions
                 ), 0) as biggest_loser
@@ -823,10 +879,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(ROUND(AVG(
                     (julianday(exit_date) - julianday(entry_date))
                 ), 2), 0) as avg_hold_days
@@ -858,16 +914,16 @@ impl OptionTrade {
         }
     }
 
-    /// Calculate average hold time for losing trades (in days)  
+    /// Calculate average hold time for losing trades (in days)
     pub async fn calculate_avg_hold_time_losers(
         conn: &Connection,
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(ROUND(AVG(
                     (julianday(exit_date) - julianday(entry_date))
                 ), 2), 0) as avg_hold_days
@@ -906,7 +962,7 @@ impl OptionTrade {
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let avg_gain = Self::calculate_avg_gain(conn, time_range.clone()).await?;
         let avg_loss = Self::calculate_avg_loss(conn, time_range).await?;
-        
+
         if avg_loss == 0.0 {
             Ok(0.0)
         } else {
@@ -922,10 +978,10 @@ impl OptionTrade {
         let win_rate = Self::calculate_win_rate(conn, time_range.clone()).await?;
         let avg_gain = Self::calculate_avg_gain(conn, time_range.clone()).await?;
         let avg_loss = Self::calculate_avg_loss(conn, time_range).await?;
-        
+
         let win_rate_decimal = win_rate / 100.0; // Convert percentage to decimal
         let loss_rate_decimal = 1.0 - win_rate_decimal;
-        
+
         let expectancy = (win_rate_decimal * avg_gain) + (loss_rate_decimal * avg_loss);
         Ok((expectancy * 100.0).round() / 100.0)
     }
@@ -936,10 +992,10 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(ROUND(AVG(total_premium), 2), 0) as avg_position_size
             FROM options
             WHERE status = 'closed'
@@ -981,13 +1037,13 @@ impl OptionTrade {
         time_range: TimeRange,
     ) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let (time_condition, time_params) = time_range.to_sql_condition();
-        
+
         let sql = format!(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(SUM(
-                    CASE 
-                        WHEN exit_price IS NOT NULL THEN 
+                    CASE
+                        WHEN exit_price IS NOT NULL THEN
                             (exit_price - entry_price) * number_of_contracts * 100 - commissions
                         ELSE -total_premium  -- Unrealized loss for open positions
                     END
@@ -1016,7 +1072,6 @@ impl OptionTrade {
         }
     }
 
-    /// Convert from libsql row to OptionTrade struct
     /// Get playbook setups associated with this option trade
     #[allow(dead_code)]
     pub async fn get_playbooks(
@@ -1046,37 +1101,93 @@ impl OptionTrade {
         crate::models::playbook::Playbook::untag_option_trade(conn, self.id, setup_id).await
     }
 
+    /// Convert from libsql row to OptionTrade struct
     fn from_row(row: &libsql::Row) -> Result<OptionTrade, Box<dyn std::error::Error + Send + Sync>> {
-        let trade_direction_str: String = row.get(3)?;
-        let option_type_str: String = row.get(5)?;
-        let status_str: String = row.get(16)?;
+        // Safely get enum strings with fallback
+        let trade_direction_str = match row.get::<libsql::Value>(3) {
+            Ok(libsql::Value::Text(s)) => s,
+            Ok(libsql::Value::Null) | Err(_) => "Neutral".to_string(),
+            Ok(_) => "Neutral".to_string(),
+        };
         
+        let option_type_str = match row.get::<libsql::Value>(5) {
+            Ok(libsql::Value::Text(s)) => s,
+            Ok(libsql::Value::Null) | Err(_) => "Call".to_string(),
+            Ok(_) => "Call".to_string(),
+        };
+        
+        let status_str = match row.get::<libsql::Value>(15) {
+            Ok(libsql::Value::Text(s)) => s,
+            Ok(libsql::Value::Null) | Err(_) => "open".to_string(),
+            Ok(_) => "open".to_string(),
+        };
+    
         let trade_direction = trade_direction_str.parse::<TradeDirection>()
             .map_err(|e| format!("Invalid trade direction: {}", e))?;
-            
+    
         let option_type = option_type_str.parse::<OptionType>()
             .map_err(|e| format!("Invalid option type: {}", e))?;
-
+    
         let status = status_str.parse::<TradeStatus>()
             .map_err(|e| format!("Invalid trade status: {}", e))?;
-
-        // Parse datetime strings
-        let expiration_date_str: String = row.get(7)?;
-        let entry_date_str: String = row.get(14)?;
-        let exit_date_str: Option<String> = row.get(15)?;
-        let reviewed_val: i64 = row.get(20)?;
-        let mistakes_str: Option<String> = row.get(21)?;
-        let created_at_str: String = row.get(22)?;
-        let updated_at_str: String = row.get(23)?;
+    
+        // Parse datetime strings with safe handling
+        let expiration_date_str = match row.get::<libsql::Value>(7) {
+            Ok(libsql::Value::Text(s)) => s,
+            _ => return Err("Failed to get expiration_date".into()),
+        };
         
+        let entry_date_str = match row.get::<libsql::Value>(13) {
+            Ok(libsql::Value::Text(s)) => s,
+            _ => return Err("Failed to get entry_date".into()),
+        };
+        
+        let exit_date_str: Option<String> = match row.get::<libsql::Value>(14) {
+            Ok(libsql::Value::Text(s)) => Some(s),
+            Ok(libsql::Value::Null) => None,
+            _ => None,
+        };
+        
+        // Handle reviewed field - could be NULL or 0/1
+        let reviewed_val: Option<i64> = match row.get::<libsql::Value>(19) {
+            Ok(libsql::Value::Integer(val)) => Some(val),
+            Ok(libsql::Value::Null) => None,
+            Ok(libsql::Value::Real(val)) => Some(val as i64),
+            _ => None,
+        };
+        let reviewed = reviewed_val.map(|v| v != 0).unwrap_or(false);
+        
+        let mistakes_str: Option<String> = match row.get::<libsql::Value>(20) {
+            Ok(libsql::Value::Text(s)) => Some(s),
+            Ok(libsql::Value::Null) => None,
+            _ => None,
+        };
+        
+        let created_at_str = match row.get::<libsql::Value>(21) {
+            Ok(libsql::Value::Text(s)) => s,
+            _ => return Err("Failed to get created_at".into()),
+        };
+        
+        let updated_at_str = match row.get::<libsql::Value>(22) {
+            Ok(libsql::Value::Text(s)) => s,
+            _ => return Err("Failed to get updated_at".into()),
+        };
+
+        // Handle is_deleted field (index 23)
+        let is_deleted = match row.get::<libsql::Value>(23) {
+            Ok(libsql::Value::Integer(val)) => val != 0,
+            Ok(libsql::Value::Null) => false,
+            _ => false,
+        };
+    
         let expiration_date = DateTime::parse_from_rfc3339(&expiration_date_str)
             .map_err(|e| format!("Failed to parse expiration_date: {}", e))?
             .with_timezone(&Utc);
-        
+    
         let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
             .map_err(|e| format!("Failed to parse entry_date: {}", e))?
             .with_timezone(&Utc);
-            
+    
         let exit_date = if let Some(exit_str) = exit_date_str {
             Some(DateTime::parse_from_rfc3339(&exit_str)
                 .map_err(|e| format!("Failed to parse exit_date: {}", e))?
@@ -1084,39 +1195,58 @@ impl OptionTrade {
         } else {
             None
         };
-        
+    
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map_err(|e| format!("Failed to parse created_at: {}", e))?
             .with_timezone(&Utc);
-            
+    
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
             .map_err(|e| format!("Failed to parse updated_at: {}", e))?
             .with_timezone(&Utc);
-        
+    
         Ok(OptionTrade {
-            id: row.get(0)?,
-            symbol: row.get(1)?,
-            strategy_type: row.get(2)?,
+            id: match row.get::<libsql::Value>(0) {
+                Ok(libsql::Value::Integer(val)) => val,
+                _ => return Err("Failed to get id".into()),
+            },
+            symbol: match row.get::<libsql::Value>(1) {
+                Ok(libsql::Value::Text(s)) => s,
+                _ => return Err("Failed to get symbol".into()),
+            },
+            strategy_type: match row.get::<libsql::Value>(2) {
+                Ok(libsql::Value::Text(s)) => s,
+                _ => return Err("Failed to get strategy_type".into()),
+            },
             trade_direction,
-            number_of_contracts: row.get(4)?,
+            number_of_contracts: match row.get::<libsql::Value>(4) {
+                Ok(libsql::Value::Integer(val)) => val as i32,
+                Ok(libsql::Value::Real(val)) => val as i32,
+                _ => return Err("Failed to get number_of_contracts".into()),
+            },
             option_type,
-            strike_price: row.get(6)?,
+            strike_price: Self::get_f64(row, 6)?,
             expiration_date,
-            entry_price: row.get(8)?,
-            exit_price: row.get(9)?,
-            total_premium: row.get(10)?,
-            commissions: row.get(11)?,
-            implied_volatility: row.get(12)?,
+            entry_price: Self::get_f64(row, 8)?,
+            exit_price: Self::get_opt_f64(row, 9)?,
+            total_premium: Self::get_f64(row, 10)?,
+            commissions: Self::get_f64(row, 11)?,
+            implied_volatility: Self::get_f64(row, 12)?,
             entry_date,
             exit_date,
             status,
-            initial_target: row.get(17)?,
-            profit_target: row.get(18)?,
-            trade_ratings: row.get(19)?,
-            reviewed: reviewed_val != 0,
+            initial_target: Self::get_opt_f64(row, 16)?,
+            profit_target: Self::get_opt_f64(row, 17)?,
+            trade_ratings: match row.get::<libsql::Value>(18) {
+                Ok(libsql::Value::Integer(val)) => Some(val as i32),
+                Ok(libsql::Value::Null) => None,
+                Ok(libsql::Value::Real(val)) => Some(val as i32),
+                _ => None,
+            },
+            reviewed,
             mistakes: mistakes_str,
             created_at,
             updated_at,
+            is_deleted,
         })
     }
 }

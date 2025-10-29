@@ -10,6 +10,8 @@ import {
   getComprehensiveAnalytics,
   getIndividualTradeAnalytics,
   getSymbolAnalytics,
+  getStocksAnalytics,
+  getOptionsAnalytics,
 } from '@/lib/services/analytics-service';
 import type {
   AnalyticsRequest,
@@ -280,6 +282,72 @@ export function useSymbolAnalytics(
         return response.data;
       }
       throw new Error(response.error || 'Failed to fetch symbol analytics');
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
+  });
+
+  return {
+    data: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch: () => {
+      void refetch();
+    },
+  };
+}
+
+/**
+ * Hook to fetch stocks analytics
+ * Returns analytics for all stock trades including P&L, profit factor, win rate, etc.
+ */
+export function useStocksAnalytics(
+  timeRange?: string,
+  enabled: boolean = true
+) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['analytics', 'stocks', timeRange],
+    queryFn: async () => {
+      const response = await getStocksAnalytics(timeRange);
+      if (response.success) {
+        return response.data;
+      }
+      throw new Error(response.message || 'Failed to fetch stocks analytics');
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
+  });
+
+  return {
+    data: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch: () => {
+      void refetch();
+    },
+  };
+}
+
+/**
+ * Hook to fetch options analytics
+ * Returns analytics for all option trades including P&L, profit factor, win rate, etc.
+ */
+export function useOptionsAnalytics(
+  timeRange?: string,
+  enabled: boolean = true
+) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['analytics', 'options', timeRange],
+    queryFn: async () => {
+      const response = await getOptionsAnalytics(timeRange);
+      if (response.success) {
+        return response.data;
+      }
+      throw new Error(response.message || 'Failed to fetch options analytics');
     },
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes

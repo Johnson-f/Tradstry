@@ -140,8 +140,24 @@ async fn calculate_daily_pnl_series(
 
     while let Some(row) = rows.next().await? {
         let date = row.get::<String>(0).unwrap_or_default();
-        let daily_pnl = row.get::<f64>(1).unwrap_or(0.0);
-        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
+        
+        // Safely handle the daily_pnl conversion
+        let daily_pnl = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0, // Unexpected but handle gracefully
+            Err(_) | Ok(_) => 0.0,
+        };
+        
+        // Safely handle the trade_count conversion
+        let trade_count = match row.get::<libsql::Value>(2) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val as u32,
+            Ok(libsql::Value::Real(val)) => val as u32,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
 
         cumulative_value += daily_pnl;
 
@@ -213,9 +229,25 @@ async fn calculate_weekly_pnl_series(
 
     while let Some(row) = rows.next().await? {
         let week = row.get::<String>(0).unwrap_or_default();
-        let weekly_pnl = row.get::<f64>(1).unwrap_or(0.0);
-        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
-
+        
+        // Safely handle the weekly_pnl conversion
+        let weekly_pnl = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0,
+            Err(_) | Ok(_) => 0.0,
+        };
+        
+        // Safely handle the trade_count conversion
+        let trade_count = match row.get::<libsql::Value>(2) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val as u32,
+            Ok(libsql::Value::Real(val)) => val as u32,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
+        
         cumulative_value += weekly_pnl;
 
         time_series.push(TimeSeriesPoint {
@@ -286,8 +318,24 @@ async fn calculate_monthly_pnl_series(
 
     while let Some(row) = rows.next().await? {
         let month = row.get::<String>(0).unwrap_or_default();
-        let monthly_pnl = row.get::<f64>(1).unwrap_or(0.0);
-        let trade_count = row.get::<i64>(2).unwrap_or(0) as u32;
+        
+        // Safely handle the monthly_pnl conversion
+        let monthly_pnl = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0,
+            Err(_) | Ok(_) => 0.0,
+        };
+        
+        // Safely handle the trade_count conversion
+        let trade_count = match row.get::<libsql::Value>(2) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val as u32,
+            Ok(libsql::Value::Real(val)) => val as u32,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
 
         cumulative_value += monthly_pnl;
 
@@ -360,8 +408,24 @@ async fn calculate_rolling_sharpe_ratio(
     let mut daily_returns = Vec::new();
     while let Some(row) = rows.next().await? {
         let date = row.get::<String>(0).unwrap_or_default();
-        let daily_return = row.get::<f64>(1).unwrap_or(0.0);
-        let trade_count = row.get::<i64>(2).unwrap_or(0);
+        
+        // Safely handle the daily_return conversion
+        let daily_return = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0,
+            Err(_) | Ok(_) => 0.0,
+        };
+        
+        // Safely handle the trade_count conversion
+        let trade_count = match row.get::<libsql::Value>(2) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val,
+            Ok(libsql::Value::Real(val)) => val as i64,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
 
         daily_returns.push((date, daily_return, trade_count));
     }
@@ -413,7 +477,7 @@ fn calculate_sharpe_ratio(returns: &[f64], risk_free_rate: f64) -> f64 {
 
     // Calculate mean return
     let mean_return = returns.iter().sum::<f64>() / returns.len() as f64;
-    
+
     // Calculate standard deviation
     let variance = returns
         .iter()
@@ -422,13 +486,13 @@ fn calculate_sharpe_ratio(returns: &[f64], risk_free_rate: f64) -> f64 {
             diff * diff
         })
         .sum::<f64>() / returns.len() as f64;
-    
+
     let std_dev = variance.sqrt();
-    
+
     // Annualize assuming 252 trading days
     let annualized_return = mean_return * 252.0;
     let annualized_std = std_dev * (252.0_f64).sqrt();
-    
+
     // Calculate Sharpe ratio
     if annualized_std > 0.0 {
         (annualized_return - risk_free_rate) / annualized_std
@@ -493,8 +557,24 @@ async fn calculate_rolling_win_rate(
     let mut daily_data = Vec::new();
     while let Some(row) = rows.next().await? {
         let date = row.get::<String>(0).unwrap_or_default();
-        let wins = row.get::<i64>(1).unwrap_or(0) as u32;
-        let total_trades = row.get::<i64>(2).unwrap_or(0) as u32;
+        
+        // Safely handle the wins conversion
+        let wins = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val as u32,
+            Ok(libsql::Value::Real(val)) => val as u32,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
+        
+        // Safely handle the total_trades conversion
+        let total_trades = match row.get::<libsql::Value>(2) {
+            Ok(libsql::Value::Null) => 0,
+            Ok(libsql::Value::Integer(val)) => val as u32,
+            Ok(libsql::Value::Real(val)) => val as u32,
+            Ok(libsql::Value::Text(_)) => 0,
+            Err(_) | Ok(_) => 0,
+        };
 
         daily_data.push((date, wins, total_trades));
     }
@@ -581,7 +661,15 @@ async fn calculate_profit_by_day_of_week(
 
     while let Some(row) = rows.next().await? {
         let day_num = row.get::<String>(0).unwrap_or_default();
-        let profit = row.get::<f64>(1).unwrap_or(0.0);
+        
+        // Safely handle the profit conversion
+        let profit = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0,
+            Err(_) | Ok(_) => 0.0,
+        };
 
         if let Ok(day_index) = day_num.parse::<usize>()
             && day_index < day_names.len()
@@ -651,7 +739,15 @@ async fn calculate_profit_by_month(
 
     while let Some(row) = rows.next().await? {
         let month_num = row.get::<String>(0).unwrap_or_default();
-        let profit = row.get::<f64>(1).unwrap_or(0.0);
+        
+        // Safely handle the profit conversion
+        let profit = match row.get::<libsql::Value>(1) {
+            Ok(libsql::Value::Null) => 0.0,
+            Ok(libsql::Value::Real(val)) => val,
+            Ok(libsql::Value::Integer(val)) => val as f64,
+            Ok(libsql::Value::Text(_)) => 0.0,
+            Err(_) | Ok(_) => 0.0,
+        };
 
         if let Ok(month_index) = month_num.parse::<usize>()
             && (1..=12).contains(&month_index)

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useOptions } from '@/lib/hooks/use-options';
 import { useStocks } from '@/lib/hooks/use-stocks';
+import { useStocksAnalytics, useOptionsAnalytics } from '@/lib/hooks/use-analytics';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import {
   Table,
@@ -63,7 +64,7 @@ function getStatus(pl: number): 'WIN' | 'LOSS' | 'BE' {
   return 'BE';
 }
 
-function calculateRMultiple(stock: Stock, pl: number): string | undefined {
+function calculateRMultiple(_stock: Stock, _pl: number): string | undefined {
   // Would need stop loss and take profit data to calculate properly
   // For now, returning undefined if we can't calculate
   return undefined;
@@ -101,7 +102,20 @@ export function TradeTable() {
   const { data: stocks = [], isLoading: stocksLoading } = useStocks();
   const { data: options = [], isLoading: optionsLoading } = useOptions();
   
+  // Fetch analytics data for aggregate P&L
+  const { data: stocksAnalytics, isLoading: stocksAnalyticsLoading } = useStocksAnalytics();
+  const { data: optionsAnalytics, isLoading: optionsAnalyticsLoading } = useOptionsAnalytics();
+  
   const isLoading = stocksLoading || optionsLoading;
+  const isAnalyticsLoading = stocksAnalyticsLoading || optionsAnalyticsLoading;
+  
+  // Calculate total P&L from analytics
+  const totalPnL = React.useMemo(() => {
+    if (!stocksAnalytics?.total_pnl || !optionsAnalytics?.total_pnl) return 0;
+    const stocksPnl = parseFloat(stocksAnalytics.total_pnl || '0');
+    const optionsPnl = parseFloat(optionsAnalytics.total_pnl || '0');
+    return stocksPnl + optionsPnl;
+  }, [stocksAnalytics, optionsAnalytics]);
   
   // Combine and transform data
   const trades: TradeData[] = React.useMemo(() => {
@@ -149,7 +163,23 @@ export function TradeTable() {
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>Trades</CardTitle>
+          <div className="flex items-center gap-3">
+            <CardTitle>Trades</CardTitle>
+            {!isAnalyticsLoading && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Total P&L:</span>
+                <span
+                  className={`font-semibold ${
+                    totalPnL >= 0
+                      ? 'text-green-600 dark:text-green-500'
+                      : 'text-red-600 dark:text-red-500'
+                  }`}
+                >
+                  {formatCurrency(totalPnL)}
+                </span>
+              </div>
+            )}
+          </div>
           <CardAction>
             <Button size="sm">
               <Plus className="size-4" />
