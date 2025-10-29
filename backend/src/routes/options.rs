@@ -10,6 +10,9 @@ use crate::models::options::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::service::cache_service::CacheService;
+use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::data_formatter::DataFormatter;
+use crate::service::ai_service::upstash_vector_client::DataType;
 use crate::websocket::{broadcast_option_update, ConnectionManager};
 use tokio::sync::Mutex;
 
@@ -168,18 +171,40 @@ async fn get_user_db_connection(
 /// Create a new option trade with cache invalidation
 pub async fn create_option(
     req: HttpRequest,
-    payload: web::Json<CreateOptionRequest>,
+    body: web::Bytes,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    vectorization_service: web::Data<Arc<VectorizationService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
+    // Log raw request body
+    info!("📦 Raw request body: {}", String::from_utf8_lossy(&body));
+    
+    // Try to deserialize manually and log any errors
+    let payload: CreateOptionRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ Successfully deserialized payload: {:?}", p);
+            p
+        }
+        Err(e) => {
+            error!("❌ Deserialization error: {}", e);
+            error!("❌ Error at line: {}, column: {}", e.line(), e.column());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column()
+            })));
+        }
+    };
+
     info!("Creating new option trade");
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
-    match OptionTrade::create(&conn, payload.into_inner()).await {
+    match OptionTrade::create(&conn, payload).await {
         Ok(option) => {
             info!("Successfully created option with ID: {}", option.id);
             
@@ -206,6 +231,26 @@ pub async fn create_option(
             let option_ws = option.clone();
             tokio::spawn(async move {
                 broadcast_option_update(ws_manager_clone, &user_id_ws, "created", &option_ws).await;
+            });
+
+            // Vectorize the new option trade
+            let vectorization_service_clone = vectorization_service.get_ref().clone();
+            let option_clone = option.clone();
+            let user_id_clone = user_id.clone();
+            
+            tokio::spawn(async move {
+                let content = DataFormatter::format_option_for_embedding(&option_clone);
+                match vectorization_service_clone.vectorize_data(
+                    &user_id_clone,
+                    DataType::Option,
+                    &option_clone.id.to_string(),
+                    &content,
+                ).await {
+                    Ok(result) => info!("Successfully vectorized option {} for user {}: {}ms", 
+                        option_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to vectorize option {} for user {}: {}", 
+                        option_clone.id, user_id_clone, e),
+                }
             });
 
             Ok(HttpResponse::Created().json(ApiResponse::success(option)))

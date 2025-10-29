@@ -91,6 +91,8 @@ async fn main() -> std::io::Result<()> {
     let ws_manager = Arc::new(Mutex::new(ConnectionManager::new()));
     let ws_manager_data = Data::new(Arc::clone(&ws_manager));
 
+    // VectorizationService is already initialized in AppState
+
     // Get port from environment or default
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "9000".to_string())
@@ -162,6 +164,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().ai_insights_service.clone()))
             // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
             .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
+            // CRITICAL: Add VectorizationService as separate app_data for stocks routes
+            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))  
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging

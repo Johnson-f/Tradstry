@@ -125,6 +125,7 @@ pub struct OptionTrade {
 
 /// Data Transfer Object for creating new option trades
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateOptionRequest {
     pub symbol: String,
     pub strategy_type: String,
@@ -147,6 +148,7 @@ pub struct CreateOptionRequest {
 
 /// Data Transfer Object for updating option trades
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateOptionRequest {
     pub symbol: Option<String>,
     pub strategy_type: Option<String>,

@@ -43,6 +43,7 @@ pub struct AppState {
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
+    pub vectorization_service: Arc<VectorizationService>,
 }
 
 impl AppState {
@@ -138,6 +139,7 @@ impl AppState {
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,
+            vectorization_service,
         })
     }
 

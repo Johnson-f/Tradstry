@@ -4,6 +4,7 @@ import { useState } from 'react';
 import BasicAnalytics from '@/components/journaling/basic-analytics';
 import { TradeTable } from '@/components/journaling/trade-table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type TimeRangeOption = '7d' | '30d' | '90d' | '1y' | 'ytd' | 'all_time';
 
@@ -40,14 +41,14 @@ export default function JournalingPage() {
         </div>
       </div>
 
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8 space-y-8">
             <BasicAnalytics initialTimeRange={timeRange} />
             <TradeTable />
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

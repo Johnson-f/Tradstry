@@ -19,7 +19,6 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
-  // Reduced chart height from 200 to 120
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   // Build analytics request from props
@@ -39,7 +38,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       if (containerRef.current) {
         setDimensions({
           width: containerRef.current.offsetWidth,
-          height: 120, // Reduced height for chart in card 1
+          height: 60, // Reduced height to match other card visualizations
         })
       }
     }
@@ -52,6 +51,16 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   // Map core metrics into the view model used by the cards
   const combinedMetrics = useMemo(() => {
     if (!coreMetrics) return null
+    
+    // Debug log to verify profit_factor connection
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('Core Metrics received:', {
+        profit_factor: coreMetrics.profit_factor,
+        win_rate: coreMetrics.win_rate,
+        total_pnl: coreMetrics.total_pnl,
+      })
+    }
+    
     return {
       total_pnl: coreMetrics.total_pnl,
       profit_factor: coreMetrics.profit_factor,
@@ -92,7 +101,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     d3.select(svgRef.current).selectAll("*").remove()
 
     const svg = d3.select(svgRef.current)
-    const margin = { top: 6, right: 8, bottom: 6, left: 8 }
+    const margin = { top: 4, right: 6, bottom: 4, left: 6 }
     const width = dimensions.width - margin.left - margin.right
     const height = dimensions.height - margin.top - margin.bottom
 
@@ -230,7 +239,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
           </CardHeader>
           <CardContent className="pt-0 pb-1">
             <div className="w-full">
-              <div className="h-[120px] bg-gray-100 rounded"></div>
+              <div className="h-[60px] bg-gray-100 rounded"></div>
             </div>
           </CardContent>
         </Card>
@@ -342,7 +351,7 @@ function ProfitFactorCard({ profitFactor }: { profitFactor: number | null | unde
   const gaugeRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!gaugeRef.current || profitFactor == null) return
+    if (!gaugeRef.current || profitFactor == null || !isFinite(profitFactor)) return
 
     const width = 90
     const height = 36
@@ -381,6 +390,13 @@ function ProfitFactorCard({ profitFactor }: { profitFactor: number | null | unde
       .attr("fill", "#ef4444")
   }, [profitFactor])
 
+  // Format display value (handle Infinity case)
+  const displayValue = useMemo(() => {
+    if (profitFactor == null) return 'N/A'
+    if (!isFinite(profitFactor)) return '∞'
+    return profitFactor.toFixed(2)
+  }, [profitFactor])
+
   return (
     <Card className="bg-white min-h-[138px]">
       <CardHeader className="pb-1">
@@ -390,7 +406,7 @@ function ProfitFactorCard({ profitFactor }: { profitFactor: number | null | unde
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between pt-0 pb-1">
-        <div className="text-2xl font-bold text-gray-900">{profitFactor != null ? profitFactor.toFixed(2) : 'N/A'}</div>
+        <div className="text-2xl font-bold text-gray-900">{displayValue}</div>
         <svg ref={gaugeRef} width={90} height={36} />
       </CardContent>
     </Card>

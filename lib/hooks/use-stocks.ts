@@ -77,11 +77,30 @@ export function useCreateStock() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateStockRequest) => {
+      console.log('[create stock] Sending payload:', payload); // Log what we're sending
       const headers = await authHeader();
       const res = await fetch(getFullUrl(apiConfig.endpoints.stocks.base), {
-        method: 'POST', headers, body: JSON.stringify(payload), credentials: 'include',
+        method: 'POST', 
+        headers, 
+        body: JSON.stringify(payload), 
+        credentials: 'include',
       });
-      if (!res.ok) throw new Error('Failed to create stock');
+      
+      if (!res.ok) {
+        let message = 'Failed to create stock';
+        try {
+          const err = await res.json();
+          console.error('[create stock] server error json:', err);
+          message = err?.message || err?.error || message;
+        } catch {
+          try { 
+            const text = await res.text(); 
+            console.error('[create stock] server error text:', text);
+            if (text) message = text;
+          } catch {}
+        }
+        throw new Error(message);
+      }
       return res.json();
     },
     onSuccess: () => {

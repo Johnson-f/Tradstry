@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
-use log::{info, error, debug};
+use log::{info, error};
 use std::sync::Arc;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
@@ -164,7 +164,7 @@ async fn get_user_db_connection(
 
 // CRUD Route Handlers
 
-/// Create a new stock trade with cache invalidation
+/// Create a new stock trade with cache invalidation - DEPRECATED
 /*
 pub async fn create_stock(
     req: HttpRequest,
@@ -241,124 +241,94 @@ pub async fn create_stock(
 }
 */
 
-/// Create a new stock trade with loggings
 pub async fn create_stock(
     req: HttpRequest,
-    payload: web::Json<CreateStockRequest>,
+    body: web::Bytes,  // Changed from web::Json to get raw bytes
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
-    info!("🚀 Starting stock creation request");
-    debug!("Request payload: {:?}", payload);
+    // Log raw request body
+    info!("📦 Raw request body: {}", String::from_utf8_lossy(&body));
     
-    // Get user database connection
-    info!("📡 Fetching user database connection");
-    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
-        Ok(conn) => {
-            info!("✅ Successfully obtained database connection");
-            conn
+    // Try to deserialize manually and log any errors
+    let payload: CreateStockRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ Successfully deserialized payload: {:?}", p);
+            p
         }
         Err(e) => {
-            error!("❌ Failed to get database connection: {}", e);
-            return Err(e);
+            error!("❌ Deserialization error: {}", e);
+            error!("❌ Error at line: {}, column: {}", e.line(), e.column());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column()
+            })));
         }
     };
-    
-    // Get authenticated user
-    info!("🔐 Authenticating user");
-    let user_id = match get_authenticated_user(&req, &supabase_config).await {
-        Ok(user) => {
-            info!("✅ User authenticated successfully: {}", user.sub);
-            user.sub
-        }
-        Err(e) => {
-            error!("❌ Authentication failed: {}", e);
-            return Err(e);
-        }
-    };
-    
-    // Create stock
-    info!("💾 Attempting to create stock in database for user: {}", user_id);
-    match Stock::create(&conn, payload.into_inner()).await {
+
+    info!("Creating new stock trade");
+
+    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+
+    match Stock::create(&conn, payload).await {
         Ok(stock) => {
-            info!("✅ Successfully created stock with ID: {} for user: {}", stock.id, user_id);
-            debug!("Stock details: {:?}", stock);
+            info!("Successfully created stock with ID: {}", stock.id);
             
             // Invalidate cache after successful creation
             let cache_service_clone = cache_service.get_ref().clone();
             let user_id_clone = user_id.clone();
             
-            info!("🗑️  Spawning cache invalidation task");
             tokio::spawn(async move {
-                info!("🔄 Cache invalidation task started for user: {}", user_id_clone);
-                
                 match cache_service_clone.invalidate_table_cache(&user_id_clone, "stocks").await {
-                    Ok(count) => info!("✅ Invalidated {} stock cache keys for user: {}", count, user_id_clone),
-                    Err(e) => error!("❌ Failed to invalidate stock cache for user {}: {}", user_id_clone, e),
+                    Ok(count) => info!("Invalidated {} stock cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate stock cache for user {}: {}", user_id_clone, e),
                 }
                 
                 // Also invalidate analytics cache
-                info!("🔄 Invalidating analytics cache for user: {}", user_id_clone);
                 match cache_service_clone.invalidate_user_analytics(&user_id_clone).await {
-                    Ok(count) => info!("✅ Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
-                    Err(e) => error!("❌ Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
+                    Ok(count) => info!("Invalidated {} analytics cache keys for user: {}", count, user_id_clone),
+                    Err(e) => error!("Failed to invalidate analytics cache for user {}: {}", user_id_clone, e),
                 }
-                
-                info!("✅ Cache invalidation task completed for user: {}", user_id_clone);
             });
-            
+
             // Broadcast real-time create
             let ws_manager_clone = ws_manager.clone();
             let user_id_ws = user_id.clone();
             let stock_ws = stock.clone();
-            
-            info!("📡 Spawning WebSocket broadcast task for stock ID: {}", stock.id);
             tokio::spawn(async move {
-                info!("🔄 WebSocket broadcast task started for user: {}", user_id_ws);
                 broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
-                info!("✅ WebSocket broadcast completed for stock ID: {}", stock_ws.id);
             });
-            
+
             // Vectorize the new stock trade
             let vectorization_service_clone = vectorization_service.get_ref().clone();
             let stock_clone = stock.clone();
             let user_id_clone = user_id.clone();
             
-            info!("🧠 Spawning vectorization task for stock ID: {}", stock.id);
             tokio::spawn(async move {
-                info!("🔄 Vectorization task started for stock: {} (user: {})", stock_clone.id, user_id_clone);
-                
                 let content = DataFormatter::format_stock_for_embedding(&stock_clone);
-                debug!("Formatted content for embedding: {}", content);
-                
                 match vectorization_service_clone.vectorize_data(
                     &user_id_clone,
                     DataType::Stock,
                     &stock_clone.id.to_string(),
                     &content,
                 ).await {
-                    Ok(result) => info!(
-                        "✅ Successfully vectorized stock {} for user {} in {}ms",
-                        stock_clone.id, user_id_clone, result.processing_time_ms
-                    ),
-                    Err(e) => error!(
-                        "❌ Failed to vectorize stock {} for user {}: {}",
-                        stock_clone.id, user_id_clone, e
-                    ),
+                    Ok(result) => info!("Successfully vectorized stock {} for user {}: {}ms", 
+                        stock_clone.id, user_id_clone, result.processing_time_ms),
+                    Err(e) => error!("Failed to vectorize stock {} for user {}: {}", 
+                        stock_clone.id, user_id_clone, e),
                 }
-                
-                info!("✅ Vectorization task completed for stock: {}", stock_clone.id);
             });
             
-            info!("🎉 Stock creation successful, returning response for stock ID: {}", stock.id);
             Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
         }
         Err(e) => {
-            error!("❌ Failed to create stock in database: {}", e);
-            error!("Error details - User: {}, Error: {:?}", user_id, e);
+            error!("Failed to create stock: {}", e);
             Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to create stock trade")
             ))
