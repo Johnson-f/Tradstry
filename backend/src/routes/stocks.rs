@@ -568,8 +568,40 @@ pub async fn get_stocks_analytics(
     cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     info!("Generating stocks analytics");
-
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    // Attempt to get user DB connection; if not found, return empty analytics instead of 404
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(c) => c,
+        Err(e) => {
+            if e.as_response_error().status_code() == actix_web::http::StatusCode::NOT_FOUND {
+                let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
+                let user_id = match get_authenticated_user(&req, &supabase_config).await {
+                    Ok(claims) => claims.sub,
+                    Err(_) => "unknown".to_string(),
+                };
+                let cache_key = format!("analytics:db:{}:stocks:{:?}", user_id, time_range);
+                // Return zeroed analytics (and do not cache)
+                let analytics = StocksAnalytics {
+                    total_pnl: "0".to_string(),
+                    profit_factor: "0".to_string(),
+                    win_rate: "0".to_string(),
+                    loss_rate: "0".to_string(),
+                    avg_gain: "0".to_string(),
+                    avg_loss: "0".to_string(),
+                    biggest_winner: "0".to_string(),
+                    biggest_loser: "0".to_string(),
+                    avg_hold_time_winners: "0".to_string(),
+                    avg_hold_time_losers: "0".to_string(),
+                    risk_reward_ratio: "0".to_string(),
+                    trade_expectancy: "0".to_string(),
+                    avg_position_size: "0".to_string(),
+                    net_pnl: "0".to_string(),
+                };
+                info!("User DB not found; returning default stocks analytics for cache key {}", cache_key);
+                return Ok(HttpResponse::Ok().json(ApiResponse::success(analytics)));
+            }
+            return Err(e);
+        }
+    };
     let time_range = query.time_range.clone().unwrap_or(TimeRange::AllTime);
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 

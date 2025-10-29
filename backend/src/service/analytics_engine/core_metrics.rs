@@ -24,6 +24,16 @@ fn get_i64_value(row: &libsql::Row, index: usize) -> i64 {
     }
 }
 
+/// Helper function to safely extract Option<f64> from libsql::Value
+fn get_optional_f64_value(row: &libsql::Row, index: usize) -> Option<f64> {
+    match row.get::<libsql::Value>(index as i32) {
+        Ok(libsql::Value::Integer(i)) => Some(i as f64),
+        Ok(libsql::Value::Real(f)) => Some(f),
+        Ok(libsql::Value::Null) => None,
+        _ => None,
+    }
+}
+
 /// Calculate core trading metrics from stocks and options tables
 pub async fn calculate_core_metrics(
     conn: &Connection,
@@ -535,6 +545,7 @@ pub struct IndividualTradeAnalytics {
     pub planned_risk_to_reward: Option<f64>,
     pub realized_risk_to_reward: Option<f64>,
     pub commission_impact: f64,
+    pub hold_time_days: Option<f64>,
 }
 
 /// Symbol-level aggregate analytics (for repeated trades on same symbol)
@@ -573,7 +584,9 @@ pub async fn calculate_individual_stock_trade_analytics(
             stop_loss,
             profit_target,
             number_shares,
-            commissions
+            commissions,
+            entry_date,
+            exit_date
         FROM stocks
         WHERE id = ?
     "#;
@@ -588,11 +601,13 @@ pub async fn calculate_individual_stock_trade_analytics(
         let symbol: String = row.get(1)?;
         let trade_type_str: String = row.get(2)?;
         let entry_price: f64 = get_f64_value(&row, 3);
-        let exit_price: Option<f64> = row.get(4).ok();
+        let exit_price: Option<f64> = get_optional_f64_value(&row, 4);
         let stop_loss: f64 = get_f64_value(&row, 5);
-        let profit_target: Option<f64> = row.get(6).ok();
+        let profit_target: Option<f64> = get_optional_f64_value(&row, 6);
         let number_shares: f64 = get_f64_value(&row, 7);
         let commissions: f64 = get_f64_value(&row, 8);
+        let entry_date: Option<String> = row.get(9).ok();
+        let exit_date: Option<String> = row.get(10).ok();
 
         // Calculate net P&L
         let net_pnl = if let Some(exit) = exit_price {
@@ -650,6 +665,22 @@ pub async fn calculate_individual_stock_trade_analytics(
             0.0
         };
 
+        // Calculate hold time in days
+        let hold_time_days = match (entry_date, exit_date) {
+            (Some(entry), Some(exit)) => {
+                if let (Ok(start), Ok(end)) = (
+                    chrono::DateTime::parse_from_rfc3339(&entry),
+                    chrono::DateTime::parse_from_rfc3339(&exit),
+                ) {
+                    let secs = (end - start).num_seconds();
+                    Some(secs as f64 / 86_400.0)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
         Ok(IndividualTradeAnalytics {
             trade_id,
             trade_type: "stock".to_string(),
@@ -658,6 +689,7 @@ pub async fn calculate_individual_stock_trade_analytics(
             planned_risk_to_reward: planned_rr,
             realized_risk_to_reward: realized_rr,
             commission_impact,
+            hold_time_days,
         })
     } else {
         anyhow::bail!("Trade not found: {}", trade_id)
@@ -680,7 +712,9 @@ pub async fn calculate_individual_option_trade_analytics(
             profit_target,
             number_of_contracts,
             total_premium,
-            commissions
+            commissions,
+            entry_date,
+            exit_date
         FROM options
         WHERE id = ?
     "#;
@@ -694,12 +728,14 @@ pub async fn calculate_individual_option_trade_analytics(
     if let Some(row) = rows.next().await? {
         let symbol: String = row.get(1)?;
         let entry_price: f64 = get_f64_value(&row, 3);
-        let exit_price: Option<f64> = row.get(4).ok();
-        let _initial_target: Option<f64> = row.get(5).ok();
-        let profit_target: Option<f64> = row.get(6).ok();
+        let exit_price: Option<f64> = get_optional_f64_value(&row, 4);
+        let _initial_target: Option<f64> = get_optional_f64_value(&row, 5);
+        let profit_target: Option<f64> = get_optional_f64_value(&row, 6);
         let number_of_contracts: i32 = get_i64_value(&row, 7) as i32;
         let total_premium: f64 = get_f64_value(&row, 8);
         let commissions: f64 = get_f64_value(&row, 9);
+        let entry_date: Option<String> = row.get(10).ok();
+        let exit_date: Option<String> = row.get(11).ok();
 
         // Calculate net P&L for options
         let net_pnl = if let Some(exit) = exit_price {
@@ -746,6 +782,22 @@ pub async fn calculate_individual_option_trade_analytics(
             0.0
         };
 
+        // Calculate hold time in days
+        let hold_time_days = match (entry_date, exit_date) {
+            (Some(entry), Some(exit)) => {
+                if let (Ok(start), Ok(end)) = (
+                    chrono::DateTime::parse_from_rfc3339(&entry),
+                    chrono::DateTime::parse_from_rfc3339(&exit),
+                ) {
+                    let secs = (end - start).num_seconds();
+                    Some(secs as f64 / 86_400.0)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
         Ok(IndividualTradeAnalytics {
             trade_id,
             trade_type: "option".to_string(),
@@ -754,6 +806,7 @@ pub async fn calculate_individual_option_trade_analytics(
             planned_risk_to_reward: planned_rr,
             realized_risk_to_reward: realized_rr,
             commission_impact,
+            hold_time_days,
         })
     } else {
         anyhow::bail!("Trade not found: {}", trade_id)

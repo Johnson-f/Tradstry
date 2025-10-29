@@ -242,13 +242,14 @@ export class AnalyticsService {
   }
 
   /**
-   * Get stocks analytics - returns comprehensive analytics for all stock trades
+   * Get stock analytics for a specific symbol (correct endpoint)
+   * @param symbol - The stock symbol (e.g., 'AAPL')
    * @param timeRange - Optional time range filter
-   * @returns Stock analytics including P&L, profit factor, win rate, etc.
    */
-  async getStocksAnalytics(timeRange?: string) {
-    const params = timeRange ? `?time_range=${timeRange}` : '';
-    const url = getFullUrl(apiConfig.endpoints.stocks.analytics.summary + params);
+  async getStocksAnalytics(symbol: string, timeRange?: string) {
+    const params = new URLSearchParams({ symbol: symbol.toUpperCase() });
+    if (timeRange) params.append('time_range', timeRange);
+    const url = `${getFullUrl(apiConfig.endpoints.analytics.symbol)}?${params}`;
     const token = await this.getAuthToken();
     
     const response = await fetch(url, {
@@ -260,7 +261,7 @@ export class AnalyticsService {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch stocks analytics: ${response.statusText}`);
+      throw new Error(`Failed to fetch symbol analytics: ${response.statusText}`);
     }
 
     return response.json();
@@ -366,8 +367,8 @@ export const getIndividualTradeAnalytics = (
 export const getSymbolAnalytics = (symbol: string, timeRange?: string) =>
   analyticsService.getSymbolAnalytics(symbol, timeRange);
 
-export const getStocksAnalytics = (timeRange?: string) =>
-  analyticsService.getStocksAnalytics(timeRange);
+export const getStocksAnalytics = (symbol: string, timeRange?: string) =>
+  analyticsService.getStocksAnalytics(symbol, timeRange);
 
 export const getOptionsAnalytics = (timeRange?: string) =>
   analyticsService.getOptionsAnalytics(timeRange);

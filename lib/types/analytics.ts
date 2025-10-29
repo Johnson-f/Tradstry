@@ -254,6 +254,7 @@ export interface IndividualTradeAnalytics {
   planned_risk_to_reward: number | null;
   realized_risk_to_reward: number | null;
   commission_impact: number;
+  hold_time_days: number | null;
 }
 
 // Symbol-level Aggregate Analytics

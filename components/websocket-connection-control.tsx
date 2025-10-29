@@ -2,24 +2,40 @@
 
 import { useEffect, useRef } from 'react';
 import { useWebSocketControl } from '@/lib/websocket/provider';
-import { useUserInitialization } from '@/hooks/use-user-initialization';
+import { useInitializationStatus } from '@/contexts/initialization-context';
 
 /**
  * Component that controls when the WebSocket connection should be established.
  * This ensures the user is initialized before connecting to WebSocket.
  */
 export function WebSocketConnectionControl() {
-  const { isInitialized, isInitializing, error } = useUserInitialization();
+  const { isInitialized, isInitializing, error } = useInitializationStatus();
   const { enable } = useWebSocketControl();
   const hasEnabled = useRef(false);
   
-  // Enable WebSocket after initialization is complete
+  console.log('WebSocketConnectionControl render:', { 
+    isInitialized, 
+    isInitializing, 
+    error: error?.toString(),
+    hasEnabled: hasEnabled.current 
+  });
+  
+  // Enable WebSocket only after initialization is complete and successful
   useEffect(() => {
-    const shouldConnect = !isInitializing && (isInitialized || !!error);
+    const shouldConnect = !isInitializing && isInitialized;
+    
+    console.log('WebSocketConnectionControl effect:', { 
+      shouldConnect, 
+      hasEnabled: hasEnabled.current,
+      isInitializing,
+      isInitialized,
+      hasError: !!error
+    });
     
     if (shouldConnect && !hasEnabled.current) {
-      enable();
+      console.log('🚀 Enabling WebSocket connection...');
       hasEnabled.current = true;
+      enable();
     }
   }, [isInitialized, isInitializing, error, enable]);
 

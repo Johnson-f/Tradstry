@@ -2,22 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import * as d3 from "d3"
-import { useStocksAnalytics, useOptionsAnalytics } from "@/lib/hooks/use-analytics"
+import { useAnalyticsCore, useAnalyticsTimeSeries } from "@/lib/hooks/use-analytics"
+import type { AnalyticsRequest, TimeSeriesData as AnalyticsTimeSeriesData, TimeSeriesPoint as AnalyticsTimeSeriesPoint } from "@/lib/types/analytics"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Info } from "lucide-react"
 
 type TimeRangeOption = "7d" | "30d" | "90d" | "1y" | "ytd" | "all_time"
 
-interface TimeSeriesPoint {
-  date: string
-  value: number
-  cumulative_value: number
-  trade_count: number
-}
-
-interface TimeSeriesData {
-  daily_pnl: TimeSeriesPoint[]
-}
+// Using TimeSeriesPoint and TimeSeriesData from '@/lib/types/analytics'
 
 interface BasicAnalyticsProps {
   initialTimeRange?: TimeRangeOption
@@ -30,17 +22,16 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   // Reduced chart height from 200 to 120
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
-  const {
-    data: stocksAnalytics,
-    isLoading: isLoadingStocks,
-    error: stocksError,
-  } = useStocksAnalytics(initialTimeRange)
+  // Build analytics request from props
+  const request: AnalyticsRequest = useMemo(() => ({
+    time_range: initialTimeRange,
+  }), [initialTimeRange])
 
-  const {
-    data: optionsAnalytics,
-    isLoading: isLoadingOptions,
-    error: optionsError,
-  } = useOptionsAnalytics(initialTimeRange)
+  // Fetch core metrics (totals, averages, ratios)
+  const { data: coreMetrics, isLoading: isLoadingCore, error: coreError } = useAnalyticsCore(request)
+
+  // Fetch time series for the net P&L chart
+  const { data: timeSeries, isLoading: isLoadingTs, error: tsError } = useAnalyticsTimeSeries(request)
 
   // Setup responsive dimensions
   useEffect(() => {
@@ -58,49 +49,31 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     return () => window.removeEventListener("resize", updateDimensions)
   }, [])
 
-  // Combine stocks and options analytics
+  // Map core metrics into the view model used by the cards
   const combinedMetrics = useMemo(() => {
-    if (!stocksAnalytics && !optionsAnalytics) return null;
-    
-    // Extract metrics from the response
-    const stocks = stocksAnalytics || {};
-    const options = optionsAnalytics || {};
-    
-    // Calculate combined metrics
-    const totalPnl = (stocks.total_pnl ? parseFloat(stocks.total_pnl) : 0) + 
-                     (options.total_pnl ? parseFloat(options.total_pnl) : 0);
-    
-    const winningTrades = (stocks.winning_trades || 0) + (options.winning_trades || 0);
-    const losingTrades = (stocks.losing_trades || 0) + (options.losing_trades || 0);
-    const totalTrades = winningTrades + losingTrades;
-    
-    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
-    
-    const grossProfit = (stocks.gross_profit ? parseFloat(stocks.gross_profit) : 0) +
-                        (options.gross_profit ? parseFloat(options.gross_profit) : 0);
-    const grossLoss = (stocks.gross_loss ? parseFloat(stocks.gross_loss) : 0) +
-                      (options.gross_loss ? parseFloat(options.gross_loss) : 0);
-    
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
-    
-    const averageWin = (stocks.avg_gain ? parseFloat(stocks.avg_gain) : 0);
-    const averageLoss = (stocks.avg_loss ? parseFloat(stocks.avg_loss) : 0);
-    
+    if (!coreMetrics) return null
     return {
-      total_pnl: totalPnl,
-      profit_factor: profitFactor,
-      win_rate: winRate,
-      winning_trades: winningTrades,
-      losing_trades: losingTrades,
-      average_win: averageWin,
-      average_loss: averageLoss,
-    };
-  }, [stocksAnalytics, optionsAnalytics]);
+      total_pnl: coreMetrics.total_pnl,
+      profit_factor: coreMetrics.profit_factor,
+      win_rate: coreMetrics.win_rate,
+      winning_trades: coreMetrics.winning_trades,
+      losing_trades: coreMetrics.losing_trades,
+      average_win: coreMetrics.average_win,
+      average_loss: coreMetrics.average_loss,
+    }
+  }, [coreMetrics])
 
-  // Mock time series data for now (you may want to implement this properly later)
-  const timeSeriesData: TimeSeriesData = useMemo(() => ({
-    daily_pnl: [] // Empty for now
-  }), []);
+  // Use API time series for the net P&L chart
+  const timeSeriesData: AnalyticsTimeSeriesData = useMemo(() => ({
+    daily_pnl: timeSeries?.daily_pnl ?? [],
+    weekly_pnl: timeSeries?.weekly_pnl ?? [],
+    monthly_pnl: timeSeries?.monthly_pnl ?? [],
+    rolling_win_rate: timeSeries?.rolling_win_rate ?? [],
+    rolling_sharpe_ratio: timeSeries?.rolling_sharpe_ratio ?? [],
+    profit_by_day_of_week: timeSeries?.profit_by_day_of_week ?? {},
+    profit_by_month: timeSeries?.profit_by_month ?? {},
+    drawdown_curve: timeSeries?.drawdown_curve ?? [],
+  }), [timeSeries])
 
   // Render D3 chart
   useEffect(() => {
@@ -151,7 +124,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
 
     // Create area generator
     const area = d3
-      .area<TimeSeriesPoint>()
+      .area<AnalyticsTimeSeriesPoint>()
       .x((d) => xScale(new Date(d.date)))
       .y0(yScale(Math.max(0, Math.min(...yDomain))))
       .y1((d) => yScale(d.cumulative_value))
@@ -159,7 +132,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
 
     // Create line generator
     const line = d3
-      .line<TimeSeriesPoint>()
+      .line<AnalyticsTimeSeriesPoint>()
       .x((d) => xScale(new Date(d.date)))
       .y((d) => yScale(d.cumulative_value))
       .curve(d3.curveMonotoneX)
@@ -229,17 +202,17 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       })
   }, [timeSeriesData, dimensions.width, dimensions.height])
 
-  if (stocksError || optionsError) {
+  if (coreError || tsError) {
     return (
       <Card>
         <CardContent className="pt-4"> {/* Reduced top padding */}
-          <p className="text-red-600">Error loading analytics: {(stocksError || optionsError)?.message}</p>
+          <p className="text-red-600">Error loading analytics: {(coreError || tsError)?.message}</p>
         </CardContent>
       </Card>
     )
   }
 
-  if (isLoadingStocks || isLoadingOptions || !timeSeriesData || !combinedMetrics) {
+  if (isLoadingCore || isLoadingTs || !timeSeriesData || !combinedMetrics) {
     return (
       <div className="space-y-2"> {/* Reduced vertical gap between loading skeletons */}
         <Card className="col-span-full animate-pulse">
@@ -284,13 +257,15 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
         <Card className="flex-1 min-w-[230px] bg-white min-h-[138px]">
           <CardHeader className="pb-1">
             <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-xs font-normal text-gray-600">Net Cumulative P&L</CardTitle>
-                <CardDescription className="text-xs font-medium text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
-                  {dataPointCount}
-                </CardDescription>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-xs font-normal text-gray-600">Net Cumulative P&L</CardTitle>
+                  <CardDescription className="text-xs font-medium text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
+                    {dataPointCount}
+                  </CardDescription>
+                </div>
+                <div className="text-2xl font-bold text-gray-900 mt-1">${currentPnl.toFixed(2)}</div>
               </div>
-              <div className="text-2xl font-bold text-gray-900">${currentPnl.toFixed(2)}</div>
             </div>
           </CardHeader>
           <CardContent className="pt-0 pb-1">
@@ -521,16 +496,11 @@ function AvgWinLossCard({
   averageLoss: number | null | undefined
 }) {
   const barRef = useRef<SVGSVGElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  // Reduce card height for bar chart
-  const [dimensions, setDimensions] = useState({ width: 0, height: 36 })
+  // Inline indicator dimensions
+  const [dimensions] = useState({ width: 120, height: 36 })
 
   useEffect(() => {
-    if (!containerRef.current) return
-
-    const width = containerRef.current.offsetWidth
-    setDimensions({ width, height: 36 })
-
+    const width = dimensions.width
     if (!barRef.current || width === 0 || averageWin == null || averageLoss == null) return
 
     const svg = d3.select(barRef.current)
@@ -583,7 +553,7 @@ function AvgWinLossCard({
       .attr("font-weight", "600")
       .attr("text-anchor", "end")
       .text(`-$${Math.abs(averageLoss).toFixed(0)}`)
-  }, [averageWin, averageLoss, dimensions.width])
+  }, [averageWin, averageLoss, dimensions.width, dimensions.height])
 
   const ratio = (averageWin != null && averageLoss != null) ? averageWin / Math.abs(averageLoss) : null
 
@@ -596,8 +566,8 @@ function AvgWinLossCard({
         </div>
       </CardHeader>
       <CardContent className="pt-0 pb-1">
-        <div className="text-2xl font-bold text-gray-900 mb-1">{ratio != null ? ratio.toFixed(2) : 'N/A'}</div>
-        <div ref={containerRef} className="w-full">
+        <div className="flex items-center gap-2">
+          <div className="text-2xl font-bold text-gray-900">{ratio != null ? ratio.toFixed(2) : 'N/A'}</div>
           <svg ref={barRef} width={dimensions.width} height={dimensions.height} />
         </div>
       </CardContent>

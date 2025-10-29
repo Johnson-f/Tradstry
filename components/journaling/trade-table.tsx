@@ -3,8 +3,12 @@
 import React from 'react';
 import { useOptions } from '@/lib/hooks/use-options';
 import { useStocks } from '@/lib/hooks/use-stocks';
-import { useStocksAnalytics, useOptionsAnalytics } from '@/lib/hooks/use-analytics';
+import { useSymbolAnalytics, useIndividualTradeAnalytics } from '@/lib/hooks/use-analytics';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@/lib/supabase/client';
+import apiConfig, { getFullUrl } from '@/lib/config/api';
 import {
   Table,
   TableBody,
@@ -22,6 +26,8 @@ import type { OptionTrade } from '@/lib/types/options';
 
 interface TradeData {
   id: string;
+  tradeId: number | null;
+  tradeTypeApi: 'stock' | 'option';
   symbol: string;
   entryDate: string;
   reviewed: boolean;
@@ -64,7 +70,7 @@ function getStatus(pl: number): 'WIN' | 'LOSS' | 'BE' {
   return 'BE';
 }
 
-function calculateRMultiple(_stock: Stock, _pl: number): string | undefined {
+function calculateRMultiple(): string | undefined {
   // Would need stop loss and take profit data to calculate properly
   // For now, returning undefined if we can't calculate
   return undefined;
@@ -84,7 +90,9 @@ function parseMistakes(mistakes: string | null | undefined): string[] {
 }
 
 function formatDate(dateString: string): string {
+  if (!dateString) return '-';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   return new Intl.DateTimeFormat('en-US', {
     month: '2-digit',
     day: '2-digit',
@@ -99,38 +107,65 @@ function formatCurrency(value: number): string {
 }
 
 export function TradeTable() {
+  const queryClient = useQueryClient();
   const { data: stocks = [], isLoading: stocksLoading } = useStocks();
   const { data: options = [], isLoading: optionsLoading } = useOptions();
   
-  // Fetch analytics data for aggregate P&L
-  const { data: stocksAnalytics, isLoading: stocksAnalyticsLoading } = useStocksAnalytics();
-  const { data: optionsAnalytics, isLoading: optionsAnalyticsLoading } = useOptionsAnalytics();
-  
   const isLoading = stocksLoading || optionsLoading;
-  const isAnalyticsLoading = stocksAnalyticsLoading || optionsAnalyticsLoading;
   
-  // Calculate total P&L from analytics
-  const totalPnL = React.useMemo(() => {
-    if (!stocksAnalytics?.total_pnl || !optionsAnalytics?.total_pnl) return 0;
-    const stocksPnl = parseFloat(stocksAnalytics.total_pnl || '0');
-    const optionsPnl = parseFloat(optionsAnalytics.total_pnl || '0');
-    return stocksPnl + optionsPnl;
-  }, [stocksAnalytics, optionsAnalytics]);
+  const supabase = React.useMemo(() => createClient(), []);
+
+  const updateReviewed = React.useCallback(async (trade: TradeData, next: boolean) => {
+    if (trade.tradeId == null) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    const endpoint = trade.tradeTypeApi === 'stock'
+      ? apiConfig.endpoints.stocks.byId(trade.tradeId)
+      : apiConfig.endpoints.options.byId(trade.tradeId);
+
+    const res = await fetch(getFullUrl(endpoint), {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reviewed: next }),
+    });
+
+    if (res.ok) {
+      // Optimistically update caches
+      if (trade.tradeTypeApi === 'stock') {
+        queryClient.setQueryData<Stock[]>(['stocks'], (prev) =>
+          prev?.map(s => Number(s.id) === trade.tradeId ? { ...s, reviewed: next } as Stock : s) ?? prev
+        );
+      } else {
+        queryClient.setQueryData<OptionTrade[]>(['options'], (prev) =>
+          prev?.map(o => Number(o.id) === trade.tradeId ? { ...o, reviewed: next } as OptionTrade : o) ?? prev
+        );
+      }
+    }
+  }, [queryClient, supabase]);
+
   
   // Combine and transform data
   const trades: TradeData[] = React.useMemo(() => {
     const stocksData: TradeData[] = stocks.map(stock => {
       const pl = calculateStockPL(stock);
       const status = getStatus(pl);
+      const numericId = Number(stock.id);
       
       return {
         id: `stock-${stock.id}`,
+        tradeId: Number.isFinite(numericId) ? numericId : null,
+        tradeTypeApi: 'stock',
         symbol: stock.symbol,
         entryDate: stock.entryDate,
         reviewed: stock.reviewed,
         mistakes: stock.mistakes,
         pl,
-        rMultiple: calculateRMultiple(stock, pl),
+        rMultiple: calculateRMultiple(),
         status,
         type: 'STOCK' as const,
       };
@@ -139,9 +174,12 @@ export function TradeTable() {
     const optionsData: TradeData[] = options.map(option => {
       const pl = calculateOptionPL(option);
       const status = getStatus(pl);
+      const numericId = Number(option.id);
       
       return {
         id: `option-${option.id}`,
+        tradeId: Number.isFinite(numericId) ? numericId : null,
+        tradeTypeApi: 'option',
         symbol: option.symbol,
         entryDate: option.entryDate,
         reviewed: option.reviewed,
@@ -165,20 +203,7 @@ export function TradeTable() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CardTitle>Trades</CardTitle>
-            {!isAnalyticsLoading && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Total P&L:</span>
-                <span
-                  className={`font-semibold ${
-                    totalPnL >= 0
-                      ? 'text-green-600 dark:text-green-500'
-                      : 'text-red-600 dark:text-red-500'
-                  }`}
-                >
-                  {formatCurrency(totalPnL)}
-                </span>
-              </div>
-            )}
+            
           </div>
           <CardAction>
             <Button size="sm">
@@ -203,8 +228,10 @@ export function TradeTable() {
                 <TableHead className="text-center">Entry Date</TableHead>
                 <TableHead>Symbol</TableHead>
                 <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-right">P&L</TableHead>
+                <TableHead className="text-right">Symbol P&L</TableHead>
                 <TableHead className="text-center">Risk:Reward</TableHead>
+                <TableHead className="text-center">Duration</TableHead>
+                <TableHead className="text-center">Reviewed</TableHead>
                 <TableHead>Mistakes</TableHead>
               </TableRow>
             </TableHeader>
@@ -268,22 +295,20 @@ export function TradeTable() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <span
-                        className={
-                          trade.pl >= 0
-                            ? 'text-green-600 dark:text-green-500'
-                            : 'text-red-600 dark:text-red-500'
-                        }
-                      >
-                        {formatCurrency(trade.pl)}
-                      </span>
+                      <SymbolPnlCell symbol={trade.symbol} />
                     </TableCell>
                     <TableCell className="text-center">
-                      {trade.rMultiple ? (
-                        <span className="text-sm">{trade.rMultiple}</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                      <RiskRewardCell tradeId={trade.tradeId} tradeTypeApi={trade.tradeTypeApi} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <DurationCell tradeId={trade.tradeId} tradeTypeApi={trade.tradeTypeApi} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={trade.reviewed}
+                        onCheckedChange={(val) => { void updateReviewed(trade, Boolean(val)); }}
+                        aria-label="Reviewed"
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -307,5 +332,81 @@ export function TradeTable() {
       </CardContent>
     </Card>
   );
+}
+
+function SymbolPnlCell({ symbol }: { symbol: string }) {
+  // Fetch aggregated analytics for the specific symbol
+  const { data, isLoading, error } = useSymbolAnalytics(symbol);
+
+  if (isLoading) {
+    return <span className="text-muted-foreground">...</span>;
+  }
+
+  if (error || !data) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  const pnl = data.net_pnl ?? 0;
+  const cls = pnl >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500';
+  return <span className={cls}>{formatCurrency(pnl)}</span>;
+}
+
+function RiskRewardCell({ tradeId, tradeTypeApi }: { tradeId: number | null; tradeTypeApi: 'stock' | 'option' }) {
+  const enabled = tradeId !== null;
+  const { data, isLoading, error } = useIndividualTradeAnalytics(
+    tradeId ?? -1,
+    tradeTypeApi,
+    enabled
+  );
+
+  if (!enabled) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  if (isLoading) {
+    return <span className="text-muted-foreground">...</span>;
+  }
+
+  if (error || !data) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  const rr = data.realized_risk_to_reward ?? data.planned_risk_to_reward;
+  if (rr == null) return <span className="text-muted-foreground">-</span>;
+
+  const display = Number.isFinite(rr) ? (rr as number).toFixed(2) : '-';
+  const days = typeof data.hold_time_days === 'number' && isFinite(data.hold_time_days)
+    ? data.hold_time_days
+    : null;
+  const daysText = days != null ? `${days.toFixed(1)}d` : null;
+  return (
+    <span className="text-sm">
+      {display}
+      {daysText ? <span className="text-muted-foreground"> · {daysText}</span> : null}
+    </span>
+  );
+}
+
+function DurationCell({ tradeId, tradeTypeApi }: { tradeId: number | null; tradeTypeApi: 'stock' | 'option' }) {
+  const enabled = tradeId !== null;
+  const { data, isLoading, error } = useIndividualTradeAnalytics(
+    tradeId ?? -1,
+    tradeTypeApi,
+    enabled
+  );
+
+  if (!enabled) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  if (isLoading) {
+    return <span className="text-muted-foreground">...</span>;
+  }
+
+  if (error || !data || typeof data.hold_time_days !== 'number' || !isFinite(data.hold_time_days)) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  return <span className="text-sm">{data.hold_time_days.toFixed(1)}d</span>;
 }
 
