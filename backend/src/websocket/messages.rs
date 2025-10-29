@@ -33,6 +33,10 @@ pub enum EventType {
     Connected,
     Disconnected,
     Error,
+    
+    // Market data events
+    MarketQuote,
+    MarketUpdate,
 }
 
 /// WebSocket message envelope

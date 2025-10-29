@@ -52,6 +52,7 @@ hmac = "0.12.1"
 sha2 = "0.10.9"
 base64 = "0.22.1"
 futures-util = "0.3.31"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 
 # Image upload service
 uploadcare = "0.1"

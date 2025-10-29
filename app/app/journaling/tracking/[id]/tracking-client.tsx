@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useStock } from '@/lib/hooks/use-stocks';
 import { useOption } from '@/lib/hooks/use-options';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Stats from '@/components/journaling/tracking/tabs/stats';
 import type { Stock } from '@/lib/types/stocks';
@@ -85,11 +86,11 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
           </div>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
+          <ScrollArea className="h-full">
             <div className="p-8 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     );
@@ -111,7 +112,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
           </div>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
+          <ScrollArea className="h-full">
             <div className="p-8">
               <p className="text-muted-foreground">
                 The trade ID format is invalid. Expected format: <code className="bg-muted px-1 py-0.5 rounded">stock-123</code> or <code className="bg-muted px-1 py-0.5 rounded">option-456</code>
@@ -123,7 +124,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
                 Back to Journaling
               </Button>
             </div>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     );
@@ -145,11 +146,11 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
           </div>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
+          <ScrollArea className="h-full">
             <div className="p-8 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     );
@@ -171,7 +172,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
           </div>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto">
+          <ScrollArea className="h-full">
             <div className="p-8">
               <p className="text-muted-foreground">
                 {error instanceof Error ? error.message : 'The requested trade could not be found.'}
@@ -183,7 +184,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
                 Back to Journaling
               </Button>
             </div>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     );
@@ -224,7 +225,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
       
       {/* Main content - Two column layout */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-6 grid grid-cols-12 gap-6">
             {/* Left Column - Stats Panel (approximately 1/3 width) */}
             <div className="col-span-12 lg:col-span-4 xl:col-span-3">
@@ -248,7 +249,7 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
               </div>
             </div>
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

@@ -30,6 +30,7 @@ use turso::{
     AuthError,
     SupabaseClaims,
 };
+use crate::service::market_engine::ws_proxy::MarketWsProxy;
 use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
 use websocket::{ConnectionManager, ws_handler};
 use std::sync::Arc;
@@ -91,7 +92,23 @@ async fn main() -> std::io::Result<()> {
     let ws_manager = Arc::new(Mutex::new(ConnectionManager::new()));
     let ws_manager_data = Data::new(Arc::clone(&ws_manager));
 
-    // VectorizationService is already initialized in AppState
+    // Initialize Market WebSocket Proxy for real-time quotes
+    let config = app_data.as_ref().config.clone();
+    let market_proxy = Arc::new(MarketWsProxy::new(
+        Arc::clone(&ws_manager),
+        config.finance_query.base_url.clone(),
+        config.finance_query.api_key.clone(),
+    ));
+    
+    // Start the market proxy background task
+    let proxy_for_start = Arc::clone(&market_proxy);
+    tokio::spawn(async move {
+        if let Err(e) = proxy_for_start.start().await {
+            log::error!("Failed to start market WebSocket proxy: {}", e);
+        }
+    });
+    
+    let market_proxy_data = Data::new(market_proxy);
 
     // Get port from environment or default
     let port = std::env::var("PORT")
@@ -154,6 +171,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(ws_manager_data.clone())
             .app_data(app_data.clone())
+            .app_data(market_proxy_data.clone())
             // CRITICAL: Add TursoClient as separate app_data for user routes
             .app_data(Data::new(app_data.as_ref().turso_client.clone()))
             // CRITICAL: Add SupabaseConfig as separate app_data for user routes
@@ -232,7 +250,9 @@ fn configure_public_routes(cfg: &mut web::ServiceConfig) {
         .route("/health", web::get().to(health_check))
         .route("/webhooks/supabase", web::post().to(supabase_webhook_handler))
         .route("/webhooks/clerk", web::post().to(clerk_webhook_handler))
-        .route("/profile", web::get().to(get_profile));
+        .route("/profile", web::get().to(get_profile))
+        // Market Data public routes
+        .configure(crate::routes::market::configure_market_routes);
 }
 
 // Protected routes configuration

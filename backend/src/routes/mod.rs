@@ -9,6 +9,7 @@ pub mod notebook;
 pub mod ai_chat;
 pub mod ai_insights;
 pub mod ai_reports;
+pub mod market;
 
 pub use analytics::configure_analytics_routes;
 pub use user::configure_user_routes;
