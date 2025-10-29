@@ -20,11 +20,20 @@ interface WebSocketProviderProps {
 
 export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const [shouldConnect, setShouldConnect] = useState(false);
+  
+  console.log('WebSocketProvider render - shouldConnect:', shouldConnect);
+  
   const { state, error, subscribe, send } = useWebSocket(shouldConnect);
 
   const controlValue = useMemo(() => ({
-    enable: () => setShouldConnect(true),
-    disable: () => setShouldConnect(false),
+    enable: () => {
+      console.log('🎮 WebSocket enable() called');
+      setShouldConnect(true);
+    },
+    disable: () => {
+      console.log('🎮 WebSocket disable() called');
+      setShouldConnect(false);
+    },
   }), []);
 
   const value = useMemo<WebSocketContextValue>(() => ({ state, error, subscribe, send }), [state, error, subscribe, send]);
@@ -49,5 +58,3 @@ export function useWebSocketControl() {
   if (!ctx) throw new Error('useWebSocketControl must be used within WebSocketProvider');
   return ctx;
 }
-
-

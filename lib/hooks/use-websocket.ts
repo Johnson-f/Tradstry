@@ -24,12 +24,17 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
   const [state, setState] = useState<WebSocketConnectionState>(shouldConnect ? 'connecting' : 'disconnected');
   const [error, setError] = useState<Error | null>(null);
 
+  console.log('useWebSocket render - shouldConnect:', shouldConnect, 'state:', state);
+
   const connect = useCallback(async () => {
     // Don't connect if we shouldn't be connecting
     if (!shouldConnect) {
+      console.log('❌ Not connecting - shouldConnect is false');
       setState('disconnected');
       return;
     }
+
+    console.log('🔌 Attempting to connect WebSocket...');
 
     try {
       setState('connecting');
@@ -40,11 +45,14 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
       if (!token) throw new Error('Missing auth token');
 
       const wsUrl = `${apiConfig.baseURL.replace('http', 'ws')}${apiConfig.apiPrefix}/ws?token=${encodeURIComponent(token)}`;
+      
+      console.log('🔌 Connecting to:', wsUrl);
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        console.log('✅ WebSocket connected');
         setState('connected');
         reconnectAttemptsRef.current = 0;
       };
@@ -66,12 +74,14 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
         }
       };
 
-      ws.onerror = () => {
+      ws.onerror = (err) => {
+        console.error('❌ WebSocket error:', err);
         setState('error');
         setError(new Error('WebSocket error'));
       };
 
       ws.onclose = () => {
+        console.log('🔌 WebSocket closed');
         setState('disconnected');
         
         // Only reconnect if shouldConnect is still true
@@ -79,20 +89,24 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
           // Reconnect with exponential backoff up to ~10s
           const attempt = reconnectAttemptsRef.current++;
           const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${attempt + 1})`);
           setTimeout(() => connect(), delay);
         }
       };
     } catch (e) {
+      console.error('❌ WebSocket connection error:', e);
       setError(e as Error);
       setState('error');
     }
   }, [shouldConnect]);
 
   useEffect(() => {
+    console.log('useWebSocket effect - shouldConnect changed to:', shouldConnect);
+    
     if (shouldConnect) {
       connect();
     } else {
-      // If we shouldn't connect, close any existing connection
+      console.log('Closing existing connection (shouldConnect is false)');
       wsRef.current?.close();
       wsRef.current = null;
       setState('disconnected');
@@ -124,5 +138,3 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
 
   return { state, error, send, subscribe };
 }
-
-

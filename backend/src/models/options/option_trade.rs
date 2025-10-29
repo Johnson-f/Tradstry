@@ -189,57 +189,34 @@ pub struct OptionQuery {
 impl OptionTrade {
     fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        // Try as f64
-        if let Ok(v) = row.get::<f64>(i) {
-            return Ok(v);
+        
+        // Get the raw value first to check its type
+        match row.get::<libsql::Value>(i) {
+            Ok(libsql::Value::Real(v)) => Ok(v),
+            Ok(libsql::Value::Integer(v)) => Ok(v as f64),
+            Ok(libsql::Value::Text(s)) => {
+                s.parse::<f64>().or(Ok(0.0))
+            },
+            Ok(libsql::Value::Null) => Ok(0.0),
+            Ok(_) => Ok(0.0), // For any other type (Blob, etc)
+            Err(_) => Ok(0.0),
         }
-        // Try as Option<f64>
-        if let Ok(v) = row.get::<Option<f64>>(i) {
-            return Ok(v.unwrap_or(0.0));
-        }
-        // Try as i64
-        if let Ok(v) = row.get::<i64>(i) {
-            return Ok(v as f64);
-        }
-        // Try as Option<i64>
-        if let Ok(v) = row.get::<Option<i64>>(i) {
-            return Ok(v.unwrap_or(0) as f64);
-        }
-        // Try as String
-        if let Ok(s) = row.get::<String>(i)
-            && let Ok(parsed) = s.parse::<f64>()
-        {
-            return Ok(parsed);
-        }
-        // Fallback to 0.0
-        Ok(0.0)
     }
 
     fn get_opt_f64(row: &libsql::Row, idx: usize) -> Result<Option<f64>, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        // Try Option<f64>
-        if let Ok(v) = row.get::<Option<f64>>(i) {
-            return Ok(v);
+        
+        // Get the raw value first to check its type
+        match row.get::<libsql::Value>(i) {
+            Ok(libsql::Value::Real(v)) => Ok(Some(v)),
+            Ok(libsql::Value::Integer(v)) => Ok(Some(v as f64)),
+            Ok(libsql::Value::Text(s)) => {
+                Ok(s.parse::<f64>().ok())
+            },
+            Ok(libsql::Value::Null) => Ok(None),
+            Ok(_) => Ok(None), // For any other type (Blob, etc)
+            Err(_) => Ok(None),
         }
-        // Try f64
-        if let Ok(v) = row.get::<f64>(i) {
-            return Ok(Some(v));
-        }
-        // Try Option<i64>
-        if let Ok(v) = row.get::<Option<i64>>(i) {
-            return Ok(v.map(|x| x as f64));
-        }
-        // Try i64
-        if let Ok(v) = row.get::<i64>(i) {
-            return Ok(Some(v as f64));
-        }
-        // Try String
-        if let Ok(s) = row.get::<String>(i)
-            && let Ok(parsed) = s.parse::<f64>()
-        {
-            return Ok(Some(parsed));
-        }
-        Ok(None)
     }
 
     /// Create a new option trade in the user's database

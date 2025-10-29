@@ -4,19 +4,13 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { useUserInitialization } from "@/hooks/use-user-initialization";
 import { WebSocketProvider } from "@/lib/websocket/provider";
 import { WebSocketConnectionControl } from "@/components/websocket-connection-control";
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Providers } from "../providers";
+import { InitializationContext } from "@/contexts/initialization-context";
 
-const InitializationContext = createContext<{ isInitialized: boolean; isInitializing: boolean }>({
-  isInitialized: false,
-  isInitializing: true,
-});
-
-export function useInitializationStatus() {
-  return useContext(InitializationContext);
-}
+// InitializationContext moved to '@/contexts/initialization-context'
 
 export default function ProtectedLayout({
   children,
@@ -32,6 +26,7 @@ export default function ProtectedLayout({
   );
 }
 
+// This component is rendered INSIDE Providers, so it has access to QueryClient
 function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { isInitialized, isInitializing, error, needsRefresh } = useUserInitialization();
@@ -39,10 +34,12 @@ function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isNotebook = pathname?.startsWith("/app/notebook");
 
+  // Show initialization status for a few seconds when initializing
   useEffect(() => {
     if (isInitializing) {
       setShowInitializationStatus(true);
     } else if (isInitialized || error) {
+      // Hide status after 3 seconds when done
       const timer = setTimeout(() => {
         setShowInitializationStatus(false);
       }, 3000);
@@ -51,7 +48,7 @@ function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
   }, [isInitializing, isInitialized, error]);
 
   return (
-    <InitializationContext.Provider value={{ isInitialized, isInitializing }}>
+    <InitializationContext.Provider value={{ isInitialized, isInitializing, error }}>
       {/* WebSocketConnectionControl is now inside WebSocketProvider */}
       <WebSocketConnectionControl />
       <div className="min-h-screen">
@@ -63,6 +60,7 @@ function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
             isNotebook ? '' : isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           } ml-0`}
         >
+          {/* User Initialization Status */}
           {showInitializationStatus && (
             <div className="fixed top-4 right-4 z-50 bg-background border rounded-lg shadow-lg p-4 max-w-sm">
               {isInitializing && (

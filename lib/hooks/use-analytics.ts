@@ -304,19 +304,20 @@ export function useSymbolAnalytics(
  * Returns analytics for all stock trades including P&L, profit factor, win rate, etc.
  */
 export function useStocksAnalytics(
+  symbol: string,
   timeRange?: string,
   enabled: boolean = true
 ) {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['analytics', 'stocks', timeRange],
+    queryKey: ['analytics', 'stocks', symbol, timeRange],
     queryFn: async () => {
-      const response = await getStocksAnalytics(timeRange);
+      const response = await getStocksAnalytics(symbol, timeRange);
       if (response.success) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch stocks analytics');
+      throw new Error(response.message || 'Failed to fetch symbol analytics');
     },
-    enabled,
+    enabled: enabled && !!symbol,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 2,
