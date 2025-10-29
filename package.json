@@ -98,6 +98,7 @@
     "input-otp": "^1.4.2",
     "install": "^0.13.0",
     "lexical": "^0.35.0",
+    "lightweight-charts": "^5.0.9",
     "lodash": "^4.17.21",
     "lodash-es": "^4.17.21",
     "lowlight": "^3.3.0",

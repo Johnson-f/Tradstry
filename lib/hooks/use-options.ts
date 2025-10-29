@@ -124,4 +124,45 @@ export function useDeleteOption() {
   });
 }
 
+async function fetchOption(id: number): Promise<OptionTrade> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  if (!token) {
+    throw new Error('User not authenticated');
+  }
+
+  const res = await fetch(getFullUrl(apiConfig.endpoints.options.byId(id)), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error('Authentication failed');
+    }
+    if (res.status === 404) {
+      throw new Error('Option not found');
+    }
+    throw new Error('Failed to fetch option');
+  }
+
+  const json = await res.json();
+  return (json.data ?? json) as OptionTrade;
+}
+
+export function useOption(id: number, enabled: boolean = true) {
+  return useQuery<OptionTrade>({
+    queryKey: ['options', id],
+    queryFn: () => fetchOption(id),
+    enabled: enabled && id > 0,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
 

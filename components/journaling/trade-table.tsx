@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useOptions } from '@/lib/hooks/use-options';
 import { useStocks } from '@/lib/hooks/use-stocks';
 import { useSymbolAnalytics, useIndividualTradeAnalytics } from '@/lib/hooks/use-analytics';
@@ -30,7 +31,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Loader2, Search, Pencil, Trash2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
 import CreateTradeModal from './create-trade-modal';
 import EditTradeModal from './edit-trade-modal';
 import DeleteTradeModal from './delete-trade-model';
@@ -123,6 +125,7 @@ function formatCurrency(value: number): string {
 }
 
 export function TradeTable() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { data: stocks = [], isLoading: stocksLoading } = useStocks();
   const { data: options = [], isLoading: optionsLoading } = useOptions();
@@ -339,9 +342,72 @@ export function TradeTable() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          <ScrollArea className="w-full h-[420px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox aria-label="Select all" />
+                  </TableHead>
+                  <TableHead className="text-center">Entry Date</TableHead>
+                  <TableHead>Symbol</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right">Symbol P&L</TableHead>
+                  <TableHead className="text-center">Risk:Reward</TableHead>
+                  <TableHead className="text-center">Duration</TableHead>
+                  <TableHead className="text-center">Reviewed</TableHead>
+                  <TableHead>Mistakes</TableHead>
+                  <TableHead className="text-center w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <TableRow key={`skeleton-${idx}`}>
+                    <TableCell>
+                      <div className="flex items-center justify-center">
+                        <Skeleton className="size-5 rounded-full" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Skeleton className="h-4 w-24 mx-auto" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-center">
+                        <Skeleton className="h-5 w-12 rounded-full" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="h-4 w-16 ml-auto" />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Skeleton className="h-4 w-16 mx-auto" />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Skeleton className="h-4 w-12 mx-auto" />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Skeleton className="h-5 w-10 mx-auto rounded-full" />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        <Skeleton className="h-5 w-16 rounded-full" />
+                        <Skeleton className="h-5 w-20 rounded-full" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-2">
+                        <Skeleton className="h-8 w-8 rounded" />
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
         ) : (
           <>
             <ScrollArea className="w-full h-[420px]">
@@ -371,8 +437,16 @@ export function TradeTable() {
                 </TableRow>
               ) : (
                     pageTrades.map((trade) => (
-                  <TableRow key={trade.id}>
-                    <TableCell>
+                  <TableRow 
+                    key={trade.id}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      if (trade.tradeId != null) {
+                        router.push(`/app/journaling/tracking/${trade.id}`);
+                      }
+                    }}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center">
                         {trade.reviewed ? (
                           <div className="size-5 rounded-full bg-green-500 flex items-center justify-center">
@@ -430,7 +504,7 @@ export function TradeTable() {
                     <TableCell className="text-center">
                       <DurationCell tradeId={trade.tradeId} tradeTypeApi={trade.tradeTypeApi} />
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       <Switch
                         checked={trade.reviewed}
                         onCheckedChange={(val) => { void updateReviewed(trade, Boolean(val)); }}
@@ -450,7 +524,7 @@ export function TradeTable() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-2">
                         <Button
                           variant="ghost"

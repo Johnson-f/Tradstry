@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
-use log::{info, error};
+use log::{info, error, warn};
 use std::sync::Arc;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
@@ -458,7 +458,7 @@ pub async fn get_all_stocks(
 pub async fn update_stock(
     req: HttpRequest,
     stock_id: web::Path<i64>,
-    payload: web::Json<UpdateStockRequest>,
+    body: web::Bytes,  // Changed from web::Json to get raw bytes for logging
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
@@ -466,14 +466,61 @@ pub async fn update_stock(
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
-    info!("Updating stock with ID: {}", id);
+    info!("🔄 [UPDATE_STOCK] Starting update for stock ID: {}", id);
+    
+    // Log raw request body
+    let body_str = String::from_utf8_lossy(&body);
+    info!("📦 [UPDATE_STOCK] Raw request body: {}", body_str);
+    
+    // Try to deserialize manually and log any errors
+    let payload: UpdateStockRequest = match serde_json::from_slice(&body) {
+        Ok(p) => {
+            info!("✅ [UPDATE_STOCK] Successfully deserialized payload: {:?}", p);
+            p
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Deserialization error: {}", e);
+            error!("❌ [UPDATE_STOCK] Error at line: {}, column: {}", e.line(), e.column());
+            error!("❌ [UPDATE_STOCK] Error path: {}", e.to_string());
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request format: {}", e),
+                "line": e.line(),
+                "column": e.column(),
+                "path": e.to_string()
+            })));
+        }
+    };
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    info!("🔐 [UPDATE_STOCK] Getting database connection for user");
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(c) => {
+            info!("✅ [UPDATE_STOCK] Successfully obtained database connection");
+            c
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Failed to get database connection: {}", e);
+            return Err(e);
+        }
+    };
+    
+    info!("👤 [UPDATE_STOCK] Getting authenticated user");
+    let user_id = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(claims) => {
+            info!("✅ [UPDATE_STOCK] Authenticated user: {}", claims.sub);
+            claims.sub
+        }
+        Err(e) => {
+            error!("❌ [UPDATE_STOCK] Authentication failed: {}", e);
+            return Err(e);
+        }
+    };
 
-    match Stock::update(&conn, id, payload.into_inner()).await {
+    info!("💾 [UPDATE_STOCK] Calling Stock::update with payload: {:?}", payload);
+    match Stock::update(&conn, id, payload).await {
         Ok(Some(stock)) => {
-            info!("Successfully updated stock with ID: {}", id);
+            info!("✅ [UPDATE_STOCK] Successfully updated stock with ID: {}", id);
+            info!("✅ [UPDATE_STOCK] Updated stock data: {:?}", stock);
             
             // Invalidate cache after successful update
             let cache_service_clone = cache_service.get_ref().clone();
@@ -523,15 +570,16 @@ pub async fn update_stock(
             Ok(HttpResponse::Ok().json(ApiResponse::success(stock)))
         }
         Ok(None) => {
-            info!("Stock with ID {} not found for update", id);
+            warn!("⚠️ [UPDATE_STOCK] Stock with ID {} not found for update", id);
             Ok(HttpResponse::NotFound().json(
                 ApiResponse::<()>::error("Stock not found")
             ))
         }
         Err(e) => {
-            error!("Failed to update stock {}: {}", id, e);
+            error!("❌ [UPDATE_STOCK] Failed to update stock {}: {}", id, e);
+            error!("❌ [UPDATE_STOCK] Error details: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update stock")
+                ApiResponse::<()>::error(&format!("Failed to update stock: {}", e))
             ))
         }
     }
