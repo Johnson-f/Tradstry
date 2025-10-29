@@ -214,27 +214,61 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
 
   if (isLoadingCore || isLoadingTs || !timeSeriesData || !combinedMetrics) {
     return (
-      <div className="space-y-2"> {/* Reduced vertical gap between loading skeletons */}
-        <Card className="col-span-full animate-pulse">
-          <CardHeader>
-            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+      <div className="flex gap-2 overflow-x-auto items-stretch">
+        {/* Skeleton: Net Cumulative P&L card */}
+        <Card className="flex-1 min-w-[230px] bg-white min-h-[138px] animate-pulse">
+          <CardHeader className="pb-1">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="h-4 bg-gray-200 rounded w-32"></div>
+                  <div className="h-4 bg-gray-100 rounded w-10"></div>
+                </div>
+                <div className="h-7 bg-gray-200 rounded mt-1 w-28"></div>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="h-28 bg-gray-100 rounded"></div>
+          <CardContent className="pt-0 pb-1">
+            <div className="w-full">
+              <div className="h-[120px] bg-gray-100 rounded"></div>
+            </div>
           </CardContent>
         </Card>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-6 bg-gray-200 rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 bg-gray-100 rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+
+        {/* Skeleton: Profit Factor */}
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px] animate-pulse">
+          <CardHeader className="pb-1">
+            <div className="h-4 bg-gray-200 rounded w-24"></div>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between pt-0 pb-1">
+            <div className="h-7 bg-gray-200 rounded w-16"></div>
+            <div className="h-9 bg-gray-100 rounded w-24"></div>
+          </CardContent>
+        </Card>
+
+        {/* Skeleton: Win Rate */}
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px] animate-pulse">
+          <CardHeader className="pb-1">
+            <div className="h-4 bg-gray-200 rounded w-24"></div>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between pt-0 pb-1">
+            <div className="h-7 bg-gray-200 rounded w-20"></div>
+            <div className="h-9 bg-gray-100 rounded w-24"></div>
+          </CardContent>
+        </Card>
+
+        {/* Skeleton: Avg Win/Loss */}
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px] animate-pulse">
+          <CardHeader className="pb-1">
+            <div className="h-4 bg-gray-200 rounded w-28"></div>
+          </CardHeader>
+          <CardContent className="pt-0 pb-1">
+            <div className="flex items-center gap-2">
+              <div className="h-7 bg-gray-200 rounded w-16"></div>
+              <div className="h-9 bg-gray-100 rounded w-28"></div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
