@@ -242,6 +242,56 @@ export class AnalyticsService {
   }
 
   /**
+   * Get stocks analytics - returns comprehensive analytics for all stock trades
+   * @param timeRange - Optional time range filter
+   * @returns Stock analytics including P&L, profit factor, win rate, etc.
+   */
+  async getStocksAnalytics(timeRange?: string) {
+    const params = timeRange ? `?time_range=${timeRange}` : '';
+    const url = getFullUrl(apiConfig.endpoints.stocks.analytics.summary + params);
+    const token = await this.getAuthToken();
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch stocks analytics: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get options analytics - returns comprehensive analytics for all option trades
+   * @param timeRange - Optional time range filter
+   * @returns Options analytics including P&L, profit factor, win rate, etc.
+   */
+  async getOptionsAnalytics(timeRange?: string) {
+    const params = timeRange ? `?time_range=${timeRange}` : '';
+    const url = getFullUrl(apiConfig.endpoints.options.analytics.summary + params);
+    const token = await this.getAuthToken();
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch options analytics: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * Get authentication token from Supabase session
    */
   private async getAuthToken(): Promise<string | null> {
@@ -316,3 +366,8 @@ export const getIndividualTradeAnalytics = (
 export const getSymbolAnalytics = (symbol: string, timeRange?: string) =>
   analyticsService.getSymbolAnalytics(symbol, timeRange);
 
+export const getStocksAnalytics = (timeRange?: string) =>
+  analyticsService.getStocksAnalytics(timeRange);
+
+export const getOptionsAnalytics = (timeRange?: string) =>
+  analyticsService.getOptionsAnalytics(timeRange);

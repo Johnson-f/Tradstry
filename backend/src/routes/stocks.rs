@@ -287,26 +287,69 @@ pub async fn get_all_stocks(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
-    info!("Fetching stocks with query: {:?}", query);
+    info!("get_all_stocks: Received request with query params: {:?}", query);
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
-    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    // Log: start getting DB connection
+    info!("get_all_stocks: Attempting to get user DB connection");
+    let conn = match get_user_db_connection(&req, &turso_client, &supabase_config).await {
+        Ok(conn) => {
+            info!("get_all_stocks: Acquired user DB connection successfully.");
+            conn
+        },
+        Err(e) => {
+            error!("get_all_stocks: Failed to get DB connection: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Log: try get user id
+    info!("get_all_stocks: Attempting to authenticate user.");
+    let user_id = match get_authenticated_user(&req, &supabase_config).await {
+        Ok(user) => {
+            info!("get_all_stocks: Authenticated user with id: {}", user.sub);
+            user.sub
+        }, 
+        Err(e) => {
+            error!("get_all_stocks: User authentication failed: {}", e);
+            return Err(e);
+        }
+    };
+
     let stock_query = query.into_inner();
+    info!("get_all_stocks: Stock query to be used: {:?}", stock_query);
 
     // Generate cache key based on query parameters
     let query_hash = format!("{:?}", stock_query);
     let cache_key = format!("db:{}:stocks:list:{}", user_id, query_hash);
-    
+    info!("get_all_stocks: Using cache key: {}", cache_key);
+
+    // Try using cache
+    info!("get_all_stocks: Checking cache for stocks list");
     match cache_service.get_or_fetch(&cache_key, 1800, || async {
-        info!("Cache miss for stocks list, fetching from database");
-        Stock::find_all(&conn, stock_query).await.map_err(|e| anyhow::anyhow!("{}", e))
+        info!(
+            "get_all_stocks: Cache miss for stocks list; fetching from DB for user {} with query {:?}",
+            user_id, stock_query
+        );
+        match Stock::find_all(&conn, stock_query).await {
+            Ok(stocks) => {
+                info!(
+                    "get_all_stocks: Successfully fetched {} stocks from DB",
+                    stocks.len()
+                );
+                Ok(stocks)
+            },
+            Err(e) => {
+                error!("get_all_stocks: DB error when fetching stocks: {}", e);
+                Err(anyhow::anyhow!("{}", e))
+            }
+        }
     }).await {
         Ok(stocks) => {
-            info!("Found {} stocks (cached)", stocks.len());
+            info!("get_all_stocks: Returning {} stocks to client (may be cached)", stocks.len());
             Ok(HttpResponse::Ok().json(ApiResponse::success(stocks)))
         }
         Err(e) => {
-            error!("Failed to fetch stocks: {}", e);
+            error!("get_all_stocks: Failed to fetch stocks: {}", e);
             Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to fetch stocks")
             ))
