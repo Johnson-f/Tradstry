@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 use libsql::{Connection, params};
 
 /// Time range enum for calculations
@@ -167,6 +167,30 @@ impl std::str::FromStr for OrderType {
     }
 }
 
+// Helper function to deserialize DateTime from various formats
+fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(serde::de::Error::custom)
+}
+
+fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt {
+        Some(s) => DateTime::parse_from_rfc3339(&s)
+            .map(|dt| Some(dt.with_timezone(&Utc)))
+            .map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
+}
+
 /// Stock trade model for user's isolated database
 /// No user_id needed since each user has their own database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,13 +226,16 @@ pub struct CreateStockRequest {
     pub order_type: OrderType,
     pub entry_price: f64,
     pub stop_loss: f64,
+    #[serde(default)]  // Allow missing field, defaults to 0.0
     pub commissions: f64,
     pub number_shares: f64,
     pub take_profit: Option<f64>,
     pub initial_target: Option<f64>,
     pub profit_target: Option<f64>,
     pub trade_ratings: Option<i32>,
+    #[serde(deserialize_with = "deserialize_datetime")]
     pub entry_date: DateTime<Utc>,
+    #[serde(default)]  // Allow missing field, defaults to false
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
 }
@@ -229,7 +256,9 @@ pub struct UpdateStockRequest {
     pub initial_target: Option<f64>,
     pub profit_target: Option<f64>,
     pub trade_ratings: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime")]
     pub entry_date: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime")]
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
@@ -249,61 +278,74 @@ pub struct StockQuery {
     pub offset: Option<i64>,
 }
 
+/// Note to AI model: When creating an Helper function to handle different types of values from the database
+// you need to get the value type first using libsql's value API and then use the appropriate method to get the value.
 /// Stock operations implementation using LibSQL
 impl Stock {
     fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        // Try as f64
-        if let Ok(v) = row.get::<f64>(i) {
-            return Ok(v);
+        match row.get_value(i) {
+            Ok(libsql::Value::Null) => Ok(0.0),
+            Ok(libsql::Value::Integer(n)) => Ok(n as f64),
+            Ok(libsql::Value::Real(r)) => Ok(r),
+            Ok(libsql::Value::Text(s)) => {
+                let result = s.parse::<f64>().unwrap_or(0.0);
+                Ok(result)
+            },
+            Ok(libsql::Value::Blob(_b)) => Ok(0.0),
+            Err(_e) => Ok(0.0),
         }
-        // Try as Option<f64>
-        if let Ok(v) = row.get::<Option<f64>>(i) {
-            return Ok(v.unwrap_or(0.0));
-        }
-        // Try as i64
-        if let Ok(v) = row.get::<i64>(i) {
-            return Ok(v as f64);
-        }
-        // Try as Option<i64>
-        if let Ok(v) = row.get::<Option<i64>>(i) {
-            return Ok(v.unwrap_or(0) as f64);
-        }
-        // Try as String
-        if let Ok(s) = row.get::<String>(i)
-            && let Ok(parsed) = s.parse::<f64>()
-        {
-            return Ok(parsed);
-        }
-        // Fallback to 0.0
-        Ok(0.0)
     }
-
+    
     fn get_opt_f64(row: &libsql::Row, idx: usize) -> Result<Option<f64>, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
-        // Try Option<f64>
-        if let Ok(v) = row.get::<Option<f64>>(i) {
-            return Ok(v);
+        match row.get_value(i) {
+            Ok(libsql::Value::Null) => Ok(None),
+            Ok(libsql::Value::Integer(n)) => Ok(Some(n as f64)),
+            Ok(libsql::Value::Real(r)) => Ok(Some(r)),
+            Ok(libsql::Value::Text(s)) => {
+                let result = s.parse::<f64>().ok();
+                Ok(result)
+            },
+            Ok(libsql::Value::Blob(_b)) => Ok(None),
+            Err(_e) => Ok(None),
         }
-        // Try f64
-        if let Ok(v) = row.get::<f64>(i) {
-            return Ok(Some(v));
+    }
+
+    fn get_bool(row: &libsql::Row, idx: usize) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        // Try i64 (SQLite INTEGER for boolean)
+        if let Ok(v) = row.get::<i64>(i) {
+            return Ok(v != 0);
         }
         // Try Option<i64>
-        if let Ok(v) = row.get::<Option<i64>>(i) {
-            return Ok(v.map(|x| x as f64));
+        if let Ok(Some(v)) = row.get::<Option<i64>>(i) {
+            return Ok(v != 0);
         }
-        // Try i64
-        if let Ok(v) = row.get::<i64>(i) {
-            return Ok(Some(v as f64));
+        // Try i32
+        if let Ok(v) = row.get::<i32>(i) {
+            return Ok(v != 0);
         }
-        // Try String
-        if let Ok(s) = row.get::<String>(i)
-            && let Ok(parsed) = s.parse::<f64>()
-        {
-            return Ok(Some(parsed));
+        // Try Option<i32>
+        if let Ok(Some(v)) = row.get::<Option<i32>>(i) {
+            return Ok(v != 0);
         }
-        Ok(None)
+        // Try String (in case stored as "true"/"false" or "1"/"0")
+        if let Ok(s) = row.get::<String>(i) {
+            let s_lower = s.to_lowercase();
+            if s_lower == "true" || s_lower == "1" {
+                return Ok(true);
+            }
+            if s_lower == "false" || s_lower == "0" {
+                return Ok(false);
+            }
+            // Try parsing as number
+            if let Ok(num) = s.parse::<i64>() {
+                return Ok(num != 0);
+            }
+        }
+        // Fallback to false
+        Ok(false)
     }
     /// Create a new stock trade in the user's database
     pub async fn create(
@@ -1211,33 +1253,38 @@ impl Stock {
         let order_type = order_type_str.parse::<OrderType>()
             .map_err(|e| format!("Invalid order type: {}", e))?;
 
-        // Parse datetime strings
+        // Parse datetime strings (support RFC3339 and SQLite's CURRENT_TIMESTAMP format)
         let entry_date_str: String = row.get(13)?;
         let exit_date_str: Option<String> = row.get(14)?;
-        let reviewed_val: i64 = row.get(16)?;
-        let mistakes_str: Option<String> = row.get(17)?;
-        let created_at_str: String = row.get(18)?;
-        let updated_at_str: String = row.get(19)?;
-        
-        let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
-            .map_err(|e| format!("Failed to parse entry_date: {}", e))?
-            .with_timezone(&Utc);
-            
+        let reviewed = Self::get_bool(row, 15)?;
+        let mistakes_str: Option<String> = row.get(16)?;
+        let created_at_str: String = row.get(17)?;
+        let updated_at_str: String = row.get(18)?;
+
+        fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
+            if let Ok(dt) = DateTime::parse_from_rfc3339(s) { return Ok(dt.with_timezone(&Utc)); }
+            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+            }
+            if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                let ndt = date.and_hms_opt(0, 0, 0).ok_or("invalid date")?;
+                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+            }
+            Err(format!("Unsupported datetime format: {}", s).into())
+        }
+
+        let entry_date = parse_dt_any(&entry_date_str)
+            .map_err(|e| format!("Failed to parse entry_date: {}", e))?;
+
         let exit_date = if let Some(exit_str) = exit_date_str {
-            Some(DateTime::parse_from_rfc3339(&exit_str)
-                .map_err(|e| format!("Failed to parse exit_date: {}", e))?
-                .with_timezone(&Utc))
-        } else {
-            None
-        };
-        
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| format!("Failed to parse created_at: {}", e))?
-            .with_timezone(&Utc);
-            
-        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| format!("Failed to parse updated_at: {}", e))?
-            .with_timezone(&Utc);
+            Some(parse_dt_any(&exit_str)
+                .map_err(|e| format!("Failed to parse exit_date: {}", e))?)
+        } else { None };
+
+        let created_at = parse_dt_any(&created_at_str)
+            .map_err(|e| format!("Failed to parse created_at: {}", e))?;
+        let updated_at = parse_dt_any(&updated_at_str)
+            .map_err(|e| format!("Failed to parse updated_at: {}", e))?;
         
         Ok(Stock {
             id: row.get(0)?,
@@ -1255,7 +1302,7 @@ impl Stock {
             trade_ratings: row.get::<Option<i32>>(12)?,
             entry_date,
             exit_date,
-            reviewed: reviewed_val != 0,
+            reviewed,
             mistakes: mistakes_str,
             created_at,
             updated_at,
