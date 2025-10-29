@@ -449,8 +449,13 @@ mod tests {
             commissions: 5.0,
             number_shares: 100.0,
             take_profit: Some(170.0),
+            initial_target: None,
+            profit_target: None,
+            trade_ratings: None,
             entry_date: Utc::now(),
             exit_date: Some(Utc::now()),
+            reviewed: false,
+            mistakes: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

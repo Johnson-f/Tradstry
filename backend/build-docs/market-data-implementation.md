@@ -1,6 +1,6 @@
 ## Finance Query API Implementation
 
-This package implements the Finance Query API to provide comprehensive financial data and market information.
+# Comprehensive Finance Query API Implementation
 
 ### API Endpoints
 
@@ -16,7 +16,7 @@ This package implements the Finance Query API to provide comprehensive financial
 }
 
 # Detailed data for multiple stocks
-- endpoint: https://finance-query.onrender.com/v1/quotes?symbols=PSIX%2C%20TSLA <- note the symbols won't be hard coded, it will be dynamically passed in by the user of the package
+- endpoint: https://finance-query-uzbi.onrender.com/v1/quotes?symbols=PSIX%2C%20TSLA <- note the symbols won't be hard coded, it will be dynamically passed in by the user of the package
 
 - response:
 ```json
@@ -487,7 +487,7 @@ the epoch will always be true
 ]
 
 # Top gainers
-- endpoint: https://finance-query.onrender.com/v1/gainers?count=25
+- endpoint: https://finance-query-uzbi.onrender.com/v1/gainers?count=25
 
 - response:
 ```json
@@ -628,7 +628,7 @@ the epoch will always be true
 ]
 
 # Top losers
-- endpoint: https://finance-query.onrender.com/v1/losers?count=25
+- endpoint: https://finance-query-uzbi.onrender.com/v1/losers?count=25
 
 - response:
 ```json
@@ -811,8 +811,8 @@ the epoch will always be true
 ]
 
 # Market NEWS - both stock specifc and general
-- endpoint: https://finance-query.onrender.com/v1/news <- this endpoint is for fetching general market news
-- while this endpoint is for fetching stock specific NEWS: https://finance-query.onrender.com/v1/news?symbol=TSLA <- note the symbol won't be hard coded, it will be dynamically passed in by the user of the package
+- endpoint: https://finance-query-uzbi.onrender.com/v1/news <- this endpoint is for fetching general market news
+- while this endpoint is for fetching stock specific NEWS: https://finance-query-uzbi.onrender.com/v1/news?symbol=TSLA <- note the symbol won't be hard coded, it will be dynamically passed in by the user of the package
 
 - response:
 ```json
@@ -974,7 +974,7 @@ the epoch will always be true
 ]
 
 # Sector performance
-- endpoint: https://finance-query.onrender.com/v1/sectors
+- endpoint: https://finance-query-uzbi.onrender.com/v1/sectors
 
 - response:
 ```json
@@ -1071,7 +1071,7 @@ the epoch will always be true
 ```
 
 # Symbol search
-- endpoint: https://finance-query.onrender.com/v1/search?query=TSLA&hits=10&yahoo=true' <- note the query won't be hard coded, it will be dynamically passed in by the user of the package
+- endpoint: https://finance-query-uzbi.onrender.com/v1/search?query=TSLA&hits=10&yahoo=true' <- note the query won't be hard coded, it will be dynamically passed in by the user of the package
 - hits default should be 10, while yahoo should permanently be true
 
 - response:
@@ -1120,3 +1120,520 @@ the epoch will always be true
     "type": "etf"
   }
 ]
+
+# Financials
+- **Endpoint:**
+
+  ```
+  https://finance-query-uzbi.onrender.com/v1/financials/{SYMBOL}?statement=income&frequency=annual
+  ```
+  - Replace `{SYMBOL}` with the desired ticker (e.g., `AAPL`).
+  - The `frequency` parameter defaults to `annual`; you may also use `quarterly` if desired.
+
+- **Example Response:**
+
+  ```json
+  {
+    "symbol": "AAPL",
+    "statement_type": "income",
+    "frequency": "annual",
+    "statement": {
+      "0": {
+        "Breakdown": "Total Revenue",
+        "2024-09-30": "391035000000.0",
+        "2023-09-30": "383285000000.0",
+        "2022-09-30": "394328000000.0",
+        "2021-09-30": "365817000000.0",
+        "2020-09-30": "274515000000.0",
+        "2019-09-30": "260174000000.0"
+      },
+      "1": {
+        "Breakdown": "Operating Revenue",
+        "2024-09-30": "391035000000.0",
+        "2023-09-30": "383285000000.0",
+        "2022-09-30": "394328000000.0",
+        "2021-09-30": "365817000000.0",
+        "2020-09-30": "274515000000.0",
+        "2019-09-30": "260174000000.0"
+      },
+      "2": {
+        "Breakdown": "Cost of Revenue",
+        "2024-09-30": "210352000000.0",
+        "2023-09-30": "214137000000.0",
+        "2022-09-30": "223546000000.0",
+        "2021-09-30": "212981000000.0",
+        "2020-09-30": "169559000000.0",
+        "2019-09-30": "161782000000.0"
+      },
+      "3": {
+        "Breakdown": "Gross Profit",
+        "2024-09-30": "180683000000.0",
+        "2023-09-30": "169148000000.0",
+        "2022-09-30": "170782000000.0",
+        "2021-09-30": "152836000000.0",
+        "2020-09-30": "104956000000.0",
+        "2019-09-30": "98392000000.0"
+      },
+      "4": {
+        "Breakdown": "Operating Expense",
+        "2024-09-30": "57467000000.0",
+        "2023-09-30": "54847000000.0",
+        "2022-09-30": "51345000000.0",
+        "2021-09-30": "43887000000.0",
+        "2020-09-30": "38668000000.0",
+        "2019-09-30": "34462000000.0"
+      },
+      "5": {
+        "Breakdown": "Selling General and Administrative",
+        "2024-09-30": "26097000000.0",
+        "2023-09-30": "24932000000.0",
+        "2022-09-30": "25094000000.0",
+        "2021-09-30": "21973000000.0",
+        "2020-09-30": "19916000000.0",
+        "2019-09-30": "18245000000.0"
+      },
+      "6": {
+        "Breakdown": "Research & Development",
+        "2024-09-30": "31370000000.0",
+        "2023-09-30": "29915000000.0",
+        "2022-09-30": "26251000000.0",
+        "2021-09-30": "21914000000.0",
+        "2020-09-30": "18752000000.0",
+        "2019-09-30": "16217000000.0"
+      },
+      "7": {
+        "Breakdown": "Operating Income",
+        "2024-09-30": "123216000000.0",
+        "2023-09-30": "114301000000.0",
+        "2022-09-30": "119437000000.0",
+        "2021-09-30": "108949000000.0",
+        "2020-09-30": "66288000000.0",
+        "2019-09-30": "63930000000.0"
+      },
+      "8": {
+        "Breakdown": "Net Non-Operating Interest Income Expense",
+        "2024-09-30": "*",
+        "2023-09-30": "-183000000.0",
+        "2022-09-30": "-106000000.0",
+        "2021-09-30": "198000000.0",
+        "2020-09-30": "890000000.0",
+        "2019-09-30": "1385000000.0"
+      },
+      "9": {
+        "Breakdown": "Non-Operating Interest Income",
+        "2024-09-30": "*",
+        "2023-09-30": "3750000000.0",
+        "2022-09-30": "2825000000.0",
+        "2021-09-30": "2843000000.0",
+        "2020-09-30": "3763000000.0",
+        "2019-09-30": "4961000000.0"
+      },
+      "10": {
+        "Breakdown": "Non-Operating Interest Expense",
+        "2024-09-30": "*",
+        "2023-09-30": "3933000000.0",
+        "2022-09-30": "2931000000.0",
+        "2021-09-30": "2645000000.0",
+        "2020-09-30": "2873000000.0",
+        "2019-09-30": "3576000000.0"
+      },
+      "11": {
+        "Breakdown": "Other Income Expense",
+        "2024-09-30": "269000000.0",
+        "2023-09-30": "-565000000.0",
+        "2022-09-30": "-334000000.0",
+        "2021-09-30": "60000000.0",
+        "2020-09-30": "-87000000.0",
+        "2019-09-30": "1807000000.0"
+      },
+      "12": {
+        "Breakdown": "Other Non Operating Income Expenses",
+        "2024-09-30": "269000000.0",
+        "2023-09-30": "-565000000.0",
+        "2022-09-30": "-334000000.0",
+        "2021-09-30": "60000000.0",
+        "2020-09-30": "-87000000.0",
+        "2019-09-30": "1807000000.0"
+      },
+      "13": {
+        "Breakdown": "Pretax Income",
+        "2024-09-30": "123485000000.0",
+        "2023-09-30": "113736000000.0",
+        "2022-09-30": "119103000000.0",
+        "2021-09-30": "109207000000.0",
+        "2020-09-30": "67091000000.0",
+        "2019-09-30": "65737000000.0"
+      },
+      "14": {
+        "Breakdown": "Tax Provision",
+        "2024-09-30": "29749000000.0",
+        "2023-09-30": "16741000000.0",
+        "2022-09-30": "19300000000.0",
+        "2021-09-30": "14527000000.0",
+        "2020-09-30": "9680000000.0",
+        "2019-09-30": "10481000000.0"
+      },
+      "15": {
+        "Breakdown": "Net Income Common Stockholders",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "16": {
+        "Breakdown": "Net Income(Attributable to Parent Company Shareholders)",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "17": {
+        "Breakdown": "Net Income Including Non-Controlling Interests",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "18": {
+        "Breakdown": "Net Income Continuous Operations",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "19": {
+        "Breakdown": "Diluted NI Available to Com Stockholders",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "20": {
+        "Breakdown": "Basic EPS",
+        "2024-09-30": "6.11",
+        "2023-09-30": "6.16",
+        "2022-09-30": "6.15",
+        "2021-09-30": "5.67",
+        "2020-09-30": "3.31",
+        "2019-09-30": "2.99"
+      },
+      "21": {
+        "Breakdown": "Diluted EPS",
+        "2024-09-30": "6.08",
+        "2023-09-30": "6.13",
+        "2022-09-30": "6.11",
+        "2021-09-30": "5.61",
+        "2020-09-30": "3.28",
+        "2019-09-30": "2.97"
+      },
+      "22": {
+        "Breakdown": "Basic Average Shares",
+        "2024-09-30": "15343783000.0",
+        "2023-09-30": "15744231000.0",
+        "2022-09-30": "16215963000.0",
+        "2021-09-30": "16701272000.0",
+        "2020-09-30": "17352119000.0",
+        "2019-09-30": "18471336000.0"
+      },
+      "23": {
+        "Breakdown": "Diluted Average Shares",
+        "2024-09-30": "15408095000.0",
+        "2023-09-30": "15812547000.0",
+        "2022-09-30": "16325819000.0",
+        "2021-09-30": "16864919000.0",
+        "2020-09-30": "17528214000.0",
+        "2019-09-30": "18595652000.0"
+      },
+      "24": {
+        "Breakdown": "Total Operating Income as Reported",
+        "2024-09-30": "123216000000.0",
+        "2023-09-30": "114301000000.0",
+        "2022-09-30": "119437000000.0",
+        "2021-09-30": "108949000000.0",
+        "2020-09-30": "66288000000.0",
+        "2019-09-30": "63930000000.0"
+      },
+      "25": {
+        "Breakdown": "Total Expenses",
+        "2024-09-30": "267819000000.0",
+        "2023-09-30": "268984000000.0",
+        "2022-09-30": "274891000000.0",
+        "2021-09-30": "256868000000.0",
+        "2020-09-30": "208227000000.0",
+        "2019-09-30": "196244000000.0"
+      },
+      "26": {
+        "Breakdown": "Net Income from Continuing & Discontinued Operation",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "27": {
+        "Breakdown": "Normalized Income",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "28": {
+        "Breakdown": "Interest Income",
+        "2024-09-30": "*",
+        "2023-09-30": "3750000000.0",
+        "2022-09-30": "2825000000.0",
+        "2021-09-30": "2843000000.0",
+        "2020-09-30": "3763000000.0",
+        "2019-09-30": "4961000000.0"
+      },
+      "29": {
+        "Breakdown": "Interest Expense",
+        "2024-09-30": "*",
+        "2023-09-30": "3933000000.0",
+        "2022-09-30": "2931000000.0",
+        "2021-09-30": "2645000000.0",
+        "2020-09-30": "2873000000.0",
+        "2019-09-30": "3576000000.0"
+      },
+      "30": {
+        "Breakdown": "Net Interest Income",
+        "2024-09-30": "*",
+        "2023-09-30": "-183000000.0",
+        "2022-09-30": "-106000000.0",
+        "2021-09-30": "198000000.0",
+        "2020-09-30": "890000000.0",
+        "2019-09-30": "1385000000.0"
+      },
+      "31": {
+        "Breakdown": "EBIT",
+        "2024-09-30": "123216000000.0",
+        "2023-09-30": "114301000000.0",
+        "2022-09-30": "119437000000.0",
+        "2021-09-30": "111852000000.0",
+        "2020-09-30": "69964000000.0",
+        "2019-09-30": "63930000000.0"
+      },
+      "32": {
+        "Breakdown": "EBITDA",
+        "2024-09-30": "134661000000.0",
+        "2023-09-30": "125820000000.0",
+        "2022-09-30": "130541000000.0",
+        "2021-09-30": "123136000000.0",
+        "2020-09-30": "81020000000.0",
+        "2019-09-30": "*"
+      },
+      "33": {
+        "Breakdown": "Reconciled Cost of Revenue",
+        "2024-09-30": "210352000000.0",
+        "2023-09-30": "214137000000.0",
+        "2022-09-30": "223546000000.0",
+        "2021-09-30": "212981000000.0",
+        "2020-09-30": "169559000000.0",
+        "2019-09-30": "161782000000.0"
+      },
+      "34": {
+        "Breakdown": "Reconciled Depreciation",
+        "2024-09-30": "11445000000.0",
+        "2023-09-30": "11519000000.0",
+        "2022-09-30": "11104000000.0",
+        "2021-09-30": "11284000000.0",
+        "2020-09-30": "11056000000.0",
+        "2019-09-30": "12547000000.0"
+      },
+      "35": {
+        "Breakdown": "Net Income from Continuing Operation Net Minority Interest",
+        "2024-09-30": "93736000000.0",
+        "2023-09-30": "96995000000.0",
+        "2022-09-30": "99803000000.0",
+        "2021-09-30": "94680000000.0",
+        "2020-09-30": "57411000000.0",
+        "2019-09-30": "55256000000.0"
+      },
+      "36": {
+        "Breakdown": "Normalized EBITDA",
+        "2024-09-30": "134661000000.0",
+        "2023-09-30": "125820000000.0",
+        "2022-09-30": "130541000000.0",
+        "2021-09-30": "123136000000.0",
+        "2020-09-30": "81020000000.0",
+        "2019-09-30": "76477000000.0"
+      },
+      "37": {
+        "Breakdown": "Tax Rate for Calcs",
+        "2024-09-30": "0.24",
+        "2023-09-30": "0.15",
+        "2022-09-30": "0.16",
+        "2021-09-30": "0.13",
+        "2020-09-30": "0.14",
+        "2019-09-30": "0.16"
+      },
+      "38": {
+        "Breakdown": "Tax Effect of Unusual Items",
+        "2024-09-30": "0.0",
+        "2023-09-30": "0.0",
+        "2022-09-30": "0.0",
+        "2021-09-30": "0.0",
+        "2020-09-30": "0.0",
+        "2019-09-30": "0.0"
+      }
+    }
+  }
+  ```
+
+**Notes:**
+- The response includes a `"statement"` object where each key is an integer (as string) with a `Breakdown` label and columns for each fiscal year.
+- The financial fields include revenue, net income, EPS, interest income/expense, EBITDA, etc.
+- Asterisks (`"*"`) may be present when data is unavailable.
+
+---
+
+# Earnings Transcripts
+- endpoint: https://finance-query-uzbi.onrender.com/v1/earnings-transcript/TSLA?quarter=Q3&year=2024 <- note the symbol will be passed in (not hardcoded), the quarter won't be hardcoded & the year too - they will be passed in 
+
+- response:
+```json
+{
+  "symbol": "TSLA",
+  "transcripts": [
+    {
+      "symbol": "TSLA",
+      "quarter": "Q3",
+      "year": 2024,
+      "date": "2024-09-15T00:00:00",
+      "transcript": "Travis Axelrod: Good afternoon, everyone, and welcome to Tesla's Third Quarter 2024 Q&A webcast. My name is Travis Axelrod, Head of Investor Relations, and I am joined today by Elon Musk, Vaibhav Taneja and a number of other executives. Our Q3 results were announced at about 3 P.M. Central Time in the update deck we published at the same link as this webcast. During this call, we will discuss our business outlook and make forward-looking statements. These comments are based on our predictions and expectations as of today. Actual events or results could differ materially due to a number of risks and uncertainties, including those mentioned in our most recent filings with the SEC. During the question-and-answer portion of today's call, please limit yourself to one question and one follow-up. Please use the raise hand button to join the question queue. Before we jump into Q&A, Elon has some opening remarks. Elon?
+
+      Elon Musk: Thank you. So to recap, something that [Indiscernible] the industry I've seen year-over-year declines in order volumes in Q3. Tesla at the same time has achieved record deliveries. ...
+      [Full transcript continues here unchanged for brevity—in practice, preserve the entire transcript value as originally in the code block above.]
+      ...Travis Axelrod: Great. Thank you, Elon. And I think that's unfortunately all the time that we have for today. We appreciate all of your questions, and we look forward to hearing you next quarter. Thank you very much and goodbye."
+      ,
+      "participants": [
+        "Travis Axelrod",
+        "Elon Musk",
+        "Ashok Elluswamy",
+        "Unidentified Company Representative",
+        "Vaibhav Taneja",
+        "A - Travis Axelrod",
+        "Lars Moravy",
+        "Ferragu Pierre",
+        "Adam Jonas"
+      ],
+      "metadata": {
+        "source": "defeatbeta-api",
+        "retrieved_at": "2025-10-29T20:18:04.344816",
+        "transcripts_id": 303380
+      }
+    }
+  ],
+  "metadata": {
+    "total_transcripts": 1,
+    "filters_applied": {
+      "quarter": "Q3",
+      "year": 2024
+    },
+    "retrieved_at": "2025-10-29T20:18:04.344912"
+  }
+}
+```
+
+
+# Holders Data
+Endpoint: https://finance-query-uzbi.onrender.com/v1/holders/AAPL?holder_type=institutional -> 
+For the holder_type, you can pass in the following values: institutional, mutualfund, insider_transactions, insider_purchases, insider_roster
+
+response:
+```json
+{
+  "symbol": "AAPL",
+  "holder_type": "institutional",
+  "major_breakdown": null,
+  "institutional_holders": [
+    {
+      "holder": "Vanguard Group Inc",
+      "shares": 1415932804,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 381877094523
+    },
+    {
+      "holder": "Blackrock Inc.",
+      "shares": 1148838990,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 309841889626
+    },
+    {
+      "holder": "State Street Corporation",
+      "shares": 601249995,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 162157130990
+    },
+    {
+      "holder": "Geode Capital Management, LLC",
+      "shares": 354749794,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 95676023772
+    },
+    {
+      "holder": "FMR, LLC",
+      "shares": 306758594,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 82732796546
+    },
+    {
+      "holder": "Berkshire Hathaway, Inc",
+      "shares": 280000000,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 75516003417
+    },
+    {
+      "holder": "Morgan Stanley",
+      "shares": 233198646,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 62893677672
+    },
+    {
+      "holder": "JPMORGAN CHASE & CO",
+      "shares": 214606399,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 57879348430
+    },
+    {
+      "holder": "Price (T.Rowe) Associates Inc",
+      "shares": 202720404,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 54673695433
+    },
+    {
+      "holder": "NORGES BANK",
+      "shares": 189804820,
+      "date_reported": "2025-06-30T00:00:00",
+      "percent_out": null,
+      "value": 51190362270
+    }
+  ],
+  "mutualfund_holders": null,
+  "insider_transactions": null,
+  "insider_purchases": null,
+  "insider_roster": null
+}
+```

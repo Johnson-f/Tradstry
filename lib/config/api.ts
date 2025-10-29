@@ -5,7 +5,12 @@ export const apiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
   ws: {
-    url: (token: string) => `${API_BASE_URL.replace('http', 'ws')}/api/ws?token=${encodeURIComponent(token)}`,
+    url: (token: string) => {
+      // Use wss:// for HTTPS (production), ws:// for HTTP (development)
+      const protocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
+      const baseUrl = new URL(API_BASE_URL);
+      return `${protocol}://${baseUrl.host}${apiConfig.apiPrefix}/ws?token=${encodeURIComponent(token)}`;
+    },
   },
   endpoints: {
     // Root - unimportant endpoint 

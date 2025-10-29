@@ -6,3 +6,4 @@ pub mod cache_service;
 
 // AI Services - organized in dedicated module
 pub mod ai_service;
+pub mod market_engine;
