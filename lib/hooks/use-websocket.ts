@@ -59,17 +59,26 @@ export function useWebSocket(shouldConnect: boolean = true): UseWebSocketReturn 
 
       ws.onmessage = (event) => {
         try {
+          console.log('📨 Raw WebSocket message received:', event.data);
           const envelope = JSON.parse(event.data) as WebSocketEnvelope;
           const { event: ev, data } = envelope;
+          console.log('📦 Parsed envelope - event:', ev, 'data:', data);
           // Normalize server event names like "stock_created" -> "stock:created"
+          // Replace all underscores with colons for snake_case to colon format
           const normalized: WebSocketEventType = (typeof ev === 'string'
-            ? (ev as string).replace('_', ':')
+            ? (ev as string).replace(/_/g, ':')
             : ev) as WebSocketEventType;
+          console.log('🔄 Normalized event type:', normalized);
           const set = handlersRef.current.get(normalized);
           if (set) {
+            console.log(`✅ Found ${set.size} handler(s) for event: ${normalized}`);
             set.forEach((handler) => handler(data));
+          } else {
+            console.warn(`⚠️ No handlers registered for event: ${normalized}`);
+            console.log('Available handlers:', Array.from(handlersRef.current.keys()));
           }
-        } catch {
+        } catch (e) {
+          console.error('❌ Error parsing WebSocket message:', e);
           // Non-enveloped message; ignore
         }
       };

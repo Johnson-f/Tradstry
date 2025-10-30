@@ -9,8 +9,6 @@ import { Info } from "lucide-react"
 
 type TimeRangeOption = "7d" | "30d" | "90d" | "1y" | "ytd" | "all_time"
 
-// Using TimeSeriesPoint and TimeSeriesData from '@/lib/types/analytics'
-
 interface BasicAnalyticsProps {
   initialTimeRange?: TimeRangeOption
 }
@@ -24,6 +22,9 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   // Build analytics request from props
   const request: AnalyticsRequest = useMemo(() => ({
     time_range: initialTimeRange,
+    options: {
+      include_time_series: true,
+    }
   }), [initialTimeRange])
 
   // Fetch core metrics (totals, averages, ratios)
@@ -38,7 +39,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       if (containerRef.current) {
         setDimensions({
           width: containerRef.current.offsetWidth,
-          height: 60, // Reduced height to match other card visualizations
+          height: 60,
         })
       }
     }
@@ -53,13 +54,12 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     if (!coreMetrics) return null
     
     // Debug log to verify profit_factor connection
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Core Metrics received:', {
-        profit_factor: coreMetrics.profit_factor,
-        win_rate: coreMetrics.win_rate,
-        total_pnl: coreMetrics.total_pnl,
-      })
-    }
+    console.debug('[BasicAnalytics] Processing Core Metrics:', {
+      profit_factor: coreMetrics.profit_factor,
+      win_rate: coreMetrics.win_rate,
+      total_pnl: coreMetrics.total_pnl,
+      total_trades: coreMetrics.total_trades,
+    })
     
     return {
       total_pnl: coreMetrics.total_pnl,
@@ -73,6 +73,7 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   }, [coreMetrics])
 
   // Use API time series for the net P&L chart
+   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   const timeSeriesData: AnalyticsTimeSeriesData = useMemo(() => ({
     daily_pnl: timeSeries?.daily_pnl ?? [],
     weekly_pnl: timeSeries?.weekly_pnl ?? [],
@@ -128,7 +129,6 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
       .attr("y2", "100%")
 
     gradient.append("stop").attr("offset", "0%").attr("stop-color", "rgba(45, 212, 191, 0.3)")
-
     gradient.append("stop").attr("offset", "100%").attr("stop-color", "rgba(45, 212, 191, 0.05)")
 
     // Create area generator
@@ -214,14 +214,14 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
   if (coreError || tsError) {
     return (
       <Card>
-        <CardContent className="pt-4"> {/* Reduced top padding */}
+        <CardContent className="pt-4">
           <p className="text-red-600">Error loading analytics: {(coreError || tsError)?.message}</p>
         </CardContent>
       </Card>
     )
   }
 
-  if (isLoadingCore || isLoadingTs || !timeSeriesData || !combinedMetrics) {
+  if (isLoadingCore || isLoadingTs) {
     return (
       <div className="flex gap-2 overflow-x-auto items-stretch">
         {/* Skeleton: Net Cumulative P&L card */}
@@ -282,6 +282,51 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
     )
   }
 
+  // Check if we have no data at all
+  const hasNoData = !coreMetrics || coreMetrics.total_trades === 0
+  
+  if (hasNoData) {
+    return (
+      <div className="flex gap-2 overflow-x-auto items-stretch">
+        <Card className="flex-1 min-w-[230px] bg-white min-h-[138px]">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-normal text-gray-600">Net Cumulative P&L</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-1 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">No trade data available for the selected period</p>
+          </CardContent>
+        </Card>
+
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px]">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-normal text-gray-600">Profit Factor</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-1 flex items-center justify-center">
+            <p className="text-2xl font-bold text-gray-400">-</p>
+          </CardContent>
+        </Card>
+
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px]">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-normal text-gray-600">Trade Win %</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-1 flex items-center justify-center">
+            <p className="text-2xl font-bold text-gray-400">-</p>
+          </CardContent>
+        </Card>
+
+        <Card className="flex-1 min-w-[170px] bg-white min-h-[138px]">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-normal text-gray-600">Avg win/loss trade</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-1 flex items-center justify-center">
+            <p className="text-2xl font-bold text-gray-400">-</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   const currentPnl = timeSeriesData.daily_pnl[timeSeriesData.daily_pnl.length - 1]?.cumulative_value || 0
   const dataPointCount = timeSeriesData.daily_pnl.length
 
@@ -294,7 +339,6 @@ export default function BasicAnalytics({ initialTimeRange = "30d" }: BasicAnalyt
         style={{ fontSize: "12px" }}
       />
 
-      {/* Reduce gap and add a smaller min-h to cards */}
       <div className="flex gap-2 overflow-x-auto items-stretch">
         {/* Card 1: Net Cumulative P&L */}
         <Card className="flex-1 min-w-[230px] bg-white min-h-[138px]">

@@ -539,12 +539,19 @@ pub async fn update_stock(
                 }
             });
 
-            // Broadcast real-time update
-            let ws_manager_clone = ws_manager.clone();
+            // Broadcast real-time update (non-blocking, errors are logged but don't affect response)
+            let ws_manager_clone = ws_manager.get_ref().clone();
             let user_id_ws = user_id.clone();
             let stock_ws = stock.clone();
             tokio::spawn(async move {
-                broadcast_stock_update(ws_manager_clone, &user_id_ws, "updated", &stock_ws).await;
+                // Use broadcast_to_user directly since we don't have Data wrapper in spawned task
+                use crate::websocket::{WsMessage, EventType};
+                let envelope = WsMessage::new(
+                    EventType::StockUpdated,
+                    serde_json::to_value(&stock_ws).unwrap_or(serde_json::Value::Null),
+                );
+                let manager = ws_manager_clone.lock().await;
+                manager.broadcast_to_user(&user_id_ws, envelope);
             });
 
             // Re-vectorize the updated stock trade

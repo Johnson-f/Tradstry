@@ -1,20 +1,17 @@
 #!/bin/bash
 
-# Manual/Development Deployment Script for Tradistry
+# ⚠️  DEPRECATED: This script is for backend VPS deployment only (legacy)
 # 
-# This script uses rsync to copy the codebase and builds images on the VPS.
-# This is suitable for manual deployments or quick development iterations.
+# Frontend is now deployed to Vercel:
+#   - Production: Use ./frontend/deploy.sh or automatic via GitHub tags
+#   - See: .github/workflows/cd-release.yml
 #
-# For production deployments, use:
-#   1. Registry-based CD pipeline (automatic on tagged releases)
-#      - Git tag: git tag -a v1.0.0 -m "Release" && git push origin v1.0.0
-#      - See: .github/workflows/cd-release.yml
+# Backend deployment:
+#   - Use ./backend/deploy.sh for manual deployment
+#   - Automatic: Git tag triggers CD pipeline (cd-release.yml)
 #
-#   2. Registry-based manual deployment:
-#      - ./scripts/deploy-registry.sh
-#      - Pulls pre-built images from Docker Hub
-#
-# This script (deploy.sh) is kept for development/debugging scenarios.
+# This script (scripts/deploy.sh) is kept for legacy/development scenarios only.
+# It uses Docker and rsync which is not needed for frontend (Vercel) deployment.
 
 set -e
 

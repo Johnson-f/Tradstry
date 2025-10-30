@@ -179,6 +179,30 @@ export const apiConfig = {
       symbol: "/analytics/symbol",
     },
 
+    // Market data endpoints
+    market: {
+      base: "/market",
+      health: "/market/health",
+      hours: "/market/hours",
+      quotes: "/market/quotes",
+      simpleQuotes: "/market/simple-quotes",
+      similar: "/market/similar",
+      historical: "/market/historical",
+      movers: "/market/movers",
+      gainers: "/market/gainers",
+      losers: "/market/losers",
+      actives: "/market/actives",
+      news: "/market/news",
+      indices: "/market/indices",
+      sectors: "/market/sectors",
+      search: "/market/search",
+      indicators: "/market/indicators",
+      financials: "/market/financials",
+      earningsTranscript: "/market/earnings-transcript",
+      holders: "/market/holders",
+      subscribe: "/market/subscribe",
+      unsubscribe: "/market/unsubscribe",
+    },
 
     // AI endpoints
     ai: {
@@ -213,105 +237,7 @@ export const apiConfig = {
       },
     },
 
-    // Market Data endpoints
-    marketData: {
-      base: "/market-data",
-      earnings: {
-        dailySummary: "/market-data/earnings/daily-summary",
-      },
-      companies: {
-        info: (symbol: string) => `/market-data/company/${symbol}`,
-        bySector: "/market-data/companies/by-sector",
-        search: "/market-data/companies/search",
-      },
-      news: {
-        latest: "/market-data/news/latest",
-        filtered: "/market-data/news/filtered",
-        symbol: (symbol: string) => `/market-data/news/symbol/${symbol}`,
-        symbolLatest: (symbol: string) =>
-          `/market-data/news/symbol/${symbol}/latest`,
-        symbolStats: (symbol: string) =>
-          `/market-data/news/symbol/${symbol}/stats`,
-        symbolSearch: (symbol: string) =>
-          `/market-data/news/symbol/${symbol}/search`,
-      },
-      stocks: {
-        quotes: (symbol: string) => `/market-data/quotes/${symbol}`,
-        quotesWithPrices: (symbol: string) =>
-          `/market-data/quotes/${symbol}/with-prices`,
-        fundamentals: (symbol: string) => `/market-data/fundamentals/${symbol}`,
-        combined: (symbol: string) => `/market-data/stock/${symbol}/combined`,
-      },
-      movements: {
-        significant: "/market-data/movements/significant",
-        topMoversToday: "/market-data/movements/top-movers-today",
-      },
-      overview: (symbol: string) => `/market-data/overview/${symbol}`,
-      symbols: {
-        check: (symbol: string) => `/market-data/symbols/check/${symbol}`,
-        save: "/market-data/symbols/save",
-      },
-      search: "/market-data/search",
-      quotes: "/market-data/quotes",
-      movers: {
-        gainersWithPrices: "/market-data/movers/gainers-with-prices",
-        losersWithPrices: "/market-data/movers/losers-with-prices",
-        mostActiveWithPrices: "/market-data/movers/most-active-with-prices",
-        overviewWithPrices: "/market-data/movers/overview-with-prices",
-      },
-      logos: {
-        batch: "/market-data/logos/batch",
-        earningsCalendarBatch: "/market-data/logos/earnings-calendar-batch",
-      },
-      historical: {
-        base: (symbol: string) => `/market-data/historical/${symbol}`,
-        summary: (symbol: string) =>
-          `/market-data/historical/${symbol}/summary`,
-        latest: (symbol: string) => `/market-data/historical/${symbol}/latest`,
-        range: (symbol: string) => `/market-data/historical/${symbol}/range`,
-        overview: (symbol: string) =>
-          `/market-data/historical/${symbol}/overview`,
-      },
-      health: "/market-data/health",
-      watchlists: {
-        withPrices: "/market-data/watchlists/with-prices",
-        byIdWithPrices: (id: number) =>
-          `/market-data/watchlists/${id}/with-prices`,
-        itemsWithPrices: (id: number) =>
-          `/market-data/watchlists/${id}/items/with-prices`,
-        base: "/market-data/watchlists",
-        addItem: "/market-data/watchlists/items",
-        deleteItem: (itemId: number) =>
-          `/market-data/watchlists/items/${itemId}`,
-        deleteBySymbol: (watchlistId: number, symbol: string) =>
-          `/market-data/watchlists/${watchlistId}/items/${symbol}`,
-        clear: (id: number) => `/market-data/watchlists/${id}/clear`,
-      },
-      peers: {
-        withPrices: (symbol: string) =>
-          `/market-data/peers/${symbol}/with-prices`,
-        topPerformersWithPrices: (symbol: string) =>
-          `/market-data/peers/${symbol}/top-performing/with-prices`,
-      },
-      cache: {
-        symbol: (symbol: string) => `/market-data/cache/symbol/${symbol}`,
-        majorIndices: "/market-data/cache/major-indices",
-        historicalData: "/market-data/cache/historical-data",
-        singleSymbol: "/market-data/cache/single-symbol",
-        historicalSummary: (symbol: string) =>
-          `/market-data/cache/${symbol}/historical-summary`,
-      },
-      financials: {
-        keyStats: (symbol: string) =>
-          `/market-data/financials/key-stats/${symbol}`,
-        incomeStatement: (symbol: string) =>
-          `/market-data/financials/income-statement/${symbol}`,
-        balanceSheet: (symbol: string) =>
-          `/market-data/financials/balance-sheet/${symbol}`,
-        cashFlow: (symbol: string) =>
-          `/market-data/financials/cash-flow/${symbol}`,
-      },
-    },
+   
   },
   timeout: 30000, // 5 minutes
   retries: 3,

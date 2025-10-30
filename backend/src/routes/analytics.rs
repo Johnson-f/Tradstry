@@ -118,11 +118,22 @@ pub async fn get_core_analytics(
 
     let request = payload.as_deref();
     let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
+    log::info!("Calculating core metrics for time range: {:?}", time_range);
     let analytics_service = AnalyticsService::new();
 
     match analytics_service.analytics_engine.calculate_core_metrics(&conn, &time_range).await {
-        Ok(metrics) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(metrics))),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+        Ok(metrics) => {
+            log::info!("Core metrics calculated - Total trades: {}, Winning: {}, Losing: {}, Net P&L: ${:.2}", 
+                      metrics.total_trades, metrics.winning_trades, metrics.losing_trades, metrics.net_profit_loss);
+            if metrics.total_trades == 0 {
+                log::warn!("⚠️ Core metrics returned 0 trades. This usually means no closed trades match the time range filter (requires exit_price IS NOT NULL AND exit_date IS NOT NULL)");
+            }
+            Ok(HttpResponse::Ok().json(AnalyticsResponse::success(metrics)))
+        },
+        Err(e) => {
+            log::error!("Failed to calculate core metrics: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string())))
+        },
     }
 }
 
@@ -255,9 +266,17 @@ pub async fn get_time_series_analytics(
     log::info!("Starting time series data calculation");
     match analytics_service.analytics_engine.calculate_time_series_data(&conn, &time_range, &options).await {
         Ok(data) => {
-            log::info!("Time series data calculated successfully, data points: {}", 
-                      serde_json::to_string(&data).map(|s| s.len()).unwrap_or(0));
-            log::debug!("Response data: {:?}", data);
+            let daily_pnl_count = data.daily_pnl.len();
+            let weekly_pnl_count = data.weekly_pnl.len();
+            let monthly_pnl_count = data.monthly_pnl.len();
+            log::info!("Time series data calculated successfully - Daily PnL: {} points, Weekly: {} points, Monthly: {} points", 
+                      daily_pnl_count, weekly_pnl_count, monthly_pnl_count);
+            log::info!("Total trades in time series: {}", data.total_trades);
+            if daily_pnl_count == 0 {
+                log::warn!("⚠️ Time series returned empty daily_pnl array. This usually means no closed trades match the time range filter.");
+            }
+            log::debug!("Response data sample (first 3 daily points): {:?}", 
+                       data.daily_pnl.iter().take(3).collect::<Vec<_>>());
             Ok(HttpResponse::Ok().json(AnalyticsResponse::success(data)))
         }
         Err(e) => {
