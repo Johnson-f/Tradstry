@@ -4,16 +4,24 @@ use actix_web::{
 };
 use actix_ws::{handle, CloseCode, Message};
 use futures_util::StreamExt;
-use log::{error, info};
+use log::{error, info, warn};
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::manager::ConnectionManager;
-// no messages are needed directly here
 use crate::turso::validate_jwt_token_from_query;
+use crate::service::market_engine::ws_proxy::MarketWsProxy;
+
+/// Subscribe/unsubscribe message from client
+#[derive(Debug, Deserialize)]
+struct SubscribeMessage {
+    #[serde(rename = "type")]
+    message_type: String,
+    symbols: Vec<String>,
+}
 
 /// WebSocket connection info
-#[allow(dead_code)]
 pub struct WsConnection {
     user_id: String,
     manager: Arc<Mutex<ConnectionManager>>,
@@ -36,6 +44,7 @@ pub async fn ws_handler(
     req: HttpRequest,
     stream: Payload,
     manager: Data<Arc<Mutex<ConnectionManager>>>,
+    market_proxy: Data<Arc<MarketWsProxy>>,
 ) -> Result<HttpResponse> {
     // Extract and validate JWT token from query parameters
     let token = req
@@ -62,11 +71,31 @@ pub async fn ws_handler(
 
     // Handle WebSocket connection using actix-ws
     let manager = manager.as_ref().clone();
-    let (res, mut session, mut msg_stream) = handle(&req, stream)?;
+    let market_proxy = market_proxy.as_ref().clone();
+    let (res, session, mut msg_stream) = handle(&req, stream)?;
+
+    // Create a channel for sending messages to this client
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+    // Register this connection with the manager
+    {
+        let manager = manager.lock().await;
+        manager.register(user_id.clone(), tx.clone());
+    }
 
     // Spawn handler for this connection
     actix_web::rt::spawn(async move {
-        let _conn = WsConnection::new(user_id.clone(), manager.clone());
+        // Spawn task to send messages from manager to client
+        let user_id_send = user_id.clone();
+        let mut session_send = session;
+        let send_task = tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                if let Err(e) = session_send.text(msg).await {
+                    error!("Failed to send message to client {}: {}", user_id_send, e);
+                    break;
+                }
+            }
+        });
 
         // Handle incoming messages
         while let Some(msg_result) = msg_stream.next().await {
@@ -74,12 +103,35 @@ pub async fn ws_handler(
                 Ok(msg) => match msg {
                     Message::Text(text) => {
                         info!("Received text message from {}: {}", user_id, text);
-                        // Echo back for now
-                        let _ = session.text(text).await;
+                        
+                        // Parse subscribe/unsubscribe messages
+                        match serde_json::from_str::<SubscribeMessage>(&text) {
+                            Ok(sub_msg) => {
+                                match sub_msg.message_type.as_str() {
+                                    "subscribe" => {
+                                        info!("User {} subscribing to symbols: {:?}", user_id, sub_msg.symbols);
+                                        if let Err(e) = market_proxy.subscribe(&user_id, &sub_msg.symbols).await {
+                                            error!("Failed to subscribe user {}: {}", user_id, e);
+                                        }
+                                    }
+                                    "unsubscribe" => {
+                                        info!("User {} unsubscribing from symbols: {:?}", user_id, sub_msg.symbols);
+                                        if let Err(e) = market_proxy.unsubscribe(&user_id, &sub_msg.symbols).await {
+                                            error!("Failed to unsubscribe user {}: {}", user_id, e);
+                                        }
+                                    }
+                                    _ => {
+                                        warn!("Unknown message type from {}: {}", user_id, sub_msg.message_type);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to parse message from {}: {} - {}", user_id, text, e);
+                            }
+                        }
                     }
-                    Message::Binary(bin) => {
+                    Message::Binary(_bin) => {
                         info!("Received binary message from {}", user_id);
-                        let _ = session.binary(bin).await;
                     }
                     Message::Close(reason) => {
                         info!("WebSocket connection closing: {:?}", reason);
@@ -89,18 +141,27 @@ pub async fn ws_handler(
                 },
                 Err(e) => {
                     error!("WebSocket error for {}: {:?}", user_id, e);
-                    let _ = session
-                        .close(Some(actix_ws::CloseReason {
-                            code: CloseCode::Error,
-                            description: Some("Internal error".into()),
-                        }))
-                        .await;
                     break;
                 }
             }
         }
 
-        // Unregister on disconnect
+        // Unsubscribe from all symbols on disconnect
+        let symbols = market_proxy.get_user_subscriptions(&user_id);
+        if !symbols.is_empty() {
+            if let Err(e) = market_proxy.unsubscribe(&user_id, &symbols).await {
+                error!("Failed to unsubscribe user {} on disconnect: {}", user_id, e);
+            }
+        }
+
+        // Unregister connection
+        let manager_unreg = manager.lock().await;
+        manager_unreg.unregister(&user_id, &tx);
+        drop(manager_unreg);
+
+        // Cancel send task
+        send_task.abort();
+
         info!("WebSocket connection unregistered for user: {}", user_id);
     });
 

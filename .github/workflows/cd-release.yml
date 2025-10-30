@@ -53,8 +53,53 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Deploy to VPS
-  deploy:
+  # Deploy frontend to Vercel
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Vercel CLI
+        run: bunx vercel@latest --version
+
+      - name: Pull Vercel Environment Information
+        run: bunx vercel@latest pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build Project
+        run: bun run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_USE_REPLICACHE_JOURNAL: ${{ secrets.NEXT_PUBLIC_USE_REPLICACHE_JOURNAL }}
+          NEXT_PUBLIC_USE_REPLICACHE_NOTES: ${{ secrets.NEXT_PUBLIC_USE_REPLICACHE_NOTES }}
+          NEXT_PUBLIC_USE_REPLICACHE_PLAYBOOK: ${{ secrets.NEXT_PUBLIC_USE_REPLICACHE_PLAYBOOK }}
+
+      - name: Deploy Project to Vercel
+        run: bunx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  # Deploy backend to VPS
+  deploy-backend:
     name: Deploy Backend to VPS
     needs: [build-and-push-backend]
     runs-on: ubuntu-latest
@@ -84,25 +129,19 @@ jobs:
             cd /opt/tradstry
             
             echo "📥 Pulling latest backend image..."
-            docker pull johnsonf/tradstry-backend:latest
+            docker compose pull backend || docker pull johnsonf/tradstry-backend:latest
             
-            echo "🛑 Stopping existing backend..."
-            docker compose -f docker-compose.backend.yaml down || true
-            
-            echo "▶️ Starting backend service..."
-            docker compose -f docker-compose.backend.yaml up -d
+            echo "🔄 Restarting backend service..."
+            docker compose up -d backend || docker compose -f docker-compose.backend.yaml up -d
             
             echo "⏳ Waiting for backend to be healthy..."
-            sleep 60
+            sleep 5
             
             echo "🏥 Checking service status..."
-            docker compose -f docker-compose.backend.yaml ps
+            docker compose ps backend || docker compose -f docker-compose.backend.yaml ps
             
             echo "📋 Recent logs:"
-            docker compose -f docker-compose.backend.yaml logs --tail=20
-            
-            echo "🧪 Testing health endpoint..."
-            curl -f http://localhost/health || echo "Health check failed"
+            docker compose logs --tail=20 backend || docker compose -f docker-compose.backend.yaml logs --tail=20
             
             echo "✅ Deployment complete!"
           EOF
@@ -111,5 +150,5 @@ jobs:
         run: |
           echo "🔍 Verifying deployment..."
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cd /opt/tradstry && docker compose -f docker-compose.backend.yaml ps && curl -s http://localhost/health"
+            "cd /opt/tradstry && docker compose ps backend && curl -s http://localhost:8080/health || curl -s http://localhost/health"
 

@@ -73,17 +73,27 @@ impl MarketWsProxy {
         let handle = tokio::spawn(async move {
             let mut reconnect_delay = Duration::from_secs(1);
             let max_delay = Duration::from_secs(60);
+            let mut consecutive_failures = 0;
 
             loop {
                 match Self::connect_and_stream(&base_url, api_key.as_deref(), subscriptions.clone(), manager.clone(), upstream_sender.clone()).await {
                     Ok(_) => {
-                        warn!("Upstream WebSocket closed normally");
+                        info!("Market WebSocket proxy connection closed normally");
                         reconnect_delay = Duration::from_secs(1);
+                        consecutive_failures = 0;
                         // Reset sender on disconnect
                         *upstream_sender.lock().await = None;
                     }
                     Err(e) => {
-                        error!("Upstream WebSocket error: {}. Reconnecting in {:?}...", e, reconnect_delay);
+                        consecutive_failures += 1;
+                        // Only log as error on first failure, then warn for subsequent failures
+                        if consecutive_failures == 1 {
+                            error!("Market WebSocket proxy connection failed: {}. Will retry...", e);
+                        } else if consecutive_failures % 10 == 0 {
+                            // Log every 10th failure to avoid spam
+                            warn!("Market WebSocket proxy still failing after {} attempts. Last error: {}. Reconnecting in {:?}...", 
+                                  consecutive_failures, e, reconnect_delay);
+                        }
                         *upstream_sender.lock().await = None;
                         tokio::time::sleep(reconnect_delay).await;
                         reconnect_delay = (reconnect_delay * 2).min(max_delay);
@@ -183,41 +193,59 @@ impl MarketWsProxy {
     }
 
     /// Handle incoming message from upstream
-    /// FinanceQuery always sends arrays of quotes, never single objects
+    /// FinanceQuery sends arrays with metadata as first element, followed by quote objects
     async fn handle_upstream_message(
         text: &str,
         subscriptions: Arc<DashMap<String, DashMap<String, bool>>>,
         manager: Arc<Mutex<ConnectionManager>>,
     ) -> Result<()> {
-        // FinanceQuery always sends arrays of quotes
-        match serde_json::from_str::<Vec<QuoteUpdate>>(text) {
-            Ok(quotes) => {
-                // Broadcast each quote to all subscribed users for that symbol
-                let manager = manager.lock().await;
+        // Parse as array of JSON values first
+        match serde_json::from_str::<Vec<serde_json::Value>>(text) {
+            Ok(values) => {
+                // Filter out metadata objects and parse only quote objects
+                let mut quotes = Vec::new();
                 
-                for quote in quotes {
-                    let symbol = quote.symbol.clone();
+                for value in values {
+                    // Check if this is a quote object (has "symbol" field)
+                    // Metadata objects have "metadata" field instead
+                    if value.get("symbol").is_some() {
+                        match serde_json::from_value::<QuoteUpdate>(value) {
+                            Ok(quote) => quotes.push(quote),
+                            Err(e) => {
+                                warn!("Failed to parse quote object: {}", e);
+                            }
+                        }
+                    }
+                    // Skip metadata objects silently
+                }
+                
+                // Broadcast each quote to all subscribed users for that symbol
+                if !quotes.is_empty() {
+                    let manager = manager.lock().await;
                     
-                    // Find all users subscribed to this symbol
-                    if let Some(user_set) = subscriptions.get(&symbol) {
-                        let user_ids: Vec<String> = user_set.iter().map(|entry| entry.key().clone()).collect();
+                    for quote in quotes {
+                        let symbol = quote.symbol.clone();
                         
-                        // Broadcast to all subscribed users
-                        let message = AppWsMessage::new(
-                            EventType::MarketQuote,
-                            serde_json::to_value(&quote)?,
-                        );
-                        
-                        for user_id in user_ids {
-                            manager.broadcast_to_user(&user_id, message.clone());
+                        // Find all users subscribed to this symbol
+                        if let Some(user_set) = subscriptions.get(&symbol) {
+                            let user_ids: Vec<String> = user_set.iter().map(|entry| entry.key().clone()).collect();
+                            
+                            // Broadcast to all subscribed users
+                            let message = AppWsMessage::new(
+                                EventType::MarketQuote,
+                                serde_json::to_value(&quote)?,
+                            );
+                            
+                            for user_id in user_ids {
+                                manager.broadcast_to_user(&user_id, message.clone());
+                            }
                         }
                     }
                 }
             }
             Err(e) => {
                 // Log unrecognized messages for debugging
-                // Note: FinanceQuery may send metadata as first element in some cases
-                info!("Failed to parse upstream message as quote array (may be metadata): {} - Error: {}", text, e);
+                warn!("Failed to parse upstream message as JSON array: {} - Error: {}", text, e);
             }
         }
 

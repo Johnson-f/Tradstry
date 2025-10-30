@@ -6,12 +6,11 @@ use super::client::MarketClient;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewsItem {
     pub symbol: Option<String>,
-    pub headline: String,
+    pub title: String,
+    pub link: String,
     pub source: Option<String>,
-    pub url: String,
-    #[serde(rename = "publishedAt")]
-    pub published_at: String,
-    pub summary: Option<String>,
+    pub img: Option<String>,
+    pub time: String,
 }
 
 pub async fn get_news(client: &MarketClient, symbol: Option<&str>, limit: Option<u32>) -> Result<Vec<NewsItem>> {
