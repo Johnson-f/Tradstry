@@ -192,6 +192,9 @@ export function useHistorical(
     queryFn: () => marketDataService.getHistorical(params),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
+    // Poll the backend every 1 minute for active views
+    refetchInterval: enabled && !!params.symbol ? 60 * 1000 : false,
+    refetchIntervalInBackground: true,
     enabled: enabled && !!params.symbol,
   });
 
