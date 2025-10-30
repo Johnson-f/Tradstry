@@ -77,7 +77,7 @@ export function useMarketHours(enabled: boolean = true) {
  */
 export function useQuotes(params?: GetQuotesRequest, enabled: boolean = true) {
   const symbols = params?.symbols ?? [];
-  
+
   // Subscribe to WebSocket updates for these symbols
   useMarketSubscription(symbols, enabled && symbols.length > 0);
 
@@ -104,7 +104,7 @@ export function useQuotes(params?: GetQuotesRequest, enabled: boolean = true) {
  */
 export function useSimpleQuotes(params?: GetQuotesRequest, enabled: boolean = true) {
   const symbols = params?.symbols ?? [];
-  
+
   // Subscribe to WebSocket updates for these symbols
   useMarketSubscription(symbols, enabled && symbols.length > 0);
 
@@ -470,7 +470,7 @@ export function useMarketSubscription(
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   // Normalize symbols to uppercase for consistent comparison
-  const normalizedSymbols = useMemo(() => 
+  const normalizedSymbols = useMemo(() =>
     symbols.map(s => s.toUpperCase().trim()).filter(Boolean),
     [symbols]
   );
@@ -486,7 +486,7 @@ export function useMarketSubscription(
   const updateAllPriceCaches = useCallback((update: QuoteUpdate) => {
     // Normalize update symbol to uppercase for consistent matching
     const updateSymbol = update.symbol.toUpperCase().trim();
-    
+
     const updateData = {
       symbol: updateSymbol,
       name: update.name,
@@ -521,8 +521,8 @@ export function useMarketSubscription(
           queryClient.setQueryData<SimpleQuote[]>(key, (oldData) => {
             if (!oldData) return [updateData as SimpleQuote];
             return oldData.map((quote) =>
-              quote.symbol.toUpperCase().trim() === updateSymbol 
-                ? { ...quote, ...updateData } 
+              quote.symbol.toUpperCase().trim() === updateSymbol
+                ? { ...quote, ...updateData }
                 : quote
             );
           });
@@ -536,8 +536,8 @@ export function useMarketSubscription(
       (oldData) => {
         if (!oldData) return [];
         return oldData.map((quote) =>
-          quote.symbol.toUpperCase().trim() === updateSymbol 
-            ? { ...quote, ...updateData } 
+          quote.symbol.toUpperCase().trim() === updateSymbol
+            ? { ...quote, ...updateData }
             : quote
         );
       }
@@ -549,8 +549,8 @@ export function useMarketSubscription(
       (oldData) => {
         if (!oldData) return [{ ...updateData, symbol: updateSymbol } as Quote];
         return oldData.map((quote) =>
-          quote.symbol.toUpperCase().trim() === updateSymbol 
-            ? { ...quote, ...updateData } 
+          quote.symbol.toUpperCase().trim() === updateSymbol
+            ? { ...quote, ...updateData }
             : quote
         );
       }
@@ -712,24 +712,28 @@ export function useMarketSubscription(
       }
     });
 
-    // Send subscribe message
-    if (toSubscribe.length > 0) {
-      console.log('🔔 Subscribing to symbols:', toSubscribe);
-      send({
-        type: 'subscribe',
-        symbols: toSubscribe,
-      });
-      toSubscribe.forEach((symbol) => subscribedSymbolsRef.current.add(symbol));
-    }
-
-    // Send unsubscribe message
+    // Send unsubscribe message FIRST (important for clean state)
     if (toUnsubscribe.length > 0) {
       console.log('🔕 Unsubscribing from symbols:', toUnsubscribe);
-      send({
+      const unsubMsg = {
         type: 'unsubscribe',
         symbols: toUnsubscribe,
-      });
+      };
+      console.log('📤 Sending unsubscribe message:', JSON.stringify(unsubMsg));
+      send(unsubMsg);
       toUnsubscribe.forEach((symbol) => subscribedSymbolsRef.current.delete(symbol));
+    }
+
+    // Send subscribe message AFTER unsubscribe
+    if (toSubscribe.length > 0) {
+      console.log('🔔 Subscribing to symbols:', toSubscribe);
+      const subMsg = {
+        type: 'subscribe',
+        symbols: toSubscribe,
+      };
+      console.log('📤 Sending subscribe message:', JSON.stringify(subMsg));
+      send(subMsg);
+      toSubscribe.forEach((symbol) => subscribedSymbolsRef.current.add(symbol));
     }
   }, [normalizedSymbols, state, enabled, send]);
 
