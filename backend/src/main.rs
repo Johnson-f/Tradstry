@@ -31,7 +31,7 @@ use turso::{
     SupabaseClaims,
 };
 use crate::service::market_engine::ws_proxy::MarketWsProxy;
-use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
+use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes};
 use websocket::{ConnectionManager, ws_handler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -183,7 +183,9 @@ async fn main() -> std::io::Result<()> {
             // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
             .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
             // CRITICAL: Add VectorizationService as separate app_data for stocks routes
-            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))  
+            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))
+            // CRITICAL: Add TradeNotesService as separate app_data for trade notes routes
+            .app_data(Data::new(app_data.as_ref().trade_notes_service.clone()))  
             .wrap(cors)
             .wrap(Logger::default())
             // Register user routes FIRST with explicit logging
@@ -205,6 +207,11 @@ async fn main() -> std::io::Result<()> {
             .configure(|cfg| {
                 log::info!("Configuring trade notes routes");
                 configure_trade_notes_routes(cfg);
+            })
+            // Register trade tags routes
+            .configure(|cfg| {
+                log::info!("Configuring trade tags routes");
+                configure_trade_tags_routes(cfg);
             })
             // Register images routes
             .configure(|cfg| {

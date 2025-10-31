@@ -148,20 +148,83 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_expiration_date ON options(expiration_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_is_deleted ON options(is_deleted)", libsql::params![]).await?;
 
-    // Trade notes (existing)
+    // Trade notes (linked to trades with AI metadata)
     conn.execute(
         r#"
         CREATE TABLE IF NOT EXISTS trade_notes (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             content TEXT DEFAULT '',
+            trade_type TEXT CHECK (trade_type IN ('stock', 'option')),
+            stock_trade_id INTEGER,
+            option_trade_id INTEGER,
+            ai_metadata TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK (
+                (trade_type = 'stock' AND stock_trade_id IS NOT NULL AND option_trade_id IS NULL) OR
+                (trade_type = 'option' AND option_trade_id IS NOT NULL AND stock_trade_id IS NULL) OR
+                (trade_type IS NULL AND stock_trade_id IS NULL AND option_trade_id IS NULL)
+            ),
+            FOREIGN KEY (stock_trade_id) REFERENCES stocks(id) ON DELETE CASCADE,
+            FOREIGN KEY (option_trade_id) REFERENCES options(id) ON DELETE CASCADE
         )
         "#,
         libsql::params![],
     ).await?;
+    // Migration: Add missing columns if they don't exist (for existing databases)
+    // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we check first
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('trade_notes') WHERE name = 'trade_type'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                // Column doesn't exist, add it
+                conn.execute("ALTER TABLE trade_notes ADD COLUMN trade_type TEXT", libsql::params![]).await.ok();
+            }
+        }
+    }
+    
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('trade_notes') WHERE name = 'stock_trade_id'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE trade_notes ADD COLUMN stock_trade_id INTEGER", libsql::params![]).await.ok();
+            }
+        }
+    }
+    
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('trade_notes') WHERE name = 'option_trade_id'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE trade_notes ADD COLUMN option_trade_id INTEGER", libsql::params![]).await.ok();
+            }
+        }
+    }
+    
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('trade_notes') WHERE name = 'ai_metadata'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE trade_notes ADD COLUMN ai_metadata TEXT", libsql::params![]).await.ok();
+            }
+        }
+    }
+
     conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_notes_updated_at ON trade_notes(updated_at)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_notes_stock_trade_id ON trade_notes(stock_trade_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_notes_option_trade_id ON trade_notes(option_trade_id)", libsql::params![]).await?;
+    // Unique constraint: one note per trade
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_notes_stock_unique ON trade_notes(stock_trade_id) WHERE stock_trade_id IS NOT NULL", libsql::params![]).await?;
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_notes_option_unique ON trade_notes(option_trade_id) WHERE option_trade_id IS NOT NULL", libsql::params![]).await?;
 
     // Images (existing)
     conn.execute(
@@ -308,6 +371,59 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         libsql::params![],
     ).await?;
     conn.execute("INSERT OR IGNORE INTO replicache_space_version (id, version) VALUES (1, 0)", libsql::params![]).await?;
+
+    // Trade tags
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS trade_tags (
+            id TEXT PRIMARY KEY,
+            category TEXT NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT,
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(category, name)
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_tags_category ON trade_tags(category)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_tags_name ON trade_tags(name)", libsql::params![]).await?;
+
+    // Stock trade tags junction table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS stock_trade_tags (
+            stock_trade_id INTEGER NOT NULL,
+            tag_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (stock_trade_id, tag_id),
+            FOREIGN KEY (stock_trade_id) REFERENCES stocks(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES trade_tags(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_trade_tags_stock_id ON stock_trade_tags(stock_trade_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_trade_tags_tag_id ON stock_trade_tags(tag_id)", libsql::params![]).await?;
+
+    // Option trade tags junction table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS option_trade_tags (
+            option_trade_id INTEGER NOT NULL,
+            tag_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (option_trade_id, tag_id),
+            FOREIGN KEY (option_trade_id) REFERENCES options(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES trade_tags(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_option_trade_tags_option_id ON option_trade_tags(option_trade_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_option_trade_tags_tag_id ON option_trade_tags(tag_id)", libsql::params![]).await?;
 
     // Notebook: notes (NO version column per requirement)
     conn.execute(
@@ -666,6 +782,17 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     ).await?;
     conn.execute(
         r#"
+        CREATE TRIGGER IF NOT EXISTS update_trade_tags_timestamp
+        AFTER UPDATE ON trade_tags
+        FOR EACH ROW
+        BEGIN
+            UPDATE trade_tags SET updated_at = datetime('now') WHERE id = NEW.id;
+        END
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute(
+        r#"
         CREATE TRIGGER IF NOT EXISTS update_images_timestamp
         AFTER UPDATE ON images
         FOR EACH ROW
@@ -740,11 +867,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     Ok(())
 }
 
-/// Current schema version (bumped for playbook redesign)
+/// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.16".to_string(),
-        description: "Added initial_target, profit_target, trade_ratings, and mistakes columns to stocks and options tables".to_string(),
+        version: "0.0.18".to_string(),
+        description: "Added trade_tags table with category field and junction tables for stock_trade_tags and option_trade_tags. Tags can be organized by categories and linked to trades.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -832,17 +959,27 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 TriggerInfo { name: "update_options_timestamp".to_string(), table_name: "options".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE options SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },
             ],
         },
-        // Trade notes (existing)
+        // Trade notes (linked to trades with AI metadata)
         TableSchema {
             name: "trade_notes".to_string(),
             columns: vec![
                 ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
                 ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "content".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: Some("''".to_string()), is_primary_key: false },
+                ColumnInfo { name: "trade_type".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "stock_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "option_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "ai_metadata".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
             ],
-            indexes: vec![ IndexInfo { name: "idx_trade_notes_updated_at".to_string(), table_name: "trade_notes".to_string(), columns: vec!["updated_at".to_string()], is_unique: false } ],
+            indexes: vec![
+                IndexInfo { name: "idx_trade_notes_updated_at".to_string(), table_name: "trade_notes".to_string(), columns: vec!["updated_at".to_string()], is_unique: false },
+                IndexInfo { name: "idx_trade_notes_stock_trade_id".to_string(), table_name: "trade_notes".to_string(), columns: vec!["stock_trade_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_trade_notes_option_trade_id".to_string(), table_name: "trade_notes".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_trade_notes_stock_unique".to_string(), table_name: "trade_notes".to_string(), columns: vec!["stock_trade_id".to_string()], is_unique: true },
+                IndexInfo { name: "idx_trade_notes_option_unique".to_string(), table_name: "trade_notes".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: true },
+            ],
             triggers: vec![ TriggerInfo { name: "update_trade_notes_timestamp".to_string(), table_name: "trade_notes".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE trade_notes SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ],
         },
         // User profile
@@ -863,13 +1000,47 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         TableSchema {
             name: "trade_tags".to_string(),
             columns: vec![
-                ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                ColumnInfo { name: "category".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "color".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
-                ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+                ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
             ],
-            indexes: vec![],
+            indexes: vec![
+                IndexInfo { name: "idx_trade_tags_category".to_string(), table_name: "trade_tags".to_string(), columns: vec!["category".to_string()], is_unique: false },
+                IndexInfo { name: "idx_trade_tags_name".to_string(), table_name: "trade_tags".to_string(), columns: vec!["name".to_string()], is_unique: false },
+                IndexInfo { name: "idx_trade_tags_category_name_unique".to_string(), table_name: "trade_tags".to_string(), columns: vec!["category".to_string(), "name".to_string()], is_unique: true },
+            ],
+            triggers: vec![ TriggerInfo { name: "update_trade_tags_timestamp".to_string(), table_name: "trade_tags".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE trade_tags SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ],
+        },
+        // Stock trade tags junction
+        TableSchema {
+            name: "stock_trade_tags".to_string(),
+            columns: vec![
+                ColumnInfo { name: "stock_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "tag_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ],
+            indexes: vec![
+                IndexInfo { name: "idx_stock_trade_tags_stock_id".to_string(), table_name: "stock_trade_tags".to_string(), columns: vec!["stock_trade_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stock_trade_tags_tag_id".to_string(), table_name: "stock_trade_tags".to_string(), columns: vec!["tag_id".to_string()], is_unique: false },
+            ],
+            triggers: vec![],
+        },
+        // Option trade tags junction
+        TableSchema {
+            name: "option_trade_tags".to_string(),
+            columns: vec![
+                ColumnInfo { name: "option_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "tag_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ],
+            indexes: vec![
+                IndexInfo { name: "idx_option_trade_tags_option_id".to_string(), table_name: "option_trade_tags".to_string(), columns: vec!["option_trade_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_option_trade_tags_tag_id".to_string(), table_name: "option_trade_tags".to_string(), columns: vec!["tag_id".to_string()], is_unique: false },
+            ],
             triggers: vec![],
         },
         // Images

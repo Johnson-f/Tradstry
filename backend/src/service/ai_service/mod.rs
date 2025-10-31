@@ -2,6 +2,7 @@
 pub mod chat_service;
 pub mod insights_service;
 pub mod reports_service;
+pub mod notes_service;
 pub mod openrouter_client;
 pub mod voyager_client;
 pub mod upstash_vector_client;
@@ -14,6 +15,7 @@ pub mod data_formatter;
 pub use chat_service::AIChatService;
 pub use insights_service::AIInsightsService;
 pub use reports_service::AiReportsService;
+pub use notes_service::AINotesService;
 pub use vectorization_service::VectorizationService;
 pub use openrouter_client::OpenRouterClient;
 pub use voyager_client::VoyagerClient;
