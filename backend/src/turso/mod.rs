@@ -29,7 +29,8 @@ pub use webhook::ClerkWebhookHandler;
 
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
+use crate::service::trade_notes_service::TradeNotesService;
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -43,6 +44,8 @@ pub struct AppState {
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
+    pub ai_notes_service: Arc<AINotesService>,
+    pub trade_notes_service: Arc<TradeNotesService>,
     pub vectorization_service: Arc<VectorizationService>,
 }
 
@@ -131,6 +134,15 @@ impl AppState {
             Arc::clone(&ai_insights_service),
         ));
 
+        let ai_notes_service = Arc::new(AINotesService::new(
+            Arc::clone(&openrouter_client),
+        ));
+
+        let trade_notes_service = Arc::new(TradeNotesService::new(
+            Arc::clone(&ai_notes_service),
+            Arc::clone(&cache_service),
+        ));
+
         Ok(Self {
             config,
             turso_client,
@@ -139,6 +151,8 @@ impl AppState {
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,
+            ai_notes_service,
+            trade_notes_service,
             vectorization_service,
         })
     }

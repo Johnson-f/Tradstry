@@ -2,7 +2,7 @@ use actix_web::{
     web::{Data, Payload},
     HttpRequest, HttpResponse, Result,
 };
-use actix_ws::{handle, CloseCode, Message};
+use actix_ws::{handle, Message};
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use serde::Deserialize;

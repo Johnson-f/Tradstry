@@ -8,11 +8,14 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Stats from '@/components/journaling/tracking/tabs/stats';
+import Playbook from '@/components/journaling/tracking/tabs/playbook';
 import type { Stock } from '@/lib/types/stocks';
 import type { OptionTrade } from '@/lib/types/options';
 import { useHistorical } from '@/lib/hooks/use-market-data-service';
 import Charting from '@/components/journaling/tracking/charting';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import TradeNotes from '@/components/journaling/tracking/trade-notes';
 
 interface TradeTrackingClientProps {
   params: Promise<{ id: string }>;
@@ -138,8 +141,14 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
       high: c.high,
       low: c.low,
       close: c.close,
+      volume: Number(c.volume ?? 0),
     }));
   }, [historical]);
+
+  // Stable trade notes document id from route param
+  const notesDocId = React.useMemo(() => {
+    return resolvedParams ? `trade-note-${resolvedParams.id}` : undefined;
+  }, [resolvedParams]);
 
   if (!resolvedParams) {
     return (
@@ -297,13 +306,28 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-6 grid grid-cols-12 gap-6">
-            {/* Left Column - Stats Panel (approximately 1/3 width) */}
+            {/* Left Column - Tabs controlling Stats / Playbook (approximately 1/3 width) */}
             <div className="col-span-12 lg:col-span-4 xl:col-span-3">
-              <Stats 
-                tradeId={parsedId.numericId}
-                tradeType={parsedId.type}
-                trade={trade}
-              />
+              <div className="h-[600px]">
+                <Tabs defaultValue="stats" className="w-full h-full flex flex-col">
+                  <TabsList className="mb-2 grid w-full grid-cols-2">
+                    <TabsTrigger value="stats">Stats</TabsTrigger>
+                    <TabsTrigger value="playbook">Playbook</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="stats" className="m-0 h-[560px]">
+                    <Stats 
+                      tradeId={parsedId.numericId}
+                      tradeType={parsedId.type}
+                      trade={trade}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="playbook" className="m-0 h-[560px]">
+                    <Playbook className="h-full" />
+                  </TabsContent>
+                </Tabs>
+              </div>
             </div>
             
             {/* Right Column - Chart & Notes Panel (approximately 2/3 width) */}
@@ -363,9 +387,41 @@ export default function TradeTrackingClient({ params }: TradeTrackingClientProps
                 )}
               </div>
               
-              {/* Trade Notes Section - Placeholder for now */}
-              <div className="bg-background border rounded-lg h-[300px] flex items-center justify-center">
-                <p className="text-muted-foreground">Trade notes - to be implemented</p>
+              {/* Trade Notes Section with Tabs (Trade note / Daily Journal) */}
+              <div className="bg-background border rounded-lg p-2">
+                <Tabs defaultValue="trade-note" className="w-full">
+                  <TabsList className="mb-2">
+                    <TabsTrigger value="trade-note">Trade note</TabsTrigger>
+                    <TabsTrigger value="daily-journal">Daily Journal</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="trade-note" className="m-0">
+                    <div className="h-[360px] overflow-hidden">
+                      {notesDocId ? (
+                        <ScrollArea className="h-full">
+                          <div className="p-4">
+                            <TradeNotes 
+                              docId={notesDocId}
+                              tradeType={parsedId.type}
+                              tradeId={parsedId.numericId}
+                              className="h-full"
+                            />
+                          </div>
+                        </ScrollArea>
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <p className="text-muted-foreground">Loading notes...</p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="daily-journal">
+                    <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground">
+                      Daily Journal coming soon
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
             </div>
           </div>

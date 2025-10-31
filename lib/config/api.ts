@@ -104,6 +104,19 @@ export const apiConfig = {
       recent: "/trade-notes/recent",
       count: "/trade-notes/count",
       byId: (noteId: string) => `/trade-notes/${noteId}`,
+      // Trade-linked notes
+      byTrade: (tradeType: 'stock' | 'option', tradeId: number) => 
+        `/trades/${tradeType}/${tradeId}/notes`,
+    },
+
+    // Trade Tags endpoints
+    tradeTags: {
+      base: "/trade-tags",
+      categories: "/trade-tags/categories",
+      byId: (id: string) => `/trade-tags/${id}`,
+      // Trade associations
+      stockTrade: (id: number) => `/trades/stock/${id}/tags`,
+      optionTrade: (id: number) => `/trades/option/${id}/tags`,
     },
 
     // Playbook endpoints

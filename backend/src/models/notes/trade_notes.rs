@@ -10,6 +10,10 @@ pub struct TradeNote {
     pub id: String,
     pub name: String,
     pub content: String,
+    pub trade_type: Option<String>, // 'stock' or 'option'
+    pub stock_trade_id: Option<i64>,
+    pub option_trade_id: Option<i64>,
+    pub ai_metadata: Option<String>, // JSON string
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -83,7 +87,7 @@ impl TradeNote {
         let mut rows = conn
             .prepare(
                 r#"
-                SELECT id, name, content, created_at, updated_at
+                SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
                 FROM trade_notes 
                 WHERE id = ?
                 "#,
@@ -99,6 +103,141 @@ impl TradeNote {
         }
     }
 
+    /// Find a trade note by stock trade ID
+    pub async fn find_by_stock_trade_id(
+        conn: &Connection,
+        stock_trade_id: i64,
+    ) -> Result<Option<TradeNote>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare(
+                r#"
+                SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                FROM trade_notes 
+                WHERE stock_trade_id = ?
+                "#,
+            )
+            .await?
+            .query(params![stock_trade_id])
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            Ok(Some(TradeNote::from_row(&row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Find a trade note by option trade ID
+    pub async fn find_by_option_trade_id(
+        conn: &Connection,
+        option_trade_id: i64,
+    ) -> Result<Option<TradeNote>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut rows = conn
+            .prepare(
+                r#"
+                SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                FROM trade_notes 
+                WHERE option_trade_id = ?
+                "#,
+            )
+            .await?
+            .query(params![option_trade_id])
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            Ok(Some(TradeNote::from_row(&row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Upsert a trade note linked to a trade (create if not exists, update if exists)
+    pub async fn upsert_for_trade(
+        conn: &Connection,
+        trade_type: &str,
+        trade_id: i64,
+        name: String,
+        content: String,
+        ai_metadata: Option<String>,
+    ) -> Result<TradeNote, Box<dyn std::error::Error + Send + Sync>> {
+        let now = Utc::now().to_rfc3339();
+
+        // Check if note already exists for this trade
+        let existing_note = match trade_type {
+            "stock" => Self::find_by_stock_trade_id(conn, trade_id).await?,
+            "option" => Self::find_by_option_trade_id(conn, trade_id).await?,
+            _ => return Err("Invalid trade_type. Must be 'stock' or 'option'".into()),
+        };
+
+        if let Some(_note) = existing_note {
+            // Update existing note
+            let update_sql = match trade_type {
+                "stock" => r#"
+                    UPDATE trade_notes 
+                    SET name = ?, content = ?, ai_metadata = ?, updated_at = ?
+                    WHERE stock_trade_id = ?
+                    RETURNING id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                "#,
+                "option" => r#"
+                    UPDATE trade_notes 
+                    SET name = ?, content = ?, ai_metadata = ?, updated_at = ?
+                    WHERE option_trade_id = ?
+                    RETURNING id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                "#,
+                _ => return Err("Invalid trade_type".into()),
+            };
+
+            let mut rows = conn
+                .prepare(update_sql)
+                .await?
+                .query(params![name, content, ai_metadata, now, trade_id])
+                .await?;
+
+            if let Some(row) = rows.next().await? {
+                Ok(TradeNote::from_row(&row)?)
+            } else {
+                Err("Failed to update trade note".into())
+            }
+        } else {
+            // Create new note
+            let id = Uuid::new_v4().to_string();
+            let (stock_id, option_id) = match trade_type {
+                "stock" => (Some(trade_id), None),
+                "option" => (None, Some(trade_id)),
+                _ => return Err("Invalid trade_type".into()),
+            };
+
+            let mut rows = conn
+                .prepare(
+                    r#"
+                    INSERT INTO trade_notes (
+                        id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    RETURNING id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
+                    "#,
+                )
+                .await?
+                .query(params![
+                    id,
+                    name,
+                    content,
+                    trade_type,
+                    stock_id,
+                    option_id,
+                    ai_metadata,
+                    now.clone(),
+                    now
+                ])
+                .await?;
+
+            if let Some(row) = rows.next().await? {
+                Ok(TradeNote::from_row(&row)?)
+            } else {
+                Err("Failed to create trade note".into())
+            }
+        }
+    }
+
     /// Find all trade notes with optional filtering
     pub async fn find_all(
         conn: &Connection,
@@ -106,7 +245,7 @@ impl TradeNote {
     ) -> Result<Vec<TradeNote>, Box<dyn std::error::Error + Send + Sync>> {
         let mut sql = String::from(
             r#"
-            SELECT id, name, content, created_at, updated_at
+            SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
             FROM trade_notes 
             WHERE 1=1
             "#,
@@ -186,7 +325,7 @@ impl TradeNote {
                     content = COALESCE(?, content),
                     updated_at = ?
                 WHERE id = ?
-                RETURNING id, name, content, created_at, updated_at
+                RETURNING id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
                 "#,
             )
             .await?
@@ -272,7 +411,7 @@ impl TradeNote {
     ) -> Result<Vec<TradeNote>, Box<dyn std::error::Error + Send + Sync>> {
         let mut sql = String::from(
             r#"
-            SELECT id, name, content, created_at, updated_at
+            SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
             FROM trade_notes 
             WHERE content LIKE ?
             ORDER BY updated_at DESC
@@ -310,7 +449,7 @@ impl TradeNote {
         let mut rows = conn
             .prepare(
                 r#"
-                SELECT id, name, content, created_at, updated_at
+                SELECT id, name, content, trade_type, stock_trade_id, option_trade_id, ai_metadata, created_at, updated_at
                 FROM trade_notes 
                 ORDER BY updated_at DESC
                 LIMIT ?
@@ -450,23 +589,85 @@ impl TradeNote {
 /// Convert from libsql row to TradeNote struct
 impl TradeNote {
     fn from_row(row: &libsql::Row) -> Result<TradeNote, Box<dyn std::error::Error + Send + Sync>> {
-        let created_at_str: String = row.get(3)?;
-        let updated_at_str: String = row.get(4)?;
+        // Helper function to parse datetime from various formats (RFC3339, SQLite format, etc.)
+        fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
+            // Handle empty strings
+            if s.is_empty() {
+                return Err("Empty datetime string".into());
+            }
+            
+            // Try RFC3339 format first (e.g., "2024-01-01T12:00:00Z")
+            if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+                return Ok(dt.with_timezone(&Utc));
+            }
+            
+            // Try SQLite's datetime format (e.g., "2024-01-01 12:00:00")
+            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+            }
+            
+            // Try datetime with microseconds (e.g., "2024-01-01 12:00:00.123456")
+            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
+                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+            }
+            
+            // Try date-only format (e.g., "2024-01-01")
+            if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                let ndt = date.and_hms_opt(0, 0, 0)
+                    .ok_or_else(|| "Invalid date".to_string())?;
+                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+            }
+            
+            Err(format!("Unsupported datetime format: {}", s).into())
+        }
 
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| format!("Failed to parse created_at: {}", e))?
-            .with_timezone(&Utc);
+        // Try to get column count to determine schema version
+        let column_count = row.column_count();
+        
+        // New schema with trade linking fields (column_count >= 9)
+        if column_count >= 9 {
+            let created_at_str: String = row.get(7)?; // created_at at index 7
+            let updated_at_str: String = row.get(8)?; // updated_at at index 8
 
-        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| format!("Failed to parse updated_at: {}", e))?
-            .with_timezone(&Utc);
+            let created_at = parse_dt_any(&created_at_str)
+                .map_err(|e| format!("Failed to parse created_at: {}", e))?;
 
-        Ok(TradeNote {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            content: row.get(2)?,
-            created_at,
-            updated_at,
-        })
+            let updated_at = parse_dt_any(&updated_at_str)
+                .map_err(|e| format!("Failed to parse updated_at: {}", e))?;
+
+            Ok(TradeNote {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+                trade_type: row.get(3).ok(),
+                stock_trade_id: row.get(4).ok(),
+                option_trade_id: row.get(5).ok(),
+                ai_metadata: row.get(6).ok(),
+                created_at,
+                updated_at,
+            })
+        } else {
+            // Legacy schema (column_count == 5)
+            let created_at_str: String = row.get(3)?;
+            let updated_at_str: String = row.get(4)?;
+
+            let created_at = parse_dt_any(&created_at_str)
+                .map_err(|e| format!("Failed to parse created_at: {}", e))?;
+
+            let updated_at = parse_dt_any(&updated_at_str)
+                .map_err(|e| format!("Failed to parse updated_at: {}", e))?;
+
+            Ok(TradeNote {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+                trade_type: None,
+                stock_trade_id: None,
+                option_trade_id: None,
+                ai_metadata: None,
+                created_at,
+                updated_at,
+            })
+        }
     }
 }
