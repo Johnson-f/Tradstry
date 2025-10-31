@@ -292,25 +292,54 @@ pub async fn create_tag(
     payload: web::Json<CreateTagRequest>,
     _req: HttpRequest,
 ) -> Result<HttpResponse> {
-    info!("[TradeTags] POST /api/trade-tags - Starting request, tag: {:?}", payload);
-    let user_id = get_user_id_from_request(&_req, &supabase_config).await?;
-    info!("[TradeTags] POST /api/trade-tags - User authenticated: {}", user_id);
+    info!("[TradeTags] POST /api/trade-tags - Starting request");
+    debug!("[TradeTags] Request payload: {:?}", payload);
+    info!("[TradeTags] Request details: category={}, name={}, color={:?}, description={:?}",
+        payload.category, payload.name, payload.color, payload.description);
     
-    let conn = app_state
-        .get_user_db_connection(&user_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to get user database connection: {}", e);
-            actix_web::error::ErrorInternalServerError("Database connection failed")
-        })?
-        .ok_or_else(|| {
-            error!("User database not found for user: {}", user_id);
-            actix_web::error::ErrorNotFound("User database not found")
-        })?;
+    let user_id = match get_user_id_from_request(&_req, &supabase_config).await {
+        Ok(id) => {
+            info!("[TradeTags] POST /api/trade-tags - User authenticated: {}", id);
+            id
+        },
+        Err(e) => {
+            error!("[TradeTags] POST /api/trade-tags - Authentication failed: {}", e);
+            return Err(e);
+        }
+    };
+    
+    info!("[TradeTags] Getting database connection for user: {}", user_id);
+    let conn = match app_state.get_user_db_connection(&user_id).await {
+        Ok(Some(conn)) => {
+            info!("[TradeTags] ✓ Database connection established for user: {}", user_id);
+            conn
+        },
+        Ok(None) => {
+            error!("[TradeTags] ✗ User database not found for user: {}", user_id);
+            return Ok(HttpResponse::NotFound().json(TagResponse {
+                success: false,
+                message: format!("User database not found for user: {}", user_id),
+                data: None,
+            }));
+        },
+        Err(e) => {
+            error!("[TradeTags] ✗ Failed to get user database connection: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(TagResponse {
+                success: false,
+                message: format!("Database connection failed: {}", e),
+                data: None,
+            }));
+        }
+    };
 
-    match TradeTag::create(&conn, payload.into_inner()).await {
+    let create_request = payload.into_inner();
+    info!("[TradeTags] Calling TradeTag::create with: category={}, name={}", 
+        create_request.category, create_request.name);
+    
+    match TradeTag::create(&conn, create_request).await {
         Ok(tag) => {
-            info!("✓ Tag created successfully: {}", tag.id);
+            info!("[TradeTags] ✓ Tag created successfully: id={}, category={}, name={}", 
+                tag.id, tag.category, tag.name);
             Ok(HttpResponse::Created().json(TagResponse {
                 success: true,
                 message: "Tag created successfully".to_string(),
@@ -318,7 +347,12 @@ pub async fn create_tag(
             }))
         }
         Err(e) => {
-            error!("Failed to create tag: {}", e);
+            error!("[TradeTags] ✗ Failed to create tag: {}", e);
+            error!("[TradeTags] Error chain: {:?}", e);
+            // Log the error source if available
+            if let Some(source) = e.source() {
+                error!("[TradeTags] Error source: {}", source);
+            }
             Ok(HttpResponse::InternalServerError().json(TagResponse {
                 success: false,
                 message: format!("Failed to create tag: {}", e),

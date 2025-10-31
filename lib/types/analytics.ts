@@ -180,9 +180,31 @@ export interface RiskAnalyticsResponse {
   message?: string; // Legacy support
 }
 
+export interface DurationPerformanceMetrics {
+  duration_bucket: string;
+  trade_count: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl: number;
+  avg_hold_time_days: number;
+  best_trade: number;
+  worst_trade: number;
+  profit_factor: number;
+  winning_trades: number;
+  losing_trades: number;
+}
+
+export interface DurationPerformanceResponse {
+  duration_buckets: DurationPerformanceMetrics[];
+  overall_metrics: CoreMetrics;
+}
+
 export interface PerformanceAnalyticsResponse {
   success: boolean;
-  data: PerformanceMetrics | null;
+  data: {
+    performance_metrics: PerformanceMetrics;
+    duration_performance: DurationPerformanceResponse;
+  } | null;
   error?: string;
   message?: string; // Legacy support
 }
@@ -235,7 +257,10 @@ export interface UseAnalyticsRiskReturn {
 }
 
 export interface UseAnalyticsPerformanceReturn {
-  data: PerformanceMetrics | null;
+  data: {
+    performance_metrics: PerformanceMetrics;
+    duration_performance: DurationPerformanceResponse;
+  } | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
