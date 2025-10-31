@@ -8,6 +8,10 @@ use crate::service::analytics_engine::core_metrics::{
     calculate_individual_option_trade_analytics,
     calculate_symbol_analytics,
 };
+use crate::service::analytics_engine::performance_metrics::{
+    calculate_duration_performance_metrics,
+    DurationPerformanceResponse,
+};
 use crate::turso::{AppState, config::SupabaseConfig, SupabaseClaims};
 use serde::{Deserialize, Serialize};
 use base64::Engine;
@@ -161,7 +165,15 @@ pub async fn get_risk_analytics(
     }
 }
 
+/// Combined performance response including duration performance
+#[derive(Debug, Serialize)]
+pub struct PerformanceAnalyticsResponse {
+    pub performance_metrics: crate::models::analytics::PerformanceMetrics,
+    pub duration_performance: DurationPerformanceResponse,
+}
+
 /// Get performance analytics metrics (from performance_metrics.rs)
+/// Returns both PerformanceMetrics and DurationPerformanceResponse
 pub async fn get_performance_analytics(
     req: HttpRequest,
     app_state: web::Data<AppState>,
@@ -178,9 +190,22 @@ pub async fn get_performance_analytics(
     let time_range = parse_time_range(&request.and_then(|r| r.time_range.clone()));
     let analytics_service = AnalyticsService::new();
 
-    match analytics_service.analytics_engine.calculate_performance_metrics(&conn, &time_range).await {
-        Ok(metrics) => Ok(HttpResponse::Ok().json(AnalyticsResponse::success(metrics))),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
+    // Calculate both performance metrics and duration performance
+    let performance_metrics_result = analytics_service.analytics_engine.calculate_performance_metrics(&conn, &time_range).await;
+    let duration_performance_result = calculate_duration_performance_metrics(&conn, &time_range).await;
+
+    match (performance_metrics_result, duration_performance_result) {
+        (Ok(performance_metrics), Ok(duration_performance)) => {
+            let response = PerformanceAnalyticsResponse {
+                performance_metrics,
+                duration_performance,
+            };
+            Ok(HttpResponse::Ok().json(AnalyticsResponse::success(response)))
+        },
+        (Err(e), _) | (_, Err(e)) => {
+            log::error!("Failed to calculate performance analytics: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string())))
+        },
     }
 }
 
@@ -400,6 +425,7 @@ pub async fn get_symbol_analytics(
         Err(e) => Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string()))),
     }
 }
+
 
 /// Parse time range from query parameter
 fn parse_time_range(time_range_str: &Option<String>) -> TimeRange {
