@@ -1,9 +1,11 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ProfitCalendar } from "@/components/analytics/tabs/profit-calendar";
 import { DurationPlaybookPerformance } from "@/components/analytics/tabs/performance/duration-playbook";
 import { OpenTradesTable } from "@/components/analytics/tabs/open-trades-table";
+import { NetPnlChart } from "@/components/analytics/tabs/net-pnl-chart";
 
 export default function AnalyticsSectionPage() {
   return (
@@ -15,9 +17,9 @@ export default function AnalyticsSectionPage() {
         </div>
       </div>
 
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8">
             <Tabs defaultValue="overview" className="w-full">
               <TabsList className="grid w-full grid-cols-4">
@@ -29,6 +31,7 @@ export default function AnalyticsSectionPage() {
 
               <div className="mt-6">
                 <TabsContent value="overview" className="mt-0 space-y-6">
+                  <NetPnlChart />
                   <OpenTradesTable />
                 </TabsContent>
 
@@ -49,7 +52,7 @@ export default function AnalyticsSectionPage() {
               </div>
             </Tabs>
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

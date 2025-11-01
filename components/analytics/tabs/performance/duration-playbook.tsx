@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAnalyticsPerformance } from '@/lib/hooks/use-analytics';
 import type { TimeRange } from '@/lib/types/analytics';
+import { MarketPerformance } from './market-performance';
 
 type TimeRangeOption = '7d' | '30d' | '90d' | 'ytd' | '1y' | 'all_time';
 
@@ -81,7 +82,10 @@ export function DurationPlaybookPerformance() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Market Performance Chart */}
+      <MarketPerformance />
+
       {/* Header with Time Range Filter */}
       <div className="flex items-center justify-between">
         <div>
