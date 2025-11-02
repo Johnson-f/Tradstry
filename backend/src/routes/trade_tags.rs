@@ -1,5 +1,5 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result, HttpMessage};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use log::{info, error, warn, debug};
 
 use crate::turso::config::SupabaseConfig;
@@ -454,13 +454,6 @@ pub async fn delete_tag(
             })))
         }
     }
-}
-
-/// Path parameters for trade tag routes
-#[derive(Deserialize)]
-pub struct TradeTagPathParams {
-    pub trade_type: String,
-    pub trade_id: i64,
 }
 
 /// Get tags for a stock trade

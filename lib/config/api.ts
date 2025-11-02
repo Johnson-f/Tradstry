@@ -33,6 +33,8 @@ export const apiConfig = {
       databaseInfo: (userId: string) => `/user/database-info/${userId}`,
       syncSchema: (userId: string) => `/user/sync-schema/${userId}`,
       schemaVersion: (userId: string) => `/user/schema-version/${userId}`,
+      profile: (userId: string) => `/user/profile/${userId}`,
+      profilePicture: (userId: string) => `/user/profile/picture/${userId}`,
     },
 
     // Images endpoints

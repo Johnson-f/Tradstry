@@ -1,12 +1,16 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_multipart::Multipart;
+use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use log::{info, error, warn};
 use std::sync::Arc;
+use uuid::Uuid;
 use crate::turso::client::TursoClient;
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::turso::schema::get_current_schema_version;
 use crate::service::cache_service::CacheService;
+use crate::service::image_upload::{ImageUploadService, SupabaseStorageConfig};
 
 /// Request payload for user database initialization
 #[derive(Debug, Deserialize)]
@@ -481,6 +485,294 @@ async fn test_endpoint() -> Result<HttpResponse> {
     })))
 }
 
+/// Request payload for user profile update
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub nickname: Option<String>,
+    pub display_name: Option<String>,
+    pub timezone: Option<String>,
+    pub currency: Option<String>,
+    pub trading_experience_level: Option<String>,
+    pub primary_trading_goal: Option<String>,
+    pub asset_types: Option<String>, // JSON array as string
+    pub trading_style: Option<String>,
+}
+
+/// Response payload for profile update
+#[derive(Debug, Serialize)]
+pub struct ProfileResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Update user profile
+pub async fn update_profile(
+    req: HttpRequest,
+    user_id: web::Path<String>,
+    payload: web::Json<UpdateProfileRequest>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    info!("Updating profile for user: {}", user_id);
+
+    // Get authenticated user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+
+    // Validate that the authenticated user matches the requested user_id
+    if claims.sub != *user_id {
+        warn!("User ID mismatch: JWT sub={}, requested user_id={}", claims.sub, user_id);
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "error": "You can only update your own profile"
+        })));
+    }
+
+    // Ensure schema is up-to-date before attempting profile operations
+    // This adds any missing columns like nickname, trading_experience_level, etc.
+    if let Err(e) = turso_client.ensure_user_schema_on_login(&user_id).await {
+        warn!("Failed to ensure schema for user {} during profile update: {}", user_id, e);
+        // Continue anyway - will get a better error message if columns are still missing
+    }
+
+    // Get user database connection (after schema sync)
+    match turso_client.get_user_database_connection(&user_id).await {
+        Ok(Some(conn)) => {
+
+            // Check if at least one field is provided
+            let has_fields = payload.nickname.is_some() 
+                || payload.display_name.is_some()
+                || payload.timezone.is_some()
+                || payload.currency.is_some()
+                || payload.trading_experience_level.is_some()
+                || payload.primary_trading_goal.is_some()
+                || payload.asset_types.is_some()
+                || payload.trading_style.is_some();
+
+            if !has_fields {
+                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                    "success": false,
+                    "error": "No fields to update"
+                })));
+            }
+
+            // Use INSERT OR REPLACE pattern - simpler approach
+            // First check if profile exists
+            let check_stmt = conn.prepare("SELECT COUNT(*) FROM user_profile").await
+                .map_err(|e| {
+                    error!("Failed to prepare check statement: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+            
+            let mut rows = check_stmt.query(libsql::params![]).await
+                .map_err(|e| {
+                    error!("Failed to query profile count: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+            
+            let profile_exists = if let Some(row) = rows.next().await
+                .map_err(|e| {
+                    error!("Failed to read profile count: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })? {
+                row.get::<i64>(0).unwrap_or(0) > 0
+            } else {
+                false
+            };
+
+            if !profile_exists {
+                // Insert new profile with provided values
+                info!("Inserting new profile");
+                conn.execute(
+                    r#"
+                    INSERT INTO user_profile (nickname, display_name, timezone, currency, trading_experience_level, primary_trading_goal, asset_types, trading_style)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    "#,
+                    libsql::params![
+                        payload.nickname.as_deref(),
+                        payload.display_name.as_deref(),
+                        payload.timezone.as_deref().unwrap_or("UTC"),
+                        payload.currency.as_deref().unwrap_or("USD"),
+                        payload.trading_experience_level.as_deref(),
+                        payload.primary_trading_goal.as_deref(),
+                        payload.asset_types.as_deref(),
+                        payload.trading_style.as_deref(),
+                    ]
+                ).await.map_err(|e| {
+                    error!("Failed to insert profile: {}", e);
+                    let error_msg = if e.to_string().contains("no column named") {
+                        format!("Database schema error: {}. Please try again or contact support if the issue persists.", e)
+                    } else {
+                        format!("Database error: {}", e)
+                    };
+                    actix_web::error::ErrorInternalServerError(error_msg)
+                })?;
+            } else {
+                // Update existing profile - update each field individually if provided
+                info!("Updating existing profile");
+                if let Some(ref v) = payload.nickname {
+                    conn.execute("UPDATE user_profile SET nickname = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.display_name {
+                    conn.execute("UPDATE user_profile SET display_name = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.timezone {
+                    conn.execute("UPDATE user_profile SET timezone = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.currency {
+                    conn.execute("UPDATE user_profile SET currency = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.trading_experience_level {
+                    conn.execute("UPDATE user_profile SET trading_experience_level = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.primary_trading_goal {
+                    conn.execute("UPDATE user_profile SET primary_trading_goal = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.asset_types {
+                    conn.execute("UPDATE user_profile SET asset_types = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+                if let Some(ref v) = payload.trading_style {
+                    conn.execute("UPDATE user_profile SET trading_style = ?, updated_at = CURRENT_TIMESTAMP", libsql::params![v.clone()]).await.ok();
+                }
+            }
+
+            info!("Profile updated successfully for user: {}", user_id);
+            Ok(HttpResponse::Ok().json(ProfileResponse {
+                success: true,
+                message: "Profile updated successfully".to_string(),
+            }))
+        }
+        Ok(None) => {
+            info!("No database found for user: {}", user_id);
+            Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "error": "User database not found. Please initialize your database first."
+            })))
+        }
+        Err(e) => {
+            error!("Error updating profile for user {}: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": "Failed to update profile"
+            })))
+        }
+    }
+}
+
+/// Upload profile picture
+pub async fn upload_profile_picture(
+    req: HttpRequest,
+    user_id: web::Path<String>,
+    _turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+    mut payload: Multipart,
+) -> Result<HttpResponse> {
+    info!("Uploading profile picture for user: {}", user_id);
+
+    // Get authenticated user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+
+    // Validate that the authenticated user matches the requested user_id
+    if claims.sub != *user_id {
+        warn!("User ID mismatch: JWT sub={}, requested user_id={}", claims.sub, user_id);
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "error": "You can only upload your own profile picture"
+        })));
+    }
+
+    // Initialize image upload service
+    let storage_config = SupabaseStorageConfig {
+        project_url: supabase_config.project_url.clone(),
+        service_role_key: supabase_config.service_role_key.clone(),
+        anon_key: supabase_config.anon_key.clone(),
+        bucket_name: "profile-pictures".to_string(),
+    };
+    let upload_service = ImageUploadService::new(storage_config)
+        .map_err(|e| {
+            error!("Failed to initialize upload service: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to initialize upload service")
+        })?;
+
+    // Parse multipart form data
+    // Note: Image metadata will be stored in Supabase, not in user's Turso database
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+
+    while let Some(mut field) = payload.try_next().await
+        .map_err(|e| {
+            error!("Failed to read multipart field: {}", e);
+            actix_web::error::ErrorBadRequest("Invalid multipart data")
+        })? {
+        let field_name = field.name();
+        info!("Processing multipart field: {}", field_name);
+
+        match field_name {
+            "file" => {
+                let content_disposition = field.content_disposition();
+                filename = content_disposition.get_filename().map(|f| f.to_string());
+                content_type = field.content_type().map(|ct| ct.to_string());
+                
+                let mut bytes = Vec::new();
+                while let Some(chunk) = field.try_next().await
+                    .map_err(|e| {
+                        error!("Failed to read file data: {}", e);
+                        actix_web::error::ErrorBadRequest("Invalid file data")
+                    })? {
+                    bytes.extend_from_slice(&chunk);
+                }
+                file_data = Some(bytes);
+            }
+            _ => {
+                info!("Ignoring unknown field: {}", field_name);
+            }
+        }
+    }
+
+    let file_data = file_data.ok_or_else(|| {
+        error!("Missing file in request");
+        actix_web::error::ErrorBadRequest("Missing file")
+    })?;
+
+    let filename = filename.unwrap_or_else(|| "profile.jpg".to_string());
+    let content_type = content_type.unwrap_or_else(|| "image/jpeg".to_string());
+
+    // Validate file size (5MB max for profile pictures)
+    const MAX_PROFILE_SIZE: usize = 5 * 1024 * 1024;
+    if file_data.len() > MAX_PROFILE_SIZE {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "error": "File size exceeds 5MB limit"
+        })));
+    }
+
+    // Upload to Supabase Storage
+    let stored = upload_service.upload_file(&user_id, &file_data, &filename, &content_type).await
+        .map_err(|e| {
+            error!("Failed to upload image: {}", e);
+            let error_msg = format!("Image upload failed: {}", e);
+            actix_web::error::ErrorInternalServerError(error_msg)
+        })?;
+
+    // Generate UUID for the image
+    let image_uuid = Uuid::new_v4().to_string();
+
+    // Note: Image metadata (user_profile_images) is stored in Supabase, not in user's Turso database
+    // The frontend API route will handle storing metadata in Supabase after receiving this response
+    // We just return the image_uuid and file_path for the frontend to use
+
+    info!("Profile picture uploaded successfully for user: {} with UUID: {}", user_id, image_uuid);
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "image_uuid": image_uuid,
+        "file_path": stored.path,
+        "file_size": file_data.len(),
+        "mime_type": content_type,
+        "original_filename": filename,
+        "message": "Profile picture uploaded successfully"
+    })))
+}
+
 /// Configure user routes
 pub fn configure_user_routes(cfg: &mut web::ServiceConfig) {
     info!("Setting up /api/user routes");
@@ -492,5 +784,7 @@ pub fn configure_user_routes(cfg: &mut web::ServiceConfig) {
             .route("/database-info/{user_id}", web::get().to(get_user_database_info))
             .route("/sync-schema/{user_id}", web::post().to(sync_user_schema))
             .route("/schema-version/{user_id}", web::get().to(get_user_schema_version))
+            .route("/profile/{user_id}", web::put().to(update_profile))
+            .route("/profile/picture/{user_id}", web::post().to(upload_profile_picture))
     );
 }

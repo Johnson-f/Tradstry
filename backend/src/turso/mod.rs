@@ -30,6 +30,7 @@ pub use webhook::ClerkWebhookHandler;
 use std::sync::Arc;
 use crate::service::cache_service::CacheService;
 use crate::service::trade_notes_service::TradeNotesService;
+use crate::service::rate_limiter::RateLimiter;
 use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
 
 /// Application state containing Turso configuration and connections
@@ -39,11 +40,13 @@ pub struct AppState {
     pub turso_client: Arc<TursoClient>,
     pub webhook_handler: Arc<ClerkWebhookHandler>,
     pub cache_service: Arc<CacheService>,
+    pub rate_limiter: Arc<RateLimiter>,
     pub ai_chat_service: Arc<AIChatService>,
     #[allow(dead_code)]
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
+    #[allow(dead_code)]
     pub ai_notes_service: Arc<AINotesService>,
     pub trade_notes_service: Arc<TradeNotesService>,
     pub vectorization_service: Arc<VectorizationService>,
@@ -72,11 +75,14 @@ impl AppState {
             .map_err(|e| format!("Failed to create Redis client: {}", e))?;
 
         // Initialize cache service
-        let mut cache_service = CacheService::new(redis_client);
+        let mut cache_service = CacheService::new(redis_client.clone());
         cache_service.initialize().await
             .map_err(|e| format!("Failed to initialize cache service: {}", e))?;
         
         let cache_service = Arc::new(cache_service);
+
+        // Initialize rate limiter (uses same Redis client)
+        let rate_limiter = Arc::new(RateLimiter::new(redis_client));
 
         // Initialize AI services
         let openrouter_config = crate::turso::vector_config::OpenRouterConfig::from_env()
@@ -148,6 +154,7 @@ impl AppState {
             turso_client,
             webhook_handler,
             cache_service,
+            rate_limiter,
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,

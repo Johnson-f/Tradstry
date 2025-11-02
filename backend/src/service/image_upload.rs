@@ -72,9 +72,9 @@ impl ImageUploadService {
             .and_then(|ext| ext.to_str())
             .unwrap_or("")
             .to_lowercase();
-        let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"];
+        let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "heif"];
         if !allowed_extensions.contains(&extension.as_str()) {
-            return Err(anyhow::anyhow!("File type not allowed. Supported formats: {}", allowed_extensions.join(", ")));
+            return Err(anyhow::anyhow!("File type '{}' not allowed. Supported formats: {}", extension, allowed_extensions.join(", ")));
         }
         Ok(())
     }

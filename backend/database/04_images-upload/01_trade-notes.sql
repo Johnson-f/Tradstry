@@ -9,28 +9,28 @@ DROP POLICY IF EXISTS "Users can insert their own images" ON storage.objects;
 DROP POLICY IF EXISTS "Users can update their own images" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete their own images" ON storage.objects;
 
--- RLS Policy: Users can only access their own images in the trade-notes bucket
-CREATE POLICY "Users can view their own images" ON storage.objects
+-- RLS Policy: Users can only access their own images in the profile-pictures bucket
+CREATE POLICY "Users can view their own profile picture" ON storage.objects
     FOR SELECT USING (
-        bucket_id = 'trade-notes' 
+        bucket_id = 'profile-pictures' 
         AND (storage.foldername(name))[1] = auth.uid()::text
     );
 
-CREATE POLICY "Users can insert their own images" ON storage.objects
+CREATE POLICY "Users can insert their own profile picture" ON storage.objects
     FOR INSERT WITH CHECK (
-        bucket_id = 'trade-notes' 
+        bucket_id = 'profile-pictures' 
         AND (storage.foldername(name))[1] = auth.uid()::text
     );
 
-CREATE POLICY "Users can update their own images" ON storage.objects
+CREATE POLICY "Users can update their own profile picture" ON storage.objects
     FOR UPDATE USING (
-        bucket_id = 'trade-notes' 
+        bucket_id = 'profile-pictures' 
         AND (storage.foldername(name))[1] = auth.uid()::text
     );
 
-CREATE POLICY "Users can delete their own images" ON storage.objects
+CREATE POLICY "Users can delete their own profile picture" ON storage.objects
     FOR DELETE USING (
-        bucket_id = 'trade-notes' 
+        bucket_id = 'profile-pictures' 
         AND (storage.foldername(name))[1] = auth.uid()::text
     );
 

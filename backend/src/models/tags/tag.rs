@@ -205,6 +205,7 @@ impl TradeTag {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn find_by_category(conn: &Connection, category: &str) -> Result<Vec<Self>> {
         let stmt = conn
             .prepare("SELECT id, category, name, color, description, created_at, updated_at FROM trade_tags WHERE category = ? ORDER BY name")

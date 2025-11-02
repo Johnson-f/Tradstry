@@ -23,12 +23,15 @@ struct SubscribeMessage {
 
 /// WebSocket connection info
 pub struct WsConnection {
+    #[allow(dead_code)]
     user_id: String,
+    #[allow(dead_code)]
     manager: Arc<Mutex<ConnectionManager>>,
     sender: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
 impl WsConnection {
+    #[allow(dead_code)]
     pub fn new(user_id: String, manager: Arc<Mutex<ConnectionManager>>) -> Self {
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
         Self {
