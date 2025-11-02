@@ -66,32 +66,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       <DialogContent className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[900px]">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">Customize your settings here.</DialogDescription>
-        <SidebarProvider className="items-start">
-          <Sidebar className="hidden border-r md:flex">
-            <SidebarContent>
-              <SidebarGroup>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {data.nav.map((item) => (
-                      <SidebarMenuItem key={item.name}>
-                        <SidebarMenuButton
-                          isActive={item.name === activeItem}
-                          onClick={() => setActiveItem(item.name)}
-                          className="transition-colors duration-200"
-                        >
-                          <a href="#" className="flex items-center gap-3 w-full">
-                            <item.icon className="h-4 w-4 shrink-0" />
-                            <span className="text-sm font-medium">{item.name}</span>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </SidebarContent>
-          </Sidebar>
-          <main className="flex h-[480px] flex-1 flex-col overflow-hidden bg-background">
+        <SidebarProvider className="h-full">
+          <div className="flex w-full h-full overflow-hidden">
+            <Sidebar className="hidden border-r md:flex w-[200px] shrink-0 relative z-10">
+              <SidebarContent>
+                <SidebarGroup>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {data.nav.map((item) => (
+                        <SidebarMenuItem key={item.name}>
+                          <SidebarMenuButton
+                            isActive={item.name === activeItem}
+                            onClick={() => setActiveItem(item.name)}
+                            className="transition-colors duration-200"
+                          >
+                            <a href="#" className="flex items-center gap-3 w-full">
+                              <item.icon className="h-4 w-4 shrink-0" />
+                              <span className="text-sm font-medium">{item.name}</span>
+                            </a>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </SidebarContent>
+            </Sidebar>
+            <main className="flex h-[480px] flex-1 flex-col overflow-hidden bg-background">
             <header className="flex h-16 shrink-0 items-center gap-2 border-b px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
               <div className="flex items-center gap-2">
                 <Breadcrumb>
@@ -128,6 +129,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
             </div>
           </main>
+          </div>
         </SidebarProvider>
       </DialogContent>
     </Dialog>

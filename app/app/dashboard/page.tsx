@@ -4,16 +4,17 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { format, subDays } from "date-fns";
 import { ChevronDown } from "lucide-react";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import { getTimeBasedGreeting } from "@/lib/utils/greetings";
-// import { MetricsCards } from "@/components/dashboard/metrics-cards";
-// import { TradingHeatmap } from "@/components/dashboard/trading-heatmap";
-// import { DailyPnLChart } from "@/components/dashboard/daily-pnl-chart";
-// import { TradingMetrics } from "@/components/dashboard/trading-metrics";
-// import { PnLCalendar } from "@/components/dashboard/pnl-calendar";
+import { BasicCards } from "@/components/dashboard/basic-cards";
+import { ProgressTracker } from "@/components/dashboard/progress-tracker";
+import { Averages } from "@/components/dashboard/averages";
+import { Calendar as TradingCalendar } from "@/components/dashboard/calendar";
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all_time' | 'custom';
 
@@ -114,61 +115,62 @@ export default function DashboardPage() {
             </Popover>
 
             {/* Time Range Selector */}
-            <select 
+            <Select 
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onValueChange={(value) => {
+                const validTimeRanges: TimeRange[] = ['7d', '30d', '90d', '1y', 'all_time', 'custom'];
+                if (validTimeRanges.includes(value as TimeRange)) {
+                  setTimeRange(value as TimeRange);
+                }
+              }}
             >
-              <option value="7d">7 day</option>
-              <option value="30d">30 day</option>
-              <option value="90d">90 day</option>
-              <option value="1y">1 year</option>
-              <option value="all_time">All time</option>
-              <option value="custom">Custom range</option>
-            </select>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">7 day</SelectItem>
+                <SelectItem value="30d">30 day</SelectItem>
+                <SelectItem value="90d">90 day</SelectItem>
+                <SelectItem value="1y">1 year</SelectItem>
+                <SelectItem value="all_time">All time</SelectItem>
+                <SelectItem value="custom">Custom range</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
       
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with shadcn ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8 space-y-8">
             <DashboardGreeting />
             
-            {/* Metrics Cards - temporarily disabled */}
-            {/* <div className="space-y-6">
-              <MetricsCards 
+            {/* Basic Analytics Cards */}
+            <BasicCards 
+              timeRange={timeRange}
+              customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
+              customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
+            />
+            
+            {/* Progress Tracker & Averages Chart */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <ProgressTracker />
+              <Averages 
                 timeRange={timeRange}
                 customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
                 customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
               />
-            </div> */}
-              
-              {/* Trading Metrics, Daily P&L Chart, and Trading Heatmap - temporarily disabled */}
-              {/* <div className="grid gap-4 md:grid-cols-3">
-                <TradingMetrics timeRange={timeRange} />
-                <DailyPnLChart 
-                  periodType={timeRange === 'custom' ? 'custom' : timeRange}
-                  customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
-                  customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
-                />
-                <TradingHeatmap 
-                  periodType={timeRange === 'custom' ? 'custom' : timeRange}
-                  customStartDate={timeRange === 'custom' ? format(dateRange.start, 'yyyy-MM-dd') : undefined}
-                  customEndDate={timeRange === 'custom' ? format(dateRange.end, 'yyyy-MM-dd') : undefined}
-                />
+            </div>
+
+            {/* Calendar - Right side */}
+            <div className="flex justify-end">
+              <div className="w-full md:w-[calc(50%-12px)]">
+                <TradingCalendar />
               </div>
-              
-              <div className="grid gap-4">
-                <PnLCalendar 
-                  timeRange={timeRange}
-                  customStartDate={timeRange === 'custom' ? dateRange.start : undefined}
-                  customEndDate={timeRange === 'custom' ? dateRange.end : undefined}
-                />
-              </div> */}
+            </div>
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );

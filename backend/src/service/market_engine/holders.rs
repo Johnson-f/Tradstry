@@ -37,6 +37,7 @@ pub struct InsiderTransaction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 pub enum HolderType {
     #[serde(rename = "institutional")]
     Institutional,

@@ -14,8 +14,9 @@ use log::{info, error};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-// Import jwt_validator from main module
+// Import jwt_validator from main module and rate limit middleware
 use crate::jwt_validator;
+use crate::middleware::rate_limit::rate_limit_middleware;
 
 /// Authenticate user and get user ID
 async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseConfig) -> Result<String> {
@@ -430,6 +431,7 @@ pub fn configure_ai_insights_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/ai/insights")
             .wrap(HttpAuthentication::bearer(jwt_validator))
+            .wrap(actix_web::middleware::from_fn(rate_limit_middleware))
             .route("", web::post().to(generate_insights))
             .route("/async", web::post().to(generate_insights_async))
             .route("", web::get().to(get_insights))

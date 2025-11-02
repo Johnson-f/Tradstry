@@ -97,8 +97,14 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         CREATE TABLE IF NOT EXISTS user_profile (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             display_name TEXT,
+            nickname TEXT,
             timezone TEXT DEFAULT 'UTC',
             currency TEXT DEFAULT 'USD',
+            profile_picture_uuid TEXT,
+            trading_experience_level TEXT,
+            primary_trading_goal TEXT,
+            asset_types TEXT,
+            trading_style TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -870,8 +876,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.18".to_string(),
-        description: "Added trade_tags table with category field and junction tables for stock_trade_tags and option_trade_tags. Tags can be organized by categories and linked to trades.".to_string(),
+        version: "0.0.19".to_string(),
+        description: "Added profile_picture_uuid column to user_profile table and profile-pictures bucket to Supabase Storage. Added RLS policies to the profile-pictures bucket to only allow users to access their own profile pictures.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -988,8 +994,14 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             columns: vec![
                 ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
                 ColumnInfo { name: "display_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "nickname".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "timezone".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: Some("'UTC'".to_string()), is_primary_key: false },
                 ColumnInfo { name: "currency".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: Some("'USD'".to_string()), is_primary_key: false },
+                ColumnInfo { name: "profile_picture_uuid".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trading_experience_level".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "primary_trading_goal".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "asset_types".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trading_style".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
             ],

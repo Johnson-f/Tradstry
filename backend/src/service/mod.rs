@@ -4,6 +4,7 @@ pub mod calendar_service;
 pub mod holidays_service;
 pub mod cache_service;
 pub mod trade_notes_service;
+pub mod rate_limiter;
 
 // AI Services - organized in dedicated module
 pub mod ai_service;
