@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use libsql::{Connection, Builder};
 
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::models::notes::{
@@ -173,7 +173,7 @@ async fn get_user_database_connection(
 pub async fn create_trade_note(
     req: HttpRequest,
     payload: web::Json<CreateTradeNoteRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
@@ -185,8 +185,15 @@ pub async fn create_trade_note(
     info!("✓ Authentication successful for user: {}", claims.sub);
 
     // Get user database connection
-    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    let conn = get_user_database_connection(&claims.sub, &app_state.turso_client).await?;
     info!("✓ Database connection established");
+
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&claims.sub, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", claims.sub, e);
+            e
+        })?;
 
     // Create the trade note
     match TradeNote::create(&conn, payload.into_inner()).await {

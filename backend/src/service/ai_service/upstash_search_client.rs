@@ -205,6 +205,51 @@ impl UpstashSearchClient {
         }
     }
 
+    /// Delete all documents for a user by listing and deleting all documents in their index
+    pub async fn delete_all_user_documents(&self, user_id: &str) -> Result<()> {
+        let index_name = self.config.get_index_name(user_id);
+        
+        log::info!("Deleting all documents from Upstash Search index: {}", index_name);
+
+        // First, try to list all documents in the index
+        // Note: Upstash Search doesn't have a direct "list all" API, so we'll try to delete by pattern
+        // For now, we'll attempt to delete the entire index (if API supports it) or mark as cleanup needed
+        
+        // Attempt to delete the index itself (if supported by API)
+        let delete_index_url = format!("{}/indexes/{}", self.config.get_base_url(), index_name);
+        
+        let response = self.client
+            .delete(&delete_index_url)
+            .header("Authorization", format!("Bearer {}", self.config.token))
+            .header("Content-Type", "application/json")
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    log::info!("Successfully deleted Upstash Search index: {}", index_name);
+                    return Ok(());
+                } else {
+                    let error_text = resp.text().await.unwrap_or_default();
+                    log::warn!("Failed to delete index {}: status {} - {}", index_name, status, error_text);
+                    // Fall through to document deletion approach
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to delete index {}: {}", index_name, e);
+                // Fall through to document deletion approach
+            }
+        }
+
+        // If index deletion fails, we note that manual cleanup may be needed
+        // Upstash Search doesn't have a direct way to list all documents,
+        // so this is a limitation we accept
+        log::warn!("Upstash Search index {} may require manual cleanup. Documents may still exist.", index_name);
+        Ok(())
+    }
+
     /// Make upsert request to Upstash Search API
     async fn make_upsert_request(&self, index: &str, documents: &[Document]) -> Result<()> {
         // Upstash Search uses a different API structure

@@ -10,7 +10,7 @@ use crate::models::playbook::{
     CreateRuleRequest, PlaybookRule,
 };
 use crate::models::stock::stocks::TimeRange;
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
 use crate::service::cache_service::CacheService;
@@ -120,7 +120,7 @@ async fn get_user_database_connection(
 pub async fn create_playbook(
     req: HttpRequest,
     payload: web::Json<CreatePlaybookRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
@@ -128,7 +128,14 @@ pub async fn create_playbook(
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
+
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(user_id, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", user_id, e);
+            e
+        })?;
 
     match Playbook::create(&conn, payload.into_inner()).await {
         Ok(playbook) => {

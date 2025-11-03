@@ -35,6 +35,7 @@ pub struct UserDatabaseEntry {
     pub db_name: String,
     pub db_url: String,
     pub db_token: String,
+    pub storage_used_bytes: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -79,6 +80,20 @@ impl TursoClient {
         .context("Failed to connect to registry database")?;
 
         let http_client = Client::new();
+
+        // Added this
+        // Run registry database migration
+        let conn = registry_db
+            .connect()
+            .context("Failed to get registry database connection for migration")?;
+        
+        // Add storage_used_bytes column if it doesn't exist
+        conn.execute(
+            "ALTER TABLE user_databases ADD COLUMN storage_used_bytes INTEGER DEFAULT 0",
+            libsql::params![],
+        ).await.ok(); // Ignore error if column already exists
+        
+        info!("Registry database migration completed");
 
         Ok(Self {
             config,
@@ -126,6 +141,7 @@ impl TursoClient {
             db_name: db_name.clone(),
             db_url: db_url.clone(),
             db_token: token,
+            storage_used_bytes: Some(0), // Initialize to 0 for new databases
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -251,14 +267,15 @@ impl TursoClient {
 
         conn.execute(
             "INSERT OR REPLACE INTO user_databases
-             (user_id, email, db_name, db_url, db_token, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+             (user_id, email, db_name, db_url, db_token, storage_used_bytes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             libsql::params![
                 entry.user_id.as_str(),
                 entry.email.as_str(),
                 entry.db_name.as_str(),
                 entry.db_url.as_str(),
                 entry.db_token.as_str(),
+                entry.storage_used_bytes.unwrap_or(0),
                 entry.created_at.as_str(),
                 entry.updated_at.as_str(),
             ],
@@ -272,7 +289,7 @@ impl TursoClient {
         let conn = self.get_registry_connection().await?;
 
         let mut rows = conn
-            .prepare("SELECT user_id, email, db_name, db_url, db_token, created_at, updated_at FROM user_databases WHERE user_id = ?")
+            .prepare("SELECT user_id, email, db_name, db_url, db_token, storage_used_bytes, created_at, updated_at FROM user_databases WHERE user_id = ?")
             .await
             .context("Failed to prepare query")?
             .query(libsql::params![user_id.to_string()])
@@ -286,8 +303,9 @@ impl TursoClient {
                 db_name: row.get(2)?,
                 db_url: row.get(3)?,
                 db_token: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                storage_used_bytes: row.get::<Option<i64>>(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             };
             Ok(Some(entry))
         } else {
@@ -308,6 +326,55 @@ impl TursoClient {
         } else {
             Ok(None)
         }
+    }
+
+    /// Delete a user database via Turso API
+    pub async fn delete_user_database(&self, db_name: &str) -> Result<()> {
+        info!("Deleting Turso database: {}", db_name);
+
+        let url = format!(
+            "https://api.turso.tech/v1/organizations/{}/databases/{}",
+            self.config.turso_org, db_name
+        );
+
+        let response = self.http_client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.config.turso_api_token))
+            .send()
+            .await
+            .context("Failed to send database deletion request")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            
+            // If database doesn't exist, consider it a success (idempotent)
+            if error_text.contains("not found") || status == 404 {
+                info!("Database {} does not exist (already deleted?)", db_name);
+                return Ok(());
+            }
+
+            anyhow::bail!("Failed to delete database: {} - {}", status, error_text);
+        }
+
+        info!("Successfully deleted Turso database: {}", db_name);
+        Ok(())
+    }
+
+    /// Remove user database entry from registry
+    pub async fn remove_user_database_entry(&self, user_id: &str) -> Result<()> {
+        info!("Removing user database entry from registry: {}", user_id);
+
+        let conn = self.get_registry_connection().await?;
+
+        conn.execute(
+            "DELETE FROM user_databases WHERE user_id = ?",
+            libsql::params![user_id],
+        ).await
+        .context("Failed to remove user database entry from registry")?;
+
+        info!("Successfully removed user database entry from registry: {}", user_id);
+        Ok(())
     }
 
     /// Health check for registry database

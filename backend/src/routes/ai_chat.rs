@@ -246,6 +246,13 @@ pub async fn create_chat_session(
     let conn = get_user_database_connection(&req, &app_state).await?;
     let user_id = get_authenticated_user(&req, &app_state.config.supabase).await?;
 
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&user_id, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", user_id, e);
+            e
+        })?;
+
     let title = payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
 
     match app_state.ai_chat_service.create_session(&conn, &user_id, title).await {

@@ -250,5 +250,29 @@ impl QdrantDocumentClient {
         log::info!("Deleted {} documents from Qdrant", document_ids.len());
         Ok(())
     }
+
+    /// Delete entire user collection from Qdrant
+    pub async fn delete_user_collection(&self, user_id: &str) -> Result<()> {
+        let collection_name = self.config.get_collection_name(user_id);
+        
+        log::info!("Deleting Qdrant collection: {}", collection_name);
+
+        // Check if collection exists
+        let collections = self.client.list_collections().await?;
+        let exists = collections.collections.iter()
+            .any(|c| c.name == collection_name);
+
+        if !exists {
+            log::info!("Collection {} does not exist, skipping deletion", collection_name);
+            return Ok(());
+        }
+
+        // Delete the collection
+        self.client.delete_collection(collection_name.clone()).await
+            .context("Failed to delete Qdrant collection")?;
+
+        log::info!("Successfully deleted Qdrant collection: {}", collection_name);
+        Ok(())
+    }
 }
 

@@ -1,11 +1,11 @@
-use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_web::{web, HttpRequest, HttpResponse, Result, ResponseError};
 use actix_multipart::Multipart;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use log::{info, error};
 use std::sync::Arc;
 
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::models::images::{
@@ -162,7 +162,7 @@ async fn get_user_database_connection(
 pub async fn upload_image(
     req: HttpRequest,
     payload: Multipart,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
 ) -> Result<HttpResponse> {
     info!("=== Upload Image Called ===");
@@ -172,7 +172,7 @@ pub async fn upload_image(
     info!("✓ Authentication successful for user: {}", claims.sub);
 
     // Get user database connection
-    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    let conn = get_user_database_connection(&claims.sub, &app_state.turso_client).await?;
     info!("✓ Database connection established");
 
     // Initialize Supabase Storage service
@@ -313,6 +313,15 @@ pub async fn upload_image(
 
     // We are not decoding to get dimensions here
     let (width, height) = (None, None);
+
+    // Check storage quota before creating image record (metadata stored in Turso)
+    let stored_path_for_cleanup = stored.path.clone();
+    if let Err(e) = app_state.storage_quota_service.check_storage_quota(&claims.sub, &conn).await {
+        error!("Storage quota check failed for user {}: {}", claims.sub, e);
+        // Try to delete the uploaded file from Supabase Storage since quota is exceeded
+        let _ = upload_service.delete_file(&stored_path_for_cleanup).await;
+        return Ok(e.error_response());
+    }
 
     // Create image record in database
     let create_request = CreateImageRequest {
