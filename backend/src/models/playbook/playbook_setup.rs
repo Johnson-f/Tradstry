@@ -581,6 +581,7 @@ pub struct UpdateRuleRequest {
 }
 
 /// Trade rule compliance tracking
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeRuleCompliance {
     pub id: String,
@@ -593,6 +594,7 @@ pub struct TradeRuleCompliance {
 }
 
 /// Data Transfer Object for updating compliance
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateRuleComplianceRequest {
     pub rule_id: String,
