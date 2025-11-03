@@ -234,16 +234,16 @@ async fn calculate_playbook_core_metrics(
         let average_loss = get_f64_value(&row, 7);
 
         stocks_metrics = PlaybookCoreMetrics {
-            total_trades: total_trades,
+            total_trades,
             stock_trades: total_trades,
             option_trades: 0,
-            winning_trades: winning_trades,
-            losing_trades: losing_trades,
-            total_pnl: total_pnl,
-            gross_profit: gross_profit,
-            gross_loss: gross_loss,
-            average_win: average_win,
-            average_loss: average_loss,
+            winning_trades,
+            losing_trades,
+            total_pnl,
+            gross_profit,
+            gross_loss,
+            average_win,
+            average_loss,
         };
     }
 
@@ -310,16 +310,16 @@ async fn calculate_playbook_core_metrics(
         let average_loss = get_f64_value(&row, 7);
 
         options_metrics = PlaybookCoreMetrics {
-            total_trades: total_trades,
+            total_trades,
             stock_trades: 0,
             option_trades: total_trades,
-            winning_trades: winning_trades,
-            losing_trades: losing_trades,
-            total_pnl: total_pnl,
-            gross_profit: gross_profit,
-            gross_loss: gross_loss,
-            average_win: average_win,
-            average_loss: average_loss,
+            winning_trades,
+            losing_trades,
+            total_pnl,
+            gross_profit,
+            gross_loss,
+            average_win,
+            average_loss,
         };
     }
 
@@ -397,8 +397,7 @@ async fn calculate_compliance_stats(
     }
 
     // Get trades with compliance data (need to check both stock and option compliance tables)
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT DISTINCT trade_id, trade_type
         FROM (
             SELECT stock_trade_id as trade_id, 'stock' as trade_type
@@ -411,8 +410,7 @@ async fn calculate_compliance_stats(
             FROM option_trade_rule_compliance
             WHERE playbook_id = ?
         )
-        "#,
-    );
+        "#.to_string();
 
     let query_params = vec![libsql::Value::Text(playbook_id.to_string()), libsql::Value::Text(playbook_id.to_string())];
     
@@ -535,15 +533,13 @@ async fn calculate_fully_compliant_wins(
     }
 
     // Get all trades that are fully compliant
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT DISTINCT stock_trade_id
         FROM stock_trade_rule_compliance
         WHERE playbook_id = ?
         GROUP BY stock_trade_id
         HAVING COUNT(*) = ? AND SUM(CASE WHEN is_followed = 1 THEN 1 ELSE 0 END) = ?
-        "#,
-    );
+        "#.to_string();
 
     let query_params = vec![
         libsql::Value::Text(playbook_id.to_string()),
@@ -606,15 +602,13 @@ async fn calculate_fully_compliant_wins(
     };
 
     // Do the same for options
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT DISTINCT option_trade_id
         FROM option_trade_rule_compliance
         WHERE playbook_id = ?
         GROUP BY option_trade_id
         HAVING COUNT(*) = ? AND SUM(CASE WHEN is_followed = 1 THEN 1 ELSE 0 END) = ?
-        "#,
-    );
+        "#.to_string();
 
     let query_params = vec![
         libsql::Value::Text(playbook_id.to_string()),

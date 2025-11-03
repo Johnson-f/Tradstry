@@ -209,7 +209,7 @@ pub async fn get_performance_analytics(
     }
 }
 
-/// Get time series analytics data (from time_series.rs)
+// Get time series analytics data (from time_series.rs)
 // pub async fn get_time_series_analytics(
 //     req: HttpRequest,
 //     app_state: web::Data<AppState>,
@@ -307,7 +307,7 @@ pub async fn get_time_series_analytics(
         Err(e) => {
             log::error!("Failed to calculate time series data: {:?}", e);
             log::error!("Error details - Type: {}, Message: {}", 
-                       std::any::type_name_of_val(&e), e.to_string());
+                       std::any::type_name_of_val(&e), e);
             Ok(HttpResponse::InternalServerError().json(AnalyticsResponse::<()>::error(e.to_string())))
         }
     }

@@ -182,10 +182,9 @@ impl StorageQuotaService {
         };
 
         // Update cache if we recalculated
-        if cached_size < threshold && current_size >= threshold {
-            if let Err(e) = self.update_storage_usage(user_id, current_size).await {
-                warn!("Failed to update storage cache for user {}: {}", user_id, e);
-            }
+        if cached_size < threshold && current_size >= threshold
+            && let Err(e) = self.update_storage_usage(user_id, current_size).await {
+            warn!("Failed to update storage cache for user {}: {}", user_id, e);
         }
 
         // Check against quota limit
@@ -210,11 +209,7 @@ impl StorageQuotaService {
             .map_err(StorageQuotaError::DatabaseError)?;
         
         let limit_bytes = STORAGE_QUOTA_LIMIT_BYTES;
-        let remaining_bytes = if used_bytes < limit_bytes {
-            limit_bytes - used_bytes
-        } else {
-            0
-        };
+        let remaining_bytes = limit_bytes.saturating_sub(used_bytes);
 
         let used_mb = used_bytes as f64 / (1024.0 * 1024.0);
         let limit_mb = limit_bytes as f64 / (1024.0 * 1024.0);

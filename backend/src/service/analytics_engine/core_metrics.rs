@@ -1,4 +1,4 @@
-/// This file is for calculating the stats for both the options & stocks table combined.
+//! This file is for calculating the stats for both the options & stocks table combined.
 
 use anyhow::Result;
 use libsql::Connection;
@@ -149,7 +149,7 @@ async fn calculate_stocks_core_metrics(
 
         // Calculate consecutive streaks for stocks
         let (max_consecutive_wins, max_consecutive_losses) = 
-            calculate_stocks_consecutive_streaks(conn, time_condition, &time_params).await?;
+            calculate_stocks_consecutive_streaks(conn, time_condition, time_params).await?;
 
         Ok(CoreMetrics {
             total_trades,
@@ -275,7 +275,7 @@ async fn calculate_options_core_metrics(
 
         // Calculate consecutive streaks for options
         let (max_consecutive_wins, max_consecutive_losses) = 
-            calculate_options_consecutive_streaks(conn, time_condition, &time_params).await?;
+            calculate_options_consecutive_streaks(conn, time_condition, time_params).await?;
 
         Ok(CoreMetrics {
             total_trades,

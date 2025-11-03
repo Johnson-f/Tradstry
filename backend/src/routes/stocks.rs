@@ -164,7 +164,7 @@ async fn get_user_db_connection(
 
 // CRUD Route Handlers
 
-/// Create a new stock trade with cache invalidation - DEPRECATED
+// Create a new stock trade with cache invalidation - DEPRECATED
 /*
 pub async fn create_stock(
     req: HttpRequest,
@@ -462,6 +462,7 @@ pub async fn get_all_stocks(
 }
 
 /// Update a stock trade with cache invalidation
+#[allow(clippy::too_many_arguments)]
 pub async fn update_stock(
     req: HttpRequest,
     stock_id: web::Path<i64>,
@@ -488,7 +489,7 @@ pub async fn update_stock(
         Err(e) => {
             error!("❌ [UPDATE_STOCK] Deserialization error: {}", e);
             error!("❌ [UPDATE_STOCK] Error at line: {}, column: {}", e.line(), e.column());
-            error!("❌ [UPDATE_STOCK] Error path: {}", e.to_string());
+            error!("❌ [UPDATE_STOCK] Error path: {}", e);
             return Ok(HttpResponse::BadRequest().json(serde_json::json!({
                 "success": false,
                 "error": format!("Invalid request format: {}", e),

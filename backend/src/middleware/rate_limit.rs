@@ -32,19 +32,21 @@ pub async fn rate_limit_middleware(
     // Extract user ID from request extensions (set by JWT validator) or from Authorization header
     let user_id = {
         // First check extensions (requires borrow)
-        let extensions = req.extensions();
-        
-        // Try Supabase claims first (set by HttpAuthentication::bearer)
-        let user_id_from_extensions = if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
-            Some(get_supabase_user_id(supabase_claims))
-        } else if let Some(clerk_claims) = extensions.get::<ClerkClaims>() {
-            // Fallback to Clerk claims (legacy)
-            Some(get_user_id(clerk_claims.clone())
-                .map_err(|_| actix_web::error::ErrorBadRequest("Invalid user ID from Clerk claims"))?)
-        } else {
-            None
+        let user_id_from_extensions = {
+            let extensions = req.extensions();
+            
+            // Try Supabase claims first (set by HttpAuthentication::bearer)
+            // Extensions reference is dropped here before any await
+            if let Some(supabase_claims) = extensions.get::<SupabaseClaims>() {
+                Some(get_supabase_user_id(supabase_claims))
+            } else if let Some(clerk_claims) = extensions.get::<ClerkClaims>() {
+                // Fallback to Clerk claims (legacy)
+                Some(get_user_id(clerk_claims.clone())
+                    .map_err(|_| actix_web::error::ErrorBadRequest("Invalid user ID from Clerk claims"))?)
+            } else {
+                None
+            }
         };
-        drop(extensions); // Drop borrow before we might move req
         
         if let Some(user_id) = user_id_from_extensions {
             user_id

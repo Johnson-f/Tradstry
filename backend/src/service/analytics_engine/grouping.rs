@@ -686,14 +686,14 @@ async fn calculate_symbol_risk_metrics(
     let mut sorted_returns = daily_returns.clone();
     sorted_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     
-    let var_95 = if sorted_returns.len() > 0 {
+    let var_95 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.95) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
     
-    let var_99 = if sorted_returns.len() > 0 {
+    let var_99 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.99) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
@@ -701,7 +701,7 @@ async fn calculate_symbol_risk_metrics(
     };
 
     // Expected shortfall (CVaR) - average of returns below VaR
-    let expected_shortfall_95 = if sorted_returns.len() > 0 {
+    let expected_shortfall_95 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_95)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_95).count() as f64
@@ -709,7 +709,7 @@ async fn calculate_symbol_risk_metrics(
         0.0
     };
     
-    let expected_shortfall_99 = if sorted_returns.len() > 0 {
+    let expected_shortfall_99 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_99)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_99).count() as f64
@@ -1309,21 +1309,21 @@ async fn calculate_strategy_risk_metrics(
     let mut sorted_returns = daily_returns.clone();
     sorted_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     
-    let var_95 = if sorted_returns.len() > 0 {
+    let var_95 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.95) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
     
-    let var_99 = if sorted_returns.len() > 0 {
+    let var_99 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.99) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
 
-    let expected_shortfall_95 = if sorted_returns.len() > 0 {
+    let expected_shortfall_95 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_95)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_95).count() as f64
@@ -1331,7 +1331,7 @@ async fn calculate_strategy_risk_metrics(
         0.0
     };
     
-    let expected_shortfall_99 = if sorted_returns.len() > 0 {
+    let expected_shortfall_99 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_99)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_99).count() as f64
@@ -1943,21 +1943,21 @@ async fn calculate_direction_risk_metrics(
     let mut sorted_returns = daily_returns.clone();
     sorted_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     
-    let var_95 = if sorted_returns.len() > 0 {
+    let var_95 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.95) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
     
-    let var_99 = if sorted_returns.len() > 0 {
+    let var_99 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.99) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
 
-    let expected_shortfall_95 = if sorted_returns.len() > 0 {
+    let expected_shortfall_95 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_95)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_95).count() as f64
@@ -1965,7 +1965,7 @@ async fn calculate_direction_risk_metrics(
         0.0
     };
     
-    let expected_shortfall_99 = if sorted_returns.len() > 0 {
+    let expected_shortfall_99 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_99)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_99).count() as f64
@@ -2483,21 +2483,21 @@ async fn calculate_period_risk_metrics(
     let mut sorted_returns = daily_returns.clone();
     sorted_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     
-    let var_95 = if sorted_returns.len() > 0 {
+    let var_95 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.95) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
     
-    let var_99 = if sorted_returns.len() > 0 {
+    let var_99 = if !sorted_returns.is_empty() {
         let index = ((1.0 - 0.99) * sorted_returns.len() as f64) as usize;
         sorted_returns.get(index).copied().unwrap_or(0.0)
     } else {
         0.0
     };
 
-    let expected_shortfall_95 = if sorted_returns.len() > 0 {
+    let expected_shortfall_95 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_95)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_95).count() as f64
@@ -2505,7 +2505,7 @@ async fn calculate_period_risk_metrics(
         0.0
     };
     
-    let expected_shortfall_99 = if sorted_returns.len() > 0 {
+    let expected_shortfall_99 = if !sorted_returns.is_empty() {
         sorted_returns.iter()
             .filter(|&&x| x <= var_99)
             .sum::<f64>() / sorted_returns.iter().filter(|&&x| x <= var_99).count() as f64
