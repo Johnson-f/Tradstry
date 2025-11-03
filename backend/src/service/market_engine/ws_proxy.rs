@@ -279,12 +279,12 @@ impl MarketWsProxy {
             
             self.subscriptions
                 .entry(sym_upper.clone())
-                .or_insert_with(DashMap::new)
+                .or_default()
                 .insert(user_id.to_string(), true);
 
             self.user_symbols
                 .entry(user_id.to_string())
-                .or_insert_with(DashMap::new)
+                .or_default()
                 .insert(sym_upper.clone(), true);
 
             info!("User {} subscribed to symbol {}", user_id, sym_upper);

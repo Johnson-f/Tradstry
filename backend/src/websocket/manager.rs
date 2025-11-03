@@ -28,7 +28,7 @@ impl ConnectionManager {
     pub fn register(&self, user_id: String, sender: tokio::sync::mpsc::UnboundedSender<String>) {
         self.clients
             .entry(user_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(sender);
     }
 

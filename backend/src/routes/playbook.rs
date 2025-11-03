@@ -305,7 +305,7 @@ pub async fn get_playbooks(
         Ok((playbooks, total)) => {
             info!("✅ Successfully retrieved {} playbooks (total: {})", playbooks.len(), total);
             
-            if let Some(first) = playbooks.get(0) {
+            if let Some(first) = playbooks.first() {
                 info!("🔵 Serializing first playbook for logging...");
                 if let Ok(json) = serde_json::to_string_pretty(first) {
                     info!("Playbooks list sample (first item):\n{}", json);
@@ -557,7 +557,7 @@ pub async fn get_trade_playbooks(
     match result {
         Ok(playbooks) => {
             info!("Retrieved {} playbooks for trade {}", playbooks.len(), *trade_id);
-            if let Some(first) = playbooks.get(0) {
+            if let Some(first) = playbooks.first() {
                 if let Ok(json) = serde_json::to_string_pretty(first) {
                     info!("Trade playbooks sample (first item):\n{}", json);
                 }
@@ -748,7 +748,7 @@ async fn get_playbook_rules(
     match PlaybookRule::find_by_playbook_id(&conn, &playbook_id).await {
         Ok(rules) => {
             info!("Retrieved {} rules for playbook {}", rules.len(), playbook_id);
-            if let Some(first) = rules.get(0) {
+            if let Some(first) = rules.first() {
                 if let Ok(json) = serde_json::to_string_pretty(first) {
                     info!("Rules list sample (first item):\n{}", json);
                 }
@@ -849,7 +849,7 @@ async fn get_playbook_analytics(
         .and_then(|s| serde_json::from_str::<TimeRange>(s).ok())
         .unwrap_or(TimeRange::AllTime);
 
-    match calculate_playbook_analytics(&conn, &playbook_id, &time_range).await {
+    match calculate_playbook_analytics(&conn, playbook_id, &time_range).await {
         Ok(analytics) => Ok(HttpResponse::Ok().json(serde_json::json!({
             "success": true,
             "message": "Playbook analytics retrieved successfully",

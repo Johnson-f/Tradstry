@@ -193,10 +193,9 @@ impl AccountDeletionService {
 
         if let Err(e) = response {
             warn!("Failed to delete notebook_images (table may not exist): {}", e);
-        } else if let Ok(resp) = response {
-            if !resp.status().is_success() {
-                warn!("Failed to delete notebook_images: status {}", resp.status());
-            }
+        } else if let Ok(resp) = response
+            && !resp.status().is_success() {
+            warn!("Failed to delete notebook_images: status {}", resp.status());
         }
 
         info!("Completed Supabase database cleanup for user: {}", user_id);

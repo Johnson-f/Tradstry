@@ -1,4 +1,4 @@
-/// One of the most important files for the AI systems for spotting trading patterns 
+//! One of the most important files for the AI systems for spotting trading patterns 
 
 use anyhow::Result;
 use libsql::Connection;
@@ -668,7 +668,7 @@ async fn calculate_risk_behavior(
         stop_loss_adherence_rate: stop_loss_adherence,
         avg_position_size_after_win: avg_size_after_win,
         avg_position_size_after_loss: avg_size_after_loss,
-        position_size_consistency_score: 100.0 - position_consistency.min(100.0).max(0.0),
+        position_size_consistency_score: 100.0 - position_consistency.clamp(0.0, 100.0),
         avg_risk_reward_ratio: avg_rr_ratio,
         risk_reward_consistency: rr_consistency,
     })
@@ -1359,7 +1359,6 @@ async fn get_basic_stats_stocks(
 }
 
 /// Options equivalents of all the stocks calculation functions
-
 /// Calculate expectancy, edge, and payoff ratio for options
 async fn calculate_expectancy_and_edge_options(
     conn: &Connection,

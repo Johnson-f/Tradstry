@@ -104,7 +104,6 @@ impl RateLimiter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_hour_window_calculation() {

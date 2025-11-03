@@ -488,7 +488,7 @@ impl OptionTrade {
 
             // Log each column value
             for i in 0..24 {
-                match row.get::<libsql::Value>(i as i32) {
+                match row.get::<libsql::Value>(i) {
                     Ok(val) => log::info!("Column {}: {:?}", i, val),
                     Err(e) => log::warn!("Column {} error: {}", i, e),
                 }

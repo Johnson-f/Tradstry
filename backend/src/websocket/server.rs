@@ -151,10 +151,9 @@ pub async fn ws_handler(
 
         // Unsubscribe from all symbols on disconnect
         let symbols = market_proxy.get_user_subscriptions(&user_id);
-        if !symbols.is_empty() {
-            if let Err(e) = market_proxy.unsubscribe(&user_id, &symbols).await {
-                error!("Failed to unsubscribe user {} on disconnect: {}", user_id, e);
-            }
+        if !symbols.is_empty()
+            && let Err(e) = market_proxy.unsubscribe(&user_id, &symbols).await {
+            error!("Failed to unsubscribe user {} on disconnect: {}", user_id, e);
         }
 
         // Unregister connection
