@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
@@ -26,17 +26,38 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { SettingsDialog } from "./settings-dialog"
 
+// Profile types matching backend response
+interface UserProfileData {
+  nickname: string | null;
+  display_name: string | null;
+  timezone: string | null;
+  currency: string | null;
+  trading_experience_level: string | null;
+  primary_trading_goal: string | null;
+  asset_types: string | null;
+  trading_style: string | null;
+  profile_picture_uuid: string | null;
+}
+
+interface ProfileApiResponse {
+  success: boolean;
+  profile?: UserProfileData;
+  error?: string;
+}
+
+interface NavUserProps {
+  user: {
+    name: string;
+    email: string;
+    avatar: string;
+  };
+  collapsed?: boolean;
+}
+
 export function NavUser({
   user,
   collapsed = false,
-}: {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-  collapsed?: boolean
-}) {
+}: NavUserProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   
@@ -44,6 +65,64 @@ export function NavUser({
   const [isMobile, setIsMobile] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [profile, setProfile] = useState<UserProfileData | null>(null)
+  
+  // Fetch user profile from Turso database
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchProfile(): Promise<void> {
+      try {
+
+        const supabase = createClient();
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          throw new Error(`Authentication error: ${authError.message}`);
+        }
+
+        if (!authUser) {
+          throw new Error('No authenticated user found');
+        }
+
+        const response = await fetch(`/api/user/profile/${authUser.id}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Failed to fetch profile' }));
+          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
+        const result: ProfileApiResponse = await response.json();
+        
+        if (!isMounted) return;
+
+        if (result.success && result.profile) {
+          setProfile(result.profile);
+        } else {
+          // Profile doesn't exist yet or empty response - that's OK, use fallback
+          setProfile(null);
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        
+        console.error('Failed to fetch profile:', error);
+        // Don't block UI on profile fetch failure - just log and use fallback
+      } finally {
+        // Cleanup handled by isMounted check
+      }
+    }
+
+    fetchProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   
   React.useEffect(() => {
     setMounted(true)
@@ -78,6 +157,9 @@ export function NavUser({
       .slice(0, 2)
   }
 
+  // Use nickname or display_name, fallback to user.name
+  const displayName = profile?.nickname || profile?.display_name || user.name
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -87,12 +169,12 @@ export function NavUser({
           }`}
         >
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
-            {getInitials(user.name)}
+            {getInitials(displayName)}
           </div>
           {!collapsed && (
             <>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium text-foreground">{user.name}</span>
+                <span className="truncate font-medium text-foreground">{displayName}</span>
                 <span className="truncate text-xs text-muted-foreground">{user.email}</span>
               </div>
               <ChevronsUpDown className="ml-auto w-4 h-4" />
@@ -109,10 +191,10 @@ export function NavUser({
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
-              {getInitials(user.name)}
+              {getInitials(displayName)}
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
+              <span className="truncate font-medium">{displayName}</span>
               <span className="truncate text-xs">{user.email}</span>
             </div>
           </div>

@@ -90,6 +90,30 @@ impl RedisClient {
         Ok(())
     }
 
+    /// Increment a key's value atomically (returns the new value)
+    pub async fn incr(&self, key: &str) -> Result<i64> {
+        let response = self.client
+            .post(format!("{}/incr/{}", self.base_url, key))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let result: UpstashResponse = response.json().await?;
+            // Upstash INCR returns a number
+            let value = match result.result {
+                serde_json::Value::Number(n) => n.as_i64()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid number format"))?,
+                serde_json::Value::String(s) => s.parse()
+                    .context("Failed to parse INCR result as integer")?,
+                _ => return Err(anyhow::anyhow!("Unexpected response format from INCR")),
+            };
+            Ok(value)
+        } else {
+            Err(anyhow::anyhow!("INCR operation failed with status: {}", response.status()))
+        }
+    }
+
     /// Delete a key from Redis
     pub async fn del(&self, key: &str) -> Result<()> {
         self.client

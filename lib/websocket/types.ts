@@ -15,6 +15,8 @@ export type WebSocketEventType =
   | 'playbook:deleted'
   | 'trade:tagged'
   | 'trade:untagged'
+  | 'market:quote'
+  | 'market:update'
   | 'system:connected'
   | 'system:disconnected'
   | 'system:error';

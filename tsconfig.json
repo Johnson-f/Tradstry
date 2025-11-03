@@ -39,7 +39,5 @@
   "exclude": [
     "node_modules",
     "Edge Functions",
-    "components/analytics/**/*",
-    "components/journal/trade-notes/**/*"
-  ] // Will have to remove analytics & trade notes later
+  ]
 }

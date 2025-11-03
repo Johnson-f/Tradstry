@@ -5,6 +5,7 @@ pub mod notes;
 pub mod options;
 pub mod playbook;
 pub mod stock;
+pub mod tags;
 
 pub mod notebook;
 

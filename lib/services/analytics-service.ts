@@ -118,7 +118,20 @@ export class AnalyticsService {
       throw new Error(`Failed to fetch time series analytics: ${response.statusText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    
+    // Transform backend response to include legacy fields for backward compatibility
+    if (result.success && result.data) {
+      result.data = {
+        ...result.data,
+        // Use rolling_win_rate_50 as default rolling_win_rate for backward compatibility
+        rolling_win_rate: result.data.rolling_win_rate_50 || [],
+        // Use rolling_sharpe_ratio_50 as default rolling_sharpe_ratio for backward compatibility
+        rolling_sharpe_ratio: result.data.rolling_sharpe_ratio_50 || [],
+      };
+    }
+    
+    return result;
   }
 
   /**

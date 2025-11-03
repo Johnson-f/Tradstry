@@ -33,10 +33,13 @@ export function useAnalyticsCore(request?: AnalyticsRequest): UseAnalyticsCoreRe
     queryKey: ['analytics', 'core', request],
     queryFn: async () => {
       const response = await getCoreAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch core analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch core analytics';
+      console.error('[useAnalyticsCore] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -61,10 +64,13 @@ export function useAnalyticsRisk(request?: AnalyticsRequest): UseAnalyticsRiskRe
     queryKey: ['analytics', 'risk', request],
     queryFn: async () => {
       const response = await getRiskAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch risk analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch risk analytics';
+      console.error('[useAnalyticsRisk] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -91,10 +97,13 @@ export function useAnalyticsPerformance(
     queryKey: ['analytics', 'performance', request],
     queryFn: async () => {
       const response = await getPerformanceAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch performance analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch performance analytics';
+      console.error('[useAnalyticsPerformance] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -121,10 +130,13 @@ export function useAnalyticsTimeSeries(
     queryKey: ['analytics', 'time-series', request],
     queryFn: async () => {
       const response = await getTimeSeriesAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch time series analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch time series analytics';
+      console.error('[useAnalyticsTimeSeries] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -149,10 +161,13 @@ export function useAnalyticsGrouped(request?: AnalyticsRequest): UseAnalyticsGro
     queryKey: ['analytics', 'grouped', request],
     queryFn: async () => {
       const response = await getGroupedAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch grouped analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch grouped analytics';
+      console.error('[useAnalyticsGrouped] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -179,10 +194,13 @@ export function useAnalyticsComprehensive(
     queryKey: ['analytics', 'comprehensive', request],
     queryFn: async () => {
       const response = await getComprehensiveAnalytics(request);
-      if (response.success) {
+      if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.message || 'Failed to fetch comprehensive analytics');
+      // Backend returns 'error' field, not 'message'
+      const errorMsg = (response as { error?: string; message?: string }).error || response.message || 'Failed to fetch comprehensive analytics';
+      console.error('[useAnalyticsComprehensive] Analytics API error:', errorMsg, response);
+      throw new Error(errorMsg);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -269,6 +287,9 @@ export function useIndividualTradeAnalytics(
  * Gets aggregated analytics for all trades on a specific symbol
  * Useful for analyzing repeated trades on the same symbol (e.g., AAPL)
  */
+/**
+ * Hook to fetch symbol-level analytics
+ */
 export function useSymbolAnalytics(
   symbol: string,
   timeRange?: string,
@@ -277,7 +298,10 @@ export function useSymbolAnalytics(
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['analytics', 'symbol', symbol, timeRange],
     queryFn: async () => {
+      console.log('[useSymbolAnalytics] Fetching:', { symbol, timeRange });
       const response = await getSymbolAnalytics(symbol, timeRange);
+      console.log('[useSymbolAnalytics] Response:', response);
+      
       if (response.success) {
         return response.data;
       }

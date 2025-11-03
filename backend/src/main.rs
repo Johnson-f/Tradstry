@@ -3,6 +3,7 @@ mod routes;
 mod models;
 mod service;
 mod websocket;
+mod middleware;
 
 use actix_cors::Cors;
 use actix_web::{
@@ -31,7 +32,7 @@ use turso::{
     SupabaseClaims,
 };
 use crate::service::market_engine::ws_proxy::MarketWsProxy;
-use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes};
+use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes};
 use websocket::{ConnectionManager, ws_handler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -183,45 +184,53 @@ async fn main() -> std::io::Result<()> {
             // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
             .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
             // CRITICAL: Add VectorizationService as separate app_data for stocks routes
-            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))  
+            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))
+            // CRITICAL: Add TradeNotesService as separate app_data for trade notes routes
+            .app_data(Data::new(app_data.as_ref().trade_notes_service.clone()))  
             .wrap(cors)
             .wrap(Logger::default())
+            .wrap(actix_web::middleware::from_fn(rate_limit_middleware))
             // Register user routes FIRST with explicit logging
             .configure(|cfg| {
                 log::info!("Configuring user routes");
                 configure_user_routes(cfg);
             })
-            // Register options routes
+            // Register options routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring options routes");
                 configure_options_routes(cfg);
             })
-            // Register stocks routes
+            // Register stocks routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring stocks routes");
                 configure_stocks_routes(cfg);
             })
-            // Register trade notes routes
+            // Register trade notes routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring trade notes routes");
                 configure_trade_notes_routes(cfg);
             })
-            // Register images routes
+            // Register trade tags routes (rate limiting handled in middleware)
+            .configure(|cfg| {
+                log::info!("Configuring trade tags routes");
+                configure_trade_tags_routes(cfg);
+            })
+            // Register images routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring images routes");
                 configure_images_routes(cfg);
             })
-            // Register playbook routes
+            // Register playbook routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring playbook routes");
                 configure_playbook_routes(cfg);
             })
-            // Register notebook routes
+            // Register notebook routes (rate limiting handled in middleware)
             .configure(|cfg| {
                 log::info!("Configuring notebook routes");
                 configure_notebook_routes(cfg);
                 
-                // AI Routes
+                // AI Routes (already have rate limiting in their own config)
                 configure_ai_chat_routes(cfg);
                 configure_ai_insights_routes(cfg);
                 configure_ai_reports_routes(cfg);
@@ -255,19 +264,22 @@ fn configure_public_routes(cfg: &mut web::ServiceConfig) {
         .configure(crate::routes::market::configure_market_routes);
 }
 
+use middleware::rate_limit::rate_limit_middleware;
+
 // Protected routes configuration
 fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     log::info!("Configuring auth routes");
     cfg.service(
         web::scope("")
             .wrap(HttpAuthentication::bearer(jwt_validator))
+            .wrap(actix_web::middleware::from_fn(rate_limit_middleware))
             .route("/me", web::get().to(get_current_user))
             .route("/my-data", web::get().to(get_user_data))
     );
 }
 
 // JWT validation middleware - Updated for Supabase Auth
-async fn jwt_validator(
+pub async fn jwt_validator(
     req: ServiceRequest,
     credentials: BearerAuth,
 ) -> Result<ServiceRequest, (actix_web::Error, ServiceRequest)> {

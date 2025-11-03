@@ -28,16 +28,24 @@ function getCreatedAt(pb: Playbook): string | null {
   return typeof camel === 'string' ? camel : null;
 }
 
-function formatCurrencyUSD(value: number): string {
+function formatCurrencyUSD(value: number | null | undefined): string {
+  if (value == null) return '$0.00';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 }
 
-function formatPercent(value: number): string {
+function formatPercent(value: number | null | undefined): string {
+  if (value == null) return '0.00%';
   return `${value.toFixed(2)}%`;
 }
 
-function WinRateRing({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
+function formatNumber(value: number | null | undefined, decimals: number = 2): string {
+  if (value == null) return '0.00';
+  return value.toFixed(decimals);
+}
+
+function WinRateRing({ value }: { value: number | null | undefined }) {
+  const safeValue = value ?? 0;
+  const clamped = Math.max(0, Math.min(100, safeValue));
   const gradient = `conic-gradient(hsl(var(--primary)) ${clamped * 3.6}deg, hsl(var(--muted)) 0)`;
   return (
     <div className="flex items-center gap-3">
@@ -47,7 +55,7 @@ function WinRateRing({ value }: { value: number }) {
       </div>
       <div className="flex flex-col">
         <span className="text-xs text-muted-foreground">Win rate</span>
-        <span className="font-semibold">{formatPercent(value)}</span>
+        <span className="font-semibold">{formatPercent(safeValue)}</span>
       </div>
     </div>
   );
@@ -267,11 +275,11 @@ export default function PlaybookPage() {
                           </div>
                           <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">Profit factor</span>
-                            <span className="font-semibold">{a.profit_factor.toFixed(2)}</span>
+                            <span className="font-semibold">{formatNumber(a.profit_factor)}</span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">Missed trades</span>
-                            <span className="font-semibold">{a.missed_trades}</span>
+                            <span className="font-semibold">{a.missed_trades ?? 0}</span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">Expectancy</span>

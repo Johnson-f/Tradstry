@@ -5,7 +5,7 @@ use log::{info, error};
 use std::sync::Arc;
 use libsql::{Connection, Builder};
 
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::SupabaseConfig;
 use crate::turso::auth::validate_supabase_jwt_token;
 use crate::models::notebook::{
@@ -64,12 +64,20 @@ async fn get_user_database_connection(
 pub async fn create_note(
     req: HttpRequest,
     payload: web::Json<CreateNoteRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
-    let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
+    let conn = get_user_database_connection(&claims.sub, &app_state.turso_client).await?;
+    
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&claims.sub, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", claims.sub, e);
+            e
+        })?;
+    
     match NotebookNote::create(&conn, payload.into_inner()).await {
         Ok(note) => {
             // Invalidate cache after successful creation
