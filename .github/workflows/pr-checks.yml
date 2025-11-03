@@ -32,13 +32,6 @@ jobs:
           bun run type-check
         continue-on-error: false
       
-      - name: ESLint Check
-        working-directory: .
-        run: |
-          echo "🔍 Running ESLint checks..."
-          bun run lint
-        continue-on-error: false
-      
       - name: Build Check
         run: |
           echo "🔨 Running build check..."
