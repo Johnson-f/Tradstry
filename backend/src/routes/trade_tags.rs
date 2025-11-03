@@ -332,6 +332,13 @@ pub async fn create_tag(
         }
     };
 
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&user_id, &conn).await
+        .map_err(|e| {
+            error!("[TradeTags] Storage quota check failed for user {}: {}", user_id, e);
+            e
+        })?;
+
     let create_request = payload.into_inner();
     info!("[TradeTags] Calling TradeTag::create with: category={}, name={}", 
         create_request.category, create_request.name);

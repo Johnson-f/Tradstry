@@ -2,7 +2,7 @@ use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use log::{info, error};
 use std::sync::Arc;
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::models::options::{
@@ -172,7 +172,7 @@ async fn get_user_db_connection(
 pub async fn create_option(
     req: HttpRequest,
     body: web::Bytes,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
@@ -201,8 +201,15 @@ pub async fn create_option(
 
     info!("Creating new option trade");
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    let conn = get_user_db_connection(&req, &app_state.turso_client, &supabase_config).await?;
+
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&user_id, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", user_id, e);
+            e
+        })?;
 
     match OptionTrade::create(&conn, payload).await {
         Ok(option) => {

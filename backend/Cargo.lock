@@ -4493,7 +4493,7 @@ dependencies = [
 
 [[package]]
 name = "tradstry-backend"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "actix-cors",
  "actix-multipart",

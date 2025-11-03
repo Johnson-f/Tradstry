@@ -31,7 +31,9 @@ use std::sync::Arc;
 use crate::service::cache_service::CacheService;
 use crate::service::trade_notes_service::TradeNotesService;
 use crate::service::rate_limiter::RateLimiter;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService};
+use crate::service::storage_quota::StorageQuotaService;
+use crate::service::account_deletion::AccountDeletionService;
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService, UpstashSearchClient};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -41,6 +43,8 @@ pub struct AppState {
     pub webhook_handler: Arc<ClerkWebhookHandler>,
     pub cache_service: Arc<CacheService>,
     pub rate_limiter: Arc<RateLimiter>,
+    pub storage_quota_service: Arc<StorageQuotaService>,
+    pub account_deletion_service: Arc<AccountDeletionService>,
     pub ai_chat_service: Arc<AIChatService>,
     #[allow(dead_code)]
     pub ai_insights_service: Arc<AIInsightsService>,
@@ -83,6 +87,9 @@ impl AppState {
 
         // Initialize rate limiter (uses same Redis client)
         let rate_limiter = Arc::new(RateLimiter::new(redis_client));
+
+        // Initialize storage quota service
+        let storage_quota_service = Arc::new(StorageQuotaService::new(Arc::clone(&turso_client)));
 
         // Initialize AI services
         let openrouter_config = crate::turso::vector_config::OpenRouterConfig::from_env()
@@ -149,12 +156,43 @@ impl AppState {
             Arc::clone(&cache_service),
         ));
 
+        // Initialize Upstash Search client for account deletion
+        let search_config = crate::turso::vector_config::SearchConfig::from_env()
+            .map_err(|e| format!("Failed to load Search config: {}", e))?;
+        let upstash_search_client = Arc::new(UpstashSearchClient::new(search_config)?);
+
+        // Initialize ImageUploadService for account deletion (used for Supabase Storage cleanup)
+        let image_storage_config = crate::service::image_upload::SupabaseStorageConfig::from_env()
+            .map_err(|e| format!("Failed to load Supabase Storage config: {}", e))?;
+        let image_upload_service = Arc::new(
+            crate::service::image_upload::ImageUploadService::new(image_storage_config)
+                .map_err(|e| format!("Failed to create ImageUploadService: {}", e))?
+        );
+
+        // Initialize AccountDeletionService
+        let supabase_url = std::env::var("SUPABASE_URL")
+            .map_err(|_| "SUPABASE_URL environment variable not set")?;
+        let supabase_service_role_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+            .map_err(|_| "SUPABASE_SERVICE_ROLE_KEY environment variable not set")?;
+
+        let account_deletion_service = Arc::new(AccountDeletionService::new(
+            Arc::clone(&turso_client),
+            Arc::clone(&image_upload_service),
+            Arc::clone(&vectorization_service),
+            Arc::clone(&qdrant_client),
+            Arc::clone(&upstash_search_client),
+            supabase_url,
+            supabase_service_role_key,
+        ));
+
         Ok(Self {
             config,
             turso_client,
             webhook_handler,
             cache_service,
             rate_limiter,
+            storage_quota_service,
+            account_deletion_service,
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,

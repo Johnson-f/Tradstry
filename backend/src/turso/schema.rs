@@ -876,8 +876,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.19".to_string(),
-        description: "Added profile_picture_uuid column to user_profile table and profile-pictures bucket to Supabase Storage. Added RLS policies to the profile-pictures bucket to only allow users to access their own profile pictures.".to_string(),
+        version: "0.0.20".to_string(),
+        description: "Added storage_used_bytes column to user_profile table and updated the schema to include it.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }

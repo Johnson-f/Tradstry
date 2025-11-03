@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use log::{info, error, warn};
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::turso::schema::get_current_schema_version;
@@ -505,6 +505,160 @@ pub struct ProfileResponse {
     pub message: String,
 }
 
+/// Get user profile
+pub async fn get_profile(
+    req: HttpRequest,
+    user_id: web::Path<String>,
+    turso_client: web::Data<Arc<TursoClient>>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    info!("Getting profile for user: {}", user_id);
+
+    // Get authenticated user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+
+    // Validate that the authenticated user matches the requested user_id
+    if claims.sub != *user_id {
+        warn!("User ID mismatch: JWT sub={}, requested user_id={}", claims.sub, user_id);
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "error": "You can only view your own profile"
+        })));
+    }
+
+    // Ensure schema is up-to-date
+    if let Err(e) = turso_client.ensure_user_schema_on_login(&user_id).await {
+        error!("Failed to ensure schema for user {}: {}", user_id, e);
+        // Continue anyway - will check if table exists before querying
+    }
+
+    // Get user database connection
+    match turso_client.get_user_database_connection(&user_id).await {
+        Ok(Some(conn)) => {
+            // Check if user_profile table exists before querying
+            let table_exists = match conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile'")
+                .await
+            {
+                Ok(stmt) => {
+                    match stmt.query(libsql::params![]).await {
+                        Ok(mut rows) => {
+                            rows.next().await.map(|r| r.is_some()).unwrap_or(false)
+                        }
+                        Err(_) => false,
+                    }
+                }
+                Err(_) => false,
+            };
+
+            if !table_exists {
+                warn!("user_profile table does not exist for user {}, returning empty profile", user_id);
+                // Return empty profile if table doesn't exist
+                return Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "profile": {
+                        "nickname": null,
+                        "display_name": null,
+                        "timezone": null,
+                        "currency": null,
+                        "trading_experience_level": null,
+                        "primary_trading_goal": null,
+                        "asset_types": null,
+                        "trading_style": null,
+                        "profile_picture_uuid": null,
+                    }
+                })));
+            }
+
+            // Try to query the profile table
+            let stmt_result = conn.prepare(
+                "SELECT nickname, display_name, timezone, currency, trading_experience_level, primary_trading_goal, asset_types, trading_style, profile_picture_uuid FROM user_profile LIMIT 1"
+            ).await;
+
+            let stmt = match stmt_result {
+                Ok(stmt) => stmt,
+                Err(e) => {
+                    error!("Failed to prepare profile query for user {}: {}", user_id, e);
+                    // If query preparation fails (e.g., column doesn't exist), return empty profile
+                    return Ok(HttpResponse::Ok().json(serde_json::json!({
+                        "success": true,
+                        "profile": {
+                            "nickname": null,
+                            "display_name": null,
+                            "timezone": null,
+                            "currency": null,
+                            "trading_experience_level": null,
+                            "primary_trading_goal": null,
+                            "asset_types": null,
+                            "trading_style": null,
+                            "profile_picture_uuid": null,
+                        }
+                    })));
+                }
+            };
+
+            let mut rows = stmt.query(libsql::params![]).await
+                .map_err(|e| {
+                    error!("Failed to query profile: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+
+            if let Some(row) = rows.next().await
+                .map_err(|e| {
+                    error!("Failed to read profile row: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })? {
+                let profile = serde_json::json!({
+                    "nickname": row.get::<Option<String>>(0).ok().flatten(),
+                    "display_name": row.get::<Option<String>>(1).ok().flatten(),
+                    "timezone": row.get::<Option<String>>(2).ok().flatten(),
+                    "currency": row.get::<Option<String>>(3).ok().flatten(),
+                    "trading_experience_level": row.get::<Option<String>>(4).ok().flatten(),
+                    "primary_trading_goal": row.get::<Option<String>>(5).ok().flatten(),
+                    "asset_types": row.get::<Option<String>>(6).ok().flatten(),
+                    "trading_style": row.get::<Option<String>>(7).ok().flatten(),
+                    "profile_picture_uuid": row.get::<Option<String>>(8).ok().flatten(),
+                });
+
+                Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "profile": profile
+                })))
+            } else {
+                // Profile doesn't exist yet - return empty profile
+                Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "profile": {
+                        "nickname": null,
+                        "display_name": null,
+                        "timezone": null,
+                        "currency": null,
+                        "trading_experience_level": null,
+                        "primary_trading_goal": null,
+                        "asset_types": null,
+                        "trading_style": null,
+                        "profile_picture_uuid": null,
+                    }
+                })))
+            }
+        }
+        Ok(None) => {
+            info!("No database found for user: {}", user_id);
+            Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "error": "User database not found. Please initialize your database first."
+            })))
+        }
+        Err(e) => {
+            error!("Error getting profile for user {}: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": "Failed to get profile"
+            })))
+        }
+    }
+}
+
 /// Update user profile
 pub async fn update_profile(
     req: HttpRequest,
@@ -580,6 +734,16 @@ pub async fn update_profile(
             };
 
             if !profile_exists {
+                // Check storage quota before creating new profile
+                let app_state = req.app_data::<web::Data<AppState>>()
+                    .ok_or_else(|| actix_web::error::ErrorInternalServerError("AppState not found"))?;
+                
+                app_state.storage_quota_service.check_storage_quota(&user_id, &conn).await
+                    .map_err(|e| {
+                        error!("Storage quota check failed for user {}: {}", user_id, e);
+                        e
+                    })?;
+
                 // Insert new profile with provided values
                 info!("Inserting new profile");
                 conn.execute(
@@ -773,6 +937,100 @@ pub async fn upload_profile_picture(
     })))
 }
 
+/// Get storage usage for authenticated user
+pub async fn get_storage_usage(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    info!("Getting storage usage for user");
+
+    // Get authenticated user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    // Get user's database connection
+    let conn = app_state
+        .get_user_db_connection(user_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get database connection for user {}: {}", user_id, e);
+            actix_web::error::ErrorInternalServerError("Database connection failed")
+        })?
+        .ok_or_else(|| {
+            error!("No database found for user: {}", user_id);
+            actix_web::error::ErrorNotFound("User database not found")
+        })?;
+
+    // Get storage usage from quota service
+    match app_state.storage_quota_service.get_storage_usage(user_id, &conn).await {
+        Ok(usage) => {
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "data": {
+                    "used_bytes": usage.used_bytes,
+                    "limit_bytes": usage.limit_bytes,
+                    "used_mb": usage.used_mb,
+                    "limit_mb": usage.limit_mb,
+                    "remaining_bytes": usage.remaining_bytes,
+                    "remaining_mb": usage.remaining_mb,
+                    "percentage_used": usage.percentage_used
+                }
+            })))
+        }
+        Err(e) => {
+            error!("Failed to get storage usage for user {}: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": "Failed to get storage usage"
+            })))
+        }
+    }
+}
+
+/// Delete user account (irreversible)
+/// This deletes all user data including Turso database, Supabase Storage, vectors, and auth account
+pub async fn delete_account(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> Result<HttpResponse> {
+    info!("Account deletion requested");
+
+    // Get authenticated user
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    info!("Deleting account for user: {}", user_id);
+
+    // Verify user_id matches authenticated user (security check)
+    if claims.sub != *user_id {
+        error!("User ID mismatch in account deletion: {} != {}", claims.sub, user_id);
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "error": "Unauthorized: Cannot delete another user's account"
+        })));
+    }
+
+    // Delete user account (all-or-nothing transaction)
+    match app_state.account_deletion_service.delete_user_account(user_id).await {
+        Ok(_) => {
+            info!("Successfully deleted account for user: {}", user_id);
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Account deleted successfully"
+            })))
+        }
+        Err(e) => {
+            error!("Failed to delete account for user {}: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to delete account: {}", e)
+            })))
+        }
+    }
+}
+
 /// Configure user routes
 pub fn configure_user_routes(cfg: &mut web::ServiceConfig) {
     info!("Setting up /api/user routes");
@@ -784,7 +1042,10 @@ pub fn configure_user_routes(cfg: &mut web::ServiceConfig) {
             .route("/database-info/{user_id}", web::get().to(get_user_database_info))
             .route("/sync-schema/{user_id}", web::post().to(sync_user_schema))
             .route("/schema-version/{user_id}", web::get().to(get_user_schema_version))
+            .route("/profile/{user_id}", web::get().to(get_profile))
             .route("/profile/{user_id}", web::put().to(update_profile))
             .route("/profile/picture/{user_id}", web::post().to(upload_profile_picture))
+            .route("/storage", web::get().to(get_storage_usage))
+            .route("/account", web::delete().to(delete_account))
     );
 }

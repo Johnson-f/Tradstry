@@ -133,6 +133,11 @@ impl SearchConfig {
         format!("{}_{}", self.namespace_prefix, user_id)
     }
 
+    /// Get index name for a specific user (same as namespace for Upstash Search)
+    pub fn get_index_name(&self, user_id: &str) -> String {
+        self.get_user_namespace(user_id)
+    }
+
     /// Get the base URL for search operations
     pub fn get_base_url(&self) -> String {
         self.url.clone()

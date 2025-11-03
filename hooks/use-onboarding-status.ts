@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { apiConfig, getFullUrl } from '@/lib/config/api';
 
 interface OnboardingStatus {
   isComplete: boolean;

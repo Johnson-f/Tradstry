@@ -35,6 +35,8 @@ export const apiConfig = {
       schemaVersion: (userId: string) => `/user/schema-version/${userId}`,
       profile: (userId: string) => `/user/profile/${userId}`,
       profilePicture: (userId: string) => `/user/profile/picture/${userId}`,
+      storage: "/user/storage",
+      deleteAccount: "/user/account",
     },
 
     // Images endpoints
