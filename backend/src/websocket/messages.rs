@@ -58,6 +58,7 @@ impl WsMessage {
 }
 
 /// WebSocket client authentication
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientInfo {
     pub user_id: String,
