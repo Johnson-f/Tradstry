@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import type { Stock } from '@/lib/types/stocks';
 import type { OptionTrade } from '@/lib/types/options';
 import type { Playbook } from '@/lib/types/playbook';
+import TradeTagsManager from '@/components/journaling/trade-tags-manager';
 
 interface StatsProps {
   tradeId: number;
@@ -600,6 +601,11 @@ export default function Stats({ tradeId, tradeType, trade }: StatsProps) {
           <div className={`text-lg font-semibold ${realizedRR !== null && realizedRR < 0 ? 'text-red-600' : ''}`}>
             {formatRMultiple(realizedRR)}
           </div>
+        </div>
+
+        {/* Trade Tags Manager */}
+        <div className="pt-6 border-t">
+          <TradeTagsManager tradeId={tradeId} tradeType={tradeType} />
         </div>
       </CardContent>
     </Card>

@@ -98,11 +98,22 @@ export interface TimeSeriesData {
   daily_pnl: TimeSeriesPoint[];
   weekly_pnl: TimeSeriesPoint[];
   monthly_pnl: TimeSeriesPoint[];
-  rolling_win_rate: TimeSeriesPoint[];
-  rolling_sharpe_ratio: TimeSeriesPoint[];
+  rolling_win_rate_20: TimeSeriesPoint[];
+  rolling_win_rate_50: TimeSeriesPoint[];
+  rolling_win_rate_100: TimeSeriesPoint[];
+  rolling_sharpe_ratio_20: TimeSeriesPoint[];
+  rolling_sharpe_ratio_50: TimeSeriesPoint[];
   profit_by_day_of_week: Record<string, number>;
   profit_by_month: Record<string, number>;
   drawdown_curve: TimeSeriesPoint[];
+  cumulative_return: number;
+  annualized_return: number;
+  total_return_percentage: number;
+  total_trades: number;
+  
+  // Legacy/computed fields for backward compatibility
+  rolling_win_rate?: TimeSeriesPoint[];
+  rolling_sharpe_ratio?: TimeSeriesPoint[];
 }
 
 // Group Type
@@ -157,38 +168,66 @@ export interface AnalyticsRequest {
 
 export interface CoreAnalyticsResponse {
   success: boolean;
-  data: CoreMetrics;
-  message?: string;
+  data: CoreMetrics | null;
+  error?: string;
+  message?: string; // Legacy support
 }
 
 export interface RiskAnalyticsResponse {
   success: boolean;
-  data: RiskMetrics;
-  message?: string;
+  data: RiskMetrics | null;
+  error?: string;
+  message?: string; // Legacy support
+}
+
+export interface DurationPerformanceMetrics {
+  duration_bucket: string;
+  trade_count: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl: number;
+  avg_hold_time_days: number;
+  best_trade: number;
+  worst_trade: number;
+  profit_factor: number;
+  winning_trades: number;
+  losing_trades: number;
+}
+
+export interface DurationPerformanceResponse {
+  duration_buckets: DurationPerformanceMetrics[];
+  overall_metrics: CoreMetrics;
 }
 
 export interface PerformanceAnalyticsResponse {
   success: boolean;
-  data: PerformanceMetrics;
-  message?: string;
+  data: {
+    performance_metrics: PerformanceMetrics;
+    duration_performance: DurationPerformanceResponse;
+  } | null;
+  error?: string;
+  message?: string; // Legacy support
 }
 
 export interface TimeSeriesAnalyticsResponse {
   success: boolean;
-  data: TimeSeriesData;
-  message?: string;
+  data: TimeSeriesData | null;
+  error?: string;
+  message?: string; // Legacy support
 }
 
 export interface GroupedAnalyticsResponse {
   success: boolean;
-  data: Record<string, GroupedMetrics>;
-  message?: string;
+  data: Record<string, GroupedMetrics> | null;
+  error?: string;
+  message?: string; // Legacy support
 }
 
 export interface ComprehensiveAnalyticsResponse {
   success: boolean;
-  data: ComprehensiveAnalytics;
-  message?: string;
+  data: ComprehensiveAnalytics | null;
+  error?: string;
+  message?: string; // Legacy support
 }
 
 // Hook Return Types
@@ -218,7 +257,10 @@ export interface UseAnalyticsRiskReturn {
 }
 
 export interface UseAnalyticsPerformanceReturn {
-  data: PerformanceMetrics | null;
+  data: {
+    performance_metrics: PerformanceMetrics;
+    duration_performance: DurationPerformanceResponse;
+  } | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;

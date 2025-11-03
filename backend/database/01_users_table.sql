@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS user_databases (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Add storage_used_bytes column for tracking user database size (migration for existing databases)
+ALTER TABLE user_databases ADD COLUMN IF NOT EXISTS storage_used_bytes INTEGER NOT NULL DEFAULT 0;
+
 -- Index for faster lookups by email
 CREATE INDEX IF NOT EXISTS idx_user_databases_email ON user_databases(email);
 

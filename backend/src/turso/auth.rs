@@ -99,7 +99,7 @@ impl SupabaseAuth {
 
         let url = format!("{}/auth/v1/user", self.config.project_url);
         
-        log::info!("Validating token with Supabase API at: {}", url);
+        log::debug!("Validating token with Supabase API at: {}", url);
         
         let response = client
             .get(&url)
@@ -108,20 +108,21 @@ impl SupabaseAuth {
             .send()
             .await
             .map_err(|e| {
-                log::error!("Failed to validate token with Supabase: {}", e);
+                // Only log network errors at warn level, not error level, to reduce noise
+                log::warn!("Network error validating token with Supabase (may be temporary): {}", e);
                 AuthError::NetworkError
             })?;
 
         let status = response.status();
         let response_body = response.text().await.unwrap_or_default();
         
-        log::info!("Supabase validation response: {} - {}", status, response_body);
+        log::debug!("Supabase validation response: {} - {}", status, response_body);
 
         if status.is_success() {
-            log::info!("Token validated successfully with Supabase API");
+            log::debug!("Token validated successfully with Supabase API");
             Ok(())
         } else {
-            log::error!("Token validation failed: {} - {}", status, response_body);
+            log::warn!("Token validation failed: {} - {}", status, response_body);
             Err(AuthError::InvalidToken)
         }
     }

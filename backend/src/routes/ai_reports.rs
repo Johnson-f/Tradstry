@@ -8,8 +8,9 @@ use log::{info, error};
 use serde::{Deserialize, Serialize};
 use actix_web_httpauth::middleware::HttpAuthentication;
 
-// Import jwt_validator from main module
+// Import jwt_validator from main module and rate limit middleware
 use crate::jwt_validator;
+use crate::middleware::rate_limit::rate_limit_middleware;
 
 /// Authenticate user and get user ID
 async fn get_authenticated_user(req: &HttpRequest, supabase_config: &SupabaseConfig) -> Result<String> {
@@ -254,6 +255,7 @@ pub fn configure_ai_reports_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/ai/reports")
             .wrap(HttpAuthentication::bearer(jwt_validator))
+            .wrap(actix_web::middleware::from_fn(rate_limit_middleware))
             .route("", web::post().to(generate_report))
             .route("/async", web::post().to(generate_report_async))
             .route("", web::get().to(get_reports))

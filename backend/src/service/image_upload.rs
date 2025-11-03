@@ -72,9 +72,9 @@ impl ImageUploadService {
             .and_then(|ext| ext.to_str())
             .unwrap_or("")
             .to_lowercase();
-        let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"];
+        let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "heif"];
         if !allowed_extensions.contains(&extension.as_str()) {
-            return Err(anyhow::anyhow!("File type not allowed. Supported formats: {}", allowed_extensions.join(", ")));
+            return Err(anyhow::anyhow!("File type '{}' not allowed. Supported formats: {}", extension, allowed_extensions.join(", ")));
         }
         Ok(())
     }
@@ -219,6 +219,81 @@ impl ImageUploadService {
         } else {
             info!("File deleted successfully: {} (status={})", object_path, status);
         }
+        Ok(())
+    }
+
+    /// Delete all files in a folder for a user (across all buckets)
+    /// This method creates a new service instance with the specified bucket
+    pub async fn delete_all_files_in_folder(&self, user_id: &str, bucket_name: &str) -> Result<()> {
+        info!("Deleting all files in folder {} for user {} in bucket {}", user_id, user_id, bucket_name);
+        
+        // Create a new service instance with the target bucket
+        let bucket_service = ImageUploadService {
+            config: SupabaseStorageConfig {
+                bucket_name: bucket_name.to_string(),
+                project_url: self.config.project_url.clone(),
+                service_role_key: self.config.service_role_key.clone(),
+                anon_key: self.config.anon_key.clone(),
+            },
+            http_client: self.http_client.clone(),
+        };
+
+        // List all files with the user_id prefix
+        let folder_prefix = format!("{}/", user_id);
+        let list_url = format!("{}/storage/v1/object/list/{}", self.config.project_url, bucket_name);
+        
+        let mut all_files = Vec::new();
+        let mut offset = 0;
+        let limit = 1000; // Supabase default limit
+
+        loop {
+            let list_response = bucket_service.http_client
+                .post(&list_url)
+                .header("Authorization", format!("Bearer {}", bucket_service.config.service_role_key))
+                .header("apikey", bucket_service.config.anon_key.clone())
+                .json(&serde_json::json!({
+                    "prefix": folder_prefix,
+                    "limit": limit,
+                    "offset": offset
+                }))
+                .send()
+                .await
+                .context("Failed to list files in Supabase Storage")?;
+
+            if !list_response.status().is_success() {
+                let error_text = list_response.text().await.unwrap_or_default();
+                warn!("Failed to list files in bucket {} with prefix {}: {}", bucket_name, folder_prefix, error_text);
+                break;
+            }
+
+            #[derive(Deserialize)]
+            struct FileItem {
+                name: String,
+            }
+
+            let files: Vec<FileItem> = list_response.json().await.unwrap_or_default();
+            
+            if files.is_empty() {
+                break;
+            }
+
+            all_files.extend(files.iter().map(|f| f.name.clone()));
+            offset += files.len() as i32;
+
+            if files.len() < limit as usize {
+                break;
+            }
+        }
+
+        info!("Found {} files to delete in bucket {} for user {}", all_files.len(), bucket_name, user_id);
+
+        // Delete files in batches
+        for file_path in &all_files {
+            let _ = bucket_service.delete_file(file_path).await
+                .map_err(|e| warn!("Failed to delete file {}: {}", file_path, e));
+        }
+
+        info!("Completed deletion of {} files from bucket {} for user {}", all_files.len(), bucket_name, user_id);
         Ok(())
     }
 }

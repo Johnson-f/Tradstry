@@ -2,7 +2,7 @@ use actix_web::{web, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use log::{info, error, warn};
 use std::sync::Arc;
-use crate::turso::client::TursoClient;
+use crate::turso::{AppState, client::TursoClient};
 use crate::turso::config::{SupabaseConfig, SupabaseClaims};
 use crate::turso::auth::{validate_supabase_jwt_token, AuthError};
 use crate::models::stock::stocks::{
@@ -244,7 +244,7 @@ pub async fn create_stock(
 pub async fn create_stock(
     req: HttpRequest,
     body: web::Bytes,  // Changed from web::Json to get raw bytes
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     vectorization_service: web::Data<Arc<VectorizationService>>,
@@ -273,8 +273,15 @@ pub async fn create_stock(
 
     info!("Creating new stock trade");
 
-    let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
+    let conn = get_user_db_connection(&req, &app_state.turso_client, &supabase_config).await?;
+
+    // Check storage quota before creating
+    app_state.storage_quota_service.check_storage_quota(&user_id, &conn).await
+        .map_err(|e| {
+            error!("Storage quota check failed for user {}: {}", user_id, e);
+            e
+        })?;
 
     match Stock::create(&conn, payload).await {
         Ok(stock) => {
@@ -539,12 +546,19 @@ pub async fn update_stock(
                 }
             });
 
-            // Broadcast real-time update
-            let ws_manager_clone = ws_manager.clone();
+            // Broadcast real-time update (non-blocking, errors are logged but don't affect response)
+            let ws_manager_clone = ws_manager.get_ref().clone();
             let user_id_ws = user_id.clone();
             let stock_ws = stock.clone();
             tokio::spawn(async move {
-                broadcast_stock_update(ws_manager_clone, &user_id_ws, "updated", &stock_ws).await;
+                // Use broadcast_to_user directly since we don't have Data wrapper in spawned task
+                use crate::websocket::{WsMessage, EventType};
+                let envelope = WsMessage::new(
+                    EventType::StockUpdated,
+                    serde_json::to_value(&stock_ws).unwrap_or(serde_json::Value::Null),
+                );
+                let manager = ws_manager_clone.lock().await;
+                manager.broadcast_to_user(&user_id_ws, envelope);
             });
 
             // Re-vectorize the updated stock trade
