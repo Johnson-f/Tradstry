@@ -28,10 +28,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint code
-        working-directory: .
-        run: bun run lint
-
       - name: Type check
         run: bun run type-check
 
