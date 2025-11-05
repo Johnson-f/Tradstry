@@ -2,7 +2,6 @@
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { useUserInitialization } from "@/hooks/use-user-initialization";
-import { useOnboardingStatus } from "@/hooks/use-onboarding-status";
 import { WebSocketProvider } from "@/lib/websocket/provider";
 import { WebSocketConnectionControl } from "@/components/websocket-connection-control";
 import { useState, useEffect } from "react";
@@ -10,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Providers } from "../providers";
 import { InitializationContext } from "@/contexts/initialization-context";
+ 
 
 // InitializationContext moved to '@/contexts/initialization-context'
 
@@ -31,19 +31,14 @@ export default function ProtectedLayout({
 function ProtectedLayoutInner({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { isInitialized, isInitializing, error, needsRefresh } = useUserInitialization();
-  const { isComplete: onboardingComplete, loading: onboardingLoading } = useOnboardingStatus();
+  
   const [showInitializationStatus, setShowInitializationStatus] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const isNotebook = pathname?.startsWith("/app/notebook");
   const isOnboardingPage = pathname === '/onboarding';
 
-  // Redirect to onboarding if not complete (skip if already on onboarding page or still loading)
-  useEffect(() => {
-    if (!onboardingLoading && !onboardingComplete && !isOnboardingPage && isInitialized) {
-      router.push('/onboarding');
-    }
-  }, [onboardingComplete, onboardingLoading, isOnboardingPage, isInitialized, router]);
+  
 
   // Show initialization status for a few seconds when initializing
   useEffect(() => {

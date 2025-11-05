@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/sidebar"
 import { useUserProfile } from "@/hooks/use-user-profile"
 import { cn } from "@/lib/utils"
+import Image from "next/image"
+import icon from "@/app/icon.png"
 
 // Tradstry navigation data
 const navItems = [
@@ -114,33 +116,42 @@ export function AppSidebar({
       {/* Top Section */}
       <div>
         {/* Profile & Collapse Button */}
-        <div className="flex items-center justify-between px-4 pt-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">T</span>
-            </div>
+        <div className={cn("relative flex items-center pt-6 pb-4", collapsed ? "justify-center px-0" : "justify-between px-4")}>
+          <div className="flex items-center gap-2">
+            <Image
+              src={icon}
+              alt="Tradstry"
+              width={collapsed ? 48 : 60}
+              height={collapsed ? 48 : 60}
+              className="rounded-2xl shadow-sm"
+              priority
+            />
             {!collapsed && (
               <div>
-                <div className="text-foreground font-bold text-base leading-tight">
+                <div className="font-black text-2xl leading-tight bg-gradient-to-r from-violet-400 via-sky-400 to-emerald-400 bg-clip-text text-transparent tracking-wide" style={{ fontWeight: 900 }}>
                   Tradstry
-                </div>
-                <div className="text-xs text-muted-foreground leading-tight">
-                  Journal & Analytics
                 </div>
               </div>
             )}
           </div>
-          <button
-            className="ml-2 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
-            onClick={() => handleCollapsedChange(!collapsed)}
-            aria-label="Toggle sidebar"
-          >
-            {collapsed ? (
-              <ChevronRight className="w-5 h-5" />
-            ) : (
+          {!collapsed && (
+            <button
+              className="ml-2 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+              onClick={() => handleCollapsedChange(!collapsed)}
+              aria-label="Toggle sidebar"
+            >
               <ChevronLeft className="w-5 h-5" />
-            )}
-          </button>
+            </button>
+          )}
+          {collapsed && (
+            <button
+              className="absolute top-6 -right-3 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+              onClick={() => handleCollapsedChange(!collapsed)}
+              aria-label="Toggle sidebar"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
