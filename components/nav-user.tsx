@@ -25,6 +25,7 @@ import {
 // Removed SidebarProvider dependencies since we're using custom implementation
 import { createClient } from "@/lib/supabase/client"
 import { SettingsDialog } from "./settings-dialog"
+ 
 
 // Profile types matching backend response
 interface UserProfileData {
@@ -60,6 +61,7 @@ export function NavUser({
 }: NavUserProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
+  
   
   // Simple mobile detection (alternative to useSidebar hook)
   const [isMobile, setIsMobile] = React.useState(false)
@@ -209,6 +211,7 @@ export function NavUser({
             <Settings className="mr-2 h-4 w-4" />
             Settings
           </DropdownMenuItem>
+          
           <DropdownMenuItem onClick={handleThemeToggle}>
             {mounted && (theme === "dark" ? (
               <Sun className="mr-2 h-4 w-4" />

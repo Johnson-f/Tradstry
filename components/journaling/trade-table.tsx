@@ -316,7 +316,7 @@ export function TradeTable() {
             <CardTitle>TRADES</CardTitle>
           </div>
           <CardAction>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" data-nextstep="dashboard.add-trade" onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" />
               Add trade
             </Button>

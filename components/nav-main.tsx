@@ -33,7 +33,12 @@ export function NavMain({
             >
               <item.icon className="w-5 h-5" />
               {!collapsed && (
-                <span className="text-sm flex-1">{item.title}</span>
+                <span
+                  className="text-sm flex-1"
+                  data-nextstep={item.title === 'Analytics' ? 'analytics.nav.label' : item.title === 'Markets' ? 'markets.nav.label' : undefined}
+                >
+                  {item.title}
+                </span>
               )}
             </div>
           </Link>
