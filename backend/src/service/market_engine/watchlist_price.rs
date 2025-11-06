@@ -583,6 +583,7 @@ pub async fn delete_watchlist_entry(conn: &Connection, id: &str) -> Result<bool>
 }
 
 /// Get watchlist entry by ticker symbol
+#[allow(dead_code)]
 pub async fn get_watchlist_entry_by_symbol(conn: &Connection, ticker_symbol: &str) -> Result<Option<WatchlistEntry>> {
     let stmt = conn
         .prepare("SELECT id, stock_name, ticker_symbol, current_price, percent_change, logo, created_at, updated_at FROM watchlist WHERE ticker_symbol = ?")

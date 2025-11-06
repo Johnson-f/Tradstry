@@ -8,7 +8,7 @@ use crate::turso::config::WebPushConfig;
 
 /// Check if a notification was already sent for this alert
 pub async fn was_alert_notification_sent(conn: &Connection, alert_id: &str) -> Result<bool> {
-    let mut stmt = conn
+    let stmt = conn
         .prepare("SELECT 1 FROM alert_notifications_sent WHERE alert_id = ?")
         .await
         .context("Failed to prepare alert notification check query")?;
