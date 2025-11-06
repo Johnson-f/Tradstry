@@ -645,6 +645,19 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_alert_price ON price_alert(alert_price)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_created_at ON price_alert(created_at)", libsql::params![]).await?;
 
+    // Alert notifications sent tracking table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS alert_notifications_sent (
+            alert_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_alert_notifications_sent_user_id ON alert_notifications_sent(user_id)", libsql::params![]).await?;
+
     // AI Chat Tables
     conn.execute(
         r#"
@@ -942,8 +955,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.22".to_string(),
-        description: "Added triggers for push notifications tables.".to_string(),
+        version: "0.0.23".to_string(),
+        description: "Added triggers for watchlist and price alert tables.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1230,6 +1243,20 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         triggers: vec![
             TriggerInfo { name: "update_price_alert_timestamp".to_string(), table_name: "price_alert".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE price_alert SET updated_at = datetime('now') WHERE id = NEW.id".to_string() },
         ],
+    });
+
+    // Alert notifications sent tracking table
+    schemas.push(TableSchema {
+        name: "alert_notifications_sent".to_string(),
+        columns: vec![
+            ColumnInfo { name: "alert_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "sent_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_alert_notifications_sent_user_id".to_string(), table_name: "alert_notifications_sent".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
     });
 
     // AI Chat Tables

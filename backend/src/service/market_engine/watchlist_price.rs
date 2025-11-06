@@ -348,9 +348,12 @@ pub async fn check_price_alerts(conn: &Connection) -> Result<Vec<AlertTrigger>> 
 
 /// Refresh all watchlist and price alert data
 /// This is the main function to call periodically to update prices and check alerts
+/// Optionally sends push notifications for triggered alerts
 pub async fn refresh_watchlist_and_alerts(
     conn: &Connection,
     client: &MarketClient,
+    user_id: Option<&str>,
+    web_push_config: Option<&crate::turso::config::WebPushConfig>,
 ) -> Result<Vec<AlertTrigger>> {
     // Update watchlist prices
     update_watchlist_prices(conn, client).await?;
@@ -360,6 +363,16 @@ pub async fn refresh_watchlist_and_alerts(
 
     // Check for triggered alerts
     let triggered_alerts = check_price_alerts(conn).await?;
+
+    // Send push notifications if user_id and web_push_config are provided
+    if let (Some(uid), Some(config)) = (user_id, web_push_config) {
+        if !triggered_alerts.is_empty() {
+            use crate::service::notifications::price_alert::send_price_alert_notifications;
+            let sent_count = send_price_alert_notifications(conn, &triggered_alerts, uid, config).await
+                .unwrap_or(0);
+            log::info!("Sent {} price alert notifications for user {}", sent_count, uid);
+        }
+    }
 
     Ok(triggered_alerts)
 }
@@ -842,11 +855,21 @@ pub async fn update_price_alert_entry(
         }
     }
 
+    // If alert_price was updated, reset notification sent status
+    if alert_price.is_some() {
+        use crate::service::notifications::price_alert::reset_alert_notification_status;
+        let _ = reset_alert_notification_status(conn, id).await;
+    }
+
     get_price_alert_entry_by_id(conn, id).await
 }
 
 /// Delete a price alert entry
 pub async fn delete_price_alert_entry(conn: &Connection, id: &str) -> Result<bool> {
+    // Clean up notification tracking records
+    use crate::service::notifications::price_alert::reset_alert_notification_status;
+    let _ = reset_alert_notification_status(conn, id).await;
+
     let result = conn
         .execute(
             "DELETE FROM price_alert WHERE id = ?",

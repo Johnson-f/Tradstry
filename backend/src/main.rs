@@ -261,7 +261,9 @@ fn configure_public_routes(cfg: &mut web::ServiceConfig) {
         .route("/webhooks/clerk", web::post().to(clerk_webhook_handler))
         .route("/profile", web::get().to(get_profile))
         // Market Data public routes
-        .configure(crate::routes::market::configure_market_routes);
+        .configure(crate::routes::market::configure_market_routes)
+        // Cron endpoints (public but secured with cron secret)
+        .route("/api/price-alerts/check-all", web::post().to(crate::routes::watchlist_price::check_all_price_alerts));
 }
 
 use middleware::rate_limit::rate_limit_middleware;
