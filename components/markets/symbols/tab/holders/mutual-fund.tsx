@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface MutualFundProps {
   symbol: string;
@@ -72,41 +73,44 @@ export function MutualFund({ symbol, className }: MutualFundProps) {
   }
 
   return (
-    <div className={cn("rounded-2xl border bg-card/50 overflow-x-auto", className)}>
-      <div className="p-4 sm:p-6">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[30%]">Holder</TableHead>
-              <TableHead className="text-right">Shares</TableHead>
-              <TableHead className="text-right">% Out</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead className="text-right">Date Reported</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {holdersList.map((holder, index) => (
-              <TableRow key={`${holder.holder}-${index}`}>
-                <TableCell className="font-medium">{holder.holder}</TableCell>
-                <TableCell className="text-right">
-                  {formatNumber(holder.shares)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {holder.percent_out !== null && holder.percent_out !== undefined
-                    ? `${holder.percent_out.toFixed(2)}%`
-                    : "N/A"}
-                </TableCell>
-                <TableCell className="text-right">
-                  ${formatNumber(holder.value)}
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {formatDate(holder.date_reported)}
-                </TableCell>
+    <div className={cn("rounded-2xl border bg-card/50", className)}>
+      <ScrollArea className="w-full">
+        <div className="p-4 sm:p-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[30%]">Holder</TableHead>
+                <TableHead className="text-right">Shares</TableHead>
+                <TableHead className="text-right">% Out</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead className="text-right">Date Reported</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {holdersList.map((holder, index) => (
+                <TableRow key={`${holder.holder}-${index}`}>
+                  <TableCell className="font-medium">{holder.holder}</TableCell>
+                  <TableCell className="text-right">
+                    {formatNumber(holder.shares)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {holder.percent_out !== null && holder.percent_out !== undefined
+                      ? `${holder.percent_out.toFixed(2)}%`
+                      : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${formatNumber(holder.value)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatDate(holder.date_reported)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface InsiderRosterProps {
   symbol: string;
@@ -88,41 +89,44 @@ export function InsiderRoster({ symbol, className }: InsiderRosterProps) {
   };
 
   return (
-    <div className={cn("rounded-2xl border bg-card/50 overflow-x-auto", className)}>
-      <div className="p-4 sm:p-6">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHead key={header} className="capitalize">
-                  {header.replace(/_/g, " ")}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {roster.map((item, index) => {
-              if (typeof item !== "object" || item === null) {
+    <div className={cn("rounded-2xl border bg-card/50", className)}>
+      <ScrollArea className="w-full">
+        <div className="p-4 sm:p-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {headers.map((header) => (
+                  <TableHead key={header} className="capitalize">
+                    {header.replace(/_/g, " ")}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {roster.map((item, index) => {
+                if (typeof item !== "object" || item === null) {
+                  return (
+                    <TableRow key={index}>
+                      <TableCell colSpan={headers.length} className="text-muted-foreground">
+                        {formatValue(item)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                const rowData = item as Record<string, unknown>;
                 return (
                   <TableRow key={index}>
-                    <TableCell colSpan={headers.length} className="text-muted-foreground">
-                      {formatValue(item)}
-                    </TableCell>
+                    {headers.map((header) => (
+                      <TableCell key={header}>{formatValue(rowData[header])}</TableCell>
+                    ))}
                   </TableRow>
                 );
-              }
-              const rowData = item as Record<string, unknown>;
-              return (
-                <TableRow key={index}>
-                  {headers.map((header) => (
-                    <TableCell key={header}>{formatValue(rowData[header])}</TableCell>
-                  ))}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
     </div>
   );
 }

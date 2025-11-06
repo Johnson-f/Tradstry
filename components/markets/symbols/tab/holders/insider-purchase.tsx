@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface InsiderPurchaseProps {
   symbol: string;
@@ -82,49 +83,52 @@ export function InsiderPurchase({ symbol, className }: InsiderPurchaseProps) {
   }
 
   return (
-    <div className={cn("rounded-2xl border bg-card/50 overflow-x-auto", className)}>
-      <div className="p-4 sm:p-6">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[25%]">Insider</TableHead>
-              <TableHead className="w-[20%]">Transaction Type</TableHead>
-              <TableHead className="text-right">Shares</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead className="text-right">Date</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {purchases.map((purchase, index) => (
-              <TableRow key={`${purchase.insider}-${purchase.date}-${index}`}>
-                <TableCell className="font-medium">
-                  {purchase.insider}
-                </TableCell>
-                <TableCell>
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                    {purchase.transaction_type}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
-                  {formatShares(purchase.shares)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {formatPrice(purchase.price)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {purchase.value !== null && purchase.value !== undefined
-                    ? `$${formatNumber(purchase.value)}`
-                    : "N/A"}
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {formatDate(purchase.date)}
-                </TableCell>
+    <div className={cn("rounded-2xl border bg-card/50", className)}>
+      <ScrollArea className="w-full">
+        <div className="p-4 sm:p-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[25%]">Insider</TableHead>
+                <TableHead className="w-[20%]">Transaction Type</TableHead>
+                <TableHead className="text-right">Shares</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead className="text-right">Date</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {purchases.map((purchase, index) => (
+                <TableRow key={`${purchase.insider}-${purchase.date}-${index}`}>
+                  <TableCell className="font-medium">
+                    {purchase.insider}
+                  </TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
+                      {purchase.transaction_type}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                    {formatShares(purchase.shares)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPrice(purchase.price)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {purchase.value !== null && purchase.value !== undefined
+                      ? `$${formatNumber(purchase.value)}`
+                      : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatDate(purchase.date)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
     </div>
   );
 }

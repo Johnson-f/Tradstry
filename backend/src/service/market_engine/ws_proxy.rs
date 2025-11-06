@@ -132,7 +132,7 @@ impl MarketWsProxy {
         if !active_symbols.is_empty() {
             let symbol_list = active_symbols.join(",");
             info!("Sending subscription for symbols: {}", symbol_list);
-            ws_stream.send(WsMessage::Text(symbol_list)).await?;
+            ws_stream.send(WsMessage::Text(symbol_list.into())).await?;
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -165,7 +165,7 @@ impl MarketWsProxy {
                     match cmd {
                         Some(symbol_list) => {
                             info!("Sending subscription update to upstream: {}", symbol_list);
-                            if let Err(e) = ws_stream.send(WsMessage::Text(symbol_list)).await {
+                        if let Err(e) = ws_stream.send(WsMessage::Text(symbol_list.into())).await {
                                 error!("Failed to send subscription update: {}", e);
                                 break;
                             }

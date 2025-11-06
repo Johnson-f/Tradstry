@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface InsiderTransactionsProps {
   symbol: string;
@@ -85,66 +86,69 @@ export function InsiderTransactions({
   }
 
   return (
-    <div className={cn("rounded-2xl border bg-card/50 overflow-x-auto", className)}>
-      <div className="p-4 sm:p-6">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[25%]">Insider</TableHead>
-              <TableHead className="w-[20%]">Transaction Type</TableHead>
-              <TableHead className="text-right">Shares</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead className="text-right">Date</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {transactions.map((transaction, index) => (
-              <TableRow key={`${transaction.insider}-${transaction.date}-${index}`}>
-                <TableCell className="font-medium">
-                  {transaction.insider}
-                </TableCell>
-                <TableCell>
-                  <span
+    <div className={cn("rounded-2xl border bg-card/50", className)}>
+      <ScrollArea className="w-full">
+        <div className="p-4 sm:p-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[25%]">Insider</TableHead>
+                <TableHead className="w-[20%]">Transaction Type</TableHead>
+                <TableHead className="text-right">Shares</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead className="text-right">Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactions.map((transaction, index) => (
+                <TableRow key={`${transaction.insider}-${transaction.date}-${index}`}>
+                  <TableCell className="font-medium">
+                    {transaction.insider}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium",
+                        transaction.transaction_type.toLowerCase().includes("buy") ||
+                          transaction.transaction_type.toLowerCase().includes("purchase")
+                          ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                          : transaction.transaction_type.toLowerCase().includes("sell")
+                          ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {transaction.transaction_type}
+                    </span>
+                  </TableCell>
+                  <TableCell
                     className={cn(
-                      "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium",
-                      transaction.transaction_type.toLowerCase().includes("buy") ||
-                        transaction.transaction_type.toLowerCase().includes("purchase")
-                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                        : transaction.transaction_type.toLowerCase().includes("sell")
-                        ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                        : "bg-muted text-muted-foreground"
+                      "text-right font-medium",
+                      transaction.shares >= 0
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
                     )}
                   >
-                    {transaction.transaction_type}
-                  </span>
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    "text-right font-medium",
-                    transaction.shares >= 0
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  )}
-                >
-                  {formatShares(transaction.shares)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {formatPrice(transaction.price)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {transaction.value !== null && transaction.value !== undefined
-                    ? `$${formatNumber(transaction.value)}`
-                    : "N/A"}
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {formatDate(transaction.date)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                    {formatShares(transaction.shares)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPrice(transaction.price)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {transaction.value !== null && transaction.value !== undefined
+                      ? `$${formatNumber(transaction.value)}`
+                      : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatDate(transaction.date)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
     </div>
   );
 }

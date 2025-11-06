@@ -603,6 +603,48 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_public_holidays_country_date ON public_holidays(country_code, holiday_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_public_holidays_date ON public_holidays(holiday_date)", libsql::params![]).await?;
 
+    // Watchlist table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id TEXT PRIMARY KEY,
+            stock_name TEXT NOT NULL,
+            ticker_symbol TEXT NOT NULL,
+            current_price DECIMAL(15,8),
+            percent_change DECIMAL(10,4),
+            logo TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_ticker_symbol ON watchlist(ticker_symbol)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_stock_name ON watchlist(stock_name)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_created_at ON watchlist(created_at)", libsql::params![]).await?;
+
+    // Price alerts table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS price_alert (
+            id TEXT PRIMARY KEY,
+            stock_name TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            current_price DECIMAL(15,8),
+            price_change DECIMAL(15,8),
+            alert_price DECIMAL(15,8) NOT NULL,
+            note TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_symbol ON price_alert(symbol)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_stock_name ON price_alert(stock_name)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_alert_price ON price_alert(alert_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_price_alert_created_at ON price_alert(created_at)", libsql::params![]).await?;
+
     // AI Chat Tables
     conn.execute(
         r#"
@@ -869,6 +911,30 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         libsql::params![],
     ).await?;
 
+    conn.execute(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS update_watchlist_timestamp
+        AFTER UPDATE ON watchlist
+        FOR EACH ROW
+        BEGIN
+            UPDATE watchlist SET updated_at = datetime('now') WHERE id = NEW.id;
+        END
+        "#,
+        libsql::params![],
+    ).await?;
+
+    conn.execute(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS update_price_alert_timestamp
+        AFTER UPDATE ON price_alert
+        FOR EACH ROW
+        BEGIN
+            UPDATE price_alert SET updated_at = datetime('now') WHERE id = NEW.id;
+        END
+        "#,
+        libsql::params![],
+    ).await?;
+
     info!("Trading+notebook schema initialized successfully");
     Ok(())
 }
@@ -876,8 +942,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.20".to_string(),
-        description: "Added storage_used_bytes column to user_profile table and updated the schema to include it.".to_string(),
+        version: "0.0.22".to_string(),
+        description: "Added triggers for push notifications tables.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1118,6 +1184,54 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
 
     schemas.push(TableSchema { name: "public_holidays".to_string(), columns: vec![ ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true }, ColumnInfo { name: "country_code".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "holiday_name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "holiday_date".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false }, ColumnInfo { name: "is_national".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("true".to_string()), is_primary_key: false }, ColumnInfo { name: "description".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false }, ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("''".to_string()), is_primary_key: false }, ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("''".to_string()), is_primary_key: false } ], indexes: vec![ IndexInfo { name: "idx_public_holidays_country_date".to_string(), table_name: "public_holidays".to_string(), columns: vec!["country_code".to_string(), "holiday_date".to_string()], is_unique: false }, IndexInfo { name: "idx_public_holidays_date".to_string(), table_name: "public_holidays".to_string(), columns: vec!["holiday_date".to_string()], is_unique: false } ], triggers: vec![] });
 
+    // Watchlist table
+    schemas.push(TableSchema {
+        name: "watchlist".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "stock_name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "ticker_symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "current_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "percent_change".to_string(), data_type: "DECIMAL(10,4)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "logo".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_watchlist_ticker_symbol".to_string(), table_name: "watchlist".to_string(), columns: vec!["ticker_symbol".to_string()], is_unique: false },
+            IndexInfo { name: "idx_watchlist_stock_name".to_string(), table_name: "watchlist".to_string(), columns: vec!["stock_name".to_string()], is_unique: false },
+            IndexInfo { name: "idx_watchlist_created_at".to_string(), table_name: "watchlist".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![
+            TriggerInfo { name: "update_watchlist_timestamp".to_string(), table_name: "watchlist".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE watchlist SET updated_at = datetime('now') WHERE id = NEW.id".to_string() },
+        ],
+    });
+
+    // Price alerts table
+    schemas.push(TableSchema {
+        name: "price_alert".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "stock_name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "current_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "price_change".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "alert_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "note".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_price_alert_symbol".to_string(), table_name: "price_alert".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+            IndexInfo { name: "idx_price_alert_stock_name".to_string(), table_name: "price_alert".to_string(), columns: vec!["stock_name".to_string()], is_unique: false },
+            IndexInfo { name: "idx_price_alert_alert_price".to_string(), table_name: "price_alert".to_string(), columns: vec!["alert_price".to_string()], is_unique: false },
+            IndexInfo { name: "idx_price_alert_created_at".to_string(), table_name: "price_alert".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![
+            TriggerInfo { name: "update_price_alert_timestamp".to_string(), table_name: "price_alert".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE price_alert SET updated_at = datetime('now') WHERE id = NEW.id".to_string() },
+        ],
+    });
+
     // AI Chat Tables
     schemas.push(TableSchema {
         name: "chat_sessions".to_string(),
@@ -1257,6 +1371,27 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             IndexInfo { name: "idx_report_tasks_created_at".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
         ],
         triggers: vec![],
+    });
+
+    // Web Push subscriptions
+    schemas.push(TableSchema {
+        name: "push_subscriptions".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "endpoint".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "p256dh".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "auth".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "ua".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "topics".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("(datetime('now'))".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_push_subscriptions_user_id".to_string(), table_name: "push_subscriptions".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_push_subscriptions_endpoint_unique".to_string(), table_name: "push_subscriptions".to_string(), columns: vec!["endpoint".to_string()], is_unique: true },
+        ],
+        triggers: vec![ TriggerInfo { name: "update_push_subscriptions_timestamp".to_string(), table_name: "push_subscriptions".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE push_subscriptions SET updated_at = datetime('now') WHERE id = NEW.id".to_string() } ],
     });
 
     schemas
@@ -1458,5 +1593,3 @@ pub async fn update_table_schema(conn: &Connection, table_schema: &TableSchema) 
     
     Ok(())
 }
-
-

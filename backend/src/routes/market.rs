@@ -86,6 +86,17 @@ pub async fn get_similar_handler(app_state: web::Data<AppState>, query: web::Que
 }
 
 #[derive(serde::Deserialize)]
+pub struct LogoQuery { symbol: String }
+
+pub async fn get_logo_handler(app_state: web::Data<AppState>, query: web::Query<LogoQuery>) -> Result<HttpResponse> {
+    let client = client_from_state(&app_state).map_err(actix_web::error::ErrorInternalServerError)?;
+    match quotes::get_logo(&client, &query.symbol).await {
+        Ok(res) => Ok(HttpResponse::Ok().json(ApiResponse::success(res))),
+        Err(e) => Ok(HttpResponse::BadGateway().json(ApiResponse::<()>::error(e.to_string()))),
+    }
+}
+
+#[derive(serde::Deserialize)]
 pub struct HistoricalQuery { symbol: String, range: Option<String>, interval: Option<String> }
 
 pub async fn get_historical_handler(app_state: web::Data<AppState>, query: web::Query<HistoricalQuery>) -> Result<HttpResponse> {
@@ -304,6 +315,7 @@ pub fn configure_market_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/market/quotes", web::get().to(get_quotes_handler))
         .route("/api/market/simple-quotes", web::get().to(get_simple_quotes_handler))
         .route("/api/market/similar", web::get().to(get_similar_handler))
+        .route("/api/market/logo", web::get().to(get_logo_handler))
         .route("/api/market/historical", web::get().to(get_historical_handler))
         .route("/api/market/movers", web::get().to(get_movers_handler))
         .route("/api/market/gainers", web::get().to(get_gainers_handler))

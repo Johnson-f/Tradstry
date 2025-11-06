@@ -11,3 +11,4 @@ pub mod account_deletion;
 // AI Services - organized in dedicated module
 pub mod ai_service;
 pub mod market_engine;
+pub mod push_service;

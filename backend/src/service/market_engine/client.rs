@@ -7,6 +7,8 @@ use crate::turso::config::FinanceQueryConfig;
 #[derive(Clone)]
 pub struct MarketClient {
     pub base_url: String,
+    // Secondary upstream for failover
+    secondary_url: String,
     api_key: Option<String>,
     http: Client,
 }
@@ -20,37 +22,57 @@ impl MarketClient {
             .build()?;
 
         Ok(Self {
-            base_url: config.base_url.trim_end_matches('/').to_string(),
+            // Hardcode upstreams with explicit order for failover
+            // Primary
+            base_url: "https://finance-query.onrender.com".to_string(),
+            // Secondary
+            secondary_url: "https://finance-query-uzbi.onrender.com".to_string(),
             api_key: config.api_key.clone(),
             http,
         })
     }
 
     pub async fn get(&self, path: &str, query: Option<&[(&str, String)]>) -> Result<Response> {
-        let url = format!("{}{}{}",
-            self.base_url,
-            if path.starts_with('/') { "" } else { "/" },
-            path
-        );
+        // Try primary first, then secondary on ANY error (network or non-2xx status)
+        let candidates = [self.base_url.as_str(), self.secondary_url.as_str()];
+        let mut last_err: Option<anyhow::Error> = None;
 
-        let mut req = self.http.get(&url);
-        
-        // Only add x-api-key header if API key is configured
-        if let Some(key) = &self.api_key {
-            req = req.header("x-api-key", key);
-        }
-        
-        if let Some(q) = query {
-            req = req.query(q);
+        for base in candidates.iter() {
+            let url = format!(
+                "{}{}{}",
+                base,
+                if path.starts_with('/') { "" } else { "/" },
+                path
+            );
+
+            let mut req = self.http.get(&url);
+
+            if let Some(key) = &self.api_key {
+                req = req.header("x-api-key", key);
+            }
+            if let Some(q) = query {
+                req = req.query(q);
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        return Ok(resp);
+                    } else {
+                        let status = resp.status();
+                        let text = resp.text().await.unwrap_or_default();
+                        last_err = Some(anyhow!("Upstream error {} from {}: {}", status, base, text));
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    last_err = Some(anyhow!("Request error from {}: {}", base, e));
+                    continue;
+                }
+            }
         }
 
-        let resp = req.send().await?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Upstream error {}: {}", status, text));
-        }
-        Ok(resp)
+        Err(last_err.unwrap_or_else(|| anyhow!("All upstreams failed")))
     }
 }
 

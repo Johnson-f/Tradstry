@@ -32,7 +32,7 @@ use turso::{
     SupabaseClaims,
 };
 use crate::service::market_engine::ws_proxy::MarketWsProxy;
-use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes};
+use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes, configure_watchlist_price_routes};
 use websocket::{ConnectionManager, ws_handler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -275,6 +275,10 @@ fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
             .wrap(actix_web::middleware::from_fn(rate_limit_middleware))
             .route("/me", web::get().to(get_current_user))
             .route("/my-data", web::get().to(get_user_data))
+            // Watchlist and price alert routes
+            .configure(configure_watchlist_price_routes)
+            // Push notification routes
+            .configure(crate::routes::configure_push_routes)
     );
 }
 

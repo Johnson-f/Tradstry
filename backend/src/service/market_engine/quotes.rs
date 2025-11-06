@@ -99,3 +99,18 @@ pub async fn get_similar(client: &MarketClient, symbol: &str) -> Result<Vec<Simp
     Ok(body)
 }
 
+/// Get only the logo URL for a single symbol
+pub async fn get_logo(client: &MarketClient, symbol: &str) -> Result<Option<String>> {
+    // Reuse simple quotes endpoint which includes `logo`
+    let params = vec![("symbols", symbol.to_string())];
+    let resp = client.get("/v1/simple-quotes", Some(&params)).await?;
+    let quotes = resp.json::<Vec<SimpleQuote>>().await?;
+
+    let logo = quotes
+        .into_iter()
+        .find(|q| q.symbol.eq_ignore_ascii_case(symbol))
+        .and_then(|q| q.logo);
+
+    Ok(logo)
+}
+
