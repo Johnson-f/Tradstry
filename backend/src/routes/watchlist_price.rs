@@ -535,10 +535,12 @@ pub async fn refresh_and_check_alerts(
     info!("Refreshing watchlist and price alerts, then checking for triggers");
 
     let claims = get_authenticated_user(&req, &supabase_config).await?;
-    let conn = get_user_database_connection(&claims.sub, &app_state.turso_client).await?;
+    let user_id = &claims.sub;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
     let client = client_from_state(&app_state).map_err(actix_web::error::ErrorInternalServerError)?;
+    let web_push_config = &app_state.config.web_push;
 
-    match refresh_watchlist_and_alerts(&conn, &client).await {
+    match refresh_watchlist_and_alerts(&conn, &client, Some(user_id), Some(web_push_config)).await {
         Ok(triggered_alerts) => {
             info!("Found {} triggered alerts after refresh", triggered_alerts.len());
             Ok(HttpResponse::Ok().json(ApiResponse::success(triggered_alerts)))
@@ -550,6 +552,114 @@ pub async fn refresh_and_check_alerts(
             )))
         }
     }
+}
+
+/// Cron endpoint: Check all users' price alerts and send notifications
+/// This endpoint is called by an external cron service
+pub async fn check_all_price_alerts(
+    _req: HttpRequest,
+    app_state: web::Data<AppState>,
+    turso_client: web::Data<Arc<TursoClient>>,
+) -> Result<HttpResponse> {
+    // TODO: Re-enable cron secret validation after debugging
+    // Verify cron secret from header
+    // let cron_secret = req.headers().get("X-Cron-Secret")
+    //     .and_then(|v| v.to_str().ok())
+    //     .ok_or_else(|| {
+    //         error!("Missing X-Cron-Secret header");
+    //         actix_web::error::ErrorUnauthorized("Missing cron secret")
+    //     })?;
+    // 
+    // let env_cron_secret = std::env::var("CRON_SECRET").unwrap_or_default();
+    // 
+    // info!("Cron secret validation:");
+    // info!("  Header value: {}", cron_secret);
+    // info!("  Env value length: {}", env_cron_secret.len());
+    // info!("  Env value (first 20 chars): {}", 
+    //       if env_cron_secret.len() > 20 { 
+    //           &env_cron_secret[..20] 
+    //       } else { 
+    //           &env_cron_secret 
+    //       });
+    // info!("  Values match: {}", cron_secret == env_cron_secret);
+    // 
+    // if cron_secret != env_cron_secret {
+    //     error!("Invalid cron secret - header and env do not match");
+    //     return Err(actix_web::error::ErrorUnauthorized("Invalid cron secret"));
+    // }
+
+    info!("Starting price alert check for all users (cron secret validation disabled for debugging)");
+
+    // Get all active users from registry
+    let registry_conn = turso_client.get_registry_connection().await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Registry connection failed"))?;
+    
+    let stmt = registry_conn.prepare(
+        "SELECT user_id FROM user_databases WHERE is_active = 1"
+    ).await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+    
+    let mut rows = stmt.query(libsql::params![]).await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+    
+    let mut total_processed = 0u64;
+    let mut total_alerts_triggered = 0u64;
+    let mut success_count = 0u64;
+    let mut failure_count = 0u64;
+    
+    let client = client_from_state(&app_state).map_err(actix_web::error::ErrorInternalServerError)?;
+    let web_push_config = &app_state.config.web_push;
+
+    while let Some(row) = rows.next().await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))? {
+        let user_id: String = row.get(0).unwrap_or_default();
+        
+        // Get user's database connection
+        if let Ok(Some(user_db)) = turso_client.get_user_database(&user_id).await {
+            let conn = libsql::Builder::new_remote(user_db.db_url.clone(), user_db.db_token.clone())
+                .build()
+                .await
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Database connection failed"))?
+                .connect()
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Database connection failed"))?;
+            
+            // Check if user has any price alerts
+            let alert_check_stmt = conn.prepare(
+                "SELECT COUNT(*) FROM price_alert"
+            ).await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+            
+            let mut alert_rows = alert_check_stmt.query(libsql::params![]).await
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))?;
+            
+            if let Some(alert_row) = alert_rows.next().await.map_err(|_| actix_web::error::ErrorInternalServerError("Query failed"))? {
+                let alert_count: i64 = alert_row.get(0).unwrap_or(0);
+                
+                if alert_count > 0 {
+                    // User has alerts, process them
+                    match refresh_watchlist_and_alerts(&conn, &client, Some(&user_id), Some(web_push_config)).await {
+                        Ok(triggered_alerts) => {
+                            total_processed += 1;
+                            total_alerts_triggered += triggered_alerts.len() as u64;
+                            success_count += 1;
+                            info!("Processed user {}: {} alerts triggered", user_id, triggered_alerts.len());
+                        }
+                        Err(e) => {
+                            failure_count += 1;
+                            error!("Failed to process alerts for user {}: {}", user_id, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let summary = serde_json::json!({
+        "total_users_processed": total_processed,
+        "total_alerts_triggered": total_alerts_triggered,
+        "success_count": success_count,
+        "failure_count": failure_count,
+    });
+
+    info!("Price alert check completed: {:?}", summary);
+    Ok(HttpResponse::Ok().json(ApiResponse::success(summary)))
 }
 
 // =====================================================

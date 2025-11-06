@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 use crate::turso::{AppState};
 use crate::turso::config::WebPushConfig;
-use crate::service::push_service::{PushService, SaveSubscriptionRequest, PushPayload};
+use crate::service::notifications::push::{PushService, SaveSubscriptionRequest, PushPayload};
 
 fn get_user_id_from_ext(req: &actix_web::HttpRequest) -> Option<String> {
     // Simplified: in this codebase, claims are inserted in extensions
