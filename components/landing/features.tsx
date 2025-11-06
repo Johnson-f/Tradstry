@@ -81,8 +81,11 @@ const features = [
 
 export function Features() {
   return (
-    <section className="py-24 px-4 sm:px-6 lg:px-8">
-      <div className="container mx-auto max-w-7xl">
+    <section className="relative py-24 px-4 sm:px-6 lg:px-8">
+      {/* Subtle gradient accent */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 size-[600px] rounded-full bg-pink-500/5 blur-3xl" />
+      
+      <div className="container mx-auto max-w-7xl relative z-10">
         <div className="mb-16 text-center">
           <h2 className="mb-4 text-4xl font-bold tracking-tight sm:text-5xl">
             Everything You Need to

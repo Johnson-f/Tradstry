@@ -26,7 +26,7 @@ export function Footer() {
       <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:grid-cols-5">
           <div className="col-span-2 lg:col-span-1">
-            <Link href="/" className="text-xl font-bold tracking-tight">
+            <Link href="/" className="text-xl font-bold tracking-tight bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
               TRADSTRY
             </Link>
             <p className="mt-4 text-sm text-muted-foreground">
@@ -85,7 +85,11 @@ export function Footer() {
         
         <div className="mt-12 border-t border-border/40 pt-8">
           <p className="text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Tradstry. All rights reserved.
+            © {new Date().getFullYear()}{" "}
+            <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent font-semibold">
+              Tradstry
+            </span>
+            . All rights reserved.
           </p>
         </div>
       </div>
