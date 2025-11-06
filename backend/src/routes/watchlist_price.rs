@@ -88,14 +88,14 @@ fn client_from_state(app_state: &web::Data<AppState>) -> anyhow::Result<MarketCl
 // =====================================================
 
 #[derive(Debug, Deserialize)]
-struct CreateWatchlistRequest {
+pub struct CreateWatchlistRequest {
     stock_name: Option<String>,
     ticker_symbol: Option<String>,
     logo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdateWatchlistRequest {
+pub struct UpdateWatchlistRequest {
     stock_name: Option<String>,
     ticker_symbol: Option<String>,
     logo: Option<String>,
@@ -295,7 +295,7 @@ pub async fn refresh_watchlist_prices(
 // =====================================================
 
 #[derive(Debug, Deserialize)]
-struct CreatePriceAlertRequest {
+pub struct CreatePriceAlertRequest {
     stock_name: Option<String>,
     symbol: Option<String>,
     alert_price: f64,
@@ -303,7 +303,7 @@ struct CreatePriceAlertRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdatePriceAlertRequest {
+pub struct UpdatePriceAlertRequest {
     stock_name: Option<String>,
     symbol: Option<String>,
     alert_price: Option<f64>,
