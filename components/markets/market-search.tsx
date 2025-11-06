@@ -132,19 +132,21 @@ export function MarketSearch() {
                   >
                     {/* Logo */}
                     {logo ? (
-                      <div className="h-8 w-8 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                      <div className="relative h-10 w-10 rounded-lg overflow-hidden border bg-muted/50 flex-shrink-0">
                         <Image
                           src={logo}
                           alt={displayName}
-                          width={32}
-                          height={32}
-                          className="object-cover"
+                          fill
+                          className="object-contain p-1.5"
+                          sizes="40px"
                           unoptimized
                         />
                       </div>
                     ) : (
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 bg-muted">
-                        {fallbackText}
+                      <div className="h-10 w-10 rounded-lg border bg-muted/50 flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-bold text-muted-foreground">
+                          {fallbackText}
+                        </span>
                       </div>
                     )}
 

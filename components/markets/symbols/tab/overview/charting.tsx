@@ -60,11 +60,32 @@ export function Charting({ symbol, className, onTimeframeChange }: ChartingProps
 
   const chartData = useMemo(() => {
     if (!historical?.candles) return [];
-    return historical.candles.map((candle) => ({
-      time: candle.time,
-      value: candle.close,
-      date: new Date(candle.time),
-    }));
+    return historical.candles.map((candle) => {
+      // Handle time as number (unix timestamp) or string
+      let date: Date;
+      if (typeof candle.time === "number") {
+        // If it's a number, check if it's seconds (10 digits) or milliseconds (13 digits)
+        date = candle.time > 9999999999 
+          ? new Date(candle.time) // milliseconds
+          : new Date(candle.time * 1000); // seconds to milliseconds
+      } else if (typeof candle.time === "string") {
+        date = new Date(candle.time);
+      } else {
+        // Fallback to current date if invalid
+        date = new Date();
+      }
+      
+      // Validate date
+      if (isNaN(date.getTime())) {
+        date = new Date();
+      }
+      
+      return {
+        time: candle.time,
+        value: candle.close,
+        date,
+      };
+    });
   }, [historical]);
 
   const periodChange = useMemo(() => {
@@ -93,9 +114,26 @@ export function Charting({ symbol, className, onTimeframeChange }: ChartingProps
     []
   );
 
-  const formatXAxisLabel = useCallback((time: string) => {
+  const formatXAxisLabel = useCallback((time: string | number) => {
     try {
-      const date = new Date(time);
+      let date: Date;
+      
+      if (typeof time === "number") {
+        // Handle unix timestamp (seconds or milliseconds)
+        date = time > 9999999999 
+          ? new Date(time) // milliseconds
+          : new Date(time * 1000); // seconds to milliseconds
+      } else if (typeof time === "string") {
+        date = new Date(time);
+      } else {
+        return String(time);
+      }
+      
+      // Validate date
+      if (isNaN(date.getTime())) {
+        return String(time);
+      }
+      
       if (selectedTimeframe === "1D") {
         return date.toLocaleTimeString("en-US", {
           hour: "numeric",
@@ -116,7 +154,7 @@ export function Charting({ symbol, className, onTimeframeChange }: ChartingProps
         day: "numeric",
       });
     } catch {
-      return time;
+      return String(time);
     }
   }, [selectedTimeframe]);
 
@@ -196,7 +234,30 @@ export function Charting({ symbol, className, onTimeframeChange }: ChartingProps
                   content={
                     <ChartTooltipContent
                       formatter={(value) => `$${Number(value).toFixed(2)}`}
-                      labelFormatter={(label) => formatTimestamp(new Date(label))}
+                      labelFormatter={(label) => {
+                        try {
+                          let date: Date;
+                          if (typeof label === "number") {
+                            // Handle unix timestamp (seconds or milliseconds)
+                            date = label > 9999999999 
+                              ? new Date(label) // milliseconds
+                              : new Date(label * 1000); // seconds to milliseconds
+                          } else if (typeof label === "string") {
+                            date = new Date(label);
+                          } else {
+                            return String(label);
+                          }
+                          
+                          // Validate date
+                          if (isNaN(date.getTime())) {
+                            return String(label);
+                          }
+                          
+                          return formatTimestamp(date);
+                        } catch {
+                          return String(label);
+                        }
+                      }}
                     />
                   }
                 />
