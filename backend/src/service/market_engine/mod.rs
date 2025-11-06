@@ -14,4 +14,5 @@ pub mod ws_proxy;
 pub mod financials;
 pub mod earnings_transcripts;
 pub mod holders;
+pub mod watchlist_price;
 

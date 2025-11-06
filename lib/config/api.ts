@@ -204,6 +204,7 @@ export const apiConfig = {
       quotes: "/market/quotes",
       simpleQuotes: "/market/simple-quotes",
       similar: "/market/similar",
+      logo: "/market/logo",
       historical: "/market/historical",
       movers: "/market/movers",
       gainers: "/market/gainers",
@@ -254,6 +255,13 @@ export const apiConfig = {
       },
     },
 
+    // Push notifications
+    push: {
+      base: "/push",
+      subscribe: "/push/subscribe",
+      unsubscribe: "/push/unsubscribe",
+      test: "/push/test",
+    },
    
   },
   timeout: 30000, // 5 minutes

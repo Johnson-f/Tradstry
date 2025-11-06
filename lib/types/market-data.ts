@@ -69,6 +69,9 @@ export interface SimpleQuote {
   logo?: string | null;
 }
 
+// Logo URL for a symbol
+export type LogoUrl = string | null;
+
 /**
  * Candle data for historical prices
  */

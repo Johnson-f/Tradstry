@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMovers, useSimpleQuotes } from '@/lib/hooks/use-market-data-service';
+import { useMovers, useSimpleQuotes, useLogo } from '@/lib/hooks/use-market-data-service';
 import { cn } from '@/lib/utils';
 import type { MoverItem } from '@/lib/types/market-data';
 
@@ -16,6 +16,7 @@ interface MoverRowProps {
 }
 
 function MoverRow({ mover, logo, quoteData }: MoverRowProps) {
+  const { logo: fetchedLogo } = useLogo(!logo ? mover.symbol : null, !logo);
   const [imageError, setImageError] = useState(false);
   
   // Reset image error when logo changes
@@ -70,7 +71,8 @@ function MoverRow({ mover, logo, quoteData }: MoverRowProps) {
   }, [mover.name, mover.symbol]);
 
   // Determine if we should show logo or fallback
-  const shouldShowLogo = logo && !imageError && logo.trim() !== '';
+  const resolvedLogo = logo || fetchedLogo || '';
+  const shouldShowLogo = resolvedLogo && !imageError && resolvedLogo.trim() !== '';
 
   return (
     <div className="flex items-center justify-between py-3 border-b border-border last:border-b-0">
@@ -79,7 +81,7 @@ function MoverRow({ mover, logo, quoteData }: MoverRowProps) {
         {shouldShowLogo ? (
           <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
             <Image
-              src={logo}
+              src={resolvedLogo}
               alt={mover.name || mover.symbol}
               width={40}
               height={40}

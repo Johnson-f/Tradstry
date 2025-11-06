@@ -46,5 +46,6 @@ next-env.d.ts
 
 # Rust backend
 backend/target/
+backend/env
 
 .vscode

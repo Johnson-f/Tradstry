@@ -6,7 +6,7 @@ import { Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSymbolSearch, useSimpleQuotes } from '@/lib/hooks/use-market-data-service';
+import { useSymbolSearch, useSimpleQuotes, useLogo } from '@/lib/hooks/use-market-data-service';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
@@ -115,56 +115,16 @@ export function MarketSearch() {
           <ScrollArea className="h-[300px]">
             <div className="pr-4">
               {results.map((item) => {
-                const logo = logoMap.get(item.symbol.toUpperCase());
-                const displayName = item.name || item.symbol;
-                
-                // Get first two letters of stock name for fallback
-                const fallbackText = displayName.substring(0, 2).toUpperCase();
-
+                const quotedLogo = logoMap.get(item.symbol.toUpperCase());
                 return (
-                  <button
+                  <SearchResultItem
                     key={item.symbol}
-                    onClick={() => handleSelect(item.symbol)}
-                    className={cn(
-                      'w-full text-left px-4 py-3 hover:bg-muted transition-colors',
-                      'flex items-center gap-3'
-                    )}
-                  >
-                    {/* Logo */}
-                    {logo ? (
-                      <div className="relative h-10 w-10 rounded-lg overflow-hidden border bg-muted/50 flex-shrink-0">
-                        <Image
-                          src={logo}
-                          alt={displayName}
-                          fill
-                          className="object-contain p-1.5"
-                          sizes="40px"
-                          unoptimized
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg border bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <span className="text-sm font-bold text-muted-foreground">
-                          {fallbackText}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Symbol and Name */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-sm">{item.symbol}</span>
-                        {item.exchange && (
-                          <span className="text-xs text-muted-foreground">{item.exchange}</span>
-                        )}
-                      </div>
-                      {item.name && (
-                        <span className="text-xs text-muted-foreground truncate block">
-                          {item.name}
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                    symbol={item.symbol}
+                    name={item.name}
+                    exchange={item.exchange as string | undefined}
+                    quotedLogo={quotedLogo || undefined}
+                    onSelect={handleSelect}
+                  />
                 );
               })}
             </div>
@@ -180,6 +140,73 @@ export function MarketSearch() {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SearchResultItem({
+  symbol,
+  name,
+  exchange,
+  quotedLogo,
+  onSelect,
+}: {
+  symbol: string;
+  name?: string | null;
+  exchange?: string | null;
+  quotedLogo?: string | null;
+  onSelect: (symbol: string) => void;
+}) {
+  const { logo } = useLogo(!quotedLogo ? symbol : null, !quotedLogo);
+  const displayName = name || symbol;
+  const fallbackText = displayName.substring(0, 2).toUpperCase();
+  const [imageError, setImageError] = React.useState(false);
+  React.useEffect(() => { setImageError(false); }, [logo, quotedLogo]);
+
+  const resolvedLogo = (logo || quotedLogo || '').trim();
+  const shouldShowLogo = resolvedLogo !== '' && !imageError;
+
+  return (
+    <button
+      onClick={() => onSelect(symbol)}
+      className={cn(
+        'w-full text-left px-4 py-3 hover:bg-muted transition-colors',
+        'flex items-center gap-3'
+      )}
+    >
+      {shouldShowLogo ? (
+        <div className="relative h-10 w-10 rounded-lg overflow-hidden border bg-muted/50 flex-shrink-0">
+          <Image
+            src={resolvedLogo}
+            alt={displayName}
+            fill
+            className="object-contain p-1.5"
+            sizes="40px"
+            unoptimized
+            onError={() => setImageError(true)}
+          />
+        </div>
+      ) : (
+        <div className="h-10 w-10 rounded-lg border bg-muted/50 flex items-center justify-center flex-shrink-0">
+          <span className="text-sm font-bold text-muted-foreground">
+            {fallbackText}
+          </span>
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-sm">{symbol}</span>
+          {exchange && (
+            <span className="text-xs text-muted-foreground">{exchange}</span>
+          )}
+        </div>
+        {name && (
+          <span className="text-xs text-muted-foreground truncate block">
+            {name}
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 

@@ -19,6 +19,7 @@ import type {
   SubscribeRequest,
   UnsubscribeRequest,
   QuoteUpdate,
+  LogoUrl,
 } from '@/lib/types/market-data';
 
 // =====================================================
@@ -170,6 +171,26 @@ export function useQuote(symbol: string | null, enabled: boolean = true) {
 
   return {
     quote: data?.[0] ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
+}
+
+/**
+ * Hook to fetch only logo URL for a symbol
+ */
+export function useLogo(symbol: string | null, enabled: boolean = true) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['market', 'logo', symbol],
+    queryFn: () => marketDataService.getLogo(symbol!),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: enabled && !!symbol,
+  });
+
+  return {
+    logo: (data ?? null) as LogoUrl,
     isLoading,
     error: error as Error | null,
     refetch,

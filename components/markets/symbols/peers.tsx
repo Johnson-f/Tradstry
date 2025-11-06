@@ -4,7 +4,7 @@ import React, { useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useSimilar } from "@/lib/hooks/use-market-data-service";
+import { useSimilar, useLogo } from "@/lib/hooks/use-market-data-service";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface PeersProps {
@@ -29,66 +29,9 @@ export function Peers({ symbol, className }: PeersProps) {
           <div className="text-sm text-muted-foreground">No peers found.</div>
         ) : (
           <div className="divide-y">
-            {items.map((peer) => {
-              const priceText = peer.price ? `$${peer.price}` : "—";
-              const pctNum = peer.percentChange ? parseFloat(String(peer.percentChange)) : NaN;
-              const pctColor = isNaN(pctNum)
-                ? "text-muted-foreground"
-                : pctNum > 0
-                ? "text-emerald-500"
-                : pctNum < 0
-                ? "text-red-500"
-                : "text-muted-foreground";
-
-              const displayName = peer.name || peer.symbol;
-              const subline = peer.symbol; // exchange not available in SimpleQuote type
-
-              return (
-                <button
-                  key={peer.symbol}
-                  onClick={() => router.push(`/app/markets/${peer.symbol}`)}
-                  className={cn(
-                    "w-full px-1 py-3 sm:py-3.5",
-                    "flex items-center gap-3 sm:gap-4 text-left hover:bg-muted/50 rounded-lg transition-colors"
-                  )}
-                >
-                  {/* Logo */}
-                  {peer.logo ? (
-                    <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                      <Image
-                        src={peer.logo}
-                        alt={displayName || peer.symbol}
-                        width={40}
-                        height={40}
-                        className="object-cover"
-                        unoptimized
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-xs font-semibold text-foreground/80 flex-shrink-0">
-                      {displayName.substring(0, 2).toUpperCase()}
-                    </div>
-                  )}
-
-                  {/* Name & symbol */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm sm:text-base font-medium truncate">{displayName}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5 truncate">{subline}</div>
-                      </div>
-
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm sm:text-base font-medium">{priceText}</div>
-                        <div className={cn("text-xs mt-0.5", pctColor)}>
-                          {peer.percentChange ? `${peer.percentChange}%` : "—"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+            {items.map((peer) => (
+              <PeerItem key={peer.symbol} peer={peer} onClick={() => router.push(`/app/markets/${peer.symbol}`)} />
+            ))}
           </div>
         )}
       </div>
@@ -120,4 +63,70 @@ function LoadingList() {
 
 export default Peers;
 
+
+
+function PeerItem({ peer, onClick }: { peer: { symbol: string; name?: string | null; price?: string | null; percentChange?: string | null; logo?: string | null }; onClick: () => void }) {
+  const { logo } = useLogo(!peer.logo ? peer.symbol : null, !peer.logo);
+  const [imageError, setImageError] = React.useState(false);
+  React.useEffect(() => { setImageError(false); }, [logo, peer.logo]);
+  const priceText = peer.price ? `$${peer.price}` : "—";
+  const pctNum = peer.percentChange ? parseFloat(String(peer.percentChange)) : NaN;
+  const pctColor = isNaN(pctNum)
+    ? "text-muted-foreground"
+    : pctNum > 0
+    ? "text-emerald-500"
+    : pctNum < 0
+    ? "text-red-500"
+    : "text-muted-foreground";
+
+  const displayName = peer.name || peer.symbol;
+  const subline = peer.symbol;
+
+  const resolvedLogo = (peer.logo || logo || '').trim();
+  const shouldShowLogo = resolvedLogo !== '' && !imageError;
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full px-1 py-3 sm:py-3.5",
+        "flex items-center gap-3 sm:gap-4 text-left hover:bg-muted/50 rounded-lg transition-colors"
+      )}
+    >
+      {shouldShowLogo ? (
+        <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+          <Image
+            src={resolvedLogo}
+            alt={displayName || peer.symbol}
+            width={40}
+            height={40}
+            className="object-cover"
+            unoptimized
+            onError={() => setImageError(true)}
+          />
+        </div>
+      ) : (
+        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-xs font-semibold text-foreground/80 flex-shrink-0">
+          {displayName.substring(0, 2).toUpperCase()}
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm sm:text-base font-medium truncate">{displayName}</div>
+            <div className="text-xs text-muted-foreground mt-0.5 truncate">{subline}</div>
+          </div>
+
+          <div className="text-right flex-shrink-0">
+            <div className="text-sm sm:text-base font-medium">{priceText}</div>
+            <div className={cn("text-xs mt-0.5", pctColor)}>
+              {peer.percentChange ? `${peer.percentChange}%` : "—"}
+            </div>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
 

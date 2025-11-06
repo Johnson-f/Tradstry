@@ -14,7 +14,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { useMovers, useQuotes, useHistorical, useNews } from '@/lib/hooks/use-market-data-service';
+import { useMovers, useQuotes, useHistorical, useNews, useLogo } from '@/lib/hooks/use-market-data-service';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown } from 'lucide-react';
@@ -150,6 +150,7 @@ function StandoutCard({ stock }: StandoutCardProps) {
   );
 
   const { news } = useNews({ symbol: stock.symbol, limit: 1 });
+  const { logo } = useLogo(!stock.quote.logo ? stock.symbol : null, !stock.quote.logo);
 
   // Transform chart data
   const chartData: ChartDataPoint[] = useMemo(() => {
@@ -212,10 +213,10 @@ function StandoutCard({ stock }: StandoutCardProps) {
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             {/* Logo */}
-            {stock.quote.logo ? (
+            {stock.quote.logo || logo ? (
               <div className="h-10 w-10 rounded overflow-hidden flex-shrink-0 bg-muted">
                 <Image
-                  src={stock.quote.logo}
+                  src={stock.quote.logo || logo || ''}
                   alt={stock.name}
                   width={40}
                   height={40}

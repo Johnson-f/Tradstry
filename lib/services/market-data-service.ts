@@ -13,6 +13,7 @@ import type {
   SectorPerformanceItem,
   SearchItem,
   IndicatorSeries,
+  LogoUrl,
   GetQuotesRequest,
   GetHistoricalRequest,
   GetNewsRequest,
@@ -94,6 +95,16 @@ class MarketDataService {
    */
   async getSimilar(symbol: string): Promise<SimpleQuote[]> {
     const response = await apiClient.get<BackendApiResponse<SimpleQuote[]>>(apiConfig.endpoints.market.similar, {
+      params: { symbol },
+    });
+    return this.unwrapResponse(response);
+  }
+
+  /**
+   * Get logo URL for a symbol
+   */
+  async getLogo(symbol: string): Promise<LogoUrl> {
+    const response = await apiClient.get<BackendApiResponse<LogoUrl>>(apiConfig.endpoints.market.logo, {
       params: { symbol },
     });
     return this.unwrapResponse(response);

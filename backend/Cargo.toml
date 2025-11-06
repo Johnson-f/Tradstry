@@ -53,6 +53,7 @@ sha2 = "0.10.9"
 base64 = "0.22.1"
 futures-util = "0.3.31"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+web-push = { version = "0.11.0", features = ["hyper-client"] }
 
 # Image upload service
 uploadcare = "0.1"
@@ -70,5 +71,3 @@ lru = "0.12"
 # JWT Caching dependencies
 dashmap = "5.5"  # Thread-safe HashMap for JWT caching
 hex = "0.4"      # For hex encoding
-
-# Removed deadpool-redis - using Upstash REST API instead

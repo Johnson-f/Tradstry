@@ -25,6 +25,8 @@ pub struct TursoConfig {
     pub vector: VectorConfig,
     /// FinanceQuery market data configuration
     pub finance_query: FinanceQueryConfig,
+    /// Web Push (VAPID) configuration
+    pub web_push: WebPushConfig,
 }
 
 /// Supabase authentication configuration
@@ -63,6 +65,7 @@ impl TursoConfig {
         let google_config = GoogleConfig::from_env()?;
         let vector_config = VectorConfig::from_env()?;
         let finance_query_config = FinanceQueryConfig::from_env()?;
+        let web_push_config = WebPushConfig::from_env()?;
         
         Ok(Self {
             registry_db_url: env::var("REGISTRY_DB_URL")
@@ -80,6 +83,7 @@ impl TursoConfig {
                 .map_err(|_| "CRON_SECRET environment variable not set")?,
             vector: vector_config,
             finance_query: finance_query_config,
+            web_push: web_push_config,
         })
     }
 }
@@ -147,6 +151,25 @@ impl FinanceQueryConfig {
             base_url: env::var("FINANCEQUERY_BASE_URL")
                 .map_err(|_| "FINANCEQUERY_BASE_URL environment variable not set")?,
             api_key: env::var("FINANCEQUERY_API_KEY").ok(), // Optional - FinanceQuery may not require auth
+        })
+    }
+}
+
+/// Web Push (VAPID) configuration
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct WebPushConfig {
+    pub vapid_public_key: String,
+    pub vapid_private_key: String,
+    pub subject: String,
+}
+
+impl WebPushConfig {
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            vapid_public_key: env::var("VAPID_PUBLIC_KEY").map_err(|_| "VAPID_PUBLIC_KEY environment variable not set")?,
+            vapid_private_key: env::var("VAPID_PRIVATE_KEY").map_err(|_| "VAPID_PRIVATE_KEY environment variable not set")?,
+            subject: env::var("WEB_PUSH_SUBJECT").map_err(|_| "WEB_PUSH_SUBJECT environment variable not set")?,
         })
     }
 }
