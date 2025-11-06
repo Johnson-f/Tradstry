@@ -3,6 +3,13 @@
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { KeyStats } from "./key-stats";
 import { IncomeStatement } from "./income-statement";
 import { BalanceSheet } from "./balance-sheet";
@@ -50,14 +57,15 @@ export function Financials({ symbol, className }: FinancialsProps) {
 
           {/* Controls */}
           <div className="flex items-center gap-2">
-            <select
-              value={frequency}
-              onChange={(e) => setFrequency(e.target.value as "annual" | "quarterly")}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <option value="annual">Annual</option>
-              <option value="quarterly">Quarterly</option>
-            </select>
+            <Select value={frequency} onValueChange={(value) => setFrequency(value as "annual" | "quarterly")}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="annual">Annual</SelectItem>
+                <SelectItem value="quarterly">Quarterly</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

@@ -3,9 +3,13 @@
 import { useParams } from "next/navigation";
 import { MarketSearch } from "@/components/markets/market-search";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight, Share2, Star } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { SymbolTabs } from "@/components/markets/symbols/tab";
+import { useQuote } from "@/lib/hooks/use-market-data-service";
 
 export default function MarketsSymbolPage() {
   const params = useParams<{ symbol: string }>();
@@ -15,13 +19,16 @@ export default function MarketsSymbolPage() {
     <div className="h-screen flex flex-col">
       {/* Header - Fixed */}
       <Header />
-      {/* Main content - Scrollable area with native overflow */}
+      {/* Main content - Scrollable area with ScrollArea */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
+        <ScrollArea className="h-full">
           <div className="p-8">
-            <SymbolTabs symbol={symbol} />
+            <CompanyHeader symbol={symbol} />
+            <div className="mt-8">
+              <SymbolTabs symbol={symbol} />
+            </div>
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   );
@@ -32,6 +39,7 @@ export default function MarketsSymbolPage() {
 function Header() {
   const params = useParams<{ symbol: string }>();
   const symbol = (params?.symbol || "").toString().toUpperCase();
+  const { quote: data } = useQuote(symbol, !!symbol);
 
   return (
     <div className="w-full border-b bg-background px-8 py-4 flex-shrink-0">
@@ -42,6 +50,24 @@ function Header() {
             Markets
           </Link>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          {/* Logo in breadcrumb */}
+          {data?.logo ? (
+            <div className="relative h-5 w-5 flex-shrink-0 rounded overflow-hidden border bg-muted/50">
+              <Image
+                src={data.logo}
+                alt={data.name || symbol}
+                fill
+                className="object-contain p-0.5"
+                sizes="20px"
+              />
+            </div>
+          ) : (
+            <div className="h-5 w-5 flex-shrink-0 rounded border bg-muted/50 flex items-center justify-center">
+              <span className="text-xs font-bold text-muted-foreground">
+                {symbol.charAt(0)}
+              </span>
+            </div>
+          )}
           <span className="text-sm font-medium">{symbol || "Symbol"}</span>
         </div>
 
@@ -61,6 +87,56 @@ function Header() {
             Share
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Company Header Component
+function CompanyHeader({ symbol }: { symbol: string }) {
+  const { quote: data, isLoading } = useQuote(symbol, !!symbol);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-4">
+        <Skeleton className="h-16 w-16 rounded-lg" />
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      {/* Company Logo */}
+      {data?.logo ? (
+        <div className="relative h-16 w-16 flex-shrink-0 rounded-lg overflow-hidden border bg-muted/50">
+          <Image
+            src={data.logo}
+            alt={data.name || symbol}
+            fill
+            className="object-contain p-2"
+            sizes="64px"
+          />
+        </div>
+      ) : (
+        <div className="h-16 w-16 flex-shrink-0 rounded-lg border bg-muted/50 flex items-center justify-center">
+          <span className="text-2xl font-bold text-muted-foreground">
+            {symbol.charAt(0)}
+          </span>
+        </div>
+      )}
+
+      {/* Company Name and Ticker */}
+      <div className="flex flex-col">
+        <h1 className="text-2xl font-semibold text-foreground">
+          {data?.name || symbol}
+        </h1>
+        <span className="text-sm text-muted-foreground font-medium">
+          {symbol}
+        </span>
       </div>
     </div>
   );

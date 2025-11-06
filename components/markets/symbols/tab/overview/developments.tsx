@@ -80,11 +80,24 @@ function Loading({ className }: { className?: string }) {
   );
 }
 
-function timeAgo(isoOrDate: string | Date) {
+function timeAgo(isoOrDate: string | Date | null | undefined) {
   try {
+    if (!isoOrDate) return "recently";
+    
     const date = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
+    
+    // Check if date is valid
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      return "recently";
+    }
+    
     const now = new Date();
     const diff = Math.max(0, now.getTime() - date.getTime());
+    
+    if (isNaN(diff)) {
+      return "recently";
+    }
+    
     const minutes = Math.floor(diff / (1000 * 60));
     if (minutes < 1) return "just now";
     if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
@@ -93,7 +106,7 @@ function timeAgo(isoOrDate: string | Date) {
     const days = Math.floor(hours / 24);
     return `${days} day${days === 1 ? "" : "s"} ago`;
   } catch {
-    return "";
+    return "recently";
   }
 }
 
