@@ -68,9 +68,13 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col overflow-hidden">
+      {/* Subtle gradient background */}
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-background via-background to-primary/5" />
+      <div className="fixed inset-0 -z-10 bg-gradient-to-tr from-transparent via-purple-500/5 to-pink-500/5" />
+      
       <LandingNavbar />
-      <main className="flex-1">
+      <main className="flex-1 relative">
         <Hero />
         <div id="features">
           <Features />

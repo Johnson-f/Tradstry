@@ -3,6 +3,16 @@ import { getFullUrl, apiConfig } from '@/lib/config/api';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string;
 
+interface PushSubscriptionKeys {
+  p256dh: string;
+  auth: string;
+}
+
+interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: PushSubscriptionKeys;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -31,9 +41,17 @@ export function useWebPush() {
     const reg = (await navigator.serviceWorker.getRegistration()) || (await registerServiceWorker());
     if (!reg) throw new Error('Service worker registration failed');
 
-    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+    const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    const sub = await reg.pushManager.subscribe({ 
+      userVisibleOnly: true, 
+      applicationServerKey: applicationServerKey as BufferSource
+    });
 
-    const subJson: any = sub.toJSON();
+    const subJson = sub.toJSON() as unknown as PushSubscriptionJSON;
+    if (!subJson.keys || !subJson.keys.p256dh || !subJson.keys.auth) {
+      throw new Error('Invalid push subscription keys');
+    }
+    
     const body = {
       endpoint: sub.endpoint,
       keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },

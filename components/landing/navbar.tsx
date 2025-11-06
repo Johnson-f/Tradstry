@@ -9,7 +9,9 @@ export function LandingNavbar() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
-            <span className="text-xl font-bold tracking-tight">TRADSTRY</span>
+            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
+              TRADSTRY
+            </span>
           </Link>
           
           <div className="flex items-center gap-4">

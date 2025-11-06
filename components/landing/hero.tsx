@@ -7,7 +7,11 @@ import { ArrowRight, Sparkles } from "lucide-react";
 export function Hero() {
   return (
     <section className="relative flex min-h-[90vh] flex-col items-center justify-center overflow-hidden px-4 pt-32 pb-20 sm:px-6 lg:px-8">
-      <div className="container mx-auto max-w-5xl text-center">
+      {/* Subtle gradient orb effects */}
+      <div className="absolute top-1/4 left-1/4 -z-10 size-96 rounded-full bg-primary/10 blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 -z-10 size-96 rounded-full bg-purple-500/10 blur-3xl" />
+      
+      <div className="container mx-auto max-w-5xl text-center relative z-10">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border bg-muted/50 px-4 py-1.5 text-sm">
           <Sparkles className="size-4" />
           <span>AI-Powered Trading Journal</span>
@@ -15,7 +19,7 @@ export function Hero() {
         
         <h1 className="mb-6 text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
           Elevate Your Trading
-          <span className="block mt-2 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+          <span className="block mt-2 bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
             Performance
           </span>
         </h1>

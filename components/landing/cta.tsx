@@ -27,8 +27,11 @@ export function CTA() {
             </h2>
             
             <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground">
-              Join traders who are already improving their performance with Tradstry. 
-              Get started in seconds, no credit card required.
+              Join traders who are already improving their performance with{" "}
+              <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent font-semibold">
+                Tradstry
+              </span>
+              . Get started in seconds, no credit card required.
             </p>
             
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
