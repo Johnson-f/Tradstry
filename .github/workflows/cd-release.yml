@@ -50,8 +50,10 @@ jobs:
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true  # Force fresh build to use Rust 1.85
+          # Temporarily disabled cache while fixing Rust version issue
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
 
   # Deploy frontend to Vercel
   deploy-frontend:
@@ -97,5 +99,3 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-
