@@ -26,25 +26,19 @@ COPY backend/src ./src
 # Build the actual application
 RUN touch src/main.rs && cargo build --release
 
-# Production stage - Copy OpenSSL from builder to ensure version compatibility
-FROM debian:bookworm-slim
+# Production stage - Use Ubuntu 24.04 which has GLIBC 2.38 and OpenSSL 3.2.0
+FROM ubuntu:24.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies
+# Install runtime dependencies including OpenSSL 3.2.0
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    libssl3 \
     curl \
     wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy OpenSSL libraries from builder stage to ensure version match
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so.3* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so.3* /usr/lib/x86_64-linux-gnu/
-
-# Update library cache
-RUN ldconfig
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser
