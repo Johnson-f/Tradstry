@@ -1,5 +1,5 @@
 # Multi-stage build for production Rust backend
-FROM rust:latest AS builder
+FROM rust:1.75-bookworm AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -8,71 +8,59 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy dependency files first (for layer caching)
+# === Dependency Caching ===
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
-# Create a dummy main.rs to cache dependencies
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs
+# Build dummy to cache deps
+RUN mkdir -p src && \
+    echo 'fn main() { println!("dummy"); }' > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
 
-# Build dependencies (this layer will be cached)
-RUN cargo build --release && rm -rf src
-
-# Copy actual source code
+# === Build Real App ===
 COPY backend/src ./src
+# Touch to force rebuild (optional, but safe)
+RUN touch src/main.rs
+RUN cargo build --release
 
-# Build the actual application
-RUN touch src/main.rs && cargo build --release
+# === Runtime Stage ===
+FROM debian:bookworm-slim
 
-# Production stage - Use Ubuntu 24.04 which has GLIBC 2.38 and OpenSSL 3.2.0
-FROM ubuntu:24.04
-
-# Prevent interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install runtime dependencies including OpenSSL 3.2.0
+# Install runtime deps
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     curl \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -m appuser
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -m appuser
 
-# Set working directory
 WORKDIR /app
 
-# Copy the binary with correct name (hyphen, not underscore)
+# Copy binary and config
 COPY --from=builder /app/target/release/tradstry-backend /app/tradstry-backend
-
-# Make binary executable
-RUN chmod +x /app/tradstry-backend
-
-# Copy production environment file
 COPY backend/.env.production /app/.env
 
-# Change ownership to non-root user
-RUN chown -R appuser:appuser /app
+# Permissions
+RUN chmod +x /app/tradstry-backend && \
+    chown -R appuser:appuser /app
 
-# Switch to non-root user
 USER appuser
 
-# Set environment variables
-ENV RUST_LOG=info
-ENV PORT=8080
-ENV HOST=0.0.0.0
-ENV RUST_BACKTRACE=1
+# Environment
+ENV RUST_LOG=info \
+    PORT=8080 \
+    HOST=0.0.0.0 \
+    RUST_BACKTRACE=1
 
-# Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application
 CMD ["./tradstry-backend"]
