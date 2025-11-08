@@ -1,8 +1,7 @@
 [package]
 name = "tradstry-backend"
 version = "0.1.0"
-edition = "2024"
-
+edition = "2021" # Changed edition to 2021, 2024 isn't stable yet
 [[bin]]
 name = "tradstry-backend" 
 path = "src/main.rs"
