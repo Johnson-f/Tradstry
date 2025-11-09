@@ -263,6 +263,27 @@ export const apiConfig = {
       test: "/push/test",
     },
    
+    // Brokerage endpoints
+    brokerage: {
+      base: "/brokerage",
+      connections: {
+        base: "/brokerage/connections",
+        initiate: "/brokerage/connections/initiate",
+        byId: (id: string) => `/brokerage/connections/${id}`,
+        status: (id: string) => `/brokerage/connections/${id}/status`,
+      },
+      accounts: {
+        base: "/brokerage/accounts",
+        sync: "/brokerage/accounts/sync",
+      },
+      transactions: {
+        base: "/brokerage/transactions",
+      },
+      holdings: {
+        base: "/brokerage/holdings",
+      },
+    },
+   
   },
   timeout: 30000, // 5 minutes
   retries: 3,

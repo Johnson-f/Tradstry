@@ -948,6 +948,104 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         libsql::params![],
     ).await?;
 
+    // Brokerage connections table (SnapTrade integration)
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS brokerage_connections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            snaptrade_user_id TEXT NOT NULL,
+            snaptrade_user_secret TEXT NOT NULL,
+            connection_id TEXT,
+            brokerage_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'connected', 'error', 'disconnected')),
+            last_sync_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_connections_user_id ON brokerage_connections(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_connections_connection_id ON brokerage_connections(connection_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_connections_status ON brokerage_connections(status)", libsql::params![]).await?;
+
+    // Brokerage accounts table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS brokerage_accounts (
+            id TEXT PRIMARY KEY,
+            connection_id TEXT NOT NULL,
+            snaptrade_account_id TEXT NOT NULL,
+            account_number TEXT,
+            account_name TEXT,
+            account_type TEXT,
+            balance REAL,
+            currency TEXT DEFAULT 'USD',
+            institution_name TEXT,
+            raw_data TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (connection_id) REFERENCES brokerage_connections(id) ON DELETE CASCADE
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_accounts_connection_id ON brokerage_accounts(connection_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_accounts_snaptrade_account_id ON brokerage_accounts(snaptrade_account_id)", libsql::params![]).await?;
+
+    // Brokerage transactions table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS brokerage_transactions (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            snaptrade_transaction_id TEXT NOT NULL,
+            symbol TEXT,
+            transaction_type TEXT,
+            quantity REAL,
+            price REAL,
+            amount REAL,
+            currency TEXT DEFAULT 'USD',
+            trade_date TIMESTAMP NOT NULL,
+            settlement_date TIMESTAMP,
+            fees REAL,
+            raw_data TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES brokerage_accounts(id) ON DELETE CASCADE,
+            UNIQUE(account_id, snaptrade_transaction_id)
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_account_id ON brokerage_transactions(account_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_trade_date ON brokerage_transactions(trade_date)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_symbol ON brokerage_transactions(symbol)", libsql::params![]).await?;
+
+    // Brokerage holdings table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS brokerage_holdings (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            average_cost REAL,
+            current_price REAL,
+            market_value REAL,
+            currency TEXT DEFAULT 'USD',
+            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            raw_data TEXT,
+            FOREIGN KEY (account_id) REFERENCES brokerage_accounts(id) ON DELETE CASCADE,
+            UNIQUE(account_id, symbol)
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_account_id ON brokerage_holdings(account_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_symbol ON brokerage_holdings(symbol)", libsql::params![]).await?;
+
     info!("Trading+notebook schema initialized successfully");
     Ok(())
 }
@@ -955,8 +1053,8 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
 /// Current schema version (bumped for trade tags system)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.23".to_string(),
-        description: "Added triggers for watchlist and price alert tables.".to_string(),
+        version: "0.0.25".to_string(),
+        description: "Added brokerage tables.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1396,6 +1494,100 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         indexes: vec![
             IndexInfo { name: "idx_report_tasks_status".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["status".to_string()], is_unique: false },
             IndexInfo { name: "idx_report_tasks_created_at".to_string(), table_name: "report_generation_tasks".to_string(), columns: vec!["created_at".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    // Brokerage tables (SnapTrade integration)
+    schemas.push(TableSchema {
+        name: "brokerage_connections".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "snaptrade_user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "snaptrade_user_secret".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "connection_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'pending'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "last_sync_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_brokerage_connections_user_id".to_string(), table_name: "brokerage_connections".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_connections_connection_id".to_string(), table_name: "brokerage_connections".to_string(), columns: vec!["connection_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_connections_status".to_string(), table_name: "brokerage_connections".to_string(), columns: vec!["status".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "brokerage_accounts".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "connection_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "snaptrade_account_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "account_number".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "account_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "account_type".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "balance".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "currency".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'USD'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "institution_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "raw_data".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_brokerage_accounts_connection_id".to_string(), table_name: "brokerage_accounts".to_string(), columns: vec!["connection_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_accounts_snaptrade_account_id".to_string(), table_name: "brokerage_accounts".to_string(), columns: vec!["snaptrade_account_id".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "brokerage_transactions".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "account_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "snaptrade_transaction_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "transaction_type".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "quantity".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "price".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "amount".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "currency".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'USD'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "trade_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "settlement_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "fees".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "raw_data".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_brokerage_transactions_account_id".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["account_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_transactions_trade_date".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["trade_date".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_transactions_symbol".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "brokerage_holdings".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "account_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "quantity".to_string(), data_type: "REAL".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "average_cost".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "current_price".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "market_value".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "currency".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'USD'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "last_updated".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ColumnInfo { name: "raw_data".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_brokerage_holdings_account_id".to_string(), table_name: "brokerage_holdings".to_string(), columns: vec!["account_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_holdings_symbol".to_string(), table_name: "brokerage_holdings".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
         ],
         triggers: vec![],
     });

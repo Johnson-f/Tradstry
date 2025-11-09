@@ -13,6 +13,7 @@ pub mod market;
 pub mod trade_tags;
 pub mod watchlist_price;
 pub mod push;
+pub mod brokerage;
 
 pub use analytics::configure_analytics_routes;
 pub use user::configure_user_routes;
@@ -28,3 +29,4 @@ pub use ai_reports::configure_ai_reports_routes;
 pub use trade_tags::configure_trade_tags_routes;
 pub use watchlist_price::configure_watchlist_price_routes;
 pub use push::configure_push_routes;
+pub use brokerage::configure_brokerage_routes;
