@@ -171,6 +171,24 @@ export function useBrokerage(): UseBrokerageReturn {
     },
   });
 
+  // Complete connection sync mutation
+  const completeSyncMutation = useMutation({
+    mutationFn: (connectionId: string) =>
+      brokerageService.completeConnectionSync(connectionId),
+    onSuccess: (data: SyncSummary) => {
+      toast.success(
+        `Sync completed! ${data.accounts_synced} accounts, ${data.holdings_synced} holdings, ${data.transactions_synced} transactions`
+      );
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.connections });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
+      void queryClient.invalidateQueries({ queryKey: ['brokerage', 'transactions'] });
+      void queryClient.invalidateQueries({ queryKey: ['brokerage', 'holdings'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to complete sync: ${error.message}`);
+    },
+  });
+
   // Accounts
   const {
     data: accounts,
@@ -256,6 +274,12 @@ export function useBrokerage(): UseBrokerageReturn {
       await deleteMutation.mutateAsync(connectionId);
     },
     deleting: deleteMutation.isPending,
+
+    // Complete connection sync
+    completeConnectionSync: async (connectionId: string) => {
+      return await completeSyncMutation.mutateAsync(connectionId);
+    },
+    completingSync: completeSyncMutation.isPending,
 
     // Accounts
     accounts: accounts ?? [],

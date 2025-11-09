@@ -60,6 +60,7 @@ func main() {
 	// User management
 	api.Post("/users", handlers.CreateSnapTradeUser(snapTradeClient))
 	api.Get("/users/:userId", handlers.GetSnapTradeUser(snapTradeClient))
+	api.Delete("/users/:userId", handlers.DeleteSnapTradeUser(snapTradeClient))
 
 	// Connection management
 	api.Post("/connections/initiate", handlers.InitiateConnection(snapTradeClient))
@@ -75,6 +76,7 @@ func main() {
 	// Transaction and holdings
 	api.Get("/accounts/:accountId/transactions", handlers.GetTransactions(snapTradeClient))
 	api.Get("/accounts/:accountId/holdings", handlers.GetHoldings(snapTradeClient))
+	api.Get("/accounts/:accountId/holdings/options", handlers.GetOptionPositions(snapTradeClient))
 
 	// Get port from environment or default
 	port := os.Getenv("PORT")

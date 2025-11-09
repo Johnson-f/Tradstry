@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use std::time::Duration;
 use std::sync::Arc;
-use log::{info, error};
+use log::{info, error, warn};
 use uuid::Uuid;
 use chrono::Utc;
 use libsql::Connection;
@@ -215,12 +215,164 @@ async fn get_or_create_snaptrade_user(
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         error!("SnapTrade service error ({}): {}", status, error_text);
         
-        // If user already exists (400), we can't retrieve their secret
-        // This is a limitation of SnapTrade API - we need to handle this case
+        // If user already exists (400), check if we have credentials stored
+        // If not, return clear error message explaining user needs to reconnect
         if status.as_u16() == 400 {
-            return Err(actix_web::error::ErrorBadRequest(
-                format!("User may already exist in SnapTrade. Error: {}", error_text)
-            ));
+            // Check again if credentials were stored (race condition check)
+            let rows = conn
+                .prepare("SELECT snaptrade_user_id, snaptrade_user_secret FROM brokerage_connections WHERE user_id = ? LIMIT 1")
+                .await
+                .map_err(|e| {
+                    error!("Database error: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+
+            let mut result = rows.query(libsql::params![user_id]).await
+                .map_err(|e| {
+                    error!("Database query error: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database query error")
+                })?;
+
+            if let Some(row) = result.next().await
+                .map_err(|e| {
+                    error!("Database row error: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database row error")
+                })? {
+                let snaptrade_user_id: String = row.get(0)
+                    .map_err(|e| {
+                        error!("Database get error: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database get error")
+                    })?;
+                let snaptrade_user_secret: String = row.get(1)
+                    .map_err(|e| {
+                        error!("Database get error: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database get error")
+                    })?;
+                // Credentials found, return them
+                return Ok((snaptrade_user_id, snaptrade_user_secret));
+            }
+            
+            // User exists in SnapTrade but we don't have credentials stored
+            // Try to delete the user and recreate with proper credentials
+            info!("User exists in SnapTrade but credentials not stored. Attempting to delete and recreate user: {}", user_id);
+            
+            // Try to delete the user using the correct endpoint
+            // Endpoint: DELETE /api/v1/snapTrade/deleteUser
+            // Note: Deletion is async and user is queued for deletion
+            // We need user_secret to delete, but we don't have it, so try with user_id as secret
+            let delete_req = serde_json::json!({
+                "user_secret": user_id  // Try using user_id as secret for deletion
+            });
+            
+            let delete_response = snaptrade_client
+                .call_go_service("DELETE", &format!("/api/v1/users/{}", user_id), Some(&delete_req), user_id, None)
+                .await;
+            
+            let deletion_queued = match delete_response {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let delete_result: serde_json::Value = resp.json().await.unwrap_or_default();
+                        if let Some(status) = delete_result.get("status").and_then(|s| s.as_str()) {
+                            if status == "deleted" {
+                                info!("SnapTrade user queued for deletion: {}. Detail: {}", 
+                                    user_id, 
+                                    delete_result.get("detail").and_then(|d| d.as_str()).unwrap_or(""));
+                                true
+                            } else {
+                                warn!("Unexpected deletion status: {}", status);
+                                false
+                            }
+                        } else {
+                            info!("SnapTrade user deletion request sent: {}", user_id);
+                            true
+                        }
+                    } else {
+                        let delete_error = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                        warn!("Failed to delete SnapTrade user (may require user_secret): {}. Will attempt to recreate anyway.", delete_error);
+                        false
+                    }
+                }
+                Err(e) => {
+                    warn!("Error attempting to delete SnapTrade user: {}. Will attempt to recreate anyway.", e);
+                    false
+                }
+            };
+            
+            // Wait for async deletion to process (if it was queued)
+            // SnapTrade queues deletion, so we need to wait longer
+            if deletion_queued {
+                info!("Waiting for SnapTrade user deletion to complete...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            }
+            
+            // Now try to create the user again
+            let create_user_req_retry = serde_json::json!({
+                "user_id": user_id
+            });
+
+            let retry_response = snaptrade_client
+                .call_go_service("POST", "/api/v1/users", Some(&create_user_req_retry), user_id, None)
+                .await;
+
+            match retry_response {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let user_data: serde_json::Value = resp.json().await
+                            .map_err(|e| {
+                                error!("Failed to parse response: {}", e);
+                                actix_web::error::ErrorInternalServerError("Failed to parse response")
+                            })?;
+
+                        let snaptrade_user_id = user_data["user_id"]
+                            .as_str()
+                            .ok_or_else(|| actix_web::error::ErrorInternalServerError("Invalid response format"))?
+                            .to_string();
+                        let snaptrade_user_secret = user_data["user_secret"]
+                            .as_str()
+                            .ok_or_else(|| actix_web::error::ErrorInternalServerError("Invalid response format"))?
+                            .to_string();
+
+                        // Store the new credentials immediately
+                        let now = Utc::now().to_rfc3339();
+                        conn.execute(
+                            "INSERT OR REPLACE INTO brokerage_connections (id, user_id, snaptrade_user_id, snaptrade_user_secret, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            libsql::params![
+                                Uuid::new_v4().to_string(),
+                                user_id,
+                                snaptrade_user_id.clone(),
+                                snaptrade_user_secret.clone(),
+                                "pending",
+                                now.clone(),
+                                now
+                            ],
+                        ).await.ok(); // Don't fail if insert fails
+
+                        info!("Successfully recreated SnapTrade user with new credentials: {}", user_id);
+                        return Ok((snaptrade_user_id, snaptrade_user_secret));
+                    } else {
+                        let retry_status_code = resp.status().as_u16();
+                        let retry_error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                        error!("Failed to recreate SnapTrade user: {}", retry_error_text);
+                        
+                        // If user still exists, deletion didn't work (requires user_secret)
+                        if retry_error_text.contains("already exist") || retry_status_code == 400 {
+                            return Err(actix_web::error::ErrorBadRequest(
+                                format!("Cannot delete existing SnapTrade user without credentials. Please contact support to reset your SnapTrade account, or wait a few minutes and try again. Error: {}", retry_error_text)
+                            ));
+                        }
+                        
+                        return Err(actix_web::error::ErrorInternalServerError(
+                            format!("Failed to recreate SnapTrade user after deletion. Please try again in a few moments. Error: {}", retry_error_text)
+                        ));
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to recreate SnapTrade user after deletion: {}", e);
+                    return Err(actix_web::error::ErrorInternalServerError(
+                        format!("Failed to recreate SnapTrade user. Please try again in a few moments. Error: {}", e)
+                    ));
+                }
+            }
         }
         
         return Err(actix_web::error::ErrorInternalServerError(
@@ -242,6 +394,22 @@ async fn get_or_create_snaptrade_user(
         .as_str()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("Invalid response format"))?
         .to_string();
+
+    // Store user_id and user_secret immediately after successful registration
+    // This ensures we have credentials even if no connection is created yet
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO brokerage_connections (id, user_id, snaptrade_user_id, snaptrade_user_secret, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        libsql::params![
+            Uuid::new_v4().to_string(),
+            user_id,
+            snaptrade_user_id.clone(),
+            snaptrade_user_secret.clone(),
+            "pending",
+            now.clone(),
+            now
+        ],
+    ).await.ok(); // Don't fail if insert fails (might already exist from race condition)
 
     Ok((snaptrade_user_id, snaptrade_user_secret))
 }
@@ -702,6 +870,86 @@ pub async fn list_accounts(
     Ok(HttpResponse::Ok().json(ApiResponse::success(accounts)))
 }
 
+/// Route: Get account detail
+pub async fn get_account_detail(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let account_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get user secret and verify account belongs to user
+    let rows = conn
+        .prepare("SELECT snaptrade_user_secret, snaptrade_account_id FROM brokerage_accounts WHERE id = ? AND connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)")
+        .await
+        .map_err(|e| {
+            error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let account_id_clone = account_id.clone();
+    let user_id_clone = user_id.clone();
+    let mut result = rows.query(libsql::params![account_id_clone, user_id_clone]).await
+        .map_err(|e| {
+            error!("Database query error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    let (user_secret, snaptrade_account_id) = if let Some(row) = result.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        let secret: String = row.get(0)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let snaptrade_id: String = row.get(1)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        (secret, snaptrade_id)
+    } else {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Account not found")));
+    };
+
+    // Call Go service to get account detail
+    let snaptrade_client = SnapTradeClient::new(app_state.config.snaptrade_service_url.clone())
+        .map_err(|e| {
+            error!("Failed to create SnapTrade client: {}", e);
+            actix_web::error::ErrorInternalServerError("Service configuration error")
+        })?;
+
+    let response = snaptrade_client
+        .call_go_service("GET", &format!("/api/v1/accounts/{}", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+        .await
+        .map_err(|e| {
+            error!("Failed to call SnapTrade service: {}", e);
+            actix_web::error::ErrorInternalServerError("SnapTrade service error")
+        })?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        error!("SnapTrade service error: {}", error_text);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(&error_text)));
+    }
+
+    let account_detail: serde_json::Value = response.json().await
+        .map_err(|e| {
+            error!("Failed to parse response: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to parse response")
+        })?;
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(account_detail)))
+}
+
 /// Route: Sync accounts
 pub async fn sync_accounts(
     req: HttpRequest,
@@ -943,13 +1191,13 @@ pub async fn get_transactions(
     let account_id = query.get("account_id");
     let mut sql = "SELECT id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, created_at FROM brokerage_transactions WHERE account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?))".to_string();
 
-    if let Some(acc_id) = account_id {
+    if let Some(_acc_id) = account_id {
         sql.push_str(" AND account_id = ?");
     }
 
     sql.push_str(" ORDER BY trade_date DESC LIMIT 100");
 
-    let mut rows = conn
+    let rows = conn
         .prepare(&sql)
         .await
         .map_err(|e| {
@@ -1074,13 +1322,13 @@ pub async fn get_holdings(
     let account_id = query.get("account_id");
     let mut sql = "SELECT id, account_id, symbol, quantity, average_cost, current_price, market_value, currency, last_updated FROM brokerage_holdings WHERE account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?))".to_string();
 
-    if let Some(acc_id) = account_id {
+    if let Some(_acc_id) = account_id {
         sql.push_str(" AND account_id = ?");
     }
 
     sql.push_str(" ORDER BY symbol");
 
-    let mut rows = conn
+    let rows = conn
         .prepare(&sql)
         .await
         .map_err(|e| {
@@ -1166,6 +1414,673 @@ pub async fn get_holdings(
     Ok(HttpResponse::Ok().json(ApiResponse::success(holdings)))
 }
 
+/// Route: Get account transactions from SnapTrade
+pub async fn get_account_transactions(
+    req: HttpRequest,
+    path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let account_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get user secret and verify account belongs to user
+    let rows = conn
+        .prepare("SELECT snaptrade_user_secret, snaptrade_account_id FROM brokerage_accounts WHERE id = ? AND connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)")
+        .await
+        .map_err(|e| {
+            error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let account_id_clone = account_id.clone();
+    let user_id_clone = user_id.clone();
+    let mut result = rows.query(libsql::params![account_id_clone, user_id_clone]).await
+        .map_err(|e| {
+            error!("Database query error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    let (user_secret, snaptrade_account_id) = if let Some(row) = result.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        let secret: String = row.get(0)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let snaptrade_id: String = row.get(1)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        (secret, snaptrade_id)
+    } else {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Account not found")));
+    };
+
+    // Build query string with pagination params
+    let mut query_string = String::new();
+    if let Some(start_date) = query.get("start_date") {
+        query_string.push_str(&format!("&start_date={}", start_date));
+    }
+    if let Some(end_date) = query.get("end_date") {
+        query_string.push_str(&format!("&end_date={}", end_date));
+    }
+    if let Some(offset) = query.get("offset") {
+        query_string.push_str(&format!("&offset={}", offset));
+    }
+    if let Some(limit) = query.get("limit") {
+        query_string.push_str(&format!("&limit={}", limit));
+    }
+
+    let path = if query_string.is_empty() {
+        format!("/api/v1/accounts/{}/transactions", snaptrade_account_id)
+    } else {
+        format!("/api/v1/accounts/{}/transactions?{}", snaptrade_account_id, &query_string[1..]) // Skip first &
+    };
+
+    // Call Go service to get transactions
+    let snaptrade_client = SnapTradeClient::new(app_state.config.snaptrade_service_url.clone())
+        .map_err(|e| {
+            error!("Failed to create SnapTrade client: {}", e);
+            actix_web::error::ErrorInternalServerError("Service configuration error")
+        })?;
+
+    let response = snaptrade_client
+        .call_go_service("GET", &path, None::<&serde_json::Value>, &user_id, Some(&user_secret))
+        .await
+        .map_err(|e| {
+            error!("Failed to call SnapTrade service: {}", e);
+            actix_web::error::ErrorInternalServerError("SnapTrade service error")
+        })?;
+
+    let status_code = response.status().as_u16();
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        error!("SnapTrade service error: {}", error_text);
+        // Handle empty transactions gracefully - return empty array
+        if status_code == 404 || status_code == 500 {
+            return Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "data": [],
+                "pagination": {
+                    "offset": query.get("offset").and_then(|s| s.parse::<i32>().ok()).unwrap_or(0),
+                    "limit": query.get("limit").and_then(|s| s.parse::<i32>().ok()).unwrap_or(1000),
+                    "total": 0
+                }
+            }))));
+        }
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(&error_text)));
+    }
+
+    let transactions_data: serde_json::Value = response.json().await
+        .map_err(|e| {
+            error!("Failed to parse response: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to parse response")
+        })?;
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(transactions_data)))
+}
+
+/// Route: Get account equity positions
+pub async fn get_account_positions(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let account_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get user secret and verify account belongs to user
+    let rows = conn
+        .prepare("SELECT snaptrade_user_secret, snaptrade_account_id FROM brokerage_accounts WHERE id = ? AND connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)")
+        .await
+        .map_err(|e| {
+            error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let account_id_clone = account_id.clone();
+    let user_id_clone = user_id.clone();
+    let mut result = rows.query(libsql::params![account_id_clone, user_id_clone]).await
+        .map_err(|e| {
+            error!("Database query error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    let (user_secret, snaptrade_account_id) = if let Some(row) = result.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        let secret: String = row.get(0)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let snaptrade_id: String = row.get(1)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        (secret, snaptrade_id)
+    } else {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Account not found")));
+    };
+
+    // Call Go service to get equity positions
+    let snaptrade_client = SnapTradeClient::new(app_state.config.snaptrade_service_url.clone())
+        .map_err(|e| {
+            error!("Failed to create SnapTrade client: {}", e);
+            actix_web::error::ErrorInternalServerError("Service configuration error")
+        })?;
+
+    let response = snaptrade_client
+        .call_go_service("GET", &format!("/api/v1/accounts/{}/holdings", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+        .await
+        .map_err(|e| {
+            error!("Failed to call SnapTrade service: {}", e);
+            actix_web::error::ErrorInternalServerError("SnapTrade service error")
+        })?;
+
+    let status_code = response.status().as_u16();
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        error!("SnapTrade service error: {}", error_text);
+        // Handle empty positions gracefully - return empty array
+        if status_code == 404 || status_code == 500 {
+            return Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "positions": []
+            }))));
+        }
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(&error_text)));
+    }
+
+    let positions_data: serde_json::Value = response.json().await
+        .map_err(|e| {
+            error!("Failed to parse response: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to parse response")
+        })?;
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(positions_data)))
+}
+
+/// Route: Get account option positions
+pub async fn get_account_option_positions(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let account_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get user secret and verify account belongs to user
+    let rows = conn
+        .prepare("SELECT snaptrade_user_secret, snaptrade_account_id FROM brokerage_accounts WHERE id = ? AND connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)")
+        .await
+        .map_err(|e| {
+            error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let account_id_clone = account_id.clone();
+    let user_id_clone = user_id.clone();
+    let mut result = rows.query(libsql::params![account_id_clone, user_id_clone]).await
+        .map_err(|e| {
+            error!("Database query error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    let (user_secret, snaptrade_account_id) = if let Some(row) = result.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        let secret: String = row.get(0)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let snaptrade_id: String = row.get(1)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        (secret, snaptrade_id)
+    } else {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Account not found")));
+    };
+
+    // Call Go service to get option positions
+    let snaptrade_client = SnapTradeClient::new(app_state.config.snaptrade_service_url.clone())
+        .map_err(|e| {
+            error!("Failed to create SnapTrade client: {}", e);
+            actix_web::error::ErrorInternalServerError("Service configuration error")
+        })?;
+
+    let response = snaptrade_client
+        .call_go_service("GET", &format!("/api/v1/accounts/{}/holdings/options", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+        .await
+        .map_err(|e| {
+            error!("Failed to call SnapTrade service: {}", e);
+            actix_web::error::ErrorInternalServerError("SnapTrade service error")
+        })?;
+
+    let status_code = response.status().as_u16();
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        error!("SnapTrade service error: {}", error_text);
+        // Handle empty positions gracefully - return empty array
+        if status_code == 404 || status_code == 500 {
+            return Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "positions": []
+            }))));
+        }
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(&error_text)));
+    }
+
+    let positions_data: serde_json::Value = response.json().await
+        .map_err(|e| {
+            error!("Failed to parse response: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to parse response")
+        })?;
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(positions_data)))
+}
+
+/// Route: Complete post-connection sync
+/// This endpoint is called after user returns from portal
+/// It automatically syncs all accounts, positions, and transactions
+pub async fn complete_connection_sync(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let connection_id = path.into_inner();
+    let connection_id_clone_for_log = connection_id.clone();
+
+    info!("Completing connection sync for user: {}, connection: {}", user_id, connection_id_clone_for_log);
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Verify connection exists and get user secret, connection_id, and status
+    let rows = conn
+        .prepare("SELECT snaptrade_user_secret, connection_id, status FROM brokerage_connections WHERE id = ? AND user_id = ?")
+        .await
+        .map_err(|e| {
+            error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let connection_id_clone = connection_id.clone();
+    let user_id_clone = user_id.clone();
+    let mut result = rows.query(libsql::params![connection_id_clone, user_id_clone]).await
+        .map_err(|e| {
+            error!("Database query error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    let (user_secret, snaptrade_connection_id, status) = if let Some(row) = result.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        let secret: String = row.get(0)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let conn_id: Option<String> = row.get(1)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let conn_status: String = row.get(2)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        (secret, conn_id, conn_status)
+    } else {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Connection not found")));
+    };
+
+    let snaptrade_connection_id = snaptrade_connection_id
+        .ok_or_else(|| actix_web::error::ErrorBadRequest("Connection ID not found"))?;
+
+    let snaptrade_client = SnapTradeClient::new(app_state.config.snaptrade_service_url.clone())
+        .map_err(|e| {
+            error!("Failed to create SnapTrade client: {}", e);
+            actix_web::error::ErrorInternalServerError("Service configuration error")
+        })?;
+
+    // Check actual connection status from SnapTrade if status is "pending"
+    // This allows users who just completed auth to proceed
+    if status == "pending" {
+        info!("Connection status is pending, checking actual status from SnapTrade");
+        let status_response = snaptrade_client
+            .call_go_service("GET", &format!("/api/v1/connections/{}/status", snaptrade_connection_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+            .await
+            .map_err(|e| {
+                error!("Failed to check connection status: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to check connection status")
+            })?;
+
+        if status_response.status().is_success() {
+            let status_data: serde_json::Value = status_response.json().await
+                .map_err(|e| {
+                    error!("Failed to parse status response: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to parse response")
+                })?;
+
+            // Update database if connection is completed
+            if let Some(status_str) = status_data.get("status").and_then(|s| s.as_str()) {
+                if status_str == "connected" {
+                    let now = Utc::now().to_rfc3339();
+                    let connection_id_for_update = connection_id.clone();
+                    conn.execute(
+                        "UPDATE brokerage_connections SET status = ?, updated_at = ? WHERE id = ?",
+                        libsql::params!["connected", now, connection_id_for_update],
+                    ).await.ok(); // Don't fail if update fails
+                    info!("Updated connection status from pending to connected");
+                } else if status_str != "pending" {
+                    // If status is not connected or pending, reject
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                        &format!("Connection is not ready. Current status: {}", status_str)
+                    )));
+                }
+            }
+        }
+    } else if status != "connected" {
+        // Reject if status is not "connected" or "pending"
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            &format!("Connection is not connected. Current status: {}", status)
+        )));
+    }
+
+    // Step 1: List all accounts for the user
+    let list_req = serde_json::json!({
+        "user_secret": user_secret
+    });
+
+    let accounts_response = snaptrade_client
+        .call_go_service("POST", "/api/v1/accounts/sync", Some(&list_req), &user_id, None)
+        .await
+        .map_err(|e| {
+            error!("Failed to list accounts: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to list accounts")
+        })?;
+
+    if !accounts_response.status().is_success() {
+        let error_text = accounts_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        error!("Failed to list accounts: {}", error_text);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(&format!("Failed to list accounts: {}", error_text))));
+    }
+
+    let sync_data: SyncAccountsResponse = accounts_response.json().await
+        .map_err(|e| {
+            error!("Failed to parse accounts response: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to parse response")
+        })?;
+
+    // Handle empty account list
+    if sync_data.accounts.is_empty() {
+        info!("No accounts found for user: {}", user_id);
+        return Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+            "accounts_synced": 0,
+            "holdings_synced": 0,
+            "transactions_synced": 0,
+            "message": "No accounts found"
+        }))));
+    }
+
+    let mut total_accounts = 0;
+    let mut total_holdings = 0;
+    let mut total_transactions = 0;
+
+    // Step 2: Store accounts and fetch/store positions and transactions for each account
+    for account in sync_data.accounts {
+        if let Some(account_obj) = account.as_object() {
+            if let Some(snaptrade_account_id) = account_obj.get("id").and_then(|v| v.as_str()) {
+                // Store account in database
+                let account_number = account_obj.get("number").and_then(|v| v.as_str());
+                let account_name = account_obj.get("name").and_then(|v| v.as_str());
+                let account_type = account_obj.get("raw_type").or_else(|| account_obj.get("type")).and_then(|v| v.as_str());
+                let balance_obj = account_obj.get("balance");
+                let balance = balance_obj.and_then(|b| b.get("total")).and_then(|t| t.get("amount")).and_then(|v| v.as_f64());
+                let currency = balance_obj.and_then(|b| b.get("total")).and_then(|t| t.get("currency")).and_then(|v| v.as_str()).unwrap_or("USD");
+                let institution_name = account_obj.get("institution_name").and_then(|v| v.as_str());
+
+                let account_uuid = Uuid::new_v4().to_string();
+                let now = Utc::now().to_rfc3339();
+                let raw_data = serde_json::to_string(&account).unwrap_or_default();
+                let connection_id_clone = connection_id.clone();
+
+                conn.execute(
+                    "INSERT OR REPLACE INTO brokerage_accounts (id, connection_id, snaptrade_account_id, account_number, account_name, account_type, balance, currency, institution_name, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM brokerage_accounts WHERE snaptrade_account_id = ?), ?), ?)",
+                    libsql::params![
+                        account_uuid.clone(),
+                        connection_id_clone,
+                        snaptrade_account_id,
+                        account_number,
+                        account_name,
+                        account_type,
+                        balance,
+                        currency,
+                        institution_name,
+                        raw_data,
+                        snaptrade_account_id,
+                        now.clone(),
+                        now
+                    ],
+                ).await.ok();
+
+                total_accounts += 1;
+                info!("Stored account: {}", snaptrade_account_id);
+
+                // Get equity positions
+                let equity_response = snaptrade_client
+                    .call_go_service("GET", &format!("/api/v1/accounts/{}/holdings", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+                    .await
+                    .ok();
+
+                if let Some(equity) = equity_response {
+                    if equity.status().is_success() {
+                        if let Ok(equity_data) = equity.json::<serde_json::Value>().await {
+                            if let Some(positions) = equity_data.get("positions").and_then(|v| v.as_array()) {
+                                info!("Got {} equity positions for account: {}", positions.len(), snaptrade_account_id);
+                                
+                                // Store equity positions
+                                for position in positions {
+                                    if let Some(pos_obj) = position.as_object() {
+                                        let symbol_obj = pos_obj.get("symbol");
+                                        let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str()).unwrap_or("");
+                                        let quantity = pos_obj.get("units").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                        let average_cost = pos_obj.get("average_purchase_price").and_then(|v| v.as_f64());
+                                        let current_price = pos_obj.get("price").and_then(|v| v.as_f64());
+                                        let market_value = pos_obj.get("value").and_then(|v| v.as_f64());
+                                        let currency = pos_obj.get("currency").and_then(|c| c.get("code")).and_then(|v| v.as_str()).unwrap_or("USD");
+                                        let raw_data = serde_json::to_string(position).unwrap_or_default();
+
+                                        let holding_uuid = Uuid::new_v4().to_string();
+                                        let holding_now = Utc::now().to_rfc3339();
+
+                                        conn.execute(
+                                            "INSERT OR REPLACE INTO brokerage_holdings (id, account_id, symbol, quantity, average_cost, current_price, market_value, currency, last_updated, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                            libsql::params![
+                                                holding_uuid,
+                                                account_uuid.clone(),
+                                                symbol,
+                                                quantity,
+                                                average_cost,
+                                                current_price,
+                                                market_value,
+                                                currency,
+                                                holding_now,
+                                                raw_data
+                                            ],
+                                        ).await.ok();
+
+                                        total_holdings += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Get option positions
+                let options_response = snaptrade_client
+                    .call_go_service("GET", &format!("/api/v1/accounts/{}/holdings/options", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+                    .await
+                    .ok();
+
+                if let Some(options) = options_response {
+                    if options.status().is_success() {
+                        if let Ok(options_data) = options.json::<serde_json::Value>().await {
+                            if let Some(positions) = options_data.get("positions").and_then(|v| v.as_array()) {
+                                info!("Got {} option positions for account: {}", positions.len(), snaptrade_account_id);
+                                
+                                // Store option positions
+                                for position in positions {
+                                    if let Some(pos_obj) = position.as_object() {
+                                        let symbol_obj = pos_obj.get("symbol");
+                                        let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str()).unwrap_or("");
+                                        let quantity = pos_obj.get("units").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                        let average_cost = pos_obj.get("average_purchase_price").and_then(|v| v.as_f64());
+                                        let current_price = pos_obj.get("price").and_then(|v| v.as_f64());
+                                        let market_value = pos_obj.get("value").and_then(|v| v.as_f64());
+                                        let currency = pos_obj.get("currency").and_then(|c| c.get("code")).and_then(|v| v.as_str()).unwrap_or("USD");
+                                        let raw_data = serde_json::to_string(position).unwrap_or_default();
+
+                                        let holding_uuid = Uuid::new_v4().to_string();
+                                        let holding_now = Utc::now().to_rfc3339();
+
+                                        conn.execute(
+                                            "INSERT OR REPLACE INTO brokerage_holdings (id, account_id, symbol, quantity, average_cost, current_price, market_value, currency, last_updated, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                            libsql::params![
+                                                holding_uuid,
+                                                account_uuid.clone(),
+                                                symbol,
+                                                quantity,
+                                                average_cost,
+                                                current_price,
+                                                market_value,
+                                                currency,
+                                                holding_now,
+                                                raw_data
+                                            ],
+                                        ).await.ok();
+
+                                        total_holdings += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Get transactions (with pagination - fetch first page)
+                let transactions_response = snaptrade_client
+                    .call_go_service("GET", &format!("/api/v1/accounts/{}/transactions?limit=1000&offset=0", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
+                    .await
+                    .ok();
+
+                if let Some(transactions) = transactions_response {
+                    if transactions.status().is_success() {
+                        if let Ok(trans_data) = transactions.json::<serde_json::Value>().await {
+                            if let Some(data_array) = trans_data.get("data").and_then(|v| v.as_array()) {
+                                info!("Got {} transactions for account: {}", data_array.len(), snaptrade_account_id);
+                                
+                                // Store transactions
+                                for transaction in data_array {
+                                    if let Some(trans_obj) = transaction.as_object() {
+                                        let snaptrade_transaction_id = trans_obj.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                        let symbol_obj = trans_obj.get("symbol");
+                                        let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str());
+                                        let transaction_type = trans_obj.get("type").and_then(|v| v.as_str());
+                                        let quantity = trans_obj.get("units").and_then(|v| v.as_f64());
+                                        let price = trans_obj.get("price").and_then(|v| v.as_f64());
+                                        let amount = trans_obj.get("amount").and_then(|v| v.as_f64());
+                                        let currency_obj = trans_obj.get("currency");
+                                        let currency = currency_obj.and_then(|c| c.get("code")).and_then(|v| v.as_str()).unwrap_or("USD");
+                                        let default_trade_date = Utc::now().to_rfc3339();
+                                        let trade_date = trans_obj.get("trade_date").and_then(|v| v.as_str()).unwrap_or(&default_trade_date);
+                                        let settlement_date = trans_obj.get("settlement_date").and_then(|v| v.as_str());
+                                        let fees = trans_obj.get("fee").and_then(|v| v.as_f64());
+                                        let raw_data = serde_json::to_string(&transaction).unwrap_or_default();
+
+                                        let transaction_uuid = Uuid::new_v4().to_string();
+                                        let transaction_now = Utc::now().to_rfc3339();
+
+                                        conn.execute(
+                                            "INSERT OR IGNORE INTO brokerage_transactions (id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                            libsql::params![
+                                                transaction_uuid,
+                                                account_uuid.clone(),
+                                                snaptrade_transaction_id,
+                                                symbol,
+                                                transaction_type,
+                                                quantity,
+                                                price,
+                                                amount,
+                                                currency,
+                                                trade_date,
+                                                settlement_date,
+                                                fees,
+                                                raw_data,
+                                                transaction_now.clone(),
+                                                transaction_now
+                                            ],
+                                        ).await.ok();
+
+                                        total_transactions += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Update last_sync_at for the connection
+    let sync_now = Utc::now().to_rfc3339();
+    let sync_now_clone = sync_now.clone();
+    let connection_id_clone = connection_id.clone();
+    conn.execute(
+        "UPDATE brokerage_connections SET last_sync_at = ?, updated_at = ? WHERE id = ?",
+        libsql::params![sync_now_clone.clone(), sync_now_clone, connection_id_clone],
+    ).await.ok();
+
+    let summary = serde_json::json!({
+        "accounts_synced": total_accounts,
+        "holdings_synced": total_holdings,
+        "transactions_synced": total_transactions,
+        "last_sync_at": sync_now,
+    });
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(summary)))
+}
+
 /// Configure brokerage routes
 pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -1173,8 +2088,13 @@ pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
             .route("/connections/initiate", web::post().to(initiate_connection))
             .route("/connections", web::get().to(list_connections))
             .route("/connections/{id}/status", web::get().to(get_connection_status))
+            .route("/connections/{id}/complete", web::post().to(complete_connection_sync))
             .route("/connections/{id}", web::delete().to(delete_connection))
             .route("/accounts", web::get().to(list_accounts))
+            .route("/accounts/{id}/detail", web::get().to(get_account_detail))
+            .route("/accounts/{id}/positions", web::get().to(get_account_positions))
+            .route("/accounts/{id}/positions/options", web::get().to(get_account_option_positions))
+            .route("/accounts/{id}/transactions", web::get().to(get_account_transactions))
             .route("/accounts/sync", web::post().to(sync_accounts))
             .route("/transactions", web::get().to(get_transactions))
             .route("/holdings", web::get().to(get_holdings))

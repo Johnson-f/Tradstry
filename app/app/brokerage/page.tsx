@@ -17,7 +17,8 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Clock
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ConnectBrokerageRequest } from '@/lib/types/brokerage';
@@ -41,6 +42,10 @@ export default function BrokeragePage() {
     // Delete connection
     deleteConnection,
     deleting,
+    
+    // Complete connection sync
+    completeConnectionSync,
+    completingSync,
     
     // Accounts
     accounts,
@@ -69,6 +74,7 @@ export default function BrokeragePage() {
   const [brokerageId, setBrokerageId] = useState('');
   const [connectionType, setConnectionType] = useState<'read' | 'trade'>('read');
   const [checkingStatusId, setCheckingStatusId] = useState<string | null>(null);
+  const [completingSyncId, setCompletingSyncId] = useState<string | null>(null);
 
   const handleInitiateConnection = async () => {
     if (!brokerageId.trim()) {
@@ -158,6 +164,21 @@ export default function BrokeragePage() {
       refetchHoldings();
     } catch (error) {
       console.error('Failed to sync accounts:', error);
+    }
+  };
+
+  const handleCompleteSync = async (connectionId: string) => {
+    setCompletingSyncId(connectionId);
+    try {
+      await completeConnectionSync(connectionId);
+      refetchConnections();
+      refetchAccounts();
+      refetchTransactions();
+      refetchHoldings();
+    } catch (error) {
+      console.error('Failed to complete sync:', error);
+    } finally {
+      setCompletingSyncId(null);
     }
   };
 
@@ -297,6 +318,25 @@ export default function BrokeragePage() {
                           </div>
                         </div>
                         <div className="flex gap-2">
+                          {(connection.status === 'connected' || connection.status === 'pending') && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCompleteSync(connection.id)}
+                              disabled={completingSyncId === connection.id || completingSync}
+                            >
+                              {completingSyncId === connection.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Syncing...
+                                </>
+                              ) : (
+                                <>
+                                  <ArrowRight className="w-4 h-4 mr-2" />
+                                  Continue
+                                </>
+                              )}
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"

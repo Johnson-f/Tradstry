@@ -204,6 +204,10 @@ export interface UseBrokerageReturn {
   deleteConnection: (connectionId: string) => Promise<void>;
   deleting: boolean;
   
+  // Complete connection sync
+  completeConnectionSync: (connectionId: string) => Promise<SyncSummary>;
+  completingSync: boolean;
+  
   // Accounts
   accounts: BrokerageAccount[];
   accountsLoading: boolean;

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use libsql::{Connection, Database, Builder};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use log::{info, warn, error};
 
 use super::config::TursoConfig;
