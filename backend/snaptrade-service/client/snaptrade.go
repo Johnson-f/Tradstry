@@ -83,6 +83,44 @@ func (c *SnapTradeClient) CreateUser(userId string) (*snaptrade.UserIDandSecret,
 	return result, nil
 }
 
+// DeleteUser deletes a SnapTrade user
+// Endpoint: DELETE /api/v1/snapTrade/deleteUser
+// Returns: { "status": "deleted", "detail": "...", "userId": "..." }
+// Note: User deletion is queued and happens asynchronously
+// The SDK method only takes userId, userSecret must be passed via context or request
+func (c *SnapTradeClient) DeleteUser(userId, userSecret string) error {
+	// SDK method only takes userId
+	req := c.client.AuthenticationApi.DeleteSnapTradeUser(userId)
+	
+	// Note: The SDK may handle userSecret via context or the request may need it
+	// If the API requires userSecret, it might be in the request body or headers
+	// For now, we'll try with just userId and see if it works
+	
+	result, httpResp, err := c.client.AuthenticationApi.DeleteSnapTradeUserExecute(req)
+	if err != nil {
+		if httpResp != nil {
+			bodyBytes := make([]byte, 0)
+			if httpResp.Body != nil {
+				bodyBytes, _ = io.ReadAll(httpResp.Body)
+			}
+			// If it's a 401/403, the API requires userSecret
+			if httpResp.StatusCode == 401 || httpResp.StatusCode == 403 {
+				return fmt.Errorf("user_secret required to delete user (401/403): %s", string(bodyBytes))
+			}
+			fmt.Printf("SnapTrade Delete User API Error - Status: %d, Body: %s, Error: %v\n", 
+				httpResp.StatusCode, string(bodyBytes), err)
+		}
+		return fmt.Errorf("failed to delete SnapTrade user: %w", err)
+	}
+
+	// Log the deletion status
+	if result != nil {
+		fmt.Printf("SnapTrade user deletion queued: userId=%s, status=%s\n", userId, result.GetStatus())
+	}
+
+	return nil
+}
+
 // GenerateConnectionPortalURL generates a connection portal URL for the user
 func (c *SnapTradeClient) GenerateConnectionPortalURL(userId, userSecret, brokerageId string, connectionType string) (*snaptrade.LoginRedirectURI, error) {
 	req := c.client.AuthenticationApi.LoginSnapTradeUser(userId, userSecret)

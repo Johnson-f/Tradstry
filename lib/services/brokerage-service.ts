@@ -350,6 +350,44 @@ export class BrokerageService {
 
     return result.data;
   }
+
+  /**
+   * Complete connection sync - fetches all accounts, positions, and transactions
+   */
+  async completeConnectionSync(connectionId: string): Promise<SyncSummary> {
+    const url = getFullUrl(
+      apiConfig.endpoints.brokerage.connections.complete(connectionId)
+    );
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to complete connection sync: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<SyncSummary> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to complete connection sync');
+    }
+
+    return result.data;
+  }
 }
 
 // Export singleton instance

@@ -271,6 +271,7 @@ export const apiConfig = {
         initiate: "/brokerage/connections/initiate",
         byId: (id: string) => `/brokerage/connections/${id}`,
         status: (id: string) => `/brokerage/connections/${id}/status`,
+        complete: (id: string) => `/brokerage/connections/${id}/complete`,
       },
       accounts: {
         base: "/brokerage/accounts",
