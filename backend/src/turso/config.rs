@@ -27,6 +27,8 @@ pub struct TursoConfig {
     pub finance_query: FinanceQueryConfig,
     /// Web Push (VAPID) configuration
     pub web_push: WebPushConfig,
+    /// SnapTrade service URL
+    pub snaptrade_service_url: String,
 }
 
 /// Supabase authentication configuration
@@ -84,6 +86,8 @@ impl TursoConfig {
             vector: vector_config,
             finance_query: finance_query_config,
             web_push: web_push_config,
+            snaptrade_service_url: env::var("SNAPTRADE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string()),
         })
     }
 }

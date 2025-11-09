@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use libsql::{Connection, Database, Builder};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use log::info;
+use std::collections::{HashMap, HashSet};
+use log::{info, warn, error};
 
 use super::config::TursoConfig;
 use super::schema::{
@@ -474,10 +474,78 @@ impl TursoClient {
     async fn update_schema_version(&self, conn: &Connection, version: &SchemaVersion) -> Result<()> { update_schema_version(conn, version).await }
 
     /// Apply schema migrations to bring database up to current schema
+    /// This function makes schema.rs the source of truth - it will drop any tables
+    /// that exist in the database but are not in the expected schema
     #[allow(dead_code)]
     async fn apply_schema_migrations(&self, conn: &Connection, expected_schema: &[TableSchema]) -> Result<()> {
         info!("Applying schema migrations");
+        
+        // Get list of expected table names (source of truth)
+        let expected_table_names: std::collections::HashSet<String> = expected_schema
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        
+        // Also include system tables that should never be dropped
+        let protected_tables: std::collections::HashSet<String> = [
+            "schema_version".to_string(),
+            "sqlite_sequence".to_string(), // SQLite internal table
+        ].iter().cloned().collect();
+        
+        // Get current tables in database
         let current_tables = get_current_tables(conn).await?;
+        
+        // Drop tables that exist in database but are not in expected schema
+        // Temporarily disable foreign key constraints to allow dropping tables with dependencies
+        conn.execute("PRAGMA foreign_keys = OFF", libsql::params![]).await?;
+        
+        for table_name in &current_tables {
+            if !expected_table_names.contains(table_name) && !protected_tables.contains(table_name) {
+                info!("Dropping table '{}' - not in expected schema (schema.rs is source of truth)", table_name);
+                
+                // Drop all indexes for this table first
+                let mut index_rows = conn
+                    .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name NOT LIKE 'sqlite_autoindex_%'")
+                    .await?
+                    .query(libsql::params![table_name.clone()])
+                    .await?;
+                
+                while let Some(index_row) = index_rows.next().await? {
+                    let index_name: String = index_row.get(0)?;
+                    info!("Dropping index '{}' for table '{}'", index_name, table_name);
+                    if let Err(e) = conn.execute(&format!("DROP INDEX IF EXISTS {}", index_name), libsql::params![]).await {
+                        warn!("Failed to drop index '{}': {}", index_name, e);
+                    }
+                }
+                
+                // Drop all triggers for this table
+                let mut trigger_rows = conn
+                    .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name=?")
+                    .await?
+                    .query(libsql::params![table_name.clone()])
+                    .await?;
+                
+                while let Some(trigger_row) = trigger_rows.next().await? {
+                    let trigger_name: String = trigger_row.get(0)?;
+                    info!("Dropping trigger '{}' for table '{}'", trigger_name, table_name);
+                    if let Err(e) = conn.execute(&format!("DROP TRIGGER IF EXISTS {}", trigger_name), libsql::params![]).await {
+                        warn!("Failed to drop trigger '{}': {}", trigger_name, e);
+                    }
+                }
+                
+                // Finally, drop the table
+                if let Err(e) = conn.execute(&format!("DROP TABLE IF EXISTS {}", table_name), libsql::params![]).await {
+                    error!("Failed to drop table '{}': {}", table_name, e);
+                } else {
+                    info!("Successfully dropped table '{}'", table_name);
+                }
+            }
+        }
+        
+        // Re-enable foreign key constraints
+        conn.execute("PRAGMA foreign_keys = ON", libsql::params![]).await?;
+        
+        // Create or update expected tables
         for table_schema in expected_schema {
             if !current_tables.contains(&table_schema.name) {
                 info!("Creating missing table: {}", table_schema.name);
@@ -485,12 +553,16 @@ impl TursoClient {
             } else {
                 info!("Checking table schema for: {}", table_schema.name);
                 update_table_schema(conn, table_schema).await?;
-                }
             }
+        }
+        
+        // Ensure indexes and triggers for all expected tables
         for table_schema in expected_schema {
             ensure_indexes(conn, table_schema).await?;
             ensure_triggers(conn, table_schema).await?;
         }
+        
+        info!("Schema migrations completed - database now matches schema.rs (source of truth)");
         Ok(())
     }
 

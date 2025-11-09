@@ -32,7 +32,7 @@ use turso::{
     SupabaseClaims,
 };
 use crate::service::market_engine::ws_proxy::MarketWsProxy;
-use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes, configure_watchlist_price_routes};
+use routes::{configure_analytics_routes, configure_user_routes, configure_options_routes, configure_stocks_routes, configure_trade_notes_routes, configure_images_routes, configure_playbook_routes, configure_notebook_routes, configure_ai_chat_routes, configure_ai_insights_routes, configure_ai_reports_routes, configure_trade_tags_routes, configure_watchlist_price_routes, configure_brokerage_routes};
 use websocket::{ConnectionManager, ws_handler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -242,6 +242,11 @@ async fn main() -> std::io::Result<()> {
             .configure(|cfg| {
                 log::info!("Configuring WebSocket routes");
                 cfg.route("/api/ws", web::get().to(ws_handler));
+            })
+            // Register brokerage routes
+            .configure(|cfg| {
+                log::info!("Configuring brokerage routes");
+                configure_brokerage_routes(cfg);
             })
             .configure(configure_public_routes)
             .configure(configure_auth_routes)
