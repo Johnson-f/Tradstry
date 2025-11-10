@@ -178,25 +178,45 @@ export default function DashboardPage() {
 
 function DashboardGreeting() {
   const { firstName, loading, email } = useUserProfile();
-  const { timeGreeting } = getTimeBasedGreeting();
+  const { timeGreeting, casualGreeting, tradingReminder, marketStatus } = getTimeBasedGreeting();
   
   if (loading) {
-    return <div className="h-8 w-64 bg-muted rounded animate-pulse"></div>;
+    return (
+      <div className="space-y-2">
+        <div className="h-8 w-64 bg-muted rounded animate-pulse"></div>
+        <div className="h-4 w-96 bg-muted rounded animate-pulse"></div>
+        <div className="h-4 w-80 bg-muted rounded animate-pulse"></div>
+      </div>
+    );
   }
 
   // Get display name - prefer first name, fall back to email username
   const displayName = firstName || (email ? email.split('@')[0] : '');
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">
-        {timeGreeting}{displayName ? `, ${displayName}` : ''}!
-      </h1>
-      {!firstName && email && (
-        <p className="text-sm text-muted-foreground mt-1">
-          Welcome back! Update your profile to personalize your experience.
+    <div className="space-y-3">
+      <div>
+        <h1 className="text-2xl font-semibold">
+          {timeGreeting}{displayName ? `, ${displayName}` : ''}!
+        </h1>
+        {!firstName && email && (
+          <p className="text-sm text-muted-foreground mt-1">
+            Welcome back! Update your profile to personalize your experience.
+          </p>
+        )}
+      </div>
+      
+      <div className="flex flex-col gap-2">
+        <p className="text-base text-foreground/80">
+          {casualGreeting}
         </p>
-      )}
+        <p className="text-sm text-muted-foreground italic">
+          💡 {tradingReminder}
+        </p>
+        <p className="text-xs text-muted-foreground/80 font-medium">
+          📊 {marketStatus}
+        </p>
+      </div>
     </div>
   );
 }
