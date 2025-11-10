@@ -17,6 +17,15 @@ import {
   Edit2,
   Save,
   X,
+  Link as LinkIcon,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Plus,
+  RefreshCw,
+  Activity,
+  Loader2,
+  ArrowRight,
 } from "lucide-react"
 
 import {
@@ -32,6 +41,10 @@ import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { useBrokerage } from "@/lib/hooks/use-brokerage"
+import { toast } from "sonner"
+import type { ConnectBrokerageRequest } from "@/lib/types/brokerage"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +69,7 @@ const data = {
     { name: "Notifications", icon: Bell },
     { name: "AI", icon: Bot },
     { name: "Apps", icon: Grid3x3 },
+    { name: "Brokerage", icon: LinkIcon },
     { name: "Account", icon: User },
   ],
 }
@@ -395,6 +409,312 @@ function AccountSettingsContent({ onOpenChange }: AccountSettingsContentProps) {
   )
 }
 
+function BrokerageSettingsContent() {
+  const {
+    connections,
+    connectionsLoading,
+    connectionsError,
+    refetchConnections,
+    initiateConnection,
+    initiating,
+    getConnectionStatus,
+    statusLoading,
+    deleteConnection,
+    deleting,
+    completeConnectionSync,
+    completingSync,
+  } = useBrokerage()
+
+  const [brokerageId, setBrokerageId] = React.useState('')
+  const [connectionType, setConnectionType] = React.useState<'read' | 'trade'>('read')
+  const [checkingStatusId, setCheckingStatusId] = React.useState<string | null>(null)
+  const [completingSyncId, setCompletingSyncId] = React.useState<string | null>(null)
+  const [deletingConnectionId, setDeletingConnectionId] = React.useState<string | null>(null)
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'connected':
+        return (
+          <Badge variant="default" className="bg-green-500">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Connected
+          </Badge>
+        )
+      case 'pending':
+        return (
+          <Badge variant="outline">
+            <Clock className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        )
+      case 'disconnected':
+        return (
+          <Badge variant="destructive">
+            <XCircle className="w-3 h-3 mr-1" />
+            Disconnected
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const handleInitiateConnection = async () => {
+    if (!brokerageId.trim()) {
+      toast.error('Please enter a brokerage ID')
+      return
+    }
+
+    try {
+      const request: ConnectBrokerageRequest = {
+        brokerage_id: brokerageId,
+        connection_type: connectionType,
+      }
+
+      const loadingToast = toast.loading('Initiating connection...')
+
+      const response = await initiateConnection(request)
+
+      if (response?.redirect_url) {
+        const link = document.createElement('a')
+        link.href = response.redirect_url
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        toast.dismiss(loadingToast)
+        toast.success('Opening connection portal in new tab...')
+      } else {
+        toast.dismiss(loadingToast)
+        toast.error('Connection initiated but no redirect URL received.')
+      }
+
+      setBrokerageId('')
+      setConnectionType('read')
+      refetchConnections()
+    } catch (error) {
+      console.error('Failed to initiate connection:', error)
+      toast.error(`Failed to initiate connection: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleCheckStatus = async (connectionId: string) => {
+    setCheckingStatusId(connectionId)
+    try {
+      const status = await getConnectionStatus(connectionId)
+      toast.success(`Connection status: ${status.status}`)
+      refetchConnections()
+    } catch (error) {
+      console.error('Failed to check status:', error)
+      toast.error('Failed to check connection status')
+    } finally {
+      setCheckingStatusId(null)
+    }
+  }
+
+  const handleDeleteConnection = async (connectionId: string) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to disconnect this brokerage account? This will remove the connection but not delete your synced data.'
+    )
+
+    if (!confirmed) return
+
+    setDeletingConnectionId(connectionId)
+    try {
+      await deleteConnection(connectionId)
+      toast.success('Brokerage connection removed')
+      refetchConnections()
+    } catch (error) {
+      console.error('Failed to delete connection:', error)
+      toast.error('Failed to remove connection. Please try again.')
+    } finally {
+      setDeletingConnectionId(null)
+    }
+  }
+
+  const handleCompleteSync = async (connectionId: string) => {
+    setCompletingSyncId(connectionId)
+    try {
+      await completeConnectionSync(connectionId)
+      refetchConnections()
+      toast.success('Connection synced successfully')
+    } catch (error) {
+      console.error('Failed to complete sync:', error)
+      toast.error('Failed to complete sync')
+    } finally {
+      setCompletingSyncId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Initiate New Connection */}
+      <div className="rounded-lg border bg-card p-6">
+        <h3 className="text-base font-semibold mb-4">Connect New Brokerage</h3>
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Input
+                placeholder="Brokerage ID (e.g., alderaan, questrade)"
+                value={brokerageId}
+                onChange={(e) => setBrokerageId(e.target.value)}
+              />
+            </div>
+            <select
+              value={connectionType}
+              onChange={(e) => setConnectionType(e.target.value as 'read' | 'trade')}
+              className="px-3 py-2 border rounded-md text-sm"
+            >
+              <option value="read">Read Only</option>
+              <option value="trade">Trade</option>
+            </select>
+            <Button
+              onClick={handleInitiateConnection}
+              disabled={initiating || !brokerageId.trim()}
+              size="sm"
+            >
+              {initiating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Initiating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Connect
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Enter your brokerage ID and click Connect to start the authentication process.
+          </p>
+        </div>
+      </div>
+
+      {/* Connections List */}
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold">Connected Brokerages</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchConnections()}
+            disabled={connectionsLoading}
+            className="h-8"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${connectionsLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+        <div className="space-y-4">
+          {connectionsLoading ? (
+            <div className="space-y-3">
+              <div className="h-16 bg-muted rounded animate-pulse" />
+              <div className="h-16 bg-muted rounded animate-pulse" />
+            </div>
+          ) : connectionsError ? (
+            <div className="text-destructive py-4 text-sm">
+              Error: {connectionsError.message}
+            </div>
+          ) : connections.length === 0 ? (
+            <div className="text-center py-8">
+              <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-sm text-muted-foreground mb-4">
+                No brokerage accounts connected yet.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {connections.map((connection) => (
+                <div
+                  key={connection.id}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="font-medium">{connection.brokerage_name}</h4>
+                      {getStatusBadge(connection.status)}
+                    </div>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      {connection.last_sync_at && (
+                        <div>
+                          Last synced: {new Date(connection.last_sync_at).toLocaleString()}
+                        </div>
+                      )}
+                      <div>
+                        Connected: {new Date(connection.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {(connection.status === 'connected' || connection.status === 'pending') && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleCompleteSync(connection.id)}
+                        disabled={completingSyncId === connection.id || completingSync}
+                        variant="outline"
+                      >
+                        {completingSyncId === connection.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Syncing...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight className="w-4 h-4 mr-2" />
+                            Sync
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCheckStatus(connection.id)}
+                      disabled={checkingStatusId === connection.id || statusLoading}
+                    >
+                      {checkingStatusId === connection.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Activity className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteConnection(connection.id)}
+                      disabled={deletingConnectionId === connection.id || deleting}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      {deletingConnectionId === connection.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Info Section */}
+      <div className="rounded-lg border bg-card p-6">
+        <h3 className="text-base font-semibold mb-2">About Brokerage Connections</h3>
+        <p className="text-sm text-muted-foreground">
+          Connect your brokerage accounts to automatically sync trades, positions, and transactions.
+          Your data is securely synced and stored in your personal database.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function GeneralSettingsContent() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
@@ -527,6 +847,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <AccountSettingsContent onOpenChange={onOpenChange} />
                 ) : activeItem === "General" ? (
                   <GeneralSettingsContent />
+                ) : activeItem === "Brokerage" ? (
+                  <BrokerageSettingsContent />
                 ) : (
                   Array.from({ length: 5 }).map((_, i) => (
                     <div

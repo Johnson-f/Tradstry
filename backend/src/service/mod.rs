@@ -7,6 +7,7 @@ pub mod trade_notes_service;
 pub mod rate_limiter;
 pub mod storage_quota;
 pub mod account_deletion;
+pub mod transform;
 
 // AI Services - organized in dedicated module
 pub mod ai_service;

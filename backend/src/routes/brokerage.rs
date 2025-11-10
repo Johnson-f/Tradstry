@@ -10,6 +10,7 @@ use libsql::Connection;
 
 use crate::turso::{AppState, client::TursoClient, config::{SupabaseConfig, SupabaseClaims}};
 use crate::turso::auth::{validate_supabase_jwt_token, get_supabase_user_id};
+use crate::service::transform;
 
 /// HTTP client for communicating with Go SnapTrade microservice
 #[derive(Clone)]
@@ -58,6 +59,100 @@ impl SnapTradeClient {
         let resp = req.send().await?;
         Ok(resp)
     }
+}
+
+/// Helper function to get existing account ID by snaptrade_account_id
+async fn get_existing_account_id(
+    conn: &Connection,
+    connection_id: &str,
+    snaptrade_account_id: &str,
+) -> Option<String> {
+    let mut stmt = match conn
+        .prepare("SELECT id FROM brokerage_accounts WHERE connection_id = ? AND snaptrade_account_id = ?")
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to prepare account query: {}", e);
+            return None;
+        }
+    };
+
+    let mut rows = match stmt.query(libsql::params![connection_id, snaptrade_account_id]).await {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to query account: {}", e);
+            return None;
+        }
+    };
+
+    if let Ok(Some(row)) = rows.next().await {
+        if let Ok(id) = row.get::<String>(0) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+/// Helper function to get existing holding ID by account_id and symbol
+async fn get_existing_holding_id(
+    conn: &Connection,
+    account_id: &str,
+    symbol: &str,
+) -> Option<String> {
+    let mut stmt = match conn
+        .prepare("SELECT id FROM brokerage_holdings WHERE account_id = ? AND symbol = ?")
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to prepare holding query: {}", e);
+            return None;
+        }
+    };
+
+    let mut rows = match stmt.query(libsql::params![account_id, symbol]).await {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to query holding: {}", e);
+            return None;
+        }
+    };
+
+    if let Ok(Some(row)) = rows.next().await {
+        if let Ok(id) = row.get::<String>(0) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+/// Helper function to check if transaction already exists
+async fn transaction_exists(
+    conn: &Connection,
+    account_id: &str,
+    snaptrade_transaction_id: &str,
+) -> bool {
+    let mut stmt = match conn
+        .prepare("SELECT 1 FROM brokerage_transactions WHERE account_id = ? AND snaptrade_transaction_id = ? LIMIT 1")
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to prepare transaction check query: {}", e);
+            return false;
+        }
+    };
+
+    let mut rows = match stmt.query(libsql::params![account_id, snaptrade_transaction_id]).await {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to query transaction: {}", e);
+            return false;
+        }
+    };
+
+    matches!(rows.next().await, Ok(Some(_)))
 }
 
 /// Response wrapper
@@ -1047,13 +1142,25 @@ pub async fn sync_accounts(
                 let currency = account.get("currency").and_then(|v| v.as_str()).unwrap_or("USD");
                 let institution_name = account.get("institution_name").and_then(|v| v.as_str());
 
-                let account_uuid = Uuid::new_v4().to_string();
+                // Check if account already exists to prevent duplicates
+                let connection_id_clone = connection_id.clone();
+                let account_uuid = match get_existing_account_id(&conn, &connection_id_clone, snaptrade_account_id).await {
+                    Some(existing_id) => {
+                        info!("Account {} already exists, updating: {}", snaptrade_account_id, existing_id);
+                        existing_id
+                    },
+                    None => {
+                        let new_id = Uuid::new_v4().to_string();
+                        info!("Creating new account: {} with ID: {}", snaptrade_account_id, new_id);
+                        new_id
+                    }
+                };
+
                 let now = Utc::now().to_rfc3339();
                 let raw_data = serde_json::to_string(&account).unwrap_or_default();
-                let connection_id_clone = connection_id.clone();
 
                 conn.execute(
-                    "INSERT OR REPLACE INTO brokerage_accounts (id, connection_id, snaptrade_account_id, account_number, account_name, account_type, balance, currency, institution_name, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM brokerage_accounts WHERE snaptrade_account_id = ?), ?), ?)",
+                    "INSERT OR REPLACE INTO brokerage_accounts (id, connection_id, snaptrade_account_id, account_number, account_name, account_type, balance, currency, institution_name, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM brokerage_accounts WHERE id = ?), ?), ?)",
                     libsql::params![
                         account_uuid.clone(),
                         connection_id_clone,
@@ -1065,7 +1172,7 @@ pub async fn sync_accounts(
                         currency,
                         institution_name,
                         raw_data,
-                        snaptrade_account_id,
+                        account_uuid.clone(),
                         now.clone(),
                         now
                     ],
@@ -1078,6 +1185,10 @@ pub async fn sync_accounts(
                     if let Some(holding_account_id) = holding.get("account_id").and_then(|v| v.as_str()) {
                         if holding_account_id == snaptrade_account_id {
                             let symbol = holding.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
+                            if symbol.is_empty() {
+                                continue; // Skip holdings without symbols
+                            }
+                            
                             let quantity = holding.get("quantity").and_then(|v| v.as_f64()).unwrap_or(0.0);
                             let average_cost = holding.get("average_cost").and_then(|v| v.as_f64());
                             let current_price = holding.get("current_price").and_then(|v| v.as_f64());
@@ -1085,7 +1196,19 @@ pub async fn sync_accounts(
                             let currency = holding.get("currency").and_then(|v| v.as_str()).unwrap_or("USD");
                             let raw_data = serde_json::to_string(holding).unwrap_or_default();
 
-                            let holding_uuid = Uuid::new_v4().to_string();
+                            // Check if holding already exists to prevent duplicates
+                            let holding_uuid = match get_existing_holding_id(&conn, &account_uuid, symbol).await {
+                                Some(existing_id) => {
+                                    info!("Holding {} for account {} already exists, updating: {}", symbol, account_uuid, existing_id);
+                                    existing_id
+                                },
+                                None => {
+                                    let new_id = Uuid::new_v4().to_string();
+                                    info!("Creating new holding: {} for account: {}", symbol, account_uuid);
+                                    new_id
+                                }
+                            };
+
                             let now = Utc::now().to_rfc3339();
 
                             conn.execute(
@@ -1114,6 +1237,16 @@ pub async fn sync_accounts(
                     if let Some(trans_account_id) = transaction.get("account_id").and_then(|v| v.as_str()) {
                         if trans_account_id == snaptrade_account_id {
                             let snaptrade_transaction_id = transaction.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            if snaptrade_transaction_id.is_empty() {
+                                continue; // Skip transactions without IDs
+                            }
+
+                            // Check if transaction already exists to prevent duplicates
+                            if transaction_exists(&conn, &account_uuid, snaptrade_transaction_id).await {
+                                info!("Transaction {} for account {} already exists, skipping", snaptrade_transaction_id, account_uuid);
+                                continue;
+                            }
+
                             let symbol = transaction.get("symbol").and_then(|v| v.as_str());
                             let transaction_type = transaction.get("type").and_then(|v| v.as_str());
                             let quantity = transaction.get("quantity").and_then(|v| v.as_f64());
@@ -1130,7 +1263,7 @@ pub async fn sync_accounts(
                             let transaction_now = Utc::now().to_rfc3339();
 
                             conn.execute(
-                                "INSERT OR IGNORE INTO brokerage_transactions (id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                "INSERT INTO brokerage_transactions (id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                 libsql::params![
                                     transaction_uuid,
                                     account_uuid.clone(),
@@ -1164,6 +1297,16 @@ pub async fn sync_accounts(
             "UPDATE brokerage_connections SET last_sync_at = ?, updated_at = ? WHERE id = ?",
             libsql::params![sync_now.clone(), sync_now, connection_id_clone],
         ).await.ok();
+    }
+
+    // Transform brokerage transactions to stocks/options trades
+    info!("Starting transformation of brokerage transactions to trades");
+    if let Err(e) = transform::migrate_add_brokerage_name_column(&conn).await {
+        warn!("Failed to migrate brokerage_name column: {}", e);
+    }
+    if let Err(e) = transform::transform_brokerage_transactions(&conn).await {
+        error!("Failed to transform brokerage transactions: {}", e);
+        // Don't fail the entire sync if transformation fails
     }
 
     let summary = SyncSummary {
@@ -1868,13 +2011,25 @@ pub async fn complete_connection_sync(
                 let currency = balance_obj.and_then(|b| b.get("total")).and_then(|t| t.get("currency")).and_then(|v| v.as_str()).unwrap_or("USD");
                 let institution_name = account_obj.get("institution_name").and_then(|v| v.as_str());
 
-                let account_uuid = Uuid::new_v4().to_string();
+                // Check if account already exists to prevent duplicates
+                let connection_id_clone = connection_id.clone();
+                let account_uuid = match get_existing_account_id(&conn, &connection_id_clone, snaptrade_account_id).await {
+                    Some(existing_id) => {
+                        info!("Account {} already exists, updating: {}", snaptrade_account_id, existing_id);
+                        existing_id
+                    },
+                    None => {
+                        let new_id = Uuid::new_v4().to_string();
+                        info!("Creating new account: {} with ID: {}", snaptrade_account_id, new_id);
+                        new_id
+                    }
+                };
+
                 let now = Utc::now().to_rfc3339();
                 let raw_data = serde_json::to_string(&account).unwrap_or_default();
-                let connection_id_clone = connection_id.clone();
 
                 conn.execute(
-                    "INSERT OR REPLACE INTO brokerage_accounts (id, connection_id, snaptrade_account_id, account_number, account_name, account_type, balance, currency, institution_name, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM brokerage_accounts WHERE snaptrade_account_id = ?), ?), ?)",
+                    "INSERT OR REPLACE INTO brokerage_accounts (id, connection_id, snaptrade_account_id, account_number, account_name, account_type, balance, currency, institution_name, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM brokerage_accounts WHERE id = ?), ?), ?)",
                     libsql::params![
                         account_uuid.clone(),
                         connection_id_clone,
@@ -1886,7 +2041,7 @@ pub async fn complete_connection_sync(
                         currency,
                         institution_name,
                         raw_data,
-                        snaptrade_account_id,
+                        account_uuid.clone(),
                         now.clone(),
                         now
                     ],
@@ -1912,6 +2067,9 @@ pub async fn complete_connection_sync(
                                     if let Some(pos_obj) = position.as_object() {
                                         let symbol_obj = pos_obj.get("symbol");
                                         let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str()).unwrap_or("");
+                                        if symbol.is_empty() {
+                                            continue; // Skip holdings without symbols
+                                        }
                                         let quantity = pos_obj.get("units").and_then(|v| v.as_f64()).unwrap_or(0.0);
                                         let average_cost = pos_obj.get("average_purchase_price").and_then(|v| v.as_f64());
                                         let current_price = pos_obj.get("price").and_then(|v| v.as_f64());
@@ -1919,7 +2077,19 @@ pub async fn complete_connection_sync(
                                         let currency = pos_obj.get("currency").and_then(|c| c.get("code")).and_then(|v| v.as_str()).unwrap_or("USD");
                                         let raw_data = serde_json::to_string(position).unwrap_or_default();
 
-                                        let holding_uuid = Uuid::new_v4().to_string();
+                                        // Check if holding already exists to prevent duplicates
+                                        let holding_uuid = match get_existing_holding_id(&conn, &account_uuid, symbol).await {
+                                            Some(existing_id) => {
+                                                info!("Holding {} for account {} already exists, updating: {}", symbol, account_uuid, existing_id);
+                                                existing_id
+                                            },
+                                            None => {
+                                                let new_id = Uuid::new_v4().to_string();
+                                                info!("Creating new holding: {} for account: {}", symbol, account_uuid);
+                                                new_id
+                                            }
+                                        };
+
                                         let holding_now = Utc::now().to_rfc3339();
 
                                         conn.execute(
@@ -1963,6 +2133,9 @@ pub async fn complete_connection_sync(
                                     if let Some(pos_obj) = position.as_object() {
                                         let symbol_obj = pos_obj.get("symbol");
                                         let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str()).unwrap_or("");
+                                        if symbol.is_empty() {
+                                            continue; // Skip holdings without symbols
+                                        }
                                         let quantity = pos_obj.get("units").and_then(|v| v.as_f64()).unwrap_or(0.0);
                                         let average_cost = pos_obj.get("average_purchase_price").and_then(|v| v.as_f64());
                                         let current_price = pos_obj.get("price").and_then(|v| v.as_f64());
@@ -1970,7 +2143,19 @@ pub async fn complete_connection_sync(
                                         let currency = pos_obj.get("currency").and_then(|c| c.get("code")).and_then(|v| v.as_str()).unwrap_or("USD");
                                         let raw_data = serde_json::to_string(position).unwrap_or_default();
 
-                                        let holding_uuid = Uuid::new_v4().to_string();
+                                        // Check if holding already exists to prevent duplicates
+                                        let holding_uuid = match get_existing_holding_id(&conn, &account_uuid, symbol).await {
+                                            Some(existing_id) => {
+                                                info!("Holding {} for account {} already exists, updating: {}", symbol, account_uuid, existing_id);
+                                                existing_id
+                                            },
+                                            None => {
+                                                let new_id = Uuid::new_v4().to_string();
+                                                info!("Creating new holding: {} for account: {}", symbol, account_uuid);
+                                                new_id
+                                            }
+                                        };
+
                                         let holding_now = Utc::now().to_rfc3339();
 
                                         conn.execute(
@@ -2013,6 +2198,9 @@ pub async fn complete_connection_sync(
                                 for transaction in data_array {
                                     if let Some(trans_obj) = transaction.as_object() {
                                         let snaptrade_transaction_id = trans_obj.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                        if snaptrade_transaction_id.is_empty() {
+                                            continue; // Skip transactions without IDs
+                                        }
                                         let symbol_obj = trans_obj.get("symbol");
                                         let symbol = symbol_obj.and_then(|s| s.get("symbol")).and_then(|v| v.as_str());
                                         let transaction_type = trans_obj.get("type").and_then(|v| v.as_str());
@@ -2027,11 +2215,17 @@ pub async fn complete_connection_sync(
                                         let fees = trans_obj.get("fee").and_then(|v| v.as_f64());
                                         let raw_data = serde_json::to_string(&transaction).unwrap_or_default();
 
+                                        // Check if transaction already exists to prevent duplicates
+                                        if transaction_exists(&conn, &account_uuid, snaptrade_transaction_id).await {
+                                            info!("Transaction {} for account {} already exists, skipping", snaptrade_transaction_id, account_uuid);
+                                            continue;
+                                        }
+
                                         let transaction_uuid = Uuid::new_v4().to_string();
                                         let transaction_now = Utc::now().to_rfc3339();
 
                                         conn.execute(
-                                            "INSERT OR IGNORE INTO brokerage_transactions (id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                            "INSERT INTO brokerage_transactions (id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, raw_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                             libsql::params![
                                                 transaction_uuid,
                                                 account_uuid.clone(),
@@ -2071,12 +2265,22 @@ pub async fn complete_connection_sync(
         libsql::params![sync_now_clone.clone(), sync_now_clone, connection_id_clone],
     ).await.ok();
 
+    // Transform brokerage transactions to stocks/options trades
+    info!("Starting transformation of brokerage transactions to trades");
+    if let Err(e) = transform::migrate_add_brokerage_name_column(&conn).await {
+        warn!("Failed to migrate brokerage_name column: {}", e);
+    }
+    if let Err(e) = transform::transform_brokerage_transactions(&conn).await {
+        error!("Failed to transform brokerage transactions: {}", e);
+        // Don't fail the entire sync if transformation fails
+    }
+
     let summary = serde_json::json!({
         "accounts_synced": total_accounts,
         "holdings_synced": total_holdings,
         "transactions_synced": total_transactions,
         "last_sync_at": sync_now,
-    });
+    }); // Semi colon
 
     Ok(HttpResponse::Ok().json(ApiResponse::success(summary)))
 }
@@ -2098,6 +2302,6 @@ pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
             .route("/accounts/sync", web::post().to(sync_accounts))
             .route("/transactions", web::get().to(get_transactions))
             .route("/holdings", web::get().to(get_holdings))
-    );
+    ); // Semi colon 
 }
 

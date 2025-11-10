@@ -78,6 +78,7 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             exit_date TIMESTAMP,
             reviewed BOOLEAN NOT NULL DEFAULT false,
             mistakes TEXT,
+            brokerage_name TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -137,6 +138,7 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             trade_ratings INTEGER CHECK (trade_ratings >= 1 AND trade_ratings <= 5),
             reviewed BOOLEAN NOT NULL DEFAULT false,
             mistakes TEXT,
+            brokerage_name TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -1046,15 +1048,40 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_account_id ON brokerage_holdings(account_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_symbol ON brokerage_holdings(symbol)", libsql::params![]).await?;
 
+    // Migration: Add brokerage_name column to stocks and options if it doesn't exist
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('stocks') WHERE name = 'brokerage_name'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE stocks ADD COLUMN brokerage_name TEXT", libsql::params![]).await.ok();
+                info!("Added brokerage_name column to stocks table");
+            }
+        }
+    }
+    
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('options') WHERE name = 'brokerage_name'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE options ADD COLUMN brokerage_name TEXT", libsql::params![]).await.ok();
+                info!("Added brokerage_name column to options table");
+            }
+        }
+    }
+
     info!("Trading+notebook schema initialized successfully");
     Ok(())
 }
 
-/// Current schema version (bumped for trade tags system)
+/// Current schema version (bumped for brokerage_name column and transform service)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.25".to_string(),
-        description: "Added brokerage tables.".to_string(),
+        version: "0.0.26".to_string(),
+        description: "Added brokerage_name column to stocks and options tables, and brokerage transaction transform service.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1083,6 +1110,7 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
                 ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
@@ -1123,6 +1151,7 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "trade_ratings".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
                 ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
