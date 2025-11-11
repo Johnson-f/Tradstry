@@ -1304,7 +1304,10 @@ pub async fn sync_accounts(
     if let Err(e) = transform::migrate_add_brokerage_name_column(&conn).await {
         warn!("Failed to migrate brokerage_name column: {}", e);
     }
-    if let Err(e) = transform::transform_brokerage_transactions(&conn).await {
+    
+    // Get vectorization service from app state
+    let vectorization_service = app_state.vectorization_service.clone();
+    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, Some(vectorization_service)).await {
         error!("Failed to transform brokerage transactions: {}", e);
         // Don't fail the entire sync if transformation fails
     }
@@ -2270,7 +2273,10 @@ pub async fn complete_connection_sync(
     if let Err(e) = transform::migrate_add_brokerage_name_column(&conn).await {
         warn!("Failed to migrate brokerage_name column: {}", e);
     }
-    if let Err(e) = transform::transform_brokerage_transactions(&conn).await {
+    
+    // Get vectorization service from app state
+    let vectorization_service = app_state.vectorization_service.clone();
+    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, Some(vectorization_service)).await {
         error!("Failed to transform brokerage transactions: {}", e);
         // Don't fail the entire sync if transformation fails
     }
@@ -2304,4 +2310,3 @@ pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
             .route("/holdings", web::get().to(get_holdings))
     ); // Semi colon 
 }
-

@@ -118,6 +118,7 @@ pub struct OptionTrade {
     pub trade_ratings: Option<i32>,
     pub reviewed: bool,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_deleted: bool,
@@ -144,6 +145,7 @@ pub struct CreateOptionRequest {
     pub trade_ratings: Option<i32>,
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
 }
 
 /// Data Transfer Object for updating option trades
@@ -170,6 +172,7 @@ pub struct UpdateOptionRequest {
     pub trade_ratings: Option<i32>,
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
 }
 
 /// Option query parameters for filtering and pagination
@@ -235,13 +238,13 @@ impl OptionTrade {
                 option_type, strike_price, expiration_date, entry_price,
                 total_premium, commissions, implied_volatility, entry_date,
                 status, initial_target, profit_target, trade_ratings,
-                reviewed, mistakes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reviewed, mistakes, brokerage_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                      option_type, strike_price, expiration_date, entry_price, exit_price,
                      total_premium, commissions, implied_volatility, entry_date, exit_date,
                      status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                     created_at, updated_at, is_deleted
+                     brokerage_name, created_at, updated_at, is_deleted
             "#,
         )
         .await?
@@ -264,6 +267,7 @@ impl OptionTrade {
             request.trade_ratings,
             request.reviewed.unwrap_or(false),
             request.mistakes,
+            request.brokerage_name,
             now.clone(),
             now
         ])
@@ -288,7 +292,7 @@ impl OptionTrade {
                        option_type, strike_price, expiration_date, entry_price, exit_price,
                        total_premium, commissions, implied_volatility, entry_date, exit_date,
                        status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                       created_at, updated_at, is_deleted
+                       brokerage_name, created_at, updated_at, is_deleted
                 FROM options
                 WHERE id = ?
                 "#,
@@ -315,7 +319,7 @@ impl OptionTrade {
                    option_type, strike_price, expiration_date, entry_price, exit_price,
                    total_premium, commissions, implied_volatility, entry_date, exit_date,
                    status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                   created_at, updated_at, is_deleted
+                   brokerage_name, created_at, updated_at, is_deleted
             FROM options
             WHERE 1=1
             "#,
@@ -445,13 +449,14 @@ impl OptionTrade {
                     trade_ratings = COALESCE(?, trade_ratings),
                     reviewed = COALESCE(?, reviewed),
                     mistakes = COALESCE(?, mistakes),
+                    brokerage_name = COALESCE(?, brokerage_name),
                     updated_at = ?
                 WHERE id = ?
                 RETURNING id, symbol, strategy_type, trade_direction, number_of_contracts,
                          option_type, strike_price, expiration_date, entry_price, exit_price,
                          total_premium, commissions, implied_volatility, entry_date, exit_date,
                          status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                         created_at, updated_at, is_deleted
+                         brokerage_name, created_at, updated_at, is_deleted
                 "#,
             )
             .await?
@@ -476,6 +481,7 @@ impl OptionTrade {
                 request.trade_ratings,
                 request.reviewed,
                 request.mistakes,
+                request.brokerage_name,
                 now,
                 option_id
             ])
@@ -1175,8 +1181,14 @@ impl OptionTrade {
             _ => None,
         };
 
-        log::info!("Parsing created_at from column 21...");
-        let created_at_str = match row.get::<libsql::Value>(21) {
+        let brokerage_name: Option<String> = match row.get::<libsql::Value>(21) {
+            Ok(libsql::Value::Text(s)) => Some(s),
+            Ok(libsql::Value::Null) => None,
+            _ => None,
+        };
+
+        log::info!("Parsing created_at from column 22...");
+        let created_at_str = match row.get::<libsql::Value>(22) {
             Ok(libsql::Value::Text(s)) => {
                 log::info!("created_at string: '{}'", s);
                 s
@@ -1191,8 +1203,8 @@ impl OptionTrade {
             },
         };
 
-        log::info!("Parsing updated_at from column 22...");
-        let updated_at_str = match row.get::<libsql::Value>(22) {
+        log::info!("Parsing updated_at from column 23...");
+        let updated_at_str = match row.get::<libsql::Value>(23) {
             Ok(libsql::Value::Text(s)) => {
                 log::info!("updated_at string: '{}' (length: {})", s, s.len());
                 s
@@ -1207,8 +1219,8 @@ impl OptionTrade {
             },
         };
 
-        // Handle is_deleted field (index 23)
-        let is_deleted = match row.get::<libsql::Value>(23) {
+        // Handle is_deleted field (index 24)
+        let is_deleted = match row.get::<libsql::Value>(24) {
             Ok(libsql::Value::Integer(val)) => val != 0,
             Ok(libsql::Value::Null) => false,
             _ => false,
@@ -1290,6 +1302,7 @@ impl OptionTrade {
             },
             reviewed,
             mistakes: mistakes_str,
+            brokerage_name,
             created_at,
             updated_at,
             is_deleted,

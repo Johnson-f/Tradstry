@@ -213,6 +213,7 @@ pub struct Stock {
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: bool,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -238,6 +239,7 @@ pub struct CreateStockRequest {
     #[serde(default)]  // Allow missing field, defaults to false
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
 }
 
 /// Data Transfer Object for updating stock trades
@@ -262,6 +264,7 @@ pub struct UpdateStockRequest {
     pub exit_date: Option<DateTime<Utc>>,
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
 }
 
 /// Stock query parameters for filtering and pagination
@@ -360,12 +363,12 @@ impl Stock {
                 symbol, trade_type, order_type, entry_price, 
                 stop_loss, commissions, number_shares, take_profit, 
                 initial_target, profit_target, trade_ratings,
-                entry_date, reviewed, mistakes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                entry_date, reviewed, mistakes, brokerage_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
-                     entry_date, exit_date, reviewed, mistakes, created_at, updated_at
+                     entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
             "#,
         )
         .await?
@@ -384,6 +387,7 @@ impl Stock {
             request.entry_date.to_rfc3339(),
             request.reviewed.unwrap_or(false),
             request.mistakes,
+            request.brokerage_name,
             now.clone(),
             now
         ])
@@ -407,7 +411,7 @@ impl Stock {
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
-                   entry_date, exit_date, reviewed, mistakes, created_at, updated_at
+                   entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
             FROM stocks 
             WHERE id = ?
             "#,
@@ -433,7 +437,7 @@ impl Stock {
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
-                   entry_date, exit_date, reviewed, mistakes, created_at, updated_at
+                   entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
             FROM stocks 
             WHERE 1=1
             "#,
@@ -542,12 +546,13 @@ impl Stock {
                 exit_date = COALESCE(?, exit_date),
                 reviewed = COALESCE(?, reviewed),
                 mistakes = COALESCE(?, mistakes),
+                brokerage_name = COALESCE(?, brokerage_name),
                 updated_at = ?
             WHERE id = ?
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
-                     entry_date, exit_date, reviewed, mistakes, created_at, updated_at
+                     entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
             "#,
         )
             .await?
@@ -568,6 +573,7 @@ impl Stock {
                 request.exit_date.map(|d| d.to_rfc3339()),
                 None::<bool>,
                 request.mistakes,
+                request.brokerage_name,
                 now,
                 stock_id
             ])
@@ -1258,8 +1264,9 @@ impl Stock {
         let exit_date_str: Option<String> = row.get(14)?;
         let reviewed = Self::get_bool(row, 15)?;
         let mistakes_str: Option<String> = row.get(16)?;
-        let created_at_str: String = row.get(17)?;
-        let updated_at_str: String = row.get(18)?;
+        let brokerage_name: Option<String> = row.get(17)?;
+        let created_at_str: String = row.get(18)?;
+        let updated_at_str: String = row.get(19)?;
 
         fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
             if let Ok(dt) = DateTime::parse_from_rfc3339(s) { return Ok(dt.with_timezone(&Utc)); }
@@ -1304,9 +1311,9 @@ impl Stock {
             exit_date,
             reviewed,
             mistakes: mistakes_str,
+            brokerage_name,
             created_at,
             updated_at,
         })
     }
 }
-

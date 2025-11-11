@@ -11,7 +11,6 @@ import {
   PieChart,
   ChartNoAxesColumnIncreasing,
   BrainCog,
-  Wallet,
   Notebook,
   LayoutDashboard,
   ChevronLeft,
@@ -39,7 +38,6 @@ const navItems = [
   { title: "Reporting", url: "/app/reporting", icon: ChartNoAxesColumnIncreasing },
   { title: "Mindset Lab", url: "/app/mindset", icon: BrainCog },
   { title: "Markets", url: "/app/markets", icon: ChartCandlestick },
-  { title: "Brokerage", url: "/app/brokerage", icon: Wallet },
   { title: "Education", url: "/app/education", icon: GraduationCap },
 ]
 
