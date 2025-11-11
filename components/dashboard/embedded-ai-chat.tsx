@@ -4,12 +4,25 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAIChat } from "@/hooks/use-ai-chat";
 
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, Plus } from "lucide-react";
+import { Loader2, Plus, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupText,
+  InputGroupTextarea,
+} from "@/components/ui/input-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 
 // Types
 interface Message {
@@ -485,57 +498,72 @@ export default function EmbeddedAIChat({
 
         {/* Input Section */}
         <section className="relative" aria-label="Message input">
-          <div className="relative bg-gray-800 rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors">
-            <ScrollArea className="h-[120px]">
-              <Textarea
+          <InputGroup className="bg-gray-800 border-gray-700 focus-within:border-gray-600">
+            <InputGroupTextarea
                 ref={inputRef}
-                placeholder="How can I help you today?"
+              placeholder="Ask, Search or Chat..."
                 value={message}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyPress}
                 disabled={isLoading || isStreaming || isMinimizing}
                 maxLength={MAX_MESSAGE_LENGTH}
-                className="bg-transparent border-0 text-white placeholder:text-gray-400 px-4 py-4 text-base rounded-2xl focus:ring-0 focus-visible:ring-0 resize-none"
+              className="text-white placeholder:text-gray-400"
                 aria-label="Type your message"
-                rows={6}
-              />
-            </ScrollArea>
+            />
 
-            {/* Character count */}
-            {message.length > MAX_MESSAGE_LENGTH * 0.8 && (
-              <div className="absolute right-24 bottom-4 text-xs text-gray-400">
-                {message.length}/{MAX_MESSAGE_LENGTH}
-              </div>
-            )}
-
-            {/* Controls */}
-            <div className="absolute right-4 bottom-4 flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
+            <InputGroupAddon align="block-end">
+              <InputGroupButton
+                variant="outline"
+                className="rounded-full"
+                size="icon-xs"
                 onClick={handleNewChat}
                 disabled={isLoading || isStreaming || isMinimizing}
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full"
                 aria-label="Start new chat"
               >
-                <Plus className="h-4 w-4" />
-              </Button>
+                <Plus />
+              </InputGroupButton>
 
-              <Button
-                size="icon"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <InputGroupButton variant="ghost">Auto</InputGroupButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  className="[--radius:0.95rem]"
+                >
+                  <DropdownMenuItem>Auto</DropdownMenuItem>
+                  <DropdownMenuItem>Agent</DropdownMenuItem>
+                  <DropdownMenuItem>Manual</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Character count */}
+              {message.length > MAX_MESSAGE_LENGTH * 0.8 && (
+                <InputGroupText className="ml-auto">
+                  {message.length}/{MAX_MESSAGE_LENGTH}
+                </InputGroupText>
+              )}
+
+              <Separator orientation="vertical" className="!h-4" />
+
+              <InputGroupButton
+                variant="default"
+                className="rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600"
+                size="icon-xs"
                 onClick={() => handleSendMessage()}
                 disabled={!canSendMessage || isMinimizing}
-                className="h-8 w-8 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 rounded-full transition-colors"
                 aria-label="Send message"
               >
                 {isLoading || isStreaming || isMinimizing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Send className="h-4 w-4" />
+                  <ArrowUp />
                 )}
-              </Button>
-            </div>
-          </div>
+                <span className="sr-only">Send</span>
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         </section>
 
         {/* Quick Actions */}
