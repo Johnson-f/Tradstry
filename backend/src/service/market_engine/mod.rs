@@ -13,6 +13,7 @@ pub mod ws_proxy;
 // Additional modules
 pub mod financials;
 pub mod earnings_transcripts;
+pub mod earnings_calendar;
 pub mod holders;
 pub mod watchlist_price;
 

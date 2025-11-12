@@ -1,20 +1,10 @@
 /**
- * Supabase Edge Function: Earnings Calendar Multi-Provider Fetcher
+ * Supabase Edge Function: Earnings Calendar Fetcher
  * 
- * This Edge Function fetches earnings calendar data from multiple market data providers,
- * combines the data to create comprehensive earnings schedules, and saves them to the database.
- * Fetches data for 1 month into the future for stocks available in the stock_quotes table.
- * 
- * Providers used:
- * 1. Financial Modeling Prep (FMP)
- * 2. Alpha Vantage
- * 3. Finnhub
- * 4. Polygon
- * 5. Twelve Data
- * 6. Tiingo
+ * This Edge Function fetches earnings calendar data from StockTwits API,
+ * transforms the data into a comprehensive earnings schedule format, and saves them to the database.
+ * Accepts custom date ranges via POST request body.
  */
-
-// TODO: Create a trigger logic, that fetches earnings calendar dynamically based on user request on the frontend 
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
@@ -56,18 +46,12 @@ interface EarningsCalendar {
   logo?: string;
 }
 
-// Types for logo API response
-interface LogoApiResponse {
-  symbol: string;
-  name: string;
-  price: string;
-  preMarketPrice: string;
-  afterHoursPrice: string;
-  change: string;
-  percentChange: string;
-  logo: string;
+// Request body interface
+interface RequestBody {
+  fromDate?: string; // Optional: YYYY-MM-DD format
+  toDate?: string;   // Optional: YYYY-MM-DD format
+  returnRawData?: boolean; // Optional: Return raw StockTwits format instead of saving to DB
 }
-
 
 // StockTwits API configuration for earnings calendar data
 const STOCKTWITS_CONFIG = {
@@ -79,35 +63,83 @@ const STOCKTWITS_CONFIG = {
 };
 
 /**
- * Get date range for earnings calendar - 1 month into the future
+ * Validate and parse date string
  */
-function getDateRange(): { fromDate: string; toDate: string } {
-  const today = new Date();
+function isValidDate(dateString: string): boolean {
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(dateString)) return false;
   
-  // Start from today
-  const fromDate = new Date(today);
-  
-  // Go 1 month into the future
-  const toDate = new Date(today);
-  toDate.setMonth(today.getMonth() + 1);
-  
-  const fromStr = fromDate.toISOString().split('T')[0];
-  const toStr = toDate.toISOString().split('T')[0];
-  
-  console.log(`Date range: ${fromStr} to ${toStr}`);
-  
-  return {
-    fromDate: fromStr,
-    toDate: toStr
-  };
+  const date = new Date(dateString);
+  return date instanceof Date && !isNaN(date.getTime());
 }
 
 /**
- * Fetch earnings calendar data from StockTwits API
+ * Get date range for earnings calendar
+ * If dates are provided in request, use those. Otherwise, default to 1 month into the future.
  */
-async function fetchFromStockTwits(symbolsToFilter: string[]): Promise<Partial<EarningsCalendar>[] | null> {
+function getDateRange(requestBody?: RequestBody): { fromDate: string; toDate: string } {
+  let fromDate: string;
+  let toDate: string;
+  
+  if (requestBody?.fromDate && requestBody?.toDate) {
+    // Validate provided dates
+    if (!isValidDate(requestBody.fromDate) || !isValidDate(requestBody.toDate)) {
+      throw new Error('Invalid date format. Use YYYY-MM-DD format.');
+    }
+    
+    fromDate = requestBody.fromDate;
+    toDate = requestBody.toDate;
+    
+    // Ensure fromDate is before toDate
+    if (new Date(fromDate) > new Date(toDate)) {
+      throw new Error('fromDate must be before toDate');
+    }
+  } else {
+    // Default: today to 1 month in the future
+    const today = new Date();
+    const oneMonthLater = new Date(today);
+    oneMonthLater.setMonth(today.getMonth() + 1);
+    
+    fromDate = today.toISOString().split('T')[0];
+    toDate = oneMonthLater.toISOString().split('T')[0];
+  }
+  
+  console.log(`Date range: ${fromDate} to ${toDate}`);
+  
+  return { fromDate, toDate };
+}
+
+/**
+ * Fetch raw earnings calendar data from StockTwits API (preserves original structure)
+ */
+async function fetchRawStockTwitsData(fromDate: string, toDate: string): Promise<unknown> {
   try {
-    const { fromDate, toDate } = getDateRange();
+    const url = `${STOCKTWITS_CONFIG.baseUrl}${STOCKTWITS_CONFIG.endpoints.earningsCalendar}?date_from=${fromDate}&date_to=${toDate}`;
+    console.log(`StockTwits: Fetching raw data from ${url}`);
+    
+    const response = await fetch(url);
+    console.log(`StockTwits: Response status ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`StockTwits: Response not ok: ${response.statusText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log('StockTwits: Raw response structure:', Object.keys(data));
+    
+    return data;
+  } catch (error) {
+    console.error(`StockTwits earnings calendar fetch error:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetch earnings calendar data from StockTwits API and transform for database
+ */
+async function fetchFromStockTwits(fromDate: string, toDate: string): Promise<Partial<EarningsCalendar>[] | null> {
+  try {
     const url = `${STOCKTWITS_CONFIG.baseUrl}${STOCKTWITS_CONFIG.endpoints.earningsCalendar}?date_from=${fromDate}&date_to=${toDate}`;
     console.log(`StockTwits: Fetching from ${url}`);
     
@@ -156,23 +188,7 @@ async function fetchFromStockTwits(symbolsToFilter: string[]): Promise<Partial<E
     
     console.log(`StockTwits: Found ${allEarningsData.length} total earnings records`);
     
-    // Get all unique symbols from earnings data
-    const allEarningsSymbols = [...new Set(allEarningsData.map(earning => earning.symbol).filter(Boolean))];
-    console.log(`StockTwits: Found ${allEarningsSymbols.length} unique symbols with earnings`);
-    
-    // Filter for symbols that are either in our stock_quotes table OR are reporting earnings
-    const relevantEarnings = allEarningsData.filter(earning => {
-      const symbol = earning.symbol;
-      return symbol && (symbolsToFilter.includes(symbol) || allEarningsSymbols.includes(symbol));
-    });
-    
-    console.log(`StockTwits: Filtered to ${relevantEarnings.length} relevant earnings records`);
-    
-    if (relevantEarnings.length === 0) {
-      console.log(`StockTwits: Sample available symbols:`, allEarningsSymbols.slice(0, 10));
-    }
-    
-    return relevantEarnings.map(earning => ({
+    return allEarningsData.map(earning => ({
       symbol: earning.symbol,
       earnings_date: earning.earnings_date,
       time_of_day: parseTimeOfDay(earning.time),
@@ -213,8 +229,6 @@ function parseTimeOfDay(timeStr: string): string {
   if (hour <= 9) return 'bmo';  // Before market open  
   return 'dmh'; // During market hours
 }
-
-
 
 /**
  * Combine earnings calendar data from multiple providers
@@ -316,161 +330,6 @@ function combineEarningsData(dataArrays: (Partial<EarningsCalendar>[] | null)[])
 }
 
 /**
- * Fetch existing symbols from the database
- */
-async function getExistingSymbols(supabase: SupabaseClient): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('stock_quotes')
-      .select('symbol')
-      .order('symbol');
-    
-    if (error) {
-      console.error('Error fetching existing symbols:', error);
-      return [];
-    }
-    
-    // Get unique symbols
-    const uniqueSymbols = [...new Set(data.map((row: { symbol: string }) => row.symbol))];
-    return uniqueSymbols;
-  } catch (error) {
-    console.error('Error in getExistingSymbols:', error);
-    return [];
-  }
-}
-
-/**
- * Fetch symbols from earnings calendar that need logos
- */
-async function getEarningsSymbolsNeedingLogos(supabase: SupabaseClient): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('earnings_calendar')
-      .select('symbol')
-      .or('logo.is.null,logo.eq.""')
-      .order('symbol');
-    
-    if (error) {
-      console.error('Error fetching earnings symbols needing logos:', error);
-      return [];
-    }
-    
-    // Get unique symbols
-    const uniqueSymbols = [...new Set(data.map((row: { symbol: string }) => row.symbol))];
-    console.log(`Found ${uniqueSymbols.length} earnings symbols needing logos`);
-    return uniqueSymbols;
-  } catch (error) {
-    console.error('Error in getEarningsSymbolsNeedingLogos:', error);
-    return [];
-  }
-}
-
-/**
- * Fetch logos from finance-query API
- */
-async function fetchLogosFromAPI(symbols: string[]): Promise<Map<string, string>> {
-  const logoMap = new Map<string, string>();
-  
-  if (symbols.length === 0) {
-    return logoMap;
-  }
-  
-  try {
-    // Process symbols in batches of 10 to avoid overwhelming the API
-    const batchSize = 10;
-    const batches = [];
-    
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      batches.push(symbols.slice(i, i + batchSize));
-    }
-    
-    console.log(`Processing ${batches.length} batches of symbols for logo fetching`);
-    
-    for (const batch of batches) {
-      try {
-        const symbolsParam = batch.join(',');
-        const url = `https://finance-query.onrender.com/v1/simple-quotes?symbols=${symbolsParam}`;
-        
-        console.log(`Fetching logos for batch: ${symbolsParam}`);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          console.warn(`Logo API request failed for batch ${symbolsParam}: ${response.status} ${response.statusText}`);
-          continue;
-        }
-        
-        const data: LogoApiResponse[] = await response.json();
-        
-        if (Array.isArray(data)) {
-          data.forEach(item => {
-            if (item.symbol && item.logo) {
-              logoMap.set(item.symbol.toUpperCase(), item.logo);
-            }
-          });
-        }
-        
-        // Add a small delay between requests to be respectful to the API
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-      } catch (batchError) {
-        console.error(`Error processing logo batch ${batch.join(',')}:`, batchError);
-        continue;
-      }
-    }
-    
-    console.log(`Successfully fetched ${logoMap.size} logos from API`);
-    return logoMap;
-    
-  } catch (error) {
-    console.error('Error in fetchLogosFromAPI:', error);
-    return logoMap;
-  }
-}
-
-/**
- * Update earnings calendar records with logos
- */
-async function updateEarningsWithLogos(supabase: SupabaseClient, logoMap: Map<string, string>): Promise<{ updated: number; errors: number }> {
-  let updated = 0;
-  let errors = 0;
-  
-  if (logoMap.size === 0) {
-    return { updated, errors };
-  }
-  
-  try {
-    // Update records one by one to handle potential conflicts gracefully
-    for (const [symbol, logo] of logoMap.entries()) {
-      try {
-        const { error } = await supabase
-          .from('earnings_calendar')
-          .update({ logo })
-          .eq('symbol', symbol)
-          .or('logo.is.null,logo.eq.""');
-        
-        if (error) {
-          console.error(`Error updating logo for ${symbol}:`, error);
-          errors++;
-        } else {
-          updated++;
-        }
-      } catch (updateError) {
-        console.error(`Error updating logo for ${symbol}:`, updateError);
-        errors++;
-      }
-    }
-    
-    console.log(`Logo update completed: ${updated} updated, ${errors} errors`);
-    return { updated, errors };
-    
-  } catch (error) {
-    console.error('Error in updateEarningsWithLogos:', error);
-    return { updated, errors };
-  }
-}
-
-/**
  * Save earnings calendar data to the database
  */
 async function saveEarningsData(supabase: SupabaseClient, earningsData: EarningsCalendar[]): Promise<boolean> {
@@ -511,124 +370,123 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
     
-    console.log('Starting earnings calendar multi-provider fetch for 3-month future period...');
+    console.log('Starting earnings calendar multi-provider fetch...');
     
-    // Get existing symbols from the database
-    const existingSymbols = await getExistingSymbols(supabaseClient);
-    
-    // Also fetch logos for earnings calendar symbols that need them
-    console.log('Fetching logos for earnings calendar symbols...');
-    const earningsSymbolsNeedingLogos = await getEarningsSymbolsNeedingLogos(supabaseClient);
-    let logoUpdateResult = { updated: 0, errors: 0 };
-    
-    if (earningsSymbolsNeedingLogos.length > 0) {
-      const logoMap = await fetchLogosFromAPI(earningsSymbolsNeedingLogos);
-      logoUpdateResult = await updateEarningsWithLogos(supabaseClient, logoMap);
-      console.log(`Logo update result: ${logoUpdateResult.updated} updated, ${logoUpdateResult.errors} errors`);
+    // Parse request body or query parameters for custom dates
+    let requestBody: RequestBody | undefined;
+    try {
+      if (req.method === 'POST') {
+        const contentType = req.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          requestBody = await req.json();
+        }
+      } else if (req.method === 'GET') {
+        // Parse query parameters for GET requests
+        const url = new URL(req.url);
+        const fromDateParam = url.searchParams.get('fromDate');
+        const toDateParam = url.searchParams.get('toDate');
+        const returnRawDataParam = url.searchParams.get('returnRawData');
+        
+        if (fromDateParam || toDateParam || returnRawDataParam) {
+          requestBody = {
+            fromDate: fromDateParam || undefined,
+            toDate: toDateParam || undefined,
+            returnRawData: returnRawDataParam === 'true'
+          };
+        }
+      }
+    } catch {
+      console.log('No valid JSON body or query params provided, using default dates');
     }
     
-    if (existingSymbols.length === 0) {
+    // Get date range (from request or use defaults)
+    let fromDate: string;
+    let toDate: string;
+    
+    try {
+      const dateRange = getDateRange(requestBody);
+      fromDate = dateRange.fromDate;
+      toDate = dateRange.toDate;
+    } catch (dateError) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: 'No existing symbols found in database',
-          processed: 0
+          error: (dateError as Error).message,
+          message: 'Invalid date parameters'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 404
+          status: 400
         }
       );
     }
     
-    console.log(`Found ${existingSymbols.length} existing symbols to process`);
-    const { fromDate, toDate } = getDateRange();
     console.log(`Fetching earnings calendar data from ${fromDate} to ${toDate}`);
+    
+    // Check if returnRawData is requested
+    const returnRawData = requestBody?.returnRawData === true;
     
     try {
       console.log('Fetching earnings calendar data from StockTwits...');
       
-      // Fetch earnings data from StockTwits API
-      const stockTwitsData = await fetchFromStockTwits(existingSymbols);
-      
-      if (stockTwitsData && stockTwitsData.length > 0) {
-        const combinedData = combineEarningsData([stockTwitsData]);
+      if (returnRawData) {
+        // Fetch raw data and return in requested format
+        const rawData = await fetchRawStockTwitsData(fromDate, toDate);
         
-        if (combinedData.length > 0) {
-          const saved = await saveEarningsData(supabaseClient, combinedData);
+        if (rawData && typeof rawData === 'object' && 'earnings' in rawData) {
+          const earningsData = rawData as { earnings?: Record<string, { stocks?: Array<{
+            symbol: string;
+            time: string;
+            title: string;
+            importance: number;
+            emoji?: string;
+          }> }> };
           
-          if (saved) {
-            // Group results by symbol for reporting
-            const symbolCounts = new Map<string, number>();
-            const processedSymbols = new Set<string>();
-            
-            combinedData.forEach(earning => {
-              symbolCounts.set(earning.symbol, (symbolCounts.get(earning.symbol) || 0) + 1);
-              processedSymbols.add(earning.symbol);
-            });
-            
-            const results = Array.from(processedSymbols).map(symbol => ({
-              symbol,
-              status: 'success' as const,
-              earnings_records: symbolCounts.get(symbol) || 0
-            }));
-            
-            const response = {
-              success: true,
-              message: 'Earnings calendar StockTwits fetch completed',
-              date_range: {
-                from: fromDate,
-                to: toDate
-              },
-              summary: {
-                total_symbols: existingSymbols.length,
-                processed: processedSymbols.size,
-                successful: processedSymbols.size,
-                errors: 0,
-                total_earnings_records: combinedData.length,
-                logos_updated: earningsSymbolsNeedingLogos.length > 0 ? logoUpdateResult?.updated || 0 : 0
-              },
-              results: results.slice(0, 50)
-            };
-            
-            return new Response(
-              JSON.stringify(response),
-              { 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 200
+          // Transform to requested format
+          const formattedEarnings: Record<string, { stocks: Array<{
+            importance: number;
+            symbol: string;
+            date: string;
+            time: string;
+            title: string;
+            emoji?: string;
+          }> }> = {};
+          
+          if (earningsData.earnings) {
+            for (const [date, dateData] of Object.entries(earningsData.earnings)) {
+              if (dateData?.stocks && Array.isArray(dateData.stocks)) {
+                formattedEarnings[date] = {
+                  stocks: dateData.stocks.map(stock => ({
+                    importance: stock.importance,
+                    symbol: stock.symbol,
+                    date: date,
+                    time: stock.time,
+                    title: stock.title,
+                    ...(stock.emoji && { emoji: stock.emoji })
+                  }))
+                };
               }
-            );
-          } else {
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                message: 'Failed to save earnings data to database',
-                summary: {
-                  total_symbols: existingSymbols.length,
-                  processed: 0,
-                  successful: 0,
-                  errors: 1,
-                  total_earnings_records: 0
-                }
-              }),
-              { 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 500
-              }
-            );
+            }
           }
+          
+          const response = {
+            date_from: fromDate,
+            date_to: toDate,
+            earnings: formattedEarnings
+          };
+          
+          return new Response(
+            JSON.stringify(response),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200
+            }
+          );
         } else {
           return new Response(
             JSON.stringify({ 
               success: false, 
-              message: 'No valid earnings data found from StockTwits',
-              summary: {
-                total_symbols: existingSymbols.length,
-                processed: 0,
-                successful: 0,
-                errors: 1,
-                total_earnings_records: 0
-              }
+              message: 'StockTwits API returned no earnings data for the specified date range'
             }),
             { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -637,37 +495,95 @@ Deno.serve(async (req) => {
           );
         }
       } else {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: 'StockTwits API returned no earnings data',
-            summary: {
-              total_symbols: existingSymbols.length,
-              processed: 0,
-              successful: 0,
-              errors: 1,
-              total_earnings_records: 0
+        // Original flow: fetch, transform, and save to database
+        const stockTwitsData = await fetchFromStockTwits(fromDate, toDate);
+        
+        if (stockTwitsData && stockTwitsData.length > 0) {
+          const combinedData = combineEarningsData([stockTwitsData]);
+          
+          if (combinedData.length > 0) {
+            const saved = await saveEarningsData(supabaseClient, combinedData);
+            
+            if (saved) {
+              // Group results by symbol for reporting
+              const symbolCounts = new Map<string, number>();
+              const processedSymbols = new Set<string>();
+              
+              combinedData.forEach(earning => {
+                symbolCounts.set(earning.symbol, (symbolCounts.get(earning.symbol) || 0) + 1);
+                processedSymbols.add(earning.symbol);
+              });
+              
+              const results = Array.from(processedSymbols).map(symbol => ({
+                symbol,
+                status: 'success' as const,
+                earnings_records: symbolCounts.get(symbol) || 0
+              }));
+              
+              const response = {
+                success: true,
+                message: 'Earnings calendar fetch completed successfully',
+                date_range: {
+                  from: fromDate,
+                  to: toDate
+                },
+                summary: {
+                  total_symbols_found: processedSymbols.size,
+                  total_earnings_records: combinedData.length
+                },
+                results: results.slice(0, 100) // Return up to 100 symbols
+              };
+              
+              return new Response(
+                JSON.stringify(response),
+                { 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                  status: 200
+                }
+              );
+            } else {
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  message: 'Failed to save earnings data to database'
+                }),
+                { 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                  status: 500
+                }
+              );
             }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 404
+          } else {
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                message: 'No valid earnings data found from StockTwits for the specified date range'
+              }),
+              { 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 404
+              }
+            );
           }
-        );
+        } else {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              message: 'StockTwits API returned no earnings data for the specified date range'
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 404
+            }
+          );
+        }
       }
     } catch (error) {
       console.error('StockTwits earnings calendar fetch error:', error);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: `StockTwits API error: ${(error as Error).message}`,
-          summary: {
-            total_symbols: existingSymbols.length,
-            processed: 0,
-            successful: 0,
-            errors: 1,
-            total_earnings_records: 0
-          }
+          message: `StockTwits API error: ${(error as Error).message}`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
