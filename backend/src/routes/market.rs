@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     turso::AppState,
-    service::market_engine::{client::MarketClient, health, hours, quotes, historical, movers, news, indices, sectors, search as search_svc, indicators, ws_proxy::MarketWsProxy, financials, earnings_transcripts, holders},
+    service::market_engine::{client::MarketClient, health, hours, quotes, historical, movers, news, indices, sectors, search as search_svc, indicators, ws_proxy::MarketWsProxy, financials, earnings_transcripts, earnings_calendar, holders},
 };
 
 #[derive(Debug, Serialize)]
@@ -240,6 +240,42 @@ pub async fn get_holders_handler(app_state: web::Data<AppState>, query: web::Que
 }
 
 #[derive(serde::Deserialize)]
+pub struct EarningsCalendarQuery {
+    pub from_date: Option<String>,
+    pub to_date: Option<String>,
+    pub symbols: Option<String>, // Comma-separated symbols
+}
+
+pub async fn get_earnings_calendar_handler(
+    app_state: web::Data<AppState>,
+    query: web::Query<EarningsCalendarQuery>,
+) -> Result<HttpResponse> {
+    let client = client_from_state(&app_state).map_err(actix_web::error::ErrorInternalServerError)?;
+    
+    // Parse symbols if provided
+    let symbols = query
+        .symbols
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().to_uppercase())
+                .collect::<Vec<String>>()
+        });
+
+    let params = earnings_calendar::EarningsCalendarParams {
+        from_date: query.from_date.clone(),
+        to_date: query.to_date.clone(),
+        symbols,
+    };
+
+    match earnings_calendar::get_earnings_calendar(&client, params).await {
+        Ok(res) => Ok(HttpResponse::Ok().json(ApiResponse::success(res))),
+        Err(e) => Ok(HttpResponse::BadGateway().json(ApiResponse::<()>::error(e.to_string()))),
+    }
+}
+
+#[derive(serde::Deserialize)]
 pub struct SubscribeRequest {
     pub symbols: Vec<String>,
 }
@@ -328,9 +364,8 @@ pub fn configure_market_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/market/indicators", web::get().to(indicators_handler))
         .route("/api/market/financials", web::get().to(get_financials_handler))
         .route("/api/market/earnings-transcript", web::get().to(get_earnings_transcript_handler))
+        .route("/api/market/earnings-calendar", web::get().to(get_earnings_calendar_handler))
         .route("/api/market/holders", web::get().to(get_holders_handler))
         .route("/api/market/subscribe", web::post().to(subscribe_to_quotes))
         .route("/api/market/unsubscribe", web::post().to(unsubscribe_from_quotes));
 }
-
-

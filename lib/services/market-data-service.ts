@@ -24,6 +24,8 @@ import type {
   EarningsTranscriptResponse,
   GetHoldersRequest,
   HoldersResponse,
+  GetEarningsCalendarRequest,
+  EarningsCalendarResponse,
   SubscribeRequest,
   UnsubscribeRequest,
 } from "@/lib/types/market-data";

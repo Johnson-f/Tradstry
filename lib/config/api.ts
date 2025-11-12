@@ -1,7 +1,33 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:9000";
 
-export const apiConfig = {
+// Helper function to build query strings from parameters
+function buildQueryString(params: Record<string, string | number | boolean | undefined>): string {
+  const queryParams = new URLSearchParams();
+  
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      queryParams.append(key, value.toString());
+    }
+  });
+  
+  const queryString = queryParams.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+// Type definitions for API configuration
+export interface ApiConfig {
+  baseURL: string;
+  apiPrefix: string;
+  ws: {
+    url: (token: string) => string;
+  };
+  endpoints: typeof endpoints;
+  timeout: number;
+  retries: number;
+}
+
+const endpoints = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
   ws: {
@@ -69,21 +95,7 @@ export const apiConfig = {
         endDate?: string;
         limit?: number;
         offset?: number;
-      }) => {
-        const queryParams = new URLSearchParams();
-        if (params?.openOnly !== undefined) {
-          queryParams.append('openOnly', params.openOnly.toString());
-        }
-        if (params?.symbol) queryParams.append('symbol', params.symbol);
-        if (params?.tradeType) queryParams.append('tradeType', params.tradeType);
-        if (params?.startDate) queryParams.append('startDate', params.startDate);
-        if (params?.endDate) queryParams.append('endDate', params.endDate);
-        if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
-        if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());
-        
-        const queryString = queryParams.toString();
-        return `/stocks${queryString ? `?${queryString}` : ''}`;
-      },
+      }) => `/stocks${buildQueryString(params || {})}`,
       analytics: {
         summary: "/stocks/analytics",
         pnl: "/stocks/analytics/pnl",
@@ -125,24 +137,7 @@ export const apiConfig = {
         endDate?: string;
         limit?: number;
         offset?: number;
-      }) => {
-        const queryParams = new URLSearchParams();
-        if (params?.openOnly !== undefined) {
-          queryParams.append('openOnly', params.openOnly.toString());
-        }
-        if (params?.symbol) queryParams.append('symbol', params.symbol);
-        if (params?.strategyType) queryParams.append('strategyType', params.strategyType);
-        if (params?.tradeDirection) queryParams.append('tradeDirection', params.tradeDirection);
-        if (params?.optionType) queryParams.append('optionType', params.optionType);
-        if (params?.status) queryParams.append('status', params.status);
-        if (params?.startDate) queryParams.append('startDate', params.startDate);
-        if (params?.endDate) queryParams.append('endDate', params.endDate);
-        if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
-        if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());
-        
-        const queryString = queryParams.toString();
-        return `/options${queryString ? `?${queryString}` : ''}`;
-      },
+      }) => `/options${buildQueryString(params || {})}`,
       analytics: {
         summary: "/options/analytics",
         pnl: "/options/analytics/pnl",
@@ -279,6 +274,7 @@ export const apiConfig = {
       indicators: "/market/indicators",
       financials: "/market/financials",
       earningsTranscript: "/market/earnings-transcript",
+      earningsCalendar: "/market/earnings-calendar",
       holders: "/market/holders",
       subscribe: "/market/subscribe",
       unsubscribe: "/market/unsubscribe",
@@ -360,7 +356,20 @@ export const apiConfig = {
     },
    
   },
-  timeout: 30000, // 5 minutes
+} as const;
+
+export const apiConfig: ApiConfig = {
+  baseURL: API_BASE_URL,
+  apiPrefix: "/api",
+  ws: {
+    url: (token: string) => {
+      const protocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
+      const baseUrl = new URL(API_BASE_URL);
+      return `${protocol}://${baseUrl.host}${apiConfig.apiPrefix}/ws?token=${encodeURIComponent(token)}`;
+    },
+  },
+  endpoints,
+  timeout: 30000, // 30 seconds (comment was incorrect - 30000ms = 30s not 5 min)
   retries: 3,
 };
 
