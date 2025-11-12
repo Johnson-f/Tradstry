@@ -264,5 +264,3 @@ impl AccountDeletionService {
         Ok(())
     }
 }
-
-

@@ -7,7 +7,7 @@ import apiConfig, { getFullUrl } from '@/lib/config/api';
 import { createClient } from '@/lib/supabase/client';
 import type { Stock, CreateStockRequest, UpdateStockRequest } from '@/lib/types/stocks';
 
-async function fetchStocks(): Promise<Stock[]> {
+async function fetchStocks(params?: { openOnly?: boolean }): Promise<Stock[]> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -16,7 +16,11 @@ async function fetchStocks(): Promise<Stock[]> {
     throw new Error('User not authenticated');
   }
 
-  const res = await fetch(getFullUrl(apiConfig.endpoints.stocks.base), {
+  const endpoint = params?.openOnly !== undefined
+    ? apiConfig.endpoints.stocks.withQuery({ openOnly: params.openOnly })
+    : apiConfig.endpoints.stocks.base;
+
+  const res = await fetch(getFullUrl(endpoint), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -35,31 +39,37 @@ async function fetchStocks(): Promise<Stock[]> {
   return (json.data ?? []) as Stock[];
 }
 
-export function useStocks() {
+export function useStocks(params?: { openOnly?: boolean }) {
   const queryClient = useQueryClient();
   const { subscribe } = useWs();
 
   const query = useQuery<Stock[]>({
-    queryKey: ['stocks'],
-    queryFn: fetchStocks,
+    queryKey: ['stocks', params],
+    queryFn: () => fetchStocks(params),
     staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
     const unsubCreate = subscribe('stock:created', (data) => {
       const stock = data as Stock;
+      queryClient.setQueryData<Stock[]>(['stocks', params], (prev) => prev ? [stock, ...prev] : [stock]);
+      // Also update the base query without params
       queryClient.setQueryData<Stock[]>(['stocks'], (prev) => prev ? [stock, ...prev] : [stock]);
     });
     const unsubUpdate = subscribe('stock:updated', (data) => {
       const stock = data as Stock;
+      queryClient.setQueryData<Stock[]>(['stocks', params], (prev) => prev?.map(s => s.id === stock.id ? stock : s) ?? [stock]);
+      // Also update the base query without params
       queryClient.setQueryData<Stock[]>(['stocks'], (prev) => prev?.map(s => s.id === stock.id ? stock : s) ?? [stock]);
     });
     const unsubDelete = subscribe('stock:deleted', (data) => {
       const payload = data as { id: number };
+      queryClient.setQueryData<Stock[]>(['stocks', params], (prev) => prev?.filter(s => s.id !== payload.id) ?? []);
+      // Also update the base query without params
       queryClient.setQueryData<Stock[]>(['stocks'], (prev) => prev?.filter(s => s.id !== payload.id) ?? []);
     });
     return () => { unsubCreate(); unsubUpdate(); unsubDelete(); };
-  }, [subscribe, queryClient]);
+  }, [subscribe, queryClient, params]);
 
   return query;
 }

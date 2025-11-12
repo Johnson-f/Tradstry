@@ -7,7 +7,7 @@ import apiConfig, { getFullUrl } from '@/lib/config/api';
 import { createClient } from '@/lib/supabase/client';
 import type { OptionTrade, CreateOptionRequest, UpdateOptionRequest } from '@/lib/types/options';
 
-async function fetchOptions(): Promise<OptionTrade[]> {
+async function fetchOptions(params?: { openOnly?: boolean }): Promise<OptionTrade[]> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -16,7 +16,11 @@ async function fetchOptions(): Promise<OptionTrade[]> {
     throw new Error('User not authenticated');
   }
 
-  const res = await fetch(getFullUrl(apiConfig.endpoints.options.base), {
+  const endpoint = params?.openOnly !== undefined
+    ? apiConfig.endpoints.options.withQuery({ openOnly: params.openOnly })
+    : apiConfig.endpoints.options.base;
+
+  const res = await fetch(getFullUrl(endpoint), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -35,31 +39,37 @@ async function fetchOptions(): Promise<OptionTrade[]> {
   return (json.data ?? []) as OptionTrade[];
 }
 
-export function useOptions() {
+export function useOptions(params?: { openOnly?: boolean }) {
   const queryClient = useQueryClient();
   const { subscribe } = useWs();
 
   const query = useQuery<OptionTrade[]>({
-    queryKey: ['options'],
-    queryFn: fetchOptions,
+    queryKey: ['options', params],
+    queryFn: () => fetchOptions(params),
     staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
     const unsubCreate = subscribe('option:created', (data) => {
       const option = data as OptionTrade;
+      queryClient.setQueryData<OptionTrade[]>(['options', params], (prev) => prev ? [option, ...prev] : [option]);
+      // Also update the base query without params
       queryClient.setQueryData<OptionTrade[]>(['options'], (prev) => prev ? [option, ...prev] : [option]);
     });
     const unsubUpdate = subscribe('option:updated', (data) => {
       const option = data as OptionTrade;
+      queryClient.setQueryData<OptionTrade[]>(['options', params], (prev) => prev?.map(o => o.id === option.id ? option : o) ?? [option]);
+      // Also update the base query without params
       queryClient.setQueryData<OptionTrade[]>(['options'], (prev) => prev?.map(o => o.id === option.id ? option : o) ?? [option]);
     });
     const unsubDelete = subscribe('option:deleted', (data) => {
       const payload = data as { id: number };
+      queryClient.setQueryData<OptionTrade[]>(['options', params], (prev) => prev?.filter(o => o.id !== payload.id) ?? []);
+      // Also update the base query without params
       queryClient.setQueryData<OptionTrade[]>(['options'], (prev) => prev?.filter(o => o.id !== payload.id) ?? []);
     });
     return () => { unsubCreate(); unsubUpdate(); unsubDelete(); };
-  }, [subscribe, queryClient]);
+  }, [subscribe, queryClient, params]);
 
   return query;
 }

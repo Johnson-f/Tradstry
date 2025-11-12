@@ -99,6 +99,8 @@ export interface BrokerageTransaction {
   settlement_date?: string;
   fees?: number;
   created_at: string;
+  is_transformed?: boolean;
+  raw_data?: string;
 }
 
 /**
@@ -183,6 +185,115 @@ export interface UseBrokerageHoldingsReturn {
 }
 
 /**
+ * Unmatched transaction
+ */
+export interface UnmatchedTransaction {
+  id: string;
+  user_id: string;
+  transaction_id: string;
+  snaptrade_transaction_id: string;
+  symbol: string;
+  trade_type: string;
+  units: number;
+  price: number;
+  fee: number;
+  trade_date: string;
+  brokerage_name?: string;
+  is_option: boolean;
+  difficulty_reason?: string;
+  confidence_score?: number;
+  suggested_matches?: string[];
+  status: string;
+  resolved_trade_id?: number;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Resolve unmatched transaction request
+ */
+export interface ResolveUnmatchedRequest {
+  matched_transaction_id?: string;
+  action: 'merge' | 'create_open';
+  entry_price?: number;
+  entry_date?: string;
+}
+
+/**
+ * Resolve unmatched transaction response
+ */
+export interface ResolveUnmatchedResponse {
+  trade_id: number;
+  message: string;
+}
+
+/**
+ * Unmatched transaction suggestion
+ */
+export interface UnmatchedSuggestion {
+  id: string;
+  symbol: string;
+  trade_type: string;
+  units: number;
+  price: number;
+  trade_date: string;
+  brokerage_name?: string;
+  confidence_score?: number;
+  difficulty_reason?: string;
+}
+
+/**
+ * Account detail response (from SnapTrade)
+ */
+export interface AccountDetailResponse {
+  [key: string]: unknown;
+}
+
+/**
+ * Account positions response (from SnapTrade)
+ */
+export interface AccountPositionsResponse {
+  positions: unknown[];
+}
+
+/**
+ * Query parameters for account transactions
+ */
+export interface GetAccountTransactionsQuery {
+  start_date?: string;
+  end_date?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/**
+ * Request to merge transactions into a stock or option trade
+ */
+export interface MergeTransactionsRequest {
+  transactionIds: string[];
+  tradeType: 'stock' | 'option';
+  // Stock fields
+  symbol: string;
+  orderType: string;
+  stopLoss?: number;
+  takeProfit?: number;
+  initialTarget?: number;
+  profitTarget?: number;
+  tradeRatings?: number;
+  reviewed?: boolean;
+  mistakes?: string;
+  brokerageName?: string;
+  // Option-specific fields
+  strategyType?: string;
+  tradeDirection?: string;
+  optionType?: string;
+  strikePrice?: number;
+  expirationDate?: string;
+  impliedVolatility?: number;
+}
+
+/**
  * Return type for useBrokerage hook (main hook)
  */
 export interface UseBrokerageReturn {
@@ -214,6 +325,22 @@ export interface UseBrokerageReturn {
   accountsError: Error | null;
   refetchAccounts: () => void;
   
+  // Get account detail
+  getAccountDetail: (accountId: string) => Promise<AccountDetailResponse>;
+  accountDetailLoading: boolean;
+  
+  // Get account positions
+  getAccountPositions: (accountId: string) => Promise<AccountPositionsResponse>;
+  accountPositionsLoading: boolean;
+  
+  // Get account option positions
+  getAccountOptionPositions: (accountId: string) => Promise<AccountPositionsResponse>;
+  accountOptionPositionsLoading: boolean;
+  
+  // Get account transactions
+  getAccountTransactions: (accountId: string, query?: GetAccountTransactionsQuery) => Promise<unknown>;
+  accountTransactionsLoading: boolean;
+  
   // Sync accounts
   syncAccounts: () => Promise<SyncSummary>;
   syncing: boolean;
@@ -229,5 +356,23 @@ export interface UseBrokerageReturn {
   holdingsLoading: boolean;
   holdingsError: Error | null;
   refetchHoldings: (query?: GetHoldingsQuery) => void;
+  
+  // Unmatched transactions
+  unmatchedTransactions: UnmatchedTransaction[];
+  unmatchedTransactionsLoading: boolean;
+  unmatchedTransactionsError: Error | null;
+  refetchUnmatchedTransactions: () => void;
+  
+  // Resolve unmatched transaction
+  resolveUnmatchedTransaction: (id: string, request: ResolveUnmatchedRequest) => Promise<ResolveUnmatchedResponse>;
+  resolvingUnmatched: boolean;
+  
+  // Ignore unmatched transaction
+  ignoreUnmatchedTransaction: (id: string) => Promise<void>;
+  ignoringUnmatched: boolean;
+  
+  // Get unmatched suggestions
+  getUnmatchedSuggestions: (id: string) => Promise<UnmatchedSuggestion[]>;
+  unmatchedSuggestionsLoading: boolean;
 }
 

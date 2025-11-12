@@ -11,7 +11,15 @@ import type {
   ConnectionStatusResponse,
   GetTransactionsQuery,
   GetHoldingsQuery,
+  GetAccountTransactionsQuery,
+  UnmatchedTransaction,
+  ResolveUnmatchedRequest,
+  ResolveUnmatchedResponse,
+  UnmatchedSuggestion,
+  AccountDetailResponse,
+  AccountPositionsResponse,
   ApiResponse,
+  MergeTransactionsRequest,
 } from '@/lib/types/brokerage';
 
 /**
@@ -267,7 +275,7 @@ export class BrokerageService {
    * Get transactions
    */
   async getTransactions(
-    query?: GetTransactionsQuery
+    query?: GetTransactionsQuery & { exclude_transformed?: boolean }
   ): Promise<BrokerageTransaction[]> {
     const url = new URL(
       getFullUrl(apiConfig.endpoints.brokerage.transactions.base)
@@ -275,6 +283,10 @@ export class BrokerageService {
 
     if (query?.account_id) {
       url.searchParams.append('account_id', query.account_id);
+    }
+
+    if (query?.exclude_transformed !== undefined) {
+      url.searchParams.append('exclude_transformed', String(query.exclude_transformed));
     }
 
     const token = await this.getAuthToken();
@@ -303,6 +315,45 @@ export class BrokerageService {
 
     if (!result.success || !result.data) {
       throw new Error(result.message || 'Failed to get transactions');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Merge transactions into a stock or option trade
+   */
+  async mergeTransactions(
+    request: MergeTransactionsRequest
+  ): Promise<unknown> {
+    const url = getFullUrl(apiConfig.endpoints.brokerage.transactions.merge);
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to merge transactions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<unknown> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to merge transactions');
     }
 
     return result.data;
@@ -384,6 +435,321 @@ export class BrokerageService {
 
     if (!result.success || !result.data) {
       throw new Error(result.message || 'Failed to complete connection sync');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Get account detail
+   */
+  async getAccountDetail(accountId: string): Promise<AccountDetailResponse> {
+    const url = getFullUrl(
+      apiConfig.endpoints.brokerage.accounts.detail(accountId)
+    );
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get account detail: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<AccountDetailResponse> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get account detail');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Get account positions
+   */
+  async getAccountPositions(accountId: string): Promise<AccountPositionsResponse> {
+    const url = getFullUrl(
+      apiConfig.endpoints.brokerage.accounts.positions(accountId)
+    );
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get account positions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<AccountPositionsResponse> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get account positions');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Get account option positions
+   */
+  async getAccountOptionPositions(accountId: string): Promise<AccountPositionsResponse> {
+    const url = getFullUrl(
+      apiConfig.endpoints.brokerage.accounts.optionPositions(accountId)
+    );
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get account option positions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<AccountPositionsResponse> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get account option positions');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Get account transactions
+   */
+  async getAccountTransactions(
+    accountId: string,
+    query?: GetAccountTransactionsQuery
+  ): Promise<unknown> {
+    const url = new URL(
+      getFullUrl(apiConfig.endpoints.brokerage.accounts.transactions(accountId))
+    );
+
+    if (query?.start_date) {
+      url.searchParams.append('start_date', query.start_date);
+    }
+    if (query?.end_date) {
+      url.searchParams.append('end_date', query.end_date);
+    }
+    if (query?.offset !== undefined) {
+      url.searchParams.append('offset', query.offset.toString());
+    }
+    if (query?.limit !== undefined) {
+      url.searchParams.append('limit', query.limit.toString());
+    }
+
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get account transactions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<unknown> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get account transactions');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Get unmatched transactions
+   */
+  async getUnmatchedTransactions(): Promise<UnmatchedTransaction[]> {
+    const url = getFullUrl(apiConfig.endpoints.brokerage.unmatched.base);
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get unmatched transactions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<UnmatchedTransaction[]> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get unmatched transactions');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Resolve unmatched transaction
+   */
+  async resolveUnmatchedTransaction(
+    id: string,
+    request: ResolveUnmatchedRequest
+  ): Promise<ResolveUnmatchedResponse> {
+    const url = getFullUrl(apiConfig.endpoints.brokerage.unmatched.resolve(id));
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to resolve unmatched transaction: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<ResolveUnmatchedResponse> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to resolve unmatched transaction');
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Ignore unmatched transaction
+   */
+  async ignoreUnmatchedTransaction(id: string): Promise<void> {
+    const url = getFullUrl(apiConfig.endpoints.brokerage.unmatched.ignore(id));
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to ignore unmatched transaction: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<unknown> = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to ignore unmatched transaction');
+    }
+  }
+
+  /**
+   * Get unmatched transaction suggestions
+   */
+  async getUnmatchedSuggestions(id: string): Promise<UnmatchedSuggestion[]> {
+    const url = getFullUrl(apiConfig.endpoints.brokerage.unmatched.suggestions(id));
+    const token = await this.getAuthToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as ApiResponse<unknown>).message ||
+          `Failed to get unmatched suggestions: ${response.statusText}`
+      );
+    }
+
+    const result: ApiResponse<UnmatchedSuggestion[]> = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to get unmatched suggestions');
     }
 
     return result.data;

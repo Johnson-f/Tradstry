@@ -422,41 +422,81 @@ pub async fn get_all_stocks(
     let stock_query = query.into_inner();
     info!("get_all_stocks: Stock query to be used: {:?}", stock_query);
 
-    // Generate cache key based on query parameters
-    let query_hash = format!("{:?}", stock_query);
-    let cache_key = format!("db:{}:stocks:list:{}", user_id, query_hash);
-    info!("get_all_stocks: Using cache key: {}", cache_key);
+    // Check if we need simplified response for open trades
+    if stock_query.open_only == Some(true) {
+        info!("get_all_stocks: Fetching open trades with simplified response");
+        // Generate cache key based on query parameters
+        let query_hash = format!("{:?}", stock_query);
+        let cache_key = format!("db:{}:stocks:open:summary:{}", user_id, query_hash);
+        info!("get_all_stocks: Using cache key: {}", cache_key);
 
-    // Try using cache
-    info!("get_all_stocks: Checking cache for stocks list");
-    match cache_service.get_or_fetch(&cache_key, 1800, || async {
-        info!(
-            "get_all_stocks: Cache miss for stocks list; fetching from DB for user {} with query {:?}",
-            user_id, stock_query
-        );
-        match Stock::find_all(&conn, stock_query).await {
-            Ok(stocks) => {
-                info!(
-                    "get_all_stocks: Successfully fetched {} stocks from DB",
-                    stocks.len()
-                );
-                Ok(stocks)
-            },
+        match cache_service.get_or_fetch(&cache_key, 1800, || async {
+            info!(
+                "get_all_stocks: Cache miss for open stocks summary; fetching from DB for user {} with query {:?}",
+                user_id, stock_query
+            );
+            match Stock::find_all_open_summary(&conn, stock_query).await {
+                Ok(open_trades) => {
+                    info!(
+                        "get_all_stocks: Successfully fetched {} open stocks from DB",
+                        open_trades.len()
+                    );
+                    Ok(open_trades)
+                },
+                Err(e) => {
+                    error!("get_all_stocks: DB error when fetching open stocks: {}", e);
+                    Err(anyhow::anyhow!("{}", e))
+                }
+            }
+        }).await {
+            Ok(open_trades) => {
+                info!("get_all_stocks: Returning {} open stocks to client (may be cached)", open_trades.len());
+                Ok(HttpResponse::Ok().json(ApiResponse::success(open_trades)))
+            }
             Err(e) => {
-                error!("get_all_stocks: DB error when fetching stocks: {}", e);
-                Err(anyhow::anyhow!("{}", e))
+                error!("get_all_stocks: Failed to fetch open stocks: {}", e);
+                Ok(HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to fetch open stocks")
+                ))
             }
         }
-    }).await {
-        Ok(stocks) => {
-            info!("get_all_stocks: Returning {} stocks to client (may be cached)", stocks.len());
-            Ok(HttpResponse::Ok().json(ApiResponse::success(stocks)))
-        }
-        Err(e) => {
-            error!("get_all_stocks: Failed to fetch stocks: {}", e);
-            Ok(HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to fetch stocks")
-            ))
+    } else {
+        // Generate cache key based on query parameters
+        let query_hash = format!("{:?}", stock_query);
+        let cache_key = format!("db:{}:stocks:list:{}", user_id, query_hash);
+        info!("get_all_stocks: Using cache key: {}", cache_key);
+
+        // Try using cache
+        info!("get_all_stocks: Checking cache for stocks list");
+        match cache_service.get_or_fetch(&cache_key, 1800, || async {
+            info!(
+                "get_all_stocks: Cache miss for stocks list; fetching from DB for user {} with query {:?}",
+                user_id, stock_query
+            );
+            match Stock::find_all(&conn, stock_query).await {
+                Ok(stocks) => {
+                    info!(
+                        "get_all_stocks: Successfully fetched {} stocks from DB",
+                        stocks.len()
+                    );
+                    Ok(stocks)
+                },
+                Err(e) => {
+                    error!("get_all_stocks: DB error when fetching stocks: {}", e);
+                    Err(anyhow::anyhow!("{}", e))
+                }
+            }
+        }).await {
+            Ok(stocks) => {
+                info!("get_all_stocks: Returning {} stocks to client (may be cached)", stocks.len());
+                Ok(HttpResponse::Ok().json(ApiResponse::success(stocks)))
+            }
+            Err(e) => {
+                error!("get_all_stocks: Failed to fetch stocks: {}", e);
+                Ok(HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to fetch stocks")
+                ))
+            }
         }
     }
 }
