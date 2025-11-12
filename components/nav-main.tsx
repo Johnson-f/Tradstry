@@ -11,7 +11,7 @@ export function NavMain({
   items: {
     title: string
     url: string
-    icon: LucideIcon
+    icon: LucideIcon | null
   }[]
   collapsed?: boolean
 }) {
@@ -21,6 +21,7 @@ export function NavMain({
     <div className="flex flex-col gap-1">
       {items.map((item) => {
         const isActive = pathname === item.url
+        const IconComponent = item.icon
         return (
           // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
           <Link key={item.href || item.url} href={item.url} tabIndex={0}>
@@ -31,7 +32,7 @@ export function NavMain({
                 collapsed ? "justify-center gap-0" : ""
               }`}
             >
-              <item.icon className="w-5 h-5" />
+              {IconComponent && <IconComponent className="w-5 h-5" />}
               {!collapsed && (
                 <span
                   className="text-sm flex-1"

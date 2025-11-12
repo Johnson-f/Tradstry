@@ -38,6 +38,7 @@ const navItems = [
   { title: "Reporting", url: "/app/reporting", icon: ChartNoAxesColumnIncreasing },
   { title: "Mindset Lab", url: "/app/mindset", icon: BrainCog },
   { title: "Markets", url: "/app/markets", icon: ChartCandlestick },
+  { title: "Brokerage", url: "/app/brokerage", icon: BrainCog },
   { title: "Education", url: "/app/education", icon: GraduationCap },
 ]
 

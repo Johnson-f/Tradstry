@@ -124,6 +124,15 @@ pub struct OptionTrade {
     pub is_deleted: bool,
 }
 
+/// Simplified response for open option trades (only essential fields)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenOptionTrade {
+    pub symbol: String,
+    pub entry_price: f64,
+    pub entry_date: DateTime<Utc>,
+}
+
 /// Data Transfer Object for creating new option trades
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -188,6 +197,8 @@ pub struct OptionQuery {
     pub time_range: Option<TimeRange>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    #[serde(rename = "openOnly")]
+    pub open_only: Option<bool>,
 }
 
 /// Option operations implementation using libsql
@@ -376,6 +387,15 @@ impl OptionTrade {
             }
         }
 
+        // Filter by open/closed trades
+        if let Some(open_only) = query.open_only {
+            if open_only {
+                sql.push_str(" AND (status = 'open' OR exit_date IS NULL)");
+            } else {
+                sql.push_str(" AND (status = 'closed' OR exit_date IS NOT NULL)");
+            }
+        }
+
         sql.push_str(" ORDER BY entry_date DESC");
 
         // Add pagination
@@ -401,6 +421,103 @@ impl OptionTrade {
         }
 
         Ok(options)
+    }
+
+    /// Find all open option trades with simplified response (only symbol, entry_price, entry_date)
+    pub async fn find_all_open_summary(
+        conn: &Connection,
+        query: OptionQuery,
+    ) -> Result<Vec<OpenOptionTrade>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut sql = String::from(
+            r#"
+            SELECT symbol, entry_price, entry_date
+            FROM options 
+            WHERE (status = 'open' OR exit_date IS NULL) AND is_deleted = 0
+            "#,
+        );
+        
+        let mut query_params = Vec::new();
+        
+        // Add optional filters (excluding open_only since we're already filtering for open)
+        if let Some(symbol) = &query.symbol {
+            sql.push_str(" AND symbol = ?");
+            query_params.push(libsql::Value::Text(symbol.clone()));
+        }
+        
+        if let Some(strategy_type) = &query.strategy_type {
+            sql.push_str(" AND strategy_type = ?");
+            query_params.push(libsql::Value::Text(strategy_type.clone()));
+        }
+        
+        if let Some(trade_direction) = &query.trade_direction {
+            sql.push_str(" AND trade_direction = ?");
+            query_params.push(libsql::Value::Text(trade_direction.to_string()));
+        }
+        
+        if let Some(option_type) = &query.option_type {
+            sql.push_str(" AND option_type = ?");
+            query_params.push(libsql::Value::Text(option_type.to_string()));
+        }
+
+        if let Some(start_date) = query.start_date {
+            sql.push_str(" AND entry_date >= ?");
+            query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
+        }
+        
+        if let Some(end_date) = query.end_date {
+            sql.push_str(" AND entry_date <= ?");
+            query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+        }
+
+        // Convert time_range to start_date/end_date if provided
+        if let Some(time_range) = &query.time_range {
+            let (start, end) = time_range.to_dates();
+            if let Some(start_date) = start {
+                sql.push_str(" AND entry_date >= ?");
+                query_params.push(libsql::Value::Text(start_date.to_rfc3339()));
+            }
+            if let Some(end_date) = end {
+                sql.push_str(" AND entry_date <= ?");
+                query_params.push(libsql::Value::Text(end_date.to_rfc3339()));
+            }
+        }
+
+        sql.push_str(" ORDER BY entry_date DESC");
+
+        // Add pagination
+        if let Some(limit) = query.limit {
+            sql.push_str(" LIMIT ?");
+            query_params.push(libsql::Value::Integer(limit));
+        }
+        
+        if let Some(offset) = query.offset {
+            sql.push_str(" OFFSET ?");
+            query_params.push(libsql::Value::Integer(offset));
+        }
+
+        let mut rows = conn
+            .prepare(&sql)
+            .await?
+            .query(libsql::params_from_iter(query_params))
+            .await?;
+
+        let mut open_trades = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let symbol: String = row.get(0)?;
+            let entry_price = Self::get_f64(&row, 1)?;
+            let entry_date_str: String = row.get(2)?;
+            let entry_date = DateTime::parse_from_rfc3339(&entry_date_str)
+                .map_err(|e| format!("Failed to parse entry_date: {}", e))?
+                .with_timezone(&Utc);
+            
+            open_trades.push(OpenOptionTrade {
+                symbol,
+                entry_price,
+                entry_date,
+            });
+        }
+
+        Ok(open_trades)
     }
 
     /// Update an option trade

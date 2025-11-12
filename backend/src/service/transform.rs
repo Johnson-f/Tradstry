@@ -1,10 +1,9 @@
 use anyhow::{Result, Context};
 use libsql::Connection;
-use log::{info, warn, error};
+use log::{info, error};
 use serde_json::Value;
 use chrono::Utc;
 use std::sync::Arc;
-use std::collections::HashMap;
 use crate::service::ai_service::{
     VectorizationService,
     data_formatter::DataFormatter,
@@ -29,190 +28,14 @@ struct TransactionData {
 }
 
 /// Transform brokerage transactions into stocks or options trades
-/// This function now matches BUY and SELL transactions and merges them into complete trades
+/// NOTE: Automatic matching has been removed. Users should use the manual merge feature.
+/// This function is kept for backward compatibility but does not perform automatic matching.
 pub async fn transform_brokerage_transactions(
-    conn: &Connection,
-    user_id: &str,
-    vectorization_service: Option<Arc<VectorizationService>>,
+    _conn: &Connection,
+    _user_id: &str,
+    _vectorization_service: Option<Arc<VectorizationService>>,
 ) -> Result<()> {
-    info!("Starting transformation of brokerage transactions to trades");
-
-    // Step 1: Collect all untransformed transactions
-    let mut stmt = conn
-        .prepare(
-            r#"
-            SELECT id, raw_data, snaptrade_transaction_id, account_id
-            FROM brokerage_transactions
-            WHERE raw_data IS NOT NULL AND raw_data != ''
-            ORDER BY trade_date ASC
-            "#
-        )
-        .await
-        .context("Failed to prepare query for brokerage transactions")?;
-
-    let mut rows = stmt.query(libsql::params![]).await
-        .context("Failed to query brokerage transactions")?;
-
-    let mut transactions: Vec<TransactionData> = Vec::new();
-    let mut skipped_count = 0;
-
-    // Collect all transactions
-    while let Some(row) = rows.next().await? {
-        let transaction_id: String = row.get(0)?;
-        let raw_data: String = row.get(1)?;
-        let snaptrade_transaction_id: String = row.get(2)?;
-        let account_id: String = row.get(3)?;
-
-        // Check if this transaction has already been transformed
-        if transaction_already_transformed(conn, &snaptrade_transaction_id).await? {
-            skipped_count += 1;
-            continue;
-        }
-
-        // Parse the raw_data JSON
-        let transaction_data: Value = match serde_json::from_str(&raw_data) {
-            Ok(data) => data,
-            Err(e) => {
-                error!("Failed to parse raw_data for transaction {}: {}", transaction_id, e);
-                continue;
-            }
-        };
-
-        // Extract transaction details
-        let symbol = match transaction_data
-            .get("symbol")
-            .and_then(|s| s.get("symbol"))
-            .and_then(|v| v.as_str()) {
-            Some(s) => s.to_string(),
-            None => {
-                warn!("Skipping transaction {}: missing symbol", snaptrade_transaction_id);
-                continue;
-            }
-        };
-
-        let trade_type = match transaction_data.get("type").and_then(|v| v.as_str()) {
-            Some("BUY") | Some("SELL") => {
-                transaction_data.get("type").and_then(|v| v.as_str()).unwrap().to_string()
-            }
-            Some(t) => {
-                warn!("Skipping transaction {}: invalid trade type {}", snaptrade_transaction_id, t);
-                continue;
-            }
-            None => {
-                warn!("Skipping transaction {}: missing trade type", snaptrade_transaction_id);
-                continue;
-            }
-        };
-
-        let units = transaction_data
-            .get("units")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
-        let price = transaction_data
-            .get("price")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
-        let fee = transaction_data
-            .get("fee")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
-        let trade_date = transaction_data
-            .get("trade_date")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let brokerage_name = transaction_data
-            .get("institution")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let is_option = transaction_data
-            .get("option_symbol")
-            .and_then(|v| v.as_str())
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-            || transaction_data
-                .get("option_type")
-                .and_then(|v| v.as_str())
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
-
-        transactions.push(TransactionData {
-            id: transaction_id,
-            snaptrade_transaction_id,
-            account_id,
-            symbol,
-            trade_type,
-            units,
-            price,
-            fee,
-            trade_date,
-            brokerage_name,
-            raw_data: transaction_data,
-            is_option,
-        });
-    }
-
-    info!("Collected {} untransformed transactions", transactions.len());
-
-    // Step 2: Group transactions by symbol and match BUY with SELL
-    let mut transformed_count = 0;
-    let mut error_count = 0;
-
-    // Separate stocks and options
-    let stock_transactions: Vec<&TransactionData> = transactions.iter()
-        .filter(|t| !t.is_option)
-        .collect();
-    let option_transactions: Vec<&TransactionData> = transactions.iter()
-        .filter(|t| t.is_option)
-        .collect();
-
-    // Process stock transactions with buy/sell matching
-    match match_and_transform_stocks(
-        conn,
-        &stock_transactions,
-        user_id,
-        vectorization_service.as_ref().map(|arc| arc.as_ref()),
-    ).await {
-        Ok(count) => {
-            transformed_count += count;
-            info!("Successfully transformed {} stock trades", count);
-        }
-        Err(e) => {
-            error!("Error transforming stock trades: {}", e);
-            error_count += stock_transactions.len();
-        }
-    }
-
-    // Process option transactions (for now, keep existing logic - can be enhanced later)
-    for transaction in option_transactions {
-        match transform_to_option(
-            conn,
-            &transaction.raw_data,
-            &transaction.snaptrade_transaction_id,
-            user_id,
-            vectorization_service.as_ref().map(|arc| arc.as_ref()),
-        ).await {
-            Ok(_) => {
-                transformed_count += 1;
-                info!("Transformed transaction {} to option trade", transaction.snaptrade_transaction_id);
-            }
-            Err(e) => {
-                error!("Failed to transform transaction {} to option: {}", transaction.snaptrade_transaction_id, e);
-                error_count += 1;
-            }
-        }
-    }
-
-    info!(
-        "Transformation complete: {} transformed, {} skipped, {} errors",
-        transformed_count, skipped_count, error_count
-    );
-
+    info!("Automatic transformation is disabled. Please use the manual merge feature at /api/brokerage/transactions/merge");
     Ok(())
 }
 
@@ -230,7 +53,7 @@ async fn transaction_already_transformed(
     snaptrade_transaction_id: &str,
 ) -> Result<bool> {
     // First, get the transaction data to extract key fields for matching
-    let mut stmt = conn
+    let stmt = conn
         .prepare(
             r#"
             SELECT raw_data
@@ -255,7 +78,7 @@ async fn transaction_already_transformed(
                     .get("symbol")
                     .and_then(|s| s.get("symbol"))
                     .and_then(|v| v.as_str());
-                let trans_type = trans_data.get("type").and_then(|v| v.as_str());
+                let _trans_type = trans_data.get("type").and_then(|v| v.as_str());
                 let trans_units = trans_data.get("units").and_then(|v| v.as_f64());
                 let trans_price = trans_data.get("price").and_then(|v| v.as_f64());
                 let trans_trade_date = trans_data.get("trade_date").and_then(|v| v.as_str());
@@ -278,7 +101,7 @@ async fn transaction_already_transformed(
                     
                     if is_option {
                         // Check options table for matching trade
-                        let mut check_stmt = conn
+                        let check_stmt = conn
                             .prepare(
                                 r#"
                                 SELECT COUNT(*) FROM options
@@ -339,199 +162,35 @@ async fn transaction_already_transformed(
     Ok(false) // Transaction not yet transformed
 }
 
-/// Match BUY and SELL transactions and create merged trades
-/// Uses FIFO (First In First Out) matching algorithm
-async fn match_and_transform_stocks(
-    conn: &Connection,
-    transactions: &[&TransactionData],
-    user_id: &str,
-    vectorization_service: Option<&VectorizationService>,
-) -> Result<usize> {
-    if transactions.is_empty() {
-        return Ok(0);
+// Removed: calculate_match_confidence - automatic matching is no longer used
+
+/// Helper function to parse trade date string to DateTime
+fn parse_trade_date(date_str: &str) -> Result<chrono::DateTime<Utc>> {
+    // Try RFC3339 format first
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
+        return Ok(dt.with_timezone(&Utc));
     }
-
-    // Group transactions by symbol
-    let mut by_symbol: HashMap<String, Vec<&TransactionData>> = HashMap::new();
-    for transaction in transactions {
-        by_symbol
-            .entry(transaction.symbol.clone())
-            .or_insert_with(Vec::new)
-            .push(transaction);
+    // Try SQLite datetime format
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+        return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
     }
-
-    let mut transformed_count = 0;
-
-    // Process each symbol separately
-    for (symbol, symbol_transactions) in by_symbol.iter() {
-        // Separate BUY and SELL transactions, sorted by date
-        let mut buys: Vec<&TransactionData> = symbol_transactions
-            .iter()
-            .filter(|t| t.trade_type == "BUY")
-            .cloned()
-            .collect();
-        let mut sells: Vec<&TransactionData> = symbol_transactions
-            .iter()
-            .filter(|t| t.trade_type == "SELL")
-            .cloned()
-            .collect();
-
-        // Sort by trade_date to ensure FIFO matching
-        buys.sort_by(|a, b| a.trade_date.cmp(&b.trade_date));
-        sells.sort_by(|a, b| a.trade_date.cmp(&b.trade_date));
-
-        info!(
-            "Processing symbol {}: {} BUYs, {} SELLs",
-            symbol,
-            buys.len(),
-            sells.len()
-        );
-
-        // Track remaining quantities for FIFO matching
-        let mut buy_queue: Vec<(f64, f64, f64, String, Option<String>)> = Vec::new();
-        // Each tuple: (remaining_quantity, price, fee, trade_date, brokerage_name)
-
-        // Process all transactions in chronological order
-        let mut all_txns: Vec<(&TransactionData, bool)> = buys
-            .iter()
-            .map(|b| (*b, true))
-            .chain(sells.iter().map(|s| (*s, false)))
-            .collect();
-        all_txns.sort_by(|a, b| a.0.trade_date.cmp(&b.0.trade_date));
-
-        for (transaction, is_buy) in all_txns {
-            if is_buy {
-                // Add BUY to queue
-                buy_queue.push((
-                    transaction.units,
-                    transaction.price,
-                    transaction.fee,
-                    transaction.trade_date.clone(),
-                    transaction.brokerage_name.clone(),
-                ));
-                info!(
-                    "Added BUY: {} shares of {} at ${} on {}",
-                    transaction.units, symbol, transaction.price, transaction.trade_date
-                );
-            } else {
-                // Match SELL with BUYs from queue (FIFO)
-                let mut remaining_sell = transaction.units;
-                let mut matched_trades: Vec<(f64, f64, f64, String, String, f64, f64, Option<String>)> = Vec::new();
-                // Each tuple: (entry_price, exit_price, shares, entry_date, exit_date, entry_fee, exit_fee, brokerage_name)
-
-                while remaining_sell > 0.0001 && !buy_queue.is_empty() {
-                    let (buy_qty, buy_price, buy_fee, buy_date, buy_brokerage) = buy_queue[0].clone();
-
-                    let shares_to_match = remaining_sell.min(buy_qty);
-                    let weighted_entry_price = buy_price; // For simplicity, use the buy price
-                    // In a more sophisticated system, you might want to average multiple buys
-
-                    let brokerage_name = transaction.brokerage_name.clone().or(buy_brokerage);
-
-                    matched_trades.push((
-                        weighted_entry_price,
-                        transaction.price,
-                        shares_to_match,
-                        buy_date.clone(),
-                        transaction.trade_date.clone(),
-                        buy_fee * (shares_to_match / buy_qty), // Proportional fee
-                        transaction.fee * (shares_to_match / transaction.units), // Proportional fee
-                        brokerage_name,
-                    ));
-
-                    // Update buy queue
-                    if shares_to_match >= buy_qty - 0.0001 {
-                        // Fully consumed this buy
-                        buy_queue.remove(0);
-                    } else {
-                        // Partially consumed
-                        buy_queue[0].0 -= shares_to_match;
-                        buy_queue[0].2 -= buy_fee * (shares_to_match / buy_qty); // Adjust fee proportionally
-                    }
-
-                    remaining_sell -= shares_to_match;
-                }
-
-                // Create merged trades for matched BUY/SELL pairs
-                for (entry_price, exit_price, shares, entry_date, exit_date, entry_fee, exit_fee, brokerage_name) in matched_trades {
-                    match create_merged_stock_trade(
-                        conn,
-                        symbol,
-                        entry_price,
-                        exit_price,
-                        shares,
-                        entry_date,
-                        exit_date,
-                        entry_fee + exit_fee,
-                        brokerage_name,
-                        user_id,
-                        vectorization_service,
-                    ).await {
-                        Ok(_) => {
-                            transformed_count += 1;
-                            info!(
-                                "Created merged trade: {} shares of {} (entry: ${}, exit: ${})",
-                                shares, symbol, entry_price, exit_price
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Failed to create merged trade for {}: {}",
-                                symbol, e
-                            );
-                        }
-                    }
-                }
-
-                // If there's remaining SELL quantity, create a trade with unknown entry
-                if remaining_sell > 0.0001 {
-                    warn!(
-                        "SELL of {} shares of {} could not be fully matched. Creating trade with unknown entry.",
-                        remaining_sell, symbol
-                    );
-                    // You might want to handle this differently - perhaps create a trade with entry_price = 0
-                    // or skip it entirely. For now, we'll skip unmatched SELLs.
-                }
-            }
-        }
-
-        // Handle unmatched BUYs (open positions)
-        for (remaining_qty, price, fee, entry_date, brokerage_name) in buy_queue {
-            if remaining_qty > 0.0001 {
-                match create_open_stock_trade(
-                    conn,
-                    symbol,
-                    price,
-                    remaining_qty,
-                    entry_date,
-                    fee,
-                    brokerage_name,
-                    user_id,
-                    vectorization_service,
-                ).await {
-                    Ok(_) => {
-                        transformed_count += 1;
-                        info!(
-                            "Created open position: {} shares of {} at ${}",
-                            remaining_qty, symbol, price
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to create open position for {}: {}",
-                            symbol, e
-                        );
-                    }
-                }
-            }
-        }
+    // Try date-only format
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let ndt = date.and_hms_opt(0, 0, 0)
+            .ok_or_else(|| anyhow::anyhow!("invalid date"))?;
+        return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
     }
-
-    Ok(transformed_count)
+    Err(anyhow::anyhow!("Unsupported datetime format: {}", date_str))
 }
 
-/// Create a merged stock trade from matched BUY and SELL
-async fn create_merged_stock_trade(
+// Removed: store_unmatched_transaction - automatic matching is no longer used
+
+// Removed: match_and_transform_stocks - automatic matching is no longer used
+// Users should use the manual merge feature instead
+
+// Removed: create_merged_stock_trade - automatic matching is no longer used
+// Use the manual merge endpoint instead
+pub async fn _create_merged_stock_trade_removed(
     conn: &Connection,
     symbol: &str,
     entry_price: f64,
@@ -592,7 +251,7 @@ async fn create_merged_stock_trade(
 }
 
 /// Create an open stock position (unmatched BUY)
-async fn create_open_stock_trade(
+pub async fn create_open_stock_trade(
     conn: &Connection,
     symbol: &str,
     entry_price: f64,
@@ -721,14 +380,50 @@ async fn vectorize_stock_trade(
             symbol: row.get(1)?,
             trade_type,
             order_type,
-            entry_price: row.get::<f64>(4)?,
-            exit_price: row.get::<Option<f64>>(5)?,
-            stop_loss: row.get::<f64>(6)?,
-            commissions: row.get::<f64>(7)?,
-            number_shares: row.get::<f64>(8)?,
-            take_profit: row.get::<Option<f64>>(9)?,
-            initial_target: row.get::<Option<f64>>(10)?,
-            profit_target: row.get::<Option<f64>>(11)?,
+            entry_price: match row.get::<libsql::Value>(4)? {
+                libsql::Value::Integer(val) => val as f64,
+                libsql::Value::Real(val) => val,
+                _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
+            },
+            exit_price: match row.get::<libsql::Value>(5)? {
+                libsql::Value::Integer(val) => Some(val as f64),
+                libsql::Value::Real(val) => Some(val),
+                libsql::Value::Null => None,
+                _ => None,
+            },
+            stop_loss: match row.get::<libsql::Value>(6)? {
+                libsql::Value::Integer(val) => val as f64,
+                libsql::Value::Real(val) => val,
+                _ => return Err(anyhow::anyhow!("Invalid stop_loss type")),
+            },
+            commissions: match row.get::<libsql::Value>(7)? {
+                libsql::Value::Integer(val) => val as f64,
+                libsql::Value::Real(val) => val,
+                _ => return Err(anyhow::anyhow!("Invalid commissions type")),
+            },
+            number_shares: match row.get::<libsql::Value>(8)? {
+                libsql::Value::Integer(val) => val as f64,
+                libsql::Value::Real(val) => val,
+                _ => return Err(anyhow::anyhow!("Invalid number_shares type")),
+            },
+            take_profit: match row.get::<libsql::Value>(9)? {
+                libsql::Value::Integer(val) => Some(val as f64),
+                libsql::Value::Real(val) => Some(val),
+                libsql::Value::Null => None,
+                _ => None,
+            },
+            initial_target: match row.get::<libsql::Value>(10)? {
+                libsql::Value::Integer(val) => Some(val as f64),
+                libsql::Value::Real(val) => Some(val),
+                libsql::Value::Null => None,
+                _ => None,
+            },
+            profit_target: match row.get::<libsql::Value>(11)? {
+                libsql::Value::Integer(val) => Some(val as f64),
+                libsql::Value::Real(val) => Some(val),
+                libsql::Value::Null => None,
+                _ => None,
+            },
             trade_ratings: row.get::<Option<i32>>(12)?,
             entry_date,
             exit_date,
@@ -925,14 +620,50 @@ async fn transform_to_stock(
                 symbol: row.get(1)?,
                 trade_type,
                 order_type,
-                entry_price: row.get::<f64>(4)?,
-                exit_price: row.get::<Option<f64>>(5)?,
-                stop_loss: row.get::<f64>(6)?,
-                commissions: row.get::<f64>(7)?,
-                number_shares: row.get::<f64>(8)?,
-                take_profit: row.get::<Option<f64>>(9)?,
-                initial_target: row.get::<Option<f64>>(10)?,
-                profit_target: row.get::<Option<f64>>(11)?,
+                entry_price: match row.get::<libsql::Value>(4)? {
+                    libsql::Value::Integer(val) => val as f64,
+                    libsql::Value::Real(val) => val,
+                    _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
+                },
+                exit_price: match row.get::<libsql::Value>(5)? {
+                    libsql::Value::Integer(val) => Some(val as f64),
+                    libsql::Value::Real(val) => Some(val),
+                    libsql::Value::Null => None,
+                    _ => None,
+                },
+                stop_loss: match row.get::<libsql::Value>(6)? {
+                    libsql::Value::Integer(val) => val as f64,
+                    libsql::Value::Real(val) => val,
+                    _ => return Err(anyhow::anyhow!("Invalid stop_loss type")),
+                },
+                commissions: match row.get::<libsql::Value>(7)? {
+                    libsql::Value::Integer(val) => val as f64,
+                    libsql::Value::Real(val) => val,
+                    _ => return Err(anyhow::anyhow!("Invalid commissions type")),
+                },
+                number_shares: match row.get::<libsql::Value>(8)? {
+                    libsql::Value::Integer(val) => val as f64,
+                    libsql::Value::Real(val) => val,
+                    _ => return Err(anyhow::anyhow!("Invalid number_shares type")),
+                },
+                take_profit: match row.get::<libsql::Value>(9)? {
+                    libsql::Value::Integer(val) => Some(val as f64),
+                    libsql::Value::Real(val) => Some(val),
+                    libsql::Value::Null => None,
+                    _ => None,
+                },
+                initial_target: match row.get::<libsql::Value>(10)? {
+                    libsql::Value::Integer(val) => Some(val as f64),
+                    libsql::Value::Real(val) => Some(val),
+                    libsql::Value::Null => None,
+                    _ => None,
+                },
+                profit_target: match row.get::<libsql::Value>(11)? {
+                    libsql::Value::Integer(val) => Some(val as f64),
+                    libsql::Value::Real(val) => Some(val),
+                    libsql::Value::Null => None,
+                    _ => None,
+                },
                 trade_ratings: row.get::<Option<i32>>(12)?,
                 entry_date,
                 exit_date,
@@ -942,7 +673,7 @@ async fn transform_to_stock(
                 created_at,
                 updated_at,
             };
-
+            
             // Format stock for embedding
             let content = DataFormatter::format_stock_for_embedding(&stock);
             
@@ -1310,4 +1041,3 @@ pub async fn migrate_add_brokerage_name_column(conn: &Connection) -> Result<()> 
 
     Ok(())
 }
-

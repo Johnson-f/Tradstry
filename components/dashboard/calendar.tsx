@@ -239,7 +239,7 @@ export function Calendar() {
                     <div
                       key={dateStr}
                       className={cn(
-                        "min-h-[100px] p-2 rounded-md border flex flex-col relative",
+                        "min-h-[70px] p-2 rounded-md border flex flex-col relative",
                         hasTrades ? getCellColor(dayData?.pnl) : "bg-background border-border",
                         !isCurrentMonth && "opacity-40",
                         isCurrentDay && isCurrentMonth && "ring-2 ring-primary"

@@ -1024,6 +1024,20 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_account_id ON brokerage_transactions(account_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_trade_date ON brokerage_transactions(trade_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_symbol ON brokerage_transactions(symbol)", libsql::params![]).await?;
+    
+    // Add is_transformed column if it doesn't exist (migration)
+    let check_col = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('brokerage_transactions') WHERE name = 'is_transformed'")
+        .await?;
+    let mut rows = check_col.query(libsql::params![]).await?;
+    if let Some(row) = rows.next().await? {
+        let count: i64 = row.get(0)?;
+        if count == 0 {
+            conn.execute("ALTER TABLE brokerage_transactions ADD COLUMN is_transformed INTEGER DEFAULT 0", libsql::params![])
+                .await?;
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_transactions_is_transformed ON brokerage_transactions(is_transformed)", libsql::params![]).await?;
+        }
+    }
 
     // Brokerage holdings table
     conn.execute(
@@ -1047,6 +1061,40 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     ).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_account_id ON brokerage_holdings(account_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_brokerage_holdings_symbol ON brokerage_holdings(symbol)", libsql::params![]).await?;
+
+    // Unmatched transactions table (for manual review of difficult matches)
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS unmatched_transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            transaction_id TEXT NOT NULL,
+            snaptrade_transaction_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            trade_type TEXT NOT NULL CHECK (trade_type IN ('BUY', 'SELL')),
+            units REAL NOT NULL,
+            price REAL NOT NULL,
+            fee REAL NOT NULL,
+            trade_date TIMESTAMP NOT NULL,
+            brokerage_name TEXT,
+            raw_data TEXT,
+            is_option BOOLEAN NOT NULL DEFAULT false,
+            difficulty_reason TEXT,
+            confidence_score REAL,
+            suggested_matches TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'ignored')),
+            resolved_trade_id INTEGER,
+            resolved_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_transactions_user_id ON unmatched_transactions(user_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_transactions_symbol ON unmatched_transactions(symbol)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_transactions_status ON unmatched_transactions(status)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_transactions_trade_date ON unmatched_transactions(trade_date)", libsql::params![]).await?;
 
     // Migration: Add brokerage_name column to stocks and options if it doesn't exist
     {
@@ -1077,11 +1125,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     Ok(())
 }
 
-/// Current schema version (bumped for brokerage_name column and transform service)
+/// Current schema version (bumped for unmatched_transactions table)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.26".to_string(),
-        description: "Added brokerage_name column to stocks and options tables, and brokerage transaction transform service.".to_string(),
+        version: "0.0.28".to_string(),
+        description: "Added brokerage_name column to stocks and options tables.".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1589,6 +1637,7 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             ColumnInfo { name: "settlement_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
             ColumnInfo { name: "fees".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
             ColumnInfo { name: "raw_data".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "is_transformed".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: Some("0".to_string()), is_primary_key: false },
             ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
             ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
         ],
@@ -1596,6 +1645,7 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             IndexInfo { name: "idx_brokerage_transactions_account_id".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["account_id".to_string()], is_unique: false },
             IndexInfo { name: "idx_brokerage_transactions_trade_date".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["trade_date".to_string()], is_unique: false },
             IndexInfo { name: "idx_brokerage_transactions_symbol".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+            IndexInfo { name: "idx_brokerage_transactions_is_transformed".to_string(), table_name: "brokerage_transactions".to_string(), columns: vec!["is_transformed".to_string()], is_unique: false },
         ],
         triggers: vec![],
     });
@@ -1617,6 +1667,40 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
         indexes: vec![
             IndexInfo { name: "idx_brokerage_holdings_account_id".to_string(), table_name: "brokerage_holdings".to_string(), columns: vec!["account_id".to_string()], is_unique: false },
             IndexInfo { name: "idx_brokerage_holdings_symbol".to_string(), table_name: "brokerage_holdings".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+        ],
+        triggers: vec![],
+    });
+
+    schemas.push(TableSchema {
+        name: "unmatched_transactions".to_string(),
+        columns: vec![
+            ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+            ColumnInfo { name: "user_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "transaction_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "snaptrade_transaction_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "trade_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "units".to_string(), data_type: "REAL".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "price".to_string(), data_type: "REAL".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "fee".to_string(), data_type: "REAL".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "trade_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "raw_data".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "is_option".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
+            ColumnInfo { name: "difficulty_reason".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "confidence_score".to_string(), data_type: "REAL".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "suggested_matches".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'pending'".to_string()), is_primary_key: false },
+            ColumnInfo { name: "resolved_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "resolved_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+            ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+        ],
+        indexes: vec![
+            IndexInfo { name: "idx_unmatched_transactions_user_id".to_string(), table_name: "unmatched_transactions".to_string(), columns: vec!["user_id".to_string()], is_unique: false },
+            IndexInfo { name: "idx_unmatched_transactions_symbol".to_string(), table_name: "unmatched_transactions".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+            IndexInfo { name: "idx_unmatched_transactions_status".to_string(), table_name: "unmatched_transactions".to_string(), columns: vec!["status".to_string()], is_unique: false },
+            IndexInfo { name: "idx_unmatched_transactions_trade_date".to_string(), table_name: "unmatched_transactions".to_string(), columns: vec!["trade_date".to_string()], is_unique: false },
         ],
         triggers: vec![],
     });

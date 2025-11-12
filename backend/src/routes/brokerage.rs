@@ -11,6 +11,8 @@ use libsql::Connection;
 use crate::turso::{AppState, client::TursoClient, config::{SupabaseConfig, SupabaseClaims}};
 use crate::turso::auth::{validate_supabase_jwt_token, get_supabase_user_id};
 use crate::service::transform;
+use crate::models::stock::stocks::{Stock, CreateStockRequest, TradeType, OrderType};
+use crate::models::options::option_trade::{OptionTrade, CreateOptionRequest, TradeDirection, OptionType};
 
 /// HTTP client for communicating with Go SnapTrade microservice
 #[derive(Clone)]
@@ -1335,10 +1337,18 @@ pub async fn get_transactions(
     let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
 
     let account_id = query.get("account_id");
-    let mut sql = "SELECT id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, created_at FROM brokerage_transactions WHERE account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?))".to_string();
+    let exclude_transformed = query.get("exclude_transformed")
+        .and_then(|v| v.parse::<bool>().ok())
+        .unwrap_or(false);
+    
+    let mut sql = "SELECT id, account_id, snaptrade_transaction_id, symbol, transaction_type, quantity, price, amount, currency, trade_date, settlement_date, fees, created_at, is_transformed, raw_data FROM brokerage_transactions WHERE account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?))".to_string();
 
     if let Some(_acc_id) = account_id {
         sql.push_str(" AND account_id = ?");
+    }
+
+    if exclude_transformed {
+        sql.push_str(" AND (is_transformed IS NULL OR is_transformed = 0)");
     }
 
     sql.push_str(" ORDER BY trade_date DESC LIMIT 100");
@@ -1432,6 +1442,16 @@ pub async fn get_transactions(
                 error!("Database get error: {}", e);
                 actix_web::error::ErrorInternalServerError("Database get error")
             })?;
+        let is_transformed: Option<i64> = row.get(13)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
+        let raw_data: Option<String> = row.get(14)
+            .map_err(|e| {
+                error!("Database get error: {}", e);
+                actix_web::error::ErrorInternalServerError("Database get error")
+            })?;
 
         transactions.push(serde_json::json!({
             "id": id,
@@ -1446,7 +1466,9 @@ pub async fn get_transactions(
             "trade_date": trade_date,
             "settlement_date": settlement_date,
             "fees": fees,
-            "created_at": created_at
+            "created_at": created_at,
+            "is_transformed": is_transformed.map(|v| v != 0),
+            "raw_data": raw_data
         }));
     }
 
@@ -2291,6 +2313,907 @@ pub async fn complete_connection_sync(
     Ok(HttpResponse::Ok().json(ApiResponse::success(summary)))
 }
 
+/// Unmatched transaction response model
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UnmatchedTransactionResponse {
+    pub id: String,
+    pub user_id: String,
+    pub transaction_id: String,
+    pub snaptrade_transaction_id: String,
+    pub symbol: String,
+    pub trade_type: String,
+    pub units: f64,
+    pub price: f64,
+    pub fee: f64,
+    pub trade_date: String,
+    pub brokerage_name: Option<String>,
+    pub is_option: bool,
+    pub difficulty_reason: Option<String>,
+    pub confidence_score: Option<f64>,
+    pub suggested_matches: Option<Vec<String>>,
+    pub status: String,
+    pub resolved_trade_id: Option<i64>,
+    pub resolved_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Resolve unmatched transaction request
+#[derive(Deserialize, Debug)]
+pub struct ResolveUnmatchedRequest {
+    pub matched_transaction_id: Option<String>, // ID of the transaction to match with (if merging)
+    pub action: String, // "merge" or "create_open"
+    pub entry_price: Option<f64>, // Required if action is "create_open"
+    pub entry_date: Option<String>, // Required if action is "create_open"
+}
+
+/// Get all unmatched transactions for the authenticated user
+async fn get_unmatched_transactions(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &app_state.config.supabase).await?;
+    let user_id = get_supabase_user_id(&claims);
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT id, user_id, transaction_id, snaptrade_transaction_id, symbol,
+                   trade_type, units, price, fee, trade_date, brokerage_name,
+                   is_option, difficulty_reason, confidence_score, suggested_matches,
+                   status, resolved_trade_id, resolved_at, created_at, updated_at
+            FROM unmatched_transactions
+            WHERE user_id = ? AND status = 'pending'
+            ORDER BY trade_date DESC, created_at DESC
+            "#
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to prepare query: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut rows = stmt.query(libsql::params![user_id]).await
+        .map_err(|e| {
+            error!("Failed to query unmatched transactions: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut transactions = Vec::new();
+    while let Some(row) = rows.next().await
+        .map_err(|e| {
+            error!("Failed to read row: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })? {
+        let suggested_matches_str: Option<String> = row.get(14)
+            .map_err(|e| {
+                error!("Failed to get suggested_matches: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+        let suggested_matches: Option<Vec<String>> = suggested_matches_str
+            .and_then(|s| serde_json::from_str(&s).ok());
+
+        transactions.push(UnmatchedTransactionResponse {
+            id: row.get(0).map_err(|e| {
+                error!("Failed to get id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            user_id: row.get(1).map_err(|e| {
+                error!("Failed to get user_id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            transaction_id: row.get(2).map_err(|e| {
+                error!("Failed to get transaction_id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            snaptrade_transaction_id: row.get(3).map_err(|e| {
+                error!("Failed to get snaptrade_transaction_id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            symbol: row.get(4).map_err(|e| {
+                error!("Failed to get symbol: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            trade_type: row.get(5).map_err(|e| {
+                error!("Failed to get trade_type: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            units: row.get(6).map_err(|e| {
+                error!("Failed to get units: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            price: row.get(7).map_err(|e| {
+                error!("Failed to get price: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            fee: row.get(8).map_err(|e| {
+                error!("Failed to get fee: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            trade_date: row.get(9).map_err(|e| {
+                error!("Failed to get trade_date: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            brokerage_name: row.get(10).map_err(|e| {
+                error!("Failed to get brokerage_name: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            is_option: row.get::<Option<i64>>(11).map_err(|e| {
+                error!("Failed to get is_option: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?.map(|v| v != 0).unwrap_or(false),
+            difficulty_reason: row.get(12).map_err(|e| {
+                error!("Failed to get difficulty_reason: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            confidence_score: row.get(13).map_err(|e| {
+                error!("Failed to get confidence_score: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            suggested_matches,
+            status: row.get(15).map_err(|e| {
+                error!("Failed to get status: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            resolved_trade_id: row.get(16).map_err(|e| {
+                error!("Failed to get resolved_trade_id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            resolved_at: row.get(17).map_err(|e| {
+                error!("Failed to get resolved_at: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            created_at: row.get(18).map_err(|e| {
+                error!("Failed to get created_at: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            updated_at: row.get(19).map_err(|e| {
+                error!("Failed to get updated_at: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+        });
+    }
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(transactions)))
+}
+
+/// Resolve an unmatched transaction (merge with another or create open position)
+async fn resolve_unmatched_transaction(
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<ResolveUnmatchedRequest>,
+    app_state: web::Data<AppState>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &app_state.config.supabase).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let unmatched_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get the unmatched transaction
+    let stmt = conn
+        .prepare(
+            r#"
+            SELECT id, symbol, trade_type, units, price, fee, trade_date,
+                   brokerage_name, raw_data, is_option
+            FROM unmatched_transactions
+            WHERE id = ? AND user_id = ? AND status = 'pending'
+            "#
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to prepare query: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut rows = stmt.query(libsql::params![unmatched_id.clone(), user_id.clone()]).await
+        .map_err(|e| {
+            error!("Failed to query unmatched transaction: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let row = rows.next().await
+        .map_err(|e| {
+            error!("Failed to read row: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?
+        .ok_or_else(|| actix_web::error::ErrorNotFound("Unmatched transaction not found"))?;
+
+    let symbol: String = row.get(1).map_err(|e| {
+        error!("Failed to get symbol: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let trade_type: String = row.get(2).map_err(|e| {
+        error!("Failed to get trade_type: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let units: f64 = row.get(3).map_err(|e| {
+        error!("Failed to get units: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let price: f64 = row.get(4).map_err(|e| {
+        error!("Failed to get price: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let fee: f64 = row.get(5).map_err(|e| {
+        error!("Failed to get fee: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let trade_date: String = row.get(6).map_err(|e| {
+        error!("Failed to get trade_date: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let brokerage_name: Option<String> = row.get(7).map_err(|e| {
+        error!("Failed to get brokerage_name: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let raw_data: String = row.get(8).map_err(|e| {
+        error!("Failed to get raw_data: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let is_option: bool = row.get::<Option<i64>>(9).map_err(|e| {
+        error!("Failed to get is_option: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?.map(|v| v != 0).unwrap_or(false);
+
+    let vectorization_service_opt = Some(app_state.vectorization_service.as_ref());
+
+    let trade_id = match body.action.as_str() {
+        "merge" => {
+            // Merge with another transaction
+            if let Some(matched_id) = &body.matched_transaction_id {
+                // Get the matched transaction details
+                let mut match_stmt = conn
+                    .prepare(
+                        r#"
+                        SELECT symbol, trade_type, units, price, fee, trade_date,
+                               brokerage_name, raw_data, is_option
+                        FROM unmatched_transactions
+                        WHERE id = ? AND user_id = ? AND status = 'pending'
+                        "#
+                    )
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to prepare match query: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                let mut match_rows = match_stmt.query(libsql::params![matched_id.as_str(), user_id.as_str()]).await
+                    .map_err(|e| {
+                        error!("Failed to query matched transaction: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                let match_row = match_rows.next().await
+                    .map_err(|e| {
+                        error!("Failed to read match row: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?
+                    .ok_or_else(|| actix_web::error::ErrorNotFound("Matched transaction not found"))?;
+
+                let match_symbol: String = match_row.get(0).map_err(|e| {
+                    error!("Failed to get match symbol: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_trade_type: String = match_row.get(1).map_err(|e| {
+                    error!("Failed to get match trade_type: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_units: f64 = match_row.get(2).map_err(|e| {
+                    error!("Failed to get match units: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_price: f64 = match_row.get(3).map_err(|e| {
+                    error!("Failed to get match price: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_fee: f64 = match_row.get(4).map_err(|e| {
+                    error!("Failed to get match fee: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_trade_date: String = match_row.get(5).map_err(|e| {
+                    error!("Failed to get match trade_date: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                let match_brokerage_name: Option<String> = match_row.get(6).map_err(|e| {
+                    error!("Failed to get match brokerage_name: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+
+                // Determine which is BUY and which is SELL
+                let (entry_price, exit_price, entry_date, exit_date, entry_fee, exit_fee) = 
+                    if trade_type == "BUY" && match_trade_type == "SELL" {
+                        (price, match_price, trade_date.clone(), match_trade_date.clone(), fee, match_fee)
+                    } else if trade_type == "SELL" && match_trade_type == "BUY" {
+                        (match_price, price, match_trade_date.clone(), trade_date.clone(), match_fee, fee)
+                    } else {
+                        return Err(actix_web::error::ErrorBadRequest("Transactions must be one BUY and one SELL"));
+                    };
+
+                let shares = units.min(match_units);
+                let brokerage_name_merged = brokerage_name.or(match_brokerage_name);
+
+                if is_option {
+                    return Err(actix_web::error::ErrorBadRequest("Option merging not yet implemented"));
+                }
+
+                // Note: Manual merge feature is now handled by the merge_transactions endpoint
+                // This code path is for resolving unmatched transactions, which should use Stock::create directly
+                return Err(actix_web::error::ErrorBadRequest("Please use the merge_transactions endpoint for merging trades"));
+            } else {
+                return Err(actix_web::error::ErrorBadRequest("matched_transaction_id required for merge action"));
+            }
+        }
+        "create_open" => {
+            // Create an open position
+            let entry_price = body.entry_price
+                .ok_or_else(|| actix_web::error::ErrorBadRequest("entry_price required for create_open action"))?;
+            let entry_date = body.entry_date
+                .as_ref()
+                .ok_or_else(|| actix_web::error::ErrorBadRequest("entry_date required for create_open action"))?;
+
+            if trade_type != "BUY" {
+                return Err(actix_web::error::ErrorBadRequest("Only BUY transactions can be created as open positions"));
+            }
+
+            if is_option {
+                return Err(actix_web::error::ErrorBadRequest("Option open positions not yet implemented"));
+            }
+
+            let trade_id = transform::create_open_stock_trade(
+                &conn,
+                &symbol,
+                entry_price,
+                units,
+                entry_date.clone(),
+                fee,
+                brokerage_name,
+                &user_id,
+                vectorization_service_opt,
+            ).await
+            .map_err(|e| {
+                error!("Failed to create open trade: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to create trade")
+            })?;
+
+            // Mark as resolved
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE unmatched_transactions SET status = 'resolved', resolved_trade_id = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+                libsql::params![trade_id, now.clone(), now.clone(), unmatched_id, user_id],
+            ).await
+            .map_err(|e| {
+                error!("Failed to update unmatched transaction: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+            trade_id
+        }
+        _ => {
+            return Err(actix_web::error::ErrorBadRequest("Invalid action. Must be 'merge' or 'create_open'"));
+        }
+    };
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+        "trade_id": trade_id,
+        "message": "Transaction resolved successfully"
+    }))))
+}
+
+/// Ignore an unmatched transaction (mark as ignored)
+async fn ignore_unmatched_transaction(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &app_state.config.supabase).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let unmatched_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    let now = Utc::now().to_rfc3339();
+    let result = conn.execute(
+        "UPDATE unmatched_transactions SET status = 'ignored', updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'",
+        libsql::params![now.clone(), unmatched_id, user_id],
+    ).await
+    .map_err(|e| {
+        error!("Failed to update unmatched transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if result == 0 {
+        return Err(actix_web::error::ErrorNotFound("Unmatched transaction not found or already resolved"));
+    }
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+        "message": "Transaction ignored successfully"
+    }))))
+}
+
+/// Get suggested matches for an unmatched transaction
+async fn get_unmatched_suggestions(
+    req: HttpRequest,
+    path: web::Path<String>,
+    app_state: web::Data<AppState>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &app_state.config.supabase).await?;
+    let user_id = get_supabase_user_id(&claims);
+    let unmatched_id = path.into_inner();
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    // Get the unmatched transaction
+    let stmt = conn
+        .prepare(
+            r#"
+            SELECT symbol, trade_type, units, price, trade_date, brokerage_name
+            FROM unmatched_transactions
+            WHERE id = ? AND user_id = ?
+            "#
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to prepare query: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut rows = stmt.query(libsql::params![unmatched_id.clone(), user_id.clone()]).await
+        .map_err(|e| {
+            error!("Failed to query unmatched transaction: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let row = rows.next().await
+        .map_err(|e| {
+            error!("Failed to read row: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?
+        .ok_or_else(|| actix_web::error::ErrorNotFound("Unmatched transaction not found"))?;
+
+    let symbol: String = row.get(0).map_err(|e| {
+        error!("Failed to get symbol: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let trade_type: String = row.get(1).map_err(|e| {
+        error!("Failed to get trade_type: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let _units: f64 = row.get(2).map_err(|e| {
+        error!("Failed to get units: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let _price: f64 = row.get(3).map_err(|e| {
+        error!("Failed to get price: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let _trade_date: String = row.get(4).map_err(|e| {
+        error!("Failed to get trade_date: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let _brokerage_name: Option<String> = row.get(5).map_err(|e| {
+        error!("Failed to get brokerage_name: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Find potential matches (opposite trade type, same symbol)
+    let opposite_type = if trade_type == "BUY" { "SELL" } else { "BUY" };
+
+    let match_stmt = conn
+        .prepare(
+            r#"
+            SELECT id, symbol, trade_type, units, price, trade_date, brokerage_name,
+                   confidence_score, difficulty_reason
+            FROM unmatched_transactions
+            WHERE user_id = ? AND symbol = ? AND trade_type = ? AND status = 'pending' AND id != ?
+            ORDER BY trade_date ASC
+            LIMIT 10
+            "#
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to prepare match query: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut match_rows = match_stmt.query(libsql::params![user_id.as_str(), symbol.as_str(), opposite_type, unmatched_id.as_str()]).await
+        .map_err(|e| {
+            error!("Failed to query matches: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    let mut suggestions = Vec::new();
+    while let Some(match_row) = match_rows.next().await
+        .map_err(|e| {
+            error!("Failed to read match row: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })? {
+        suggestions.push(serde_json::json!({
+            "id": match_row.get::<String>(0).map_err(|e| {
+                error!("Failed to get suggestion id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "symbol": match_row.get::<String>(1).map_err(|e| {
+                error!("Failed to get suggestion symbol: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "trade_type": match_row.get::<String>(2).map_err(|e| {
+                error!("Failed to get suggestion trade_type: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "units": match_row.get::<f64>(3).map_err(|e| {
+                error!("Failed to get suggestion units: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "price": match_row.get::<f64>(4).map_err(|e| {
+                error!("Failed to get suggestion price: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "trade_date": match_row.get::<String>(5).map_err(|e| {
+                error!("Failed to get suggestion trade_date: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "brokerage_name": match_row.get::<Option<String>>(6).map_err(|e| {
+                error!("Failed to get suggestion brokerage_name: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "confidence_score": match_row.get::<Option<f64>>(7).map_err(|e| {
+                error!("Failed to get suggestion confidence_score: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            "difficulty_reason": match_row.get::<Option<String>>(8).map_err(|e| {
+                error!("Failed to get suggestion difficulty_reason: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+        }));
+    }
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(suggestions)))
+}
+
+/// Request structure for merging transactions
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeTransactionsRequest {
+    pub transaction_ids: Vec<String>,
+    pub trade_type: String, // "stock" or "option"
+    // Stock fields
+    pub symbol: String,
+    pub order_type: String,
+    pub stop_loss: Option<f64>,
+    pub take_profit: Option<f64>,
+    pub initial_target: Option<f64>,
+    pub profit_target: Option<f64>,
+    pub trade_ratings: Option<i32>,
+    pub reviewed: Option<bool>,
+    pub mistakes: Option<String>,
+    pub brokerage_name: Option<String>,
+    // Option-specific fields
+    pub strategy_type: Option<String>,
+    pub trade_direction: Option<String>,
+    pub option_type: Option<String>,
+    pub strike_price: Option<f64>,
+    pub expiration_date: Option<String>,
+    pub implied_volatility: Option<f64>,
+}
+
+/// Route: Merge brokerage transactions into a stock or option trade
+pub async fn merge_transactions(
+    req: HttpRequest,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+    payload: web::Json<MergeTransactionsRequest>,
+) -> ActixResult<HttpResponse> {
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = get_supabase_user_id(&claims);
+
+    let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
+
+    let request = payload.into_inner();
+
+    if request.transaction_ids.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("No transactions selected")));
+    }
+
+    // Fetch selected transactions
+    let placeholders = request.transaction_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut sql = format!(
+        "SELECT id, account_id, symbol, transaction_type, quantity, price, fees, trade_date, raw_data 
+         FROM brokerage_transactions 
+         WHERE id IN ({}) AND account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)) AND (is_transformed IS NULL OR is_transformed = 0)",
+        placeholders
+    );
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .await
+        .map_err(|e| {
+            error!("Failed to prepare transaction query: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    // Build params: transaction IDs + user_id
+    let mut params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+    params.push(&user_id);
+    
+    let mut rows = stmt.query(params)
+        .await
+        .map_err(|e| {
+            error!("Failed to query transactions: {}", e);
+            actix_web::error::ErrorInternalServerError("Database query error")
+        })?;
+
+    #[derive(Debug)]
+    struct TransactionData {
+        id: String,
+        symbol: Option<String>,
+        transaction_type: Option<String>,
+        quantity: Option<f64>,
+        price: Option<f64>,
+        fees: Option<f64>,
+        trade_date: String,
+    }
+
+    let mut transactions = Vec::new();
+    while let Some(row) = rows.next().await
+        .map_err(|e| {
+            error!("Database row error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database row error")
+        })? {
+        transactions.push(TransactionData {
+            id: row.get(0).map_err(|e| {
+                error!("Failed to get id: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            symbol: row.get(2).map_err(|e| {
+                error!("Failed to get symbol: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            transaction_type: row.get(3).map_err(|e| {
+                error!("Failed to get transaction_type: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            quantity: row.get(4).map_err(|e| {
+                error!("Failed to get quantity: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            price: row.get(5).map_err(|e| {
+                error!("Failed to get price: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            fees: row.get(6).map_err(|e| {
+                error!("Failed to get fees: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+            trade_date: row.get(7).map_err(|e| {
+                error!("Failed to get trade_date: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?,
+        });
+    }
+
+    if transactions.is_empty() {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("No valid transactions found")));
+    }
+
+    // Separate BUY and SELL transactions
+    let mut buys: Vec<&TransactionData> = transactions.iter()
+        .filter(|t| t.transaction_type.as_deref() == Some("BUY"))
+        .collect();
+    let mut sells: Vec<&TransactionData> = transactions.iter()
+        .filter(|t| t.transaction_type.as_deref() == Some("SELL"))
+        .collect();
+
+    // Calculate weighted averages
+    let calculate_weighted_avg = |txns: &[&TransactionData]| -> (f64, f64, f64) {
+        let mut total_value = 0.0;
+        let mut total_quantity = 0.0;
+        let mut total_fees = 0.0;
+
+        for txn in txns {
+            let qty = txn.quantity.unwrap_or(0.0);
+            let price = txn.price.unwrap_or(0.0);
+            total_value += price * qty;
+            total_quantity += qty;
+            total_fees += txn.fees.unwrap_or(0.0);
+        }
+
+        let avg_price = if total_quantity > 0.0 {
+            total_value / total_quantity
+        } else {
+            0.0
+        };
+
+        (avg_price, total_quantity, total_fees)
+    };
+
+    let (entry_price, entry_quantity, entry_fees) = if !buys.is_empty() {
+        calculate_weighted_avg(&buys)
+    } else if !sells.is_empty() {
+        calculate_weighted_avg(&sells)
+    } else {
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("No BUY or SELL transactions found")));
+    };
+
+    let (_exit_price_opt, _exit_quantity, exit_fees) = if !sells.is_empty() {
+        let (price, qty, fees) = calculate_weighted_avg(&sells);
+        (Some(price), qty, fees)
+    } else {
+        (None, 0.0, 0.0)
+    };
+
+    // Determine dates
+    let entry_date = buys.iter()
+        .chain(sells.iter())
+        .map(|t| &t.trade_date)
+        .min()
+        .ok_or_else(|| {
+            error!("No trade dates found");
+            actix_web::error::ErrorInternalServerError("No trade dates")
+        })?;
+
+    let exit_date = if !sells.is_empty() {
+        sells.iter()
+            .map(|t| &t.trade_date)
+            .max()
+    } else {
+        None
+    };
+
+    // Parse dates
+    let parse_date = |date_str: &str| -> Result<chrono::DateTime<Utc>, actix_web::Error> {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
+            return Ok(dt.with_timezone(&Utc));
+        }
+        if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+            return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+        }
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+            let ndt = date.and_hms_opt(0, 0, 0)
+                .ok_or_else(|| actix_web::error::ErrorInternalServerError("Invalid date"))?;
+            return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+        }
+        Err(actix_web::error::ErrorInternalServerError("Unsupported date format"))
+    };
+
+    let entry_date_parsed = parse_date(entry_date)?;
+    let exit_date_parsed = exit_date.map(|d| parse_date(d)).transpose()?;
+
+    // Create trade based on type
+    if request.trade_type == "stock" {
+        let order_type = request.order_type.parse::<OrderType>()
+            .map_err(|_| actix_web::error::ErrorBadRequest("Invalid order_type"))?;
+
+        let create_request = CreateStockRequest {
+            symbol: request.symbol,
+            trade_type: TradeType::BUY,
+            order_type,
+            entry_price,
+            stop_loss: request.stop_loss.unwrap_or(entry_price * 0.95),
+            commissions: entry_fees + exit_fees,
+            number_shares: entry_quantity,
+            take_profit: request.take_profit,
+            initial_target: request.initial_target,
+            profit_target: request.profit_target,
+            trade_ratings: request.trade_ratings,
+            entry_date: entry_date_parsed,
+            reviewed: request.reviewed,
+            mistakes: request.mistakes,
+            brokerage_name: request.brokerage_name,
+        };
+
+        match Stock::create(&conn, create_request).await {
+            Ok(stock) => {
+                // Mark transactions as transformed
+                let update_sql = format!(
+                    "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
+                    placeholders
+                );
+                let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+
+                let mut update_stmt = conn.prepare(&update_sql).await
+                    .map_err(|e| {
+                        error!("Failed to prepare update statement: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                update_stmt.query(update_params).await
+                    .map_err(|e| {
+                        error!("Failed to update transactions: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                info!("Successfully merged {} transactions into stock trade {}", request.transaction_ids.len(), stock.id);
+                Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
+            }
+            Err(e) => {
+                error!("Failed to create stock trade: {}", e);
+                Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create stock trade")))
+            }
+        }
+    } else if request.trade_type == "option" {
+        let strategy_type = request.strategy_type.ok_or_else(|| {
+            actix_web::error::ErrorBadRequest("strategy_type required for option trades")
+        })?;
+        let trade_direction = request.trade_direction.ok_or_else(|| {
+            actix_web::error::ErrorBadRequest("trade_direction required for option trades")
+        })?.parse::<TradeDirection>()
+            .map_err(|_| actix_web::error::ErrorBadRequest("Invalid trade_direction"))?;
+        let option_type = request.option_type.ok_or_else(|| {
+            actix_web::error::ErrorBadRequest("option_type required for option trades")
+        })?.parse::<OptionType>()
+            .map_err(|_| actix_web::error::ErrorBadRequest("Invalid option_type"))?;
+        let strike_price = request.strike_price.ok_or_else(|| {
+            actix_web::error::ErrorBadRequest("strike_price required for option trades")
+        })?;
+        let expiration_date = request.expiration_date.ok_or_else(|| {
+            actix_web::error::ErrorBadRequest("expiration_date required for option trades")
+        })?;
+        let expiration_date_parsed = parse_date(&expiration_date)?;
+        let implied_volatility = request.implied_volatility.unwrap_or(0.0);
+
+        let number_of_contracts = entry_quantity as i32;
+        let total_premium = entry_price * entry_quantity;
+        // Status is determined in OptionTrade::create (always Open initially)
+        // Exit price and date are set via updates if needed
+
+        let create_request = CreateOptionRequest {
+            symbol: request.symbol,
+            strategy_type,
+            trade_direction,
+            number_of_contracts,
+            option_type,
+            strike_price,
+            expiration_date: expiration_date_parsed,
+            entry_price,
+            total_premium,
+            commissions: entry_fees + exit_fees,
+            implied_volatility,
+            entry_date: entry_date_parsed,
+            initial_target: request.initial_target,
+            profit_target: request.profit_target,
+            trade_ratings: request.trade_ratings,
+            reviewed: request.reviewed,
+            mistakes: request.mistakes,
+            brokerage_name: request.brokerage_name,
+        };
+
+        match OptionTrade::create(&conn, create_request).await {
+            Ok(option) => {
+                // Mark transactions as transformed
+                let update_sql = format!(
+                    "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
+                    placeholders
+                );
+                let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+
+                let mut update_stmt = conn.prepare(&update_sql).await
+                    .map_err(|e| {
+                        error!("Failed to prepare update statement: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                update_stmt.query(update_params).await
+                    .map_err(|e| {
+                        error!("Failed to update transactions: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
+
+                info!("Successfully merged {} transactions into option trade {}", request.transaction_ids.len(), option.id);
+                Ok(HttpResponse::Created().json(ApiResponse::success(option)))
+            }
+            Err(e) => {
+                error!("Failed to create option trade: {}", e);
+                Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create option trade")))
+            }
+        }
+    } else {
+        Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid trade_type. Must be 'stock' or 'option'")))
+    }
+}
+
 /// Configure brokerage routes
 pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -2308,5 +3231,10 @@ pub fn configure_brokerage_routes(cfg: &mut web::ServiceConfig) {
             .route("/accounts/sync", web::post().to(sync_accounts))
             .route("/transactions", web::get().to(get_transactions))
             .route("/holdings", web::get().to(get_holdings))
+            .route("/unmatched-transactions", web::get().to(get_unmatched_transactions))
+            .route("/unmatched-transactions/{id}/resolve", web::post().to(resolve_unmatched_transaction))
+            .route("/unmatched-transactions/{id}/ignore", web::post().to(ignore_unmatched_transaction))
+            .route("/unmatched-transactions/{id}/suggestions", web::get().to(get_unmatched_suggestions))
+            .route("/transactions/merge", web::post().to(merge_transactions))
     ); // Semi colon 
 }

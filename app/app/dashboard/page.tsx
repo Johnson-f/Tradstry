@@ -15,6 +15,7 @@ import { BasicCards } from "@/components/dashboard/basic-cards";
 import { ProgressTracker } from "@/components/dashboard/progress-tracker";
 import { Averages } from "@/components/dashboard/averages";
 import { Calendar as TradingCalendar } from "@/components/dashboard/calendar";
+import { Trades } from "@/components/dashboard/trades";
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all_time' | 'custom';
 
@@ -163,11 +164,10 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* Calendar - Right side */}
-            <div className="flex justify-end">
-              <div className="w-full md:w-[calc(50%-12px)]">
-                <TradingCalendar />
-              </div>
+            {/* Trades & Calendar - Side by side */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <Trades />
+              <TradingCalendar />
             </div>
           </div>
         </ScrollArea>

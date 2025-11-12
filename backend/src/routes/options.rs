@@ -317,23 +317,47 @@ pub async fn get_all_options(
     let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
     let option_query = query.into_inner();
 
-    // Generate cache key based on query parameters
-    let query_hash = format!("{:?}", option_query);
-    let cache_key = format!("db:{}:options:list:{}", user_id, query_hash);
-    
-    match cache_service.get_or_fetch(&cache_key, 1800, || async {
-        info!("Cache miss for options list, fetching from database");
-        OptionTrade::find_all(&conn, option_query).await.map_err(|e| anyhow::anyhow!("{}", e))
-    }).await {
-        Ok(options) => {
-            info!("Found {} options (cached)", options.len());
-            Ok(HttpResponse::Ok().json(ApiResponse::success(options)))
+    // Check if we need simplified response for open trades
+    if option_query.open_only == Some(true) {
+        info!("get_all_options: Fetching open trades with simplified response");
+        // Generate cache key based on query parameters
+        let query_hash = format!("{:?}", option_query);
+        let cache_key = format!("db:{}:options:open:summary:{}", user_id, query_hash);
+        
+        match cache_service.get_or_fetch(&cache_key, 1800, || async {
+            info!("Cache miss for open options summary, fetching from database");
+            OptionTrade::find_all_open_summary(&conn, option_query).await.map_err(|e| anyhow::anyhow!("{}", e))
+        }).await {
+            Ok(open_trades) => {
+                info!("Found {} open options (cached)", open_trades.len());
+                Ok(HttpResponse::Ok().json(ApiResponse::success(open_trades)))
+            }
+            Err(e) => {
+                error!("Failed to fetch open options: {}", e);
+                Ok(HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to fetch open options")
+                ))
+            }
         }
-        Err(e) => {
-            error!("Failed to fetch options: {}", e);
-            Ok(HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to fetch options")
-            ))
+    } else {
+        // Generate cache key based on query parameters
+        let query_hash = format!("{:?}", option_query);
+        let cache_key = format!("db:{}:options:list:{}", user_id, query_hash);
+        
+        match cache_service.get_or_fetch(&cache_key, 1800, || async {
+            info!("Cache miss for options list, fetching from database");
+            OptionTrade::find_all(&conn, option_query).await.map_err(|e| anyhow::anyhow!("{}", e))
+        }).await {
+            Ok(options) => {
+                info!("Found {} options (cached)", options.len());
+                Ok(HttpResponse::Ok().json(ApiResponse::success(options)))
+            }
+            Err(e) => {
+                error!("Failed to fetch options: {}", e);
+                Ok(HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to fetch options")
+                ))
+            }
         }
     }
 }

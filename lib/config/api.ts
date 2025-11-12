@@ -56,6 +56,34 @@ export const apiConfig = {
       test: "/stocks/test",
       count: "/stocks/count",
       byId: (id: number) => `/stocks/${id}`,
+      /**
+       * Build stocks endpoint with query parameters
+       * @param params - Query parameters including openOnly filter
+       * @returns Full endpoint URL with query string
+       */
+      withQuery: (params?: {
+        openOnly?: boolean;
+        symbol?: string;
+        tradeType?: string;
+        startDate?: string;
+        endDate?: string;
+        limit?: number;
+        offset?: number;
+      }) => {
+        const queryParams = new URLSearchParams();
+        if (params?.openOnly !== undefined) {
+          queryParams.append('openOnly', params.openOnly.toString());
+        }
+        if (params?.symbol) queryParams.append('symbol', params.symbol);
+        if (params?.tradeType) queryParams.append('tradeType', params.tradeType);
+        if (params?.startDate) queryParams.append('startDate', params.startDate);
+        if (params?.endDate) queryParams.append('endDate', params.endDate);
+        if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+        if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());
+        
+        const queryString = queryParams.toString();
+        return `/stocks${queryString ? `?${queryString}` : ''}`;
+      },
       analytics: {
         summary: "/stocks/analytics",
         pnl: "/stocks/analytics/pnl",
@@ -81,6 +109,40 @@ export const apiConfig = {
       test: "/options/test",
       count: "/options/count",
       byId: (id: number) => `/options/${id}`,
+      /**
+       * Build options endpoint with query parameters
+       * @param params - Query parameters including openOnly filter
+       * @returns Full endpoint URL with query string
+       */
+      withQuery: (params?: {
+        openOnly?: boolean;
+        symbol?: string;
+        strategyType?: string;
+        tradeDirection?: string;
+        optionType?: string;
+        status?: string;
+        startDate?: string;
+        endDate?: string;
+        limit?: number;
+        offset?: number;
+      }) => {
+        const queryParams = new URLSearchParams();
+        if (params?.openOnly !== undefined) {
+          queryParams.append('openOnly', params.openOnly.toString());
+        }
+        if (params?.symbol) queryParams.append('symbol', params.symbol);
+        if (params?.strategyType) queryParams.append('strategyType', params.strategyType);
+        if (params?.tradeDirection) queryParams.append('tradeDirection', params.tradeDirection);
+        if (params?.optionType) queryParams.append('optionType', params.optionType);
+        if (params?.status) queryParams.append('status', params.status);
+        if (params?.startDate) queryParams.append('startDate', params.startDate);
+        if (params?.endDate) queryParams.append('endDate', params.endDate);
+        if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+        if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());
+        
+        const queryString = queryParams.toString();
+        return `/options${queryString ? `?${queryString}` : ''}`;
+      },
       analytics: {
         summary: "/options/analytics",
         pnl: "/options/analytics/pnl",
@@ -276,12 +338,24 @@ export const apiConfig = {
       accounts: {
         base: "/brokerage/accounts",
         sync: "/brokerage/accounts/sync",
+        detail: (id: string) => `/brokerage/accounts/${id}/detail`,
+        positions: (id: string) => `/brokerage/accounts/${id}/positions`,
+        optionPositions: (id: string) => `/brokerage/accounts/${id}/positions/options`,
+        transactions: (id: string) => `/brokerage/accounts/${id}/transactions`,
       },
       transactions: {
         base: "/brokerage/transactions",
+        merge: "/brokerage/transactions/merge",
       },
       holdings: {
         base: "/brokerage/holdings",
+      },
+      unmatched: {
+        base: "/brokerage/unmatched-transactions",
+        byId: (id: string) => `/brokerage/unmatched-transactions/${id}`,
+        resolve: (id: string) => `/brokerage/unmatched-transactions/${id}/resolve`,
+        ignore: (id: string) => `/brokerage/unmatched-transactions/${id}/ignore`,
+        suggestions: (id: string) => `/brokerage/unmatched-transactions/${id}/suggestions`,
       },
     },
    

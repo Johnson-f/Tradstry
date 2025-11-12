@@ -7,6 +7,9 @@ import type {
   ConnectBrokerageRequest,
   GetTransactionsQuery,
   GetHoldingsQuery,
+  GetAccountTransactionsQuery,
+  ResolveUnmatchedRequest,
+  SyncSummary,
   UseBrokerageConnectionsReturn,
   UseBrokerageAccountsReturn,
   UseBrokerageTransactionsReturn,
@@ -225,7 +228,6 @@ export function useBrokerage(): UseBrokerageReturn {
     data: transactions,
     isLoading: transactionsLoading,
     error: transactionsError,
-    refetch: refetchTransactions,
   } = useQuery({
     queryKey: QUERY_KEYS.transactions(),
     queryFn: () => brokerageService.getTransactions(),
@@ -239,13 +241,94 @@ export function useBrokerage(): UseBrokerageReturn {
     data: holdings,
     isLoading: holdingsLoading,
     error: holdingsError,
-    refetch: refetchHoldings,
   } = useQuery({
     queryKey: QUERY_KEYS.holdings(),
     queryFn: () => brokerageService.getHoldings(),
     staleTime: 1 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 2,
+  });
+
+  // Account detail mutation
+  const accountDetailMutation = useMutation({
+    mutationFn: (accountId: string) => brokerageService.getAccountDetail(accountId),
+    onError: (error: Error) => {
+      toast.error(`Failed to get account detail: ${error.message}`);
+    },
+  });
+
+  // Account positions mutation
+  const accountPositionsMutation = useMutation({
+    mutationFn: (accountId: string) => brokerageService.getAccountPositions(accountId),
+    onError: (error: Error) => {
+      toast.error(`Failed to get account positions: ${error.message}`);
+    },
+  });
+
+  // Account option positions mutation
+  const accountOptionPositionsMutation = useMutation({
+    mutationFn: (accountId: string) => brokerageService.getAccountOptionPositions(accountId),
+    onError: (error: Error) => {
+      toast.error(`Failed to get account option positions: ${error.message}`);
+    },
+  });
+
+  // Account transactions mutation
+  const accountTransactionsMutation = useMutation({
+    mutationFn: ({ accountId, query }: { accountId: string; query?: GetAccountTransactionsQuery }) =>
+      brokerageService.getAccountTransactions(accountId, query),
+    onError: (error: Error) => {
+      toast.error(`Failed to get account transactions: ${error.message}`);
+    },
+  });
+
+  // Unmatched transactions
+  const {
+    data: unmatchedTransactions,
+    isLoading: unmatchedTransactionsLoading,
+    error: unmatchedTransactionsError,
+    refetch: refetchUnmatchedTransactions,
+  } = useQuery({
+    queryKey: ['brokerage', 'unmatched-transactions'],
+    queryFn: () => brokerageService.getUnmatchedTransactions(),
+    staleTime: 1 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: 2,
+  });
+
+  // Resolve unmatched transaction mutation
+  const resolveUnmatchedMutation = useMutation({
+    mutationFn: ({ id, request }: { id: string; request: ResolveUnmatchedRequest }) =>
+      brokerageService.resolveUnmatchedTransaction(id, request),
+    onSuccess: () => {
+      toast.success('Transaction resolved successfully');
+      void queryClient.invalidateQueries({ queryKey: ['brokerage', 'unmatched-transactions'] });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
+      void queryClient.invalidateQueries({ queryKey: ['brokerage', 'transactions'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to resolve transaction: ${error.message}`);
+    },
+  });
+
+  // Ignore unmatched transaction mutation
+  const ignoreUnmatchedMutation = useMutation({
+    mutationFn: (id: string) => brokerageService.ignoreUnmatchedTransaction(id),
+    onSuccess: () => {
+      toast.success('Transaction ignored');
+      void queryClient.invalidateQueries({ queryKey: ['brokerage', 'unmatched-transactions'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to ignore transaction: ${error.message}`);
+    },
+  });
+
+  // Get unmatched suggestions mutation
+  const unmatchedSuggestionsMutation = useMutation({
+    mutationFn: (id: string) => brokerageService.getUnmatchedSuggestions(id),
+    onError: (error: Error) => {
+      toast.error(`Failed to get suggestions: ${error.message}`);
+    },
   });
 
   return {
@@ -314,6 +397,56 @@ export function useBrokerage(): UseBrokerageReturn {
         queryKey: QUERY_KEYS.holdings(query),
       });
     },
+
+    // Get account detail
+    getAccountDetail: async (accountId: string) => {
+      return await accountDetailMutation.mutateAsync(accountId);
+    },
+    accountDetailLoading: accountDetailMutation.isPending,
+
+    // Get account positions
+    getAccountPositions: async (accountId: string) => {
+      return await accountPositionsMutation.mutateAsync(accountId);
+    },
+    accountPositionsLoading: accountPositionsMutation.isPending,
+
+    // Get account option positions
+    getAccountOptionPositions: async (accountId: string) => {
+      return await accountOptionPositionsMutation.mutateAsync(accountId);
+    },
+    accountOptionPositionsLoading: accountOptionPositionsMutation.isPending,
+
+    // Get account transactions
+    getAccountTransactions: async (accountId: string, query?: GetAccountTransactionsQuery) => {
+      return await accountTransactionsMutation.mutateAsync({ accountId, query });
+    },
+    accountTransactionsLoading: accountTransactionsMutation.isPending,
+
+    // Unmatched transactions
+    unmatchedTransactions: unmatchedTransactions ?? [],
+    unmatchedTransactionsLoading,
+    unmatchedTransactionsError: unmatchedTransactionsError as Error | null,
+    refetchUnmatchedTransactions: () => {
+      void refetchUnmatchedTransactions();
+    },
+
+    // Resolve unmatched transaction
+    resolveUnmatchedTransaction: async (id: string, request: ResolveUnmatchedRequest) => {
+      return await resolveUnmatchedMutation.mutateAsync({ id, request });
+    },
+    resolvingUnmatched: resolveUnmatchedMutation.isPending,
+
+    // Ignore unmatched transaction
+    ignoreUnmatchedTransaction: async (id: string) => {
+      await ignoreUnmatchedMutation.mutateAsync(id);
+    },
+    ignoringUnmatched: ignoreUnmatchedMutation.isPending,
+
+    // Get unmatched suggestions
+    getUnmatchedSuggestions: async (id: string) => {
+      return await unmatchedSuggestionsMutation.mutateAsync(id);
+    },
+    unmatchedSuggestionsLoading: unmatchedSuggestionsMutation.isPending,
   };
 }
 
