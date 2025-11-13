@@ -53,14 +53,6 @@ export function MergeTrades() {
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filteredTransactions]);
 
-  // const handleSelectAll = (checked: boolean) => {
-  //   if (checked) {
-  //     setSelectedIds(new Set(filteredTransactions.map((t) => t.id)));
-  //   } else {
-  //     setSelectedIds(new Set());
-  //   }
-  // };
-
   const handleSelectTransaction = (id: string, checked: boolean) => {
     const newSelected = new Set(selectedIds);
     if (checked) {

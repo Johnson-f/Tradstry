@@ -10,8 +10,7 @@ import { getTimeBasedGreeting } from "@/lib/utils/greetings";
 import { useUserProfile } from "@/hooks/use-user-profile";
 
 export default function DashboardContent() {
-  // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  const { totalSessionsCount, sessionsLoading } = useAIChat();
+  const { totalSessionsCount, isLoading } = useAIChat();
 
   return (
     <div className="h-screen flex flex-col">
@@ -26,7 +25,7 @@ export default function DashboardContent() {
             <RecentChatsSheet>
               <Button variant="outline" size="sm" className="relative">
                 All Chats
-                {!sessionsLoading && totalSessionsCount > 0 && (
+                {!isLoading && totalSessionsCount > 0 && (
                   <Badge 
                     variant="secondary" 
                     className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"

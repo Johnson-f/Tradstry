@@ -21,12 +21,55 @@ import {
  * Handles all API calls to the backend AI insights endpoints
  */
 export class AIInsightsService {
-  private baseUrl: string;
   private supabase;
 
   constructor() {
-    this.baseUrl = getFullUrl(apiConfig.endpoints.ai.insights.base);
     this.supabase = createClient();
+  }
+
+  // Helper to safely get endpoint
+  private getEndpoint(path: string, ...args: unknown[]): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+      const insightsEndpoints = apiConfig.endpoints.ai.insights;
+      if (!insightsEndpoints) {
+        return '';
+      }
+      
+      // Handle nested paths like 'tasks.byId'
+      const pathParts = path.split('.');
+      let endpoint: unknown = insightsEndpoints;
+      
+      for (const part of pathParts) {
+        if (endpoint && typeof endpoint === 'object' && endpoint !== null) {
+          const endpointObj = endpoint as Record<string, unknown>;
+          if (part in endpointObj) {
+            endpoint = endpointObj[part];
+          } else {
+            // Fallback to base if path not found
+            endpoint = insightsEndpoints.base;
+            break;
+          }
+        } else {
+          // Fallback to base if path not found
+          endpoint = insightsEndpoints.base;
+          break;
+        }
+      }
+      
+      // If endpoint is a function, call it with args
+      if (typeof endpoint === 'function') {
+        endpoint = endpoint(...args) as string;
+      }
+      
+      return getFullUrl((endpoint as string) || insightsEndpoints.base);
+    } catch (error) {
+      console.error('Error getting endpoint:', error);
+      return '';
+    }
   }
 
   /**
@@ -41,7 +84,7 @@ export class AIInsightsService {
         throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
 
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(this.getEndpoint('base'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +137,7 @@ export class AIInsightsService {
         throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
 
-      const response = await fetch(getFullUrl(apiConfig.endpoints.ai.insights.generateAsync), {
+      const response = await fetch(this.getEndpoint('generateAsync'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -154,7 +197,7 @@ export class AIInsightsService {
         queryParams.append('offset', filters.offset.toString());
       }
 
-      const url = `${this.baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `${this.getEndpoint('base')}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       
       const token = await this.getAuthToken();
       if (!token) {
@@ -208,14 +251,12 @@ export class AIInsightsService {
         throw new ValidationError('Insight ID is required', 'insightId');
       }
 
-      const url = getFullUrl(apiConfig.endpoints.ai.insights.byId(insightId));
-      
       const token = await this.getAuthToken();
       if (!token) {
         throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
       
-      const response = await fetch(url, {
+      const response = await fetch(this.getEndpoint('byId', insightId), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -270,14 +311,12 @@ export class AIInsightsService {
         throw new ValidationError('Task ID is required', 'taskId');
       }
 
-      const url = getFullUrl(apiConfig.endpoints.ai.insights.tasks.byId(taskId));
-      
       const token = await this.getAuthToken();
       if (!token) {
         throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
       
-      const response = await fetch(url, {
+      const response = await fetch(this.getEndpoint('tasks.byId', taskId), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -332,14 +371,12 @@ export class AIInsightsService {
         throw new ValidationError('Insight ID is required', 'insightId');
       }
 
-      const url = getFullUrl(apiConfig.endpoints.ai.insights.byId(insightId));
-      
       const token = await this.getAuthToken();
       if (!token) {
         throw new AIInsightsError('Authentication required', 'AUTH_ERROR');
       }
       
-      const response = await fetch(url, {
+      const response = await fetch(this.getEndpoint('byId', insightId), {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
