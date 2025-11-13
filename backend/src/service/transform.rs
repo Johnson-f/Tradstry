@@ -11,6 +11,7 @@ use crate::service::ai_service::{
 use crate::service::ai_service::upstash_vector_client::DataType as VectorDataType;
 
 /// Transaction data structure for matching
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct TransactionData {
     id: String,
@@ -48,6 +49,7 @@ pub async fn transform_brokerage_transactions(
 /// - Same price
 /// - Same quantity/shares
 /// - Same brokerage name (if available)
+#[allow(dead_code)]
 async fn transaction_already_transformed(
     conn: &Connection,
     snaptrade_transaction_id: &str,
@@ -72,86 +74,85 @@ async fn transaction_already_transformed(
         let raw_data: Option<String> = row.get(0)?;
 
         // Parse raw_data to get transaction details
-        if let Some(raw) = raw_data {
-            if let Ok(trans_data) = serde_json::from_str::<Value>(&raw) {
-                let trans_symbol = trans_data
-                    .get("symbol")
-                    .and_then(|s| s.get("symbol"))
-                    .and_then(|v| v.as_str());
-                let _trans_type = trans_data.get("type").and_then(|v| v.as_str());
-                let trans_units = trans_data.get("units").and_then(|v| v.as_f64());
-                let trans_price = trans_data.get("price").and_then(|v| v.as_f64());
-                let trans_trade_date = trans_data.get("trade_date").and_then(|v| v.as_str());
-                let trans_institution = trans_data.get("institution").and_then(|v| v.as_str());
+        if let Some(raw) = raw_data
+            && let Ok(trans_data) = serde_json::from_str::<Value>(&raw) {
+            let trans_symbol = trans_data
+                .get("symbol")
+                .and_then(|s| s.get("symbol"))
+                .and_then(|v| v.as_str());
+            let _trans_type = trans_data.get("type").and_then(|v| v.as_str());
+            let trans_units = trans_data.get("units").and_then(|v| v.as_f64());
+            let trans_price = trans_data.get("price").and_then(|v| v.as_f64());
+            let trans_trade_date = trans_data.get("trade_date").and_then(|v| v.as_str());
+            let trans_institution = trans_data.get("institution").and_then(|v| v.as_str());
 
-                // Check if it's an option trade
-                let is_option = trans_data
-                    .get("option_symbol")
+            // Check if it's an option trade
+            let is_option = trans_data
+                .get("option_symbol")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+                || trans_data
+                    .get("option_type")
                     .and_then(|v| v.as_str())
                     .map(|s| !s.is_empty())
-                    .unwrap_or(false)
-                    || trans_data
-                        .get("option_type")
-                        .and_then(|v| v.as_str())
-                        .map(|s| !s.is_empty())
-                        .unwrap_or(false);
+                    .unwrap_or(false);
 
-                if let (Some(sym), Some(price), Some(units), Some(date)) = 
-                    (trans_symbol, trans_price, trans_units, trans_trade_date) {
-                    
-                    if is_option {
-                        // Check options table for matching trade
-                        let check_stmt = conn
-                            .prepare(
-                                r#"
-                                SELECT COUNT(*) FROM options
-                                WHERE symbol = ? 
-                                AND entry_date = ?
-                                AND entry_price = ?
-                                AND number_of_contracts = ?
-                                AND brokerage_name = COALESCE(?, brokerage_name)
-                                AND is_deleted = 0
-                                LIMIT 1
-                                "#
-                            )
-                            .await?;
+            if let (Some(sym), Some(price), Some(units), Some(date)) = 
+                (trans_symbol, trans_price, trans_units, trans_trade_date) {
+                
+                if is_option {
+                    // Check options table for matching trade
+                    let check_stmt = conn
+                        .prepare(
+                            r#"
+                            SELECT COUNT(*) FROM options
+                            WHERE symbol = ? 
+                            AND entry_date = ?
+                            AND entry_price = ?
+                            AND number_of_contracts = ?
+                            AND brokerage_name = COALESCE(?, brokerage_name)
+                            AND is_deleted = 0
+                            LIMIT 1
+                            "#
+                        )
+                        .await?;
 
-                        let mut check_rows = check_stmt.query(libsql::params![
-                            sym, date, price, units as i32, trans_institution
-                        ]).await?;
+                    let mut check_rows = check_stmt.query(libsql::params![
+                        sym, date, price, units as i32, trans_institution
+                    ]).await?;
 
-                        if let Some(check_row) = check_rows.next().await? {
-                            let count: i64 = check_row.get(0)?;
-                            if count > 0 {
-                                return Ok(true);
-                            }
+                    if let Some(check_row) = check_rows.next().await? {
+                        let count: i64 = check_row.get(0)?;
+                        if count > 0 {
+                            return Ok(true);
                         }
-                    } else {
-                        // Check stocks table for matching trade
-                        let mut check_stmt = conn
-                            .prepare(
-                                r#"
-                                SELECT COUNT(*) FROM stocks
-                                WHERE symbol = ? 
-                                AND entry_date = ?
-                                AND entry_price = ?
-                                AND number_shares = ?
-                                AND brokerage_name = COALESCE(?, brokerage_name)
-                                AND is_deleted = 0
-                                LIMIT 1
-                                "#
-                            )
-                            .await?;
+                    }
+                } else {
+                    // Check stocks table for matching trade
+                    let check_stmt = conn
+                        .prepare(
+                            r#"
+                            SELECT COUNT(*) FROM stocks
+                            WHERE symbol = ? 
+                            AND entry_date = ?
+                            AND entry_price = ?
+                            AND number_shares = ?
+                            AND brokerage_name = COALESCE(?, brokerage_name)
+                            AND is_deleted = 0
+                            LIMIT 1
+                            "#
+                        )
+                        .await?;
 
-                        let mut check_rows = check_stmt.query(libsql::params![
-                            sym, date, price, units, trans_institution
-                        ]).await?;
+                    let mut check_rows = check_stmt.query(libsql::params![
+                        sym, date, price, units, trans_institution
+                    ]).await?;
 
-                        if let Some(check_row) = check_rows.next().await? {
-                            let count: i64 = check_row.get(0)?;
-                            if count > 0 {
-                                return Ok(true);
-                            }
+                    if let Some(check_row) = check_rows.next().await? {
+                        let count: i64 = check_row.get(0)?;
+                        if count > 0 {
+                            return Ok(true);
                         }
                     }
                 }
@@ -165,6 +166,7 @@ async fn transaction_already_transformed(
 // Removed: calculate_match_confidence - automatic matching is no longer used
 
 /// Helper function to parse trade date string to DateTime
+#[allow(dead_code)]
 fn parse_trade_date(date_str: &str) -> Result<chrono::DateTime<Utc>> {
     // Try RFC3339 format first
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
@@ -190,6 +192,7 @@ fn parse_trade_date(date_str: &str) -> Result<chrono::DateTime<Utc>> {
 
 // Removed: create_merged_stock_trade - automatic matching is no longer used
 // Use the manual merge endpoint instead
+#[allow(clippy::too_many_arguments)]
 pub async fn _create_merged_stock_trade_removed(
     conn: &Connection,
     symbol: &str,
@@ -207,7 +210,7 @@ pub async fn _create_merged_stock_trade_removed(
     let stop_loss = entry_price * 0.95; // Default to 5% below entry price
 
     // Insert merged trade
-    let mut insert_stmt = conn
+    let insert_stmt = conn
         .prepare(
             r#"
             INSERT INTO stocks (
@@ -251,6 +254,7 @@ pub async fn _create_merged_stock_trade_removed(
 }
 
 /// Create an open stock position (unmatched BUY)
+#[allow(clippy::too_many_arguments)]
 pub async fn create_open_stock_trade(
     conn: &Connection,
     symbol: &str,
@@ -266,7 +270,7 @@ pub async fn create_open_stock_trade(
     let stop_loss = entry_price * 0.95; // Default to 5% below entry price
 
     // Insert open position (no exit_price or exit_date)
-    let mut insert_stmt = conn
+    let insert_stmt = conn
         .prepare(
             r#"
             INSERT INTO stocks (
@@ -315,7 +319,7 @@ async fn vectorize_stock_trade(
     vector_service: &VectorizationService,
 ) -> Result<()> {
     // Retrieve the full stock record for formatting
-    let mut select_stmt = conn
+    let select_stmt = conn
         .prepare(
             r#"
             SELECT id, symbol, trade_type, order_type, entry_price,
@@ -465,10 +469,11 @@ async fn vectorize_stock_trade(
 
 /// Transform a brokerage transaction to a stock trade
 /// This is kept for backward compatibility but is now primarily used for unmatched transactions
+#[allow(dead_code)]
 async fn transform_to_stock(
     conn: &Connection,
     transaction: &Value,
-    snaptrade_transaction_id: &str,
+    _snaptrade_transaction_id: &str,
     user_id: &str,
     vectorization_service: Option<&VectorizationService>,
 ) -> Result<()> {
@@ -518,7 +523,7 @@ async fn transform_to_stock(
     let stop_loss = price * 0.95; // Default to 5% below entry price (user will review)
 
     // Insert into stocks table and get the inserted ID
-    let mut insert_stmt = conn
+    let insert_stmt = conn
         .prepare(
             r#"
             INSERT INTO stocks (
@@ -555,7 +560,7 @@ async fn transform_to_stock(
     // Vectorize the trade if vectorization service is available
     if let Some(vector_service) = vectorization_service {
         // Retrieve the full stock record for formatting
-        let mut select_stmt = conn
+        let select_stmt = conn
             .prepare(
                 r#"
                 SELECT id, symbol, trade_type, order_type, entry_price,
@@ -705,10 +710,11 @@ async fn transform_to_stock(
 }
 
 /// Transform a brokerage transaction to an option trade
+#[allow(dead_code)]
 async fn transform_to_option(
     conn: &Connection,
     transaction: &Value,
-    snaptrade_transaction_id: &str,
+    _snaptrade_transaction_id: &str,
     user_id: &str,
     vectorization_service: Option<&VectorizationService>,
 ) -> Result<()> {
@@ -761,7 +767,7 @@ async fn transform_to_option(
 
     // For options, we need to extract strike price and expiration from option_symbol
     // If option_symbol is not available, we'll use defaults that the user can update
-    let option_symbol = transaction
+    let _option_symbol = transaction
         .get("option_symbol")
         .and_then(|v| v.as_str());
 
@@ -777,7 +783,7 @@ async fn transform_to_option(
     let implied_volatility = 0.0; // Default, user will update
 
     // Insert into options table and get the inserted ID
-    let mut insert_stmt = conn
+    let insert_stmt = conn
         .prepare(
             r#"
             INSERT INTO options (
@@ -820,7 +826,7 @@ async fn transform_to_option(
     // Vectorize the trade if vectorization service is available
     if let Some(vector_service) = vectorization_service {
         // Retrieve the full option record for formatting
-        let mut select_stmt = conn
+        let select_stmt = conn
             .prepare(
                 r#"
                 SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,

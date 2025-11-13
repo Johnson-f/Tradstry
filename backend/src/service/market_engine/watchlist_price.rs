@@ -365,13 +365,12 @@ pub async fn refresh_watchlist_and_alerts(
     let triggered_alerts = check_price_alerts(conn).await?;
 
     // Send push notifications if user_id and web_push_config are provided
-    if let (Some(uid), Some(config)) = (user_id, web_push_config) {
-        if !triggered_alerts.is_empty() {
-            use crate::service::notifications::price_alert::send_price_alert_notifications;
-            let sent_count = send_price_alert_notifications(conn, &triggered_alerts, uid, config).await
-                .unwrap_or(0);
-            log::info!("Sent {} price alert notifications for user {}", sent_count, uid);
-        }
+    if let (Some(uid), Some(config)) = (user_id, web_push_config)
+        && !triggered_alerts.is_empty() {
+        use crate::service::notifications::price_alert::send_price_alert_notifications;
+        let sent_count = send_price_alert_notifications(conn, &triggered_alerts, uid, config).await
+            .unwrap_or(0);
+        log::info!("Sent {} price alert notifications for user {}", sent_count, uid);
     }
 
     Ok(triggered_alerts)
@@ -424,7 +423,7 @@ pub async fn create_watchlist_entry(
             let symbol = search_item.symbol.clone();
             
             // Now fetch quote data using the found symbol
-            let quotes = get_simple_quotes(client, &[symbol.clone()])
+            let quotes = get_simple_quotes(client, std::slice::from_ref(&symbol))
                 .await
                 .context("Failed to fetch quote data for symbol")?;
             
@@ -679,7 +678,7 @@ pub async fn create_price_alert_entry(
             let sym = search_item.symbol.clone();
             
             // Now fetch quote data using the found symbol
-            let quotes = get_simple_quotes(client, &[sym.clone()])
+            let quotes = get_simple_quotes(client, std::slice::from_ref(&sym))
                 .await
                 .context("Failed to fetch quote data for symbol")?;
             

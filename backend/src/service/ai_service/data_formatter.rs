@@ -456,6 +456,7 @@ mod tests {
             exit_date: Some(Utc::now()),
             reviewed: false,
             mistakes: None,
+            brokerage_name: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

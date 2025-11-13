@@ -51,7 +51,9 @@ pub struct EarningsCalendarParams {
 /// Edge Function response structure
 #[derive(Debug, Deserialize)]
 struct EdgeFunctionResponse {
+    #[allow(dead_code)]
     date_from: String,
+    #[allow(dead_code)]
     date_to: String,
     earnings: HashMap<String, EdgeFunctionDateData>,
 }
@@ -63,12 +65,16 @@ struct EdgeFunctionDateData {
 
 #[derive(Debug, Deserialize)]
 struct EdgeFunctionStock {
+    #[allow(dead_code)]
     importance: u32,
     symbol: String,
+    #[allow(dead_code)]
     date: String,
     time: String,
+    #[allow(dead_code)]
     title: String,
     #[serde(default)]
+    #[allow(dead_code)]
     emoji: Option<String>,
 }
 
@@ -90,16 +96,15 @@ fn parse_time_of_day(time_str: &str) -> String {
     }
 
     // Try to parse hour from time string (format: "HH:MM" or "HH:MM:SS")
-    if let Some(hour_str) = time_str.split(':').next() {
-        if let Ok(hour) = hour_str.parse::<u32>() {
-            if hour >= 16 {
-                return "amc".to_string(); // After market close
-            }
-            if hour <= 9 {
-                return "bmo".to_string(); // Before market open
-            }
-            return "dmh".to_string(); // During market hours
+    if let Some(hour_str) = time_str.split(':').next()
+        && let Ok(hour) = hour_str.parse::<u32>() {
+        if hour >= 16 {
+            return "amc".to_string(); // After market close
         }
+        if hour <= 9 {
+            return "bmo".to_string(); // Before market open
+        }
+        return "dmh".to_string(); // During market hours
     }
 
     "unknown".to_string()
@@ -118,14 +123,14 @@ fn parse_market_cap(market_cap_str: &str) -> Option<f64> {
     let cleaned = cleaned.trim_start_matches('$').trim();
 
     // Find the last character to determine the multiplier
-    let (multiplier, numeric_part) = if cleaned.ends_with('B') {
-        (1000.0, &cleaned[..cleaned.len() - 1]) // Billions to millions
-    } else if cleaned.ends_with('M') {
-        (1.0, &cleaned[..cleaned.len() - 1]) // Already in millions
-    } else if cleaned.ends_with('K') {
-        (0.001, &cleaned[..cleaned.len() - 1]) // Thousands to millions
-    } else if cleaned.ends_with('T') {
-        (1_000_000.0, &cleaned[..cleaned.len() - 1]) // Trillions to millions
+    let (multiplier, numeric_part) = if let Some(stripped) = cleaned.strip_suffix('B') {
+        (1000.0, stripped) // Billions to millions
+    } else if let Some(stripped) = cleaned.strip_suffix('M') {
+        (1.0, stripped) // Already in millions
+    } else if let Some(stripped) = cleaned.strip_suffix('K') {
+        (0.001, stripped) // Thousands to millions
+    } else if let Some(stripped) = cleaned.strip_suffix('T') {
+        (1_000_000.0, stripped) // Trillions to millions
     } else {
         // No suffix, assume millions
         (1.0, cleaned)
@@ -156,10 +161,9 @@ async fn fetch_market_caps(
         match get_quotes(client, chunk).await {
             Ok(quotes) => {
                 for quote in quotes {
-                    if let Some(market_cap_str) = &quote.market_cap {
-                        if let Some(market_cap_millions) = parse_market_cap(market_cap_str) {
-                            market_cap_map.insert(quote.symbol.to_uppercase(), market_cap_millions);
-                        }
+                    if let Some(market_cap_str) = &quote.market_cap
+                        && let Some(market_cap_millions) = parse_market_cap(market_cap_str) {
+                        market_cap_map.insert(quote.symbol.to_uppercase(), market_cap_millions);
                     }
                 }
             }
@@ -244,10 +248,9 @@ async fn fetch_from_edge_function(
     for (date, date_data) in data.earnings {
         for stock in date_data.stocks {
             // Filter by symbols if provided
-            if let Some(symbols) = symbols_filter {
-                if !symbols.contains(&stock.symbol) {
-                    continue;
-                }
+            if let Some(symbols) = symbols_filter
+                && !symbols.contains(&stock.symbol) {
+                continue;
             }
 
             let earnings_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
