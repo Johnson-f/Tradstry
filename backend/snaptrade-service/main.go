@@ -84,6 +84,6 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("SnapTrade service starting on port %s", port)
-	log.Fatal(app.Listen(":" + port))
+	log.Printf("SnapTrade service starting on 0.0.0.0:%s", port)
+	log.Fatal(app.Listen("0.0.0.0:" + port))
 }

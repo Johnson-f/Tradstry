@@ -7,8 +7,6 @@ import { aiChatService } from '@/lib/services/ai-chat-service';
 import { createClient } from '@/lib/supabase/client';
 import type {
   ChatMessage,
-  ChatSession,
-  ChatSessionSummary,
   ChatError,
   UseAIChatReturn,
   ChatRequest,
