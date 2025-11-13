@@ -8,8 +8,17 @@ use uuid::Uuid;
 use chrono::Utc;
 use libsql::Connection;
 
-use crate::turso::{AppState, client::TursoClient, config::{SupabaseConfig, SupabaseClaims}};
-use crate::turso::auth::{validate_supabase_jwt_token, get_supabase_user_id};
+use crate::turso::{
+    AppState, 
+    client::TursoClient, 
+    config::{SupabaseConfig, SupabaseClaims
+    }};
+
+use crate::turso::auth::{
+    validate_supabase_jwt_token, 
+    get_supabase_user_id
+     };
+     
 use crate::service::transform;
 use crate::models::stock::stocks::{Stock, CreateStockRequest, TradeType, OrderType};
 use crate::models::options::option_trade::{OptionTrade, CreateOptionRequest, TradeDirection, OptionType};
@@ -69,7 +78,7 @@ async fn get_existing_account_id(
     connection_id: &str,
     snaptrade_account_id: &str,
 ) -> Option<String> {
-    let mut stmt = match conn
+    let stmt = match conn
         .prepare("SELECT id FROM brokerage_accounts WHERE connection_id = ? AND snaptrade_account_id = ?")
         .await
     {
@@ -88,10 +97,9 @@ async fn get_existing_account_id(
         }
     };
 
-    if let Ok(Some(row)) = rows.next().await {
-        if let Ok(id) = row.get::<String>(0) {
+    if let Ok(Some(row)) = rows.next().await
+        && let Ok(id) = row.get::<String>(0) {
             return Some(id);
-        }
     }
     None
 }
@@ -102,7 +110,7 @@ async fn get_existing_holding_id(
     account_id: &str,
     symbol: &str,
 ) -> Option<String> {
-    let mut stmt = match conn
+    let stmt = match conn
         .prepare("SELECT id FROM brokerage_holdings WHERE account_id = ? AND symbol = ?")
         .await
     {
@@ -121,10 +129,9 @@ async fn get_existing_holding_id(
         }
     };
 
-    if let Ok(Some(row)) = rows.next().await {
-        if let Ok(id) = row.get::<String>(0) {
+    if let Ok(Some(row)) = rows.next().await
+        && let Ok(id) = row.get::<String>(0) {
             return Some(id);
-        }
     }
     None
 }
@@ -135,7 +142,7 @@ async fn transaction_exists(
     account_id: &str,
     snaptrade_transaction_id: &str,
 ) -> bool {
-    let mut stmt = match conn
+    let stmt = match conn
         .prepare("SELECT 1 FROM brokerage_transactions WHERE account_id = ? AND snaptrade_transaction_id = ? LIMIT 1")
         .await
     {
@@ -188,6 +195,7 @@ impl<T> ApiResponse<T> {
 pub struct ConnectBrokerageRequest {
     pub brokerage_id: String,
     pub connection_type: Option<String>, // "read" or "trade"
+    #[allow(dead_code)]
     pub redirect_uri: Option<String>,
 }
 
@@ -684,14 +692,13 @@ pub async fn get_connection_status(
         })?;
 
     // Update database if connection is completed
-    if let Some(status_str) = status_data.get("status").and_then(|s| s.as_str()) {
-        if status_str == "connected" {
+    if let Some(status_str) = status_data.get("status").and_then(|s| s.as_str())
+        && status_str == "connected" {
             let now = Utc::now().to_rfc3339();
             conn.execute(
                 "UPDATE brokerage_connections SET status = ?, updated_at = ? WHERE id = ?",
                 libsql::params!["connected", now, connection_id],
             ).await.ok(); // Don't fail if update fails
-        }
     }
 
     Ok(HttpResponse::Ok().json(ApiResponse::success(status_data)))
@@ -1184,8 +1191,8 @@ pub async fn sync_accounts(
 
                 // Store holdings for this account
                 for holding in &sync_data.holdings {
-                    if let Some(holding_account_id) = holding.get("account_id").and_then(|v| v.as_str()) {
-                        if holding_account_id == snaptrade_account_id {
+                    if let Some(holding_account_id) = holding.get("account_id").and_then(|v| v.as_str())
+                        && holding_account_id == snaptrade_account_id {
                             let symbol = holding.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
                             if symbol.is_empty() {
                                 continue; // Skip holdings without symbols
@@ -1230,14 +1237,13 @@ pub async fn sync_accounts(
                             ).await.ok();
 
                             total_holdings += 1;
-                        }
                     }
                 }
 
                 // Store transactions for this account
                 for transaction in &sync_data.transactions {
-                    if let Some(trans_account_id) = transaction.get("account_id").and_then(|v| v.as_str()) {
-                        if trans_account_id == snaptrade_account_id {
+                    if let Some(trans_account_id) = transaction.get("account_id").and_then(|v| v.as_str())
+                        && trans_account_id == snaptrade_account_id {
                             let snaptrade_transaction_id = transaction.get("id").and_then(|v| v.as_str()).unwrap_or("");
                             if snaptrade_transaction_id.is_empty() {
                                 continue; // Skip transactions without IDs
@@ -1286,7 +1292,6 @@ pub async fn sync_accounts(
                             ).await.ok();
 
                             total_transactions += 1;
-                        }
                     }
                 }
             }
@@ -2025,8 +2030,8 @@ pub async fn complete_connection_sync(
 
     // Step 2: Store accounts and fetch/store positions and transactions for each account
     for account in sync_data.accounts {
-        if let Some(account_obj) = account.as_object() {
-            if let Some(snaptrade_account_id) = account_obj.get("id").and_then(|v| v.as_str()) {
+        if let Some(account_obj) = account.as_object()
+            && let Some(snaptrade_account_id) = account_obj.get("id").and_then(|v| v.as_str()) {
                 // Store account in database
                 let account_number = account_obj.get("number").and_then(|v| v.as_str());
                 let account_name = account_obj.get("name").and_then(|v| v.as_str());
@@ -2081,10 +2086,10 @@ pub async fn complete_connection_sync(
                     .await
                     .ok();
 
-                if let Some(equity) = equity_response {
-                    if equity.status().is_success() {
-                        if let Ok(equity_data) = equity.json::<serde_json::Value>().await {
-                            if let Some(positions) = equity_data.get("positions").and_then(|v| v.as_array()) {
+            if let Some(equity) = equity_response
+                && equity.status().is_success()
+                && let Ok(equity_data) = equity.json::<serde_json::Value>().await
+                && let Some(positions) = equity_data.get("positions").and_then(|v| v.as_array()) {
                                 info!("Got {} equity positions for account: {}", positions.len(), snaptrade_account_id);
                                 
                                 // Store equity positions
@@ -2133,24 +2138,21 @@ pub async fn complete_connection_sync(
                                             ],
                                         ).await.ok();
 
-                                        total_holdings += 1;
-                                    }
-                                }
-                            }
-                        }
+                        total_holdings += 1;
                     }
                 }
+            }
 
-                // Get option positions
+            // Get option positions
                 let options_response = snaptrade_client
                     .call_go_service("GET", &format!("/api/v1/accounts/{}/holdings/options", snaptrade_account_id), None::<&serde_json::Value>, &user_id, Some(&user_secret))
                     .await
                     .ok();
 
-                if let Some(options) = options_response {
-                    if options.status().is_success() {
-                        if let Ok(options_data) = options.json::<serde_json::Value>().await {
-                            if let Some(positions) = options_data.get("positions").and_then(|v| v.as_array()) {
+            if let Some(options) = options_response
+                && options.status().is_success()
+                && let Ok(options_data) = options.json::<serde_json::Value>().await
+                && let Some(positions) = options_data.get("positions").and_then(|v| v.as_array()) {
                                 info!("Got {} option positions for account: {}", positions.len(), snaptrade_account_id);
                                 
                                 // Store option positions
@@ -2200,9 +2202,6 @@ pub async fn complete_connection_sync(
                                         ).await.ok();
 
                                         total_holdings += 1;
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -2213,10 +2212,10 @@ pub async fn complete_connection_sync(
                     .await
                     .ok();
 
-                if let Some(transactions) = transactions_response {
-                    if transactions.status().is_success() {
-                        if let Ok(trans_data) = transactions.json::<serde_json::Value>().await {
-                            if let Some(data_array) = trans_data.get("data").and_then(|v| v.as_array()) {
+            if let Some(transactions) = transactions_response
+                && transactions.status().is_success()
+                && let Ok(trans_data) = transactions.json::<serde_json::Value>().await
+                && let Some(data_array) = trans_data.get("data").and_then(|v| v.as_array()) {
                                 info!("Got {} transactions for account: {}", data_array.len(), snaptrade_account_id);
                                 
                                 // Store transactions
@@ -2271,10 +2270,6 @@ pub async fn complete_connection_sync(
                                         ).await.ok();
 
                                         total_transactions += 1;
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -2357,7 +2352,7 @@ async fn get_unmatched_transactions(
 
     let conn = get_user_db_connection(&user_id, &app_state.turso_client).await?;
 
-    let mut stmt = conn
+    let stmt = conn
         .prepare(
             r#"
             SELECT id, user_id, transaction_id, snaptrade_transaction_id, symbol,
@@ -2549,7 +2544,7 @@ async fn resolve_unmatched_transaction(
         error!("Failed to get brokerage_name: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
-    let raw_data: String = row.get(8).map_err(|e| {
+    let _raw_data: String = row.get(8).map_err(|e| {
         error!("Failed to get raw_data: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
@@ -2565,7 +2560,7 @@ async fn resolve_unmatched_transaction(
             // Merge with another transaction
             if let Some(matched_id) = &body.matched_transaction_id {
                 // Get the matched transaction details
-                let mut match_stmt = conn
+                let match_stmt = conn
                     .prepare(
                         r#"
                         SELECT symbol, trade_type, units, price, fee, trade_date,
@@ -2593,7 +2588,7 @@ async fn resolve_unmatched_transaction(
                     })?
                     .ok_or_else(|| actix_web::error::ErrorNotFound("Matched transaction not found"))?;
 
-                let match_symbol: String = match_row.get(0).map_err(|e| {
+                let _match_symbol: String = match_row.get(0).map_err(|e| {
                     error!("Failed to get match symbol: {}", e);
                     actix_web::error::ErrorInternalServerError("Database error")
                 })?;
@@ -2623,7 +2618,7 @@ async fn resolve_unmatched_transaction(
                 })?;
 
                 // Determine which is BUY and which is SELL
-                let (entry_price, exit_price, entry_date, exit_date, entry_fee, exit_fee) = 
+                let (_entry_price, _exit_price, _entry_date, _exit_date, _entry_fee, _exit_fee) = 
                     if trade_type == "BUY" && match_trade_type == "SELL" {
                         (price, match_price, trade_date.clone(), match_trade_date.clone(), fee, match_fee)
                     } else if trade_type == "SELL" && match_trade_type == "BUY" {
@@ -2632,8 +2627,8 @@ async fn resolve_unmatched_transaction(
                         return Err(actix_web::error::ErrorBadRequest("Transactions must be one BUY and one SELL"));
                     };
 
-                let shares = units.min(match_units);
-                let brokerage_name_merged = brokerage_name.or(match_brokerage_name);
+                let _shares = units.min(match_units);
+                let _brokerage_name_merged = brokerage_name.or(match_brokerage_name);
 
                 if is_option {
                     return Err(actix_web::error::ErrorBadRequest("Option merging not yet implemented"));
@@ -2919,14 +2914,14 @@ pub async fn merge_transactions(
 
     // Fetch selected transactions
     let placeholders = request.transaction_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let mut sql = format!(
+    let sql = format!(
         "SELECT id, account_id, symbol, transaction_type, quantity, price, fees, trade_date, raw_data 
          FROM brokerage_transactions 
          WHERE id IN ({}) AND account_id IN (SELECT id FROM brokerage_accounts WHERE connection_id IN (SELECT id FROM brokerage_connections WHERE user_id = ?)) AND (is_transformed IS NULL OR is_transformed = 0)",
         placeholders
     );
 
-    let mut stmt = conn
+    let stmt = conn
         .prepare(&sql)
         .await
         .map_err(|e| {
@@ -2947,7 +2942,9 @@ pub async fn merge_transactions(
 
     #[derive(Debug)]
     struct TransactionData {
+        #[allow(dead_code)]
         id: String,
+        #[allow(dead_code)]
         symbol: Option<String>,
         transaction_type: Option<String>,
         quantity: Option<f64>,
@@ -2999,10 +2996,10 @@ pub async fn merge_transactions(
     }
 
     // Separate BUY and SELL transactions
-    let mut buys: Vec<&TransactionData> = transactions.iter()
+    let buys: Vec<&TransactionData> = transactions.iter()
         .filter(|t| t.transaction_type.as_deref() == Some("BUY"))
         .collect();
-    let mut sells: Vec<&TransactionData> = transactions.iter()
+    let sells: Vec<&TransactionData> = transactions.iter()
         .filter(|t| t.transaction_type.as_deref() == Some("SELL"))
         .collect();
 
@@ -3079,7 +3076,7 @@ pub async fn merge_transactions(
     };
 
     let entry_date_parsed = parse_date(entry_date)?;
-    let exit_date_parsed = exit_date.map(|d| parse_date(d)).transpose()?;
+    let _exit_date_parsed = exit_date.map(|d| parse_date(d)).transpose()?;
 
     // Create trade based on type
     if request.trade_type == "stock" {
@@ -3113,7 +3110,7 @@ pub async fn merge_transactions(
                 );
                 let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
 
-                let mut update_stmt = conn.prepare(&update_sql).await
+                let update_stmt = conn.prepare(&update_sql).await
                     .map_err(|e| {
                         error!("Failed to prepare update statement: {}", e);
                         actix_web::error::ErrorInternalServerError("Database error")
@@ -3189,7 +3186,7 @@ pub async fn merge_transactions(
                 );
                 let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
 
-                let mut update_stmt = conn.prepare(&update_sql).await
+                let update_stmt = conn.prepare(&update_sql).await
                     .map_err(|e| {
                         error!("Failed to prepare update statement: {}", e);
                         actix_web::error::ErrorInternalServerError("Database error")
