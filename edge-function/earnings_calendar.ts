@@ -6,6 +6,14 @@
  * Accepts custom date ranges via POST request body.
  */
 
+/*
+ * This edge is currently runningon supabase
+ * It is used to fetch earnings calendar data from StockTwits API
+ * and transform it into a comprehensive earnings schedule format
+ * The edge function endpoint is being called by the earnings_calendar.rs file in the backend
+ * It is used to return earnings calendar data to the frontend
+*/
+
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 // CORS headers for handling cross-origin requests

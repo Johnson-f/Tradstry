@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   snaptrade-service:
+    image: johnsonf/snaptrade-service:latest
     build:
       context: .
       dockerfile: Dockerfile
