@@ -33,8 +33,7 @@ export class AIInsightsService {
       return '';
     }
     try {
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      const insightsEndpoints = apiConfig.endpoints.ai.insights;
+      const insightsEndpoints = apiConfig.endpoints.endpoints.ai.insights;
       if (!insightsEndpoints) {
         return '';
       }

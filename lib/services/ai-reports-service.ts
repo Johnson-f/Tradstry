@@ -33,8 +33,7 @@ export class AIReportsService {
       return '';
     }
     try {
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      const reportsEndpoints = apiConfig.endpoints.ai.reports;
+      const reportsEndpoints = apiConfig.endpoints.endpoints.ai.reports;
       if (!reportsEndpoints) {
         return '';
       }
@@ -598,4 +597,3 @@ export class AIReportsService {
 
 // Export singleton instance
 export const aiReportsService = new AIReportsService();
-

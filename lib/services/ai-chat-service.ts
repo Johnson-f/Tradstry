@@ -31,8 +31,7 @@ export class AIChatService {
     }
     try {
       return getFullUrl(
-        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-        apiConfig.endpoints.ai.chat.base
+        apiConfig.endpoints.endpoints.ai.chat.base
       );
     } catch (error) {
       console.error('Error getting base URL:', error);
@@ -46,8 +45,7 @@ export class AIChatService {
       return '';
     }
     try {
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      const chatEndpoints = apiConfig.endpoints.ai.chat;
+      const chatEndpoints = apiConfig.endpoints.endpoints.ai.chat;
       if (!chatEndpoints) {
         return '';
       }

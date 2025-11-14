@@ -30,8 +30,7 @@ export class AnalyticsService {
    */
   async getCoreAnalytics(request?: AnalyticsRequest): Promise<CoreAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.core
+      apiConfig.endpoints.endpoints.analytics.core
     );
     const token = await this.getAuthToken();
     
@@ -56,8 +55,7 @@ export class AnalyticsService {
    */
   async getRiskAnalytics(request?: AnalyticsRequest): Promise<RiskAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.risk
+      apiConfig.endpoints.endpoints.analytics.risk
     );
     const token = await this.getAuthToken();
     
@@ -84,8 +82,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<PerformanceAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.performance
+      apiConfig.endpoints.endpoints.analytics.performance
     );
     const token = await this.getAuthToken();
     
@@ -112,8 +109,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<TimeSeriesAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.timeSeries
+      apiConfig.endpoints.endpoints.analytics.timeSeries
     );
     const token = await this.getAuthToken();
     
@@ -153,8 +149,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<GroupedAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.grouped
+      apiConfig.endpoints.endpoints.analytics.grouped
     );
     const token = await this.getAuthToken();
     
@@ -181,8 +176,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<ComprehensiveAnalyticsResponse> {
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.comprehensive
+      apiConfig.endpoints.endpoints.analytics.comprehensive
     );
     const token = await this.getAuthToken();
     
@@ -218,8 +212,7 @@ export class AnalyticsService {
     });
 
     const url = `${getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.trade
+      apiConfig.endpoints.endpoints.analytics.trade
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -258,8 +251,7 @@ export class AnalyticsService {
     }
 
     const url = `${getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.symbol
+      apiConfig.endpoints.endpoints.analytics.symbol
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -287,8 +279,7 @@ export class AnalyticsService {
     const params = new URLSearchParams({ symbol: symbol.toUpperCase() });
     if (timeRange) params.append('time_range', timeRange);
     const url = `${getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.analytics.symbol
+      apiConfig.endpoints.endpoints.analytics.symbol
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -315,8 +306,7 @@ export class AnalyticsService {
   async getOptionsAnalytics(timeRange?: string) {
     const params = timeRange ? `?time_range=${timeRange}` : '';
     const url = getFullUrl(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.options.analytics.summary + params
+      apiConfig.endpoints.endpoints.options.analytics.summary + params
     );
     const token = await this.getAuthToken();
     

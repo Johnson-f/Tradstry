@@ -11,28 +11,23 @@ import type {
 class TradeNoteService {
   // Generic trade notes (not linked to specific trades)
   async createNote(payload: CreateTradeNoteRequest): Promise<TradeNoteResponse> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.tradeNotes.base, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.tradeNotes.base, payload);
   }
 
   async getNote(noteId: string): Promise<TradeNoteResponse> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.tradeNotes.byId(noteId));
+    return apiClient.get(apiConfig.endpoints.endpoints.tradeNotes.byId(noteId));
   }
 
   async listNotes(): Promise<TradeNoteListResponse> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.tradeNotes.base);
+    return apiClient.get(apiConfig.endpoints.endpoints.tradeNotes.base);
   }
 
   async updateNote(noteId: string, payload: UpdateTradeNoteRequest): Promise<TradeNoteResponse> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.put(apiConfig.endpoints.tradeNotes.byId(noteId), payload);
+    return apiClient.put(apiConfig.endpoints.endpoints.tradeNotes.byId(noteId), payload);
   }
 
   async deleteNote(noteId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.tradeNotes.byId(noteId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.tradeNotes.byId(noteId));
   }
 
   // Trade-linked notes
@@ -42,16 +37,14 @@ class TradeNoteService {
     payload: CreateTradeNoteForTradeRequest
   ): Promise<TradeNoteResponse> {
     return apiClient.post(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.tradeNotes.byTrade(tradeType, tradeId),
+      apiConfig.endpoints.endpoints.tradeNotes.byTrade(tradeType, tradeId),
       payload
     );
   }
 
   async getTradeNote(tradeType: 'stock' | 'option', tradeId: number): Promise<TradeNoteResponse> {
     try {
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      return await apiClient.get(apiConfig.endpoints.tradeNotes.byTrade(tradeType, tradeId));
+      return await apiClient.get(apiConfig.endpoints.endpoints.tradeNotes.byTrade(tradeType, tradeId));
     } catch (error: unknown) {
       // Handle 404 as not found (note doesn't exist yet)
       if (this.isApiError(error) && error.status === 404) {
@@ -75,10 +68,8 @@ class TradeNoteService {
     tradeType: 'stock' | 'option',
     tradeId: number
   ): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.tradeNotes.byTrade(tradeType, tradeId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.tradeNotes.byTrade(tradeType, tradeId));
   }
 }
 
 export const tradeNoteService = new TradeNoteService();
-

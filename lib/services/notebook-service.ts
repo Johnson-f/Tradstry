@@ -21,147 +21,119 @@ import type {
 class NotebookService {
   // Notes
   async createNote(payload: CreateNoteRequest): Promise<ApiItem<NotebookNote>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.notes.base, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.notes.base, payload);
   }
 
   async listNotes(parentId?: string): Promise<ApiList<NotebookNote>> {
     const params = parentId ? { parent_id: parentId } : undefined;
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.notes.base, { params });
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.notes.base, { params });
   }
 
   async listDeletedNotes(): Promise<ApiList<NotebookNote>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(`${apiConfig.endpoints.notebook.notes.base}/deleted`);
+    return apiClient.get(`${apiConfig.endpoints.endpoints.notebook.notes.base}/deleted`);
   }
 
   async getNote(noteId: string): Promise<ApiItem<NotebookNote>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.notes.byId(noteId));
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.notes.byId(noteId));
   }
 
   async getNoteTree(noteId: string): Promise<{ success: boolean; message: string; data: { root: NotebookNote; children: NotebookNote[] } }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.notes.tree(noteId));
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.notes.tree(noteId));
   }
 
   async updateNote(noteId: string, payload: UpdateNoteRequest): Promise<ApiItem<NotebookNote>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.put(apiConfig.endpoints.notebook.notes.byId(noteId), payload);
+    return apiClient.put(apiConfig.endpoints.endpoints.notebook.notes.byId(noteId), payload);
   }
 
   async deleteNote(noteId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.notes.byId(noteId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.notes.byId(noteId));
   }
 
   async restoreNote(noteId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(`${apiConfig.endpoints.notebook.notes.byId(noteId)}/restore`);
+    return apiClient.post(`${apiConfig.endpoints.endpoints.notebook.notes.byId(noteId)}/restore`);
   }
 
   async permanentDeleteNote(noteId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(`${apiConfig.endpoints.notebook.notes.byId(noteId)}/permanent`);
+    return apiClient.delete(`${apiConfig.endpoints.endpoints.notebook.notes.byId(noteId)}/permanent`);
   }
 
   async reorderNote(noteId: string, position: number): Promise<ApiItem<NotebookNote>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.notes.reorder(noteId), { position });
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.notes.reorder(noteId), { position });
   }
 
   async tagNote(noteId: string, tagId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.notes.tag(noteId, tagId));
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.notes.tag(noteId, tagId));
   }
 
   async untagNote(noteId: string, tagId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.notes.untag(noteId, tagId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.notes.untag(noteId, tagId));
   }
 
   // Tags
   async createTag(payload: CreateTagRequest): Promise<ApiItem<NotebookTag>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.tags.base, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.tags.base, payload);
   }
 
   async listTags(): Promise<ApiList<NotebookTag>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.tags.base);
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.tags.base);
   }
 
   async getTag(tagId: string): Promise<ApiItem<NotebookTag>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.tags.byId(tagId));
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.tags.byId(tagId));
   }
 
   async updateTag(tagId: string, payload: UpdateTagRequest): Promise<ApiItem<NotebookTag>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.put(apiConfig.endpoints.notebook.tags.byId(tagId), payload);
+    return apiClient.put(apiConfig.endpoints.endpoints.notebook.tags.byId(tagId), payload);
   }
 
   async deleteTag(tagId: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.tags.byId(tagId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.tags.byId(tagId));
   }
 
   // Templates
   async createTemplate(payload: CreateTemplateRequest): Promise<ApiItem<NotebookTemplate>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.templates.base, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.templates.base, payload);
   }
 
   async listTemplates(): Promise<ApiList<NotebookTemplate>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.templates.base);
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.templates.base);
   }
 
   async getTemplate(id: string): Promise<ApiItem<NotebookTemplate>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.templates.byId(id));
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.templates.byId(id));
   }
 
   async updateTemplate(id: string, payload: UpdateTemplateRequest): Promise<ApiItem<NotebookTemplate>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.put(apiConfig.endpoints.notebook.templates.byId(id), payload);
+    return apiClient.put(apiConfig.endpoints.endpoints.notebook.templates.byId(id), payload);
   }
 
   async deleteTemplate(id: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.templates.byId(id));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.templates.byId(id));
   }
 
   // Reminders
   async createReminder(payload: CreateReminderRequest): Promise<ApiItem<NotebookReminder>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.reminders.base, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.reminders.base, payload);
   }
 
   async listReminders(): Promise<ApiList<NotebookReminder>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.reminders.base);
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.reminders.base);
   }
 
   async getReminder(id: string): Promise<ApiItem<NotebookReminder>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.reminders.byId(id));
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.reminders.byId(id));
   }
 
   async updateReminder(id: string, payload: UpdateReminderRequest): Promise<ApiItem<NotebookReminder>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.put(apiConfig.endpoints.notebook.reminders.byId(id), payload);
+    return apiClient.put(apiConfig.endpoints.endpoints.notebook.reminders.byId(id), payload);
   }
 
   async deleteReminder(id: string): Promise<{ success: boolean; message: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.reminders.byId(id));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.reminders.byId(id));
   }
 
   async completeReminder(id: string): Promise<ApiItem<NotebookReminder>> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.reminders.complete(id));
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.reminders.complete(id));
   }
 
   // Calendar
@@ -169,33 +141,27 @@ class NotebookService {
     const params: Record<string, string> = {};
     if (startDate) params.start = startDate;
     if (endDate) params.end = endDate;
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.get(apiConfig.endpoints.notebook.calendar.events, { params });
+    return apiClient.get(apiConfig.endpoints.endpoints.notebook.calendar.events, { params });
   }
 
   async connectCalendar(provider: 'google' | 'microsoft', payload: { access_token: string; refresh_token: string; token_expiry: string; calendar_id?: string }): Promise<{ success: boolean; connection_id: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.calendar.connect(provider), payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.calendar.connect(provider), payload);
   }
 
   async disconnectCalendar(connectionId: string): Promise<{ success: boolean }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.delete(apiConfig.endpoints.notebook.calendar.disconnect(connectionId));
+    return apiClient.delete(apiConfig.endpoints.endpoints.notebook.calendar.disconnect(connectionId));
   }
 
   async syncCalendar(connectionId: string): Promise<{ success: boolean; synced: number }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.calendar.sync(connectionId));
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.calendar.sync(connectionId));
   }
 
   async googleOAuthExchange(payload: { code: string; redirect_uri: string; client_id: string; client_secret: string }): Promise<{ success: boolean; connection_id: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.calendar.oauthGoogle, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.calendar.oauthGoogle, payload);
     }
 
   async microsoftOAuthExchange(payload: { code: string; redirect_uri: string; client_id: string; client_secret: string; tenant?: string }): Promise<{ success: boolean; connection_id: string }> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return apiClient.post(apiConfig.endpoints.notebook.calendar.oauthMicrosoft, payload);
+    return apiClient.post(apiConfig.endpoints.endpoints.notebook.calendar.oauthMicrosoft, payload);
   }
 }
 

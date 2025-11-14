@@ -25,22 +25,19 @@ export class CalendarService {
   
   static async getConnections(): Promise<CalendarConnection[]> {
     return apiClient.get<CalendarConnection[]>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.notebook.calendar.connections
+      apiConfig.endpoints.endpoints.notebook.calendar.connections
     );
   }
   
   static async disconnectCalendar(connectionId: string): Promise<void> {
     await apiClient.delete(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.notebook.calendar.disconnect(connectionId)
+      apiConfig.endpoints.endpoints.notebook.calendar.disconnect(connectionId)
     );
   }
   
   static async syncCalendar(connectionId: string): Promise<SyncResult> {
     return apiClient.post<SyncResult>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.notebook.calendar.sync(connectionId)
+      apiConfig.endpoints.endpoints.notebook.calendar.sync(connectionId)
     );
   }
   
@@ -48,8 +45,7 @@ export class CalendarService {
     const start = startDate.toISOString();
     const end = endDate.toISOString();
     return apiClient.get<CalendarEventsResponse>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      `${apiConfig.endpoints.notebook.calendar.events}?start=${start}&end=${end}`
+      `${apiConfig.endpoints.endpoints.notebook.calendar.events}?start=${start}&end=${end}`
     );
   }
 }

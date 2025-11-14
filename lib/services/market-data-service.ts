@@ -53,8 +53,7 @@ class MarketDataService {
    */
   async getHealth(): Promise<HealthStatus> {
     const response = await apiClient.get<BackendApiResponse<HealthStatus>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.health
+      apiConfig.endpoints.endpoints.market.health
     );
     return this.unwrapResponse(response);
   }
@@ -64,8 +63,7 @@ class MarketDataService {
    */
   async getHours(): Promise<MarketHours> {
     const response = await apiClient.get<BackendApiResponse<MarketHours>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.hours
+      apiConfig.endpoints.endpoints.market.hours
     );
     return this.unwrapResponse(response);
   }
@@ -78,8 +76,7 @@ class MarketDataService {
       ? { symbols: params.symbols.join(",") }
       : undefined;
     const response = await apiClient.get<BackendApiResponse<Quote[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.quotes, {
+      apiConfig.endpoints.endpoints.market.quotes, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -93,8 +90,7 @@ class MarketDataService {
       ? { symbols: params.symbols.join(",") }
       : undefined;
     const response = await apiClient.get<BackendApiResponse<SimpleQuote[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.simpleQuotes, {
+      apiConfig.endpoints.endpoints.market.simpleQuotes, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -105,8 +101,7 @@ class MarketDataService {
    */
   async getSimilar(symbol: string): Promise<SimpleQuote[]> {
     const response = await apiClient.get<BackendApiResponse<SimpleQuote[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.similar, {
+      apiConfig.endpoints.endpoints.market.similar, {
       params: { symbol },
     });
     return this.unwrapResponse(response);
@@ -117,8 +112,7 @@ class MarketDataService {
    */
   async getLogo(symbol: string): Promise<LogoUrl> {
     const response = await apiClient.get<BackendApiResponse<LogoUrl>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.logo, {
+      apiConfig.endpoints.endpoints.market.logo, {
       params: { symbol },
     });
     return this.unwrapResponse(response);
@@ -135,8 +129,7 @@ class MarketDataService {
     if (params.interval) queryParams.interval = params.interval;
 
     const response = await apiClient.get<BackendApiResponse<HistoricalResponse>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.historical,
+      apiConfig.endpoints.endpoints.market.historical,
       { params: queryParams }
     );
     return this.unwrapResponse(response);
@@ -147,8 +140,7 @@ class MarketDataService {
    */
   async getMovers(): Promise<MoversResponse> {
     const response = await apiClient.get<BackendApiResponse<MoversResponse>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.movers
+      apiConfig.endpoints.endpoints.market.movers
     );
     return this.unwrapResponse(response);
   }
@@ -159,8 +151,7 @@ class MarketDataService {
   async getGainers(count?: number): Promise<MoverItem[]> {
     const queryParams = count ? { count: count.toString() } : undefined;
     const response = await apiClient.get<BackendApiResponse<MoverItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.gainers, {
+      apiConfig.endpoints.endpoints.market.gainers, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -172,8 +163,7 @@ class MarketDataService {
   async getLosers(count?: number): Promise<MoverItem[]> {
     const queryParams = count ? { count: count.toString() } : undefined;
     const response = await apiClient.get<BackendApiResponse<MoverItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.losers, {
+      apiConfig.endpoints.endpoints.market.losers, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -185,8 +175,7 @@ class MarketDataService {
   async getActives(count?: number): Promise<MoverItem[]> {
     const queryParams = count ? { count: count.toString() } : undefined;
     const response = await apiClient.get<BackendApiResponse<MoverItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.actives, {
+      apiConfig.endpoints.endpoints.market.actives, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -201,8 +190,7 @@ class MarketDataService {
     if (params?.limit) queryParams.limit = params.limit.toString();
 
     const response = await apiClient.get<BackendApiResponse<NewsItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.news, {
+      apiConfig.endpoints.endpoints.market.news, {
       params: Object.keys(queryParams).length > 0 ? queryParams : undefined,
     });
     return this.unwrapResponse(response);
@@ -212,8 +200,7 @@ class MarketDataService {
    * Get market indices
    */
   async getIndices(): Promise<IndexItem[]> {
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    const response = await apiClient.get<BackendApiResponse<IndexItem[]>>(apiConfig.endpoints.market.indices);
+    const response = await apiClient.get<BackendApiResponse<IndexItem[]>>(apiConfig.endpoints.endpoints.market.indices);
     return this.unwrapResponse(response);
   }
 
@@ -222,8 +209,7 @@ class MarketDataService {
    */
   async getSectors(): Promise<SectorPerformanceItem[]> {
     const response = await apiClient.get<BackendApiResponse<SectorPerformanceItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.sectors
+      apiConfig.endpoints.endpoints.market.sectors
     );
     return this.unwrapResponse(response);
   }
@@ -236,8 +222,7 @@ class MarketDataService {
     if (params?.hits !== undefined) queryParams.hits = params.hits.toString();
     if (params?.yahoo !== undefined) queryParams.yahoo = params.yahoo.toString();
     const response = await apiClient.get<BackendApiResponse<SearchItem[]>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.search, {
+      apiConfig.endpoints.endpoints.market.search, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -256,8 +241,7 @@ class MarketDataService {
     if (params.interval) queryParams.interval = params.interval;
 
     const response = await apiClient.get<BackendApiResponse<IndicatorSeries>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.indicators,
+      apiConfig.endpoints.endpoints.market.indicators,
       { params: queryParams }
     );
     return this.unwrapResponse(response);
@@ -268,8 +252,7 @@ class MarketDataService {
    */
   async subscribe(params: SubscribeRequest): Promise<void> {
     await apiClient.post<BackendApiResponse<void>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.subscribe, {
+      apiConfig.endpoints.endpoints.market.subscribe, {
       symbols: params.symbols,
     });
     // Void response doesn't need unwrapping
@@ -281,8 +264,7 @@ class MarketDataService {
    */
   async unsubscribe(params: UnsubscribeRequest): Promise<void> {
     await apiClient.post<BackendApiResponse<void>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.unsubscribe, {
+      apiConfig.endpoints.endpoints.market.unsubscribe, {
       symbols: params.symbols,
     });
     // Void response doesn't need unwrapping
@@ -299,8 +281,7 @@ class MarketDataService {
     if (params.statement) queryParams.statement = params.statement;
     if (params.frequency) queryParams.frequency = params.frequency;
     const response = await apiClient.get<BackendApiResponse<FinancialsResponse>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.financials, {
+      apiConfig.endpoints.endpoints.market.financials, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -316,8 +297,7 @@ class MarketDataService {
     if (params.quarter) queryParams.quarter = params.quarter;
     if (params.year) queryParams.year = params.year.toString();
     const response = await apiClient.get<BackendApiResponse<EarningsTranscriptResponse>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.earningsTranscript, {
+      apiConfig.endpoints.endpoints.market.earningsTranscript, {
       params: queryParams,
     });
     return this.unwrapResponse(response);
@@ -332,8 +312,7 @@ class MarketDataService {
     };
     if (params.holder_type) queryParams.holder_type = params.holder_type;
     const response = await apiClient.get<BackendApiResponse<HoldersResponse>>(
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-      apiConfig.endpoints.market.holders, {
+      apiConfig.endpoints.endpoints.market.holders, {
       params: queryParams,
     });
     return this.unwrapResponse(response);

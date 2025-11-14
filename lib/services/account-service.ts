@@ -11,7 +11,6 @@ export interface DeleteAccountResponse {
   message?: string;
   error?: string;
 }
-
 export interface StorageUsageData {
   used_bytes: number;
   limit_bytes: number;
@@ -21,7 +20,6 @@ export interface StorageUsageData {
   remaining_mb: number;
   percentage_used: number;
 }
-
 export interface StorageUsageResponse {
   success: boolean;
   data?: StorageUsageData;
@@ -36,8 +34,8 @@ class AccountService {
   async getStorageUsage(): Promise<StorageUsageData> {
     try {
       const response = await apiClient.get<StorageUsageResponse>(
-        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-        apiConfig.endpoints.user.storage
+
+        apiConfig.endpoints.endpoints.user.storage
       );
 
       // apiClient.get returns the response data directly
@@ -61,8 +59,7 @@ class AccountService {
   async deleteAccount(): Promise<void> {
     try {
       const response = await apiClient.delete<DeleteAccountResponse>(
-        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-        apiConfig.endpoints.user.deleteAccount
+        apiConfig.endpoints.endpoints.user.deleteAccount
       );
 
       if (!response.success) {
@@ -81,4 +78,3 @@ class AccountService {
 
 export const accountService = new AccountService();
 export default accountService;
-

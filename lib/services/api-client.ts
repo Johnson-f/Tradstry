@@ -147,8 +147,7 @@ class ApiClient {
 
   // Health check
   async healthCheck(): Promise<{ status: string; version: string }> {
-     // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-    return this.get(apiConfig.endpoints.health);
+    return this.get(apiConfig.endpoints.endpoints.health);
   }
 
   // Get current user info from token
