@@ -39,3 +39,4 @@ CREATE POLICY "Users can delete their own profile picture" ON storage.objects
 -- - These policies enforce per-user folder isolation: each user can only access files in {their_user_id}/
 -- - Uses storage.foldername() helper function to extract the user folder from the path
 -- - When uploading, your backend should use paths like: {user_id}/image-name.jpg
+--

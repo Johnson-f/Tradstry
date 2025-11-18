@@ -136,4 +136,3 @@ pub async fn send_price_alert_notifications(
 
     Ok(sent_count)
 }
-

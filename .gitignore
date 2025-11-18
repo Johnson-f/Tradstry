@@ -49,4 +49,6 @@ backend/target/
 backend/.env
 backend/.env.production
 
+.env.production
+
 .vscode

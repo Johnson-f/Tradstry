@@ -5,8 +5,8 @@ CREATE TYPE trade_status AS ENUM ('open', 'closed');
 
 -- options table for options
 CREATE TABLE public.options (
-  id SERIAL PRIMARY KEY,
-  user_id uuid NOT NULL,
+  id SERIAL PRIMARY KE
+  user_id id NOT NULL,
   symbol character varying NOT NULL,
   strategy_type text NOT NULL,
   trade_direction character varying NOT NULL CHECK (trade_direction::text = ANY (ARRAY['Bullish'::character varying, 'Bearish'::character varying, 'Neutral'::character varying]::text[])),
@@ -49,8 +49,7 @@ CREATE POLICY "Users can delete own options" ON public.options
 
 -- New columns added
 
--- Add is_deleted column to options table for soft delete functionality
-ALTER TABLE options ADD COLUMN is_deleted INTEGER DEFAULT 0;
+-- Add is_deleted column to options table for soft delete functionaliALTER TABLE options ADD COLUMN is_deleted INTEGER DEFAULT 0;
 
 -- Create index for better performance on soft delete queries
 CREATE INDEX IF NOT EXISTS idx_options_is_deleted ON options(is_deleted);

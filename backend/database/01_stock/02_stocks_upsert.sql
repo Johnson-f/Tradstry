@@ -1,24 +1,25 @@
 -- Create unique constraint for natural upsert logic
 -- This ensures one record per user per unique stock position
 ALTER TABLE public.stocks 
+
 ADD CONSTRAINT unique_stock_position 
 UNIQUE (user_id, symbol, trade_type, entry_price, entry_date);
 
 -- True upsert function for stocks table
 -- This function inserts a new stock record or updates an existing one based on natural key
 CREATE OR REPLACE FUNCTION upsert_stock(
-    p_symbol character varying,
-    p_trade_type trade_type_enum,
-    p_order_type order_type_enum,
-    p_entry_price numeric,
-    p_stop_loss numeric,
-    p_number_shares numeric,
-    p_entry_date timestamp without time zone,
-    p_exit_price numeric DEFAULT NULL,
-    p_commissions numeric DEFAULT 0.00,
-    p_take_profit numeric DEFAULT NULL,
-    p_exit_date timestamp without time zone DEFAULT NULL,
-    p_user_id uuid DEFAULT NULL  -- Optional parameter for manual testing
+   p_symbol character varying,
+   p_trade_type trade_type_enum,
+   p_order_type order_type_enum,
+   p_entry_price numeric,
+   p_stop_loss numeric,
+   p_number_shares numeric,
+   p_entry_date timestamp without time zone,
+   p_exit_price numeric DEFAULT NULL,
+   p_commissions numeric DEFAULT 0.00,
+   p_take_profit numeric DEFAULT NULL,
+   p_exit_date timestamp without time zone DEFAULT NULL,
+   p_user_id uuid DEFUALT NULL -- optional parameter for manual testing 
 )
 RETURNS TABLE(
     id integer,
