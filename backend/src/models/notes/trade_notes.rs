@@ -588,7 +588,7 @@ impl TradeNote {
 
 /// Convert from libsql row to TradeNote struct
 impl TradeNote {
-    fn from_row(row: &libsql::Row) -> Result<TradeNote, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn from_row(row: &libsql::Row) -> Result<TradeNote, Box<dyn std::error::Error + Send + Sync>> {
         // Helper function to parse datetime from various formats (RFC3339, SQLite format, etc.)
         fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
             // Handle empty strings

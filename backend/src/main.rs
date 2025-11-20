@@ -183,8 +183,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().ai_insights_service.clone()))
             // CRITICAL: Add AIReportsService as separate app_data for AI reports routes
             .app_data(Data::new(app_data.as_ref().ai_reports_service.clone()))
-            // CRITICAL: Add VectorizationService as separate app_data for stocks routes
-            .app_data(Data::new(app_data.as_ref().vectorization_service.clone()))
+            // VectorizationService removed - no longer using Upstash
+            // CRITICAL: Add TradeVectorService as separate app_data for vectorizing trade mistakes and notes
+            .app_data(Data::new(app_data.as_ref().trade_vector_service.clone()))
+            // CRITICAL: Add PlaybookVectorization as separate app_data for playbook routes
+            .app_data(Data::new(app_data.as_ref().playbook_vector_service.clone()))
             // CRITICAL: Add TradeNotesService as separate app_data for trade notes routes
             .app_data(Data::new(app_data.as_ref().trade_notes_service.clone()))  
             .wrap(cors)

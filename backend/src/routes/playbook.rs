@@ -7,7 +7,7 @@ use log::{info, error, debug};
 
 use crate::models::playbook::{
     CreatePlaybookRequest, Playbook, PlaybookQuery, TagTradeRequest, TradeType, UpdatePlaybookRequest,
-    CreateRuleRequest, PlaybookRule,
+    CreateRuleRequest, UpdateRuleRequest, PlaybookRule,
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::turso::{AppState, client::TursoClient};
@@ -15,6 +15,7 @@ use crate::turso::config::{SupabaseClaims, SupabaseConfig};
 use crate::turso::auth::AuthError;
 use crate::service::cache_service::CacheService;
 use crate::service::analytics_engine::playbook_analytics::calculate_playbook_analytics;
+use crate::service::ai_service::PlaybookVectorization;
 use crate::websocket::{broadcast_playbook_update, ConnectionManager};
 use tokio::sync::Mutex;
 use actix_web::web::Data;
@@ -115,6 +116,61 @@ async fn get_user_database_connection(
         .ok_or_else(|| actix_web::error::ErrorNotFound("User database not found"))
 }
 
+/// Helper function to vectorize a playbook asynchronously
+/// Fetches playbook, rules, and analytics, then vectorizes
+async fn vectorize_playbook_async(
+    user_id: String,
+    playbook_id: String,
+    turso_client: Arc<TursoClient>,
+    playbook_vector_service: Arc<PlaybookVectorization>,
+) {
+    if let Ok(Some(conn)) = turso_client.get_user_database_connection(&user_id).await {
+        // Fetch playbook
+        let playbook = match Playbook::find_by_id(&conn, &playbook_id).await {
+            Ok(Some(pb)) => pb,
+            Ok(None) => {
+                log::warn!("Playbook {} not found for vectorization", playbook_id);
+                return;
+            }
+            Err(e) => {
+                log::error!("Failed to fetch playbook {} for vectorization: {}", playbook_id, e);
+                return;
+            }
+        };
+
+        // Fetch rules
+        let rules = match PlaybookRule::find_by_playbook_id(&conn, &playbook_id).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("Failed to fetch rules for playbook {}: {}", playbook_id, e);
+                vec![]
+            }
+        };
+
+        // Fetch analytics (use default time range - all time)
+        let time_range = TimeRange::AllTime;
+        let analytics = match calculate_playbook_analytics(&conn, &playbook_id, &time_range).await {
+            Ok(a) => Some(a),
+            Err(e) => {
+                log::debug!("No analytics available for playbook {} (new playbook?): {}", playbook_id, e);
+                None
+            }
+        };
+
+        // Vectorize
+        if let Err(e) = playbook_vector_service
+            .vectorize_playbook(&user_id, &playbook, &rules, analytics.as_ref())
+            .await
+        {
+            log::error!("Failed to vectorize playbook {}: {}", playbook_id, e);
+        } else {
+            log::info!("Successfully vectorized playbook {}", playbook_id);
+        }
+    } else {
+        log::error!("Failed to get database connection for user {} to vectorize playbook {}", user_id, playbook_id);
+    }
+}
+
 /// Create a new playbook setup
 /// Create a playbook with cache invalidation
 pub async fn create_playbook(
@@ -124,6 +180,7 @@ pub async fn create_playbook(
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
     ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
@@ -156,6 +213,20 @@ pub async fn create_playbook(
             let playbook_ws = playbook.clone();
             tokio::spawn(async move {
                 broadcast_playbook_update(ws_manager_clone, &user_id_ws, "created", &playbook_ws).await;
+            });
+
+            // Vectorize playbook asynchronously
+            let user_id_vec = user_id.clone();
+            let playbook_id_vec = playbook.id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    playbook_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
             });
 
             Ok(HttpResponse::Created().json(PlaybookResponse {
@@ -361,14 +432,15 @@ pub async fn update_playbook(
     req: HttpRequest,
     playbook_id: web::Path<String>,
     payload: web::Json<UpdatePlaybookRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     ws_manager: web::Data<StdArc<Mutex<ConnectionManager>>>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
 
     match Playbook::update(&conn, &playbook_id, payload.into_inner()).await {
         Ok(Some(playbook)) => {
@@ -379,6 +451,21 @@ pub async fn update_playbook(
             tokio::spawn(async move {
                 broadcast_playbook_update(ws_manager_clone, &user_id_ws, "updated", &playbook_ws).await;
             });
+
+            // Vectorize playbook asynchronously
+            let user_id_vec = user_id.clone();
+            let playbook_id_vec = playbook_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    playbook_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
             Ok(HttpResponse::Ok().json(PlaybookResponse {
                 success: true,
                 message: "Playbook updated successfully".to_string(),
@@ -449,14 +536,16 @@ pub async fn delete_playbook(
 pub async fn tag_trade(
     req: HttpRequest,
     payload: web::Json<TagTradeRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
     let request = payload.into_inner();
+    let setup_id = request.setup_id.clone();
 
     let result = match request.trade_type {
         TradeType::Stock => {
@@ -470,11 +559,27 @@ pub async fn tag_trade(
     };
 
     match result {
-        Ok(association) => Ok(HttpResponse::Created().json(TagTradeResponse {
-            success: true,
-            message: "Trade tagged successfully".to_string(),
-            data: Some(association),
-        })),
+        Ok(association) => {
+            // Vectorize playbook asynchronously (analytics will be recalculated)
+            let user_id_vec = user_id.clone();
+            let setup_id_vec = setup_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    setup_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
+            Ok(HttpResponse::Created().json(TagTradeResponse {
+                success: true,
+                message: "Trade tagged successfully".to_string(),
+                data: Some(association),
+            }))
+        },
         Err(e) => {
             log::error!("Failed to tag trade: {}", e);
             Ok(HttpResponse::InternalServerError().json(TagTradeResponse {
@@ -490,14 +595,16 @@ pub async fn tag_trade(
 pub async fn untag_trade(
     req: HttpRequest,
     payload: web::Json<TagTradeRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
     let request = payload.into_inner();
+    let setup_id = request.setup_id.clone();
 
     let result = match request.trade_type {
         TradeType::Stock => {
@@ -509,11 +616,27 @@ pub async fn untag_trade(
     };
 
     match result {
-        Ok(true) => Ok(HttpResponse::Ok().json(TagTradeResponse {
-            success: true,
-            message: "Trade untagged successfully".to_string(),
-            data: None,
-        })),
+        Ok(true) => {
+            // Vectorize playbook asynchronously (analytics will be recalculated)
+            let user_id_vec = user_id.clone();
+            let setup_id_vec = setup_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    setup_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
+            Ok(HttpResponse::Ok().json(TagTradeResponse {
+                success: true,
+                message: "Trade untagged successfully".to_string(),
+                data: None,
+            }))
+        },
         Ok(false) => Ok(HttpResponse::NotFound().json(TagTradeResponse {
             success: false,
             message: "Trade tag not found".to_string(),
@@ -707,21 +830,38 @@ async fn create_playbook_rule(
     req: HttpRequest,
     path: web::Path<String>,
     payload: web::Json<CreateRuleRequest>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
     let playbook_id = path.into_inner();
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
 
     match PlaybookRule::create(&conn, &playbook_id, payload.into_inner()).await {
-        Ok(rule) => Ok(HttpResponse::Created().json(serde_json::json!({
-            "success": true,
-            "message": "Rule created successfully",
-            "data": rule
-        }))),
+        Ok(rule) => {
+            // Vectorize playbook asynchronously
+            let user_id_vec = user_id.clone();
+            let playbook_id_vec = playbook_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    playbook_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
+            Ok(HttpResponse::Created().json(serde_json::json!({
+                "success": true,
+                "message": "Rule created successfully",
+                "data": rule
+            })))
+        },
         Err(e) => {
             error!("Failed to create rule: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
@@ -772,30 +912,87 @@ async fn get_playbook_rules(
     }
 }
 
-async fn update_playbook_rule() -> ActixResult<HttpResponse> {
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "success": true,
-        "message": "Not implemented yet"
-    })))
+async fn update_playbook_rule(
+    req: HttpRequest,
+    paths: web::Path<(String, String)>,
+    payload: web::Json<UpdateRuleRequest>,
+    app_state: web::Data<AppState>,
+    supabase_config: web::Data<SupabaseConfig>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
+) -> ActixResult<HttpResponse> {
+    let (playbook_id, rule_id) = paths.into_inner();
+    let claims = get_authenticated_user(&req, &supabase_config).await?;
+    let user_id = &claims.sub;
+
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
+
+    match PlaybookRule::update(&conn, &rule_id, payload.into_inner()).await {
+        Ok(rule) => {
+            // Vectorize playbook asynchronously
+            let user_id_vec = user_id.clone();
+            let playbook_id_vec = playbook_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    playbook_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Rule updated successfully",
+                "data": rule
+            })))
+        },
+        Err(e) => {
+            error!("Failed to update rule: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to update rule: {}", e),
+                "data": null
+            })))
+        }
+    }
 }
 
 async fn delete_playbook_rule(
     req: HttpRequest,
     paths: web::Path<(String, String)>,
-    turso_client: web::Data<Arc<TursoClient>>,
+    app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
+    playbook_vector_service: web::Data<Arc<PlaybookVectorization>>,
 ) -> ActixResult<HttpResponse> {
-    let (_playbook_id, rule_id) = paths.into_inner();
+    let (playbook_id, rule_id) = paths.into_inner();
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let user_id = &claims.sub;
 
-    let conn = get_user_database_connection(user_id, &turso_client).await?;
+    let conn = get_user_database_connection(user_id, &app_state.turso_client).await?;
 
     match PlaybookRule::delete(&conn, &rule_id).await {
-        Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({
-            "success": true,
-            "message": "Rule deleted successfully"
-        }))),
+        Ok(_) => {
+            // Vectorize playbook asynchronously
+            let user_id_vec = user_id.clone();
+            let playbook_id_vec = playbook_id.clone();
+            let turso_client_vec = Arc::clone(&app_state.turso_client);
+            let playbook_vector_service_vec = Arc::clone(playbook_vector_service.get_ref());
+            tokio::spawn(async move {
+                vectorize_playbook_async(
+                    user_id_vec,
+                    playbook_id_vec,
+                    turso_client_vec,
+                    playbook_vector_service_vec,
+                ).await;
+            });
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Rule deleted successfully"
+            })))
+        },
         Err(e) => {
             error!("Failed to delete rule: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({

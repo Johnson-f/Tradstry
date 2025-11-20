@@ -4,23 +4,18 @@ pub mod insights_service;
 pub mod reports_service;
 pub mod notes_service;
 pub mod openrouter_client;
-pub mod voyager_client;
-pub mod upstash_vector_client;
-pub mod upstash_search_client;
-pub mod qdrant_client;
-pub mod hybrid_search_service;
-pub mod vectorization_service;
-pub mod data_formatter;
+pub mod vector_service;
 
 // Re-export commonly used types
 pub use chat_service::AIChatService;
 pub use insights_service::AIInsightsService;
 pub use reports_service::AiReportsService;
 pub use notes_service::AINotesService;
-pub use vectorization_service::VectorizationService;
 pub use openrouter_client::OpenRouterClient;
-pub use voyager_client::VoyagerClient;
-pub use upstash_vector_client::UpstashVectorClient;
-pub use upstash_search_client::UpstashSearchClient;
-pub use qdrant_client::QdrantDocumentClient;
-pub use hybrid_search_service::HybridSearchService;
+
+// Re-export vector_service types
+pub use vector_service::VoyagerClient;
+pub use vector_service::QdrantDocumentClient;
+pub use vector_service::TradeVectorService;
+pub use vector_service::ChatVectorization;
+pub use vector_service::PlaybookVectorization;

@@ -5,10 +5,10 @@ use crate::models::ai::chat::{
     MessageRole, ChatSessionDetailsResponse, ChatSessionListResponse, ChatSessionSummary
 };
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
-use crate::service::ai_service::hybrid_search_service::HybridSearchService;
-use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::vector_service::vectors::ChatVectorization;
+use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
 use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
-use crate::service::ai_service::voyager_client::VoyagerClient;
+use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::turso::client::TursoClient;
 use anyhow::{Result, Context};
 use chrono::Utc;
@@ -20,8 +20,8 @@ use uuid::Uuid;
 /// AI Chat Service for handling chat functionality
 #[derive(Clone)]
 pub struct AIChatService {
-    vectorization_service: Arc<VectorizationService>,
-    hybrid_search_service: Arc<HybridSearchService>,
+    chat_vector_service: Arc<ChatVectorization>,
+    qdrant_client: Arc<QdrantDocumentClient>,
     openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
     voyager_client: Arc<VoyagerClient>,
@@ -31,16 +31,16 @@ pub struct AIChatService {
 
 impl AIChatService {
     pub fn new(
-        vectorization_service: Arc<VectorizationService>,
-        hybrid_search_service: Arc<HybridSearchService>,
+        chat_vector_service: Arc<ChatVectorization>,
+        qdrant_client: Arc<QdrantDocumentClient>,
         openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
         voyager_client: Arc<VoyagerClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
-            vectorization_service,
-            hybrid_search_service,
+            chat_vector_service,
+            qdrant_client,
             openrouter_client,
             turso_client,
             voyager_client,
@@ -221,10 +221,10 @@ impl AIChatService {
         // Store messages in database
         let storage_start = std::time::Instant::now();
         self.store_message(conn, &user_message).await?;
-        self.vectorize_message(&user_message, user_id).await.ok();
-
         self.store_message(conn, &assistant_message).await?;
-        self.vectorize_message(&assistant_message, user_id).await.ok();
+        
+        // Vectorize Q&A pair after both messages are stored
+        self.vectorize_qa_pair(user_id, &session.id, &user_message.content, &assistant_message.content).await.ok();
         let storage_time = storage_start.elapsed().as_millis();
         
         log::info!(
@@ -353,11 +353,10 @@ impl AIChatService {
         // Store user message
         let user_msg_start = std::time::Instant::now();
         self.store_message(conn, &user_message).await?;
-        self.vectorize_message(&user_message, user_id).await.ok();
         let user_msg_time = user_msg_start.elapsed().as_millis();
         
         log::info!(
-            "User message stored and vectorized [{}ms] - message_id={}, user={}",
+            "User message stored [{}ms] - message_id={}, user={}",
             user_msg_time, user_message.id, user_id
         );
 
@@ -398,7 +397,8 @@ impl AIChatService {
         let service = self.clone(); // Make service cloneable
         let msg_id = assistant_message_id.clone();
         let user_id_clone = user_id.to_string();
-        let assistant_message_clone = assistant_message.clone();
+        let session_id_clone = session.id.clone();
+        let user_question = request.message.clone();
         tokio::spawn(async move {
             let mut accumulated = String::new();
             let mut token_count = 0;
@@ -437,16 +437,19 @@ impl AIChatService {
                     );
                 }
                 
-                // Vectorize the completed message
+                // Vectorize the Q&A pair after streaming completes
                 let vectorize_start = std::time::Instant::now();
-                let mut completed_message = assistant_message_clone;
-                completed_message.content = accumulated;
-                if let Err(e) = service.vectorize_message(&completed_message, &user_id_clone).await {
-                    log::error!("Failed to vectorize message {}: {}", msg_id, e);
+                if let Err(e) = service.chat_vector_service.vectorize_qa_pair(
+                    &user_id_clone,
+                    &session_id_clone,
+                    &user_question,
+                    &accumulated,
+                ).await {
+                    log::error!("Failed to vectorize Q&A pair for message {}: {}", msg_id, e);
                 } else {
                     let vectorize_time = vectorize_start.elapsed().as_millis();
                     log::info!(
-                        "Successfully vectorized message [{}ms] - message={}, user={}",
+                        "Successfully vectorized Q&A pair [{}ms] - message={}, user={}",
                         vectorize_time, msg_id, user_id_clone
                     );
                 }
@@ -464,56 +467,22 @@ impl AIChatService {
         Ok((frontend_rx, session.id, assistant_message_id))
     }
 
-    /// Vectorize a message and store it in the vector database
-    async fn vectorize_message(&self, message: &ChatMessage, user_id: &str) -> Result<()> {
-        let start_time = std::time::Instant::now();
-        let message_preview = message.content.chars().take(100).collect::<String>();
-        let content_length = message.content.len();
-        
-        log::info!(
-            "Starting vectorization for user={}, message_id={}, role={}, length={}, content_preview='{}'",
-            user_id, message.id, message.role, content_length, message_preview
-        );
-
-        // Skip vectorization for empty messages
-        if message.content.trim().is_empty() {
-            log::info!(
-                "Skipping vectorization for empty message - user={}, message_id={}, role={}",
-                user_id, message.id, message.role
-            );
-            return Ok(());
-        }
-
-        // Use the vectorization service to handle both vector and search indexing
-        match self.vectorization_service
-            .vectorize_data(
-                user_id,
-                crate::service::ai_service::upstash_vector_client::DataType::TradeNote,
-                &message.id,
-                &message.content,
-            )
+    /// Vectorize a Q&A pair and store in Qdrant
+    /// Helper method that calls ChatVectorization
+    async fn vectorize_qa_pair(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        question: &str,
+        answer: &str,
+    ) -> Result<()> {
+        self.chat_vector_service
+            .vectorize_qa_pair(user_id, session_id, question, answer)
             .await
-        {
-            Ok(result) => {
-        let total_time = start_time.elapsed().as_millis();
-        log::info!(
-                    "Vectorization completed [{}ms] - vector_id={}, message_id={}, content_length={}",
-                    total_time, result.vector_id, message.id, content_length
-        );
-        Ok(())
-            }
-            Err(e) => {
-                let total_time = start_time.elapsed().as_millis();
-                log::error!(
-                    "Vectorization failed [{}ms] - message_id={}, user={}, content_length={}, error={:?}",
-                    total_time, message.id, user_id, content_length, e
-                );
-                Err(e)
-            }
-        }
     }
 
-    /// Retrieve relevant context using vector similarity search
+    /// Retrieve relevant context using Qdrant semantic search
+    /// Searches both trades and chat history
     async fn retrieve_context(
         &self,
         user_id: &str,
@@ -528,57 +497,62 @@ impl AIChatService {
             user_id, query_preview, max_vectors
         );
 
-        // Use hybrid search with AI reranking for best results
+        // Generate query embedding
         let search_start = std::time::Instant::now();
         log::debug!(
-            "Calling hybrid search service - user={}, query='{}', max_vectors={}",
-            user_id, query_preview, max_vectors
+            "Generating query embedding - user={}, query='{}'",
+            user_id, query_preview
         );
 
-        let hybrid_results = self.hybrid_search_service
-            .hybrid_search_with_reranking(user_id, query, max_vectors, None)
+        let query_embedding = self.voyager_client
+            .embed_text(query)
             .await
-            .context("Failed to perform vector search")?;
+            .context("Failed to generate query embedding")?;
+        
+        log::debug!(
+            "Query embedding generated - user={}, embedding_dim={}",
+            user_id, query_embedding.len()
+        );
+
+        // Search Qdrant (both trades and chats, no type filter)
+        let search_results = self.qdrant_client
+            .search_by_embedding(user_id, &query_embedding, max_vectors, None)
+            .await
+            .context("Failed to perform semantic search in Qdrant")?;
         
         let search_time = search_start.elapsed().as_millis();
         
         log::info!(
-            "Hybrid search completed [{}ms] - found {} matches, user={}",
-            search_time, hybrid_results.len(), user_id
+            "Semantic search completed [{}ms] - found {} matches, user={}",
+            search_time, search_results.len(), user_id
         );
         
         // Log top similarity scores and data types
-        if !hybrid_results.is_empty() {
-            let top_scores: Vec<String> = hybrid_results.iter()
+        if !search_results.is_empty() {
+            let top_scores: Vec<String> = search_results.iter()
                 .take(5)
-                .map(|r| format!("{:.3}", r.combined_score))
+                .map(|r| format!("{:.3}", r.score))
                 .collect();
-            let data_types: Vec<String> = hybrid_results.iter()
+            let data_types: Vec<String> = search_results.iter()
                 .take(5)
-                .map(|r| r.data_type.clone())
+                .map(|r| r.r#type.clone().unwrap_or_else(|| "unknown".to_string()))
                 .collect();
             
             log::info!(
-                "Top hybrid scores: [{}], data_types: [{}], user={}",
+                "Top similarity scores: [{}], data_types: [{}], user={}",
                 top_scores.join(", "), data_types.join(", "), user_id
             );
         } else {
             log::warn!(
-                "No hybrid search results found - user={}, query='{}'",
+                "No search results found - user={}, query='{}'",
                 user_id, query_preview
             );
         }
         
-        // Convert hybrid results to context sources
-        let context_sources: Vec<ContextSource> = hybrid_results
-            .into_iter()
-            .map(|result| ContextSource::new(
-                result.id,
-                result.data_type,
-                result.entity_id,
-                result.combined_score,
-                result.content_snippet,
-            ))
+        // Convert search results to context sources
+        let context_sources: Vec<ContextSource> = search_results
+            .iter()
+            .map(|result| ContextSource::from_search_result(result))
             .collect();
         
         let total_time = start_time.elapsed().as_millis();
@@ -923,8 +897,8 @@ impl AIChatService {
 
     /// Health check for AI chat service
     pub async fn health_check(&self) -> Result<()> {
-        // Check vectorization service
-        self.vectorization_service.health_check().await?;
+        // Check Voyager client (used for embeddings)
+        self.voyager_client.health_check().await?;
 
         Ok(())
     }

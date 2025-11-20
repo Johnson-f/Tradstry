@@ -138,6 +138,56 @@ impl ContextSource {
             snippet,
         }
     }
+
+    /// Create ContextSource from Qdrant SearchResult
+    pub fn from_search_result(result: &crate::service::ai_service::vector_service::qdrant::SearchResult) -> Self {
+        // Extract entity_id from vector_id
+        // Format: "trade-{id}-mistakes-notes" or "chat-{session_id}-qa"
+        let entity_id = if result.id.starts_with("trade-") {
+            // Extract trade ID: "trade-456-mistakes-notes" -> "456"
+            result.id
+                .strip_prefix("trade-")
+                .and_then(|s| s.split('-').next())
+                .unwrap_or(&result.id)
+                .to_string()
+        } else if result.id.starts_with("chat-") {
+            // Extract session ID: "chat-session-123-qa" -> "session-123"
+            result.id
+                .strip_prefix("chat-")
+                .and_then(|s| s.strip_suffix("-qa"))
+                .unwrap_or(&result.id)
+                .to_string()
+        } else {
+            result.id.clone()
+        };
+
+        // Determine data_type from result type or id prefix
+        let data_type = result.r#type.clone()
+            .unwrap_or_else(|| {
+                if result.id.starts_with("trade-") {
+                    "trade".to_string()
+                } else if result.id.starts_with("chat-") {
+                    "chat".to_string()
+                } else {
+                    "unknown".to_string()
+                }
+            });
+
+        // Truncate content to snippet (max 200 chars)
+        let snippet = if result.content.len() > 200 {
+            format!("{}...", &result.content[..200])
+        } else {
+            result.content.clone()
+        };
+
+        Self {
+            vector_id: result.id.clone(),
+            data_type,
+            entity_id,
+            similarity_score: result.score,
+            snippet,
+        }
+    }
 }
 
 /// Chat session list response

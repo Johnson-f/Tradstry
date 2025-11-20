@@ -5,11 +5,11 @@ use crate::models::ai::insights::{
     InsightGenerationTask, InsightTemplate, InsightMetadata
 };
 use crate::models::stock::stocks::TimeRange;
-use crate::service::ai_service::vectorization_service::VectorizationService;
+use crate::service::ai_service::vector_service::client::VoyagerClient;
+use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
 use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
-use crate::service::ai_service::upstash_vector_client::DataType;
 use crate::turso::client::TursoClient;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use chrono::Utc;
 use libsql::{Connection, params};
 use serde_json;
@@ -17,7 +17,8 @@ use std::sync::Arc;
 
 /// AI Insights Service for generating trading insights
 pub struct AIInsightsService {
-    vectorization_service: Arc<VectorizationService>,
+    voyager_client: Arc<VoyagerClient>,
+    qdrant_client: Arc<QdrantDocumentClient>,
     openrouter_client: Arc<OpenRouterClient>,
     turso_client: Arc<TursoClient>,
     max_context_vectors: usize,
@@ -25,13 +26,15 @@ pub struct AIInsightsService {
 
 impl AIInsightsService {
     pub fn new(
-        vectorization_service: Arc<VectorizationService>,
         openrouter_client: Arc<OpenRouterClient>,
         turso_client: Arc<TursoClient>,
+        voyager_client: Arc<VoyagerClient>,
+        qdrant_client: Arc<QdrantDocumentClient>,
         max_context_vectors: usize,
     ) -> Self {
         Self {
-            vectorization_service,
+            voyager_client,
+            qdrant_client,
             openrouter_client,
             turso_client,
             max_context_vectors,
@@ -325,20 +328,46 @@ impl AIInsightsService {
         insight_type: &InsightType,
     ) -> Result<TradingDataSummary> {
         // Query relevant vectors based on insight type
-        let data_types = match insight_type {
-            InsightType::TradingPatterns => vec![DataType::Stock, DataType::Option],
-            InsightType::PerformanceAnalysis => vec![DataType::Stock, DataType::Option],
-            InsightType::RiskAssessment => vec![DataType::Stock, DataType::Option],
-            InsightType::BehavioralAnalysis => vec![DataType::Stock, DataType::Option, DataType::TradeNote],
-            InsightType::MarketAnalysis => vec![DataType::Stock, DataType::Option],
-            InsightType::OpportunityDetection => vec![DataType::Stock, DataType::Option],
+        // Map insight types to Qdrant type filters
+        let type_filter = match insight_type {
+            InsightType::TradingPatterns | InsightType::PerformanceAnalysis | 
+            InsightType::RiskAssessment | InsightType::MarketAnalysis | 
+            InsightType::OpportunityDetection => Some("trade"), // Search trade vectors
+            InsightType::BehavioralAnalysis => None, // Search all types (trades + notes)
         };
 
-        // Query vectors for context
+        // Query vectors for context using Qdrant
         let query_text = format!("trading data for {} analysis", insight_type);
-        let vector_matches = self.vectorization_service
-            .query_similar_vectors(user_id, &query_text, self.max_context_vectors, Some(data_types))
-            .await?;
+        let query_embedding = self.voyager_client
+            .embed_text(&query_text)
+            .await
+            .context("Failed to generate query embedding")?;
+
+        let search_results = self.qdrant_client
+            .search_by_embedding(user_id, &query_embedding, self.max_context_vectors, type_filter)
+            .await
+            .context("Failed to search Qdrant for trading data")?;
+
+        // Convert search results to vector matches format (for compatibility)
+        let vector_matches: Vec<VectorMatch> = search_results
+            .into_iter()
+            .map(|result| VectorMatch {
+                id: result.id.clone(),
+                score: result.score,
+                metadata: Some(VectorMetadata {
+                    user_id: user_id.to_string(),
+                    data_type: match result.r#type.as_deref() {
+                        Some("trade") => DataType::Stock, // Approximate mapping
+                        Some("chat") => DataType::TradeNote, // Approximate mapping
+                        _ => DataType::Stock,
+                    },
+                    entity_id: result.id.clone(),
+                    timestamp: result.created_at.unwrap_or_else(Utc::now),
+                    tags: vec![],
+                    content_hash: result.content.clone(),
+                }),
+            })
+            .collect();
 
         // Count trades in time range
         let trade_count = vector_matches.len() as u32;
@@ -911,12 +940,42 @@ async fn generate_insight_content(
     /// Clone service for background processing
     fn clone_for_background(&self) -> Self {
         Self {
-            vectorization_service: self.vectorization_service.clone(),
-            openrouter_client: self.openrouter_client.clone(),
-            turso_client: self.turso_client.clone(),
+            voyager_client: Arc::clone(&self.voyager_client),
+            qdrant_client: Arc::clone(&self.qdrant_client),
+            openrouter_client: Arc::clone(&self.openrouter_client),
+            turso_client: Arc::clone(&self.turso_client),
             max_context_vectors: self.max_context_vectors,
         }
     }
+}
+
+/// Vector match for compatibility with existing code
+#[derive(Debug, Clone)]
+struct VectorMatch {
+    id: String,
+    score: f32,
+    metadata: Option<VectorMetadata>,
+}
+
+/// Vector metadata for compatibility
+#[derive(Debug, Clone)]
+struct VectorMetadata {
+    user_id: String,
+    data_type: DataType,
+    entity_id: String,
+    timestamp: chrono::DateTime<chrono::Utc>,
+    tags: Vec<String>,
+    content_hash: String,
+}
+
+/// Data type enum for compatibility
+#[derive(Debug, Clone)]
+enum DataType {
+    Stock,
+    Option,
+    TradeNote,
+    NotebookEntry,
+    PlaybookStrategy,
 }
 
 /// Trading data summary for insights
@@ -924,7 +983,7 @@ async fn generate_insight_content(
 struct TradingDataSummary {
     trade_count: u32,
     data_quality_score: f32,
-    vector_matches: Vec<crate::service::ai_service::upstash_vector_client::VectorMatch>,
+    vector_matches: Vec<VectorMatch>,
 }
 
 /// Insight content generated by AI
@@ -940,7 +999,7 @@ struct InsightContent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::service::ai_service::{VoyagerClient, UpstashVectorClient, QdrantDocumentClient};
+    use crate::service::ai_service::{VoyagerClient, QdrantDocumentClient};
 
     #[test]
     fn test_insight_creation() {
@@ -959,16 +1018,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_period_days() {
         let service = AIInsightsService {
-            vectorization_service: Arc::new(VectorizationService::new(
-                Arc::new(VoyagerClient::new(
-                    crate::turso::vector_config::VoyagerConfig::from_env().unwrap()
-                ).unwrap()),
-                Arc::new(UpstashVectorClient::new(
-                    crate::turso::vector_config::VectorConfig::from_env().unwrap()
-                ).unwrap()),
-                Arc::new(QdrantDocumentClient::new(crate::turso::vector_config::QdrantConfig::from_env().unwrap()).await.unwrap()),
-                crate::turso::vector_config::AIConfig::from_env().unwrap(),
-            )),
+            voyager_client: Arc::new(VoyagerClient::new(
+                crate::turso::vector_config::VoyagerConfig::from_env().unwrap()
+            ).unwrap()),
+            qdrant_client: Arc::new(QdrantDocumentClient::new(crate::turso::vector_config::QdrantConfig::from_env().unwrap()).await.unwrap()),
             openrouter_client: Arc::new(OpenRouterClient::new(
                 crate::turso::vector_config::OpenRouterConfig::from_env().unwrap()
             ).unwrap()),

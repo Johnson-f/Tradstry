@@ -10,9 +10,7 @@ use crate::models::options::{
 };
 use crate::models::stock::stocks::TimeRange;
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::vectorization_service::VectorizationService;
-use crate::service::ai_service::data_formatter::DataFormatter;
-use crate::service::ai_service::upstash_vector_client::DataType;
+use crate::service::ai_service::TradeVectorService;
 use crate::websocket::{broadcast_option_update, ConnectionManager};
 use tokio::sync::Mutex;
 
@@ -175,7 +173,7 @@ pub async fn create_option(
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    vectorization_service: web::Data<Arc<VectorizationService>>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     // Log raw request body
@@ -240,23 +238,20 @@ pub async fn create_option(
                 broadcast_option_update(ws_manager_clone, &user_id_ws, "created", &option_ws).await;
             });
 
-            // Vectorize the new option trade
-            let vectorization_service_clone = vectorization_service.get_ref().clone();
-            let option_clone = option.clone();
-            let user_id_clone = user_id.clone();
+            // Vectorize trade mistakes and notes
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let option_id = option.id;
+            let user_id_vec = user_id.clone();
+            let conn_clone = conn.clone();
             
             tokio::spawn(async move {
-                let content = DataFormatter::format_option_for_embedding(&option_clone);
-                match vectorization_service_clone.vectorize_data(
-                    &user_id_clone,
-                    DataType::Option,
-                    &option_clone.id.to_string(),
-                    &content,
-                ).await {
-                    Ok(result) => info!("Successfully vectorized option {} for user {}: {}ms", 
-                        option_clone.id, user_id_clone, result.processing_time_ms),
-                    Err(e) => error!("Failed to vectorize option {} for user {}: {}", 
-                        option_clone.id, user_id_clone, e),
+                if let Err(e) = trade_vector_service_clone
+                    .vectorize_trade_mistakes_and_notes(&user_id_vec, option_id, "option", &conn_clone)
+                    .await
+                {
+                    error!("Failed to vectorize trade mistakes and notes for option {}: {}", option_id, e);
+                } else {
+                    info!("Successfully vectorized mistakes and notes for option {}", option_id);
                 }
             });
 
@@ -369,23 +364,43 @@ pub async fn update_option(
     payload: web::Json<UpdateOptionRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Updating option with ID: {}", id);
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
     match OptionTrade::update(&conn, id, payload.into_inner()).await {
         Ok(Some(option)) => {
             info!("Successfully updated option with ID: {}", id);
             // Broadcast real-time update
             let ws_manager_clone = ws_manager.clone();
-            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            let user_id_ws = user_id.clone();
             let option_ws = option.clone();
             tokio::spawn(async move {
                 broadcast_option_update(ws_manager_clone, &user_id_ws, "updated", &option_ws).await;
             });
+
+            // Re-vectorize trade mistakes and notes
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let option_id = option.id;
+            let user_id_vec = user_id.clone();
+            let conn_clone = conn.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = trade_vector_service_clone
+                    .vectorize_trade_mistakes_and_notes(&user_id_vec, option_id, "option", &conn_clone)
+                    .await
+                {
+                    error!("Failed to re-vectorize trade mistakes and notes for option {}: {}", option_id, e);
+                } else {
+                    info!("Successfully re-vectorized mistakes and notes for option {}", option_id);
+                }
+            });
+
             Ok(HttpResponse::Ok().json(ApiResponse::success(option)))
         }
         Ok(None) => {
@@ -409,19 +424,38 @@ pub async fn delete_option(
     option_id: web::Path<i64>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = option_id.into_inner();
     info!("Deleting option with ID: {}", id);
 
     let conn = get_user_db_connection(&req, &turso_client, &supabase_config).await?;
+    let user_id = get_authenticated_user(&req, &supabase_config).await?.sub;
 
     match OptionTrade::delete(&conn, id).await {
         Ok(true) => {
             info!("Successfully deleted option with ID: {}", id);
+            
+            // Delete trade vector
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let option_id = id;
+            let user_id_vec = user_id.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = trade_vector_service_clone
+                    .delete_trade_vector(&user_id_vec, option_id)
+                    .await
+                {
+                    error!("Failed to delete trade vector for option {}: {}", option_id, e);
+                } else {
+                    info!("Successfully deleted trade vector for option {}", option_id);
+                }
+            });
+
             // Broadcast deletion
             let ws_manager_clone = ws_manager.clone();
-            let user_id_ws = get_authenticated_user(&req, &supabase_config).await?.sub;
+            let user_id_ws = user_id.clone();
             tokio::spawn(async move {
                 broadcast_option_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
             });

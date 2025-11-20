@@ -1312,9 +1312,8 @@ pub async fn sync_accounts(
         warn!("Failed to migrate brokerage_name column: {}", e);
     }
     
-    // Get vectorization service from app state
-    let vectorization_service = app_state.vectorization_service.clone();
-    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, Some(vectorization_service)).await {
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
+    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, None).await {
         error!("Failed to transform brokerage transactions: {}", e);
         // Don't fail the entire sync if transformation fails
     }
@@ -2291,9 +2290,8 @@ pub async fn complete_connection_sync(
         warn!("Failed to migrate brokerage_name column: {}", e);
     }
     
-    // Get vectorization service from app state
-    let vectorization_service = app_state.vectorization_service.clone();
-    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, Some(vectorization_service)).await {
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
+    if let Err(e) = transform::transform_brokerage_transactions(&conn, &user_id, None).await {
         error!("Failed to transform brokerage transactions: {}", e);
         // Don't fail the entire sync if transformation fails
     }
@@ -2553,7 +2551,8 @@ async fn resolve_unmatched_transaction(
         actix_web::error::ErrorInternalServerError("Database error")
     })?.map(|v| v != 0).unwrap_or(false);
 
-    let vectorization_service_opt = Some(app_state.vectorization_service.as_ref());
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
+    let vectorization_service_opt: Option<()> = None;
 
     let trade_id = match body.action.as_str() {
         "merge" => {

@@ -33,7 +33,7 @@ use crate::service::trade_notes_service::TradeNotesService;
 use crate::service::rate_limiter::RateLimiter;
 use crate::service::storage_quota::StorageQuotaService;
 use crate::service::account_deletion::AccountDeletionService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, VectorizationService, OpenRouterClient, VoyagerClient, UpstashVectorClient, QdrantDocumentClient, HybridSearchService, UpstashSearchClient};
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, OpenRouterClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, PlaybookVectorization};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -53,7 +53,8 @@ pub struct AppState {
     #[allow(dead_code)]
     pub ai_notes_service: Arc<AINotesService>,
     pub trade_notes_service: Arc<TradeNotesService>,
-    pub vectorization_service: Arc<VectorizationService>,
+    pub trade_vector_service: Arc<TradeVectorService>,
+    pub playbook_vector_service: Arc<PlaybookVectorization>,
 }
 
 impl AppState {
@@ -96,10 +97,6 @@ impl AppState {
             .map_err(|e| format!("Failed to load OpenRouter config: {}", e))?;
         let openrouter_client = Arc::new(OpenRouterClient::new(openrouter_config)?);
         
-        let vector_config = crate::turso::vector_config::VectorConfig::from_env()
-            .map_err(|e| format!("Failed to load Vector config: {}", e))?;
-        let upstash_vector_client = Arc::new(UpstashVectorClient::new(vector_config)?);
-        
         let voyager_config = crate::turso::vector_config::VoyagerConfig::from_env()
             .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
         let voyager_client = Arc::new(VoyagerClient::new(voyager_config)?);
@@ -109,26 +106,21 @@ impl AppState {
         let qdrant_client = Arc::new(QdrantDocumentClient::new(qdrant_config).await
             .map_err(|e| format!("Failed to create Qdrant client: {}", e))?);
         
-        let ai_config = crate::turso::vector_config::AIConfig::from_env()
-            .map_err(|e| format!("Failed to load AI config: {}", e))?;
-        let vectorization_service = Arc::new(VectorizationService::new(
+        // Initialize ChatVectorization service
+        let chat_vector_service = Arc::new(ChatVectorization::new(
             Arc::clone(&voyager_client),
-            Arc::clone(&upstash_vector_client),
             Arc::clone(&qdrant_client),
-            ai_config.clone(),
         ));
         
-        // Initialize hybrid search service
-        let hybrid_search_service = Arc::new(HybridSearchService::new(
-            Arc::clone(&upstash_vector_client),
-            Arc::clone(&qdrant_client),
+        // Initialize PlaybookVectorization service
+        let playbook_vector_service = Arc::new(PlaybookVectorization::new(
             Arc::clone(&voyager_client),
-            ai_config.hybrid_config.clone(),
+            Arc::clone(&qdrant_client),
         ));
         
         let ai_chat_service = Arc::new(AIChatService::new(
-            Arc::clone(&vectorization_service),
-            Arc::clone(&hybrid_search_service),
+            Arc::clone(&chat_vector_service),
+            Arc::clone(&qdrant_client),
             Arc::clone(&openrouter_client),
             Arc::clone(&turso_client),
             Arc::clone(&voyager_client),
@@ -136,9 +128,10 @@ impl AppState {
         ));
         
         let ai_insights_service = Arc::new(AIInsightsService::new(
-            Arc::clone(&vectorization_service),
             Arc::clone(&openrouter_client),
             Arc::clone(&turso_client),
+            Arc::clone(&voyager_client),
+            Arc::clone(&qdrant_client),
             10, // max_context_vectors
         ));
 
@@ -155,11 +148,6 @@ impl AppState {
             Arc::clone(&ai_notes_service),
             Arc::clone(&cache_service),
         ));
-
-        // Initialize Upstash Search client for account deletion
-        let search_config = crate::turso::vector_config::SearchConfig::from_env()
-            .map_err(|e| format!("Failed to load Search config: {}", e))?;
-        let upstash_search_client = Arc::new(UpstashSearchClient::new(search_config)?);
 
         // Initialize ImageUploadService for account deletion (used for Supabase Storage cleanup)
         let image_storage_config = crate::service::image_upload::SupabaseStorageConfig::from_env()
@@ -178,11 +166,15 @@ impl AppState {
         let account_deletion_service = Arc::new(AccountDeletionService::new(
             Arc::clone(&turso_client),
             Arc::clone(&image_upload_service),
-            Arc::clone(&vectorization_service),
             Arc::clone(&qdrant_client),
-            Arc::clone(&upstash_search_client),
             supabase_url,
             supabase_service_role_key,
+        ));
+
+        // Initialize TradeVectorService for vectorizing trade mistakes and notes
+        let trade_vector_service = Arc::new(TradeVectorService::new(
+            Arc::clone(&voyager_client),
+            Arc::clone(&qdrant_client),
         ));
 
         Ok(Self {
@@ -198,7 +190,8 @@ impl AppState {
             ai_reports_service,
             ai_notes_service,
             trade_notes_service,
-            vectorization_service,
+            trade_vector_service,
+            playbook_vector_service,
         })
     }
 

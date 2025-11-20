@@ -5,19 +5,14 @@ use std::collections::HashMap;
 
 use crate::turso::client::TursoClient;
 use crate::service::image_upload::ImageUploadService;
-use crate::service::ai_service::vectorization_service::VectorizationService;
-use crate::service::ai_service::qdrant_client::QdrantDocumentClient;
-use crate::service::ai_service::UpstashSearchClient;
+use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
 
 /// Account deletion service for completely removing user data
 /// Implements all-or-nothing transaction behavior with rollback on failure
 pub struct AccountDeletionService {
     turso_client: Arc<TursoClient>,
     image_upload_service: Arc<ImageUploadService>,
-    #[allow(dead_code)]
-    vectorization_service: Arc<VectorizationService>,
     qdrant_client: Arc<QdrantDocumentClient>,
-    upstash_search_client: Arc<UpstashSearchClient>,
     supabase_url: String,
     supabase_service_role_key: String,
 }
@@ -27,18 +22,14 @@ impl AccountDeletionService {
     pub fn new(
         turso_client: Arc<TursoClient>,
         image_upload_service: Arc<ImageUploadService>,
-        vectorization_service: Arc<VectorizationService>,
         qdrant_client: Arc<QdrantDocumentClient>,
-        upstash_search_client: Arc<UpstashSearchClient>,
         supabase_url: String,
         supabase_service_role_key: String,
     ) -> Self {
         Self {
             turso_client,
             image_upload_service,
-            vectorization_service,
             qdrant_client,
-            upstash_search_client,
             supabase_url,
             supabase_service_role_key,
         }
@@ -206,22 +197,11 @@ impl AccountDeletionService {
     async fn delete_vector_databases(&self, user_id: &str) -> Result<()> {
         info!("Deleting vector databases for user: {}", user_id);
 
-        // Delete from Upstash Vector
-        // Note: Upstash Vector deletion is handled by listing and deleting vectors
-        // This is a placeholder for now - actual implementation may require listing vectors first
-        info!("Upstash Vector cleanup for user: {} (may require listing vectors first)", user_id);
-
         // Delete from Qdrant (delete entire collection)
         let _ = self.qdrant_client
             .delete_user_collection(user_id)
             .await
             .map_err(|e| warn!("Failed to delete Qdrant collection: {}", e));
-
-        // Delete from Upstash Search (delete all documents for user)
-        let _ = self.upstash_search_client
-            .delete_all_user_documents(user_id)
-            .await
-            .map_err(|e| warn!("Failed to delete Upstash Search documents: {}", e));
 
         info!("Completed vector database cleanup for user: {}", user_id);
         Ok(())

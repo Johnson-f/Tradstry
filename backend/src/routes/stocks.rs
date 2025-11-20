@@ -9,9 +9,7 @@ use crate::models::stock::stocks::{
     Stock, CreateStockRequest, UpdateStockRequest, StockQuery, TimeRange
 };
 use crate::service::cache_service::CacheService;
-use crate::service::ai_service::vectorization_service::VectorizationService;
-use crate::service::ai_service::data_formatter::DataFormatter;
-use crate::service::ai_service::upstash_vector_client::DataType;
+use crate::service::ai_service::TradeVectorService;
 use crate::websocket::{broadcast_stock_update, ConnectionManager};
 use tokio::sync::Mutex;
 
@@ -209,25 +207,7 @@ pub async fn create_stock(
                 broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
             });
 
-            // Vectorize the new stock trade
-            let vectorization_service_clone = vectorization_service.get_ref().clone();
-            let stock_clone = stock.clone();
-            let user_id_clone = user_id.clone();
-            
-            tokio::spawn(async move {
-                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
-                match vectorization_service_clone.vectorize_data(
-                    &user_id_clone,
-                    DataType::Stock,
-                    &stock_clone.id.to_string(),
-                    &content,
-                ).await {
-                    Ok(result) => info!("Successfully vectorized stock {} for user {}: {}ms", 
-                        stock_clone.id, user_id_clone, result.processing_time_ms),
-                    Err(e) => error!("Failed to vectorize stock {} for user {}: {}", 
-                        stock_clone.id, user_id_clone, e),
-                }
-            });
+            // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
             
             Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
         }
@@ -247,7 +227,7 @@ pub async fn create_stock(
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    vectorization_service: web::Data<Arc<VectorizationService>>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     // Log raw request body
@@ -312,23 +292,20 @@ pub async fn create_stock(
                 broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
             });
 
-            // Vectorize the new stock trade
-            let vectorization_service_clone = vectorization_service.get_ref().clone();
-            let stock_clone = stock.clone();
-            let user_id_clone = user_id.clone();
+            // Vectorize trade mistakes and notes
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let stock_id = stock.id;
+            let user_id_vec = user_id.clone();
+            let conn_clone = conn.clone();
             
             tokio::spawn(async move {
-                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
-                match vectorization_service_clone.vectorize_data(
-                    &user_id_clone,
-                    DataType::Stock,
-                    &stock_clone.id.to_string(),
-                    &content,
-                ).await {
-                    Ok(result) => info!("Successfully vectorized stock {} for user {}: {}ms", 
-                        stock_clone.id, user_id_clone, result.processing_time_ms),
-                    Err(e) => error!("Failed to vectorize stock {} for user {}: {}", 
-                        stock_clone.id, user_id_clone, e),
+                if let Err(e) = trade_vector_service_clone
+                    .vectorize_trade_mistakes_and_notes(&user_id_vec, stock_id, "stock", &conn_clone)
+                    .await
+                {
+                    error!("Failed to vectorize trade mistakes and notes for stock {}: {}", stock_id, e);
+                } else {
+                    info!("Successfully vectorized mistakes and notes for stock {}", stock_id);
                 }
             });
             
@@ -510,7 +487,7 @@ pub async fn update_stock(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    vectorization_service: web::Data<Arc<VectorizationService>>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
@@ -602,23 +579,20 @@ pub async fn update_stock(
                 manager.broadcast_to_user(&user_id_ws, envelope);
             });
 
-            // Re-vectorize the updated stock trade
-            let vectorization_service_clone = vectorization_service.get_ref().clone();
-            let stock_clone = stock.clone();
-            let user_id_clone = user_id.clone();
+            // Re-vectorize trade mistakes and notes
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let stock_id = stock.id;
+            let user_id_vec = user_id.clone();
+            let conn_clone = conn.clone();
             
             tokio::spawn(async move {
-                let content = DataFormatter::format_stock_for_embedding(&stock_clone);
-                match vectorization_service_clone.vectorize_data(
-                    &user_id_clone,
-                    DataType::Stock,
-                    &stock_clone.id.to_string(),
-                    &content,
-                ).await {
-                    Ok(result) => info!("Successfully re-vectorized stock {} for user {}: {}ms", 
-                        stock_clone.id, user_id_clone, result.processing_time_ms),
-                    Err(e) => error!("Failed to re-vectorize stock {} for user {}: {}", 
-                        stock_clone.id, user_id_clone, e),
+                if let Err(e) = trade_vector_service_clone
+                    .vectorize_trade_mistakes_and_notes(&user_id_vec, stock_id, "stock", &conn_clone)
+                    .await
+                {
+                    error!("Failed to re-vectorize trade mistakes and notes for stock {}: {}", stock_id, e);
+                } else {
+                    info!("Successfully re-vectorized mistakes and notes for stock {}", stock_id);
                 }
             });
             
@@ -647,7 +621,7 @@ pub async fn delete_stock(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    vectorization_service: web::Data<Arc<VectorizationService>>,
+    trade_vector_service: web::Data<Arc<TradeVectorService>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     let id = stock_id.into_inner();
@@ -677,6 +651,22 @@ pub async fn delete_stock(
                 }
             });
 
+            // Delete trade vector
+            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+            let stock_id = id;
+            let user_id_vec = user_id.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = trade_vector_service_clone
+                    .delete_trade_vector(&user_id_vec, stock_id)
+                    .await
+                {
+                    error!("Failed to delete trade vector for stock {}: {}", stock_id, e);
+                } else {
+                    info!("Successfully deleted trade vector for stock {}", stock_id);
+                }
+            });
+
             // Broadcast deletion event
             let ws_manager_clone = ws_manager.clone();
             let user_id_ws = user_id.clone();
@@ -684,22 +674,6 @@ pub async fn delete_stock(
                 broadcast_stock_update(ws_manager_clone, &user_id_ws, "deleted", serde_json::json!({"id": id})).await;
             });
 
-            // Delete vectors for the deleted stock trade
-            let vectorization_service_clone = vectorization_service.get_ref().clone();
-            let user_id_clone = user_id.clone();
-            
-            tokio::spawn(async move {
-                match vectorization_service_clone.delete_vectors(
-                    &user_id_clone,
-                    &[id.to_string()],
-                ).await {
-                    Ok(_) => info!("Successfully deleted vectors for stock {} for user {}", 
-                        id, user_id_clone),
-                    Err(e) => error!("Failed to delete vectors for stock {} for user {}: {}", 
-                        id, user_id_clone, e),
-                }
-            });
-            
             Ok(HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
                 "deleted": true,
                 "id": id

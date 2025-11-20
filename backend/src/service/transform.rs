@@ -4,11 +4,7 @@ use log::{info, error};
 use serde_json::Value;
 use chrono::Utc;
 use std::sync::Arc;
-use crate::service::ai_service::{
-    VectorizationService,
-    data_formatter::DataFormatter,
-};
-use crate::service::ai_service::upstash_vector_client::DataType as VectorDataType;
+// VectorizationService removed - no longer using Upstash
 
 /// Transaction data structure for matching
 #[allow(dead_code)]
@@ -34,7 +30,7 @@ struct TransactionData {
 pub async fn transform_brokerage_transactions(
     _conn: &Connection,
     _user_id: &str,
-    _vectorization_service: Option<Arc<VectorizationService>>,
+    _vectorization_service: Option<()>, // Placeholder for backward compatibility
 ) -> Result<()> {
     info!("Automatic transformation is disabled. Please use the manual merge feature at /api/brokerage/transactions/merge");
     Ok(())
@@ -204,7 +200,7 @@ pub async fn _create_merged_stock_trade_removed(
     total_commissions: f64,
     brokerage_name: Option<String>,
     user_id: &str,
-    vectorization_service: Option<&VectorizationService>,
+    _vectorization_service: Option<()>, // Placeholder for backward compatibility
 ) -> Result<i64> {
     let order_type = "MARKET";
     let stop_loss = entry_price * 0.95; // Default to 5% below entry price
@@ -245,10 +241,7 @@ pub async fn _create_merged_stock_trade_removed(
         return Err(anyhow::anyhow!("Failed to get inserted stock ID"));
     };
 
-    // Vectorize the trade if vectorization service is available
-    if let Some(vector_service) = vectorization_service {
-        vectorize_stock_trade(conn, stock_id, user_id, vector_service).await?;
-    }
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
 
     Ok(stock_id)
 }
@@ -264,7 +257,7 @@ pub async fn create_open_stock_trade(
     commissions: f64,
     brokerage_name: Option<String>,
     user_id: &str,
-    vectorization_service: Option<&VectorizationService>,
+    _vectorization_service: Option<()>, // Placeholder for backward compatibility
 ) -> Result<i64> {
     let order_type = "MARKET";
     let stop_loss = entry_price * 0.95; // Default to 5% below entry price
@@ -303,177 +296,9 @@ pub async fn create_open_stock_trade(
         return Err(anyhow::anyhow!("Failed to get inserted stock ID"));
     };
 
-    // Vectorize the trade if vectorization service is available
-    if let Some(vector_service) = vectorization_service {
-        vectorize_stock_trade(conn, stock_id, user_id, vector_service).await?;
-    }
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
 
     Ok(stock_id)
-}
-
-/// Helper function to vectorize a stock trade
-async fn vectorize_stock_trade(
-    conn: &Connection,
-    stock_id: i64,
-    user_id: &str,
-    vector_service: &VectorizationService,
-) -> Result<()> {
-    // Retrieve the full stock record for formatting
-    let select_stmt = conn
-        .prepare(
-            r#"
-            SELECT id, symbol, trade_type, order_type, entry_price,
-                   exit_price, stop_loss, commissions, number_shares, take_profit,
-                   initial_target, profit_target, trade_ratings,
-                   entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
-            FROM stocks
-            WHERE id = ?
-            "#
-        )
-        .await
-        .context("Failed to prepare stock select statement")?;
-
-    let mut select_rows = select_stmt
-        .query(libsql::params![stock_id])
-        .await
-        .context("Failed to query inserted stock")?;
-
-    if let Some(row) = select_rows.next().await? {
-        // Parse the stock record
-        use crate::models::stock::stocks::{Stock, TradeType, OrderType};
-        
-        let trade_type_str: String = row.get(2)?;
-        let order_type_str: String = row.get(3)?;
-        
-        let trade_type = trade_type_str.parse::<TradeType>()
-            .map_err(|e| anyhow::anyhow!("Invalid trade type: {}", e))?;
-        
-        let order_type = order_type_str.parse::<OrderType>()
-            .map_err(|e| anyhow::anyhow!("Invalid order type: {}", e))?;
-
-        // Parse dates
-        let entry_date_str: String = row.get(13)?;
-        let exit_date_str: Option<String> = row.get(14)?;
-        let reviewed = row.get::<Option<i64>>(15)?.map(|v| v != 0).unwrap_or(false);
-        let mistakes_str: Option<String> = row.get(16)?;
-        let brokerage_name: Option<String> = row.get(17)?;
-        let created_at_str: String = row.get(18)?;
-        let updated_at_str: String = row.get(19)?;
-
-        fn parse_dt(s: &str) -> Result<chrono::DateTime<Utc>> {
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                return Ok(dt.with_timezone(&Utc));
-            }
-            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-                return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-            }
-            if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-                let ndt = date.and_hms_opt(0, 0, 0).ok_or_else(|| anyhow::anyhow!("invalid date"))?;
-                return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-            }
-            Err(anyhow::anyhow!("Unsupported datetime format: {}", s))
-        }
-
-        let entry_date = parse_dt(&entry_date_str)?;
-        let exit_date = exit_date_str.as_ref()
-            .map(|s| parse_dt(s))
-            .transpose()?
-            .unwrap_or(entry_date);
-        let created_at = parse_dt(&created_at_str)?;
-        let updated_at = parse_dt(&updated_at_str)?;
-
-        let entry_price_val = match row.get::<libsql::Value>(4)? {
-            libsql::Value::Integer(val) => val as f64,
-            libsql::Value::Real(val) => val,
-            _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
-        };
-
-        let stock = Stock {
-            id: stock_id,
-            symbol: row.get(1)?,
-            trade_type,
-            order_type,
-            entry_price: entry_price_val,
-            exit_price: match row.get::<libsql::Value>(5)? {
-                libsql::Value::Integer(val) => val as f64,
-                libsql::Value::Real(val) => val,
-                libsql::Value::Null => entry_price_val,
-                _ => entry_price_val,
-            },
-            stop_loss: match row.get::<libsql::Value>(6)? {
-                libsql::Value::Integer(val) => val as f64,
-                libsql::Value::Real(val) => val,
-                _ => return Err(anyhow::anyhow!("Invalid stop_loss type")),
-            },
-            commissions: match row.get::<libsql::Value>(7)? {
-                libsql::Value::Integer(val) => val as f64,
-                libsql::Value::Real(val) => val,
-                _ => return Err(anyhow::anyhow!("Invalid commissions type")),
-            },
-            number_shares: match row.get::<libsql::Value>(8)? {
-                libsql::Value::Integer(val) => val as f64,
-                libsql::Value::Real(val) => val,
-                _ => return Err(anyhow::anyhow!("Invalid number_shares type")),
-            },
-            take_profit: match row.get::<libsql::Value>(9)? {
-                libsql::Value::Integer(val) => Some(val as f64),
-                libsql::Value::Real(val) => Some(val),
-                libsql::Value::Null => None,
-                _ => None,
-            },
-            initial_target: match row.get::<libsql::Value>(10)? {
-                libsql::Value::Integer(val) => Some(val as f64),
-                libsql::Value::Real(val) => Some(val),
-                libsql::Value::Null => None,
-                _ => None,
-            },
-            profit_target: match row.get::<libsql::Value>(11)? {
-                libsql::Value::Integer(val) => Some(val as f64),
-                libsql::Value::Real(val) => Some(val),
-                libsql::Value::Null => None,
-                _ => None,
-            },
-            trade_ratings: row.get::<Option<i32>>(12)?,
-            entry_date,
-            exit_date,
-            reviewed,
-            mistakes: mistakes_str,
-            brokerage_name,
-            trade_group_id: None,
-            parent_trade_id: None,
-            total_quantity: None,
-            transaction_sequence: None,
-            created_at,
-            updated_at,
-        };
-
-        // Format stock for embedding
-        let content = DataFormatter::format_stock_for_embedding(&stock);
-        
-        // Vectorize the trade
-        if let Err(e) = vector_service
-            .vectorize_data(
-                user_id,
-                VectorDataType::Stock,
-                &stock_id.to_string(),
-                &content,
-            )
-            .await
-        {
-            // Log error but don't fail the transformation
-            error!(
-                "Failed to vectorize stock trade {} for user {}: {}",
-                stock_id, user_id, e
-            );
-        } else {
-            info!(
-                "Successfully vectorized stock trade {} for user {}",
-                stock_id, user_id
-            );
-        }
-    }
-
-    Ok(())
 }
 
 /// Transform a brokerage transaction to a stock trade
@@ -484,7 +309,7 @@ async fn transform_to_stock(
     transaction: &Value,
     _snaptrade_transaction_id: &str,
     user_id: &str,
-    vectorization_service: Option<&VectorizationService>,
+    _vectorization_service: Option<()>, // Placeholder for backward compatibility
 ) -> Result<()> {
     // Extract data from transaction JSON
     let symbol = transaction
@@ -566,163 +391,7 @@ async fn transform_to_stock(
         return Err(anyhow::anyhow!("Failed to get inserted stock ID"));
     };
 
-    // Vectorize the trade if vectorization service is available
-    if let Some(vector_service) = vectorization_service {
-        // Retrieve the full stock record for formatting
-        let select_stmt = conn
-            .prepare(
-                r#"
-                SELECT id, symbol, trade_type, order_type, entry_price,
-                       exit_price, stop_loss, commissions, number_shares, take_profit,
-                       initial_target, profit_target, trade_ratings,
-                       entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
-                FROM stocks
-                WHERE id = ?
-                "#
-            )
-            .await
-            .context("Failed to prepare stock select statement")?;
-
-        let mut select_rows = select_stmt
-            .query(libsql::params![stock_id])
-            .await
-            .context("Failed to query inserted stock")?;
-
-        if let Some(row) = select_rows.next().await? {
-            // Parse the stock record
-            use crate::models::stock::stocks::{Stock, TradeType, OrderType};
-            
-            let trade_type_str: String = row.get(2)?;
-            let order_type_str: String = row.get(3)?;
-            
-            let trade_type = trade_type_str.parse::<TradeType>()
-                .map_err(|e| anyhow::anyhow!("Invalid trade type: {}", e))?;
-            
-            let order_type = order_type_str.parse::<OrderType>()
-                .map_err(|e| anyhow::anyhow!("Invalid order type: {}", e))?;
-
-            // Parse dates
-            let entry_date_str: String = row.get(13)?;
-            let exit_date_str: Option<String> = row.get(14)?;
-            let reviewed = row.get::<Option<i64>>(15)?.map(|v| v != 0).unwrap_or(false);
-            let mistakes_str: Option<String> = row.get(16)?;
-            let brokerage_name: Option<String> = row.get(17)?;
-            let created_at_str: String = row.get(18)?;
-            let updated_at_str: String = row.get(19)?;
-
-            fn parse_dt(s: &str) -> Result<chrono::DateTime<Utc>> {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                    return Ok(dt.with_timezone(&Utc));
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-                    return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-                }
-                if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-                    let ndt = date.and_hms_opt(0, 0, 0).ok_or_else(|| anyhow::anyhow!("invalid date"))?;
-                    return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-                }
-                Err(anyhow::anyhow!("Unsupported datetime format: {}", s))
-            }
-
-            let entry_date = parse_dt(&entry_date_str)?;
-            let exit_date = exit_date_str.as_ref()
-                .map(|s| parse_dt(s))
-                .transpose()?
-                .unwrap_or(entry_date);
-            let created_at = parse_dt(&created_at_str)?;
-            let updated_at = parse_dt(&updated_at_str)?;
-
-            let entry_price_val = match row.get::<libsql::Value>(4)? {
-                libsql::Value::Integer(val) => val as f64,
-                libsql::Value::Real(val) => val,
-                _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
-            };
-
-            let stock = Stock {
-                id: stock_id,
-                symbol: row.get(1)?,
-                trade_type,
-                order_type,
-                entry_price: entry_price_val,
-                exit_price: match row.get::<libsql::Value>(5)? {
-                    libsql::Value::Integer(val) => val as f64,
-                    libsql::Value::Real(val) => val,
-                    libsql::Value::Null => entry_price_val,
-                    _ => entry_price_val,
-                },
-                stop_loss: match row.get::<libsql::Value>(6)? {
-                    libsql::Value::Integer(val) => val as f64,
-                    libsql::Value::Real(val) => val,
-                    _ => return Err(anyhow::anyhow!("Invalid stop_loss type")),
-                },
-                commissions: match row.get::<libsql::Value>(7)? {
-                    libsql::Value::Integer(val) => val as f64,
-                    libsql::Value::Real(val) => val,
-                    _ => return Err(anyhow::anyhow!("Invalid commissions type")),
-                },
-                number_shares: match row.get::<libsql::Value>(8)? {
-                    libsql::Value::Integer(val) => val as f64,
-                    libsql::Value::Real(val) => val,
-                    _ => return Err(anyhow::anyhow!("Invalid number_shares type")),
-                },
-                take_profit: match row.get::<libsql::Value>(9)? {
-                    libsql::Value::Integer(val) => Some(val as f64),
-                    libsql::Value::Real(val) => Some(val),
-                    libsql::Value::Null => None,
-                    _ => None,
-                },
-                initial_target: match row.get::<libsql::Value>(10)? {
-                    libsql::Value::Integer(val) => Some(val as f64),
-                    libsql::Value::Real(val) => Some(val),
-                    libsql::Value::Null => None,
-                    _ => None,
-                },
-                profit_target: match row.get::<libsql::Value>(11)? {
-                    libsql::Value::Integer(val) => Some(val as f64),
-                    libsql::Value::Real(val) => Some(val),
-                    libsql::Value::Null => None,
-                    _ => None,
-                },
-                trade_ratings: row.get::<Option<i32>>(12)?,
-                entry_date,
-                exit_date,
-                reviewed,
-                mistakes: mistakes_str,
-                brokerage_name,
-                trade_group_id: None,
-                parent_trade_id: None,
-                total_quantity: None,
-                transaction_sequence: None,
-                created_at,
-                updated_at,
-            };
-            
-            // Format stock for embedding
-            let content = DataFormatter::format_stock_for_embedding(&stock);
-            
-            // Vectorize the trade
-            if let Err(e) = vector_service
-                .vectorize_data(
-                    user_id,
-                    VectorDataType::Stock,
-                    &stock_id.to_string(),
-                    &content,
-                )
-                .await
-            {
-                // Log error but don't fail the transformation
-                error!(
-                    "Failed to vectorize stock trade {} for user {}: {}",
-                    stock_id, user_id, e
-                );
-            } else {
-                info!(
-                    "Successfully vectorized stock trade {} for user {}",
-                    stock_id, user_id
-                );
-            }
-        }
-    }
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
 
     Ok(())
 }
@@ -734,7 +403,7 @@ async fn transform_to_option(
     transaction: &Value,
     _snaptrade_transaction_id: &str,
     user_id: &str,
-    vectorization_service: Option<&VectorizationService>,
+    _vectorization_service: Option<()>, // Placeholder for backward compatibility
 ) -> Result<()> {
     // Extract data from transaction JSON
     let symbol = transaction
@@ -834,193 +503,7 @@ async fn transform_to_option(
         return Err(anyhow::anyhow!("Failed to get inserted option ID"));
     };
 
-    // Vectorize the trade if vectorization service is available
-    if let Some(vector_service) = vectorization_service {
-        // Retrieve the full option record for formatting
-        let select_stmt = conn
-            .prepare(
-                r#"
-                SELECT id, symbol, option_type, strike_price, expiration_date, entry_price, exit_price,
-                       premium, commissions, entry_date, exit_date, status, initial_target, profit_target,
-                       trade_ratings, reviewed, mistakes, brokerage_name, trade_group_id, parent_trade_id,
-                       total_quantity, transaction_sequence, created_at, updated_at, is_deleted
-                FROM options
-                WHERE id = ?
-                "#
-            )
-            .await
-            .context("Failed to prepare option select statement")?;
-
-        let mut select_rows = select_stmt
-            .query(libsql::params![option_id])
-            .await
-            .context("Failed to query inserted option")?;
-
-        if let Some(row) = select_rows.next().await? {
-            // Parse the option record
-            use crate::models::options::option_trade::{OptionTrade, OptionType, TradeStatus};
-            
-            let option_type_str = match row.get::<libsql::Value>(2) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => "Call".to_string(),
-            };
-            let status_str = match row.get::<libsql::Value>(11) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => "open".to_string(),
-            };
-
-            let option_type = option_type_str.parse::<OptionType>()
-                .map_err(|e| anyhow::anyhow!("Invalid option type: {}", e))?;
-            let status = status_str.parse::<TradeStatus>()
-                .map_err(|e| anyhow::anyhow!("Invalid trade status: {}", e))?;
-
-            // Parse dates
-            let expiration_date_str = match row.get::<libsql::Value>(4) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => return Err(anyhow::anyhow!("Failed to get expiration_date")),
-            };
-            let entry_date_str = match row.get::<libsql::Value>(9) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => return Err(anyhow::anyhow!("Failed to get entry_date")),
-            };
-            let exit_date_str: Option<String> = match row.get::<libsql::Value>(10) {
-                Ok(libsql::Value::Text(s)) => Some(s),
-                Ok(libsql::Value::Null) => None,
-                _ => None,
-            };
-            let reviewed_val: Option<i64> = match row.get::<libsql::Value>(15) {
-                Ok(libsql::Value::Integer(val)) => Some(val),
-                Ok(libsql::Value::Null) => None,
-                Ok(libsql::Value::Real(val)) => Some(val as i64),
-                _ => None,
-            };
-            let reviewed = reviewed_val.map(|v| v != 0).unwrap_or(false);
-            let mistakes_str: Option<String> = match row.get::<libsql::Value>(16) {
-                Ok(libsql::Value::Text(s)) => Some(s),
-                Ok(libsql::Value::Null) => None,
-                _ => None,
-            };
-            let brokerage_name: Option<String> = match row.get::<libsql::Value>(17) {
-                Ok(libsql::Value::Text(s)) => Some(s),
-                Ok(libsql::Value::Null) => None,
-                _ => None,
-            };
-            let created_at_str = match row.get::<libsql::Value>(22) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => return Err(anyhow::anyhow!("Failed to get created_at")),
-            };
-            let updated_at_str = match row.get::<libsql::Value>(23) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => return Err(anyhow::anyhow!("Failed to get updated_at")),
-            };
-
-            fn parse_dt(s: &str) -> Result<chrono::DateTime<Utc>> {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                    return Ok(dt.with_timezone(&Utc));
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-                    return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-                }
-                if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-                    let ndt = date.and_hms_opt(0, 0, 0).ok_or_else(|| anyhow::anyhow!("invalid date"))?;
-                    return Ok(chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
-                }
-                Err(anyhow::anyhow!("Unsupported datetime format: {}", s))
-            }
-
-            let expiration_date = parse_dt(&expiration_date_str)?;
-            let entry_date = parse_dt(&entry_date_str)?;
-            let exit_date = exit_date_str.as_ref()
-                .map(|s| parse_dt(s))
-                .transpose()?
-                .unwrap_or(entry_date);
-            let created_at = parse_dt(&created_at_str)?;
-            let updated_at = parse_dt(&updated_at_str)?;
-
-            let entry_price_val = row.get::<f64>(5)?;
-
-            let option = OptionTrade {
-                id: option_id,
-                symbol: match row.get::<libsql::Value>(1) {
-                    Ok(libsql::Value::Text(s)) => s,
-                    _ => return Err(anyhow::anyhow!("Failed to get symbol")),
-                },
-                option_type,
-                strike_price: row.get::<f64>(3)?,
-                expiration_date,
-                entry_price: entry_price_val,
-                exit_price: row.get::<Option<f64>>(6)?.unwrap_or(entry_price_val),
-                premium: row.get::<f64>(7)?,
-                entry_date,
-                exit_date,
-                status,
-                initial_target: row.get::<Option<f64>>(12)?,
-                profit_target: row.get::<Option<f64>>(13)?,
-                trade_ratings: match row.get::<libsql::Value>(14) {
-                    Ok(libsql::Value::Integer(val)) => Some(val as i32),
-                    Ok(libsql::Value::Null) => None,
-                    Ok(libsql::Value::Real(val)) => Some(val as i32),
-                    _ => None,
-                },
-                reviewed,
-                mistakes: mistakes_str,
-                brokerage_name,
-                trade_group_id: match row.get::<libsql::Value>(18) {
-                    Ok(libsql::Value::Text(s)) => Some(s),
-                    Ok(libsql::Value::Null) => None,
-                    _ => None,
-                },
-                parent_trade_id: match row.get::<libsql::Value>(19) {
-                    Ok(libsql::Value::Integer(val)) => Some(val),
-                    Ok(libsql::Value::Null) => None,
-                    _ => None,
-                },
-                total_quantity: match row.get::<libsql::Value>(20) {
-                    Ok(libsql::Value::Real(val)) => Some(val),
-                    Ok(libsql::Value::Integer(val)) => Some(val as f64),
-                    Ok(libsql::Value::Null) => None,
-                    _ => None,
-                },
-                transaction_sequence: match row.get::<libsql::Value>(21) {
-                    Ok(libsql::Value::Integer(val)) => Some(val as i32),
-                    Ok(libsql::Value::Null) => None,
-                    _ => None,
-                },
-                created_at,
-                updated_at,
-                is_deleted: match row.get::<libsql::Value>(24) {
-                    Ok(libsql::Value::Integer(val)) => val != 0,
-                    Ok(libsql::Value::Null) => false,
-                    _ => false,
-                },
-            };
-
-            // Format option for embedding
-            let content = DataFormatter::format_option_for_embedding(&option);
-            
-            // Vectorize the trade
-            if let Err(e) = vector_service
-                .vectorize_data(
-                    user_id,
-                    VectorDataType::Option,
-                    &option_id.to_string(),
-                    &content,
-                )
-                .await
-            {
-                // Log error but don't fail the transformation
-                error!(
-                    "Failed to vectorize option trade {} for user {}: {}",
-                    option_id, user_id, e
-                );
-            } else {
-                info!(
-                    "Successfully vectorized option trade {} for user {}",
-                    option_id, user_id
-                );
-            }
-        }
-    }
+    // Vectorization removed - trades are vectorized via TradeVectorService for mistakes/notes only
 
     Ok(())
 }
