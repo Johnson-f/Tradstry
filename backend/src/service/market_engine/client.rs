@@ -26,7 +26,7 @@ impl MarketClient {
             // Primary
             base_url: "https://finance-query.onrender.com".to_string(),
             // Secondary
-            secondary_url: "https://finance-query-uzbi.onrender.com".to_string(),
+            secondary_url: "https://api.tradstry.com".to_string(),
             api_key: config.api_key.clone(),
             http,
         })

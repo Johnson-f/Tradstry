@@ -136,10 +136,10 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
         summary: report.summary,
         generated_at: report.generated_at,
         expires_at: report.expires_at,
-        trade_count: report.analytics.total_trades,
-        total_pnl: report.analytics.total_pnl,
-        win_rate: report.analytics.win_rate,
-        risk_score: report.risk_metrics.risk_score,
+        trade_count: report.analytics?.total_trades ?? 0,
+        total_pnl: report.analytics?.total_pnl ?? 0,
+        win_rate: report.analytics?.win_rate ?? 0,
+        risk_score: report.risk_metrics?.risk_score ?? 0,
         sections_count: Object.keys(report).length,
       };
       
@@ -336,10 +336,10 @@ export function useAIReports(filters: ReportFilters = DEFAULT_REPORT_FILTERS): U
             summary: completedReport.summary,
             generated_at: completedReport.generated_at,
             expires_at: completedReport.expires_at,
-            trade_count: completedReport.analytics.total_trades,
-            total_pnl: completedReport.analytics.total_pnl,
-            win_rate: completedReport.analytics.win_rate,
-            risk_score: completedReport.risk_metrics.risk_score,
+            trade_count: completedReport.analytics?.total_trades ?? 0,
+            total_pnl: completedReport.analytics?.total_pnl ?? 0,
+            win_rate: completedReport.analytics?.win_rate ?? 0,
+            risk_score: completedReport.risk_metrics?.risk_score ?? 0,
             sections_count: Object.keys(completedReport).length,
           };
           

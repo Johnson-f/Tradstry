@@ -110,7 +110,7 @@ async fn transaction_already_transformed(
                             WHERE symbol = ? 
                             AND entry_date = ?
                             AND entry_price = ?
-                            AND number_of_contracts = ?
+                            AND quantity = ?
                             AND brokerage_name = COALESCE(?, brokerage_name)
                             AND is_deleted = 0
                             LIMIT 1
@@ -434,6 +434,10 @@ async fn vectorize_stock_trade(
             reviewed,
             mistakes: mistakes_str,
             brokerage_name,
+            trade_group_id: None,
+            parent_trade_id: None,
+            quantity: None,
+            transaction_sequence: None,
             created_at,
             updated_at,
         };
@@ -675,6 +679,10 @@ async fn transform_to_stock(
                 reviewed,
                 mistakes: mistakes_str,
                 brokerage_name,
+                trade_group_id: None,
+                parent_trade_id: None,
+                quantity: None,
+                transaction_sequence: None,
                 created_at,
                 updated_at,
             };
@@ -777,21 +785,17 @@ async fn transform_to_option(
     let expiration_date = trade_date; // Default to trade date, user will update
 
     // Set defaults for required fields
-    let strategy_type = "Single"; // Default strategy
-    let trade_direction = if trade_type == "BUY" { "Bullish" } else { "Bearish" };
-    let total_premium = price * units as f64;
-    let implied_volatility = 0.0; // Default, user will update
+    let premium = price * units as f64;
+    let total_quantity = Some(units as f64);
 
     // Insert into options table and get the inserted ID
     let insert_stmt = conn
         .prepare(
             r#"
             INSERT INTO options (
-                symbol, strategy_type, trade_direction, number_of_contracts,
-                option_type, strike_price, expiration_date, entry_price,
-                total_premium, commissions, implied_volatility, entry_date,
-                brokerage_name, reviewed, is_deleted, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, 0, 'open')
+                symbol, option_type, strike_price, expiration_date, entry_price,
+                premium, commissions, entry_date, brokerage_name, reviewed, is_deleted, status, total_quantity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false, 0, 'open', ?)
             RETURNING id
             "#,
         )
@@ -801,18 +805,15 @@ async fn transform_to_option(
     let mut rows = insert_stmt
         .query(libsql::params![
             symbol,
-            strategy_type,
-            trade_direction,
-            units,
             option_type,
             strike_price,
             expiration_date,
             price,
-            total_premium,
+            premium,
             fee,
-            implied_volatility,
             trade_date,
-            brokerage_name
+            brokerage_name,
+            total_quantity
         ])
         .await
         .context("Failed to insert option trade")?;
@@ -829,11 +830,10 @@ async fn transform_to_option(
         let select_stmt = conn
             .prepare(
                 r#"
-                SELECT id, symbol, strategy_type, trade_direction, number_of_contracts,
-                       option_type, strike_price, expiration_date, entry_price, exit_price,
-                       total_premium, commissions, implied_volatility, entry_date, exit_date,
-                       status, initial_target, profit_target, trade_ratings, reviewed, mistakes,
-                       brokerage_name, created_at, updated_at, is_deleted
+                SELECT id, symbol, option_type, strike_price, expiration_date, entry_price, exit_price,
+                       premium, commissions, entry_date, exit_date, status, initial_target, profit_target,
+                       trade_ratings, reviewed, mistakes, brokerage_name, trade_group_id, parent_trade_id,
+                       total_quantity, transaction_sequence, created_at, updated_at, is_deleted
                 FROM options
                 WHERE id = ?
                 "#
@@ -848,55 +848,49 @@ async fn transform_to_option(
 
         if let Some(row) = select_rows.next().await? {
             // Parse the option record
-            use crate::models::options::option_trade::{OptionTrade, TradeDirection, OptionType, TradeStatus};
+            use crate::models::options::option_trade::{OptionTrade, OptionType, TradeStatus};
             
-            let trade_direction_str = match row.get::<libsql::Value>(3) {
-                Ok(libsql::Value::Text(s)) => s,
-                _ => "Neutral".to_string(),
-            };
-            let option_type_str = match row.get::<libsql::Value>(5) {
+            let option_type_str = match row.get::<libsql::Value>(2) {
                 Ok(libsql::Value::Text(s)) => s,
                 _ => "Call".to_string(),
             };
-            let status_str = match row.get::<libsql::Value>(15) {
+            let status_str = match row.get::<libsql::Value>(11) {
                 Ok(libsql::Value::Text(s)) => s,
                 _ => "open".to_string(),
             };
 
-            let trade_direction = trade_direction_str.parse::<TradeDirection>()
-                .map_err(|e| anyhow::anyhow!("Invalid trade direction: {}", e))?;
             let option_type = option_type_str.parse::<OptionType>()
                 .map_err(|e| anyhow::anyhow!("Invalid option type: {}", e))?;
             let status = status_str.parse::<TradeStatus>()
                 .map_err(|e| anyhow::anyhow!("Invalid trade status: {}", e))?;
 
             // Parse dates
-            let expiration_date_str = match row.get::<libsql::Value>(7) {
+            let expiration_date_str = match row.get::<libsql::Value>(4) {
                 Ok(libsql::Value::Text(s)) => s,
                 _ => return Err(anyhow::anyhow!("Failed to get expiration_date")),
             };
-            let entry_date_str = match row.get::<libsql::Value>(13) {
+            let entry_date_str = match row.get::<libsql::Value>(9) {
                 Ok(libsql::Value::Text(s)) => s,
                 _ => return Err(anyhow::anyhow!("Failed to get entry_date")),
             };
-            let exit_date_str: Option<String> = match row.get::<libsql::Value>(14) {
+            let exit_date_str: Option<String> = match row.get::<libsql::Value>(10) {
                 Ok(libsql::Value::Text(s)) => Some(s),
                 Ok(libsql::Value::Null) => None,
                 _ => None,
             };
-            let reviewed_val: Option<i64> = match row.get::<libsql::Value>(19) {
+            let reviewed_val: Option<i64> = match row.get::<libsql::Value>(15) {
                 Ok(libsql::Value::Integer(val)) => Some(val),
                 Ok(libsql::Value::Null) => None,
                 Ok(libsql::Value::Real(val)) => Some(val as i64),
                 _ => None,
             };
             let reviewed = reviewed_val.map(|v| v != 0).unwrap_or(false);
-            let mistakes_str: Option<String> = match row.get::<libsql::Value>(20) {
+            let mistakes_str: Option<String> = match row.get::<libsql::Value>(16) {
                 Ok(libsql::Value::Text(s)) => Some(s),
                 Ok(libsql::Value::Null) => None,
                 _ => None,
             };
-            let brokerage_name: Option<String> = match row.get::<libsql::Value>(21) {
+            let brokerage_name: Option<String> = match row.get::<libsql::Value>(17) {
                 Ok(libsql::Value::Text(s)) => Some(s),
                 Ok(libsql::Value::Null) => None,
                 _ => None,
@@ -936,30 +930,18 @@ async fn transform_to_option(
                     Ok(libsql::Value::Text(s)) => s,
                     _ => return Err(anyhow::anyhow!("Failed to get symbol")),
                 },
-                strategy_type: match row.get::<libsql::Value>(2) {
-                    Ok(libsql::Value::Text(s)) => s,
-                    _ => return Err(anyhow::anyhow!("Failed to get strategy_type")),
-                },
-                trade_direction,
-                number_of_contracts: match row.get::<libsql::Value>(4) {
-                    Ok(libsql::Value::Integer(val)) => val as i32,
-                    Ok(libsql::Value::Real(val)) => val as i32,
-                    _ => return Err(anyhow::anyhow!("Failed to get number_of_contracts")),
-                },
                 option_type,
-                strike_price: row.get::<f64>(6)?,
+                strike_price: row.get::<f64>(3)?,
                 expiration_date,
-                entry_price: row.get::<f64>(8)?,
-                exit_price: row.get::<Option<f64>>(9)?,
-                total_premium: row.get::<f64>(10)?,
-                commissions: row.get::<f64>(11)?,
-                implied_volatility: row.get::<f64>(12)?,
+                entry_price: row.get::<f64>(5)?,
+                exit_price: row.get::<Option<f64>>(6)?,
+                premium: row.get::<f64>(7)?,
                 entry_date,
                 exit_date,
                 status,
-                initial_target: row.get::<Option<f64>>(16)?,
-                profit_target: row.get::<Option<f64>>(17)?,
-                trade_ratings: match row.get::<libsql::Value>(18) {
+                initial_target: row.get::<Option<f64>>(12)?,
+                profit_target: row.get::<Option<f64>>(13)?,
+                trade_ratings: match row.get::<libsql::Value>(14) {
                     Ok(libsql::Value::Integer(val)) => Some(val as i32),
                     Ok(libsql::Value::Null) => None,
                     Ok(libsql::Value::Real(val)) => Some(val as i32),
@@ -968,6 +950,27 @@ async fn transform_to_option(
                 reviewed,
                 mistakes: mistakes_str,
                 brokerage_name,
+                trade_group_id: match row.get::<libsql::Value>(18) {
+                    Ok(libsql::Value::Text(s)) => Some(s),
+                    Ok(libsql::Value::Null) => None,
+                    _ => None,
+                },
+                parent_trade_id: match row.get::<libsql::Value>(19) {
+                    Ok(libsql::Value::Integer(val)) => Some(val),
+                    Ok(libsql::Value::Null) => None,
+                    _ => None,
+                },
+                total_quantity: match row.get::<libsql::Value>(20) {
+                    Ok(libsql::Value::Real(val)) => Some(val),
+                    Ok(libsql::Value::Integer(val)) => Some(val as f64),
+                    Ok(libsql::Value::Null) => None,
+                    _ => None,
+                },
+                transaction_sequence: match row.get::<libsql::Value>(21) {
+                    Ok(libsql::Value::Integer(val)) => Some(val as i32),
+                    Ok(libsql::Value::Null) => None,
+                    _ => None,
+                },
                 created_at,
                 updated_at,
                 is_deleted: match row.get::<libsql::Value>(24) {

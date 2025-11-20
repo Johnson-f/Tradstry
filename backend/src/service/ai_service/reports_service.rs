@@ -272,7 +272,7 @@ async fn generate_trade_data(
 
     // Get options trades
     let options_query = "
-        SELECT id, symbol, number_of_contracts, entry_price, exit_price, 
+        SELECT id, symbol, total_quantity, entry_price, exit_price, 
                created_at, exit_date
         FROM options 
         WHERE created_at >= ? AND created_at <= ?
@@ -292,10 +292,10 @@ async fn generate_trade_data(
         let symbol: String = row.get(1)?;
         
         // Handle numeric types carefully
-        let number_of_contracts: i64 = match row.get::<libsql::Value>(2)? {
-            libsql::Value::Integer(i) => i,
-            libsql::Value::Real(f) => f as i64,
-            _ => 0,
+        let quantity: f64 = match row.get::<libsql::Value>(2)? {
+            libsql::Value::Integer(i) => i as f64,
+            libsql::Value::Real(f) => f,
+            _ => 0.0,
         };
         
         let entry_price: f64 = match row.get::<libsql::Value>(3)? {
@@ -320,13 +320,13 @@ async fn generate_trade_data(
         };
         
         // Calculate PNL if we have exit price (for options, 1 contract = 100 shares)
-        let pnl = exit_price.map(|exit| (exit - entry_price) * (number_of_contracts as f64) * 100.0);
+        let pnl = exit_price.map(|exit| (exit - entry_price) * quantity * 100.0);
         
         trades.push(TradeData {
             id,
             symbol,
             trade_type: "option".to_string(),
-            quantity: number_of_contracts as i32,
+            quantity: quantity as i32,
             entry_price,
             exit_price,
             pnl,

@@ -18,6 +18,13 @@ export interface Stock {
   updatedAt: string; // ISO datetime
   reviewed: boolean;
   mistakes?: string | null;
+  brokerageName?: string | null;
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string | null;
+  parentTradeId?: number | null;
+  quantity?: string | null; // Transaction quantity (may differ from numberShares for partial fills)
+  transactionSequence?: number | null; // Order within trade group (1, 2, 3...)
+  isDeleted: boolean; // Soft delete flag
 }
 
 export interface CreateStockRequest {
@@ -35,6 +42,12 @@ export interface CreateStockRequest {
   entryDate: string; // ISO
   reviewed?: boolean;
   mistakes?: string;
+  brokerageName?: string;
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string;
+  parentTradeId?: number;
+  quantity?: number;
+  transactionSequence?: number;
 }
 
 export interface UpdateStockRequest {
@@ -54,6 +67,12 @@ export interface UpdateStockRequest {
   exitDate?: string | null;
   reviewed?: boolean;
   mistakes?: string | null;
+  brokerageName?: string | null;
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string | null;
+  parentTradeId?: number | null;
+  quantity?: number | null;
+  transactionSequence?: number | null;
 }
 
 

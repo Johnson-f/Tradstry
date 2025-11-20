@@ -70,11 +70,13 @@ function calculateOptionPL(option: OptionTrade): number {
   
   const entryPriceNum = parseFloat(option.entryPrice);
   const exitPriceNum = parseFloat(option.exitPrice);
-  const contracts = option.numberOfContracts;
+  // Use quantity (contracts) if available, otherwise calculate from premium
+  const contracts = option.quantity ? parseFloat(option.quantity) : 1;
   
   // Each contract represents 100 shares
   const tradeValue = (exitPriceNum - entryPriceNum) * contracts * 100;
-  const commissionsNum = parseFloat(option.commissions || '0');
+  // Commissions field removed from backend, set to 0
+  const commissionsNum = 0;
   
   return tradeValue - commissionsNum;
 }

@@ -83,10 +83,10 @@ async fn calculate_average_risk_per_trade(
         stocks_avg_risk = row.get::<f64>(0).unwrap_or(0.0);
     }
 
-    // For options, risk is typically the premium paid (total_premium)
+    // For options, risk is typically the premium paid (premium)
     let options_sql = format!(
         r#"
-        SELECT AVG(total_premium) as avg_risk_options
+        SELECT AVG(premium) as avg_risk_options
         FROM options
         WHERE status = 'closed' AND ({})
         "#,
@@ -136,7 +136,7 @@ async fn calculate_daily_returns(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options

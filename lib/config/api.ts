@@ -15,18 +15,6 @@ function buildQueryString(params: Record<string, string | number | boolean | und
   return queryString ? `?${queryString}` : '';
 }
 
-// Type definitions for API configuration
-export interface ApiConfig {
-  baseURL: string;
-  apiPrefix: string;
-  ws: {
-    url: (token: string) => string;
-  };
-  endpoints: typeof endpoints;
-  timeout: number;
-  retries: number;
-}
-
 const endpoints = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
@@ -95,6 +83,8 @@ const endpoints = {
         endDate?: string;
         limit?: number;
         offset?: number;
+        tradeGroupId?: string;
+        parentTradeId?: number;
       }) => `/stocks${buildQueryString(params || {})}`,
       analytics: {
         summary: "/stocks/analytics",
@@ -137,6 +127,8 @@ const endpoints = {
         endDate?: string;
         limit?: number;
         offset?: number;
+        tradeGroupId?: string;
+        parentTradeId?: number;
       }) => `/options${buildQueryString(params || {})}`,
       analytics: {
         summary: "/options/analytics",
@@ -358,6 +350,18 @@ const endpoints = {
   },
 } as const;
 
+// Type definitions for API configuration
+export interface ApiConfig {
+  baseURL: string;
+  apiPrefix: string;
+  ws: {
+    url: (token: string) => string;
+  };
+  endpoints: typeof endpoints.endpoints;
+  timeout: number;
+  retries: number;
+}
+
 export const apiConfig: ApiConfig = {
   baseURL: API_BASE_URL,
   apiPrefix: "/api",
@@ -368,7 +372,7 @@ export const apiConfig: ApiConfig = {
       return `${protocol}://${baseUrl.host}${apiConfig.apiPrefix}/ws?token=${encodeURIComponent(token)}`;
     },
   },
-  endpoints,
+  endpoints: endpoints.endpoints,
   timeout: 30000, // 30 seconds (comment was incorrect - 30000ms = 30s not 5 min)
   retries: 3,
 };

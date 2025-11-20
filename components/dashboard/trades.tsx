@@ -203,7 +203,7 @@ export function Trades() {
           entryDate: option.entryDate,
           exitPrice: option.exitPrice ? parseFloat(option.exitPrice) : null,
           exitDate: option.exitDate,
-          quantity: option.numberOfContracts,
+          quantity: option.quantity ? parseFloat(option.quantity) : 1, // Use quantity (contracts) instead of numberOfContracts
           optionType: option.optionType,
           strikePrice: parseFloat(option.strikePrice),
           expirationDate: option.expirationDate,
@@ -248,7 +248,7 @@ export function Trades() {
           entryDate: option.entryDate,
           exitPrice: option.exitPrice ? parseFloat(option.exitPrice) : null,
           exitDate: option.exitDate,
-          quantity: option.numberOfContracts,
+          quantity: option.quantity ? parseFloat(option.quantity) : 1, // Use quantity (contracts) instead of numberOfContracts
           optionType: option.optionType,
           strikePrice: parseFloat(option.strikePrice),
           expirationDate: option.expirationDate,

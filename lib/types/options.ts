@@ -1,21 +1,15 @@
 export type OptionTradeStatus = 'open' | 'closed';
 export type OptionType = 'Call' | 'Put';
-export type TradeDirection = 'Bullish' | 'Bearish' | 'Neutral';
 
 export interface OptionTrade {
   id: number;
   symbol: string;
-  strategyType: string;
-  tradeDirection: TradeDirection;
-  numberOfContracts: number;
   optionType: OptionType;
   strikePrice: string; // DECIMAL as string
   expirationDate: string; // ISO
   entryPrice: string; // DECIMAL as string
   exitPrice?: string | null;
-  totalPremium: string; // DECIMAL as string
-  commissions: string; // DECIMAL as string
-  impliedVolatility: string; // DECIMAL as string
+  premium: string; // DECIMAL as string (renamed from totalPremium)
   entryDate: string; // ISO
   exitDate?: string | null; // ISO
   status: OptionTradeStatus;
@@ -26,41 +20,47 @@ export interface OptionTrade {
   updatedAt: string;
   reviewed: boolean;
   mistakes?: string | null;
+  brokerageName?: string | null;
+  commissions: string; // DECIMAL as string
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string | null;
+  parentTradeId?: number | null;
+  totalQuantity?: string | null; // Total quantity (contracts) - renamed from quantity
+  transactionSequence?: number | null; // Order within trade group (1, 2, 3...)
+  isDeleted: boolean; // Soft delete flag
 }
 
 export interface CreateOptionRequest {
   symbol: string;
-  strategyType: string;
-  tradeDirection: TradeDirection;
-  numberOfContracts: number;
   optionType: OptionType;
   strikePrice: number;
   expirationDate: string; // ISO
   entryPrice: number;
-  totalPremium: number;
-  commissions?: number;
-  impliedVolatility: number;
+  premium: number; // Renamed from totalPremium
+  commissions?: number; // Defaults to 0.00
   entryDate: string; // ISO
   initialTarget?: number;
   profitTarget?: number;
   tradeRatings?: number; // 1-5 stars
   reviewed?: boolean;
   mistakes?: string;
+  brokerageName?: string;
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string;
+  parentTradeId?: number;
+  totalQuantity?: number; // Total quantity (contracts) - renamed from quantity
+  transactionSequence?: number;
 }
 
 export interface UpdateOptionRequest {
   symbol?: string;
-  strategyType?: string;
-  tradeDirection?: TradeDirection;
-  numberOfContracts?: number;
   optionType?: OptionType;
   strikePrice?: number;
   expirationDate?: string;
   entryPrice?: number;
   exitPrice?: number | null;
-  totalPremium?: number;
+  premium?: number; // Renamed from totalPremium
   commissions?: number;
-  impliedVolatility?: number;
   entryDate?: string;
   exitDate?: string | null;
   status?: OptionTradeStatus;
@@ -69,6 +69,12 @@ export interface UpdateOptionRequest {
   tradeRatings?: number | null; // 1-5 stars
   reviewed?: boolean;
   mistakes?: string | null;
+  brokerageName?: string | null;
+  // Multi-entry/exit trade linking fields
+  tradeGroupId?: string | null;
+  parentTradeId?: number | null;
+  totalQuantity?: number | null; // Total quantity (contracts) - renamed from quantity
+  transactionSequence?: number | null;
 }
 
 

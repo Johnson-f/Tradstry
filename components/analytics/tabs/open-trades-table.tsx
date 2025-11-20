@@ -71,7 +71,7 @@ export function OpenTradesTable() {
         type: 'option',
         entryPrice: parseFloat(option.entryPrice),
         currentPrice: null, // Will be populated from quotes
-        quantity: option.numberOfContracts,
+        quantity: option.quantity ? parseFloat(option.quantity) : 1, // Use quantity (contracts) instead of numberOfContracts
         quantityLabel: 'contracts',
         pnl: null,
         pnlPercent: null,

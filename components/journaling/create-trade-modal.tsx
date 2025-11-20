@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
@@ -19,8 +19,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Plus } from "lucide-react"
 import { useCreateStock } from "@/lib/hooks/use-stocks"
 import { useCreateOption } from "@/lib/hooks/use-options"
+import { TransactionRow } from "./transaction-row"
 import type { CreateStockRequest } from "@/lib/types/stocks"
 import type { CreateOptionRequest } from "@/lib/types/options"
 
@@ -35,56 +37,65 @@ function getLocalDateTimeInputValue(date: Date = new Date()): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
-// Stock form schema
-const stockFormSchema = z.object({
-  symbol: z.string().min(1, "Symbol is required").max(10, "Symbol must be 10 characters or less"),
-   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  tradeType: z.enum(["BUY", "SELL"], { required_error: "Trade type is required" }),
-   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  orderType: z.enum(["MARKET", "LIMIT", "STOP", "STOP_LIMIT"], { required_error: "Order type is required" }),
+// Generate UUID for trade_group_id
+function generateTradeGroupId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `trade-group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
+
+// Transaction schema for stocks
+const stockTransactionSchema = z.object({
+  tradeType: z.enum(["BUY", "SELL"]),
   entryPrice: z.coerce.number().positive("Entry price must be positive"),
   exitPrice: z.coerce.number().positive("Exit price must be positive").optional(),
-  stopLoss: z.coerce.number().positive("Stop loss must be positive"),
-  commissions: z.coerce.number().min(0, "Commissions cannot be negative").optional().default(0),
   numberShares: z.coerce.number().positive("Number of shares must be positive"),
+  entryDate: z.string().min(1, "Entry date is required"),
+  exitDate: z.string().optional(),
+  commissions: z.coerce.number().min(0, "Commissions cannot be negative").optional().default(0),
+})
+
+// Stock form schema with transactions array
+const stockFormSchema = z.object({
+  symbol: z.string().min(1, "Symbol is required").max(10, "Symbol must be 10 characters or less"),
+  orderType: z.enum(["MARKET", "LIMIT", "STOP", "STOP_LIMIT"]),
+  stopLoss: z.coerce.number().positive("Stop loss must be positive"),
   takeProfit: z.coerce.number().positive("Take profit must be positive").optional(),
   initialTarget: z.coerce.number().positive("Initial target must be positive").optional(),
   profitTarget: z.coerce.number().positive("Profit target must be positive").optional(),
   tradeRatings: z.coerce.number().min(1, "Rating must be at least 1").max(5, "Rating must be at most 5").optional(),
-  entryDate: z.string().min(1, "Entry date is required"),
-  exitDate: z.string().optional(),
   reviewed: z.boolean().optional().default(false),
   mistakes: z.string().optional(),
+  transactions: z.array(stockTransactionSchema).min(1, "At least one transaction is required"),
 })
 
 type StockFormData = z.infer<typeof stockFormSchema>
 
-// Option form schema
+// Transaction schema for options
+const optionTransactionSchema = z.object({
+  tradeType: z.enum(["BUY", "SELL"]),
+  entryPrice: z.coerce.number().positive("Entry price must be positive"),
+  exitPrice: z.coerce.number().positive("Exit price must be positive").optional(),
+  totalQuantity: z.coerce.number().int().positive("Number of contracts must be a positive integer"),
+  entryDate: z.string().min(1, "Entry date is required"),
+  exitDate: z.string().optional(),
+  commissions: z.coerce.number().min(0, "Commissions cannot be negative").optional().default(0),
+})
+
+// Option form schema with transactions array
 const optionFormSchema = z.object({
   symbol: z.string().min(1, "Symbol is required").max(10, "Symbol must be 10 characters or less"),
-  strategyType: z.string().min(1, "Strategy type is required"),
-   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-  tradeDirection: z.enum(["Bullish", "Bearish", "Neutral"], { required_error: "Trade direction is required" }),
-  numberOfContracts: z.coerce.number().int().positive("Number of contracts must be a positive integer"),
-   // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
   optionType: z.enum(["Call", "Put"], { required_error: "Option type is required" }),
   strikePrice: z.coerce.number().positive("Strike price must be positive"),
   expirationDate: z.string().min(1, "Expiration date is required"),
-  entryPrice: z.coerce.number().positive("Entry price must be positive"),
-  exitPrice: z.coerce.number().positive("Exit price must be positive").optional(),
-  totalPremium: z.coerce.number().positive("Total premium must be positive"),
-  commissions: z.coerce.number().min(0, "Commissions cannot be negative").optional().default(0),
-  impliedVolatility: z.coerce
-    .number()
-    .min(0, "Implied volatility cannot be negative")
-    .max(100, "Implied volatility cannot exceed 100"),
-  entryDate: z.string().min(1, "Entry date is required"),
-  exitDate: z.string().optional(),
+  premium: z.coerce.number().positive("Premium must be positive"),
   initialTarget: z.coerce.number().positive("Initial target must be positive").optional(),
   profitTarget: z.coerce.number().positive("Profit target must be positive").optional(),
   tradeRatings: z.coerce.number().min(1, "Rating must be at least 1").max(5, "Rating must be at most 5").optional(),
   reviewed: z.boolean().optional().default(false),
   mistakes: z.string().optional(),
+  transactions: z.array(optionTransactionSchema).min(1, "At least one transaction is required"),
 })
 
 type OptionFormData = z.infer<typeof optionFormSchema>
@@ -104,79 +115,110 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
     resolver: zodResolver(stockFormSchema),
     defaultValues: {
       symbol: "",
-      tradeType: "BUY",
       orderType: "MARKET",
-      entryPrice: 0,
-      exitPrice: undefined,
       stopLoss: 0,
-      commissions: 0,
-      numberShares: 0,
       takeProfit: undefined,
       initialTarget: undefined,
       profitTarget: undefined,
       tradeRatings: undefined,
-      entryDate: getLocalDateTimeInputValue(),
-      exitDate: undefined,
       reviewed: false,
       mistakes: "",
+      transactions: [
+        {
+          tradeType: "BUY",
+          entryPrice: 0,
+          exitPrice: undefined,
+          numberShares: 0,
+          entryDate: getLocalDateTimeInputValue(),
+          exitDate: undefined,
+          commissions: 0,
+        },
+      ],
     },
   })
 
   const optionForm = useForm<OptionFormData>({
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
     resolver: zodResolver(optionFormSchema),
     defaultValues: {
       symbol: "",
-      strategyType: "",
-      tradeDirection: "Bullish",
-      numberOfContracts: 0,
       optionType: "Call",
       strikePrice: 0,
       expirationDate: "",
-      entryPrice: 0,
-      exitPrice: undefined,
-      totalPremium: 0,
-      commissions: 0,
-      impliedVolatility: 0,
-      entryDate: getLocalDateTimeInputValue(),
-      exitDate: undefined,
+      premium: 0,
       initialTarget: undefined,
       profitTarget: undefined,
       tradeRatings: undefined,
       reviewed: false,
       mistakes: "",
+      transactions: [
+        {
+          tradeType: "BUY",
+          entryPrice: 0,
+          exitPrice: undefined,
+          totalQuantity: 1,
+          entryDate: getLocalDateTimeInputValue(),
+          exitDate: undefined,
+          commissions: 0,
+        },
+      ],
     },
+  })
+
+  const stockTransactions = useFieldArray({
+    control: stockForm.control,
+    name: "transactions",
+  })
+
+  const optionTransactions = useFieldArray({
+    control: optionForm.control,
+    name: "transactions",
   })
 
   const handleStockSubmit = async (data: StockFormData) => {
     try {
-      // Normalize entryDate to ISO string
-      const entryDateIso = new Date(data.entryDate).toISOString()
-      const payload: CreateStockRequest = {
-        symbol: data.symbol,
-        tradeType: data.tradeType,
-        orderType: data.orderType,
-        entryPrice: data.entryPrice,
-         // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-        exitPrice: data.exitPrice,
-        stopLoss: data.stopLoss,
-        commissions: Number.isFinite(data.commissions) ? data.commissions : 0,
-        numberShares: data.numberShares,
-        takeProfit: data.takeProfit,
-        initialTarget: data.initialTarget,
-        profitTarget: data.profitTarget,
-        tradeRatings:
-          data.tradeRatings != null && data.tradeRatings !== ("" as unknown)
-            ? Math.round(Number(data.tradeRatings))
-            : undefined,
-        entryDate: entryDateIso,
-        exitDate: data.exitDate ? new Date(data.exitDate).toISOString() : undefined,
-        reviewed: data.reviewed,
-        mistakes: data.mistakes,
+      const tradeGroupId = generateTradeGroupId()
+      let parentTradeId: number | undefined = undefined
+
+      // Create transactions sequentially
+      for (let i = 0; i < data.transactions.length; i++) {
+        const transaction = data.transactions[i]
+        const entryDateIso = new Date(transaction.entryDate).toISOString()
+
+        const payload: CreateStockRequest = {
+          symbol: data.symbol,
+          tradeType: transaction.tradeType,
+          orderType: data.orderType,
+          entryPrice: transaction.entryPrice,
+          stopLoss: data.stopLoss,
+          commissions: Number.isFinite(transaction.commissions) ? transaction.commissions : 0,
+          numberShares: transaction.numberShares,
+          takeProfit: data.takeProfit,
+          initialTarget: data.initialTarget,
+          profitTarget: data.profitTarget,
+          tradeRatings:
+            data.tradeRatings != null && data.tradeRatings !== ("" as unknown)
+              ? Math.round(Number(data.tradeRatings))
+              : undefined,
+          entryDate: entryDateIso,
+          reviewed: data.reviewed,
+          mistakes: data.mistakes,
+          tradeGroupId: i === 0 ? tradeGroupId : undefined, // Only set on first transaction
+          parentTradeId: i === 0 ? undefined : parentTradeId,
+          quantity: transaction.numberShares,
+          transactionSequence: i + 1,
+        }
+
+        const response = await createStock.mutateAsync(payload)
+        
+        // Extract parent trade ID from response
+        if (i === 0) {
+          // Response is already parsed JSON from the mutation
+          const responseData = response as any
+          parentTradeId = responseData?.data?.id || responseData?.id
+        }
       }
 
-      await createStock.mutateAsync(payload)
-      toast.success("Stock trade created successfully")
+      toast.success(`Stock trade${data.transactions.length > 1 ? "s" : ""} created successfully`)
       stockForm.reset()
       onOpenChange(false)
     } catch (error) {
@@ -188,35 +230,50 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
 
   const handleOptionSubmit = async (data: OptionFormData) => {
     try {
-      // Normalize entry, expiration, and exit dates to ISO strings
-      const entryDateIso = new Date(data.entryDate).toISOString()
+      const tradeGroupId = generateTradeGroupId()
+      let parentTradeId: number | undefined = undefined
       const expirationDateIso = data.expirationDate ? new Date(`${data.expirationDate}T00:00:00`).toISOString() : ""
-      const exitDateIso = data.exitDate ? new Date(data.exitDate).toISOString() : undefined
-      const payload: CreateOptionRequest = {
-        symbol: data.symbol,
-        strategyType: data.strategyType,
-        tradeDirection: data.tradeDirection,
-        numberOfContracts: data.numberOfContracts,
-        optionType: data.optionType,
-        strikePrice: data.strikePrice,
-        expirationDate: expirationDateIso,
-        entryPrice: data.entryPrice,
-         // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-        exitPrice: data.exitPrice,
-        totalPremium: data.totalPremium,
-        commissions: data.commissions,
-        impliedVolatility: data.impliedVolatility,
-        entryDate: entryDateIso,
-        exitDate: exitDateIso,
-        initialTarget: data.initialTarget,
-        profitTarget: data.profitTarget,
-        tradeRatings: data.tradeRatings,
-        reviewed: data.reviewed,
-        mistakes: data.mistakes,
+
+      // Create transactions sequentially
+      for (let i = 0; i < data.transactions.length; i++) {
+        const transaction = data.transactions[i]
+        const entryDateIso = new Date(transaction.entryDate).toISOString()
+        const exitDateIso = transaction.exitDate ? new Date(transaction.exitDate).toISOString() : undefined
+
+        const payload: CreateOptionRequest = {
+          symbol: data.symbol,
+          optionType: data.optionType,
+          strikePrice: data.strikePrice,
+          expirationDate: expirationDateIso,
+          entryPrice: transaction.entryPrice,
+          premium: data.premium,
+          commissions: Number.isFinite(transaction.commissions) ? transaction.commissions : 0,
+          entryDate: entryDateIso,
+          initialTarget: data.initialTarget,
+          profitTarget: data.profitTarget,
+          tradeRatings:
+            data.tradeRatings != null && data.tradeRatings !== ("" as unknown)
+              ? Math.round(Number(data.tradeRatings))
+              : undefined,
+          reviewed: data.reviewed,
+          mistakes: data.mistakes,
+          tradeGroupId: i === 0 ? tradeGroupId : undefined, // Only set on first transaction
+          parentTradeId: i === 0 ? undefined : parentTradeId,
+          totalQuantity: transaction.totalQuantity,
+          transactionSequence: i + 1,
+        }
+
+        const response = await createOption.mutateAsync(payload)
+        
+        // Extract parent trade ID from response
+        if (i === 0) {
+          // Response is already parsed JSON from the mutation
+          const responseData = response as any
+          parentTradeId = responseData?.data?.id || responseData?.id
+        }
       }
 
-      await createOption.mutateAsync(payload)
-      toast.success("Option trade created successfully")
+      toast.success(`Option trade${data.transactions.length > 1 ? "s" : ""} created successfully`)
       optionForm.reset()
       onOpenChange(false)
     } catch (error) {
@@ -250,11 +307,12 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
             <div className="px-6 pb-6">
               <TabsContent value="stock" className="space-y-4 mt-0">
                 <Form {...stockForm}>
-                 {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
+                  {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
                   <form onSubmit={stockForm.handleSubmit(handleStockSubmit)} className="space-y-4">
+                    {/* Shared fields */}
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+                        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="symbol"
                         render={({ field }) => (
@@ -269,32 +327,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="tradeType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Trade Type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select trade type" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="BUY">BUY</SelectItem>
-                                <SelectItem value="SELL">SELL</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="orderType"
                         render={({ field }) => (
@@ -317,41 +349,10 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                           </FormItem>
                         )}
                       />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="numberShares"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Number of Shares</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.01" placeholder="100" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="entryPrice"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Entry Price</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.01" placeholder="150.00" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="stopLoss"
                         render={({ field }) => (
@@ -364,35 +365,8 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                           </FormItem>
                         )}
                       />
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="exitPrice"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Exit Price (Optional)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                placeholder="155.00"
-                                {...field}
-                                value={field.value ?? ""}
-                                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="takeProfit"
                         render={({ field }) => (
@@ -412,9 +386,10 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                           </FormItem>
                         )}
                       />
+                    </div>
 
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="initialTarget"
                         render={({ field }) => (
@@ -436,7 +411,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="profitTarget"
                         render={({ field }) => (
@@ -458,24 +432,8 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="commissions"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Commissions</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.01" placeholder="0.00" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={stockForm.control}
                         name="tradeRatings"
                         render={({ field }) => (
@@ -498,45 +456,7 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="entryDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Entry Date</FormLabel>
-                            <FormControl>
-                              <Input type="datetime-local" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={stockForm.control}
-                        name="exitDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Exit Date (Optional)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="datetime-local"
-                                {...field}
-                                value={field.value ?? ""}
-                                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
                     <FormField
-                     // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                       control={stockForm.control}
                       name="mistakes"
                       render={({ field }) => (
@@ -550,6 +470,43 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                         </FormItem>
                       )}
                     />
+
+                    {/* Transactions */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold">Transactions</h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            stockTransactions.append({
+                              tradeType: "BUY",
+                              entryPrice: 0,
+                              exitPrice: undefined,
+                              numberShares: 0,
+                              entryDate: getLocalDateTimeInputValue(),
+                              exitDate: undefined,
+                              commissions: 0,
+                            })
+                          }
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Transaction
+                        </Button>
+                      </div>
+
+                      {stockTransactions.fields.map((field, index) => (
+                        <TransactionRow
+                          key={field.id}
+                          index={index}
+                          form={stockForm}
+                          tradeType="stock"
+                          onRemove={() => stockTransactions.remove(index)}
+                          canRemove={stockTransactions.fields.length > 1}
+                        />
+                      ))}
+                    </div>
 
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -565,11 +522,11 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
 
               <TabsContent value="option" className="space-y-4 mt-0">
                 <Form {...optionForm}>
-                 {/* @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?) */}
                   <form onSubmit={optionForm.handleSubmit(handleOptionSubmit)} className="space-y-4">
+                    {/* Shared fields */}
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
+                        // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="symbol"
                         render={({ field }) => (
@@ -584,48 +541,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="strategyType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Strategy Type</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Long Call" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="tradeDirection"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Trade Direction</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select direction" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Bullish">Bullish</SelectItem>
-                                <SelectItem value="Bearish">Bearish</SelectItem>
-                                <SelectItem value="Neutral">Neutral</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="optionType"
                         render={({ field }) => (
@@ -650,22 +565,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
 
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="numberOfContracts"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Number of Contracts</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="1" placeholder="1" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="strikePrice"
                         render={({ field }) => (
@@ -678,55 +577,13 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                           </FormItem>
                         )}
                       />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="entryPrice"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Entry Price</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.01" placeholder="5.50" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
-                        name="exitPrice"
+                        name="premium"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Exit Price (Optional)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                placeholder="6.50"
-                                {...field}
-                                value={field.value ?? ""}
-                                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="totalPremium"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Total Premium</FormLabel>
+                            <FormLabel>Premium</FormLabel>
                             <FormControl>
                               <Input type="number" step="0.01" placeholder="550.00" {...field} />
                             </FormControl>
@@ -736,16 +593,15 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
-                        name="commissions"
+                        name="expirationDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Commissions</FormLabel>
+                            <FormLabel>Expiration Date</FormLabel>
                             <FormControl>
-                              <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                              <Input type="date" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -753,22 +609,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="impliedVolatility"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Implied Volatility (%)</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.01" placeholder="25.50" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="tradeRatings"
                         render={({ field }) => (
@@ -791,61 +631,8 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="entryDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Entry Date</FormLabel>
-                            <FormControl>
-                              <Input type="datetime-local" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="expirationDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Expiration Date</FormLabel>
-                            <FormControl>
-                              <Input type="date" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
-                        control={optionForm.control}
-                        name="exitDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Exit Date (Optional)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="datetime-local"
-                                {...field}
-                                value={field.value ?? ""}
-                                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="initialTarget"
                         render={({ field }) => (
@@ -867,7 +654,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                       />
 
                       <FormField
-                       // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                         control={optionForm.control}
                         name="profitTarget"
                         render={({ field }) => (
@@ -890,7 +676,6 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                     </div>
 
                     <FormField
-                     // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
                       control={optionForm.control}
                       name="mistakes"
                       render={({ field }) => (
@@ -904,6 +689,43 @@ export default function CreateTradeModal({ open, onOpenChange }: CreateTradeModa
                         </FormItem>
                       )}
                     />
+
+                    {/* Transactions */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold">Transactions</h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            optionTransactions.append({
+                              tradeType: "BUY",
+                              entryPrice: 0,
+                              exitPrice: undefined,
+                              totalQuantity: 1,
+                              entryDate: getLocalDateTimeInputValue(),
+                              exitDate: undefined,
+                              commissions: 0,
+                            })
+                          }
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Transaction
+                        </Button>
+                      </div>
+
+                      {optionTransactions.fields.map((field, index) => (
+                        <TransactionRow
+                          key={field.id}
+                          index={index}
+                          form={optionForm}
+                          tradeType="option"
+                          onRemove={() => optionTransactions.remove(index)}
+                          canRemove={optionTransactions.fields.length > 1}
+                        />
+                      ))}
+                    </div>
 
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

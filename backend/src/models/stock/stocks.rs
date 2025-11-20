@@ -214,6 +214,9 @@ pub struct Stock {
     pub reviewed: bool,
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
+    pub trade_group_id: Option<String>,
+    pub parent_trade_id: Option<i64>,
+    pub transaction_sequence: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -249,6 +252,9 @@ pub struct CreateStockRequest {
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
+    pub trade_group_id: Option<String>,
+    pub parent_trade_id: Option<i64>,
+    pub transaction_sequence: Option<i32>,
 }
 
 /// Data Transfer Object for updating stock trades
@@ -274,6 +280,9 @@ pub struct UpdateStockRequest {
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
+    pub trade_group_id: Option<String>,
+    pub parent_trade_id: Option<i64>,
+    pub transaction_sequence: Option<i32>,
 }
 
 /// Stock query parameters for filtering and pagination
@@ -289,6 +298,8 @@ pub struct StockQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub open_only: Option<bool>,
+    pub trade_group_id: Option<String>,
+    pub parent_trade_id: Option<i64>,
 }
 
 /// Note to AI model: When creating an Helper function to handle different types of values from the database
@@ -373,12 +384,15 @@ impl Stock {
                 symbol, trade_type, order_type, entry_price, 
                 stop_loss, commissions, number_shares, take_profit, 
                 initial_target, profit_target, trade_ratings,
-                entry_date, reviewed, mistakes, brokerage_name, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                entry_date, reviewed, mistakes, brokerage_name, trade_group_id,
+                parent_trade_id, transaction_sequence, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
-                     entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
+                     entry_date, exit_date, reviewed, mistakes, brokerage_name,
+                     trade_group_id, parent_trade_id, transaction_sequence,
+                     created_at, updated_at
             "#,
         )
         .await?
@@ -398,6 +412,9 @@ impl Stock {
             request.reviewed.unwrap_or(false),
             request.mistakes,
             request.brokerage_name,
+            request.trade_group_id,
+            request.parent_trade_id,
+            request.transaction_sequence,
             now.clone(),
             now
         ])
@@ -421,7 +438,9 @@ impl Stock {
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
-                   entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
+                   entry_date, exit_date, reviewed, mistakes, brokerage_name,
+                   trade_group_id, parent_trade_id, transaction_sequence,
+                   created_at, updated_at
             FROM stocks 
             WHERE id = ?
             "#,
@@ -447,7 +466,9 @@ impl Stock {
             SELECT id, symbol, trade_type, order_type, entry_price,
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
-                   entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
+                   entry_date, exit_date, reviewed, mistakes, brokerage_name,
+                   trade_group_id, parent_trade_id, transaction_sequence,
+                   created_at, updated_at
             FROM stocks 
             WHERE 1=1
             "#,
@@ -464,6 +485,16 @@ impl Stock {
         if let Some(trade_type) = &query.trade_type {
             sql.push_str(" AND trade_type = ?");
             query_params.push(libsql::Value::Text(trade_type.to_string()));
+        }
+
+        if let Some(trade_group_id) = &query.trade_group_id {
+            sql.push_str(" AND trade_group_id = ?");
+            query_params.push(libsql::Value::Text(trade_group_id.clone()));
+        }
+
+        if let Some(parent_trade_id) = query.parent_trade_id {
+            sql.push_str(" AND parent_trade_id = ?");
+            query_params.push(libsql::Value::Integer(parent_trade_id));
         }
         
         if let Some(start_date) = query.start_date {
@@ -658,12 +689,17 @@ impl Stock {
                 reviewed = COALESCE(?, reviewed),
                 mistakes = COALESCE(?, mistakes),
                 brokerage_name = COALESCE(?, brokerage_name),
+                trade_group_id = COALESCE(?, trade_group_id),
+                parent_trade_id = COALESCE(?, parent_trade_id),
+                transaction_sequence = COALESCE(?, transaction_sequence),
                 updated_at = ?
             WHERE id = ?
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
-                     entry_date, exit_date, reviewed, mistakes, brokerage_name, created_at, updated_at
+                     entry_date, exit_date, reviewed, mistakes, brokerage_name,
+                     trade_group_id, parent_trade_id, transaction_sequence,
+                     created_at, updated_at
             "#,
         )
             .await?
@@ -682,9 +718,12 @@ impl Stock {
                 request.trade_ratings,
                 request.entry_date.map(|d| d.to_rfc3339()),
                 request.exit_date.map(|d| d.to_rfc3339()),
-                None::<bool>,
+                request.reviewed,
                 request.mistakes,
                 request.brokerage_name,
+                request.trade_group_id,
+                request.parent_trade_id,
+                request.transaction_sequence,
                 now,
                 stock_id
             ])
@@ -1376,8 +1415,10 @@ impl Stock {
         let reviewed = Self::get_bool(row, 15)?;
         let mistakes_str: Option<String> = row.get(16)?;
         let brokerage_name: Option<String> = row.get(17)?;
-        let created_at_str: String = row.get(18)?;
-        let updated_at_str: String = row.get(19)?;
+        let trade_group_id: Option<String> = row.get(18)?;
+        let parent_trade_id: Option<i64> = row.get(19)?;
+        let created_at_str: String = row.get(21)?;
+        let updated_at_str: String = row.get(22)?;
 
         fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
             if let Ok(dt) = DateTime::parse_from_rfc3339(s) { return Ok(dt.with_timezone(&Utc)); }
@@ -1423,6 +1464,9 @@ impl Stock {
             reviewed,
             mistakes: mistakes_str,
             brokerage_name,
+            trade_group_id,
+            parent_trade_id,
+            transaction_sequence: row.get::<Option<i32>>(20)?,
             created_at,
             updated_at,
         })

@@ -79,6 +79,10 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             reviewed BOOLEAN NOT NULL DEFAULT false,
             mistakes TEXT,
             brokerage_name TEXT,
+            trade_group_id TEXT,
+            parent_trade_id INTEGER,
+            quantity DECIMAL(15,8),
+            transaction_sequence INTEGER,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -90,6 +94,11 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
     conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_trade_type ON stocks(trade_type)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_entry_date ON stocks(entry_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_exit_date ON stocks(exit_date)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_entry_price ON stocks(entry_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_exit_price ON stocks(exit_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_brokerage_name ON stocks(brokerage_name)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_trade_group_id ON stocks(trade_group_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_parent_trade_id ON stocks(parent_trade_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_is_deleted ON stocks(is_deleted)", libsql::params![]).await?;
 
     // User profile
@@ -119,17 +128,13 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         CREATE TABLE IF NOT EXISTS options (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol TEXT NOT NULL,
-            strategy_type TEXT NOT NULL,
-            trade_direction TEXT NOT NULL CHECK (trade_direction IN ('Bullish', 'Bearish', 'Neutral')),
-            number_of_contracts INTEGER NOT NULL CHECK (number_of_contracts > 0),
             option_type TEXT NOT NULL CHECK (option_type IN ('Call', 'Put')),
             strike_price DECIMAL(15,8) NOT NULL,
             expiration_date TIMESTAMP NOT NULL,
             entry_price DECIMAL(15,8) NOT NULL,
             exit_price DECIMAL(15,8),
-            total_premium DECIMAL(15,8) NOT NULL,
+            premium DECIMAL(15,8) NOT NULL,
             commissions DECIMAL(10,4) NOT NULL DEFAULT 0.00,
-            implied_volatility DECIMAL(8,4) NOT NULL,
             entry_date TIMESTAMP NOT NULL,
             exit_date TIMESTAMP,
             status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
@@ -139,6 +144,10 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             reviewed BOOLEAN NOT NULL DEFAULT false,
             mistakes TEXT,
             brokerage_name TEXT,
+            trade_group_id TEXT,
+            parent_trade_id INTEGER,
+            total_quantity DECIMAL(15,8),
+            transaction_sequence INTEGER,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             is_deleted INTEGER NOT NULL DEFAULT 0
@@ -147,14 +156,87 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
         libsql::params![],
     ).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_symbol ON options(symbol)", libsql::params![]).await?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_strategy_type ON options(strategy_type)", libsql::params![]).await?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_trade_direction ON options(trade_direction)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_option_type ON options(option_type)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_status ON options(status)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_entry_date ON options(entry_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_exit_date ON options(exit_date)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_expiration_date ON options(expiration_date)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_strike_price ON options(strike_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_entry_price ON options(entry_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_exit_price ON options(exit_price)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_brokerage_name ON options(brokerage_name)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_trade_group_id ON options(trade_group_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_options_parent_trade_id ON options(parent_trade_id)", libsql::params![]).await?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_options_is_deleted ON options(is_deleted)", libsql::params![]).await?;
+
+    // Stock positions table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS stock_positions (
+            id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            total_quantity DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            average_entry_price DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            current_price DECIMAL(15,8),
+            unrealized_pnl DECIMAL(15,8),
+            realized_pnl DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            brokerage_name TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_positions_symbol ON stock_positions(symbol)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_positions_brokerage_name ON stock_positions(brokerage_name)", libsql::params![]).await?;
+
+    // Option positions table
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS option_positions (
+            id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            option_type TEXT NOT NULL CHECK (option_type IN ('Call', 'Put')),
+            strike_price DECIMAL(15,8) NOT NULL,
+            expiration_date TIMESTAMP NOT NULL,
+            total_quantity DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            average_entry_price DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            current_price DECIMAL(15,8),
+            unrealized_pnl DECIMAL(15,8),
+            realized_pnl DECIMAL(15,8) NOT NULL DEFAULT 0.0,
+            brokerage_name TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_option_positions_symbol ON option_positions(symbol)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_option_positions_strike_exp ON option_positions(symbol, strike_price, expiration_date, option_type)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_option_positions_brokerage_name ON option_positions(brokerage_name)", libsql::params![]).await?;
+
+    // Position transactions table (audit log)
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS position_transactions (
+            id TEXT PRIMARY KEY,
+            position_id TEXT NOT NULL,
+            position_type TEXT NOT NULL CHECK (position_type IN ('stock', 'option')),
+            trade_id INTEGER,
+            transaction_type TEXT NOT NULL CHECK (transaction_type IN ('entry', 'exit', 'adjustment')),
+            quantity DECIMAL(15,8) NOT NULL,
+            price DECIMAL(15,8) NOT NULL,
+            transaction_date TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+        libsql::params![],
+    ).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_position_transactions_position_id ON position_transactions(position_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_position_transactions_position_type ON position_transactions(position_type)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_position_transactions_trade_id ON position_transactions(trade_id)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_position_transactions_transaction_type ON position_transactions(transaction_type)", libsql::params![]).await?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_position_transactions_transaction_date ON position_transactions(transaction_date)", libsql::params![]).await?;
 
     // Trade notes (linked to trades with AI metadata)
     conn.execute(
@@ -1120,16 +1202,28 @@ pub async fn initialize_user_database_schema(db_url: &str, token: &str) -> Resul
             }
         }
     }
+    
+    {
+        let check_col = conn.prepare("SELECT COUNT(*) FROM pragma_table_info('options') WHERE name = 'commissions'").await?;
+        let mut rows = check_col.query(libsql::params![]).await?;
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            if count == 0 {
+                conn.execute("ALTER TABLE options ADD COLUMN commissions DECIMAL(10,4) NOT NULL DEFAULT 0.00", libsql::params![]).await.ok();
+                info!("Added commissions column to options table");
+            }
+        }
+    }
 
     info!("Trading+notebook schema initialized successfully");
     Ok(())
 }
 
-/// Current schema version (bumped for unmatched_transactions table)
+/// Current schema version (bumped for multi-entry/exit trades and options cleanup)
 pub fn get_current_schema_version() -> SchemaVersion {
     SchemaVersion {
-        version: "0.0.28".to_string(),
-        description: "Added brokerage_name column to stocks and options tables.".to_string(),
+        version: "0.0.32".to_string(),
+        description: "Added commissions column to options table".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -1159,6 +1253,10 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
                 ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_group_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "parent_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "total_quantity".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "transaction_sequence".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
@@ -1168,6 +1266,11 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 IndexInfo { name: "idx_stocks_trade_type".to_string(), table_name: "stocks".to_string(), columns: vec!["trade_type".to_string()], is_unique: false },
                 IndexInfo { name: "idx_stocks_entry_date".to_string(), table_name: "stocks".to_string(), columns: vec!["entry_date".to_string()], is_unique: false },
                 IndexInfo { name: "idx_stocks_exit_date".to_string(), table_name: "stocks".to_string(), columns: vec!["exit_date".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stocks_entry_price".to_string(), table_name: "stocks".to_string(), columns: vec!["entry_price".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stocks_exit_price".to_string(), table_name: "stocks".to_string(), columns: vec!["exit_price".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stocks_brokerage_name".to_string(), table_name: "stocks".to_string(), columns: vec!["brokerage_name".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stocks_trade_group_id".to_string(), table_name: "stocks".to_string(), columns: vec!["trade_group_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stocks_parent_trade_id".to_string(), table_name: "stocks".to_string(), columns: vec!["parent_trade_id".to_string()], is_unique: false },
                 IndexInfo { name: "idx_stocks_is_deleted".to_string(), table_name: "stocks".to_string(), columns: vec!["is_deleted".to_string()], is_unique: false },
             ],
             triggers: vec![
@@ -1180,17 +1283,13 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
             columns: vec![
                 ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
                 ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
-                ColumnInfo { name: "strategy_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
-                ColumnInfo { name: "trade_direction".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
-                ColumnInfo { name: "number_of_contracts".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "option_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "strike_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "expiration_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "entry_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
-                ColumnInfo { name: "total_premium".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "premium".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "commissions".to_string(), data_type: "DECIMAL(10,4)".to_string(), is_nullable: false, default_value: Some("0.00".to_string()), is_primary_key: false },
-                ColumnInfo { name: "implied_volatility".to_string(), data_type: "DECIMAL(8,4)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "entry_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "exit_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "status".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: Some("'open'".to_string()), is_primary_key: false },
@@ -1200,24 +1299,105 @@ pub fn get_expected_schema() -> Vec<TableSchema> {
                 ColumnInfo { name: "reviewed".to_string(), data_type: "BOOLEAN".to_string(), is_nullable: false, default_value: Some("false".to_string()), is_primary_key: false },
                 ColumnInfo { name: "mistakes".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_group_id".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "parent_trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "total_quantity".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "transaction_sequence".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
                 ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
                 ColumnInfo { name: "is_deleted".to_string(), data_type: "INTEGER".to_string(), is_nullable: false, default_value: Some("0".to_string()), is_primary_key: false },
             ],
             indexes: vec![
                 IndexInfo { name: "idx_options_symbol".to_string(), table_name: "options".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
-                IndexInfo { name: "idx_options_strategy_type".to_string(), table_name: "options".to_string(), columns: vec!["strategy_type".to_string()], is_unique: false },
-                IndexInfo { name: "idx_options_trade_direction".to_string(), table_name: "options".to_string(), columns: vec!["trade_direction".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_option_type".to_string(), table_name: "options".to_string(), columns: vec!["option_type".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_status".to_string(), table_name: "options".to_string(), columns: vec!["status".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_entry_date".to_string(), table_name: "options".to_string(), columns: vec!["entry_date".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_exit_date".to_string(), table_name: "options".to_string(), columns: vec!["exit_date".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_expiration_date".to_string(), table_name: "options".to_string(), columns: vec!["expiration_date".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_strike_price".to_string(), table_name: "options".to_string(), columns: vec!["strike_price".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_entry_price".to_string(), table_name: "options".to_string(), columns: vec!["entry_price".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_exit_price".to_string(), table_name: "options".to_string(), columns: vec!["exit_price".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_brokerage_name".to_string(), table_name: "options".to_string(), columns: vec!["brokerage_name".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_trade_group_id".to_string(), table_name: "options".to_string(), columns: vec!["trade_group_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_options_parent_trade_id".to_string(), table_name: "options".to_string(), columns: vec!["parent_trade_id".to_string()], is_unique: false },
                 IndexInfo { name: "idx_options_is_deleted".to_string(), table_name: "options".to_string(), columns: vec!["is_deleted".to_string()], is_unique: false },
             ],
             triggers: vec![
                 TriggerInfo { name: "update_options_timestamp".to_string(), table_name: "options".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE options SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },
             ],
+        },
+        // Stock positions (aggregate view for position tracking)
+        TableSchema {
+            name: "stock_positions".to_string(),
+            columns: vec![
+                ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "total_quantity".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "average_entry_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "current_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "unrealized_pnl".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "realized_pnl".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+                ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ],
+            indexes: vec![
+                IndexInfo { name: "idx_stock_positions_symbol".to_string(), table_name: "stock_positions".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+                IndexInfo { name: "idx_stock_positions_brokerage_name".to_string(), table_name: "stock_positions".to_string(), columns: vec!["brokerage_name".to_string()], is_unique: false },
+            ],
+            triggers: vec![
+                TriggerInfo { name: "update_stock_positions_timestamp".to_string(), table_name: "stock_positions".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE stock_positions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },
+            ],
+        },
+        // Option positions (aggregate view for position tracking)
+        TableSchema {
+            name: "option_positions".to_string(),
+            columns: vec![
+                ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                ColumnInfo { name: "symbol".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "option_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "strike_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "expiration_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "total_quantity".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "average_entry_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "current_price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "unrealized_pnl".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "realized_pnl".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: Some("0.0".to_string()), is_primary_key: false },
+                ColumnInfo { name: "brokerage_name".to_string(), data_type: "TEXT".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+                ColumnInfo { name: "updated_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ],
+            indexes: vec![
+                IndexInfo { name: "idx_option_positions_symbol".to_string(), table_name: "option_positions".to_string(), columns: vec!["symbol".to_string()], is_unique: false },
+                IndexInfo { name: "idx_option_positions_strike_exp".to_string(), table_name: "option_positions".to_string(), columns: vec!["symbol".to_string(), "strike_price".to_string(), "expiration_date".to_string(), "option_type".to_string()], is_unique: false },
+                IndexInfo { name: "idx_option_positions_brokerage_name".to_string(), table_name: "option_positions".to_string(), columns: vec!["brokerage_name".to_string()], is_unique: false },
+            ],
+            triggers: vec![
+                TriggerInfo { name: "update_option_positions_timestamp".to_string(), table_name: "option_positions".to_string(), event: "UPDATE".to_string(), timing: "AFTER".to_string(), action: "UPDATE option_positions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id".to_string() },
+            ],
+        },
+        // Position transactions (audit log for all position changes)
+        TableSchema {
+            name: "position_transactions".to_string(),
+            columns: vec![
+                ColumnInfo { name: "id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: true },
+                ColumnInfo { name: "position_id".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "position_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "trade_id".to_string(), data_type: "INTEGER".to_string(), is_nullable: true, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "transaction_type".to_string(), data_type: "TEXT".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "quantity".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "price".to_string(), data_type: "DECIMAL(15,8)".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "transaction_date".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: None, is_primary_key: false },
+                ColumnInfo { name: "created_at".to_string(), data_type: "TIMESTAMP".to_string(), is_nullable: false, default_value: Some("CURRENT_TIMESTAMP".to_string()), is_primary_key: false },
+            ],
+            indexes: vec![
+                IndexInfo { name: "idx_position_transactions_position_id".to_string(), table_name: "position_transactions".to_string(), columns: vec!["position_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_position_transactions_position_type".to_string(), table_name: "position_transactions".to_string(), columns: vec!["position_type".to_string()], is_unique: false },
+                IndexInfo { name: "idx_position_transactions_trade_id".to_string(), table_name: "position_transactions".to_string(), columns: vec!["trade_id".to_string()], is_unique: false },
+                IndexInfo { name: "idx_position_transactions_transaction_type".to_string(), table_name: "position_transactions".to_string(), columns: vec!["transaction_type".to_string()], is_unique: false },
+                IndexInfo { name: "idx_position_transactions_transaction_date".to_string(), table_name: "position_transactions".to_string(), columns: vec!["transaction_date".to_string()], is_unique: false },
+            ],
+            triggers: vec![],
         },
         // Trade notes (linked to trades with AI metadata)
         TableSchema {
@@ -1853,9 +2033,25 @@ pub async fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Ve
 pub async fn update_table_schema(conn: &Connection, table_schema: &TableSchema) -> Result<()> {
     let current_columns = get_table_columns(conn, &table_schema.name).await?;
     
-    // Add missing columns
+    // Handle column renames: map old column names to new ones
+    let mut column_rename_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if table_schema.name == "options" {
+        // Map number_of_contracts -> total_quantity
+        let has_number_of_contracts = current_columns.iter().any(|c| c.name == "number_of_contracts");
+        let has_total_quantity = current_columns.iter().any(|c| c.name == "total_quantity");
+        let has_quantity = current_columns.iter().any(|c| c.name == "quantity");
+        if has_number_of_contracts && !has_total_quantity {
+            column_rename_map.insert("number_of_contracts".to_string(), "total_quantity".to_string());
+        } else if has_quantity && !has_total_quantity {
+            // Also handle migration from quantity -> total_quantity
+            column_rename_map.insert("quantity".to_string(), "total_quantity".to_string());
+        }
+    }
+    
+    // Add missing columns (skip if they're being renamed from an old column)
     for expected_col in &table_schema.columns {
-        if !current_columns.iter().any(|c| c.name == expected_col.name) {
+        let is_renamed = column_rename_map.values().any(|new_name| new_name == &expected_col.name);
+        if !current_columns.iter().any(|c| c.name == expected_col.name) && !is_renamed {
             let mut alter_sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table_schema.name, expected_col.name, expected_col.data_type);
             
             // For NOT NULL columns without explicit defaults, provide appropriate defaults
@@ -1882,17 +2078,24 @@ pub async fn update_table_schema(conn: &Connection, table_schema: &TableSchema) 
         }
     }
     
-    // Remove columns that are not in the expected schema
+    // Remove columns that are not in the expected schema (excluding renamed columns)
     let expected_names: std::collections::HashSet<String> = table_schema.columns.iter().map(|c| c.name.clone()).collect();
+    let renamed_old_names: std::collections::HashSet<String> = column_rename_map.keys().cloned().collect();
     let columns_to_remove: Vec<String> = current_columns.iter()
-        .filter(|c| !expected_names.contains(&c.name) && !c.is_primary_key)
+        .filter(|c| !expected_names.contains(&c.name) && !renamed_old_names.contains(&c.name) && !c.is_primary_key)
         .map(|c| c.name.clone())
         .collect();
     
-    if !columns_to_remove.is_empty() {
-        log::info!("Removing obsolete columns from {}: {:?}", table_schema.name, columns_to_remove);
+    // Recreate table if we need to remove columns OR rename columns
+    if !columns_to_remove.is_empty() || !column_rename_map.is_empty() {
+        if !column_rename_map.is_empty() {
+            log::info!("Renaming columns in {}: {:?}", table_schema.name, column_rename_map);
+        }
+        if !columns_to_remove.is_empty() {
+            log::info!("Removing obsolete columns from {}: {:?}", table_schema.name, columns_to_remove);
+        }
         
-        // SQLite doesn't support DROP COLUMN directly, so we need to recreate the table
+        // SQLite doesn't support DROP COLUMN or RENAME COLUMN directly, so we need to recreate the table
         // First, create a backup of existing data
         let backup_table = format!("{}_backup", table_schema.name);
         conn.execute(&format!("CREATE TABLE {} AS SELECT * FROM {}", backup_table, table_schema.name), libsql::params![]).await?;
@@ -1903,16 +2106,29 @@ pub async fn update_table_schema(conn: &Connection, table_schema: &TableSchema) 
         // Recreate the table with the correct schema
         create_table(conn, table_schema).await?;
         
-        // Copy data back (only for columns that exist in both schemas)
-        let common_columns: Vec<String> = current_columns.iter()
-            .filter(|c| expected_names.contains(&c.name))
-            .map(|c| c.name.clone())
-            .collect();
+        // Copy data back, handling column renames
+        let mut select_columns = Vec::new();
+        let mut insert_columns = Vec::new();
         
-        if !common_columns.is_empty() {
-            let columns_str = common_columns.join(", ");
+        for current_col in &current_columns {
+            if let Some(new_name) = column_rename_map.get(&current_col.name) {
+                // This column was renamed
+                if expected_names.contains(new_name) {
+                    select_columns.push(current_col.name.clone());
+                    insert_columns.push(new_name.clone());
+                }
+            } else if expected_names.contains(&current_col.name) {
+                // Column exists in both schemas with same name
+                select_columns.push(current_col.name.clone());
+                insert_columns.push(current_col.name.clone());
+            }
+        }
+        
+        if !insert_columns.is_empty() {
+            let select_str = select_columns.join(", ");
+            let insert_str = insert_columns.join(", ");
             conn.execute(&format!("INSERT INTO {} ({}) SELECT {} FROM {}", 
-                table_schema.name, columns_str, columns_str, backup_table), libsql::params![]).await?;
+                table_schema.name, insert_str, select_str, backup_table), libsql::params![]).await?;
         }
         
         // Drop the backup table

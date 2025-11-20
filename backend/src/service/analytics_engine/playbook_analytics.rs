@@ -264,7 +264,7 @@ async fn calculate_playbook_core_metrics(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options o

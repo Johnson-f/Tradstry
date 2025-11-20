@@ -510,13 +510,13 @@ async fn calculate_symbol_options_metrics(
             MIN(calculated_pnl) as biggest_loser,
             SUM(commissions) as total_commissions,
             AVG(commissions) as average_commission_per_trade,
-            AVG(total_premium) as average_position_size
+            AVG(premium) as average_position_size
         FROM (
             SELECT 
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -854,7 +854,7 @@ async fn calculate_symbol_avg_risk(
     // Options risk (premium paid)
     let options_sql = format!(
         r#"
-        SELECT AVG(total_premium) as avg_risk_options
+        SELECT AVG(premium) as avg_risk_options
         FROM options
         WHERE symbol = ? AND status = 'closed' AND ({})
         "#,
@@ -897,7 +897,7 @@ async fn calculate_symbol_daily_returns(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1134,13 +1134,13 @@ async fn calculate_strategy_core_metrics(
             MIN(calculated_pnl) as biggest_loser,
             SUM(commissions) as total_commissions,
             AVG(commissions) as average_commission_per_trade,
-            AVG(total_premium) as average_position_size
+            AVG(premium) as average_position_size
         FROM (
             SELECT 
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1436,7 +1436,7 @@ async fn calculate_strategy_avg_risk(
 ) -> Result<f64> {
     let sql = format!(
         r#"
-        SELECT AVG(total_premium) as avg_risk
+        SELECT AVG(premium) as avg_risk
         FROM options
         WHERE strategy_type = ? AND status = 'closed' AND ({})
         "#,
@@ -1471,7 +1471,7 @@ async fn calculate_strategy_daily_returns(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1590,8 +1590,8 @@ async fn calculate_strategy_position_sizing(
     let sql = format!(
         r#"
         SELECT 
-            AVG(total_premium) as avg_position_size,
-            STDDEV(total_premium) as position_size_std_dev
+            AVG(premium) as avg_position_size,
+            STDDEV(premium) as position_size_std_dev
         FROM options
         WHERE strategy_type = ? AND status = 'closed' AND ({})
         "#,
@@ -1701,13 +1701,13 @@ async fn calculate_direction_core_metrics(
             MIN(calculated_pnl) as biggest_loser,
             SUM(commissions) as total_commissions,
             AVG(commissions) as average_commission_per_trade,
-            AVG(total_premium) as average_position_size
+            AVG(premium) as average_position_size
         FROM (
             SELECT 
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -2092,7 +2092,7 @@ async fn calculate_direction_daily_returns(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -2311,13 +2311,13 @@ async fn calculate_period_core_metrics(
             MIN(calculated_pnl) as biggest_loser,
             SUM(commissions) as total_commissions,
             AVG(commissions) as average_commission_per_trade,
-            AVG(total_premium) as average_position_size
+            AVG(premium) as average_position_size
         FROM (
             SELECT 
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -2620,7 +2620,7 @@ async fn calculate_period_daily_returns(
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -2720,7 +2720,7 @@ async fn calculate_symbol_consecutive_streaks(
         SELECT 
             CASE 
                 WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    (exit_price - entry_price) * total_quantity * 100 - commissions
                 ELSE 0
             END as calculated_pnl
         FROM options
@@ -2757,7 +2757,7 @@ async fn calculate_strategy_consecutive_streaks(
         SELECT 
             CASE 
                 WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    (exit_price - entry_price) * total_quantity * 100 - commissions
                 ELSE 0
             END as calculated_pnl
         FROM options
@@ -2831,7 +2831,7 @@ async fn calculate_direction_consecutive_streaks(
         SELECT 
             CASE 
                 WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    (exit_price - entry_price) * total_quantity * 100 - commissions
                 ELSE 0
             END as calculated_pnl
         FROM options
@@ -2892,7 +2892,7 @@ async fn calculate_period_consecutive_streaks(
         SELECT 
             CASE 
                 WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    (exit_price - entry_price) * total_quantity * 100 - commissions
                 ELSE 0
             END as calculated_pnl
         FROM options

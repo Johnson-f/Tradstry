@@ -240,6 +240,18 @@ pub async fn check_user_database(
     match turso_client.get_user_database(&user_id).await {
         Ok(Some(db_entry)) => {
             info!("Database found for user: {}", user_id);
+            
+            // Ensure schema is up-to-date for existing database on login
+            match turso_client.ensure_user_schema_on_login(&user_id).await {
+                Ok(_) => {
+                    info!("Schema ensured successfully for user: {} during check", user_id);
+                }
+                Err(e) => {
+                    warn!("Failed to ensure schema for user {} during check: {}", user_id, e);
+                    // Continue anyway, as the database exists and is functional
+                }
+            }
+            
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "exists": true,
                 "database_url": db_entry.db_url,
@@ -283,6 +295,17 @@ pub async fn get_user_database_info(
     
     match turso_client.get_user_database(&user_id).await {
         Ok(Some(db_entry)) => {
+            // Ensure schema is up-to-date before returning database info
+            match turso_client.ensure_user_schema_on_login(&user_id).await {
+                Ok(_) => {
+                    info!("Schema ensured successfully for user: {} during database info retrieval", user_id);
+                }
+                Err(e) => {
+                    warn!("Failed to ensure schema for user {} during database info retrieval: {}", user_id, e);
+                    // Continue anyway, as the database exists and is functional
+                }
+            }
+            
             // Generate a fresh token for the user's database
             match turso_client.create_database_token(&db_entry.db_name).await {
                 Ok(fresh_token) => {

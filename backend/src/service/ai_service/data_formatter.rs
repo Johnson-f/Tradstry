@@ -65,25 +65,25 @@ impl DataFormatter {
         let entry_date = option.entry_date.format("%Y-%m-%d").to_string();
         let exit_date = option.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
         
+        let quantity = option.total_quantity.unwrap_or(0.0);
+        
         // Calculate P&L from entry and exit prices
         let pnl = if let Some(exit_price) = option.exit_price {
-            (exit_price - option.entry_price) * option.number_of_contracts as f64 - option.commissions
+            (exit_price - option.entry_price) * quantity * 100.0
         } else {
             0.0
         };
         
-        let pnl_percentage = if option.entry_price > 0.0 {
-            (pnl / (option.entry_price * option.number_of_contracts as f64)) * 100.0
+        let pnl_percentage = if option.entry_price > 0.0 && quantity > 0.0 {
+            (pnl / (option.entry_price * quantity * 100.0)) * 100.0
         } else {
             0.0
         };
 
         format!(
-            "Option trade: {} {} {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}. Commissions: ${:.2}",
-            option.strategy_type,
-            option.number_of_contracts,
+            "Option trade: {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}",
+            quantity,
             option.option_type,
-            option.trade_direction,
             option.symbol,
             option.strike_price,
             option.expiration_date.format("%Y-%m-%d"),
@@ -95,8 +95,7 @@ impl DataFormatter {
             pnl,
             pnl_percentage,
             if pnl >= 0.0 { "gain" } else { "loss" },
-            option.total_premium,
-            option.commissions
+            option.premium
         )
     }
 
@@ -194,27 +193,27 @@ impl DataFormatter {
         let entry_date = option.entry_date.format("%Y-%m-%d").to_string();
         let exit_date = option.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
         
+        let quantity = option.total_quantity.unwrap_or(0.0);
+        
         // Calculate P&L from entry and exit prices
         let pnl = if let Some(exit_price) = option.exit_price {
-            (exit_price - option.entry_price) * option.number_of_contracts as f64 - option.commissions
+            (exit_price - option.entry_price) * quantity * 100.0
         } else {
             0.0
         };
         
-        let pnl_percentage = if option.entry_price > 0.0 {
-            (pnl / (option.entry_price * option.number_of_contracts as f64)) * 100.0
+        let pnl_percentage = if option.entry_price > 0.0 && quantity > 0.0 {
+            (pnl / (option.entry_price * quantity * 100.0)) * 100.0
         } else {
             0.0
         };
 
         let mut content = HashMap::new();
-        content.insert("title".to_string(), format!("{} {} Option Trade", option.symbol, option.strategy_type));
+        content.insert("title".to_string(), format!("{} {} Option Trade", option.symbol, option.option_type));
         content.insert("description".to_string(), format!(
-            "Option trade: {} {} {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}. Commissions: ${:.2}",
-            option.strategy_type,
-            option.number_of_contracts,
+            "Option trade: {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}",
+            quantity,
             option.option_type,
-            option.trade_direction,
             option.symbol,
             option.strike_price,
             option.expiration_date.format("%Y-%m-%d"),
@@ -226,20 +225,16 @@ impl DataFormatter {
             pnl,
             pnl_percentage,
             if pnl >= 0.0 { "gain" } else { "loss" },
-            option.total_premium,
-            option.commissions
+            option.premium
         ));
         content.insert("symbol".to_string(), option.symbol.clone());
-        content.insert("strategy_type".to_string(), option.strategy_type.clone());
         content.insert("option_type".to_string(), format!("{:?}", option.option_type));
-        content.insert("trade_direction".to_string(), format!("{:?}", option.trade_direction));
         content.insert("strike_price".to_string(), format!("{:.2}", option.strike_price));
         content.insert("expiration_date".to_string(), option.expiration_date.format("%Y-%m-%d").to_string());
-        content.insert("contracts".to_string(), option.number_of_contracts.to_string());
+        content.insert("quantity".to_string(), format!("{:.2}", quantity));
         content.insert("pnl".to_string(), format!("{:.2}", pnl));
         content.insert("pnl_percentage".to_string(), format!("{:.2}", pnl_percentage));
-        content.insert("premium".to_string(), format!("{:.2}", option.total_premium));
-        content.insert("commissions".to_string(), format!("{:.2}", option.commissions));
+        content.insert("premium".to_string(), format!("{:.2}", option.premium));
 
         let metadata = DocumentMetadata {
             user_id: "".to_string(), // Will be set by caller

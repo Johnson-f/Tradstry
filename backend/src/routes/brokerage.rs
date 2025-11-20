@@ -21,7 +21,7 @@ use crate::turso::auth::{
      
 use crate::service::transform;
 use crate::models::stock::stocks::{Stock, CreateStockRequest, TradeType, OrderType};
-use crate::models::options::option_trade::{OptionTrade, CreateOptionRequest, TradeDirection, OptionType};
+use crate::models::options::option_trade::{OptionTrade, CreateOptionRequest, OptionType};
 
 /// HTTP client for communicating with Go SnapTrade microservice
 #[derive(Clone)]
@@ -2886,11 +2886,14 @@ pub struct MergeTransactionsRequest {
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
     // Option-specific fields
+    #[allow(dead_code)]
     pub strategy_type: Option<String>,
+    #[allow(dead_code)]
     pub trade_direction: Option<String>,
     pub option_type: Option<String>,
     pub strike_price: Option<f64>,
     pub expiration_date: Option<String>,
+    #[allow(dead_code)]
     pub implied_volatility: Option<f64>,
 }
 
@@ -3026,7 +3029,7 @@ pub async fn merge_transactions(
         (avg_price, total_quantity, total_fees)
     };
 
-    let (entry_price, entry_quantity, entry_fees) = if !buys.is_empty() {
+    let (entry_price, _entry_quantity, _entry_fees) = if !buys.is_empty() {
         calculate_weighted_avg(&buys)
     } else if !sells.is_empty() {
         calculate_weighted_avg(&sells)
@@ -3034,7 +3037,7 @@ pub async fn merge_transactions(
         return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("No BUY or SELL transactions found")));
     };
 
-    let (_exit_price_opt, _exit_quantity, exit_fees) = if !sells.is_empty() {
+    let (_exit_price_opt, _exit_quantity, _exit_fees) = if !sells.is_empty() {
         let (price, qty, fees) = calculate_weighted_avg(&sells);
         (Some(price), qty, fees)
     } else {
@@ -3083,61 +3086,128 @@ pub async fn merge_transactions(
         let order_type = request.order_type.parse::<OrderType>()
             .map_err(|_| actix_web::error::ErrorBadRequest("Invalid order_type"))?;
 
-        let create_request = CreateStockRequest {
-            symbol: request.symbol,
-            trade_type: TradeType::BUY,
-            order_type,
-            entry_price,
-            stop_loss: request.stop_loss.unwrap_or(entry_price * 0.95),
-            commissions: entry_fees + exit_fees,
-            number_shares: entry_quantity,
-            take_profit: request.take_profit,
-            initial_target: request.initial_target,
-            profit_target: request.profit_target,
-            trade_ratings: request.trade_ratings,
-            entry_date: entry_date_parsed,
-            reviewed: request.reviewed,
-            mistakes: request.mistakes,
-            brokerage_name: request.brokerage_name,
-        };
+        // Generate trade_group_id for linking related trades
+        let trade_group_id = Uuid::new_v4().to_string();
+        
+        // Create position ID
+        let position_id = Uuid::new_v4().to_string();
+        
+        // Sort transactions by date
+        let mut all_transactions: Vec<(&TransactionData, usize)> = transactions.iter().enumerate().map(|(idx, t)| (t, idx)).collect();
+        all_transactions.sort_by_key(|(t, _)| &t.trade_date);
 
-        match Stock::create(&conn, create_request).await {
-            Ok(stock) => {
-                // Mark transactions as transformed
-                let update_sql = format!(
-                    "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
-                    placeholders
-                );
-                let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+        let mut created_trades = Vec::new();
+        let mut parent_trade_id: Option<i64> = None;
+        let mut sequence = 1;
 
-                let update_stmt = conn.prepare(&update_sql).await
-                    .map_err(|e| {
-                        error!("Failed to prepare update statement: {}", e);
-                        actix_web::error::ErrorInternalServerError("Database error")
+        // Create trade records for each transaction
+        for (txn, _) in all_transactions {
+            let is_entry = txn.transaction_type.as_deref() == Some("BUY");
+            let trade_type = if is_entry { TradeType::BUY } else { TradeType::SELL };
+            
+            let txn_date = parse_date(&txn.trade_date)?;
+            let txn_price = txn.price.unwrap_or(0.0);
+            let txn_quantity = txn.quantity.unwrap_or(0.0);
+            let txn_fees = txn.fees.unwrap_or(0.0);
+
+            let create_request = CreateStockRequest {
+                symbol: request.symbol.clone(),
+                trade_type,
+                order_type: order_type.clone(),
+                entry_price: if is_entry { txn_price } else { entry_price },
+                stop_loss: request.stop_loss.unwrap_or(entry_price * 0.95),
+                commissions: txn_fees,
+                number_shares: txn_quantity,
+                take_profit: request.take_profit,
+                initial_target: request.initial_target,
+                profit_target: request.profit_target,
+                trade_ratings: request.trade_ratings,
+                entry_date: if is_entry { txn_date } else { entry_date_parsed },
+                reviewed: request.reviewed,
+                mistakes: request.mistakes.clone(),
+                brokerage_name: request.brokerage_name.clone(),
+                trade_group_id: Some(trade_group_id.clone()),
+                parent_trade_id,
+                quantity: Some(txn_quantity),
+                transaction_sequence: Some(sequence),
+            };
+
+            match Stock::create(&conn, create_request).await {
+                Ok(stock) => {
+                    if parent_trade_id.is_none() {
+                        parent_trade_id = Some(stock.id);
+                    }
+                    created_trades.push(stock.id);
+
+                    // Create/update position
+                    let trans_type = if is_entry { "entry" } else { "exit" };
+                    crate::service::position_service::update_position_quantity(
+                        &conn,
+                        &position_id,
+                        "stock",
+                        txn_quantity,
+                        txn_price,
+                        trans_type,
+                    ).await.map_err(|e| {
+                        error!("Failed to update position: {}", e);
+                        actix_web::error::ErrorInternalServerError("Failed to update position")
                     })?;
 
-                update_stmt.query(update_params).await
-                    .map_err(|e| {
-                        error!("Failed to update transactions: {}", e);
-                        actix_web::error::ErrorInternalServerError("Database error")
+                    // Log transaction
+                    let trans_log_id = Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO position_transactions (id, position_id, position_type, trade_id, transaction_type, quantity, price, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        libsql::params![
+                            trans_log_id,
+                            position_id.clone(),
+                            "stock",
+                            stock.id,
+                            trans_type,
+                            txn_quantity,
+                            txn_price,
+                            txn_date.to_rfc3339()
+                        ]
+                    ).await.map_err(|e| {
+                        error!("Failed to log transaction: {}", e);
+                        actix_web::error::ErrorInternalServerError("Failed to log transaction")
                     })?;
 
-                info!("Successfully merged {} transactions into stock trade {}", request.transaction_ids.len(), stock.id);
-                Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
-            }
-            Err(e) => {
-                error!("Failed to create stock trade: {}", e);
-                Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create stock trade")))
+                    sequence += 1;
+                }
+                Err(e) => {
+                    error!("Failed to create stock trade: {}", e);
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create stock trade")));
+                }
             }
         }
+
+        // Mark transactions as transformed
+        let update_sql = format!(
+            "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
+            placeholders
+        );
+        let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+
+        let update_stmt = conn.prepare(&update_sql).await
+            .map_err(|e| {
+                error!("Failed to prepare update statement: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+        update_stmt.query(update_params).await
+            .map_err(|e| {
+                error!("Failed to update transactions: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+        info!("Successfully merged {} transactions into {} stock trades (group: {})", 
+              request.transaction_ids.len(), created_trades.len(), trade_group_id);
+        Ok(HttpResponse::Created().json(ApiResponse::success(serde_json::json!({
+            "trade_group_id": trade_group_id,
+            "created_trades": created_trades,
+            "position_id": position_id
+        }))))
     } else if request.trade_type == "option" {
-        let strategy_type = request.strategy_type.ok_or_else(|| {
-            actix_web::error::ErrorBadRequest("strategy_type required for option trades")
-        })?;
-        let trade_direction = request.trade_direction.ok_or_else(|| {
-            actix_web::error::ErrorBadRequest("trade_direction required for option trades")
-        })?.parse::<TradeDirection>()
-            .map_err(|_| actix_web::error::ErrorBadRequest("Invalid trade_direction"))?;
         let option_type = request.option_type.ok_or_else(|| {
             actix_web::error::ErrorBadRequest("option_type required for option trades")
         })?.parse::<OptionType>()
@@ -3149,63 +3219,126 @@ pub async fn merge_transactions(
             actix_web::error::ErrorBadRequest("expiration_date required for option trades")
         })?;
         let expiration_date_parsed = parse_date(&expiration_date)?;
-        let implied_volatility = request.implied_volatility.unwrap_or(0.0);
 
-        let number_of_contracts = entry_quantity as i32;
-        let total_premium = entry_price * entry_quantity;
-        // Status is determined in OptionTrade::create (always Open initially)
-        // Exit price and date are set via updates if needed
+        // Generate trade_group_id for linking related trades
+        let trade_group_id = Uuid::new_v4().to_string();
+        
+        // Create position ID
+        let position_id = Uuid::new_v4().to_string();
+        
+        // Sort transactions by date
+        let mut all_transactions: Vec<(&TransactionData, usize)> = transactions.iter().enumerate().map(|(idx, t)| (t, idx)).collect();
+        all_transactions.sort_by_key(|(t, _)| &t.trade_date);
 
-        let create_request = CreateOptionRequest {
-            symbol: request.symbol,
-            strategy_type,
-            trade_direction,
-            number_of_contracts,
-            option_type,
-            strike_price,
-            expiration_date: expiration_date_parsed,
-            entry_price,
-            total_premium,
-            commissions: entry_fees + exit_fees,
-            implied_volatility,
-            entry_date: entry_date_parsed,
-            initial_target: request.initial_target,
-            profit_target: request.profit_target,
-            trade_ratings: request.trade_ratings,
-            reviewed: request.reviewed,
-            mistakes: request.mistakes,
-            brokerage_name: request.brokerage_name,
-        };
+        let mut created_trades = Vec::new();
+        let mut parent_trade_id: Option<i64> = None;
+        let mut sequence = 1;
 
-        match OptionTrade::create(&conn, create_request).await {
-            Ok(option) => {
-                // Mark transactions as transformed
-                let update_sql = format!(
-                    "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
-                    placeholders
-                );
-                let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+        // Create trade records for each transaction
+        for (txn, _) in all_transactions {
+            let is_entry = txn.transaction_type.as_deref() == Some("BUY");
+            
+            let txn_date = parse_date(&txn.trade_date)?;
+            let txn_price = txn.price.unwrap_or(0.0);
+            let txn_quantity = txn.quantity.unwrap_or(0.0);
+            let _txn_fees = txn.fees.unwrap_or(0.0);
+            let premium = txn_price * txn_quantity;
 
-                let update_stmt = conn.prepare(&update_sql).await
-                    .map_err(|e| {
-                        error!("Failed to prepare update statement: {}", e);
-                        actix_web::error::ErrorInternalServerError("Database error")
+            let create_request = CreateOptionRequest {
+                symbol: request.symbol.clone(),
+                option_type: option_type.clone(),
+                strike_price,
+                expiration_date: expiration_date_parsed,
+                entry_price: if is_entry { txn_price } else { entry_price },
+                premium,
+                entry_date: if is_entry { txn_date } else { entry_date_parsed },
+                initial_target: request.initial_target,
+                profit_target: request.profit_target,
+                trade_ratings: request.trade_ratings,
+                reviewed: request.reviewed,
+                mistakes: request.mistakes.clone(),
+                brokerage_name: request.brokerage_name.clone(),
+                trade_group_id: Some(trade_group_id.clone()),
+                parent_trade_id,
+                total_quantity: Some(txn_quantity),
+                transaction_sequence: Some(sequence),
+            };
+
+            match OptionTrade::create(&conn, create_request).await {
+                Ok(option) => {
+                    if parent_trade_id.is_none() {
+                        parent_trade_id = Some(option.id);
+                    }
+                    created_trades.push(option.id);
+
+                    // Create/update position
+                    let trans_type = if is_entry { "entry" } else { "exit" };
+                    crate::service::position_service::update_position_quantity(
+                        &conn,
+                        &position_id,
+                        "option",
+                        txn_quantity,
+                        txn_price,
+                        trans_type,
+                    ).await.map_err(|e| {
+                        error!("Failed to update position: {}", e);
+                        actix_web::error::ErrorInternalServerError("Failed to update position")
                     })?;
 
-                update_stmt.query(update_params).await
-                    .map_err(|e| {
-                        error!("Failed to update transactions: {}", e);
-                        actix_web::error::ErrorInternalServerError("Database error")
+                    // Log transaction
+                    let trans_log_id = Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO position_transactions (id, position_id, position_type, trade_id, transaction_type, quantity, price, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        libsql::params![
+                            trans_log_id,
+                            position_id.clone(),
+                            "option",
+                            option.id,
+                            trans_type,
+                            txn_quantity,
+                            txn_price,
+                            txn_date.to_rfc3339()
+                        ]
+                    ).await.map_err(|e| {
+                        error!("Failed to log transaction: {}", e);
+                        actix_web::error::ErrorInternalServerError("Failed to log transaction")
                     })?;
 
-                info!("Successfully merged {} transactions into option trade {}", request.transaction_ids.len(), option.id);
-                Ok(HttpResponse::Created().json(ApiResponse::success(option)))
-            }
-            Err(e) => {
-                error!("Failed to create option trade: {}", e);
-                Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create option trade")))
+                    sequence += 1;
+                }
+                Err(e) => {
+                    error!("Failed to create option trade: {}", e);
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create option trade")));
+                }
             }
         }
+
+        // Mark transactions as transformed
+        let update_sql = format!(
+            "UPDATE brokerage_transactions SET is_transformed = 1 WHERE id IN ({})",
+            placeholders
+        );
+        let update_params: Vec<&str> = request.transaction_ids.iter().map(|s| s.as_str()).collect();
+
+        let update_stmt = conn.prepare(&update_sql).await
+            .map_err(|e| {
+                error!("Failed to prepare update statement: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+        update_stmt.query(update_params).await
+            .map_err(|e| {
+                error!("Failed to update transactions: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+        info!("Successfully merged {} transactions into {} option trades (group: {})", 
+              request.transaction_ids.len(), created_trades.len(), trade_group_id);
+        Ok(HttpResponse::Created().json(ApiResponse::success(serde_json::json!({
+            "trade_group_id": trade_group_id,
+            "created_trades": created_trades,
+            "position_id": position_id
+        }))))
     } else {
         Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid trade_type. Must be 'stock' or 'option'")))
     }

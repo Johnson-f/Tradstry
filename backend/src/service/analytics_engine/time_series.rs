@@ -112,7 +112,7 @@ async fn calculate_daily_pnl_series(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -201,7 +201,7 @@ async fn calculate_weekly_pnl_series(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -290,7 +290,7 @@ async fn calculate_monthly_pnl_series(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -382,7 +382,7 @@ async fn calculate_rolling_sharpe_ratio(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -531,7 +531,7 @@ async fn calculate_rolling_win_rate(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -634,7 +634,7 @@ async fn calculate_profit_by_day_of_week(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -709,7 +709,7 @@ async fn calculate_profit_by_month(
                 exit_date,
                 CASE
                     WHEN exit_price IS NOT NULL THEN
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options

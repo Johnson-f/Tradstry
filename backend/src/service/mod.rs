@@ -8,6 +8,7 @@ pub mod rate_limiter;
 pub mod storage_quota;
 pub mod account_deletion;
 pub mod transform;
+pub mod position_service;
 
 // AI Services - organized in dedicated module
 pub mod ai_service;

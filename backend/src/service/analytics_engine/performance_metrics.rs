@@ -1,4 +1,4 @@
-//! One of the most important files for the AI systems for spotting trading patterns 
+//! One of the most important files for the AI systems for spotting trading patterns
 
 use anyhow::Result;
 use libsql::Connection;
@@ -32,16 +32,16 @@ pub async fn calculate_performance_metrics(
     time_range: &TimeRange,
 ) -> Result<PerformanceMetrics> {
     let (time_condition, time_params) = time_range.to_sql_condition();
-    
+
     // Calculate stocks performance metrics
     let stocks_metrics = calculate_stocks_performance_metrics(conn, &time_condition, &time_params).await?;
-    
+
     // Calculate options performance metrics
     let options_metrics = calculate_options_performance_metrics(conn, &time_condition, &time_params).await?;
-    
+
     // Combine metrics from both tables
     let combined_metrics = combine_performance_metrics(stocks_metrics, options_metrics);
-    
+
     Ok(combined_metrics)
 }
 
@@ -54,16 +54,16 @@ async fn calculate_stocks_performance_metrics(
     // Main performance metrics query
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(JULIANDAY(exit_date) - JULIANDAY(entry_date)) as avg_hold_time_days,
             AVG(number_shares * entry_price) as avg_position_size,
             STDDEV(number_shares * entry_price) as position_size_std_dev,
             AVG(commissions) as avg_commission_per_trade,
             SUM(commissions) / NULLIF(SUM(ABS(calculated_pnl)), 0) * 100 as commission_impact_percentage
         FROM (
-            SELECT 
+            SELECT
                 *,
-                CASE 
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -147,7 +147,7 @@ async fn calculate_winners_hold_time(
         SELECT AVG(JULIANDAY(exit_date) - JULIANDAY(entry_date)) as avg_hold_time_winners
         FROM stocks
         WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL AND ({})
-          AND ((trade_type = 'BUY' AND exit_price > entry_price) 
+          AND ((trade_type = 'BUY' AND exit_price > entry_price)
                OR (trade_type = 'SELL' AND exit_price < entry_price))
         "#,
         time_condition
@@ -249,18 +249,18 @@ async fn calculate_options_performance_metrics(
     // Main performance metrics query for options
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(JULIANDAY(exit_date) - JULIANDAY(entry_date)) as avg_hold_time_days,
-            AVG(total_premium) as avg_position_size,
-            STDDEV(total_premium) as position_size_std_dev,
+            AVG(premium) as avg_position_size,
+            STDDEV(premium) as position_size_std_dev,
             AVG(commissions) as avg_commission_per_trade,
             SUM(commissions) / NULLIF(SUM(ABS(calculated_pnl)), 0) * 100 as commission_impact_percentage
         FROM (
-            SELECT 
+            SELECT
                 *,
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -409,7 +409,7 @@ fn combine_performance_metrics(stocks: PerformanceMetrics, options: PerformanceM
     } else {
         0.0
     };
-    
+
     let options_weight = 1.0 - stocks_weight;
 
     PerformanceMetrics {
@@ -530,13 +530,13 @@ pub async fn calculate_behavioral_patterns(
     time_range: &TimeRange,
 ) -> Result<BehavioralPatterns> {
     let (time_condition, time_params) = time_range.to_sql_condition();
-    
+
     // Calculate each pattern category
     let risk_behavior = calculate_risk_behavior(conn, &time_condition, &time_params).await?;
     let timing_behavior = calculate_timing_behavior(conn, &time_condition, &time_params).await?;
     let trading_frequency = calculate_trading_frequency_behavior(conn, &time_condition, &time_params).await?;
     let profitability_distribution = calculate_profitability_distribution(conn, &time_condition, &time_params).await?;
-    
+
     Ok(BehavioralPatterns {
         risk_behavior,
         timing_behavior,
@@ -555,7 +555,7 @@ async fn calculate_risk_behavior(
     // Calculate stop loss adherence - using SQLite-specific functions
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(CASE WHEN stop_loss IS NOT NULL THEN 1 ELSE 0 END) as trades_with_stop
         FROM stocks
@@ -590,14 +590,14 @@ async fn calculate_risk_behavior(
     // Simplified position size patterns - using subquery instead of window functions
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(position_size) as avg_after_win,
             AVG(position_size) as avg_after_loss,
             STDDEV(position_size) / NULLIF(AVG(position_size), 0) * 100 as consistency
         FROM (
-            SELECT 
+            SELECT
                 entry_price * number_shares as position_size,
-                CASE 
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -628,22 +628,22 @@ async fn calculate_risk_behavior(
     // Calculate risk-reward ratio consistency
     let sql = format!(
         r#"
-        SELECT 
-            AVG(CASE 
-                WHEN ABS(entry_price - stop_loss) > 0 
-                THEN ABS(calculated_pnl) / ABS(entry_price - stop_loss) 
-                ELSE 0 
+        SELECT
+            AVG(CASE
+                WHEN ABS(entry_price - stop_loss) > 0
+                THEN ABS(calculated_pnl) / ABS(entry_price - stop_loss)
+                ELSE 0
             END) as avg_rr_ratio
         FROM (
-            SELECT 
+            SELECT
                 *,
-                CASE 
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM stocks
-            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL 
+            WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL
               AND stop_loss IS NOT NULL AND ({})
         )
         "#,
@@ -684,8 +684,8 @@ async fn calculate_timing_behavior(
     // Get day of week performance
     let sql = format!(
         r#"
-        SELECT 
-            CASE 
+        SELECT
+            CASE
                 WHEN CAST(strftime('%w', entry_date) AS INTEGER) = 0 THEN 'Sunday'
                 WHEN CAST(strftime('%w', entry_date) AS INTEGER) = 1 THEN 'Monday'
                 WHEN CAST(strftime('%w', entry_date) AS INTEGER) = 2 THEN 'Tuesday'
@@ -696,7 +696,7 @@ async fn calculate_timing_behavior(
                 ELSE 'Unknown'
             END as day_of_week,
             COUNT(*) as trade_count,
-            SUM(CASE 
+            SUM(CASE
                 WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                 WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                 ELSE 0
@@ -768,7 +768,7 @@ async fn calculate_trading_frequency_behavior(
     // Calculate trades per week
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             CAST(JULIANDAY(MAX(exit_date)) - JULIANDAY(MIN(entry_date)) AS REAL) as days_span,
             COUNT(*) / CAST(JULIANDAY(MAX(exit_date)) - JULIANDAY(MIN(entry_date)) AS REAL) * 7.0 as trades_per_week
@@ -798,7 +798,7 @@ async fn calculate_trading_frequency_behavior(
     // Count over-trading days (days with more than 3 trades)
     let sql = format!(
         r#"
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM (
             SELECT DATE(entry_date) as trade_date
             FROM stocks
@@ -824,15 +824,15 @@ async fn calculate_trading_frequency_behavior(
     // Calculate optimal trading frequency
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(trades_per_day) as avg_trades,
             AVG(CASE WHEN avg_pnl > 0 THEN trades_per_day ELSE NULL END) as avg_trades_on_winning_days,
             AVG(CASE WHEN avg_pnl < 0 THEN trades_per_day ELSE NULL END) as avg_trades_on_losing_days
         FROM (
-            SELECT 
+            SELECT
                 DATE(entry_date) as trade_date,
                 COUNT(*) as trades_per_day,
-                AVG(CASE 
+                AVG(CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -882,14 +882,14 @@ async fn calculate_profitability_distribution(
     // Calculate best and worst trade impact
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             MAX(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as best_trade,
             MIN(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as worst_trade,
             SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_profit,
             SUM(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE 0 END) as total_loss
         FROM (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -958,7 +958,7 @@ async fn calculate_expectancy_and_edge_stocks(
 ) -> Result<(f64, f64, f64)> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
             SUM(CASE WHEN calculated_pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
@@ -966,8 +966,8 @@ async fn calculate_expectancy_and_edge_stocks(
             AVG(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as avg_loser,
             SUM(calculated_pnl) as total_pnl
         FROM (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1036,13 +1036,13 @@ async fn calculate_kelly_criterion_stocks(
 ) -> Result<f64> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
             AVG(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE NULL END) as avg_loser,
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1094,15 +1094,15 @@ async fn calculate_r_multiples_stocks(
 ) -> Result<(f64, f64, u32, u32)> {
     let sql = format!(
         r#"
-        SELECT 
-            CASE 
+        SELECT
+            CASE
                 WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                 WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                 ELSE 0
             END as pnl,
             ABS(entry_price - stop_loss) * number_shares as risk
         FROM stocks
-        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL 
+        WHERE exit_price IS NOT NULL AND exit_date IS NOT NULL
           AND stop_loss IS NOT NULL AND ({})
         "#,
         time_condition
@@ -1165,13 +1165,13 @@ async fn calculate_consistency_ratio_stocks(
 ) -> Result<f64> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
             SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_wins,
             SUM(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE 0 END) as total_losses
         FROM (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1222,12 +1222,12 @@ async fn calculate_periodic_win_rates_stocks(
     // Monthly win rate
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
+            SELECT
                 *,
-                CASE 
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1259,12 +1259,12 @@ async fn calculate_periodic_win_rates_stocks(
     // Quarterly win rate
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
+            SELECT
                 *,
-                CASE 
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1316,13 +1316,13 @@ async fn get_basic_stats_stocks(
 ) -> Result<(f64, f64, f64)> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(calculated_pnl) as total_pnl,
             AVG(calculated_pnl) as avg_pnl
         FROM (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     WHEN trade_type = 'SELL' THEN (entry_price - exit_price) * number_shares - commissions
                     ELSE 0
@@ -1367,17 +1367,17 @@ async fn calculate_expectancy_and_edge_options(
 ) -> Result<(f64, f64, f64)> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
             SUM(CASE WHEN calculated_pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
             AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
             AVG(CASE WHEN calculated_pnl < 0 THEN calculated_pnl ELSE NULL END) as avg_loser
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1439,15 +1439,15 @@ async fn calculate_kelly_criterion_options(
 ) -> Result<f64> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             AVG(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE NULL END) as avg_winner,
             AVG(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE NULL END) as avg_loser,
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1494,16 +1494,16 @@ async fn calculate_r_multiples_options(
     time_condition: &str,
     time_params: &[chrono::DateTime<chrono::Utc>],
 ) -> Result<(f64, f64, u32, u32)> {
-    // For options, use total_premium as the risk (cost basis)
+    // For options, use premium as the risk (cost basis)
     let sql = format!(
         r#"
-        SELECT 
-            CASE 
-                WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+        SELECT
+            CASE
+                WHEN exit_price IS NOT NULL THEN
+                    (exit_price - entry_price) * total_quantity * 100 - commissions
                 ELSE 0
             END as pnl,
-            total_premium as risk
+            premium as risk
         FROM options
         WHERE status = 'closed' AND exit_price IS NOT NULL AND ({})
         "#,
@@ -1566,15 +1566,15 @@ async fn calculate_consistency_ratio_options(
 ) -> Result<f64> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
             SUM(CASE WHEN calculated_pnl > 0 THEN calculated_pnl ELSE 0 END) as total_wins,
             SUM(CASE WHEN calculated_pnl < 0 THEN ABS(calculated_pnl) ELSE 0 END) as total_losses
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1622,13 +1622,13 @@ async fn calculate_periodic_win_rates_options(
 ) -> Result<(f64, f64)> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1657,13 +1657,13 @@ async fn calculate_periodic_win_rates_options(
 
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(SUM(CASE WHEN calculated_pnl > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1712,15 +1712,15 @@ async fn get_basic_stats_options(
 ) -> Result<(f64, f64, f64)> {
     let sql = format!(
         r#"
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(calculated_pnl) as total_pnl,
             AVG(calculated_pnl) as avg_pnl
         FROM (
-            SELECT 
-                CASE 
-                    WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+            SELECT
+                CASE
+                    WHEN exit_price IS NOT NULL THEN
+                        (exit_price - entry_price) * total_quantity * 100 - commissions
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -1783,7 +1783,7 @@ pub async fn calculate_duration_performance_metrics(
     time_range: &TimeRange,
 ) -> Result<DurationPerformanceResponse> {
     let (time_condition, time_params) = time_range.to_sql_condition();
-    
+
     // Define duration buckets (in days)
     let duration_buckets = vec![
         ("0-1 days", 0.0, 1.0),
@@ -1792,27 +1792,27 @@ pub async fn calculate_duration_performance_metrics(
         ("1-3 months", 28.0, 90.0),
         ("3+ months", 90.0, f64::MAX),
     ];
-    
+
     let mut bucket_metrics = Vec::new();
-    
+
     for (bucket_name, min_days, max_days) in duration_buckets {
         let metrics = calculate_bucket_metrics(
-            conn, 
-            &time_condition, 
-            &time_params, 
-            bucket_name, 
-            min_days, 
+            conn,
+            &time_condition,
+            &time_params,
+            bucket_name,
+            min_days,
             max_days
         ).await?;
-        
+
         if metrics.trade_count > 0 {
             bucket_metrics.push(metrics);
         }
     }
-    
+
     // Calculate overall metrics for the time period
     let overall_metrics = crate::service::analytics_engine::core_metrics::calculate_core_metrics(conn, time_range).await?;
-    
+
     Ok(DurationPerformanceResponse {
         duration_buckets: bucket_metrics,
         overall_metrics,
@@ -1832,44 +1832,44 @@ async fn calculate_bucket_metrics(
     } else {
         format!("AND (JULIANDAY(exit_date) - JULIANDAY(entry_date)) >= {} AND (JULIANDAY(exit_date) - JULIANDAY(entry_date)) < {}", min_days, max_days)
     };
-    
+
     // Combined query for stocks and options
     let sql = format!(
         r#"
         WITH combined_trades AS (
             -- Stock trades
-            SELECT 
-                (CASE 
+            SELECT
+                (CASE
                     WHEN trade_type = 'BUY' THEN (exit_price - entry_price) * number_shares - commissions
                     ELSE (entry_price - exit_price) * number_shares - commissions
                 END) as net_pnl,
                 (JULIANDAY(exit_date) - JULIANDAY(entry_date)) as hold_days,
-                CASE 
-                    WHEN (trade_type = 'BUY' AND exit_price > entry_price) OR 
-                         (trade_type = 'SELL' AND exit_price < entry_price) 
-                    THEN 1 ELSE 0 
+                CASE
+                    WHEN (trade_type = 'BUY' AND exit_price > entry_price) OR
+                         (trade_type = 'SELL' AND exit_price < entry_price)
+                    THEN 1 ELSE 0
                 END as is_winner
-            FROM stocks 
-            WHERE exit_price IS NOT NULL 
-                AND exit_date IS NOT NULL 
-                AND ({}) 
+            FROM stocks
+            WHERE exit_price IS NOT NULL
+                AND exit_date IS NOT NULL
+                AND ({})
                 {}
-            
+
             UNION ALL
-            
-            -- Option trades  
-            SELECT 
-                (exit_price - entry_price) * number_of_contracts * 100 - commissions as net_pnl,
+
+            -- Option trades
+            SELECT
+                (exit_price - entry_price) * total_quantity * 100 - commissions as net_pnl,
                 (JULIANDAY(exit_date) - JULIANDAY(entry_date)) as hold_days,
                 CASE WHEN exit_price > entry_price THEN 1 ELSE 0 END as is_winner
-            FROM options 
-            WHERE status = 'closed' 
-                AND exit_date IS NOT NULL 
+            FROM options
+            WHERE status = 'closed'
+                AND exit_date IS NOT NULL
                 AND exit_price IS NOT NULL
-                AND ({}) 
+                AND ({})
                 {}
         )
-        SELECT 
+        SELECT
             COUNT(*) as trade_count,
             SUM(is_winner) as winning_trades,
             COUNT(*) - SUM(is_winner) as losing_trades,
@@ -1879,23 +1879,23 @@ async fn calculate_bucket_metrics(
             AVG(hold_days) as avg_hold_time_days,
             MAX(net_pnl) as best_trade,
             MIN(net_pnl) as worst_trade,
-            CASE 
-                WHEN SUM(CASE WHEN net_pnl < 0 THEN ABS(net_pnl) ELSE 0 END) > 0 
+            CASE
+                WHEN SUM(CASE WHEN net_pnl < 0 THEN ABS(net_pnl) ELSE 0 END) > 0
                 THEN SUM(CASE WHEN net_pnl > 0 THEN net_pnl ELSE 0 END) / SUM(CASE WHEN net_pnl < 0 THEN ABS(net_pnl) ELSE 0 END)
-                ELSE 0 
+                ELSE 0
             END as profit_factor
         FROM combined_trades
         "#,
         time_condition, duration_condition,
         time_condition, duration_condition
     );
-    
+
     let mut query_params = Vec::new();
     for param in time_params {
         query_params.push(libsql::Value::Text(param.to_rfc3339()));
         query_params.push(libsql::Value::Text(param.to_rfc3339()));
     }
-    
+
     if let Some(row) = conn.prepare(&sql).await?.query(libsql::params_from_iter(query_params)).await?.next().await? {
         Ok(DurationPerformanceMetrics {
             duration_bucket: bucket_name.to_string(),

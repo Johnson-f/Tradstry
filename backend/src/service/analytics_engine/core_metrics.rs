@@ -201,13 +201,13 @@ async fn calculate_options_core_metrics(
             MIN(calculated_pnl) as biggest_loser,
             SUM(commissions) as total_commissions,
             AVG(commissions) as average_commission_per_trade,
-            AVG(total_premium) as average_position_size
+            AVG(premium * COALESCE(total_quantity, 1)) as average_position_size
         FROM (
             SELECT 
                 *,
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * COALESCE(total_quantity, 1) * 100 - COALESCE(commissions, 0)
                     ELSE 0
                 END as calculated_pnl
             FROM options
@@ -360,7 +360,7 @@ async fn calculate_options_consecutive_streaks(
         SELECT 
             CASE 
                 WHEN exit_price IS NOT NULL THEN 
-                    (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                    (exit_price - entry_price) * COALESCE(total_quantity, 1) * 100 - COALESCE(commissions, 0)
                 ELSE 0
             END as calculated_pnl
         FROM options
@@ -710,8 +710,8 @@ pub async fn calculate_individual_option_trade_analytics(
             exit_price,
             initial_target,
             profit_target,
-            number_of_contracts,
-            total_premium,
+            total_quantity,
+            premium,
             commissions,
             entry_date,
             exit_date
@@ -731,8 +731,8 @@ pub async fn calculate_individual_option_trade_analytics(
         let exit_price: Option<f64> = get_optional_f64_value(&row, 4);
         let _initial_target: Option<f64> = get_optional_f64_value(&row, 5);
         let profit_target: Option<f64> = get_optional_f64_value(&row, 6);
-        let number_of_contracts: i32 = get_i64_value(&row, 7) as i32;
-        let total_premium: f64 = get_f64_value(&row, 8);
+        let quantity: i32 = get_i64_value(&row, 7) as i32;
+        let premium: f64 = get_f64_value(&row, 8);
         let commissions: f64 = get_f64_value(&row, 9);
         let entry_date: Option<String> = row.get(10).ok();
         let exit_date: Option<String> = row.get(11).ok();
@@ -740,7 +740,7 @@ pub async fn calculate_individual_option_trade_analytics(
         // Calculate net P&L for options
         let net_pnl = if let Some(exit) = exit_price {
             // Option P&L = (exit_price - entry_price) * contracts * 100 - commissions
-            let pnl = (exit - entry_price) * number_of_contracts as f64 * 100.0;
+            let pnl = (exit - entry_price) * quantity as f64 * 100.0;
             pnl - commissions
         } else {
             0.0
@@ -749,9 +749,9 @@ pub async fn calculate_individual_option_trade_analytics(
         // For options, risk is the premium paid
         // Planned R:R uses profit_target
         let planned_rr = if let Some(target) = profit_target {
-            let risk = total_premium;
+            let risk = premium;
             if risk > 0.0 {
-                let reward = (target - entry_price) * number_of_contracts as f64 * 100.0;
+                let reward = (target - entry_price) * quantity as f64 * 100.0;
                 if reward > 0.0 {
                     Some(reward / risk)
                 } else {
@@ -766,9 +766,9 @@ pub async fn calculate_individual_option_trade_analytics(
 
         // Realized R:R
         let realized_rr = if let Some(_exit) = exit_price {
-            if total_premium > 0.0 {
+            if premium > 0.0 {
                 let realized_profit = net_pnl + commissions;
-                Some(realized_profit / total_premium)
+                Some(realized_profit / premium)
             } else {
                 None
             }
@@ -902,7 +902,7 @@ pub async fn calculate_symbol_analytics(
             SELECT 
                 CASE 
                     WHEN exit_price IS NOT NULL THEN 
-                        (exit_price - entry_price) * number_of_contracts * 100 - commissions
+                        (exit_price - entry_price) * COALESCE(total_quantity, 1) * 100 - COALESCE(commissions, 0)
                     ELSE 0
                 END as calculated_pnl
             FROM options
