@@ -201,7 +201,7 @@ pub struct Stock {
     pub trade_type: TradeType,
     pub order_type: OrderType,
     pub entry_price: f64,
-    pub exit_price: Option<f64>,
+    pub exit_price: f64,
     pub stop_loss: f64,
     pub commissions: f64,
     pub number_shares: f64,
@@ -210,12 +210,13 @@ pub struct Stock {
     pub profit_target: Option<f64>,
     pub trade_ratings: Option<i32>,
     pub entry_date: DateTime<Utc>,
-    pub exit_date: Option<DateTime<Utc>>,
+    pub exit_date: DateTime<Utc>,
     pub reviewed: bool,
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
     pub trade_group_id: Option<String>,
     pub parent_trade_id: Option<i64>,
+    pub total_quantity: Option<f64>,
     pub transaction_sequence: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -238,6 +239,7 @@ pub struct CreateStockRequest {
     pub trade_type: TradeType,
     pub order_type: OrderType,
     pub entry_price: f64,
+    pub exit_price: f64,
     pub stop_loss: f64,
     #[serde(default)]  // Allow missing field, defaults to 0.0
     pub commissions: f64,
@@ -248,12 +250,15 @@ pub struct CreateStockRequest {
     pub trade_ratings: Option<i32>,
     #[serde(deserialize_with = "deserialize_datetime")]
     pub entry_date: DateTime<Utc>,
+    #[serde(deserialize_with = "deserialize_datetime")]
+    pub exit_date: DateTime<Utc>,
     #[serde(default)]  // Allow missing field, defaults to false
     pub reviewed: Option<bool>,
     pub mistakes: Option<String>,
     pub brokerage_name: Option<String>,
     pub trade_group_id: Option<String>,
     pub parent_trade_id: Option<i64>,
+    pub total_quantity: Option<f64>,
     pub transaction_sequence: Option<i32>,
 }
 
@@ -282,6 +287,7 @@ pub struct UpdateStockRequest {
     pub brokerage_name: Option<String>,
     pub trade_group_id: Option<String>,
     pub parent_trade_id: Option<i64>,
+    pub total_quantity: Option<f64>,
     pub transaction_sequence: Option<i32>,
 }
 
@@ -336,6 +342,75 @@ impl Stock {
         }
     }
 
+    fn get_string(row: &libsql::Row, idx: usize) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        match row.get_value(i) {
+            Ok(libsql::Value::Text(s)) => Ok(s),
+            Ok(libsql::Value::Null) => Ok(String::new()),
+            Ok(libsql::Value::Integer(n)) => Ok(n.to_string()),
+            Ok(libsql::Value::Real(r)) => Ok(r.to_string()),
+            Ok(libsql::Value::Blob(_b)) => Ok(String::new()),
+            Err(_e) => Ok(String::new()),
+        }
+    }
+
+    fn get_opt_string(row: &libsql::Row, idx: usize) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        match row.get_value(i) {
+            Ok(libsql::Value::Text(s)) => Ok(Some(s)),
+            Ok(libsql::Value::Null) => Ok(None),
+            Ok(libsql::Value::Integer(n)) => Ok(Some(n.to_string())),
+            Ok(libsql::Value::Real(r)) => Ok(Some(r.to_string())),
+            Ok(libsql::Value::Blob(_b)) => Ok(None),
+            Err(_e) => Ok(None),
+        }
+    }
+
+    fn get_i64(row: &libsql::Row, idx: usize) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        match row.get_value(i) {
+            Ok(libsql::Value::Integer(n)) => Ok(n),
+            Ok(libsql::Value::Null) => Ok(0),
+            Ok(libsql::Value::Real(r)) => Ok(r as i64),
+            Ok(libsql::Value::Text(s)) => {
+                let result = s.parse::<i64>().unwrap_or(0);
+                Ok(result)
+            },
+            Ok(libsql::Value::Blob(_b)) => Ok(0),
+            Err(_e) => Ok(0),
+        }
+    }
+
+    fn get_opt_i64(row: &libsql::Row, idx: usize) -> Result<Option<i64>, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        match row.get_value(i) {
+            Ok(libsql::Value::Integer(n)) => Ok(Some(n)),
+            Ok(libsql::Value::Null) => Ok(None),
+            Ok(libsql::Value::Real(r)) => Ok(Some(r as i64)),
+            Ok(libsql::Value::Text(s)) => {
+                let result = s.parse::<i64>().ok();
+                Ok(result)
+            },
+            Ok(libsql::Value::Blob(_b)) => Ok(None),
+            Err(_e) => Ok(None),
+        }
+    }
+
+    fn get_opt_i32(row: &libsql::Row, idx: usize) -> Result<Option<i32>, Box<dyn std::error::Error + Send + Sync>> {
+        let i = idx as i32;
+        match row.get_value(i) {
+            Ok(libsql::Value::Integer(n)) => Ok(Some(n as i32)),
+            Ok(libsql::Value::Null) => Ok(None),
+            Ok(libsql::Value::Real(r)) => Ok(Some(r as i32)),
+            Ok(libsql::Value::Text(s)) => {
+                let result = s.parse::<i32>().ok();
+                Ok(result)
+            },
+            Ok(libsql::Value::Blob(_b)) => Ok(None),
+            Err(_e) => Ok(None),
+        }
+    }
+
     fn get_bool(row: &libsql::Row, idx: usize) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let i = idx as i32;
         // Try i64 (SQLite INTEGER for boolean)
@@ -381,17 +456,17 @@ impl Stock {
         let mut rows = conn.prepare(
             r#"
             INSERT INTO stocks (
-                symbol, trade_type, order_type, entry_price, 
+                symbol, trade_type, order_type, entry_price, exit_price,
                 stop_loss, commissions, number_shares, take_profit, 
                 initial_target, profit_target, trade_ratings,
-                entry_date, reviewed, mistakes, brokerage_name, trade_group_id,
-                parent_trade_id, transaction_sequence, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                entry_date, exit_date, reviewed, mistakes, brokerage_name, trade_group_id,
+                parent_trade_id, total_quantity, transaction_sequence, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
                      entry_date, exit_date, reviewed, mistakes, brokerage_name,
-                     trade_group_id, parent_trade_id, transaction_sequence,
+                     trade_group_id, parent_trade_id, total_quantity, transaction_sequence,
                      created_at, updated_at
             "#,
         )
@@ -401,6 +476,7 @@ impl Stock {
             request.trade_type.to_string(),
             request.order_type.to_string(),
             request.entry_price,
+            request.exit_price,
             request.stop_loss,
             request.commissions,
             request.number_shares,
@@ -409,11 +485,13 @@ impl Stock {
             request.profit_target,
             request.trade_ratings,
             request.entry_date.to_rfc3339(),
+            request.exit_date.to_rfc3339(),
             request.reviewed.unwrap_or(false),
             request.mistakes,
             request.brokerage_name,
             request.trade_group_id,
             request.parent_trade_id,
+            request.total_quantity,
             request.transaction_sequence,
             now.clone(),
             now
@@ -439,7 +517,7 @@ impl Stock {
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
                    entry_date, exit_date, reviewed, mistakes, brokerage_name,
-                   trade_group_id, parent_trade_id, transaction_sequence,
+                   trade_group_id, parent_trade_id, total_quantity, transaction_sequence,
                    created_at, updated_at
             FROM stocks 
             WHERE id = ?
@@ -467,7 +545,7 @@ impl Stock {
                    exit_price, stop_loss, commissions, number_shares, take_profit,
                    initial_target, profit_target, trade_ratings,
                    entry_date, exit_date, reviewed, mistakes, brokerage_name,
-                   trade_group_id, parent_trade_id, transaction_sequence,
+                   trade_group_id, parent_trade_id, total_quantity, transaction_sequence,
                    created_at, updated_at
             FROM stocks 
             WHERE 1=1
@@ -691,6 +769,7 @@ impl Stock {
                 brokerage_name = COALESCE(?, brokerage_name),
                 trade_group_id = COALESCE(?, trade_group_id),
                 parent_trade_id = COALESCE(?, parent_trade_id),
+                total_quantity = COALESCE(?, total_quantity),
                 transaction_sequence = COALESCE(?, transaction_sequence),
                 updated_at = ?
             WHERE id = ?
@@ -698,7 +777,7 @@ impl Stock {
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,
                      entry_date, exit_date, reviewed, mistakes, brokerage_name,
-                     trade_group_id, parent_trade_id, transaction_sequence,
+                     trade_group_id, parent_trade_id, total_quantity, transaction_sequence,
                      created_at, updated_at
             "#,
         )
@@ -723,6 +802,7 @@ impl Stock {
                 request.brokerage_name,
                 request.trade_group_id,
                 request.parent_trade_id,
+                request.total_quantity,
                 request.transaction_sequence,
                 now,
                 stock_id
@@ -1400,27 +1480,42 @@ impl Stock {
     }
 
     fn from_row(row: &libsql::Row) -> Result<Stock, Box<dyn std::error::Error + Send + Sync>> {
-        let trade_type_str: String = row.get(2)?;
-        let order_type_str: String = row.get(3)?;
+        let id = Self::get_i64(row, 0)?;
+        let symbol = Self::get_string(row, 1)?;
+        let trade_type_str = Self::get_string(row, 2)?;
+        let order_type_str = Self::get_string(row, 3)?;
         
-        let trade_type = trade_type_str.parse::<TradeType>()
-            .map_err(|e| format!("Invalid trade type: {}", e))?;
+        let trade_type = if trade_type_str.is_empty() {
+            TradeType::BUY // Default fallback
+        } else {
+            trade_type_str.parse::<TradeType>()
+                .map_err(|e| format!("Invalid trade type: {}", e))?
+        };
             
-        let order_type = order_type_str.parse::<OrderType>()
-            .map_err(|e| format!("Invalid order type: {}", e))?;
+        let order_type = if order_type_str.is_empty() {
+            OrderType::MARKET // Default fallback
+        } else {
+            order_type_str.parse::<OrderType>()
+                .map_err(|e| format!("Invalid order type: {}", e))?
+        };
 
         // Parse datetime strings (support RFC3339 and SQLite's CURRENT_TIMESTAMP format)
-        let entry_date_str: String = row.get(13)?;
-        let exit_date_str: Option<String> = row.get(14)?;
+        let entry_date_str = Self::get_string(row, 13)?;
+        let exit_date_str = Self::get_string(row, 14)?;
         let reviewed = Self::get_bool(row, 15)?;
-        let mistakes_str: Option<String> = row.get(16)?;
-        let brokerage_name: Option<String> = row.get(17)?;
-        let trade_group_id: Option<String> = row.get(18)?;
-        let parent_trade_id: Option<i64> = row.get(19)?;
-        let created_at_str: String = row.get(21)?;
-        let updated_at_str: String = row.get(22)?;
+        let mistakes_str = Self::get_opt_string(row, 16)?;
+        let brokerage_name = Self::get_opt_string(row, 17)?;
+        let trade_group_id = Self::get_opt_string(row, 18)?;
+        let parent_trade_id = Self::get_opt_i64(row, 19)?;
+        let total_quantity = Self::get_opt_f64(row, 20)?;
+        let transaction_sequence = Self::get_opt_i32(row, 21)?;
+        let created_at_str = Self::get_string(row, 22)?;
+        let updated_at_str = Self::get_string(row, 23)?;
 
         fn parse_dt_any(s: &str) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
+            if s.is_empty() {
+                return Ok(Utc::now()); // Default to current time if empty
+            }
             if let Ok(dt) = DateTime::parse_from_rfc3339(s) { return Ok(dt.with_timezone(&Utc)); }
             if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
                 return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
@@ -1435,10 +1530,13 @@ impl Stock {
         let entry_date = parse_dt_any(&entry_date_str)
             .map_err(|e| format!("Failed to parse entry_date: {}", e))?;
 
-        let exit_date = if let Some(exit_str) = exit_date_str {
-            Some(parse_dt_any(&exit_str)
-                .map_err(|e| format!("Failed to parse exit_date: {}", e))?)
-        } else { None };
+        // Handle null exit_date for open trades - use entry_date as fallback
+        let exit_date = if exit_date_str.is_empty() {
+            entry_date // For open trades, use entry_date as fallback
+        } else {
+            parse_dt_any(&exit_date_str)
+                .map_err(|e| format!("Failed to parse exit_date: {}", e))?
+        };
 
         let created_at = parse_dt_any(&created_at_str)
             .map_err(|e| format!("Failed to parse created_at: {}", e))?;
@@ -1446,19 +1544,19 @@ impl Stock {
             .map_err(|e| format!("Failed to parse updated_at: {}", e))?;
         
         Ok(Stock {
-            id: row.get(0)?,
-            symbol: row.get(1)?,
+            id,
+            symbol,
             trade_type,
             order_type,
             entry_price: Self::get_f64(row, 4)?,
-            exit_price: Self::get_opt_f64(row, 5)?,
+            exit_price: Self::get_f64(row, 5)?,
             stop_loss: Self::get_f64(row, 6)?,
             commissions: Self::get_f64(row, 7)?,
             number_shares: Self::get_f64(row, 8)?,
             take_profit: Self::get_opt_f64(row, 9)?,
             initial_target: Self::get_opt_f64(row, 10)?,
             profit_target: Self::get_opt_f64(row, 11)?,
-            trade_ratings: row.get::<Option<i32>>(12)?,
+            trade_ratings: Self::get_opt_i32(row, 12)?,
             entry_date,
             exit_date,
             reviewed,
@@ -1466,7 +1564,8 @@ impl Stock {
             brokerage_name,
             trade_group_id,
             parent_trade_id,
-            transaction_sequence: row.get::<Option<i32>>(20)?,
+            total_quantity,
+            transaction_sequence,
             created_at,
             updated_at,
         })

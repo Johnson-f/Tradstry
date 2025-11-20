@@ -375,25 +375,30 @@ async fn vectorize_stock_trade(
         }
 
         let entry_date = parse_dt(&entry_date_str)?;
-        let exit_date = exit_date_str.as_ref().map(|s| parse_dt(s)).transpose()?;
+        let exit_date = exit_date_str.as_ref()
+            .map(|s| parse_dt(s))
+            .transpose()?
+            .unwrap_or(entry_date);
         let created_at = parse_dt(&created_at_str)?;
         let updated_at = parse_dt(&updated_at_str)?;
+
+        let entry_price_val = match row.get::<libsql::Value>(4)? {
+            libsql::Value::Integer(val) => val as f64,
+            libsql::Value::Real(val) => val,
+            _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
+        };
 
         let stock = Stock {
             id: stock_id,
             symbol: row.get(1)?,
             trade_type,
             order_type,
-            entry_price: match row.get::<libsql::Value>(4)? {
+            entry_price: entry_price_val,
+            exit_price: match row.get::<libsql::Value>(5)? {
                 libsql::Value::Integer(val) => val as f64,
                 libsql::Value::Real(val) => val,
-                _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
-            },
-            exit_price: match row.get::<libsql::Value>(5)? {
-                libsql::Value::Integer(val) => Some(val as f64),
-                libsql::Value::Real(val) => Some(val),
-                libsql::Value::Null => None,
-                _ => None,
+                libsql::Value::Null => entry_price_val,
+                _ => entry_price_val,
             },
             stop_loss: match row.get::<libsql::Value>(6)? {
                 libsql::Value::Integer(val) => val as f64,
@@ -436,7 +441,7 @@ async fn vectorize_stock_trade(
             brokerage_name,
             trade_group_id: None,
             parent_trade_id: None,
-            quantity: None,
+            total_quantity: None,
             transaction_sequence: None,
             created_at,
             updated_at,
@@ -620,25 +625,30 @@ async fn transform_to_stock(
             }
 
             let entry_date = parse_dt(&entry_date_str)?;
-            let exit_date = exit_date_str.as_ref().map(|s| parse_dt(s)).transpose()?;
+            let exit_date = exit_date_str.as_ref()
+                .map(|s| parse_dt(s))
+                .transpose()?
+                .unwrap_or(entry_date);
             let created_at = parse_dt(&created_at_str)?;
             let updated_at = parse_dt(&updated_at_str)?;
+
+            let entry_price_val = match row.get::<libsql::Value>(4)? {
+                libsql::Value::Integer(val) => val as f64,
+                libsql::Value::Real(val) => val,
+                _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
+            };
 
             let stock = Stock {
                 id: stock_id,
                 symbol: row.get(1)?,
                 trade_type,
                 order_type,
-                entry_price: match row.get::<libsql::Value>(4)? {
+                entry_price: entry_price_val,
+                exit_price: match row.get::<libsql::Value>(5)? {
                     libsql::Value::Integer(val) => val as f64,
                     libsql::Value::Real(val) => val,
-                    _ => return Err(anyhow::anyhow!("Invalid entry_price type")),
-                },
-                exit_price: match row.get::<libsql::Value>(5)? {
-                    libsql::Value::Integer(val) => Some(val as f64),
-                    libsql::Value::Real(val) => Some(val),
-                    libsql::Value::Null => None,
-                    _ => None,
+                    libsql::Value::Null => entry_price_val,
+                    _ => entry_price_val,
                 },
                 stop_loss: match row.get::<libsql::Value>(6)? {
                     libsql::Value::Integer(val) => val as f64,
@@ -681,7 +691,7 @@ async fn transform_to_stock(
                 brokerage_name,
                 trade_group_id: None,
                 parent_trade_id: None,
-                quantity: None,
+                total_quantity: None,
                 transaction_sequence: None,
                 created_at,
                 updated_at,
@@ -733,7 +743,7 @@ async fn transform_to_option(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing symbol in transaction"))?;
 
-    let trade_type = transaction
+    let _trade_type = transaction
         .get("type")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing type in transaction"))?;
@@ -920,9 +930,14 @@ async fn transform_to_option(
 
             let expiration_date = parse_dt(&expiration_date_str)?;
             let entry_date = parse_dt(&entry_date_str)?;
-            let exit_date = exit_date_str.as_ref().map(|s| parse_dt(s)).transpose()?;
+            let exit_date = exit_date_str.as_ref()
+                .map(|s| parse_dt(s))
+                .transpose()?
+                .unwrap_or(entry_date);
             let created_at = parse_dt(&created_at_str)?;
             let updated_at = parse_dt(&updated_at_str)?;
+
+            let entry_price_val = row.get::<f64>(5)?;
 
             let option = OptionTrade {
                 id: option_id,
@@ -933,8 +948,8 @@ async fn transform_to_option(
                 option_type,
                 strike_price: row.get::<f64>(3)?,
                 expiration_date,
-                entry_price: row.get::<f64>(5)?,
-                exit_price: row.get::<Option<f64>>(6)?,
+                entry_price: entry_price_val,
+                exit_price: row.get::<Option<f64>>(6)?.unwrap_or(entry_price_val),
                 premium: row.get::<f64>(7)?,
                 entry_date,
                 exit_date,

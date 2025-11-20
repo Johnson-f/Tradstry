@@ -147,7 +147,7 @@ class ApiClient {
 
   // Health check
   async healthCheck(): Promise<{ status: string; version: string }> {
-    return this.get(apiConfig.endpoints.endpoints.health);
+    return this.get(apiConfig.endpoints.health);
   }
 
   // Get current user info from token

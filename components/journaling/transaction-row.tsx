@@ -5,7 +5,7 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/comp
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Trash2, Plus } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { UseFormReturn } from "react-hook-form"
 
 // Helper to get local datetime string suitable for input[type="datetime-local"]
@@ -119,15 +119,15 @@ export function TransactionRow({ index, form, tradeType, onRemove, canRemove }: 
           name={`transactions.${index}.exitPrice`}
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Exit Price (Optional)</FormLabel>
+              <FormLabel>Exit Price</FormLabel>
               <FormControl>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder={tradeType === "stock" ? "155.00" : "6.50"}
                   {...field}
-                  value={field.value ?? ""}
-                  onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                  value={field.value ?? 0}
+                  onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseFloat(e.target.value))}
                 />
               </FormControl>
               <FormMessage />
@@ -160,13 +160,13 @@ export function TransactionRow({ index, form, tradeType, onRemove, canRemove }: 
           name={`transactions.${index}.exitDate`}
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Exit Date (Optional)</FormLabel>
+              <FormLabel>Exit Date</FormLabel>
               <FormControl>
                 <Input
                   type="datetime-local"
                   {...field}
-                  value={field.value ?? ""}
-                  onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                  value={field.value || getLocalDateTimeInputValue()}
+                  onChange={(e) => field.onChange(e.target.value === "" ? getLocalDateTimeInputValue() : e.target.value)}
                 />
               </FormControl>
               <FormMessage />

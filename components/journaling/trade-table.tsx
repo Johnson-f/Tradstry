@@ -54,8 +54,6 @@ interface TradeData {
 }
 
 function calculateStockPL(stock: Stock): number {
-  if (!stock.exitPrice) return 0;
-  
   const entryPriceNum = parseFloat(stock.entryPrice);
   const exitPriceNum = parseFloat(stock.exitPrice);
   const sharesNum = parseFloat(stock.numberShares);
@@ -66,12 +64,10 @@ function calculateStockPL(stock: Stock): number {
 }
 
 function calculateOptionPL(option: OptionTrade): number {
-  if (!option.exitPrice) return 0;
-  
   const entryPriceNum = parseFloat(option.entryPrice);
   const exitPriceNum = parseFloat(option.exitPrice);
-  // Use quantity (contracts) if available, otherwise calculate from premium
-  const contracts = option.quantity ? parseFloat(option.quantity) : 1;
+  // Use totalQuantity (contracts) if available, otherwise default to 1
+  const contracts = option.totalQuantity ? parseFloat(option.totalQuantity) : 1;
   
   // Each contract represents 100 shares
   const tradeValue = (exitPriceNum - entryPriceNum) * contracts * 100;
@@ -152,9 +148,7 @@ export function TradeTable() {
     if (!token) return;
 
     const endpoint = trade.tradeTypeApi === 'stock'
-    // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
       ? apiConfig.endpoints.stocks.byId(trade.tradeId)
-      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
       : apiConfig.endpoints.options.byId(trade.tradeId);
 
     const res = await fetch(getFullUrl(endpoint), {

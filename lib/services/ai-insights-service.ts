@@ -33,7 +33,7 @@ export class AIInsightsService {
       return '';
     }
     try {
-      const insightsEndpoints = apiConfig.endpoints.endpoints.ai.insights;
+      const insightsEndpoints = apiConfig.endpoints.ai.insights;
       if (!insightsEndpoints) {
         return '';
       }

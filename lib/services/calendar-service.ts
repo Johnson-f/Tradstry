@@ -25,19 +25,19 @@ export class CalendarService {
   
   static async getConnections(): Promise<CalendarConnection[]> {
     return apiClient.get<CalendarConnection[]>(
-      apiConfig.endpoints.endpoints.notebook.calendar.connections
+      apiConfig.endpoints.notebook.calendar.connections
     );
   }
   
   static async disconnectCalendar(connectionId: string): Promise<void> {
     await apiClient.delete(
-      apiConfig.endpoints.endpoints.notebook.calendar.disconnect(connectionId)
+      apiConfig.endpoints.notebook.calendar.disconnect(connectionId)
     );
   }
   
   static async syncCalendar(connectionId: string): Promise<SyncResult> {
     return apiClient.post<SyncResult>(
-      apiConfig.endpoints.endpoints.notebook.calendar.sync(connectionId)
+      apiConfig.endpoints.notebook.calendar.sync(connectionId)
     );
   }
   
@@ -45,7 +45,7 @@ export class CalendarService {
     const start = startDate.toISOString();
     const end = endDate.toISOString();
     return apiClient.get<CalendarEventsResponse>(
-      `${apiConfig.endpoints.endpoints.notebook.calendar.events}?start=${start}&end=${end}`
+      `${apiConfig.endpoints.notebook.calendar.events}?start=${start}&end=${end}`
     );
   }
 }

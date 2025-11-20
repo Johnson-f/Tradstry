@@ -31,7 +31,7 @@ export class AIChatService {
     }
     try {
       return getFullUrl(
-        apiConfig.endpoints.endpoints.ai.chat.base
+        apiConfig.endpoints.ai.chat.base
       );
     } catch (error) {
       console.error('Error getting base URL:', error);
@@ -45,7 +45,7 @@ export class AIChatService {
       return '';
     }
     try {
-      const chatEndpoints = apiConfig.endpoints.endpoints.ai.chat;
+      const chatEndpoints = apiConfig.endpoints.ai.chat;
       if (!chatEndpoints) {
         return '';
       }

@@ -39,7 +39,7 @@ class ImagesService {
     if (params.caption) {
       formData.append('caption', params.caption);
     }
-    return apiClient.post<ImageUpsertResponse>(apiConfig.endpoints.endpoints.images.upload, formData, {
+    return apiClient.post<ImageUpsertResponse>(apiConfig.endpoints.images.upload, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -54,7 +54,7 @@ class ImagesService {
    * @returns List of all user's images
    */
   async getImages(): Promise<Image[]> {
-    return apiClient.get<Image[]>(apiConfig.endpoints.endpoints.images.base);
+    return apiClient.get<Image[]>(apiConfig.endpoints.images.base);
   }
 
   /**
@@ -64,7 +64,7 @@ class ImagesService {
    * @returns The image with the specified ID
    */
   async getImage(imageId: string): Promise<Image> {
-    return apiClient.get<Image>(apiConfig.endpoints.endpoints.images.byId(imageId));
+    return apiClient.get<Image>(apiConfig.endpoints.images.byId(imageId));
   }
 
   /**
@@ -74,7 +74,7 @@ class ImagesService {
    * @returns List of images associated with the note
    */
   async getImagesByNote(noteId: string): Promise<Image[]> {
-    return apiClient.get<Image[]>(apiConfig.endpoints.endpoints.images.byTradeNote(noteId));
+    return apiClient.get<Image[]>(apiConfig.endpoints.images.byTradeNote(noteId));
   }
 
   /**
@@ -107,7 +107,7 @@ class ImagesService {
    * @returns Updated image data
    */
   async updateImage(imageId: string, data: ImageUpdate): Promise<ImageUpsertResponse> {
-    return apiClient.put<ImageUpsertResponse>(apiConfig.endpoints.endpoints.images.byId(imageId), data);
+    return apiClient.put<ImageUpsertResponse>(apiConfig.endpoints.images.byId(imageId), data);
   }
 
   // ==================== DELETE OPERATIONS ====================
@@ -120,7 +120,7 @@ class ImagesService {
    * @returns Delete response with success status and deleted record
    */
   async deleteImage(imageId: string, deleteFromStorage: boolean = true): Promise<ImageDeleteResponse> {
-    return apiClient.delete<ImageDeleteResponse>(apiConfig.endpoints.endpoints.images.byId(imageId), {
+    return apiClient.delete<ImageDeleteResponse>(apiConfig.endpoints.images.byId(imageId), {
       params: { delete_from_storage: deleteFromStorage },
     });
   }
@@ -133,7 +133,7 @@ class ImagesService {
    * @returns Bulk delete response with count and deleted records
    */
   async deleteImagesByNote(noteId: string, deleteFromStorage: boolean = true): Promise<BulkImageDeleteResponse> {
-    return apiClient.delete<BulkImageDeleteResponse>(`${apiConfig.endpoints.endpoints.images.byTradeNote(noteId)}/all`, {
+    return apiClient.delete<BulkImageDeleteResponse>(`${apiConfig.endpoints.images.byTradeNote(noteId)}/all`, {
       params: { delete_from_storage: deleteFromStorage },
     });
   }
@@ -148,7 +148,7 @@ class ImagesService {
    * @returns Signed URL and expiration info
    */
   async getImageUrl(imageId: string, expiresIn: number = 3600): Promise<ImageUrlResponse> {
-    return apiClient.get<ImageUrlResponse>(apiConfig.endpoints.endpoints.images.byId(imageId) + '/url', {
+    return apiClient.get<ImageUrlResponse>(apiConfig.endpoints.images.byId(imageId) + '/url', {
       params: { expires_in: expiresIn },
     });
   }
@@ -164,7 +164,7 @@ class ImagesService {
     const formData = new FormData();
     formData.append('file', file);
 
-    return apiClient.post<ImageUpsertResponse>(`${apiConfig.endpoints.endpoints.images.byId(imageId)}/replace`, formData, {
+    return apiClient.post<ImageUpsertResponse>(`${apiConfig.endpoints.images.byId(imageId)}/replace`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

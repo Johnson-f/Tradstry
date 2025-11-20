@@ -35,7 +35,7 @@ class AccountService {
     try {
       const response = await apiClient.get<StorageUsageResponse>(
 
-        apiConfig.endpoints.endpoints.user.storage
+        apiConfig.endpoints.user.storage
       );
 
       // apiClient.get returns the response data directly
@@ -59,7 +59,7 @@ class AccountService {
   async deleteAccount(): Promise<void> {
     try {
       const response = await apiClient.delete<DeleteAccountResponse>(
-        apiConfig.endpoints.endpoints.user.deleteAccount
+        apiConfig.endpoints.user.deleteAccount
       );
 
       if (!response.success) {

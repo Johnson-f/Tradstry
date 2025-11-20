@@ -30,7 +30,7 @@ export class AnalyticsService {
    */
   async getCoreAnalytics(request?: AnalyticsRequest): Promise<CoreAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.core
+      apiConfig.endpoints.analytics.core
     );
     const token = await this.getAuthToken();
     
@@ -55,7 +55,7 @@ export class AnalyticsService {
    */
   async getRiskAnalytics(request?: AnalyticsRequest): Promise<RiskAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.risk
+      apiConfig.endpoints.analytics.risk
     );
     const token = await this.getAuthToken();
     
@@ -82,7 +82,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<PerformanceAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.performance
+      apiConfig.endpoints.analytics.performance
     );
     const token = await this.getAuthToken();
     
@@ -109,7 +109,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<TimeSeriesAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.timeSeries
+      apiConfig.endpoints.analytics.timeSeries
     );
     const token = await this.getAuthToken();
     
@@ -149,7 +149,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<GroupedAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.grouped
+      apiConfig.endpoints.analytics.grouped
     );
     const token = await this.getAuthToken();
     
@@ -176,7 +176,7 @@ export class AnalyticsService {
     request?: AnalyticsRequest
   ): Promise<ComprehensiveAnalyticsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.comprehensive
+      apiConfig.endpoints.analytics.comprehensive
     );
     const token = await this.getAuthToken();
     
@@ -212,7 +212,7 @@ export class AnalyticsService {
     });
 
     const url = `${getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.trade
+      apiConfig.endpoints.analytics.trade
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -251,7 +251,7 @@ export class AnalyticsService {
     }
 
     const url = `${getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.symbol
+      apiConfig.endpoints.analytics.symbol
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -279,7 +279,7 @@ export class AnalyticsService {
     const params = new URLSearchParams({ symbol: symbol.toUpperCase() });
     if (timeRange) params.append('time_range', timeRange);
     const url = `${getFullUrl(
-      apiConfig.endpoints.endpoints.analytics.symbol
+      apiConfig.endpoints.analytics.symbol
     )}?${params}`;
     const token = await this.getAuthToken();
     
@@ -306,7 +306,7 @@ export class AnalyticsService {
   async getOptionsAnalytics(timeRange?: string) {
     const params = timeRange ? `?time_range=${timeRange}` : '';
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.options.analytics.summary + params
+      apiConfig.endpoints.options.analytics.summary + params
     );
     const token = await this.getAuthToken();
     

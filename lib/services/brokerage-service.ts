@@ -54,7 +54,7 @@ export class BrokerageService {
   async initiateConnection(
     request: ConnectBrokerageRequest
   ): Promise<ConnectBrokerageResponse> {
-    const url = getFullUrl(apiConfig.endpoints.endpoints.brokerage.connections.initiate);
+    const url = getFullUrl(apiConfig.endpoints.brokerage.connections.initiate);
     const token = await this.getAuthToken();
 
     if (!token) {
@@ -91,7 +91,7 @@ export class BrokerageService {
    * List all brokerage connections
    */
   async listConnections(): Promise<BrokerageConnection[]> {
-    const url = getFullUrl(apiConfig.endpoints.endpoints.brokerage.connections.base);
+    const url = getFullUrl(apiConfig.endpoints.brokerage.connections.base);
     const token = await this.getAuthToken();
 
     if (!token) {
@@ -130,7 +130,7 @@ export class BrokerageService {
     connectionId: string
   ): Promise<ConnectionStatusResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.connections.status(connectionId)
+      apiConfig.endpoints.brokerage.connections.status(connectionId)
     );
     const token = await this.getAuthToken();
 
@@ -168,7 +168,7 @@ export class BrokerageService {
    */
   async deleteConnection(connectionId: string): Promise<void> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.connections.byId(connectionId)
+      apiConfig.endpoints.brokerage.connections.byId(connectionId)
     );
     const token = await this.getAuthToken();
 
@@ -203,7 +203,7 @@ export class BrokerageService {
    * List all brokerage accounts
    */
   async listAccounts(): Promise<BrokerageAccount[]> {
-    const url = getFullUrl(apiConfig.endpoints.endpoints.brokerage.accounts.base);
+    const url = getFullUrl(apiConfig.endpoints.brokerage.accounts.base);
     const token = await this.getAuthToken();
 
     if (!token) {
@@ -239,7 +239,7 @@ export class BrokerageService {
    * Sync accounts from brokerage
    */
   async syncAccounts(): Promise<SyncSummary> {
-    const url = getFullUrl(apiConfig.endpoints.endpoints.brokerage.accounts.sync);
+    const url = getFullUrl(apiConfig.endpoints.brokerage.accounts.sync);
     const token = await this.getAuthToken();
 
     if (!token) {
@@ -278,7 +278,7 @@ export class BrokerageService {
     query?: GetTransactionsQuery & { exclude_transformed?: boolean }
   ): Promise<BrokerageTransaction[]> {
     const url = new URL(
-      getFullUrl(apiConfig.endpoints.endpoints.brokerage.transactions.base)
+      getFullUrl(apiConfig.endpoints.brokerage.transactions.base)
     );
 
     if (query?.account_id) {
@@ -326,7 +326,7 @@ export class BrokerageService {
   async mergeTransactions(
     request: MergeTransactionsRequest
   ): Promise<unknown> {
-    const url = getFullUrl(apiConfig.endpoints.endpoints.brokerage.transactions.merge);
+    const url = getFullUrl(apiConfig.endpoints.brokerage.transactions.merge);
     const token = await this.getAuthToken();
 
     if (!token) {
@@ -364,7 +364,7 @@ export class BrokerageService {
    */
   async getHoldings(query?: GetHoldingsQuery): Promise<BrokerageHolding[]> {
     const url = new URL(
-      getFullUrl(apiConfig.endpoints.endpoints.brokerage.holdings.base)
+      getFullUrl(apiConfig.endpoints.brokerage.holdings.base)
     );
 
     if (query?.account_id) {
@@ -407,7 +407,7 @@ export class BrokerageService {
    */
   async completeConnectionSync(connectionId: string): Promise<SyncSummary> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.connections.complete(connectionId)
+      apiConfig.endpoints.brokerage.connections.complete(connectionId)
     );
     const token = await this.getAuthToken();
 
@@ -445,7 +445,7 @@ export class BrokerageService {
    */
   async getAccountDetail(accountId: string): Promise<AccountDetailResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.accounts.detail(accountId)
+      apiConfig.endpoints.brokerage.accounts.detail(accountId)
     );
     const token = await this.getAuthToken();
 
@@ -483,7 +483,7 @@ export class BrokerageService {
    */
   async getAccountPositions(accountId: string): Promise<AccountPositionsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.accounts.positions(accountId)
+      apiConfig.endpoints.brokerage.accounts.positions(accountId)
     );
     const token = await this.getAuthToken();
 
@@ -521,7 +521,7 @@ export class BrokerageService {
    */
   async getAccountOptionPositions(accountId: string): Promise<AccountPositionsResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.accounts.optionPositions(accountId)
+      apiConfig.endpoints.brokerage.accounts.optionPositions(accountId)
     );
     const token = await this.getAuthToken();
 
@@ -562,7 +562,7 @@ export class BrokerageService {
     query?: GetAccountTransactionsQuery
   ): Promise<unknown> {
     const url = new URL(
-      getFullUrl(apiConfig.endpoints.endpoints.brokerage.accounts.transactions(accountId))
+      getFullUrl(apiConfig.endpoints.brokerage.accounts.transactions(accountId))
     );
 
     if (query?.start_date) {
@@ -614,7 +614,7 @@ export class BrokerageService {
    */
   async getUnmatchedTransactions(): Promise<UnmatchedTransaction[]> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.unmatched.base
+      apiConfig.endpoints.brokerage.unmatched.base
     );
     const token = await this.getAuthToken();
 
@@ -655,7 +655,7 @@ export class BrokerageService {
     request: ResolveUnmatchedRequest
   ): Promise<ResolveUnmatchedResponse> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.unmatched.resolve(id)
+        apiConfig.endpoints.brokerage.unmatched.resolve(id)
     );
     const token = await this.getAuthToken();
 
@@ -694,7 +694,7 @@ export class BrokerageService {
    */
   async ignoreUnmatchedTransaction(id: string): Promise<void> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.unmatched.ignore(id)
+      apiConfig.endpoints.brokerage.unmatched.ignore(id)
     );
     const token = await this.getAuthToken();
 
@@ -730,7 +730,7 @@ export class BrokerageService {
    */
   async getUnmatchedSuggestions(id: string): Promise<UnmatchedSuggestion[]> {
     const url = getFullUrl(
-      apiConfig.endpoints.endpoints.brokerage.unmatched.suggestions(id)
+      apiConfig.endpoints.brokerage.unmatched.suggestions(id)
     );
     const token = await this.getAuthToken();
 

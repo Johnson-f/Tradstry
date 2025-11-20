@@ -43,11 +43,10 @@ function calculateNetPnL(trade: Stock | OptionTrade | null): number {
   if (!trade) return 0;
 
   // Check if it's a Stock trade
-  if ('tradeType' in trade && trade.exitPrice) {
+  if ('tradeType' in trade) {
     const stock = trade as Stock;
-    const exitPrice = trade.exitPrice; // TypeScript now knows this is not null
     const entryPrice = parseFloat(stock.entryPrice);
-    const exitPriceNum = parseFloat(exitPrice);
+    const exitPriceNum = parseFloat(stock.exitPrice);
     const shares = parseFloat(stock.numberShares);
     const commissions = parseFloat(stock.commissions);
     
@@ -59,12 +58,11 @@ function calculateNetPnL(trade: Stock | OptionTrade | null): number {
   }
   
   // Check if it's an Option trade
-  if ('strategyType' in trade && trade.exitPrice) {
+  if ('strategyType' in trade) {
     const option = trade as OptionTrade;
-    const exitPrice = trade.exitPrice; // TypeScript now knows this is not null
     const entryPriceNum = parseFloat(option.entryPrice);
-    const exitPriceNum = parseFloat(exitPrice);
-    const contracts = option.numberOfContracts;
+    const exitPriceNum = parseFloat(option.exitPrice);
+    const contracts = option.totalQuantity ? parseFloat(option.totalQuantity) : 1;
     const commissions = parseFloat(option.commissions || '0');
     
     // Each contract represents 100 shares

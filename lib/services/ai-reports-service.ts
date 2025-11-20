@@ -33,7 +33,7 @@ export class AIReportsService {
       return '';
     }
     try {
-      const reportsEndpoints = apiConfig.endpoints.endpoints.ai.reports;
+      const reportsEndpoints = apiConfig.endpoints.ai.reports;
       if (!reportsEndpoints) {
         return '';
       }

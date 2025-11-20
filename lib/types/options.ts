@@ -8,10 +8,10 @@ export interface OptionTrade {
   strikePrice: string; // DECIMAL as string
   expirationDate: string; // ISO
   entryPrice: string; // DECIMAL as string
-  exitPrice?: string | null;
+  exitPrice: string; // DECIMAL as string - required
   premium: string; // DECIMAL as string (renamed from totalPremium)
   entryDate: string; // ISO
-  exitDate?: string | null; // ISO
+  exitDate: string; // ISO - required
   status: OptionTradeStatus;
   initialTarget?: string | null;
   profitTarget?: string | null;
@@ -36,9 +36,11 @@ export interface CreateOptionRequest {
   strikePrice: number;
   expirationDate: string; // ISO
   entryPrice: number;
+  exitPrice: number; // Required
   premium: number; // Renamed from totalPremium
   commissions?: number; // Defaults to 0.00
   entryDate: string; // ISO
+  exitDate: string; // ISO - required
   initialTarget?: number;
   profitTarget?: number;
   tradeRatings?: number; // 1-5 stars

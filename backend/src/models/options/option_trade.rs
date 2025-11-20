@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 use libsql::{Connection, params};
 
 /// Re-use the TimeRange enum from the stock model
@@ -103,10 +103,10 @@ pub struct OptionTrade {
     pub strike_price: f64,
     pub expiration_date: DateTime<Utc>,
     pub entry_price: f64,
-    pub exit_price: Option<f64>,
+    pub exit_price: f64,
     pub premium: f64,
     pub entry_date: DateTime<Utc>,
-    pub exit_date: Option<DateTime<Utc>>,
+    pub exit_date: DateTime<Utc>,
     pub status: TradeStatus,
     pub initial_target: Option<f64>,
     pub profit_target: Option<f64>,
@@ -141,8 +141,11 @@ pub struct CreateOptionRequest {
     pub strike_price: f64,
     pub expiration_date: DateTime<Utc>,
     pub entry_price: f64,
+    pub exit_price: f64,
     pub premium: f64,
     pub entry_date: DateTime<Utc>,
+    #[serde(deserialize_with = "deserialize_datetime")]
+    pub exit_date: DateTime<Utc>,
     pub initial_target: Option<f64>,
     pub profit_target: Option<f64>,
     pub trade_ratings: Option<i32>,
@@ -198,6 +201,16 @@ pub struct OptionQuery {
     pub parent_trade_id: Option<i64>,
 }
 
+fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(serde::de::Error::custom)
+}
+
 /// Option operations implementation using libsql
 impl OptionTrade {
     fn get_f64(row: &libsql::Row, idx: usize) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
@@ -242,11 +255,11 @@ impl OptionTrade {
         let mut rows = conn.prepare(
             r#"
             INSERT INTO options (
-                symbol, option_type, strike_price, expiration_date, entry_price,
-                premium, entry_date, status, initial_target, profit_target, trade_ratings,
+                symbol, option_type, strike_price, expiration_date, entry_price, exit_price,
+                premium, entry_date, exit_date, status, initial_target, profit_target, trade_ratings,
                 reviewed, mistakes, brokerage_name, trade_group_id, parent_trade_id,
                 total_quantity, transaction_sequence, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, option_type, strike_price, expiration_date, entry_price, exit_price,
                      premium, entry_date, exit_date, status, initial_target, profit_target, trade_ratings,
                      reviewed, mistakes, brokerage_name, trade_group_id, parent_trade_id, total_quantity,
@@ -260,8 +273,10 @@ impl OptionTrade {
             request.strike_price,
             request.expiration_date.to_rfc3339(),
             request.entry_price,
+            request.exit_price,
             request.premium,
             request.entry_date.to_rfc3339(),
+            request.exit_date.to_rfc3339(),
             TradeStatus::Open.to_string(),
             request.initial_target,
             request.profit_target,
@@ -1156,7 +1171,7 @@ impl OptionTrade {
                     CASE
                         WHEN exit_price IS NOT NULL THEN
                             (exit_price - entry_price) * COALESCE(total_quantity, 0) * 100
-                        ELSE -premium  -- Unrealized loss for open positions
+                        ELSE -premium * COALESCE(total_quantity, 1)  -- Unrealized loss for open positions (premium per contract * number of contracts)
                     END
                 ), 0) as net_pnl
             FROM options
@@ -1249,11 +1264,6 @@ impl OptionTrade {
             _ => return Err("Failed to get entry_date".into()),
         };
 
-        let exit_date_str: Option<String> = match row.get::<libsql::Value>(9) {
-            Ok(libsql::Value::Text(s)) => Some(s),
-            Ok(libsql::Value::Null) => None,
-            _ => None,
-        };
 
         // Handle reviewed field
         let reviewed_val: Option<i64> = match row.get::<libsql::Value>(14) {
@@ -1339,7 +1349,8 @@ impl OptionTrade {
 
         let expiration_date = parse_datetime(&expiration_date_str, "expiration_date")?;
         let entry_date = parse_datetime(&entry_date_str, "entry_date")?;
-        let exit_date = exit_date_str.map(|s| parse_datetime(&s, "exit_date")).transpose()?;
+        let exit_date_str: String = row.get(9)?;
+        let exit_date = parse_datetime(&exit_date_str, "exit_date")?;
         let created_at = parse_datetime(&created_at_str, "created_at")?;
         let updated_at = parse_datetime(&updated_at_str, "updated_at")?;
 
@@ -1356,7 +1367,7 @@ impl OptionTrade {
             strike_price: Self::get_f64(row, 3)?,
             expiration_date,
             entry_price: Self::get_f64(row, 5)?,
-            exit_price: Self::get_opt_f64(row, 6)?,
+            exit_price: Self::get_f64(row, 6)?,
             premium: Self::get_f64(row, 7)?,
             entry_date,
             exit_date,

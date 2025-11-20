@@ -4,7 +4,7 @@ export interface Stock {
   tradeType: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   entryPrice: string; // returned as string (DECIMAL)
-  exitPrice?: string | null;
+  exitPrice: string; // returned as string (DECIMAL) - required
   stopLoss: string;
   commissions: string;
   numberShares: string;
@@ -13,7 +13,7 @@ export interface Stock {
   profitTarget?: string | null;
   tradeRatings?: number | null; // 1-5 stars
   entryDate: string; // ISO datetime
-  exitDate?: string | null; // ISO datetime
+  exitDate: string; // ISO datetime - required
   createdAt: string; // ISO datetime
   updatedAt: string; // ISO datetime
   reviewed: boolean;
@@ -22,7 +22,7 @@ export interface Stock {
   // Multi-entry/exit trade linking fields
   tradeGroupId?: string | null;
   parentTradeId?: number | null;
-  quantity?: string | null; // Transaction quantity (may differ from numberShares for partial fills)
+  totalQuantity?: string | null; // Total quantity across trade groups (may differ from numberShares for partial fills)
   transactionSequence?: number | null; // Order within trade group (1, 2, 3...)
   isDeleted: boolean; // Soft delete flag
 }
@@ -32,6 +32,7 @@ export interface CreateStockRequest {
   tradeType: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   entryPrice: number;
+  exitPrice: number; // Required
   stopLoss: number;
   commissions?: number;
   numberShares: number;
@@ -40,6 +41,7 @@ export interface CreateStockRequest {
   profitTarget?: number;
   tradeRatings?: number; // 1-5 stars
   entryDate: string; // ISO
+  exitDate: string; // ISO - required
   reviewed?: boolean;
   mistakes?: string;
   brokerageName?: string;
@@ -71,7 +73,7 @@ export interface UpdateStockRequest {
   // Multi-entry/exit trade linking fields
   tradeGroupId?: string | null;
   parentTradeId?: number | null;
-  quantity?: number | null;
+  totalQuantity?: number | null; // Total quantity across trade groups
   transactionSequence?: number | null;
 }
 

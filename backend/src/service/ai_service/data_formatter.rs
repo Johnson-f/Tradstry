@@ -27,20 +27,18 @@ impl DataFormatter {
     /// Format stock trade for embedding
     pub fn format_stock_for_embedding(stock: &Stock) -> String {
         let entry_date = stock.entry_date.format("%Y-%m-%d").to_string();
-        let exit_date = stock.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        let exit_date = stock.exit_date.format("%Y-%m-%d").to_string();
         
         // Calculate P&L from entry and exit prices
-        let pnl = if let Some(exit_price) = stock.exit_price {
-            (exit_price - stock.entry_price) * stock.number_shares - stock.commissions
-        } else {
-            0.0
-        };
+        let pnl = (stock.exit_price - stock.entry_price) * stock.number_shares - stock.commissions;
         
         let pnl_percentage = if stock.entry_price > 0.0 {
             (pnl / (stock.entry_price * stock.number_shares)) * 100.0
         } else {
             0.0
         };
+
+        let is_closed = stock.exit_price != stock.entry_price || stock.exit_date != stock.entry_date;
 
         format!(
             "Stock trade: {} {:.2} shares of {} at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Stop Loss: ${:.2}. Commissions: ${:.2}",
@@ -49,8 +47,8 @@ impl DataFormatter {
             stock.symbol,
             stock.entry_price,
             entry_date,
-            if stock.exit_price.is_some() { "SELL" } else { "HOLD" },
-            stock.exit_price.unwrap_or(stock.entry_price),
+            if is_closed { "SELL" } else { "HOLD" },
+            stock.exit_price,
             exit_date,
             pnl,
             pnl_percentage,
@@ -63,22 +61,20 @@ impl DataFormatter {
     /// Format option trade for embedding
     pub fn format_option_for_embedding(option: &OptionTrade) -> String {
         let entry_date = option.entry_date.format("%Y-%m-%d").to_string();
-        let exit_date = option.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        let exit_date = option.exit_date.format("%Y-%m-%d").to_string();
         
         let quantity = option.total_quantity.unwrap_or(0.0);
         
         // Calculate P&L from entry and exit prices
-        let pnl = if let Some(exit_price) = option.exit_price {
-            (exit_price - option.entry_price) * quantity * 100.0
-        } else {
-            0.0
-        };
+        let pnl = (option.exit_price - option.entry_price) * quantity * 100.0;
         
         let pnl_percentage = if option.entry_price > 0.0 && quantity > 0.0 {
             (pnl / (option.entry_price * quantity * 100.0)) * 100.0
         } else {
             0.0
         };
+
+        let is_closed = option.exit_price != option.entry_price || option.exit_date != option.entry_date;
 
         format!(
             "Option trade: {} {} contracts of {} (Strike: ${:.2}, Expiry: {}) at ${:.2} on {}. Exit: {} at ${:.2} on {}. P&L: ${:.2} ({:.2}% {}). Premium: ${:.2}",
@@ -89,8 +85,8 @@ impl DataFormatter {
             option.expiration_date.format("%Y-%m-%d"),
             option.entry_price,
             entry_date,
-            if option.exit_price.is_some() { "CLOSE" } else { "HOLD" },
-            option.exit_price.unwrap_or(option.entry_price),
+            if is_closed { "CLOSE" } else { "HOLD" },
+            option.exit_price,
             exit_date,
             pnl,
             pnl_percentage,
@@ -129,20 +125,18 @@ impl DataFormatter {
     /// Format stock trade for search document
     pub fn format_stock_for_search(stock: &Stock) -> Document {
         let entry_date = stock.entry_date.format("%Y-%m-%d").to_string();
-        let exit_date = stock.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        let exit_date = stock.exit_date.format("%Y-%m-%d").to_string();
         
         // Calculate P&L from entry and exit prices
-        let pnl = if let Some(exit_price) = stock.exit_price {
-            (exit_price - stock.entry_price) * stock.number_shares - stock.commissions
-        } else {
-            0.0
-        };
+        let pnl = (stock.exit_price - stock.entry_price) * stock.number_shares - stock.commissions;
         
         let pnl_percentage = if stock.entry_price > 0.0 {
             (pnl / (stock.entry_price * stock.number_shares)) * 100.0
         } else {
             0.0
         };
+
+        let is_closed = stock.exit_price != stock.entry_price || stock.exit_date != stock.entry_date;
 
         let mut content = HashMap::new();
         content.insert("title".to_string(), format!("{} {} Trade", stock.symbol, stock.trade_type));
@@ -153,8 +147,8 @@ impl DataFormatter {
             stock.symbol,
             stock.entry_price,
             entry_date,
-            if stock.exit_price.is_some() { "SELL" } else { "HOLD" },
-            stock.exit_price.unwrap_or(stock.entry_price),
+            if is_closed { "SELL" } else { "HOLD" },
+            stock.exit_price,
             exit_date,
             pnl,
             pnl_percentage,
@@ -167,7 +161,7 @@ impl DataFormatter {
         content.insert("pnl".to_string(), format!("{:.2}", pnl));
         content.insert("pnl_percentage".to_string(), format!("{:.2}", pnl_percentage));
         content.insert("entry_price".to_string(), format!("{:.2}", stock.entry_price));
-        content.insert("exit_price".to_string(), stock.exit_price.map(|p| format!("{:.2}", p)).unwrap_or_default());
+        content.insert("exit_price".to_string(), format!("{:.2}", stock.exit_price));
         content.insert("shares".to_string(), format!("{:.2}", stock.number_shares));
         content.insert("stop_loss".to_string(), format!("{:.2}", stock.stop_loss));
         content.insert("commissions".to_string(), format!("{:.2}", stock.commissions));
@@ -191,22 +185,20 @@ impl DataFormatter {
     /// Format option trade for search document
     pub fn format_option_for_search(option: &OptionTrade) -> Document {
         let entry_date = option.entry_date.format("%Y-%m-%d").to_string();
-        let exit_date = option.exit_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Open".to_string());
+        let exit_date = option.exit_date.format("%Y-%m-%d").to_string();
         
         let quantity = option.total_quantity.unwrap_or(0.0);
         
         // Calculate P&L from entry and exit prices
-        let pnl = if let Some(exit_price) = option.exit_price {
-            (exit_price - option.entry_price) * quantity * 100.0
-        } else {
-            0.0
-        };
+        let pnl = (option.exit_price - option.entry_price) * quantity * 100.0;
         
         let pnl_percentage = if option.entry_price > 0.0 && quantity > 0.0 {
             (pnl / (option.entry_price * quantity * 100.0)) * 100.0
         } else {
             0.0
         };
+
+        let is_closed = option.exit_price != option.entry_price || option.exit_date != option.entry_date;
 
         let mut content = HashMap::new();
         content.insert("title".to_string(), format!("{} {} Option Trade", option.symbol, option.option_type));
@@ -219,8 +211,8 @@ impl DataFormatter {
             option.expiration_date.format("%Y-%m-%d"),
             option.entry_price,
             entry_date,
-            if option.exit_price.is_some() { "CLOSE" } else { "HOLD" },
-            option.exit_price.unwrap_or(option.entry_price),
+            if is_closed { "CLOSE" } else { "HOLD" },
+            option.exit_price,
             exit_date,
             pnl,
             pnl_percentage,
