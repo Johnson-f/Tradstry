@@ -439,19 +439,26 @@ impl AIChatService {
                 
                 // Vectorize the Q&A pair after streaming completes
                 let vectorize_start = std::time::Instant::now();
-                if let Err(e) = service.chat_vector_service.vectorize_qa_pair(
+                match service.chat_vector_service.vectorize_qa_pair(
                     &user_id_clone,
                     &session_id_clone,
                     &user_question,
                     &accumulated,
                 ).await {
-                    log::error!("Failed to vectorize Q&A pair for message {}: {}", msg_id, e);
-                } else {
-                    let vectorize_time = vectorize_start.elapsed().as_millis();
-                    log::info!(
-                        "Successfully vectorized Q&A pair [{}ms] - message={}, user={}",
-                        vectorize_time, msg_id, user_id_clone
-                    );
+                    Ok(_) => {
+                        let vectorize_time = vectorize_start.elapsed().as_millis();
+                        log::info!(
+                            "Successfully vectorized Q&A pair [{}ms] - message={}, user={}, session={}, question_length={}, answer_length={}",
+                            vectorize_time, msg_id, user_id_clone, session_id_clone, user_question.len(), accumulated.len()
+                        );
+                    }
+                    Err(e) => {
+                        let vectorize_time = vectorize_start.elapsed().as_millis();
+                        log::error!(
+                            "Failed to vectorize Q&A pair for message {} [{}ms] - user={}, session={}, question_length={}, answer_length={}, error={}, error_debug={:?}",
+                            msg_id, vectorize_time, user_id_clone, session_id_clone, user_question.len(), accumulated.len(), e, e
+                        );
+                    }
                 }
             } else {
                 log::error!("Failed to get database connection for user {} to save message {}", user_id_clone, msg_id);

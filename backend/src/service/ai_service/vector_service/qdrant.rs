@@ -82,14 +82,24 @@ impl QdrantDocumentClient {
         let collection_name = self.config.get_collection_name(user_id);
         
         // Check if collection exists
-        let collections = self.client.list_collections().await?;
+        let collections = match self.client.list_collections().await {
+            Ok(cols) => cols,
+            Err(e) => {
+                log::error!(
+                    "Failed to list Qdrant collections - user={}, collection={}, error={}, error_debug={:?}",
+                    user_id, collection_name, e, e
+                );
+                return Err(anyhow::anyhow!("Failed to list collections: {}", e));
+            }
+        };
+        
         let exists = collections.collections.iter()
             .any(|c| c.name == collection_name);
 
         if !exists {
             log::info!("Creating Qdrant collection: {}", collection_name);
             
-            self.client.create_collection(CreateCollection {
+            match self.client.create_collection(CreateCollection {
                 collection_name: collection_name.clone(),
                 vectors_config: Some(VectorsConfig {
                     config: Some(Config::Params(VectorParams {
@@ -99,9 +109,18 @@ impl QdrantDocumentClient {
                     })),
                 }),
                 ..Default::default()
-            }).await?;
-            
-            log::info!("Qdrant collection created: {}", collection_name);
+            }).await {
+                Ok(_) => {
+                    log::info!("Qdrant collection created: {}", collection_name);
+                }
+                Err(e) => {
+                    log::error!(
+                        "Failed to create Qdrant collection - user={}, collection={}, error={}, error_debug={:?}",
+                        user_id, collection_name, e, e
+                    );
+                    return Err(anyhow::anyhow!("Failed to create collection: {}", e));
+                }
+            }
         }
 
         Ok(())
@@ -395,7 +414,8 @@ impl QdrantDocumentClient {
     pub async fn upsert_chat_vector(
         &self,
         user_id: &str,
-        vector_id: &str,
+        qdrant_uuid: &str,      // The UUID for Qdrant's point ID
+        meaningful_id: &str,     // Your "chat-{session_id}-qa" ID for payload
         content: &str,
         embedding: &[f32],
     ) -> Result<()> {
@@ -403,8 +423,8 @@ impl QdrantDocumentClient {
         let collection_name = self.config.get_collection_name(user_id);
 
         log::info!(
-            "Upserting chat vector to Qdrant - collection={}, vector_id={}, content_length={}, embedding_dim={}",
-            collection_name, vector_id, content.len(), embedding.len()
+            "Upserting chat vector to Qdrant - collection={}, qdrant_uuid={}, meaningful_id={}, content_length={}, embedding_dim={}",
+            collection_name, qdrant_uuid, meaningful_id, content.len(), embedding.len()
         );
 
         let now = Utc::now();
@@ -412,7 +432,7 @@ impl QdrantDocumentClient {
         // Create payload with the specified format
         let mut payload = HashMap::new();
         payload.insert("user_id".to_string(), Value::from(user_id));
-        payload.insert("id".to_string(), Value::from(vector_id));
+        payload.insert("id".to_string(), Value::from(meaningful_id));  // Use meaningful_id in payload
         payload.insert("content".to_string(), Value::from(content));
         payload.insert("type".to_string(), Value::from("chat"));
         payload.insert("created_at".to_string(), Value::from(now.to_rfc3339()));
@@ -421,21 +441,33 @@ impl QdrantDocumentClient {
         let point = PointStruct {
             id: Some(PointId {
                 point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
-                    vector_id.to_string()
+                    qdrant_uuid.to_string()  // Use the generated UUID for Qdrant's point ID
                 )),
             }),
             vectors: Some(embedding.to_vec().into()),
             payload,
         };
 
-        self.client.upsert_points(UpsertPoints {
+        match self.client.upsert_points(UpsertPoints {
             collection_name: collection_name.clone(),
             points: vec![point],
             ..Default::default()
-        }).await?;
-        
-        log::info!("Successfully upserted chat vector to Qdrant - vector_id={}", vector_id);
-        Ok(())
+        }).await {
+            Ok(_) => {
+                log::info!(
+                    "Successfully upserted chat vector to Qdrant - qdrant_uuid={}, meaningful_id={}",
+                    qdrant_uuid, meaningful_id
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to upsert chat vector to Qdrant - collection={}, qdrant_uuid={}, meaningful_id={}, error={}, error_debug={:?}",
+                    collection_name, qdrant_uuid, meaningful_id, e, e
+                );
+                Err(anyhow::anyhow!("Failed to upsert chat vector: {}", e))
+            }
+        }
     }
 
     /// Upsert a playbook vector with format: {user_id, id, content, embedding, type: "playbook", created_at}
@@ -721,6 +753,13 @@ impl QdrantDocumentClient {
             "Semantic search completed - collection={}, results={}",
             collection_name, results.len()
         );
+
+        if results.is_empty() {
+            log::warn!(
+                "Semantic search returned no results - collection={}, user_id={}, limit={}, type_filter={:?}",
+                collection_name, user_id, limit, type_filter
+            );
+        }
 
         Ok(results)
     }

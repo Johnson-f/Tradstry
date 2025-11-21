@@ -4,6 +4,7 @@ use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::service::ai_service::vector_service::qdrant::{QdrantDocumentClient, SearchResult};
 use anyhow::{Context, Result};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Chat-specific vectorization functions
 pub struct ChatVectorization {
@@ -62,20 +63,42 @@ impl ChatVectorization {
             embedding.len()
         );
 
-        // Create vector ID: chat-{session_id}-qa-{timestamp or uuid}
-        let vector_id = format!("chat-{}-qa", session_id);
+        // Create meaningful ID for payload: chat-{session_id}-qa
+        let meaningful_id = format!("chat-{}-qa", session_id);
+        
+        // Generate a proper UUID for Qdrant's point ID
+        let qdrant_uuid = Uuid::new_v4().to_string();
+
+        log::debug!(
+            "Generated IDs - user={}, session={}, meaningful_id={}, qdrant_uuid={}",
+            user_id, session_id, meaningful_id, qdrant_uuid
+        );
 
         // Store in Qdrant
-        self.qdrant_client
-            .upsert_chat_vector(user_id, &vector_id, &content, &embedding)
+        match self.qdrant_client
+            .upsert_chat_vector(user_id, &qdrant_uuid, &meaningful_id, &content, &embedding)
             .await
-            .context("Failed to store chat vector in Qdrant")?;
+        {
+            Ok(_) => {
+                log::info!(
+                    "Successfully stored chat vector in Qdrant - user={}, session={}, meaningful_id={}, qdrant_uuid={}",
+                    user_id, session_id, meaningful_id, qdrant_uuid
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to store chat vector in Qdrant - user={}, session={}, meaningful_id={}, qdrant_uuid={}, content_length={}, embedding_dim={}, error={}, error_debug={:?}",
+                    user_id, session_id, meaningful_id, qdrant_uuid, content.len(), embedding.len(), e, e
+                );
+                return Err(e).context("Failed to store chat vector in Qdrant");
+            }
+        }
 
         log::info!(
-            "Successfully vectorized Q&A pair - user={}, session={}, vector_id={}",
+            "Successfully vectorized Q&A pair - user={}, session={}, meaningful_id={}",
             user_id,
             session_id,
-            vector_id
+            meaningful_id
         );
 
         Ok(())
@@ -143,7 +166,11 @@ mod tests {
     #[test]
     fn test_vector_id_format() {
         let session_id = "session-123";
-        let vector_id = format!("chat-{}-qa", session_id);
-        assert_eq!(vector_id, "chat-session-123-qa");
+        let meaningful_id = format!("chat-{}-qa", session_id);
+        assert_eq!(meaningful_id, "chat-session-123-qa");
+        
+        // Verify UUID generation works
+        let qdrant_uuid = Uuid::new_v4().to_string();
+        assert_eq!(qdrant_uuid.len(), 36); // Standard UUID length
     }
 }
