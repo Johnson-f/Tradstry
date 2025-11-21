@@ -3,6 +3,22 @@ use libsql::Connection;
 use log::info;
 use uuid::Uuid;
 
+// Add helper function at the top of the file
+fn get_f64_from_row(row: &libsql::Row, idx: usize) -> Result<f64> {
+    let i = idx as i32;
+    match row.get_value(i) {
+        Ok(libsql::Value::Null) => Ok(0.0),
+        Ok(libsql::Value::Integer(n)) => Ok(n as f64),
+        Ok(libsql::Value::Real(r)) => Ok(r),
+        Ok(libsql::Value::Text(s)) => {
+            // Parse text to f64 (handles DECIMAL columns stored as TEXT)
+            Ok(s.parse::<f64>().unwrap_or(0.0))
+        },
+        Ok(libsql::Value::Blob(_)) => Ok(0.0),
+        Err(_) => Ok(0.0),
+    }
+}
+
 /// Calculate weighted average entry price for multiple entries
 #[allow(dead_code)]
 pub fn calculate_weighted_average_entry(
@@ -57,9 +73,14 @@ pub async fn update_position_quantity(
     conn: &Connection,
     position_id: &str,
     position_type: &str, // "stock" or "option"
+    symbol: &str,
     transaction_quantity: f64,
     transaction_price: f64,
     transaction_type: &str, // "entry" or "exit"
+    brokerage_name: Option<&str>,
+    option_type: Option<&str>, // Required for options: "Call" or "Put"
+    strike_price: Option<f64>, // Required for options
+    expiration_date: Option<&str>, // Required for options
 ) -> Result<()> {
     let table_name = if position_type == "stock" {
         "stock_positions"
@@ -78,9 +99,10 @@ pub async fn update_position_quantity(
         .await?;
 
     if let Some(row) = rows.next().await? {
-        let current_quantity: f64 = row.get(0)?;
-        let current_avg_price: f64 = row.get(1)?;
-        let current_realized_pnl: f64 = row.get(2)?;
+        // Use the helper function to safely get f64 values
+        let current_quantity: f64 = get_f64_from_row(&row, 0)?;
+        let current_avg_price: f64 = get_f64_from_row(&row, 1)?;
+        let current_realized_pnl: f64 = get_f64_from_row(&row, 2)?;
 
         let (new_quantity, new_avg_price, new_realized_pnl) = if transaction_type == "entry" {
             // Add to position
@@ -120,14 +142,24 @@ pub async fn update_position_quantity(
                 position_id.to_string()
             };
 
-            conn.execute(
-                &format!(
-                    "INSERT INTO {} (id, total_quantity, average_entry_price, realized_pnl, created_at, updated_at) VALUES (?, ?, ?, 0.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                    table_name
-                ),
-                libsql::params![position_id_uuid, transaction_quantity, transaction_price],
-            )
-            .await?;
+            if position_type == "stock" {
+                conn.execute(
+                    "INSERT INTO stock_positions (id, symbol, total_quantity, average_entry_price, realized_pnl, brokerage_name, created_at, updated_at) VALUES (?, ?, ?, ?, 0.0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    libsql::params![position_id_uuid, symbol, transaction_quantity, transaction_price, brokerage_name],
+                )
+                .await?;
+            } else {
+                // For options, we need option_type, strike_price, expiration_date
+                let opt_type = option_type.unwrap_or("Call");
+                let strike = strike_price.unwrap_or(transaction_price);
+                let exp_date = expiration_date.unwrap_or("");
+                
+                conn.execute(
+                    "INSERT INTO option_positions (id, symbol, option_type, strike_price, expiration_date, total_quantity, average_entry_price, realized_pnl, brokerage_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0.0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    libsql::params![position_id_uuid, symbol, opt_type, strike, exp_date, transaction_quantity, transaction_price, brokerage_name],
+                )
+                .await?;
+            }
         }
     }
 
@@ -156,8 +188,9 @@ pub async fn reconcile_position(
 
     while let Some(row) = rows.next().await? {
         let trans_type: String = row.get(0)?;
-        let quantity: f64 = row.get(1)?;
-        let price: f64 = row.get(2)?;
+        // Use helper function for numeric values
+        let quantity: f64 = get_f64_from_row(&row, 1)?;
+        let price: f64 = get_f64_from_row(&row, 2)?;
 
         if trans_type == "entry" {
             entries.push((quantity, price));

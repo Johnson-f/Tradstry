@@ -105,6 +105,52 @@ impl OpenRouterConfig {
     }
 }
 
+/// Configuration for Google Gemini API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiConfig {
+    pub api_key: String,
+    pub model: String,
+    pub api_url: String,
+    pub max_retries: u32,
+    pub timeout_seconds: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl GeminiConfig {
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(GeminiConfig {
+            api_key: env::var("GEMINI_API_KEY")
+                .map_err(|_| "GEMINI_API_KEY environment variable not set")?,
+            model: env::var("GEMINI_MODEL")
+                .unwrap_or_else(|_| "gemini-2.0-flash-exp".to_string()),
+            api_url: env::var("GEMINI_API_URL")
+                .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta".to_string()),
+            max_retries: env::var("GEMINI_MAX_RETRIES")
+                .unwrap_or_else(|_| "3".to_string())
+                .parse()
+                .unwrap_or(3),
+            timeout_seconds: env::var("GEMINI_TIMEOUT_SECONDS")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse()
+                .unwrap_or(60),
+            max_tokens: env::var("GEMINI_MAX_TOKENS")
+                .unwrap_or_else(|_| "4096".to_string())
+                .parse()
+                .unwrap_or(4096),
+            temperature: env::var("GEMINI_TEMPERATURE")
+                .unwrap_or_else(|_| "0.7".to_string())
+                .parse()
+                .unwrap_or(0.7),
+        })
+    }
+
+    /// Get the chat completion endpoint URL
+    pub fn get_chat_url(&self) -> String {
+        format!("{}/models/{}:generateContent", self.api_url, self.model)
+    }
+}
+
 /// Configuration for Upstash Search database
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchConfig {
@@ -217,6 +263,7 @@ pub struct AIConfig {
     pub qdrant_config: QdrantConfig,
     pub voyager_config: VoyagerConfig,
     pub openrouter_config: OpenRouterConfig,
+    pub gemini_config: Option<GeminiConfig>,
     pub hybrid_config: HybridSearchConfig,
     pub max_context_vectors: usize,
     pub insights_schedule_enabled: bool,
@@ -231,6 +278,7 @@ impl AIConfig {
             qdrant_config: QdrantConfig::from_env()?,
             voyager_config: VoyagerConfig::from_env()?,
             openrouter_config: OpenRouterConfig::from_env()?,
+            gemini_config: GeminiConfig::from_env().ok(), // Optional - only if GEMINI_API_KEY is set
             hybrid_config: HybridSearchConfig::from_env(),
             max_context_vectors: env::var("MAX_CONTEXT_VECTORS")
                 .unwrap_or_else(|_| "10".to_string())

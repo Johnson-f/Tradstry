@@ -461,7 +461,7 @@ impl Stock {
                 initial_target, profit_target, trade_ratings,
                 entry_date, exit_date, reviewed, mistakes, brokerage_name, trade_group_id,
                 parent_trade_id, total_quantity, transaction_sequence, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, symbol, trade_type, order_type, entry_price,
                      exit_price, stop_loss, commissions, number_shares, take_profit,
                      initial_target, profit_target, trade_ratings,

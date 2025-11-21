@@ -77,8 +77,15 @@ impl TradeVectorService {
         let notes = self.get_trade_notes(conn, trade_id, trade_type).await?;
 
         // Step 3: Format combined content
-        let content = DataFormatter::format_mistakes_and_notes(mistakes, notes)
+        let content = DataFormatter::format_mistakes_and_notes(mistakes.clone(), notes.clone())
             .context("Failed to format mistakes and notes")?;
+
+        log::debug!(
+            "Formatted content for vectorization - user={}, trade_id={}, trade_type={}, content_length={}, mistakes_count={}, notes_count={}",
+            user_id, trade_id, trade_type, content.len(),
+            mistakes.as_ref().map(|m| m.len()).unwrap_or(0),
+            notes.len()
+        );
 
         // If no content (no mistakes and no notes), skip vectorization
         if content.trim().is_empty() {
@@ -88,6 +95,12 @@ impl TradeVectorService {
             );
             return Ok(());
         }
+
+        log::debug!(
+            "Content preview (first 200 chars) - user={}, trade_id={}, preview={}",
+            user_id, trade_id,
+            if content.len() > 200 { format!("{}...", &content[..200]) } else { content.clone() }
+        );
 
         // Step 4: Generate embedding
         log::info!(
@@ -106,10 +119,18 @@ impl TradeVectorService {
 
         // Step 5: Store in Qdrant
         let vector_id = format!("trade-{}-mistakes-notes", trade_id);
+        log::debug!(
+            "Attempting to store vector in Qdrant - user={}, trade_id={}, vector_id={}, embedding_dim={}",
+            user_id, trade_id, vector_id, embedding.len()
+        );
+        
         self.qdrant_client
             .upsert_trade_vector(user_id, &vector_id, &content, &embedding)
             .await
-            .context("Failed to store vector in Qdrant")?;
+            .with_context(|| format!(
+                "Failed to store vector in Qdrant - user={}, trade_id={}, vector_id={}, embedding_dim={}",
+                user_id, trade_id, vector_id, embedding.len()
+            ))?;
 
         log::info!(
             "Successfully vectorized trade - user={}, trade_id={}, vector_id={}",

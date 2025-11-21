@@ -8,6 +8,7 @@ pub use interface::AIChatService;
 pub use interface::AIInsightsService;
 pub use interface::AiReportsService;
 pub use model_connection::OpenRouterClient;
+pub use model_connection::GeminiClient;
 
 // Re-export vector_service types
 pub use vector_service::VoyagerClient;

@@ -97,6 +97,13 @@ const optionFormSchema = z.object({
 
 type OptionFormData = z.infer<typeof optionFormSchema>;
 
+// LocalStorage keys
+const STORAGE_KEYS = {
+  STOCK_FORM: 'merge-trade-form-stock',
+  OPTION_FORM: 'merge-trade-form-option',
+  PREFERENCES: 'merge-trade-form-preferences',
+} as const;
+
 interface MergeTradeFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -166,10 +173,87 @@ export function MergeTradeForm({
     };
   }, [transactions]);
 
-  // Get symbol from transactions
+  // Get symbol from transactions - extract from symbol field or raw_data
   const symbol = useMemo(() => {
-    return transactions[0]?.symbol || '';
+    // First try direct symbol field
+    if (transactions[0]?.symbol) {
+      return transactions[0].symbol;
+    }
+    
+    // Try to extract from raw_data
+    if (transactions[0]?.raw_data) {
+      try {
+        const rawData = typeof transactions[0].raw_data === 'string'
+          ? JSON.parse(transactions[0].raw_data)
+          : transactions[0].raw_data;
+        
+        // Try multiple possible paths for symbol
+        const extractedSymbol = 
+          rawData.symbol?.symbol ||
+          rawData.symbol ||
+          rawData.underlying_symbol ||
+          rawData.stock_symbol ||
+          '';
+        
+        if (extractedSymbol) {
+          return extractedSymbol;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+    
+    return '';
   }, [transactions]);
+
+  // Get brokerage name from transactions - improved extraction
+  const extractedBrokerageName = useMemo(() => {
+    // Try to get from raw_data first
+    for (const transaction of transactions) {
+      if (transaction.raw_data) {
+        try {
+          const rawData = typeof transaction.raw_data === 'string'
+            ? JSON.parse(transaction.raw_data)
+            : transaction.raw_data;
+          
+          // Try multiple possible paths for brokerage name
+          const brokerageName = 
+            rawData.brokerage_name ||
+            rawData.brokerage ||
+            rawData.institution_name ||
+            rawData.institution ||
+            rawData.account?.institution_name ||
+            rawData.account?.institution ||
+            '';
+          
+          if (brokerageName) {
+            return brokerageName;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+    
+    return calculatedValues.brokerageName || '';
+  }, [transactions, calculatedValues.brokerageName]);
+
+  // Load preferences from localStorage
+  const loadPreferences = useMemo(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return {
+      defaultOrderType: 'MARKET',
+      defaultStopLossPercent: 3, // 3% below entry
+      defaultTradeRating: 3,
+    };
+  }, []);
 
   // Set default tab based on option detection
   useEffect(() => {
@@ -178,20 +262,28 @@ export function MergeTradeForm({
     }
   }, [hasOptions]);
 
+  // Calculate default stop loss based on entry price
+  const defaultStopLoss = useMemo(() => {
+    if (calculatedValues.entryPrice > 0) {
+      return calculatedValues.entryPrice * (1 - loadPreferences.defaultStopLossPercent / 100);
+    }
+    return 0;
+  }, [calculatedValues.entryPrice, loadPreferences.defaultStopLossPercent]);
+
   const stockForm = useForm<StockFormData>({
      // @ts-expect-error - will fix later (i may never, inasmuch as the code works, who cares?)
     resolver: zodResolver(stockFormSchema),
     defaultValues: {
       symbol,
-      orderType: 'MARKET',
-      stopLoss: 0,
+      orderType: loadPreferences.defaultOrderType as 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT',
+      stopLoss: defaultStopLoss,
       takeProfit: undefined,
       initialTarget: undefined,
       profitTarget: undefined,
-      tradeRatings: 1,
+      tradeRatings: loadPreferences.defaultTradeRating,
       reviewed: false,
       mistakes: '',
-      brokerageName: calculatedValues.brokerageName || '',
+      brokerageName: extractedBrokerageName,
     },
   });
 
@@ -206,28 +298,105 @@ export function MergeTradeForm({
       strikePrice: 0,
       expirationDate: '',
       impliedVolatility: 0,
-      orderType: 'MARKET',
-      stopLoss: 0,
+      orderType: loadPreferences.defaultOrderType as 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT',
+      stopLoss: defaultStopLoss,
       takeProfit: undefined,
       initialTarget: undefined,
       profitTarget: undefined,
-      tradeRatings: 1,
+      tradeRatings: loadPreferences.defaultTradeRating,
       reviewed: false,
       mistakes: '',
-      brokerageName: calculatedValues.brokerageName || '',
+      brokerageName: extractedBrokerageName,
     },
   });
 
-  // Update form when calculated values change
+  // Auto-fill symbol and brokerage name when transactions change
   useEffect(() => {
-    if (calculatedValues.brokerageName) {
-      stockForm.setValue('brokerageName', calculatedValues.brokerageName);
-      optionForm.setValue('brokerageName', calculatedValues.brokerageName);
+    if (symbol) {
+      stockForm.setValue('symbol', symbol);
+      optionForm.setValue('symbol', symbol);
     }
-  }, [calculatedValues.brokerageName, stockForm, optionForm]);
+    if (extractedBrokerageName) {
+      stockForm.setValue('brokerageName', extractedBrokerageName);
+      optionForm.setValue('brokerageName', extractedBrokerageName);
+    }
+    if (defaultStopLoss > 0) {
+      stockForm.setValue('stopLoss', defaultStopLoss);
+      optionForm.setValue('stopLoss', defaultStopLoss);
+    }
+  }, [symbol, extractedBrokerageName, defaultStopLoss, stockForm, optionForm]);
+
+  // Load saved form data from localStorage when dialog opens
+  useEffect(() => {
+    if (!open) return;
+
+    try {
+      const savedStock = localStorage.getItem(STORAGE_KEYS.STOCK_FORM);
+      const savedOption = localStorage.getItem(STORAGE_KEYS.OPTION_FORM);
+
+      if (savedStock && activeTab === 'stock') {
+        const parsed = JSON.parse(savedStock);
+        // Only restore non-transaction-specific fields
+        Object.keys(parsed).forEach((key) => {
+          if (key !== 'symbol' && key !== 'brokerageName') {
+            stockForm.setValue(key as keyof StockFormData, parsed[key]);
+          }
+        });
+      }
+
+      if (savedOption && activeTab === 'option') {
+        const parsed = JSON.parse(savedOption);
+        // Only restore non-transaction-specific fields
+        Object.keys(parsed).forEach((key) => {
+          if (key !== 'symbol' && key !== 'brokerageName') {
+            optionForm.setValue(key as keyof OptionFormData, parsed[key]);
+          }
+        });
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [open, activeTab, stockForm, optionForm]);
+
+  // Save form data to localStorage when form values change
+  useEffect(() => {
+    const subscription = stockForm.watch((value) => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.STOCK_FORM, JSON.stringify(value));
+      } catch {
+        // Ignore storage errors (e.g., quota exceeded)
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [stockForm]);
+
+  useEffect(() => {
+    const subscription = optionForm.watch((value) => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.OPTION_FORM, JSON.stringify(value));
+      } catch {
+        // Ignore storage errors (e.g., quota exceeded)
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [optionForm]);
 
   const handleStockSubmit = async (data: StockFormData) => {
     try {
+      // Save preferences for next time
+      try {
+        const preferences = {
+          defaultOrderType: data.orderType,
+          defaultStopLossPercent: calculatedValues.entryPrice > 0
+            ? ((calculatedValues.entryPrice - data.stopLoss) / calculatedValues.entryPrice) * 100
+            : 5,
+          defaultTradeRating: data.tradeRatings,
+        };
+        localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(preferences));
+      } catch {
+        // Ignore storage errors
+      }
+
       await mergeTransactions({
         transactionIds: transactions.map((t) => t.id),
         tradeType: 'stock',
@@ -250,6 +419,20 @@ export function MergeTradeForm({
 
   const handleOptionSubmit = async (data: OptionFormData) => {
     try {
+      // Save preferences for next time
+      try {
+        const preferences = {
+          defaultOrderType: data.orderType,
+          defaultStopLossPercent: calculatedValues.entryPrice > 0
+            ? ((calculatedValues.entryPrice - data.stopLoss) / calculatedValues.entryPrice) * 100
+            : 5,
+          defaultTradeRating: data.tradeRatings,
+        };
+        localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(preferences));
+      } catch {
+        // Ignore storage errors
+      }
+
       await mergeTransactions({
         transactionIds: transactions.map((t) => t.id),
         tradeType: 'option',

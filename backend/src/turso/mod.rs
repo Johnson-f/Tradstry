@@ -33,7 +33,7 @@ use crate::service::trade_notes_service::TradeNotesService;
 use crate::service::rate_limiter::RateLimiter;
 use crate::service::storage_quota::StorageQuotaService;
 use crate::service::account_deletion::AccountDeletionService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, OpenRouterClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, NotebookVectorization, PlaybookVectorization};
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, OpenRouterClient, GeminiClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, NotebookVectorization, PlaybookVectorization};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -54,6 +54,8 @@ pub struct AppState {
     pub trade_vector_service: Arc<TradeVectorService>,
     pub notebook_vector_service: Arc<NotebookVectorization>,
     pub playbook_vector_service: Arc<PlaybookVectorization>,
+    #[allow(dead_code)]
+    pub gemini_client: Option<Arc<GeminiClient>>,
 }
 
 impl AppState {
@@ -95,6 +97,26 @@ impl AppState {
         let openrouter_config = crate::turso::vector_config::OpenRouterConfig::from_env()
             .map_err(|e| format!("Failed to load OpenRouter config: {}", e))?;
         let openrouter_client = Arc::new(OpenRouterClient::new(openrouter_config)?);
+        
+        // Initialize Gemini client (optional - only if GEMINI_API_KEY is set)
+        let gemini_client = match crate::turso::vector_config::GeminiConfig::from_env() {
+            Ok(gemini_config) => {
+                match GeminiClient::new(gemini_config) {
+                    Ok(client) => {
+                        log::info!("Gemini client initialized successfully");
+                        Some(Arc::new(client))
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to initialize Gemini client: {}. Continuing without Gemini support.", e);
+                        None
+                    }
+                }
+            }
+            Err(_) => {
+                log::debug!("GEMINI_API_KEY not set, skipping Gemini client initialization");
+                None
+            }
+        };
         
         let voyager_config = crate::turso::vector_config::VoyagerConfig::from_env()
             .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
@@ -200,6 +222,7 @@ impl AppState {
             trade_vector_service,
             notebook_vector_service,
             playbook_vector_service,
+            gemini_client,
         })
     }
 

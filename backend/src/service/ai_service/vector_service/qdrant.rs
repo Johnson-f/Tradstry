@@ -81,9 +81,14 @@ impl QdrantDocumentClient {
     pub async fn ensure_collection(&self, user_id: &str) -> Result<()> {
         let collection_name = self.config.get_collection_name(user_id);
         
+        log::debug!("Checking if Qdrant collection exists - user={}, collection={}", user_id, collection_name);
+        
         // Check if collection exists
         let collections = match self.client.list_collections().await {
-            Ok(cols) => cols,
+            Ok(cols) => {
+                log::debug!("Successfully listed {} Qdrant collections", cols.collections.len());
+                cols
+            }
             Err(e) => {
                 log::error!(
                     "Failed to list Qdrant collections - user={}, collection={}, error={}, error_debug={:?}",
@@ -97,7 +102,7 @@ impl QdrantDocumentClient {
             .any(|c| c.name == collection_name);
 
         if !exists {
-            log::info!("Creating Qdrant collection: {}", collection_name);
+            log::info!("Creating Qdrant collection: {} (does not exist)", collection_name);
             
             match self.client.create_collection(CreateCollection {
                 collection_name: collection_name.clone(),
@@ -111,7 +116,7 @@ impl QdrantDocumentClient {
                 ..Default::default()
             }).await {
                 Ok(_) => {
-                    log::info!("Qdrant collection created: {}", collection_name);
+                    log::info!("Qdrant collection created successfully: {}", collection_name);
                 }
                 Err(e) => {
                     log::error!(
@@ -121,6 +126,8 @@ impl QdrantDocumentClient {
                     return Err(anyhow::anyhow!("Failed to create collection: {}", e));
                 }
             }
+        } else {
+            log::debug!("Qdrant collection already exists: {}", collection_name);
         }
 
         Ok(())
@@ -134,12 +141,22 @@ impl QdrantDocumentClient {
         content: &str,
         embedding: &[f32],
     ) -> Result<()> {
-        self.ensure_collection(user_id).await?;
+        log::debug!("Starting upsert_trade_vector - user={}, vector_id={}, content_length={}, embedding_dim={}", 
+            user_id, vector_id, content.len(), embedding.len());
+        
+        self.ensure_collection(user_id).await
+            .context("Failed to ensure collection exists")?;
         let collection_name = self.config.get_collection_name(user_id);
 
+        // Generate a deterministic UUID from the vector_id for Qdrant's point ID
+        let qdrant_uuid = Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("trade-{}-{}", user_id, vector_id).as_bytes()
+        ).to_string();
+
         log::info!(
-            "Upserting trade vector to Qdrant - collection={}, vector_id={}, content_length={}, embedding_dim={}",
-            collection_name, vector_id, content.len(), embedding.len()
+            "Upserting trade vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, content_length={}, embedding_dim={}",
+            collection_name, qdrant_uuid, vector_id, content.len(), embedding.len()
         );
 
         let now = Utc::now();
@@ -152,25 +169,68 @@ impl QdrantDocumentClient {
         payload.insert("type".to_string(), Value::from("trade"));
         payload.insert("created_at".to_string(), Value::from(now.to_rfc3339()));
 
-        // Create point with embedding
+        log::debug!("Created payload for trade vector - vector_id={}, payload_keys={:?}", 
+            vector_id, payload.keys().collect::<Vec<_>>());
+
+        // Create point with embedding using the generated UUID
+        let point_id = PointId {
+            point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
+                qdrant_uuid.clone()
+            )),
+        };
+        
+        log::debug!("Creating PointStruct - vector_id={}, qdrant_uuid={}, embedding_dim={}, payload_keys={:?}", 
+            vector_id, qdrant_uuid, embedding.len(), payload.keys().collect::<Vec<_>>());
+
         let point = PointStruct {
-            id: Some(PointId {
-                point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
-                    vector_id.to_string()
-                )),
-            }),
+            id: Some(point_id),
             vectors: Some(embedding.to_vec().into()),
-            payload,
+            payload: payload.clone(),
         };
 
-        self.client.upsert_points(UpsertPoints {
+        log::debug!("Created PointStruct - vector_id={}, has_id={}, has_vectors={}, payload_count={}", 
+            vector_id, 
+            point.id.is_some(),
+            point.vectors.is_some(),
+            point.payload.len());
+
+        let upsert_request = UpsertPoints {
             collection_name: collection_name.clone(),
             points: vec![point],
             ..Default::default()
-        }).await?;
+        };
+
+        log::debug!("Calling Qdrant upsert_points - collection={}, points_count=1", collection_name);
         
-        log::info!("Successfully upserted trade vector to Qdrant - vector_id={}", vector_id);
-        Ok(())
+        match self.client.upsert_points(upsert_request).await {
+            Ok(response) => {
+                log::info!("Successfully upserted trade vector to Qdrant - qdrant_uuid={}, vector_id={}, collection={}", 
+                    qdrant_uuid, vector_id, collection_name);
+                log::debug!("Qdrant upsert response - vector_id={}, result={:?}", vector_id, response.result);
+                Ok(())
+            }
+            Err(e) => {
+                let error_string = format!("{}", e);
+                let error_debug = format!("{:?}", e);
+                
+                log::error!(
+                    "Failed to upsert trade vector to Qdrant - user={}, vector_id={}, qdrant_uuid={}, collection={}",
+                    user_id, vector_id, qdrant_uuid, collection_name
+                );
+                log::error!("Qdrant error message: {}", error_string);
+                log::error!("Qdrant error debug: {}", error_debug);
+                log::error!(
+                    "Qdrant upsert error details - embedding_dim={}, content_length={}, content_preview={}, payload_count={}",
+                    embedding.len(),
+                    content.len(),
+                    if content.len() > 100 { format!("{}...", &content[..100]) } else { content.to_string() },
+                    payload.len()
+                );
+                
+                Err(anyhow::anyhow!("Failed to upsert vector to Qdrant: {} (vector_id: {}, collection: {})", 
+                    error_string, vector_id, collection_name))
+            }
+        }
     }
 
     pub async fn upsert_documents(&self, user_id: &str, documents: Vec<Document>) -> Result<()> {
@@ -481,9 +541,15 @@ impl QdrantDocumentClient {
         self.ensure_collection(user_id).await?;
         let collection_name = self.config.get_collection_name(user_id);
 
+        // Generate a deterministic UUID from the vector_id for Qdrant's point ID
+        let qdrant_uuid = Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("playbook-{}-{}", user_id, vector_id).as_bytes()
+        ).to_string();
+
         log::info!(
-            "Upserting playbook vector to Qdrant - collection={}, vector_id={}, content_length={}, embedding_dim={}",
-            collection_name, vector_id, content.len(), embedding.len()
+            "Upserting playbook vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, content_length={}, embedding_dim={}",
+            collection_name, qdrant_uuid, vector_id, content.len(), embedding.len()
         );
 
         let now = Utc::now();
@@ -496,27 +562,38 @@ impl QdrantDocumentClient {
         payload.insert("type".to_string(), Value::from("playbook"));
         payload.insert("created_at".to_string(), Value::from(now.to_rfc3339()));
 
-        // Create point with embedding
+        // Create point with embedding using the generated UUID
         let point = PointStruct {
             id: Some(PointId {
                 point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
-                    vector_id.to_string()
+                    qdrant_uuid.clone()
                 )),
             }),
             vectors: Some(embedding.to_vec().into()),
             payload,
         };
 
-        self.client.upsert_points(UpsertPoints {
+        match self.client.upsert_points(UpsertPoints {
             collection_name: collection_name.clone(),
             points: vec![point],
             ..Default::default()
-        }).await?;
-        
-        log::info!("Successfully upserted playbook vector to Qdrant - vector_id={}", vector_id);
-        Ok(())
+        }).await {
+            Ok(_) => {
+                log::info!("Successfully upserted playbook vector to Qdrant - qdrant_uuid={}, vector_id={}", 
+                    qdrant_uuid, vector_id);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to upsert playbook vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, error={}, error_debug={:?}",
+                    collection_name, qdrant_uuid, vector_id, e, e
+                );
+                Err(anyhow::anyhow!("Failed to upsert playbook vector: {}", e))
+            }
+        }
     }
 
+    
     /// Upsert a notebook vector with format: {user_id, id, content, embedding, type: "notebook", created_at}
     pub async fn upsert_notebook_vector(
         &self,
@@ -528,9 +605,15 @@ impl QdrantDocumentClient {
         self.ensure_collection(user_id).await?;
         let collection_name = self.config.get_collection_name(user_id);
 
+        // Generate a deterministic UUID from the vector_id for Qdrant's point ID
+        let qdrant_uuid = Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("notebook-{}-{}", user_id, vector_id).as_bytes()
+        ).to_string();
+
         log::info!(
-            "Upserting notebook vector to Qdrant - collection={}, vector_id={}, content_length={}, embedding_dim={}",
-            collection_name, vector_id, content.len(), embedding.len()
+            "Upserting notebook vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, content_length={}, embedding_dim={}",
+            collection_name, qdrant_uuid, vector_id, content.len(), embedding.len()
         );
 
         let now = Utc::now();
@@ -543,25 +626,35 @@ impl QdrantDocumentClient {
         payload.insert("type".to_string(), Value::from("notebook"));
         payload.insert("created_at".to_string(), Value::from(now.to_rfc3339()));
 
-        // Create point with embedding
+        // Create point with embedding using the generated UUID
         let point = PointStruct {
             id: Some(PointId {
                 point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
-                    vector_id.to_string()
+                    qdrant_uuid.clone()
                 )),
             }),
             vectors: Some(embedding.to_vec().into()),
             payload,
         };
 
-        self.client.upsert_points(UpsertPoints {
+        match self.client.upsert_points(UpsertPoints {
             collection_name: collection_name.clone(),
             points: vec![point],
             ..Default::default()
-        }).await?;
-        
-        log::info!("Successfully upserted notebook vector to Qdrant - vector_id={}", vector_id);
-        Ok(())
+        }).await {
+            Ok(_) => {
+                log::info!("Successfully upserted notebook vector to Qdrant - qdrant_uuid={}, vector_id={}", 
+                    qdrant_uuid, vector_id);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to upsert notebook vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, error={}, error_debug={:?}",
+                    collection_name, qdrant_uuid, vector_id, e, e
+                );
+                Err(anyhow::anyhow!("Failed to upsert notebook vector: {}", e))
+            }
+        }
     }
 
     /// Delete a notebook vector by ID
