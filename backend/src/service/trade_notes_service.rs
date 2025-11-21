@@ -2,27 +2,24 @@ use anyhow::Result;
 use libsql::Connection;
 use std::sync::Arc;
 use crate::models::notes::TradeNote;
-use crate::service::ai_service::AINotesService;
 use crate::service::cache_service::CacheService;
 
-/// Service for managing trade notes linked to trades with AI processing
+/// Service for managing trade notes linked to trades
+/// Note: Trade notes are vectorized separately by TradeVectorService for trade mistakes/notes
 pub struct TradeNotesService {
-    ai_service: Arc<AINotesService>,
     cache_service: Arc<CacheService>,
 }
 
 impl TradeNotesService {
     pub fn new(
-        ai_service: Arc<AINotesService>,
         cache_service: Arc<CacheService>,
     ) -> Self {
         Self {
-            ai_service,
             cache_service,
         }
     }
 
-    /// Upsert a trade note for a specific trade with AI analysis
+    /// Upsert a trade note for a specific trade with vectorization
     pub async fn upsert_trade_note(
         &self,
         conn: &Connection,
@@ -30,7 +27,7 @@ impl TradeNotesService {
         trade_type: &str,
         trade_id: i64,
         content: String,
-        trade_context: Option<&str>, // Optional: symbol, trade details for AI context
+        trade_context: Option<&str>, // Optional: symbol, trade details for context
     ) -> Result<TradeNote> {
         log::info!("Upserting trade note - user={}, trade_type={}, trade_id={}, content_len={}", 
                    user_id, trade_type, trade_id, content.len());
@@ -38,33 +35,14 @@ impl TradeNotesService {
         // Generate note name from first line or use default
         let name = Self::extract_name_from_content(&content);
 
-        // Process through AI service
-        let ai_metadata = match self.ai_service.analyze_note(&content, trade_context).await {
-            Ok(metadata) => {
-                log::info!("AI analysis successful - tags={}, sentiment={:?}", 
-                           metadata.tags.len(), metadata.sentiment);
-                match serde_json::to_string(&metadata) {
-                    Ok(json_str) => Some(json_str),
-                    Err(e) => {
-                        log::warn!("Failed to serialize AI metadata: {}. Continuing without metadata.", e);
-                        None
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!("AI analysis failed: {}. Continuing without metadata.", e);
-                None
-            }
-        };
-
-        // Upsert to database
+        // Upsert to database (no AI metadata anymore)
         let note_result = TradeNote::upsert_for_trade(
             conn,
             trade_type,
             trade_id,
             name,
-            content,
-            ai_metadata,
+            content.clone(),
+            None, // No AI metadata
         )
         .await;
 
@@ -77,11 +55,14 @@ impl TradeNotesService {
 
         log::info!("Trade note upserted successfully - note_id={}", note.id);
 
+        // Note: Trade notes are not vectorized as notebooks
+        // They are handled separately by TradeVectorService for trade mistakes/notes
+
         // Cache the final note using get_or_fetch pattern (though we already have the note)
         let cache_key = Self::build_cache_key(user_id, trade_type, trade_id);
-        let note_clone = note.clone();
+        let note_clone_for_cache = note.clone();
         let _ = self.cache_service.get_or_fetch(&cache_key, 1800, || async {
-            Ok::<TradeNote, anyhow::Error>(note_clone)
+            Ok::<TradeNote, anyhow::Error>(note_clone_for_cache)
         }).await;
 
         // Invalidate trade notes list cache
@@ -154,6 +135,7 @@ impl TradeNotesService {
             };
 
             if deleted {
+                // Note: Trade note vectors are handled by TradeVectorService
                 // Invalidate cache
                 let cache_key = Self::build_cache_key(user_id, trade_type, trade_id);
                 self.cache_service.invalidate_pattern(&format!("{}:*", cache_key)).await.ok();

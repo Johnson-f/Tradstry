@@ -18,6 +18,7 @@ use crate::models::notebook::{
 use crate::service::calendar_service::CalendarService;
 use crate::service::holidays_service::HolidaysService;
 use crate::service::cache_service::CacheService;
+use crate::service::ai_service::vector_service::NotebookVectorization;
 
 #[derive(Debug, Serialize)]
 struct ApiList<T> { success: bool, message: String, data: Option<Vec<T>> }
@@ -60,13 +61,14 @@ async fn get_user_database_connection(
 }
 
 // ==== Notes ====
-/// Create a note with cache invalidation
+/// Create a note with cache invalidation and vectorization
 pub async fn create_note(
     req: HttpRequest,
     payload: web::Json<CreateNoteRequest>,
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
+    notebook_vector_service: web::Data<Arc<NotebookVectorization>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &app_state.turso_client).await?;
@@ -80,6 +82,20 @@ pub async fn create_note(
     
     match NotebookNote::create(&conn, payload.into_inner()).await {
         Ok(note) => {
+            // Vectorize notebook asynchronously (non-blocking)
+            let notebook_vector_service_clone = notebook_vector_service.get_ref().clone();
+            let note_clone = note.clone();
+            let user_id_clone = claims.sub.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = notebook_vector_service_clone
+                    .vectorize_notebook(&user_id_clone, &note_clone)
+                    .await
+                {
+                    error!("Failed to vectorize notebook - note_id={}, error={}", note_clone.id, e);
+                }
+            });
+
             // Invalidate cache after successful creation
             let cache_service_clone = cache_service.get_ref().clone();
             let user_id_clone = claims.sub.clone();
@@ -186,11 +202,28 @@ pub async fn update_note(
     payload: web::Json<UpdateNoteRequest>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    notebook_vector_service: web::Data<Arc<NotebookVectorization>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     match NotebookNote::update(&conn, &note_id, payload.into_inner()).await {
-        Ok(note) => Ok(HttpResponse::Ok().json(ApiItem { success: true, message: "Updated".into(), data: Some(note) })),
+        Ok(note) => {
+            // Vectorize notebook asynchronously (non-blocking)
+            let notebook_vector_service_clone = notebook_vector_service.get_ref().clone();
+            let note_clone = note.clone();
+            let user_id_clone = claims.sub.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = notebook_vector_service_clone
+                    .vectorize_notebook(&user_id_clone, &note_clone)
+                    .await
+                {
+                    error!("Failed to vectorize notebook - note_id={}, error={}", note_clone.id, e);
+                }
+            });
+
+            Ok(HttpResponse::Ok().json(ApiItem { success: true, message: "Updated".into(), data: Some(note) }))
+        }
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiItem::<NotebookNote> { success: false, message: e.to_string(), data: None })),
     }
 }
@@ -200,11 +233,28 @@ pub async fn delete_note(
     note_id: web::Path<String>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    notebook_vector_service: web::Data<Arc<NotebookVectorization>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     match NotebookNote::soft_delete(&conn, &note_id).await {
-        Ok(true) => Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Deleted"}))),
+        Ok(true) => {
+            // Delete vector from Qdrant asynchronously
+            let notebook_vector_service_clone = notebook_vector_service.get_ref().clone();
+            let note_id_clone = note_id.clone();
+            let user_id_clone = claims.sub.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = notebook_vector_service_clone
+                    .delete_notebook_vector(&user_id_clone, &note_id_clone)
+                    .await
+                {
+                    error!("Failed to delete notebook vector - note_id={}, error={}", note_id_clone, e);
+                }
+            });
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Deleted"})))
+        }
         Ok(false) => Ok(HttpResponse::NotFound().json(serde_json::json!({"success": false, "message": "Not found"}))),
         Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({"success": false, "message": e.to_string()}))),
     }
@@ -243,11 +293,28 @@ pub async fn permanent_delete_note(
     note_id: web::Path<String>,
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
+    notebook_vector_service: web::Data<Arc<NotebookVectorization>>,
 ) -> Result<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
     let conn = get_user_database_connection(&claims.sub, &turso_client).await?;
     match NotebookNote::permanent_delete(&conn, &note_id).await {
-        Ok(true) => Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Permanently deleted"}))),
+        Ok(true) => {
+            // Delete vector from Qdrant asynchronously
+            let notebook_vector_service_clone = notebook_vector_service.get_ref().clone();
+            let note_id_clone = note_id.clone();
+            let user_id_clone = claims.sub.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = notebook_vector_service_clone
+                    .delete_notebook_vector(&user_id_clone, &note_id_clone)
+                    .await
+                {
+                    error!("Failed to delete notebook vector - note_id={}, error={}", note_id_clone, e);
+                }
+            });
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({"success": true, "message": "Permanently deleted"})))
+        }
         Ok(false) => Ok(HttpResponse::NotFound().json(serde_json::json!({"success": false, "message": "Not found"}))),
         Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({"success": false, "message": e.to_string()}))),
     }

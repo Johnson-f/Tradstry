@@ -33,7 +33,7 @@ use crate::service::trade_notes_service::TradeNotesService;
 use crate::service::rate_limiter::RateLimiter;
 use crate::service::storage_quota::StorageQuotaService;
 use crate::service::account_deletion::AccountDeletionService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, AINotesService, OpenRouterClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, PlaybookVectorization};
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, OpenRouterClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, NotebookVectorization, PlaybookVectorization};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -50,10 +50,9 @@ pub struct AppState {
     pub ai_insights_service: Arc<AIInsightsService>,
     #[allow(dead_code)]
     pub ai_reports_service: Arc<AiReportsService>,
-    #[allow(dead_code)]
-    pub ai_notes_service: Arc<AINotesService>,
     pub trade_notes_service: Arc<TradeNotesService>,
     pub trade_vector_service: Arc<TradeVectorService>,
+    pub notebook_vector_service: Arc<NotebookVectorization>,
     pub playbook_vector_service: Arc<PlaybookVectorization>,
 }
 
@@ -103,8 +102,16 @@ impl AppState {
         
         let qdrant_config = crate::turso::vector_config::QdrantConfig::from_env()
             .map_err(|e| format!("Failed to load Qdrant config: {}", e))?;
-        let qdrant_client = Arc::new(QdrantDocumentClient::new(qdrant_config).await
+        let qdrant_client = Arc::new(QdrantDocumentClient::new(qdrant_config.clone()).await
             .map_err(|e| format!("Failed to create Qdrant client: {}", e))?);
+        
+        // Perform health check (non-blocking - log warning if it fails but don't fail startup)
+        let qdrant_client_for_health = Arc::clone(&qdrant_client);
+        tokio::spawn(async move {
+            if let Err(e) = qdrant_client_for_health.health_check().await {
+                log::warn!("Qdrant health check failed: {}. The service will continue, but vector operations may fail.", e);
+            }
+        });
         
         // Initialize ChatVectorization service
         let chat_vector_service = Arc::new(ChatVectorization::new(
@@ -114,6 +121,12 @@ impl AppState {
         
         // Initialize PlaybookVectorization service
         let playbook_vector_service = Arc::new(PlaybookVectorization::new(
+            Arc::clone(&voyager_client),
+            Arc::clone(&qdrant_client),
+        ));
+        
+        // Initialize NotebookVectorization service
+        let notebook_vector_service = Arc::new(NotebookVectorization::new(
             Arc::clone(&voyager_client),
             Arc::clone(&qdrant_client),
         ));
@@ -140,12 +153,7 @@ impl AppState {
             Arc::clone(&ai_insights_service),
         ));
 
-        let ai_notes_service = Arc::new(AINotesService::new(
-            Arc::clone(&openrouter_client),
-        ));
-
         let trade_notes_service = Arc::new(TradeNotesService::new(
-            Arc::clone(&ai_notes_service),
             Arc::clone(&cache_service),
         ));
 
@@ -188,9 +196,9 @@ impl AppState {
             ai_chat_service,
             ai_insights_service,
             ai_reports_service,
-            ai_notes_service,
             trade_notes_service,
             trade_vector_service,
+            notebook_vector_service,
             playbook_vector_service,
         })
     }

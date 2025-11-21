@@ -188,6 +188,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_data.as_ref().trade_vector_service.clone()))
             // CRITICAL: Add PlaybookVectorization as separate app_data for playbook routes
             .app_data(Data::new(app_data.as_ref().playbook_vector_service.clone()))
+            // CRITICAL: Add NotebookVectorization as separate app_data for notebook routes
+            .app_data(Data::new(app_data.as_ref().notebook_vector_service.clone()))
             // CRITICAL: Add TradeNotesService as separate app_data for trade notes routes
             .app_data(Data::new(app_data.as_ref().trade_notes_service.clone()))  
             .wrap(cors)

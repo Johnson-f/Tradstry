@@ -7,7 +7,7 @@ use crate::models::ai::chat::{
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
 use crate::service::ai_service::vector_service::vectors::ChatVectorization;
 use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
-use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::openrouter::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
 use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::turso::client::TursoClient;
 use anyhow::{Result, Context};
@@ -91,13 +91,13 @@ impl AIChatService {
         messages: &[ChatMessage],
         query: &str,
         context_sources: &[ContextSource],
-    ) -> Vec<crate::service::ai_service::openrouter_client::ChatMessage> {
+    ) -> Vec<crate::service::ai_service::model_connection::openrouter::ChatMessage> {
         let mut openrouter_messages = Vec::new();
         
         // Add system prompt if this is the first user message or if we have context
         if messages.len() == 1 || !context_sources.is_empty() {
             let system_prompt = self.build_enhanced_system_prompt(query, context_sources);
-            openrouter_messages.push(crate::service::ai_service::openrouter_client::ChatMessage {
+            openrouter_messages.push(crate::service::ai_service::model_connection::openrouter::ChatMessage {
                 role: OpenRouterMessageRole::System,
                 content: system_prompt,
             });
@@ -110,7 +110,7 @@ impl AIChatService {
                 continue;
             }
             
-            openrouter_messages.push(crate::service::ai_service::openrouter_client::ChatMessage {
+            openrouter_messages.push(crate::service::ai_service::model_connection::openrouter::ChatMessage {
                 role: match msg.role {
                     MessageRole::User => OpenRouterMessageRole::User,
                     MessageRole::Assistant => OpenRouterMessageRole::Assistant,

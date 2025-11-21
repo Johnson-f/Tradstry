@@ -144,7 +144,7 @@ impl SearchConfig {
     }
 }
 
-/// Configuration for Qdrant Cloud
+/// Configuration for Qdrant (self-hosted or Cloud)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QdrantConfig {
     pub url: String,
@@ -159,8 +159,9 @@ impl QdrantConfig {
         Ok(QdrantConfig {
             url: env::var("QDRANT_URL")
                 .map_err(|_| "QDRANT_URL environment variable not set")?,
-            api_key: env::var("QDRANT_API_KEY")
-                .map_err(|_| "QDRANT_API_KEY environment variable not set")?,
+            // API key is optional for self-hosted instances without authentication
+            // Required for Qdrant Cloud or self-hosted instances with authentication enabled
+            api_key: env::var("QDRANT_API_KEY").unwrap_or_default(),
             collection_prefix: "tradistry".to_string(),
             max_retries: 3,
             timeout_seconds: 30,

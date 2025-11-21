@@ -10,4 +10,5 @@ pub use client::VoyagerClient;
 pub use qdrant::QdrantDocumentClient;
 pub use vec_generation::TradeVectorService;
 pub use vectors::chat::ChatVectorization;
+pub use vectors::notebook::NotebookVectorization;
 pub use vectors::playbook::PlaybookVectorization;

@@ -7,7 +7,7 @@ use crate::models::ai::insights::{
 use crate::models::stock::stocks::TimeRange;
 use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
-use crate::service::ai_service::openrouter_client::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::openrouter::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
 use crate::turso::client::TursoClient;
 use anyhow::{Result, Context};
 use chrono::Utc;
@@ -401,7 +401,7 @@ async fn generate_insight_content(
     let prompt = self.build_insight_prompt(&template, request, trading_data);
 
     // Generate content using OpenRouter
-    let messages = vec![crate::service::ai_service::openrouter_client::ChatMessage {
+    let messages = vec![crate::service::ai_service::model_connection::openrouter::ChatMessage {
         role: OpenRouterMessageRole::User,
         content: prompt,
     }];

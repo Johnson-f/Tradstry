@@ -23,8 +23,18 @@ if [ ! -f "$SSH_KEY" ]; then
     exit 1
 fi
 
-# Create docker-compose.yml locally
-cat > docker-compose.qdrant.yml << 'EOF'
+# Generate or use existing API key
+if [ -z "$QDRANT_API_KEY" ]; then
+    echo -e "${BLUE}🔑 Generating Qdrant API key...${NC}"
+    QDRANT_API_KEY=$(openssl rand -hex 32)
+    echo -e "${GREEN}✅ Generated API key: $QDRANT_API_KEY${NC}"
+    echo -e "${BLUE}💡 Save this key! Set it in your .env file as QDRANT_API_KEY${NC}"
+else
+    echo -e "${BLUE}🔑 Using provided QDRANT_API_KEY${NC}"
+fi
+
+# Create docker-compose.yml locally with API key
+cat > docker-compose.qdrant.yml << EOF
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -33,6 +43,8 @@ services:
       - "6333:6333"
     volumes:
       - ./qdrant_storage:/qdrant/storage:z
+    environment:
+      - QDRANT__SERVICE__API_KEY=$QDRANT_API_KEY
 EOF
 
 echo -e "${BLUE}📋 Copying docker-compose.yml to VPS...${NC}"
@@ -77,6 +89,11 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Qdrant deployed successfully!${NC}"
     echo ""
     echo "🔗 Access Qdrant at: http://$VPS_IP:6333"
+    echo ""
+    echo -e "${GREEN}🔑 API Key:${NC} $QDRANT_API_KEY"
+    echo -e "${BLUE}💡 Add this to your .env file:${NC}"
+    echo "   QDRANT_URL=http://$VPS_IP:6333"
+    echo "   QDRANT_API_KEY=$QDRANT_API_KEY"
     echo ""
     echo "📋 Useful commands:"
     echo "  View logs: ssh -i $SSH_KEY $VPS_USER@$VPS_IP 'cd $COMPOSE_DIR && docker compose logs -f qdrant'"
