@@ -173,7 +173,7 @@ pub async fn create_option(
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    trade_vector_service: web::Data<Arc<TradeVectorService>>,
+    trade_vectorization: web::Data<Arc<crate::service::ai_service::TradeVectorization>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     // Log raw request body
@@ -238,22 +238,26 @@ pub async fn create_option(
                 broadcast_option_update(ws_manager_clone, &user_id_ws, "created", &option_ws).await;
             });
 
-            // Vectorize trade mistakes and notes
-            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
-            let option_id = option.id;
-            let user_id_vec = user_id.clone();
-            let conn_clone = conn.clone();
-            
-            tokio::spawn(async move {
-                if let Err(e) = trade_vector_service_clone
-                    .vectorize_trade_mistakes_and_notes(&user_id_vec, option_id, "option", &conn_clone)
-                    .await
-                {
-                    error!("Failed to vectorize trade mistakes and notes for option {}: {}", option_id, e);
-                } else {
-                    info!("Successfully vectorized mistakes and notes for option {}", option_id);
+            // Vectorize trade if it has mistakes
+            if let Some(ref mistakes) = option.mistakes {
+                if !mistakes.trim().is_empty() {
+                    let trade_vectorization_clone = trade_vectorization.get_ref().clone();
+                    let option_id = option.id;
+                    let user_id_vec = user_id.clone();
+                    let conn_clone = conn.clone();
+                    
+                    tokio::spawn(async move {
+                        if let Err(e) = trade_vectorization_clone
+                            .vectorize_trade(&user_id_vec, option_id, "option", &conn_clone)
+                            .await
+                        {
+                            error!("Failed to vectorize trade for option {}: {}", option_id, e);
+                        } else {
+                            info!("Successfully vectorized trade for option {}", option_id);
+                        }
+                    });
                 }
-            });
+            }
 
             Ok(HttpResponse::Created().json(ApiResponse::success(option)))
         }

@@ -27,7 +27,7 @@ use crate::service::brokerage::{
 };
 use crate::models::stock::stocks::{Stock, CreateStockRequest, TradeType, OrderType};
 use crate::models::options::option_trade::{OptionTrade, CreateOptionRequest, OptionType};
-use crate::service::ai_service::TradeVectorService;
+use crate::service::ai_service::TradeVectorization;
 
 /// Response wrapper
 #[derive(Debug, Serialize)]
@@ -695,7 +695,7 @@ pub async fn merge_transactions(
     req: HttpRequest,
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
-    trade_vector_service: web::Data<Arc<TradeVectorService>>,
+    trade_vectorization: web::Data<Arc<TradeVectorization>>,
     payload: web::Json<MergeTransactionsRequest>,
 ) -> ActixResult<HttpResponse> {
     let claims = get_authenticated_user(&req, &supabase_config).await?;
@@ -1001,21 +1001,21 @@ pub async fn merge_transactions(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
-        // Vectorize all created stock trades
-        let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+        // Vectorize all created stock trades with structured format
+        let trade_vectorization_clone = trade_vectorization.get_ref().clone();
         let user_id_vec = user_id.clone();
         let conn_clone = conn.clone();
         let created_trades_clone = created_trades.clone();
 
         tokio::spawn(async move {
             for trade_id in created_trades_clone {
-                if let Err(e) = trade_vector_service_clone
-                    .vectorize_trade_mistakes_and_notes(&user_id_vec, trade_id, "stock", &conn_clone)
+                if let Err(e) = trade_vectorization_clone
+                    .vectorize_trade(&user_id_vec, trade_id, "stock", &conn_clone)
                     .await
                 {
-                    error!("Failed to vectorize trade mistakes and notes for stock {}: {}", trade_id, e);
+                    error!("Failed to vectorize trade for stock {}: {}", trade_id, e);
                 } else {
-                    info!("Successfully vectorized mistakes and notes for stock {}", trade_id);
+                    info!("Successfully vectorized trade for stock {}", trade_id);
                 }
             }
         });
@@ -1160,21 +1160,21 @@ pub async fn merge_transactions(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
-        // Vectorize all created option trades
-        let trade_vector_service_clone = trade_vector_service.get_ref().clone();
+        // Vectorize all created option trades with structured format
+        let trade_vectorization_clone = trade_vectorization.get_ref().clone();
         let user_id_vec = user_id.clone();
         let conn_clone = conn.clone();
         let created_trades_clone = created_trades.clone();
 
         tokio::spawn(async move {
             for trade_id in created_trades_clone {
-                if let Err(e) = trade_vector_service_clone
-                    .vectorize_trade_mistakes_and_notes(&user_id_vec, trade_id, "option", &conn_clone)
+                if let Err(e) = trade_vectorization_clone
+                    .vectorize_trade(&user_id_vec, trade_id, "option", &conn_clone)
                     .await
                 {
-                    error!("Failed to vectorize trade mistakes and notes for option {}: {}", trade_id, e);
+                    error!("Failed to vectorize trade for option {}: {}", trade_id, e);
                 } else {
-                    info!("Successfully vectorized mistakes and notes for option {}", trade_id);
+                    info!("Successfully vectorized trade for option {}", trade_id);
                 }
             }
         });

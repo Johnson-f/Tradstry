@@ -70,3 +70,6 @@ lru = "0.12"
 # JWT Caching dependencies
 dashmap = "5.5"  # Thread-safe HashMap for JWT caching
 hex = "0.4"      # For hex encoding
+
+# Async trait support
+async-trait = "0.1"

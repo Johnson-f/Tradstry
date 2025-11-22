@@ -33,7 +33,7 @@ use crate::service::trade_notes_service::TradeNotesService;
 use crate::service::rate_limiter::RateLimiter;
 use crate::service::storage_quota::StorageQuotaService;
 use crate::service::account_deletion::AccountDeletionService;
-use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, OpenRouterClient, GeminiClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, ChatVectorization, NotebookVectorization, PlaybookVectorization};
+use crate::service::ai_service::{AIChatService, AIInsightsService, AiReportsService, OpenRouterClient, GeminiClient, VoyagerClient, QdrantDocumentClient, TradeVectorService, TradeVectorization, ChatVectorization, NotebookVectorization, PlaybookVectorization, ModelSelector};
 
 /// Application state containing Turso configuration and connections
 #[derive(Clone)]
@@ -52,10 +52,12 @@ pub struct AppState {
     pub ai_reports_service: Arc<AiReportsService>,
     pub trade_notes_service: Arc<TradeNotesService>,
     pub trade_vector_service: Arc<TradeVectorService>,
+    pub trade_vectorization: Arc<TradeVectorization>,
     pub notebook_vector_service: Arc<NotebookVectorization>,
     pub playbook_vector_service: Arc<PlaybookVectorization>,
     #[allow(dead_code)]
     pub gemini_client: Option<Arc<GeminiClient>>,
+    pub model_selector: Arc<tokio::sync::Mutex<ModelSelector>>,
 }
 
 impl AppState {
@@ -118,6 +120,18 @@ impl AppState {
             }
         };
         
+        // Initialize ModelSelector with fallback models
+        let model_selector_config = crate::turso::vector_config::ModelSelectorConfig::from_env();
+        let model_selector = ModelSelector::new(
+            gemini_client.clone(),
+            Arc::clone(&openrouter_client),
+            model_selector_config.openrouter_fallback_models.clone(),
+            model_selector_config.gemini_priority,
+            model_selector_config.fallback_enabled,
+            model_selector_config.max_fallback_attempts,
+        );
+        let model_selector = Arc::new(tokio::sync::Mutex::new(model_selector));
+        
         let voyager_config = crate::turso::vector_config::VoyagerConfig::from_env()
             .map_err(|e| format!("Failed to load Voyager config: {}", e))?;
         let voyager_client = Arc::new(VoyagerClient::new(voyager_config)?);
@@ -156,14 +170,14 @@ impl AppState {
         let ai_chat_service = Arc::new(AIChatService::new(
             Arc::clone(&chat_vector_service),
             Arc::clone(&qdrant_client),
-            Arc::clone(&openrouter_client),
+            Arc::clone(&model_selector),
             Arc::clone(&turso_client),
             Arc::clone(&voyager_client),
             10, // max_context_vectors
         ));
         
         let ai_insights_service = Arc::new(AIInsightsService::new(
-            Arc::clone(&openrouter_client),
+            Arc::clone(&model_selector),
             Arc::clone(&turso_client),
             Arc::clone(&voyager_client),
             Arc::clone(&qdrant_client),
@@ -207,6 +221,12 @@ impl AppState {
             Arc::clone(&qdrant_client),
         ));
 
+        // Initialize TradeVectorization for new structured trade vectorization
+        let trade_vectorization = Arc::new(TradeVectorization::new(
+            Arc::clone(&voyager_client),
+            Arc::clone(&qdrant_client),
+        ));
+
         Ok(Self {
             config,
             turso_client,
@@ -220,9 +240,11 @@ impl AppState {
             ai_reports_service,
             trade_notes_service,
             trade_vector_service,
+            trade_vectorization,
             notebook_vector_service,
             playbook_vector_service,
             gemini_client,
+            model_selector,
         })
     }
 

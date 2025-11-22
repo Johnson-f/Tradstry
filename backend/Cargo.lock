@@ -5164,6 +5164,7 @@ dependencies = [
  "actix-web-httpauth",
  "actix-ws",
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "bigdecimal",
  "bincode",

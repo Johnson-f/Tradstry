@@ -27,7 +27,7 @@ impl TradeNotesService {
         trade_type: &str,
         trade_id: i64,
         content: String,
-        trade_context: Option<&str>, // Optional: symbol, trade details for context
+        _trade_context: Option<&str>, // Optional: symbol, trade details for context
     ) -> Result<TradeNote> {
         log::info!("Upserting trade note - user={}, trade_type={}, trade_id={}, content_len={}", 
                    user_id, trade_type, trade_id, content.len());

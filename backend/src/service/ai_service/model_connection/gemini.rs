@@ -165,14 +165,50 @@ impl GeminiClient {
 
         let (tx, rx) = mpsc::channel(100);
 
-        // Spawn streaming task
-        let client = self.client.clone();
-        let config = self.config.clone();
-        let url = self.config.get_chat_url();
+        // Make HTTP request first to check status before spawning task
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Content-Type", "application/json".parse()?);
+        headers.insert("x-goog-api-key", self.config.api_key.parse()?);
+
+        let url_with_stream = format!("{}?alt=sse", self.config.get_chat_url());
         let request_json = serde_json::to_value(&request)?;
 
+        log::info!("Sending streaming request to Gemini: {}", url_with_stream);
+        
+        // Check HTTP response status before spawning streaming task
+        let response = self.client
+            .post(&url_with_stream)
+            .headers(headers.clone())
+            .json(&request_json)
+            .send()
+            .await
+            .context("Failed to send streaming request to Gemini API")?;
+
+        let status = response.status();
+        log::info!("Gemini response status: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            log::error!("Gemini API error: {} - {}", status, error_text);
+            
+            // Parse error details if possible
+            if let Ok(error_response) = serde_json::from_str::<GeminiError>(&error_text) {
+                log::error!("Gemini API error details: {}", error_response.error.message);
+            }
+            
+            return Err(anyhow::anyhow!(
+                "Gemini streaming API error: {} - {}",
+                status,
+                error_text
+            ));
+        }
+
+        // If status is OK, spawn task to handle the stream
+        // Convert response into a stream for the spawned task
+        let stream = response.bytes_stream();
+
         tokio::spawn(async move {
-            if let Err(e) = Self::handle_streaming_response(client, url, config, request_json, tx).await {
+            if let Err(e) = Self::handle_streaming_response_from_stream(stream, tx).await {
                 log::error!("Gemini streaming error: {}", e);
             }
         });
@@ -180,7 +216,7 @@ impl GeminiClient {
         Ok(rx)
     }
 
-    /// Handle streaming response from Gemini API
+    /// Handle streaming response from Gemini API (legacy - for non-streaming requests)
     async fn handle_streaming_response(
         client: Client,
         url: String,
@@ -225,12 +261,20 @@ impl GeminiClient {
             ));
         }
 
-        let mut stream = response.bytes_stream();
+        let stream = response.bytes_stream();
+        Self::handle_streaming_response_from_stream(stream, tx).await
+    }
+
+    /// Handle streaming response from an existing stream
+    async fn handle_streaming_response_from_stream(
+        mut stream: impl futures_util::Stream<Item = Result<impl AsRef<[u8]>, reqwest::Error>> + Unpin,
+        tx: mpsc::Sender<String>,
+    ) -> Result<()> {
         log::info!("Starting to read Gemini stream...");
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("Failed to read streaming chunk")?;
-            let chunk_str = String::from_utf8_lossy(&chunk);
+            let chunk_str = String::from_utf8_lossy(chunk.as_ref());
             log::debug!("Received chunk: {}", chunk_str);
             
             // Process each line in the chunk - Gemini returns SSE format

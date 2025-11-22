@@ -49,6 +49,16 @@ pub struct QdrantDocumentClient {
     config: AppQdrantConfig,
 }
 
+/// Helper function to check if an error is a timeout error
+fn is_timeout_error(error: &dyn std::fmt::Display) -> bool {
+    let error_str = format!("{}", error);
+    error_str.contains("Timeout") 
+        || error_str.contains("timeout") 
+        || error_str.contains("Cancelled")
+        || error_str.contains("timeout expired")
+        || error_str.contains("operation was cancelled")
+}
+
 impl QdrantDocumentClient {
     pub async fn new(config: AppQdrantConfig) -> Result<Self> {
         // Use QdrantConfig to properly configure the client
@@ -83,27 +93,28 @@ impl QdrantDocumentClient {
         
         log::debug!("Checking if Qdrant collection exists - user={}, collection={}", user_id, collection_name);
         
-        // Check if collection exists
-        let collections = match self.client.list_collections().await {
-            Ok(cols) => {
-                log::debug!("Successfully listed {} Qdrant collections", cols.collections.len());
-                cols
-            }
-            Err(e) => {
-                log::error!(
-                    "Failed to list Qdrant collections - user={}, collection={}, error={}, error_debug={:?}",
-                    user_id, collection_name, e, e
-                );
-                return Err(anyhow::anyhow!("Failed to list collections: {}", e));
-            }
-        };
+        // Retry logic for list_collections with exponential backoff
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = None;
         
-        let exists = collections.collections.iter()
+        for attempt in 0..MAX_RETRIES {
+            match self.client.list_collections().await {
+            Ok(cols) => {
+                    if attempt > 0 {
+                        log::info!("Successfully listed Qdrant collections after {} retries", attempt);
+                    }
+                log::debug!("Successfully listed {} Qdrant collections", cols.collections.len());
+                    
+                    // Check if collection exists
+                    let exists = cols.collections.iter()
             .any(|c| c.name == collection_name);
 
         if !exists {
             log::info!("Creating Qdrant collection: {} (does not exist)", collection_name);
             
+                        // Retry logic for create_collection
+                        let mut create_attempt = 0;
+                        loop {
             match self.client.create_collection(CreateCollection {
                 collection_name: collection_name.clone(),
                 vectors_config: Some(VectorsConfig {
@@ -116,21 +127,69 @@ impl QdrantDocumentClient {
                 ..Default::default()
             }).await {
                 Ok(_) => {
+                                    if create_attempt > 0 {
+                                        log::info!("Qdrant collection created after {} retries", create_attempt);
+                                    }
                     log::info!("Qdrant collection created successfully: {}", collection_name);
+                                    break;
                 }
                 Err(e) => {
+                                    let error_str = format!("{}", e);
+                                    if is_timeout_error(&e) && create_attempt < MAX_RETRIES - 1 {
+                                        create_attempt += 1;
+                                        let delay = Duration::from_millis(1000 * 2_u64.pow(create_attempt - 1));
+                                        log::warn!(
+                                            "Failed to create Qdrant collection (attempt {}/{}): {}. Retrying in {:?}...",
+                                            create_attempt, MAX_RETRIES, error_str, delay
+                                        );
+                                        tokio::time::sleep(delay).await;
+                                        continue;
+                                    } else {
                     log::error!(
                         "Failed to create Qdrant collection - user={}, collection={}, error={}, error_debug={:?}",
                         user_id, collection_name, e, e
                     );
                     return Err(anyhow::anyhow!("Failed to create collection: {}", e));
+                                    }
+                                }
                 }
             }
         } else {
             log::debug!("Qdrant collection already exists: {}", collection_name);
         }
 
-        Ok(())
+                    return Ok(());
+                }
+                Err(e) => {
+                    let error_str = format!("{}", e);
+                    last_error = Some(e);
+                    
+                    if is_timeout_error(&last_error.as_ref().unwrap()) && attempt < MAX_RETRIES - 1 {
+                        let delay = Duration::from_millis(1000 * 2_u64.pow(attempt));
+                        log::warn!(
+                            "Failed to list Qdrant collections (attempt {}/{}): {}. Retrying in {:?}...",
+                            attempt + 1, MAX_RETRIES, error_str, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    } else {
+                        log::error!(
+                            "Failed to list Qdrant collections - user={}, collection={}, error={}, error_debug={:?}",
+                            user_id, collection_name, last_error.as_ref().unwrap(), last_error
+                        );
+                        return Err(anyhow::anyhow!("Failed to list collections: {}", last_error.unwrap()));
+                    }
+                }
+            }
+        }
+        
+        // This should never be reached, but handle it just in case
+        let error_msg = last_error.map(|e| format!("{}", e)).unwrap_or_else(|| "unknown error".to_string());
+        Err(anyhow::anyhow!(
+            "Failed to list collections after {} retries: {}",
+            MAX_RETRIES,
+            error_msg
+        ))
     }
 
     /// Upsert a trade vector with the new format: {user_id, id, content, embedding, type: "trade", created_at}
@@ -202,17 +261,35 @@ impl QdrantDocumentClient {
 
         log::debug!("Calling Qdrant upsert_points - collection={}, points_count=1", collection_name);
         
-        match self.client.upsert_points(upsert_request).await {
+        // Retry logic for upsert_points with exponential backoff
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = None;
+        
+        for attempt in 0..MAX_RETRIES {
+            match self.client.upsert_points(upsert_request.clone()).await {
             Ok(response) => {
+                    if attempt > 0 {
+                        log::info!("Successfully upserted trade vector after {} retries", attempt);
+                    }
                 log::info!("Successfully upserted trade vector to Qdrant - qdrant_uuid={}, vector_id={}, collection={}", 
                     qdrant_uuid, vector_id, collection_name);
                 log::debug!("Qdrant upsert response - vector_id={}, result={:?}", vector_id, response.result);
-                Ok(())
+                    return Ok(());
             }
             Err(e) => {
                 let error_string = format!("{}", e);
-                let error_debug = format!("{:?}", e);
-                
+                    last_error = Some(e);
+                    
+                    if is_timeout_error(&last_error.as_ref().unwrap()) && attempt < MAX_RETRIES - 1 {
+                        let delay = Duration::from_millis(1000 * 2_u64.pow(attempt));
+                        log::warn!(
+                            "Failed to upsert trade vector (attempt {}/{}): {}. Retrying in {:?}...",
+                            attempt + 1, MAX_RETRIES, error_string, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    } else {
+                        let error_debug = format!("{:?}", last_error.as_ref().unwrap());
                 log::error!(
                     "Failed to upsert trade vector to Qdrant - user={}, vector_id={}, qdrant_uuid={}, collection={}",
                     user_id, vector_id, qdrant_uuid, collection_name
@@ -227,8 +304,151 @@ impl QdrantDocumentClient {
                     payload.len()
                 );
                 
-                Err(anyhow::anyhow!("Failed to upsert vector to Qdrant: {} (vector_id: {}, collection: {})", 
-                    error_string, vector_id, collection_name))
+                        return Err(anyhow::anyhow!("Failed to upsert vector to Qdrant: {} (vector_id: {}, collection: {})", 
+                            error_string, vector_id, collection_name));
+                    }
+                }
+            }
+        }
+        
+        // This should never be reached, but handle it just in case
+        let error_msg = last_error.map(|e| format!("{}", e)).unwrap_or_else(|| "unknown error".to_string());
+        Err(anyhow::anyhow!(
+            "Failed to upsert vector to Qdrant after {} retries: {} (vector_id: {}, collection: {})",
+            MAX_RETRIES,
+            error_msg,
+            vector_id,
+            collection_name
+        ))
+    }
+
+    /// Upsert a trade vector with structured payload containing symbol, analytics, and content
+    pub async fn upsert_trade_vector_structured(
+        &self,
+        user_id: &str,
+        vector_id: &str,
+        symbol: &str,
+        trade_type: &str,
+        trade_id: i64,
+        analytics: crate::service::ai_service::vector_service::vectors::trade::TradeAnalytics,
+        mistakes: Option<&str>,
+        trade_notes: Option<&str>,
+        embedding: &[f32],
+    ) -> Result<()> {
+        log::debug!(
+            "Starting upsert_trade_vector_structured - user={}, vector_id={}, symbol={}, trade_type={}, trade_id={}, embedding_dim={}",
+            user_id, vector_id, symbol, trade_type, trade_id, embedding.len()
+        );
+
+        self.ensure_collection(user_id).await
+            .context("Failed to ensure collection exists")?;
+        let collection_name = self.config.get_collection_name(user_id);
+
+        // Generate a deterministic UUID from the vector_id for Qdrant's point ID
+        let qdrant_uuid = Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("trade-{}-{}", user_id, vector_id).as_bytes()
+        ).to_string();
+
+        log::info!(
+            "Upserting structured trade vector to Qdrant - collection={}, qdrant_uuid={}, vector_id={}, symbol={}, trade_id={}",
+            collection_name, qdrant_uuid, vector_id, symbol, trade_id
+        );
+
+        let now = Utc::now();
+
+        // Create structured payload
+        let mut payload = HashMap::new();
+        payload.insert("user_id".to_string(), Value::from(user_id));
+        payload.insert("id".to_string(), Value::from(vector_id));
+        payload.insert("type".to_string(), Value::from("trade"));
+        payload.insert("created_at".to_string(), Value::from(now.to_rfc3339()));
+        payload.insert("symbol".to_string(), Value::from(symbol));
+        payload.insert("trade_type".to_string(), Value::from(trade_type));
+        payload.insert("trade_id".to_string(), Value::from(trade_id));
+
+        // Add analytics as nested fields
+        payload.insert("net_pnl".to_string(), Value::from(analytics.net_pnl));
+        payload.insert("net_pnl_percent".to_string(), Value::from(analytics.net_pnl_percent));
+        payload.insert("position_size".to_string(), Value::from(analytics.position_size));
+        payload.insert("stop_loss_risk_percent".to_string(), Value::from(analytics.stop_loss_risk_percent));
+        payload.insert("risk_to_reward".to_string(), Value::from(analytics.risk_to_reward));
+        payload.insert("entry_price".to_string(), Value::from(analytics.entry_price));
+        payload.insert("exit_price".to_string(), Value::from(analytics.exit_price));
+        payload.insert("hold_time_days".to_string(), Value::from(analytics.hold_time_days));
+
+        // Add content fields
+        if let Some(mistakes_text) = mistakes {
+            if !mistakes_text.trim().is_empty() {
+                payload.insert("mistakes".to_string(), Value::from(mistakes_text));
+            }
+        }
+
+        if let Some(notes_text) = trade_notes {
+            if !notes_text.trim().is_empty() {
+                payload.insert("trade_notes".to_string(), Value::from(notes_text));
+            }
+        }
+
+        log::debug!(
+            "Created structured payload for trade vector - vector_id={}, payload_keys={:?}",
+            vector_id,
+            payload.keys().collect::<Vec<_>>()
+        );
+
+        // Create point with embedding using the generated UUID
+        let point_id = PointId {
+            point_id_options: Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(
+                qdrant_uuid.clone()
+            )),
+        };
+
+        let point = PointStruct {
+            id: Some(point_id),
+            vectors: Some(embedding.to_vec().into()),
+            payload: payload.clone(),
+        };
+
+        let upsert_request = UpsertPoints {
+            collection_name: collection_name.clone(),
+            points: vec![point],
+            ..Default::default()
+        };
+
+        log::debug!(
+            "Calling Qdrant upsert_points - collection={}, points_count=1",
+            collection_name
+        );
+
+        match self.client.upsert_points(upsert_request).await {
+            Ok(response) => {
+                log::info!(
+                    "Successfully upserted structured trade vector to Qdrant - qdrant_uuid={}, vector_id={}, symbol={}, collection={}",
+                    qdrant_uuid, vector_id, symbol, collection_name
+                );
+                log::debug!("Qdrant upsert response - vector_id={}, result={:?}", vector_id, response.result);
+                Ok(())
+            }
+            Err(e) => {
+                let error_string = format!("{}", e);
+                let error_debug = format!("{:?}", e);
+
+                log::error!(
+                    "Failed to upsert structured trade vector to Qdrant - user={}, vector_id={}, qdrant_uuid={}, collection={}",
+                    user_id, vector_id, qdrant_uuid, collection_name
+                );
+                log::error!("Qdrant error message: {}", error_string);
+                log::error!("Qdrant error debug: {}", error_debug);
+                log::error!(
+                    "Qdrant upsert error details - embedding_dim={}, payload_count={}",
+                    embedding.len(),
+                    payload.len()
+                );
+
+                Err(anyhow::anyhow!(
+                    "Failed to upsert structured trade vector to Qdrant: {} (vector_id: {}, collection: {})",
+                    error_string, vector_id, collection_name
+                ))
             }
         }
     }

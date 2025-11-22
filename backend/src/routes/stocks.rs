@@ -227,7 +227,7 @@ pub async fn create_stock(
     app_state: web::Data<AppState>,
     supabase_config: web::Data<SupabaseConfig>,
     cache_service: web::Data<Arc<CacheService>>,
-    trade_vector_service: web::Data<Arc<TradeVectorService>>,
+    trade_vectorization: web::Data<Arc<crate::service::ai_service::TradeVectorization>>,
     ws_manager: web::Data<Arc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     // Log raw request body
@@ -292,22 +292,26 @@ pub async fn create_stock(
                 broadcast_stock_update(ws_manager_clone, &user_id_ws, "created", &stock_ws).await;
             });
 
-            // Vectorize trade mistakes and notes
-            let trade_vector_service_clone = trade_vector_service.get_ref().clone();
-            let stock_id = stock.id;
-            let user_id_vec = user_id.clone();
-            let conn_clone = conn.clone();
-            
-            tokio::spawn(async move {
-                if let Err(e) = trade_vector_service_clone
-                    .vectorize_trade_mistakes_and_notes(&user_id_vec, stock_id, "stock", &conn_clone)
-                    .await
-                {
-                    error!("Failed to vectorize trade mistakes and notes for stock {}: {}", stock_id, e);
-                } else {
-                    info!("Successfully vectorized mistakes and notes for stock {}", stock_id);
+            // Vectorize trade if it has mistakes
+            if let Some(ref mistakes) = stock.mistakes {
+                if !mistakes.trim().is_empty() {
+                    let trade_vectorization_clone = trade_vectorization.get_ref().clone();
+                    let stock_id = stock.id;
+                    let user_id_vec = user_id.clone();
+                    let conn_clone = conn.clone();
+                    
+                    tokio::spawn(async move {
+                        if let Err(e) = trade_vectorization_clone
+                            .vectorize_trade(&user_id_vec, stock_id, "stock", &conn_clone)
+                            .await
+                        {
+                            error!("Failed to vectorize trade for stock {}: {}", stock_id, e);
+                        } else {
+                            info!("Successfully vectorized trade for stock {}", stock_id);
+                        }
+                    });
                 }
-            });
+            }
             
             Ok(HttpResponse::Created().json(ApiResponse::success(stock)))
         }

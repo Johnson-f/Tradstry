@@ -7,7 +7,8 @@ use crate::models::ai::insights::{
 use crate::models::stock::stocks::TimeRange;
 use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
-use crate::service::ai_service::model_connection::openrouter::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::openrouter::{MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::ModelSelector;
 use crate::turso::client::TursoClient;
 use anyhow::{Result, Context};
 use chrono::Utc;
@@ -19,14 +20,14 @@ use std::sync::Arc;
 pub struct AIInsightsService {
     voyager_client: Arc<VoyagerClient>,
     qdrant_client: Arc<QdrantDocumentClient>,
-    openrouter_client: Arc<OpenRouterClient>,
+    model_selector: Arc<tokio::sync::Mutex<ModelSelector>>,
     turso_client: Arc<TursoClient>,
     max_context_vectors: usize,
 }
 
 impl AIInsightsService {
     pub fn new(
-        openrouter_client: Arc<OpenRouterClient>,
+        model_selector: Arc<tokio::sync::Mutex<ModelSelector>>,
         turso_client: Arc<TursoClient>,
         voyager_client: Arc<VoyagerClient>,
         qdrant_client: Arc<QdrantDocumentClient>,
@@ -35,7 +36,7 @@ impl AIInsightsService {
         Self {
             voyager_client,
             qdrant_client,
-            openrouter_client,
+            model_selector,
             turso_client,
             max_context_vectors,
         }
@@ -406,7 +407,10 @@ async fn generate_insight_content(
         content: prompt,
     }];
 
-    let response = self.openrouter_client.generate_chat(messages).await?;
+    let response = {
+        let mut selector = self.model_selector.lock().await;
+        selector.generate_chat_with_fallback(messages).await?
+    };
 
     // Check if response is empty
     if response.trim().is_empty() {
@@ -942,7 +946,7 @@ async fn generate_insight_content(
         Self {
             voyager_client: Arc::clone(&self.voyager_client),
             qdrant_client: Arc::clone(&self.qdrant_client),
-            openrouter_client: Arc::clone(&self.openrouter_client),
+            model_selector: Arc::clone(&self.model_selector),
             turso_client: Arc::clone(&self.turso_client),
             max_context_vectors: self.max_context_vectors,
         }

@@ -2,8 +2,8 @@
 pub mod chat;
 pub mod notebook;
 pub mod playbook;
+pub mod trade;
 
 // Re-export commonly used types
 pub use chat::ChatVectorization;
-pub use notebook::NotebookVectorization;
-pub use playbook::PlaybookVectorization;
+pub use trade::TradeVectorization;

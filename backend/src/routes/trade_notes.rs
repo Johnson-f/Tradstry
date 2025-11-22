@@ -629,6 +629,7 @@ pub async fn upsert_trade_note_for_trade(
     turso_client: web::Data<Arc<TursoClient>>,
     supabase_config: web::Data<SupabaseConfig>,
     trade_notes_service: web::Data<Arc<TradeNotesService>>,
+    trade_vectorization: web::Data<Arc<crate::service::ai_service::TradeVectorization>>,
     ws_manager: Data<StdArc<Mutex<ConnectionManager>>>,
 ) -> Result<HttpResponse> {
     info!("=== Upsert Trade Note for Trade ===");
@@ -705,6 +706,27 @@ pub async fn upsert_trade_note_for_trade(
     {
         Ok(note) => {
             info!("✓ Trade note upserted successfully: {}", note.id);
+            
+            // Vectorize trade with updated notes
+            let trade_vectorization_clone = trade_vectorization.get_ref().clone();
+            let user_id_vec = claims.sub.clone();
+            let trade_type_vec = path.trade_type.clone();
+            let trade_id_vec = path.trade_id;
+            let conn_clone = conn.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = trade_vectorization_clone
+                    .vectorize_trade(&user_id_vec, trade_id_vec, &trade_type_vec, &conn_clone)
+                    .await
+                {
+                    error!("Failed to vectorize trade after note update - trade_type={}, trade_id={}: {}", 
+                        trade_type_vec, trade_id_vec, e);
+                } else {
+                    info!("Successfully vectorized trade after note update - trade_type={}, trade_id={}", 
+                        trade_type_vec, trade_id_vec);
+                }
+            });
+            
             // Broadcast WebSocket event
             let ws_manager_clone = ws_manager.clone();
             let user_id_ws = claims.sub.clone();

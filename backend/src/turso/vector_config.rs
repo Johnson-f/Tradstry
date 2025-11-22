@@ -219,6 +219,40 @@ impl QdrantConfig {
     }
 }
 
+/// Model selector configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelSelectorConfig {
+    pub gemini_priority: bool,
+    pub openrouter_fallback_models: Vec<String>,
+    pub fallback_enabled: bool,
+    pub max_fallback_attempts: u32,
+}
+
+impl ModelSelectorConfig {
+    pub fn from_env() -> Self {
+        Self {
+            gemini_priority: env::var("GEMINI_PRIORITY")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            openrouter_fallback_models: env::var("OPENROUTER_FALLBACK_MODELS")
+                .unwrap_or_else(|_| "x-ai/grok-4.1-fast:free,deepseek/deepseek-r1:free,kwaipilot/kat-coder-pro:free".to_string())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            fallback_enabled: env::var("MODEL_FALLBACK_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            max_fallback_attempts: env::var("MAX_FALLBACK_ATTEMPTS")
+                .unwrap_or_else(|_| "3".to_string())
+                .parse()
+                .unwrap_or(3),
+        }
+    }
+}
+
 /// Hybrid search configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridSearchConfig {

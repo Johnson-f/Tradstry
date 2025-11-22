@@ -186,6 +186,8 @@ async fn main() -> std::io::Result<()> {
             // VectorizationService removed - no longer using Upstash
             // CRITICAL: Add TradeVectorService as separate app_data for vectorizing trade mistakes and notes
             .app_data(Data::new(app_data.as_ref().trade_vector_service.clone()))
+            // CRITICAL: Add TradeVectorization as separate app_data for structured trade vectorization
+            .app_data(Data::new(app_data.as_ref().trade_vectorization.clone()))
             // CRITICAL: Add PlaybookVectorization as separate app_data for playbook routes
             .app_data(Data::new(app_data.as_ref().playbook_vector_service.clone()))
             // CRITICAL: Add NotebookVectorization as separate app_data for notebook routes

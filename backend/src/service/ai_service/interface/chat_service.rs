@@ -7,7 +7,8 @@ use crate::models::ai::chat::{
 use crate::models::ai::chat_templates::{ChatPromptConfig, ContextFormatter};
 use crate::service::ai_service::vector_service::vectors::ChatVectorization;
 use crate::service::ai_service::vector_service::qdrant::QdrantDocumentClient;
-use crate::service::ai_service::model_connection::openrouter::{OpenRouterClient, MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::openrouter::{MessageRole as OpenRouterMessageRole};
+use crate::service::ai_service::model_connection::ModelSelector;
 use crate::service::ai_service::vector_service::client::VoyagerClient;
 use crate::turso::client::TursoClient;
 use anyhow::{Result, Context};
@@ -22,7 +23,7 @@ use uuid::Uuid;
 pub struct AIChatService {
     chat_vector_service: Arc<ChatVectorization>,
     qdrant_client: Arc<QdrantDocumentClient>,
-    openrouter_client: Arc<OpenRouterClient>,
+    model_selector: Arc<tokio::sync::Mutex<ModelSelector>>,
     turso_client: Arc<TursoClient>,
     voyager_client: Arc<VoyagerClient>,
     max_context_vectors: usize,
@@ -33,7 +34,7 @@ impl AIChatService {
     pub fn new(
         chat_vector_service: Arc<ChatVectorization>,
         qdrant_client: Arc<QdrantDocumentClient>,
-        openrouter_client: Arc<OpenRouterClient>,
+        model_selector: Arc<tokio::sync::Mutex<ModelSelector>>,
         turso_client: Arc<TursoClient>,
         voyager_client: Arc<VoyagerClient>,
         max_context_vectors: usize,
@@ -41,7 +42,7 @@ impl AIChatService {
         Self {
             chat_vector_service,
             qdrant_client,
-            openrouter_client,
+            model_selector,
             turso_client,
             voyager_client,
             max_context_vectors,
@@ -204,9 +205,12 @@ impl AIChatService {
             prompt_time, context_sources.len(), messages.len(), user_id
         );
 
-        // Generate AI response
+        // Generate AI response using ModelSelector with fallback
         let ai_start = std::time::Instant::now();
-        let ai_response = self.openrouter_client.generate_chat(openrouter_messages).await?;
+        let ai_response = {
+            let mut selector = self.model_selector.lock().await;
+            selector.generate_chat_with_fallback(openrouter_messages).await?
+        };
         let ai_time = ai_start.elapsed().as_millis();
         
         log::info!(
@@ -340,9 +344,12 @@ impl AIChatService {
             prompt_time, context_sources.len(), messages.len(), user_id
         );
 
-        // Generate streaming AI response
+        // Generate streaming AI response using ModelSelector with fallback
         let stream_start = std::time::Instant::now();
-        let mut stream_receiver = self.openrouter_client.generate_chat_stream(openrouter_messages).await?;
+        let mut stream_receiver = {
+            let mut selector = self.model_selector.lock().await;
+            selector.generate_chat_stream_with_fallback(openrouter_messages).await?
+        };
         let stream_init_time = stream_start.elapsed().as_millis();
         
         log::info!(
