@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use chrono::{DateTime, NaiveDate, Utc};
@@ -1256,6 +1256,37 @@ async fn load_plan_snapshots(
 ) -> Result<Vec<PlanSnapshot>> {
     let plans = position_calculator_plans_table::list_plans(pool, user_id, workspace_id).await?;
     plans.into_iter().map(plan_to_snapshot).collect()
+}
+
+pub async fn list_confirmed_episode_plans(
+    pool: &PgPool,
+    user_id: &str,
+    workspace_id: &str,
+) -> Result<HashMap<String, PlanSnapshot>> {
+    let rows = sqlx::query(
+        "SELECT episode_id,plan_id FROM trade_episode_matches
+         WHERE user_id=$1 AND workspace_id=$2 AND status='confirmed'",
+    )
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let plans_by_id = load_plan_snapshots(pool, user_id, workspace_id)
+        .await?
+        .into_iter()
+        .map(|plan| (plan.plan_id.clone(), plan))
+        .collect::<HashMap<_, _>>();
+    rows.into_iter()
+        .map(|row| {
+            let episode_id: String = row.try_get(0)?;
+            let plan_id: String = row.try_get(1)?;
+            let plan = plans_by_id
+                .get(&plan_id)
+                .cloned()
+                .ok_or_else(|| anyhow!("confirmed trade plan not found"))?;
+            Ok((episode_id, plan))
+        })
+        .collect()
 }
 
 async fn load_plan_snapshot(pool: &PgPool, user_id: &str, plan_id: &str) -> Result<PlanSnapshot> {

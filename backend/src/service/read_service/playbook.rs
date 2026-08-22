@@ -29,6 +29,8 @@ pub struct PlaybookWithStats {
     pub exit_rules: String,
     pub position_sizing_rules: String,
     pub additional_rules: Option<String>,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
     pub win_rate: f64,
@@ -50,6 +52,8 @@ impl PlaybookWithStats {
             exit_rules: record.exit_rules,
             position_sizing_rules: record.position_sizing_rules,
             additional_rules: record.additional_rules,
+            availability: record.availability,
+            workspace_ids: record.workspace_ids,
             created_at: record.created_at,
             updated_at: record.updated_at,
             win_rate: stats.win_rate,
@@ -145,6 +149,20 @@ pub async fn list_playbooks(
         .collect())
 }
 
+pub async fn list_strategy_library_playbooks(
+    user_db: &UserDb,
+    stats_workspace_id: &str,
+) -> Result<Vec<PlaybookWithStats>> {
+    let (playbooks, stats_map) = tokio::try_join!(
+        playbook_table::list_strategy_library_playbooks(user_db.pool(), user_db.user_id()),
+        fetch_stats_map(user_db, stats_workspace_id),
+    )?;
+    Ok(playbooks
+        .into_iter()
+        .map(|playbook| build_with_stats(playbook, &stats_map))
+        .collect())
+}
+
 pub async fn get_playbook(user_db: &UserDb, id: &str) -> Result<Option<PlaybookWithStats>> {
     let playbook = playbook_table::find_playbook(user_db.pool(), id, user_db.user_id()).await?;
     let Some(playbook) = playbook else {
@@ -175,6 +193,26 @@ pub async fn update_playbook(
         playbook_table::update_playbook(user_db.pool(), id, user_db.user_id(), input).await?;
     let stats = fetch_stats_for_playbook(user_db, &playbook.workspace_id, &playbook.id).await?;
     Ok(PlaybookWithStats::from_record(playbook, stats))
+}
+
+pub async fn set_playbook_applicability(
+    user_db: &UserDb,
+    id: &str,
+    availability: &str,
+    workspace_ids: &[String],
+) -> Result<PlaybookWithStats> {
+    let playbook = playbook_table::set_playbook_applicability(
+        user_db.pool(),
+        user_db.user_id(),
+        id,
+        availability,
+        workspace_ids,
+    )
+    .await?;
+    Ok(PlaybookWithStats::from_record(
+        playbook,
+        PlaybookStats::default(),
+    ))
 }
 
 pub async fn delete_playbook(user_db: &UserDb, id: &str) -> Result<bool> {

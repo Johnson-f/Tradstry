@@ -2,7 +2,6 @@ export * as workspaceService from "./workspaces";
 export * as aiService from "./ai";
 export * as analyticsService from "./analytics";
 export * as brokerageService from "./brokerage";
-export * as equityService from "./equity";
 export * as journalService from "./journal";
 export * as notebookService from "./notebook";
 export * as notificationService from "./notifications";

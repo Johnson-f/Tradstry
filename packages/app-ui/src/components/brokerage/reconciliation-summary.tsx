@@ -54,7 +54,7 @@ export function ReconciliationSummary({
 	const localCount = reconciliation?.localTransactionCount;
 
 	return (
-		<section aria-label="Broker data verification" className="mt-3">
+		<section aria-label="Broker data verification" className="mt-2">
 			<div
 				className={`rounded-md border px-2.5 py-2 ${TONE_CLASSES[presentation.tone]}`}
 			>

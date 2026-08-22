@@ -52,7 +52,7 @@ export function SyncConfidenceCard({
 	const actionIsReconnect = state.action === "reconnect";
 
 	return (
-		<section aria-label="Brokerage sync status" className="mt-3 border-t pt-3">
+		<section aria-label="Brokerage sync overview">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
@@ -90,36 +90,64 @@ export function SyncConfidenceCard({
 				)}
 			</div>
 
-			<div className="mt-3 grid grid-cols-3 divide-x rounded-md border bg-muted/20 py-2">
-				<SyncCount
-					label="Transactions"
-					value={outcome?.transactionsSynced ?? 0}
-				/>
-				<SyncCount label="Holdings" value={outcome?.holdingsSynced ?? 0} />
-				<SyncCount label="Balances" value={outcome?.balancesSynced ?? 0} />
-			</div>
-
-			<div className="mt-2 grid grid-cols-2 divide-x rounded-md border bg-background text-[0.625rem]">
-				<div className="px-2.5 py-2">
-					<p className="text-muted-foreground">Last successful</p>
-					<p className="mt-0.5 font-medium text-foreground">
-						{formatSyncTimestamp(outcome?.succeededAt)}
-					</p>
+			<div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(15rem,1.1fr)]">
+				<div className="grid grid-cols-3 divide-x rounded-md border bg-muted/20 py-2">
+					<SyncCount
+						label="Transactions"
+						value={outcome?.transactionsSynced ?? 0}
+					/>
+					<SyncCount label="Holdings" value={outcome?.holdingsSynced ?? 0} />
+					<SyncCount label="Balances" value={outcome?.balancesSynced ?? 0} />
 				</div>
-				<div className="px-2.5 py-2">
-					<p className="text-muted-foreground">Next automatic sync</p>
-					<p className="mt-0.5 font-medium text-foreground">
-						{formatNextSyncTimestamp(
-							outcome?.nextScheduledAt,
-							connectionDisabled,
-						)}
-					</p>
+
+				<div className="grid grid-cols-2 divide-x rounded-md border bg-background text-[0.625rem]">
+					<div className="px-2.5 py-2">
+						<p className="text-muted-foreground">Last successful</p>
+						<p className="mt-0.5 font-medium text-foreground">
+							{formatSyncTimestamp(outcome?.succeededAt)}
+						</p>
+					</div>
+					<div className="px-2.5 py-2">
+						<p className="text-muted-foreground">Next automatic sync</p>
+						<p className="mt-0.5 font-medium text-foreground">
+							{formatNextSyncTimestamp(
+								outcome?.nextScheduledAt,
+								connectionDisabled,
+							)}
+						</p>
+					</div>
 				</div>
 			</div>
 
 			<ReconciliationSummary reconciliation={reconciliation} />
 
-			<div className="mt-1 flex justify-end">
+			<div className="mt-2 flex flex-wrap items-start justify-between gap-2 border-t pt-2">
+				<details className="min-w-0 flex-1 text-[0.625rem]">
+					<summary className="cursor-pointer select-none font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+						Sync details
+					</summary>
+					<dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-md bg-muted/30 p-2.5 text-muted-foreground">
+						<dt>Workspace</dt>
+						<dd className="truncate text-right text-foreground">
+							{workspaceName}
+						</dd>
+						<dt>Latest attempt</dt>
+						<dd className="text-right text-foreground">
+							{formatSyncTimestamp(outcome?.startedAt)}
+						</dd>
+						<dt>Finished</dt>
+						<dd className="text-right text-foreground">
+							{formatSyncTimestamp(outcome?.finishedAt)}
+						</dd>
+						<dt>Diagnostic ID</dt>
+						<dd
+							className="truncate text-right font-mono text-foreground"
+							title={outcome?.diagnosticId ?? undefined}
+						>
+							{outcome?.diagnosticId ?? "Not available"}
+						</dd>
+					</dl>
+				</details>
 				<ReportIncorrectDataDialog
 					workspaceId={workspaceId}
 					workspaceName={workspaceName}
@@ -127,33 +155,6 @@ export function SyncConfidenceCard({
 					diagnosticId={reconciliation?.diagnosticId ?? outcome?.diagnosticId}
 				/>
 			</div>
-
-			<details className="mt-2 border-t pt-2 text-[0.625rem]">
-				<summary className="cursor-pointer select-none font-medium text-muted-foreground hover:text-foreground">
-					Sync details
-				</summary>
-				<dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-md bg-muted/30 p-2.5 text-muted-foreground">
-					<dt>Workspace</dt>
-					<dd className="truncate text-right text-foreground">
-						{workspaceName}
-					</dd>
-					<dt>Latest attempt</dt>
-					<dd className="text-right text-foreground">
-						{formatSyncTimestamp(outcome?.startedAt)}
-					</dd>
-					<dt>Finished</dt>
-					<dd className="text-right text-foreground">
-						{formatSyncTimestamp(outcome?.finishedAt)}
-					</dd>
-					<dt>Diagnostic ID</dt>
-					<dd
-						className="truncate text-right font-mono text-foreground"
-						title={outcome?.diagnosticId ?? undefined}
-					>
-						{outcome?.diagnosticId ?? "Not available"}
-					</dd>
-				</dl>
-			</details>
 		</section>
 	);
 }

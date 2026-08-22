@@ -101,6 +101,7 @@ fn row_to_transaction(row: &sqlx::postgres::PgRow) -> Result<BrokerageTransactio
 pub struct TransactionFilters {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub episode_closed_date: Option<String>,
     pub transaction_type: Option<String>,
     pub symbol: Option<String>,
     pub sort_by: Option<String>,
@@ -116,6 +117,7 @@ impl Default for TransactionFilters {
         Self {
             start_date: None,
             end_date: None,
+            episode_closed_date: None,
             transaction_type: None,
             symbol: None,
             sort_by: None,
@@ -162,6 +164,17 @@ pub async fn list_transactions(
     if let Some(ref ed) = filters.end_date {
         where_clauses.push(format!("trade_date < (${idx}::date + INTERVAL '1 day')"));
         params.push(TxParam::Text(ed.clone()));
+        idx += 1;
+    }
+    if let Some(ref closed_date) = filters.episode_closed_date {
+        where_clauses.push(format!(
+            "EXISTS (SELECT 1 FROM trade_episode_fills ef \
+             JOIN trade_episodes e ON e.id = ef.episode_id \
+             WHERE ef.brokerage_transaction_id = brokerage_transactions.id \
+             AND e.user_id = $1 AND e.workspace_id = $2 \
+             AND (e.closed_at AT TIME ZONE 'America/New_York')::date = ${idx}::date)"
+        ));
+        params.push(TxParam::Text(closed_date.clone()));
         idx += 1;
     }
     if let Some(ref tt) = filters.transaction_type {

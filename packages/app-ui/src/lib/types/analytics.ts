@@ -40,11 +40,57 @@ export interface JournalAnalytics {
   rangeEnd: string | null;
 }
 
+export interface TradingPerformancePoint {
+  date: string;
+  dailyPnl: number;
+  cumulativePnl: number;
+  drawdown: number;
+  closedTradeCount: number;
+}
+
+export interface PerformanceBreakdown {
+  key: string;
+  netPnl: number;
+  winRate: number;
+  tradeCount: number;
+}
+
+export interface TradingPerformance {
+  totalRealizedPnl: number;
+  grossProfit: number;
+  grossLoss: number;
+  averageWin: number;
+  averageLoss: number;
+  profitFactor: number | null;
+  winRate: number;
+  closedTradeCount: number;
+  winningTradeCount: number;
+  breakevenTradeCount: number;
+  losingTradeCount: number;
+  averageRealizedR: number | null;
+  riskDefinedTradeCount: number;
+  openPositionCount: number;
+  needsReviewCount: number;
+  peakRealizedPnl: number;
+  currentDrawdown: number;
+  maxDrawdown: number;
+  currentStreak: number;
+  longestLossStreak: number;
+  bestSymbol: PerformanceBreakdown | null;
+  worstSymbol: PerformanceBreakdown | null;
+  bestDay: PerformanceBreakdown | null;
+  worstDay: PerformanceBreakdown | null;
+  points: TradingPerformancePoint[];
+}
+
 export interface CalendarDaySummary {
   date: string;
   profit: number;
   tradeCount: number;
   winRate: number;
+  winningTradeCount: number;
+  breakevenTradeCount: number;
+  losingTradeCount: number;
 }
 
 export interface CalendarWeekSummary {
@@ -54,6 +100,10 @@ export interface CalendarWeekSummary {
   profit: number;
   tradeCount: number;
   tradingDays: number;
+  winRate: number;
+  winningTradeCount: number;
+  breakevenTradeCount: number;
+  losingTradeCount: number;
 }
 
 export interface CalendarAnalytics {
@@ -62,6 +112,10 @@ export interface CalendarAnalytics {
   monthProfit: number;
   tradeCount: number;
   tradingDays: number;
+  winRate: number;
+  winningTradeCount: number;
+  breakevenTradeCount: number;
+  losingTradeCount: number;
   gridStart: string;
   gridEnd: string;
   days: CalendarDaySummary[];

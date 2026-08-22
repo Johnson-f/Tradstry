@@ -28,7 +28,7 @@ import {
   EmptyTitle,
 } from "@tradstry/app-ui/components/ui/empty";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces/hooks";
-import { usePlaybooks } from "@tradstry/app-ui/hooks/playbook";
+import { useStrategyLibraryPlaybooks } from "@tradstry/app-ui/hooks/playbook";
 import {
   useDeletePrinciple,
   usePrinciples,
@@ -179,7 +179,7 @@ export function PrinciplesTab() {
   const workspaceId = activeWorkspace?.id ?? null;
 
   const principlesQuery = usePrinciples(workspaceId);
-  const playbooksQuery = usePlaybooks();
+  const playbooksQuery = useStrategyLibraryPlaybooks();
   const reorder = useReorderPrinciples(workspaceId ?? "");
   const deletePrinciple = useDeletePrinciple(workspaceId ?? "");
 

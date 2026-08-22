@@ -44,6 +44,8 @@ pub struct TagCategory {
     pub role: Option<TagRole>,
     pub color: Option<String>,
     pub sort_order: i64,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -72,11 +74,12 @@ pub struct TradeTag {
 // SELECT column lists. created_at/updated_at are TIMESTAMPTZ in Postgres; the
 // struct fields are `String`, so render them to the original RFC3339-ish form.
 const CATEGORY_COLS: &str = "id, user_id, workspace_id, name, role, color, sort_order, \
+     availability, ARRAY(SELECT workspace_id FROM tag_category_workspace_applicability a WHERE a.category_id = tag_categories.id ORDER BY workspace_id) AS workspace_ids, \
      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
      to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
-const TAG_COLS: &str = "id, user_id, workspace_id, category_id, name, color, \
-     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
-     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
+const TAG_COLS: &str = "tags.id, tags.user_id, tags.workspace_id, tags.category_id, tags.name, tags.color, \
+     to_char(tags.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
+     to_char(tags.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
 
 // ---------------------------------------------------------------------------
 // Row mappers
@@ -94,8 +97,10 @@ fn row_to_category(row: &sqlx::postgres::PgRow) -> Result<TagCategory> {
         role,
         color: row.try_get::<Option<String>, _>(5)?,
         sort_order: row.try_get::<i64, _>(6)?,
-        created_at: row.try_get::<String, _>(7)?,
-        updated_at: row.try_get::<String, _>(8)?,
+        availability: row.try_get::<String, _>(7)?,
+        workspace_ids: row.try_get::<Vec<String>, _>(8)?,
+        created_at: row.try_get::<String, _>(9)?,
+        updated_at: row.try_get::<String, _>(10)?,
     })
 }
 
@@ -176,7 +181,10 @@ pub async fn list_categories(
     workspace_id: &str,
 ) -> Result<Vec<TagCategory>> {
     let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "SELECT {CATEGORY_COLS} FROM tag_categories WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL ORDER BY sort_order, name"
+        "SELECT {CATEGORY_COLS} FROM tag_categories WHERE user_id = $1 AND deleted_at IS NULL \
+         AND (availability='all' OR EXISTS (SELECT 1 FROM tag_category_workspace_applicability a \
+              WHERE a.category_id=tag_categories.id AND a.workspace_id=$2)) \
+         ORDER BY sort_order, name"
     )))
     .bind(user_id)
     .bind(workspace_id)
@@ -189,6 +197,79 @@ pub async fn list_categories(
         categories.push(row_to_category(row)?);
     }
     Ok(categories)
+}
+
+pub async fn list_strategy_library_categories(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Vec<TagCategory>> {
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {CATEGORY_COLS} FROM tag_categories WHERE user_id=$1 AND deleted_at IS NULL ORDER BY sort_order,name"
+    )))
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .context("Failed to list strategy library tag categories")?;
+    rows.iter().map(row_to_category).collect()
+}
+
+pub async fn set_category_applicability(
+    pool: &PgPool,
+    user_id: &str,
+    id: &str,
+    availability: &str,
+    workspace_ids: &[String],
+) -> Result<TagCategory> {
+    ensure!(
+        matches!(availability, "all" | "selected"),
+        "availability must be all or selected"
+    );
+    ensure!(
+        availability == "all" || !workspace_ids.is_empty(),
+        "selected availability requires at least one workspace"
+    );
+    let owned_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workspaces WHERE user_id=$1 AND id = ANY($2::text[])",
+    )
+    .bind(user_id)
+    .bind(workspace_ids)
+    .fetch_one(pool)
+    .await?;
+    ensure!(
+        owned_count as usize == workspace_ids.len(),
+        "one or more selected workspaces do not belong to the user"
+    );
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query(
+        "UPDATE tag_categories SET availability=$1,updated_at=now(),hlc=$2 \
+         WHERE id=$3 AND user_id=$4 AND deleted_at IS NULL",
+    )
+    .bind(availability)
+    .bind(crate::service::hlc::stamp())
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    ensure!(updated.rows_affected() == 1, "tag category not found");
+    sqlx::query("DELETE FROM tag_category_workspace_applicability WHERE category_id=$1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    if availability == "selected" {
+        for workspace_id in workspace_ids {
+            sqlx::query(
+                "INSERT INTO tag_category_workspace_applicability (category_id,workspace_id) VALUES ($1,$2)",
+            )
+            .bind(id)
+            .bind(workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    find_category(pool, user_id, id)
+        .await?
+        .context("Tag category not found after applicability update")
 }
 
 pub async fn find_category(pool: &PgPool, user_id: &str, id: &str) -> Result<Option<TagCategory>> {
@@ -397,7 +478,10 @@ pub async fn list_tags(
     let rows =
         match category_id {
             Some(cat) => sqlx::query(sqlx::AssertSqlSafe(format!(
-                "SELECT {TAG_COLS} FROM tags WHERE user_id = $1 AND workspace_id = $2 AND category_id = $3 AND deleted_at IS NULL ORDER BY name"
+                "SELECT {TAG_COLS} FROM tags JOIN tag_categories c ON c.id=tags.category_id \
+                 WHERE tags.user_id=$1 AND tags.category_id=$3 AND tags.deleted_at IS NULL \
+                 AND (c.availability='all' OR EXISTS (SELECT 1 FROM tag_category_workspace_applicability a \
+                      WHERE a.category_id=c.id AND a.workspace_id=$2)) ORDER BY tags.name"
             )))
             .bind(user_id)
             .bind(workspace_id)
@@ -406,7 +490,10 @@ pub async fn list_tags(
             .await,
             None => {
                 sqlx::query(sqlx::AssertSqlSafe(format!(
-                    "SELECT {TAG_COLS} FROM tags WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL ORDER BY name"
+                    "SELECT {TAG_COLS} FROM tags JOIN tag_categories c ON c.id=tags.category_id \
+                     WHERE tags.user_id=$1 AND tags.deleted_at IS NULL \
+                     AND (c.availability='all' OR EXISTS (SELECT 1 FROM tag_category_workspace_applicability a \
+                          WHERE a.category_id=c.id AND a.workspace_id=$2)) ORDER BY tags.name"
                 )))
                 .bind(user_id)
                 .bind(workspace_id)
@@ -423,9 +510,33 @@ pub async fn list_tags(
     Ok(tags)
 }
 
+pub async fn list_strategy_library_tags(
+    pool: &PgPool,
+    user_id: &str,
+    category_id: Option<&str>,
+) -> Result<Vec<Tag>> {
+    let rows = match category_id {
+        Some(category_id) => sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {TAG_COLS} FROM tags WHERE tags.user_id=$1 AND tags.category_id=$2 AND tags.deleted_at IS NULL ORDER BY tags.name"
+        )))
+        .bind(user_id)
+        .bind(category_id)
+        .fetch_all(pool)
+        .await,
+        None => sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {TAG_COLS} FROM tags WHERE tags.user_id=$1 AND tags.deleted_at IS NULL ORDER BY tags.name"
+        )))
+        .bind(user_id)
+        .fetch_all(pool)
+        .await,
+    }
+    .context("Failed to list strategy library tags")?;
+    rows.iter().map(row_to_tag).collect()
+}
+
 pub async fn find_tag(pool: &PgPool, user_id: &str, id: &str) -> Result<Option<Tag>> {
     let row = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "SELECT {TAG_COLS} FROM tags WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL"
+        "SELECT {TAG_COLS} FROM tags WHERE tags.id = $1 AND tags.user_id = $2 AND tags.deleted_at IS NULL"
     )))
     .bind(id)
     .bind(user_id)
@@ -451,13 +562,9 @@ pub async fn create_tag(
     ensure!(!name.is_empty(), "tag name cannot be empty");
 
     // Validate the category belongs to the user.
-    let category = find_category(pool, user_id, category_id)
+    let _category = find_category(pool, user_id, category_id)
         .await?
         .context("category not found")?;
-    ensure!(
-        category.workspace_id == workspace_id,
-        "category is in another workspace"
-    );
 
     let id = new_id();
     let now = Utc::now();
@@ -636,15 +743,18 @@ pub async fn set_trade_tags(
     let trade_workspace_id = trade_workspace_id.expect("checked above");
 
     let requested: HashSet<&str> = tag_ids.iter().map(String::as_str).collect();
-    let valid: HashMap<String, String> = if tag_ids.is_empty() {
-        HashMap::new()
+    let valid: HashSet<String> = if tag_ids.is_empty() {
+        HashSet::new()
     } else {
-        sqlx::query_as(
-            "SELECT id, workspace_id FROM tags \
-             WHERE id = ANY($1) AND user_id = $2 AND deleted_at IS NULL",
+        sqlx::query_scalar(
+            "SELECT tags.id FROM tags JOIN tag_categories c ON c.id=tags.category_id \
+             WHERE tags.id = ANY($1) AND tags.user_id=$2 AND tags.deleted_at IS NULL \
+             AND (c.availability='all' OR EXISTS (SELECT 1 FROM tag_category_workspace_applicability a \
+                  WHERE a.category_id=c.id AND a.workspace_id=$3))",
         )
         .bind(tag_ids)
         .bind(user_id)
+        .bind(&trade_workspace_id)
         .fetch_all(&mut *tx)
         .await
         .context("Failed to validate trade tags")?
@@ -652,13 +762,9 @@ pub async fn set_trade_tags(
         .collect()
     };
     for tag_id in requested {
-        let Some(tag_workspace_id) = valid.get(tag_id) else {
+        if !valid.contains(tag_id) {
             anyhow::bail!("tag {tag_id} not found");
-        };
-        ensure!(
-            tag_workspace_id == &trade_workspace_id,
-            "tag {tag_id} belongs to a different workspace"
-        );
+        }
     }
 
     sqlx::query("DELETE FROM trade_tags WHERE journal_entry_id = $1")
@@ -805,6 +911,8 @@ pub struct TagCategoryDelta {
     pub role: Option<String>,
     pub color: Option<String>,
     pub sort_order: i64,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub hlc: String,
     pub deleted_at: Option<String>,
     pub updated_at: String,
@@ -822,6 +930,7 @@ pub struct TagDelta {
 }
 
 const CATEGORY_DELTA_COLS: &str = "id, name, role, color, sort_order, hlc, \
+    availability, ARRAY(SELECT workspace_id FROM tag_category_workspace_applicability a WHERE a.category_id = tag_categories.id ORDER BY workspace_id) AS workspace_ids, \
     to_char(deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS deleted_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at";
 
@@ -1122,7 +1231,7 @@ pub async fn categories_since(
     let cookie = cookie.filter(|c| !c.is_empty());
     let sql = format!(
         "SELECT {CATEGORY_DELTA_COLS} FROM tag_categories \
-         WHERE user_id = $1 AND workspace_id = $2 \
+         WHERE user_id = $1 \
            AND ($3::text IS NULL OR updated_at >= $3::timestamptz) \
          ORDER BY updated_at ASC"
     );
@@ -1142,6 +1251,8 @@ pub async fn categories_since(
             role: row.try_get("role")?,
             color: row.try_get("color")?,
             sort_order: row.try_get("sort_order")?,
+            availability: row.try_get("availability")?,
+            workspace_ids: row.try_get("workspace_ids")?,
             hlc: row.try_get("hlc")?,
             deleted_at: row.try_get("deleted_at")?,
             updated_at: row.try_get("updated_at")?,
@@ -1160,7 +1271,7 @@ pub async fn tags_since(
     let cookie = cookie.filter(|c| !c.is_empty());
     let sql = format!(
         "SELECT {TAG_DELTA_COLS} FROM tags \
-         WHERE user_id = $1 AND workspace_id = $2 \
+         WHERE user_id = $1 \
            AND ($3::text IS NULL OR updated_at >= $3::timestamptz) \
          ORDER BY updated_at ASC"
     );

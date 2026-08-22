@@ -129,8 +129,9 @@ async fn ensure_playbook_owned(
         .await?
         .with_context(|| format!("playbook {playbook_id} not found"))?;
     anyhow::ensure!(
-        playbook.workspace_id == workspace_id,
-        "playbook {playbook_id} belongs to a different workspace"
+        playbook.availability == "all"
+            || playbook.workspace_ids.iter().any(|id| id == workspace_id),
+        "playbook {playbook_id} is not available in this workspace"
     );
     Ok(())
 }

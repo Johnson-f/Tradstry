@@ -100,6 +100,8 @@ export interface BrokerageBalance {
 export interface TransactionFilters {
 	startDate?: string;
 	endDate?: string;
+	/** Return every fill belonging to episodes closed on this ET calendar date. */
+	episodeClosedDate?: string;
 	/** ET-anchored preset; when set, the backend derives start/end dates. */
 	range?: AnalyticsRange;
 	transactionType?: string;

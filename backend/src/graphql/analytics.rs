@@ -4,6 +4,9 @@ use crate::service::read_service::analytics::{
     JournalAnalytics, TradeOutcome,
 };
 use crate::service::read_service::analytics_advanced::AdvancedAnalytics;
+use crate::service::trading_performance::{
+    PerformanceBreakdown, TradingPerformance, TradingPerformancePoint,
+};
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
 use std::sync::Arc;
 
@@ -62,11 +65,66 @@ pub struct JournalAnalyticsGql {
 
 #[derive(SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
+pub struct TradingPerformancePointGql {
+    pub date: String,
+    pub daily_pnl: f64,
+    pub cumulative_pnl: f64,
+    pub drawdown: f64,
+    pub closed_trade_count: usize,
+    pub winning_trade_count: usize,
+    pub breakeven_trade_count: usize,
+    pub losing_trade_count: usize,
+}
+
+#[derive(SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct PerformanceBreakdownGql {
+    pub key: String,
+    pub net_pnl: f64,
+    pub win_rate: f64,
+    pub trade_count: usize,
+}
+
+#[derive(SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct TradingPerformanceGql {
+    pub total_realized_pnl: f64,
+    pub gross_profit: f64,
+    pub gross_loss: f64,
+    pub average_win: f64,
+    pub average_loss: f64,
+    pub profit_factor: Option<f64>,
+    pub win_rate: f64,
+    pub closed_trade_count: usize,
+    pub winning_trade_count: usize,
+    pub breakeven_trade_count: usize,
+    pub losing_trade_count: usize,
+    pub average_realized_r: Option<f64>,
+    pub risk_defined_trade_count: usize,
+    pub open_position_count: usize,
+    pub needs_review_count: usize,
+    pub peak_realized_pnl: f64,
+    pub current_drawdown: f64,
+    pub max_drawdown: f64,
+    pub current_streak: i32,
+    pub longest_loss_streak: usize,
+    pub best_symbol: Option<PerformanceBreakdownGql>,
+    pub worst_symbol: Option<PerformanceBreakdownGql>,
+    pub best_day: Option<PerformanceBreakdownGql>,
+    pub worst_day: Option<PerformanceBreakdownGql>,
+    pub points: Vec<TradingPerformancePointGql>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
 pub struct CalendarDaySummaryGql {
     pub date: String,
     pub profit: f64,
     pub trade_count: usize,
     pub win_rate: f64,
+    pub winning_trade_count: usize,
+    pub breakeven_trade_count: usize,
+    pub losing_trade_count: usize,
 }
 
 #[derive(SimpleObject)]
@@ -78,6 +136,10 @@ pub struct CalendarWeekSummaryGql {
     pub profit: f64,
     pub trade_count: usize,
     pub trading_days: usize,
+    pub win_rate: f64,
+    pub winning_trade_count: usize,
+    pub breakeven_trade_count: usize,
+    pub losing_trade_count: usize,
 }
 
 #[derive(SimpleObject)]
@@ -88,6 +150,10 @@ pub struct CalendarAnalyticsGql {
     pub month_profit: f64,
     pub trade_count: usize,
     pub trading_days: usize,
+    pub win_rate: f64,
+    pub winning_trade_count: usize,
+    pub breakeven_trade_count: usize,
+    pub losing_trade_count: usize,
     pub grid_start: String,
     pub grid_end: String,
     pub days: Vec<CalendarDaySummaryGql>,
@@ -123,6 +189,64 @@ impl From<JournalAnalytics> for JournalAnalyticsGql {
     }
 }
 
+impl From<TradingPerformancePoint> for TradingPerformancePointGql {
+    fn from(value: TradingPerformancePoint) -> Self {
+        Self {
+            date: value.date,
+            daily_pnl: value.daily_pnl,
+            cumulative_pnl: value.cumulative_pnl,
+            drawdown: value.drawdown,
+            closed_trade_count: value.closed_trade_count,
+            winning_trade_count: value.winning_trade_count,
+            breakeven_trade_count: value.breakeven_trade_count,
+            losing_trade_count: value.losing_trade_count,
+        }
+    }
+}
+
+impl From<PerformanceBreakdown> for PerformanceBreakdownGql {
+    fn from(value: PerformanceBreakdown) -> Self {
+        Self {
+            key: value.key,
+            net_pnl: value.net_pnl,
+            win_rate: value.win_rate,
+            trade_count: value.trade_count,
+        }
+    }
+}
+
+impl From<TradingPerformance> for TradingPerformanceGql {
+    fn from(value: TradingPerformance) -> Self {
+        Self {
+            total_realized_pnl: value.total_realized_pnl,
+            gross_profit: value.gross_profit,
+            gross_loss: value.gross_loss,
+            average_win: value.average_win,
+            average_loss: value.average_loss,
+            profit_factor: value.profit_factor,
+            win_rate: value.win_rate,
+            closed_trade_count: value.closed_trade_count,
+            winning_trade_count: value.winning_trade_count,
+            breakeven_trade_count: value.breakeven_trade_count,
+            losing_trade_count: value.losing_trade_count,
+            average_realized_r: value.average_realized_r,
+            risk_defined_trade_count: value.risk_defined_trade_count,
+            open_position_count: value.open_position_count,
+            needs_review_count: value.needs_review_count,
+            peak_realized_pnl: value.peak_realized_pnl,
+            current_drawdown: value.current_drawdown,
+            max_drawdown: value.max_drawdown,
+            current_streak: value.current_streak,
+            longest_loss_streak: value.longest_loss_streak,
+            best_symbol: value.best_symbol.map(Into::into),
+            worst_symbol: value.worst_symbol.map(Into::into),
+            best_day: value.best_day.map(Into::into),
+            worst_day: value.worst_day.map(Into::into),
+            points: value.points.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<CalendarDaySummary> for CalendarDaySummaryGql {
     fn from(value: CalendarDaySummary) -> Self {
         Self {
@@ -130,6 +254,9 @@ impl From<CalendarDaySummary> for CalendarDaySummaryGql {
             profit: value.profit,
             trade_count: value.trade_count,
             win_rate: value.win_rate,
+            winning_trade_count: value.winning_trade_count,
+            breakeven_trade_count: value.breakeven_trade_count,
+            losing_trade_count: value.losing_trade_count,
         }
     }
 }
@@ -143,6 +270,10 @@ impl From<CalendarWeekSummary> for CalendarWeekSummaryGql {
             profit: value.profit,
             trade_count: value.trade_count,
             trading_days: value.trading_days,
+            win_rate: value.win_rate,
+            winning_trade_count: value.winning_trade_count,
+            breakeven_trade_count: value.breakeven_trade_count,
+            losing_trade_count: value.losing_trade_count,
         }
     }
 }
@@ -155,6 +286,10 @@ impl From<CalendarAnalytics> for CalendarAnalyticsGql {
             month_profit: value.month_profit,
             trade_count: value.trade_count,
             trading_days: value.trading_days,
+            win_rate: value.win_rate,
+            winning_trade_count: value.winning_trade_count,
+            breakeven_trade_count: value.breakeven_trade_count,
+            losing_trade_count: value.losing_trade_count,
             grid_start: value.grid_start,
             grid_end: value.grid_end,
             days: value.days.into_iter().map(Into::into).collect(),
@@ -236,6 +371,21 @@ impl AnalyticsQuery {
         Ok(analytics.into())
     }
 
+    async fn trading_performance(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        time_filter: AnalyticsTimeFilterInput,
+    ) -> Result<TradingPerformanceGql> {
+        let user_db = get_user_db(ctx).await?;
+        let time_filter = map_time_filter(time_filter)?;
+        Ok(
+            analytics_service::get_trading_performance(&user_db, &workspace_id, &time_filter)
+                .await?
+                .into(),
+        )
+    }
+
     async fn calendar_analytics(
         &self,
         ctx: &Context<'_>,
@@ -244,22 +394,11 @@ impl AnalyticsQuery {
         month: u32,
     ) -> Result<CalendarAnalyticsGql> {
         let user_db = get_user_db(ctx).await?;
-        let cache_key = format!("{year}:{month}");
-        let analytics = if let Ok(redis) = ctx.data::<Arc<RedisClient>>() {
-            analytics_cache::get_or_load(
-                redis,
-                &user_db,
-                &workspace_id,
-                "calendar",
-                &cache_key,
-                || analytics_service::get_calendar_analytics(&user_db, &workspace_id, year, month),
-            )
-            .await?
-        } else {
-            analytics_service::get_calendar_analytics(&user_db, &workspace_id, year, month).await?
-        };
-
-        Ok(analytics.into())
+        Ok(
+            analytics_service::get_calendar_analytics(&user_db, &workspace_id, year, month)
+                .await?
+                .into(),
+        )
     }
 
     async fn advanced_analytics(

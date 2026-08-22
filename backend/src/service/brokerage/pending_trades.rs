@@ -55,7 +55,7 @@ fn weighted_price<'a>(fills: impl Iterator<Item = &'a FillAllocation>) -> Option
     })
 }
 
-fn realized_pnl(
+pub(crate) fn realized_pnl(
     direction: EpisodeDirection,
     allocations: &[FillAllocation],
     multiplier: Decimal,

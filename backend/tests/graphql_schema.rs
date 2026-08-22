@@ -83,4 +83,41 @@ fn schema_builds_without_duplicate_type_names() {
         "regroupBrokerageEpisode(episodeId: String!, transactionIds: [String!]!): String!"
     ));
     assert!(sdl.contains("resetBrokerageEpisodeGrouping(episodeId: String!): Boolean!"));
+    assert!(sdl.contains(
+        "tradingPerformance(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): TradingPerformanceGql!"
+    ));
+    assert!(sdl.contains("totalRealizedPnl: Float!"));
+    assert!(sdl.contains("needsReviewCount: Int!"));
+    assert!(sdl.contains("currentDrawdown: Float!"));
+    assert!(sdl.contains("maxDrawdown: Float!"));
+    assert!(sdl.contains("currentStreak: Int!"));
+    assert!(sdl.contains("bestSymbol: PerformanceBreakdownGql"));
+    assert!(sdl.contains("worstSymbol: PerformanceBreakdownGql"));
+    assert!(sdl.contains("bestDay: PerformanceBreakdownGql"));
+    assert!(sdl.contains("worstDay: PerformanceBreakdownGql"));
+    assert!(sdl.contains("type PerformanceBreakdownGql {"));
+    assert!(sdl.contains("episodeClosedDate: String"));
+    assert!(sdl.contains("type CalendarDaySummaryGql {"));
+    assert!(sdl.contains("type CalendarWeekSummaryGql {"));
+    assert!(sdl.contains("winningTradeCount: Int!"));
+    assert!(sdl.contains("breakevenTradeCount: Int!"));
+    assert!(sdl.contains("losingTradeCount: Int!"));
+    assert!(sdl.contains("averageRealizedR: Float"));
+    assert!(sdl.contains("riskDefinedTradeCount: Int!"));
+    assert!(sdl.contains(
+        "setPlaybookApplicability(id: String!, input: StrategyApplicabilityInput!): PlaybookWithStats!"
+    ));
+    assert!(sdl.contains(
+        "setTagCategoryApplicability(id: String!, input: TagCategoryApplicabilityInput!): TagCategoryGql!"
+    ));
+    assert!(sdl.contains("availability: String!"));
+    assert!(sdl.contains("workspaceIds: [String!]!"));
+    assert!(
+        sdl.contains("strategyLibraryPlaybooks(statsWorkspaceId: String!): [PlaybookWithStats!]!")
+    );
+    assert!(sdl.contains("strategyLibraryTagCategories: [TagCategoryGql!]!"));
+    assert!(sdl.contains("strategyLibraryTags(categoryId: String): [TagGql!]!"));
+    assert!(sdl.contains("drawdown: Float!"));
+    assert!(!sdl.contains("accountEquityHistory("));
+    assert!(!sdl.contains("rebuildAccountEquityHistory("));
 }

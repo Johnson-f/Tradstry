@@ -314,7 +314,7 @@ async fn playbook_owned_by_another_user_is_rejected() {
 }
 
 #[tokio::test]
-async fn playbook_owned_by_another_workspace_is_rejected() {
+async fn universal_playbook_can_govern_another_workspace_but_selected_scope_is_enforced() {
     use tradstry_backend::service::db::schema::tables::playbook_table;
 
     let pool = test_pool().await;
@@ -341,14 +341,29 @@ async fn playbook_owned_by_another_workspace_is_rejected() {
     .await
     .expect("create workspace B playbook");
 
-    let mut input = create_input("workspace-a", "Futures rule");
-    input.playbook_id = Some(playbook.id);
-
-    let err = tp::create_principle(&pool, "u1", input)
+    let mut universal_input = create_input("workspace-a", "Universal rule");
+    universal_input.playbook_id = Some(playbook.id.clone());
+    tp::create_principle(&pool, "u1", universal_input)
         .await
-        .expect_err("must not reference another workspace's playbook");
+        .expect("universal playbook should be available in workspace A");
+
+    playbook_table::set_playbook_applicability(
+        &pool,
+        "u1",
+        &playbook.id,
+        "selected",
+        &["workspace-b".to_string()],
+    )
+    .await
+    .expect("restrict playbook to workspace B");
+
+    let mut selected_input = create_input("workspace-a", "Unavailable rule");
+    selected_input.playbook_id = Some(playbook.id);
+    let err = tp::create_principle(&pool, "u1", selected_input)
+        .await
+        .expect_err("selected playbook must not govern workspace A");
     assert!(
-        err.to_string().contains("different workspace"),
+        err.to_string().contains("not available"),
         "unexpected error: {err}"
     );
 }

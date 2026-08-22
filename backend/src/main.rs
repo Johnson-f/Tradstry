@@ -229,17 +229,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
-    // Equity curves go stale when prices move even with no new trades, and when a replay
-    // fix lands. The sweep covers the first; `rebuild_if_stale` on read covers the second.
-    let equity_scheduler_handle = {
-        let db = db.clone();
-        let shutdown_rx = shutdown_rx.clone();
-        tokio::spawn(async move {
-            tradstry_backend::service::equity::schedule::run_equity_scheduler(db, shutdown_rx)
-                .await;
-        })
-    };
-
     let notifications_outbox_handle = {
         let db = db.clone();
         let notification_events = notification_events_tx.clone();
@@ -383,7 +372,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = sync_handle.await;
         let _ = snaptrade_webhook_handle.await;
         let _ = notebook_maintenance_handle.await;
-        let _ = equity_scheduler_handle.await;
         let _ = notifications_outbox_handle.await;
         let _ = market_monitor_handle.await;
         let _ = notifications_schedule_handle.await;

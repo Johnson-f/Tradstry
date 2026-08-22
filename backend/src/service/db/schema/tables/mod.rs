@@ -1,7 +1,6 @@
 pub mod brokerage_data_report_table;
 pub mod brokerage_reconciliation_table;
 pub mod brokerage_table;
-pub mod equity_table;
 pub mod journal_table;
 pub mod manual_execution_claim_table;
 pub mod notebook;

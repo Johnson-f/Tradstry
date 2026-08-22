@@ -1,15 +1,17 @@
 use crate::service::db::client::UserDb;
 use crate::service::db::schema::tables::journal_table::{
-    self, CalendarDayAggregateRow, ExtremeKind, JournalAggregateRow, TradeOutcomeRow,
+    self, ExtremeKind, JournalAggregateRow, TradeOutcomeRow,
 };
 use crate::service::db::schema::tables::tags_table;
 use crate::service::db::schema::tables::trading_principle_table;
 use crate::service::db::schema::tables::workspaces_table;
 
+pub use crate::service::trading_performance::{
+    CalendarDaySummary, CalendarWeekSummary, TradingCalendar as CalendarAnalytics,
+};
 use anyhow::{Result, anyhow, ensure};
 use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::America::New_York;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TradeOutcome {
@@ -36,37 +38,6 @@ pub struct JournalAnalytics {
     /// `None` for the unbounded `All` range.
     pub range_start: Option<String>,
     pub range_end: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CalendarDaySummary {
-    pub date: String,
-    pub profit: f64,
-    pub trade_count: usize,
-    pub win_rate: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CalendarWeekSummary {
-    pub week_index: usize,
-    pub week_start: String,
-    pub week_end: String,
-    pub profit: f64,
-    pub trade_count: usize,
-    pub trading_days: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CalendarAnalytics {
-    pub year: i32,
-    pub month: u32,
-    pub month_profit: f64,
-    pub trade_count: usize,
-    pub trading_days: usize,
-    pub grid_start: String,
-    pub grid_end: String,
-    pub days: Vec<CalendarDaySummary>,
-    pub weeks: Vec<CalendarWeekSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +123,22 @@ pub async fn get_journal_analytics(
     Ok(analytics)
 }
 
+pub async fn get_trading_performance(
+    user_db: &UserDb,
+    workspace_id: &str,
+    time_filter: &AnalyticsTimeFilter,
+) -> Result<crate::service::trading_performance::TradingPerformance> {
+    let bounds = resolve_range_bounds(time_filter, Utc::now())?;
+    crate::service::trading_performance::load_trading_performance(
+        user_db.pool(),
+        user_db.user_id(),
+        workspace_id,
+        bounds.start,
+        bounds.end,
+    )
+    .await
+}
+
 fn build_journal_analytics(
     agg: JournalAggregateRow,
     biggest_win: Option<TradeOutcomeRow>,
@@ -197,7 +184,6 @@ fn build_journal_analytics(
     } else {
         None
     };
-
     JournalAnalytics {
         win_rate,
         cumulative_profit: agg.cumulative_profit,
@@ -279,102 +265,14 @@ pub async fn get_calendar_analytics(
     year: i32,
     month: u32,
 ) -> Result<CalendarAnalytics> {
-    ensure!((1..=12).contains(&month), "month must be between 1 and 12");
-
-    let month_start =
-        NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(|| anyhow!("Invalid calendar month"))?;
-    let next_month = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1).ok_or_else(|| anyhow!("Invalid next month"))?
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1).ok_or_else(|| anyhow!("Invalid next month"))?
-    };
-    let month_end = next_month - Duration::days(1);
-    let grid_start = start_of_calendar_week(month_start);
-    let grid_end = end_of_calendar_week(month_end);
-
-    let day_rows = journal_table::aggregate_calendar_days(
+    crate::service::trading_performance::load_trading_calendar(
         user_db.pool(),
         user_db.user_id(),
         workspace_id,
-        &month_start.format("%Y-%m-%d").to_string(),
-        &month_end.format("%Y-%m-%d").to_string(),
-    )
-    .await?;
-
-    let mut days_by_date: BTreeMap<NaiveDate, CalendarDayAggregateRow> = BTreeMap::new();
-    for row in day_rows {
-        let parsed = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
-            .map_err(|e| anyhow!("Invalid date '{}' from aggregate: {e}", row.date))?;
-        days_by_date.insert(parsed, row);
-    }
-
-    let mut days = Vec::new();
-    let mut cursor = month_start;
-    while cursor <= month_end {
-        let summary = match days_by_date.get(&cursor) {
-            Some(row) => CalendarDaySummary {
-                date: cursor.format("%Y-%m-%d").to_string(),
-                profit: row.profit,
-                trade_count: row.trade_count as usize,
-                win_rate: if row.trade_count == 0 {
-                    0.0
-                } else {
-                    (row.winning_trade_count as f64 / row.trade_count as f64) * 100.0
-                },
-            },
-            None => CalendarDaySummary {
-                date: cursor.format("%Y-%m-%d").to_string(),
-                profit: 0.0,
-                trade_count: 0,
-                win_rate: 0.0,
-            },
-        };
-        days.push(summary);
-        cursor += Duration::days(1);
-    }
-
-    let month_profit = days.iter().map(|d| d.profit).sum::<f64>();
-    let trade_count = days.iter().map(|d| d.trade_count).sum::<usize>();
-    let trading_days = days.iter().filter(|d| d.trade_count > 0).count();
-
-    let mut weeks = Vec::new();
-    let mut week_start = grid_start;
-    let mut week_index = 1;
-    while week_start <= grid_end {
-        let week_end = week_start + Duration::days(6);
-        let week_days = days
-            .iter()
-            .filter(|day| {
-                NaiveDate::parse_from_str(&day.date, "%Y-%m-%d")
-                    .map(|date| date >= week_start && date <= week_end)
-                    .unwrap_or(false)
-            })
-            .collect::<Vec<_>>();
-
-        weeks.push(CalendarWeekSummary {
-            week_index,
-            week_start: week_start.format("%Y-%m-%d").to_string(),
-            week_end: week_end.format("%Y-%m-%d").to_string(),
-            profit: week_days.iter().map(|day| day.profit).sum::<f64>(),
-            trade_count: week_days.iter().map(|day| day.trade_count).sum::<usize>(),
-            trading_days: week_days.iter().filter(|day| day.trade_count > 0).count(),
-        });
-
-        week_index += 1;
-        week_start += Duration::days(7);
-    }
-
-    Ok(CalendarAnalytics {
         year,
         month,
-        month_profit,
-        trade_count,
-        trading_days,
-        grid_start: grid_start.format("%Y-%m-%d").to_string(),
-        grid_end: grid_end.format("%Y-%m-%d").to_string(),
-        days,
-        weeks,
-    })
+    )
+    .await
 }
 
 /// All-UTC range bounds plus the ET calendar dates they were derived from.
@@ -472,16 +370,6 @@ pub fn resolve_range_bounds(
         start_date_et: Some(start_date),
         end_date_et: Some(today),
     })
-}
-
-fn start_of_calendar_week(date: NaiveDate) -> NaiveDate {
-    let days_from_sunday = i64::from(date.weekday().num_days_from_sunday());
-    date - Duration::days(days_from_sunday)
-}
-
-fn end_of_calendar_week(date: NaiveDate) -> NaiveDate {
-    let days_until_saturday = 6_i64 - i64::from(date.weekday().num_days_from_sunday());
-    date + Duration::days(days_until_saturday)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

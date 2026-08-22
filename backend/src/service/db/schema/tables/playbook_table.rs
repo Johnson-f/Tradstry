@@ -16,6 +16,8 @@ pub struct Playbook {
     pub exit_rules: String,
     pub position_sizing_rules: String,
     pub additional_rules: Option<String>,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -56,6 +58,7 @@ struct PreparedPlaybook {
 }
 
 const SELECT_COLS: &str = "id, user_id, workspace_id, name, edge_name, entry_rules, exit_rules, position_sizing_rules, additional_rules, \
+    availability, ARRAY(SELECT workspace_id FROM playbook_workspace_applicability a WHERE a.playbook_id = playbooks.id ORDER BY workspace_id) AS workspace_ids, \
     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
 
@@ -87,8 +90,10 @@ fn row_to_playbook(row: &sqlx::postgres::PgRow) -> Result<Playbook> {
         exit_rules: row.try_get::<String, _>(6)?,
         position_sizing_rules: row.try_get::<String, _>(7)?,
         additional_rules: row.try_get::<Option<String>, _>(8)?,
-        created_at: row.try_get::<String, _>(9)?,
-        updated_at: row.try_get::<String, _>(10)?,
+        availability: row.try_get::<String, _>(9)?,
+        workspace_ids: row.try_get::<Vec<String>, _>(10)?,
+        created_at: row.try_get::<String, _>(11)?,
+        updated_at: row.try_get::<String, _>(12)?,
     })
 }
 
@@ -170,7 +175,10 @@ pub async fn list_playbooks(
     workspace_id: &str,
 ) -> Result<Vec<Playbook>> {
     let sql = format!(
-        "SELECT {SELECT_COLS} FROM playbooks WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC"
+        "SELECT {SELECT_COLS} FROM playbooks WHERE user_id = $1 AND deleted_at IS NULL \
+         AND (availability = 'all' OR EXISTS (SELECT 1 FROM playbook_workspace_applicability a \
+              WHERE a.playbook_id = playbooks.id AND a.workspace_id = $2)) \
+         ORDER BY created_at DESC"
     );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(user_id)
@@ -185,6 +193,81 @@ pub async fn list_playbooks(
     }
 
     Ok(playbooks)
+}
+
+pub async fn list_strategy_library_playbooks(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Vec<Playbook>> {
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM playbooks WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC"
+    );
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .context("Failed to list strategy library playbooks")?;
+    rows.iter().map(row_to_playbook).collect()
+}
+
+pub async fn set_playbook_applicability(
+    pool: &PgPool,
+    user_id: &str,
+    id: &str,
+    availability: &str,
+    workspace_ids: &[String],
+) -> Result<Playbook> {
+    ensure!(
+        matches!(availability, "all" | "selected"),
+        "availability must be all or selected"
+    );
+    ensure!(
+        availability == "all" || !workspace_ids.is_empty(),
+        "selected availability requires at least one workspace"
+    );
+    let owned_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workspaces WHERE user_id=$1 AND id = ANY($2::text[])",
+    )
+    .bind(user_id)
+    .bind(workspace_ids)
+    .fetch_one(pool)
+    .await?;
+    ensure!(
+        owned_count as usize == workspace_ids.len(),
+        "one or more selected workspaces do not belong to the user"
+    );
+
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query(
+        "UPDATE playbooks SET availability=$1,updated_at=now(),hlc=$2 \
+         WHERE id=$3 AND user_id=$4 AND deleted_at IS NULL",
+    )
+    .bind(availability)
+    .bind(crate::service::hlc::stamp())
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    ensure!(updated.rows_affected() == 1, "playbook not found");
+    sqlx::query("DELETE FROM playbook_workspace_applicability WHERE playbook_id=$1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    if availability == "selected" {
+        for workspace_id in workspace_ids {
+            sqlx::query(
+                "INSERT INTO playbook_workspace_applicability (playbook_id,workspace_id) VALUES ($1,$2)",
+            )
+            .bind(id)
+            .bind(workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    find_playbook(pool, id, user_id)
+        .await?
+        .context("Playbook not found after applicability update")
 }
 
 pub async fn find_playbook(pool: &PgPool, id: &str, user_id: &str) -> Result<Option<Playbook>> {
@@ -325,12 +408,15 @@ pub struct PlaybookDelta {
     pub exit_rules: String,
     pub position_sizing_rules: String,
     pub additional_rules: Option<String>,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub hlc: String,
     pub deleted_at: Option<String>,
     pub updated_at: String,
 }
 
 const DELTA_COLS: &str = "id, name, edge_name, entry_rules, exit_rules, position_sizing_rules, additional_rules, hlc, \
+    availability, ARRAY(SELECT workspace_id FROM playbook_workspace_applicability a WHERE a.playbook_id = playbooks.id ORDER BY workspace_id) AS workspace_ids, \
     to_char(deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS deleted_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at";
 
@@ -420,7 +506,7 @@ pub async fn playbooks_since(
     let cookie = cookie.filter(|c| !c.is_empty());
     let sql = format!(
         "SELECT {DELTA_COLS} FROM playbooks \
-         WHERE user_id = $1 AND workspace_id = $2 AND ($3::text IS NULL OR updated_at >= $3::timestamptz) \
+         WHERE user_id = $1 AND ($3::text IS NULL OR updated_at >= $3::timestamptz) \
          ORDER BY updated_at ASC"
     );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
@@ -441,6 +527,8 @@ pub async fn playbooks_since(
             exit_rules: row.try_get("exit_rules")?,
             position_sizing_rules: row.try_get("position_sizing_rules")?,
             additional_rules: row.try_get("additional_rules")?,
+            availability: row.try_get("availability")?,
+            workspace_ids: row.try_get("workspace_ids")?,
             hlc: row.try_get("hlc")?,
             deleted_at: row.try_get("deleted_at")?,
             updated_at: row.try_get("updated_at")?,

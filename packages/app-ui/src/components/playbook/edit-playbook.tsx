@@ -2,260 +2,299 @@
 
 import { PencilEdit01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import * as React from "react";
-import { toast } from "sonner";
+import {
+	StrategyAvailabilityFields,
+	validateStrategyApplicability,
+} from "@tradstry/app-ui/components/strategy-availability";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
 } from "@tradstry/app-ui/components/ui/dialog";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { Label } from "@tradstry/app-ui/components/ui/label";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
-import { useUpdatePlaybook } from "@tradstry/app-ui/hooks/playbook";
+import { useWorkspaces } from "@tradstry/app-ui/components/workspaces";
+import {
+	useSetPlaybookApplicability,
+	useUpdatePlaybook,
+} from "@tradstry/app-ui/hooks/playbook";
 import type {
-  PlaybookWithStats,
-  UpdatePlaybookInput,
+	PlaybookWithStats,
+	UpdatePlaybookInput,
 } from "@tradstry/app-ui/lib/types/playbook";
+import * as React from "react";
+import { toast } from "sonner";
 import { RulesEditor } from "./rules-editor";
 
 type EditPlaybookDialogProps = {
-  playbook: PlaybookWithStats;
-  trigger?: React.ReactNode;
+	playbook: PlaybookWithStats;
+	trigger?: React.ReactNode;
 };
 
 type PlaybookFormState = {
-  name: string;
-  edgeName: string;
-  entryRules: string;
-  exitRules: string;
-  positionSizingRules: string;
-  additionalRules: string;
+	name: string;
+	edgeName: string;
+	entryRules: string;
+	exitRules: string;
+	positionSizingRules: string;
+	additionalRules: string;
+	availability: "all" | "selected";
+	workspaceIds: string[];
 };
 
 function createInitialState(playbook: PlaybookWithStats): PlaybookFormState {
-  return {
-    name: playbook.name,
-    edgeName: playbook.edgeName,
-    entryRules: playbook.entryRules,
-    exitRules: playbook.exitRules,
-    positionSizingRules: playbook.positionSizingRules,
-    additionalRules: playbook.additionalRules ?? "",
-  };
+	return {
+		name: playbook.name,
+		edgeName: playbook.edgeName,
+		entryRules: playbook.entryRules,
+		exitRules: playbook.exitRules,
+		positionSizingRules: playbook.positionSizingRules,
+		additionalRules: playbook.additionalRules ?? "",
+		availability: playbook.availability,
+		workspaceIds: playbook.workspaceIds,
+	};
 }
 
 function Field({
-  label,
-  htmlFor,
-  children,
+	label,
+	htmlFor,
+	children,
 }: {
-  label: string;
-  htmlFor?: string;
-  children: React.ReactNode;
+	label: string;
+	htmlFor?: string;
+	children: React.ReactNode;
 }) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-    </div>
-  );
+	return (
+		<div className="grid gap-2">
+			<Label htmlFor={htmlFor}>{label}</Label>
+			{children}
+		</div>
+	);
 }
 
 export function EditPlaybookDialog({
-  playbook,
-  trigger,
+	playbook,
+	trigger,
 }: EditPlaybookDialogProps) {
-  const updatePlaybook = useUpdatePlaybook();
-  const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<PlaybookFormState>(() =>
-    createInitialState(playbook),
-  );
-  const [error, setError] = React.useState("");
+	const updatePlaybook = useUpdatePlaybook();
+	const setApplicability = useSetPlaybookApplicability();
+	const workspaces = useWorkspaces();
+	const [open, setOpen] = React.useState(false);
+	const [form, setForm] = React.useState<PlaybookFormState>(() =>
+		createInitialState(playbook),
+	);
+	const [error, setError] = React.useState("");
 
-  React.useEffect(() => {
-    if (open) {
-      setForm(createInitialState(playbook));
-      setError("");
-    }
-  }, [open, playbook]);
+	React.useEffect(() => {
+		if (open) {
+			setForm(createInitialState(playbook));
+			setError("");
+		}
+	}, [open, playbook]);
 
-  function setField<K extends keyof PlaybookFormState>(
-    key: K,
-    value: PlaybookFormState[K],
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
-    if (error) {
-      setError("");
-    }
-  }
+	function setField<K extends keyof PlaybookFormState>(
+		key: K,
+		value: PlaybookFormState[K],
+	) {
+		setForm((current) => ({ ...current, [key]: value }));
+		if (error) {
+			setError("");
+		}
+	}
 
-  function validateForm() {
-    if (!form.name.trim()) return "Name is required";
-    if (!form.edgeName.trim()) return "Edge name is required";
-    if (!form.entryRules.trim()) return "Entry rules are required";
-    if (!form.exitRules.trim()) return "Exit rules are required";
-    if (!form.positionSizingRules.trim()) {
-      return "Position sizing rules are required";
-    }
-    return "";
-  }
+	function validateForm() {
+		if (!form.name.trim()) return "Name is required";
+		if (!form.edgeName.trim()) return "Edge name is required";
+		if (!form.entryRules.trim()) return "Entry rules are required";
+		if (!form.exitRules.trim()) return "Exit rules are required";
+		if (!form.positionSizingRules.trim()) {
+			return "Position sizing rules are required";
+		}
+		const applicabilityError = validateStrategyApplicability(
+			form.availability,
+			form.workspaceIds,
+		);
+		if (applicabilityError) return applicabilityError;
+		return "";
+	}
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+		event.preventDefault();
 
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+		const validationError = validateForm();
+		if (validationError) {
+			setError(validationError);
+			return;
+		}
 
-    const trimmedAdditionalRules = form.additionalRules.trim();
-    const input: UpdatePlaybookInput = {
-      name: form.name.trim(),
-      edgeName: form.edgeName.trim(),
-      entryRules: form.entryRules.trim(),
-      exitRules: form.exitRules.trim(),
-      positionSizingRules: form.positionSizingRules.trim(),
-      additionalRules: trimmedAdditionalRules || undefined,
-      clearAdditionalRules: !trimmedAdditionalRules,
-    };
-    const toastId = toast.loading("Updating playbook...");
+		const trimmedAdditionalRules = form.additionalRules.trim();
+		const input: UpdatePlaybookInput = {
+			name: form.name.trim(),
+			edgeName: form.edgeName.trim(),
+			entryRules: form.entryRules.trim(),
+			exitRules: form.exitRules.trim(),
+			positionSizingRules: form.positionSizingRules.trim(),
+			additionalRules: trimmedAdditionalRules || undefined,
+			clearAdditionalRules: !trimmedAdditionalRules,
+		};
+		const toastId = toast.loading("Updating playbook...");
 
-    try {
-      await updatePlaybook.mutateAsync({
-        id: playbook.id,
-        input,
-      });
-      toast.success("Playbook updated.", { id: toastId });
-      setOpen(false);
-    } catch (submissionError) {
-      toast.error(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Failed to update playbook.",
-        { id: toastId },
-      );
-      setError(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Failed to update playbook",
-      );
-    }
-  }
+		try {
+			await updatePlaybook.mutateAsync({
+				id: playbook.id,
+				input,
+			});
+			await setApplicability.mutateAsync({
+				id: playbook.id,
+				availability: form.availability,
+				workspaceIds: form.workspaceIds,
+			});
+			toast.success("Playbook updated.", { id: toastId });
+			setOpen(false);
+		} catch (submissionError) {
+			toast.error(
+				submissionError instanceof Error
+					? submissionError.message
+					: "Failed to update playbook.",
+				{ id: toastId },
+			);
+			setError(
+				submissionError instanceof Error
+					? submissionError.message
+					: "Failed to update playbook",
+			);
+		}
+	}
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
-          >
-            <HugeiconsIcon
-              icon={PencilEdit01Icon}
-              strokeWidth={2}
-              className="size-4"
-            />
-            <span className="sr-only">Edit playbook</span>
-          </Button>
-        )}
-      </DialogTrigger>
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger asChild>
+				{trigger ?? (
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						className="text-muted-foreground"
+					>
+						<HugeiconsIcon
+							icon={PencilEdit01Icon}
+							strokeWidth={2}
+							className="size-4"
+						/>
+						<span className="sr-only">Edit playbook</span>
+					</Button>
+				)}
+			</DialogTrigger>
 
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-3xl">
-        <form
-          onSubmit={handleSubmit}
-          className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-4 overflow-hidden"
-        >
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Edit playbook</DialogTitle>
-            <DialogDescription>
-              Update your setup, rules, and sizing criteria.
-            </DialogDescription>
-          </DialogHeader>
+			<DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-3xl">
+				<form
+					onSubmit={handleSubmit}
+					className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-4 overflow-hidden"
+				>
+					<DialogHeader className="shrink-0">
+						<DialogTitle>Edit playbook</DialogTitle>
+						<DialogDescription>
+							Update your setup, rules, and sizing criteria.
+						</DialogDescription>
+					</DialogHeader>
 
-          <ScrollArea className="-mx-4 min-h-0 px-4 [&>[data-radix-scroll-area-viewport]]:max-h-[60svh]">
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field
-                  label="Playbook name"
-                  htmlFor={`edit-playbook-name-${playbook.id}`}
-                >
-                  <Input
-                    id={`edit-playbook-name-${playbook.id}`}
-                    value={form.name}
-                    onChange={(event) => setField("name", event.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="Edge name"
-                  htmlFor={`edit-playbook-edge-${playbook.id}`}
-                >
-                  <Input
-                    id={`edit-playbook-edge-${playbook.id}`}
-                    value={form.edgeName}
-                    onChange={(event) =>
-                      setField("edgeName", event.target.value)
-                    }
-                  />
-                </Field>
-              </div>
+					<ScrollArea className="-mx-4 min-h-0 px-4 [&>[data-radix-scroll-area-viewport]]:max-h-[60svh]">
+						<div className="grid gap-4 py-4">
+							<div className="grid gap-4 md:grid-cols-2">
+								<Field
+									label="Playbook name"
+									htmlFor={`edit-playbook-name-${playbook.id}`}
+								>
+									<Input
+										id={`edit-playbook-name-${playbook.id}`}
+										value={form.name}
+										onChange={(event) => setField("name", event.target.value)}
+									/>
+								</Field>
+								<Field
+									label="Edge name"
+									htmlFor={`edit-playbook-edge-${playbook.id}`}
+								>
+									<Input
+										id={`edit-playbook-edge-${playbook.id}`}
+										value={form.edgeName}
+										onChange={(event) =>
+											setField("edgeName", event.target.value)
+										}
+									/>
+								</Field>
+							</div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <RulesEditor
-                  label="Entry rules"
-                  value={form.entryRules}
-                  onChange={(next) => setField("entryRules", next)}
-                  placeholder="Add an entry rule…"
-                />
-                <RulesEditor
-                  label="Exit rules"
-                  value={form.exitRules}
-                  onChange={(next) => setField("exitRules", next)}
-                  placeholder="Add an exit rule…"
-                />
-              </div>
+							<StrategyAvailabilityFields
+								workspaces={workspaces}
+								availability={form.availability}
+								workspaceIds={form.workspaceIds}
+								disabled={setApplicability.isPending}
+								onChange={(next) =>
+									setForm((current) => ({ ...current, ...next }))
+								}
+							/>
 
-              <RulesEditor
-                label="Position sizing rules"
-                value={form.positionSizingRules}
-                onChange={(next) => setField("positionSizingRules", next)}
-                placeholder="Add a sizing rule…"
-              />
+							<div className="grid gap-4 md:grid-cols-2">
+								<RulesEditor
+									label="Entry rules"
+									value={form.entryRules}
+									onChange={(next) => setField("entryRules", next)}
+									placeholder="Add an entry rule…"
+								/>
+								<RulesEditor
+									label="Exit rules"
+									value={form.exitRules}
+									onChange={(next) => setField("exitRules", next)}
+									placeholder="Add an exit rule…"
+								/>
+							</div>
 
-              <RulesEditor
-                label="Additional rules (optional)"
-                value={form.additionalRules}
-                onChange={(next) => setField("additionalRules", next)}
-                placeholder="Add another rule…"
-              />
+							<RulesEditor
+								label="Position sizing rules"
+								value={form.positionSizingRules}
+								onChange={(next) => setField("positionSizingRules", next)}
+								placeholder="Add a sizing rule…"
+							/>
 
-              {error ? (
-                <p className="text-sm text-destructive">{error}</p>
-              ) : null}
-            </div>
-          </ScrollArea>
+							<RulesEditor
+								label="Additional rules (optional)"
+								value={form.additionalRules}
+								onChange={(next) => setField("additionalRules", next)}
+								placeholder="Add another rule…"
+							/>
 
-          <DialogFooter className="shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={updatePlaybook.isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updatePlaybook.isPending}>
-              {updatePlaybook.isPending ? "Saving..." : "Save changes"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+							{error ? (
+								<p className="text-sm text-destructive">{error}</p>
+							) : null}
+						</div>
+					</ScrollArea>
+
+					<DialogFooter className="shrink-0">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setOpen(false)}
+							disabled={updatePlaybook.isPending || setApplicability.isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="submit"
+							disabled={updatePlaybook.isPending || setApplicability.isPending}
+						>
+							{updatePlaybook.isPending || setApplicability.isPending
+								? "Saving..."
+								: "Save changes"}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
 }

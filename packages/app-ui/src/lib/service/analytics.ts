@@ -4,6 +4,7 @@ import type {
   AnalyticsTimeFilterInput,
   CalendarAnalytics,
   JournalAnalytics,
+  TradingPerformance,
 } from "@tradstry/app-ui/lib/types/analytics";
 
 const TRADE_OUTCOME_FIELDS = `
@@ -36,6 +37,43 @@ const CALENDAR_DAY_FIELDS = `
   profit
   tradeCount
   winRate
+  winningTradeCount
+  breakevenTradeCount
+  losingTradeCount
+`;
+
+const TRADING_PERFORMANCE_FIELDS = `
+  totalRealizedPnl
+  grossProfit
+  grossLoss
+  averageWin
+  averageLoss
+  profitFactor
+  winRate
+  closedTradeCount
+  winningTradeCount
+  breakevenTradeCount
+  losingTradeCount
+  averageRealizedR
+  riskDefinedTradeCount
+  openPositionCount
+  needsReviewCount
+  peakRealizedPnl
+  currentDrawdown
+  maxDrawdown
+  currentStreak
+  longestLossStreak
+  bestSymbol { key netPnl winRate tradeCount }
+  worstSymbol { key netPnl winRate tradeCount }
+  bestDay { key netPnl winRate tradeCount }
+  worstDay { key netPnl winRate tradeCount }
+  points {
+    date
+    dailyPnl
+    cumulativePnl
+    drawdown
+    closedTradeCount
+  }
 `;
 
 const CALENDAR_WEEK_FIELDS = `
@@ -45,6 +83,10 @@ const CALENDAR_WEEK_FIELDS = `
   profit
   tradeCount
   tradingDays
+  winRate
+  winningTradeCount
+  breakevenTradeCount
+  losingTradeCount
 `;
 
 const CALENDAR_ANALYTICS_FIELDS = `
@@ -53,6 +95,10 @@ const CALENDAR_ANALYTICS_FIELDS = `
   monthProfit
   tradeCount
   tradingDays
+  winRate
+  winningTradeCount
+  breakevenTradeCount
+  losingTradeCount
   gridStart
   gridEnd
   days {
@@ -75,6 +121,14 @@ const CALENDAR_ANALYTICS_QUERY = `
   query CalendarAnalytics($workspaceId: String!, $year: Int!, $month: Int!) {
     calendarAnalytics(workspaceId: $workspaceId, year: $year, month: $month) {
       ${CALENDAR_ANALYTICS_FIELDS}
+    }
+  }
+`;
+
+const TRADING_PERFORMANCE_QUERY = `
+  query TradingPerformance($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!) {
+    tradingPerformance(workspaceId: $workspaceId, timeFilter: $timeFilter) {
+      ${TRADING_PERFORMANCE_FIELDS}
     }
   }
 `;
@@ -186,6 +240,18 @@ export async function fetchJournalAnalytics(
     { workspaceId, timeFilter },
   );
   return data.journalAnalytics;
+}
+
+export async function fetchTradingPerformance(
+  fetcher: GraphQLFetcher,
+  workspaceId: string,
+  timeFilter: AnalyticsTimeFilterInput,
+): Promise<TradingPerformance> {
+  const data = await fetcher<{ tradingPerformance: TradingPerformance }>(
+    TRADING_PERFORMANCE_QUERY,
+    { workspaceId, timeFilter },
+  );
+  return data.tradingPerformance;
 }
 
 export async function fetchCalendarAnalytics(

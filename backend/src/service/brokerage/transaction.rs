@@ -501,17 +501,6 @@ pub async fn sync_transactions(
     .await?;
 
     if report.mapped_count > 0
-        && let Err(e) = crate::service::equity::rebuild::rebuild_account_equity(
-            pool,
-            internal_user_id,
-            internal_account_id,
-        )
-        .await
-    {
-        log::warn!("equity: rebuild after transaction sync failed: {e}");
-    }
-
-    if report.mapped_count > 0
         && let Err(e) = crate::service::db::schema::tables::trade_review_table::rebuild_workspace(
             pool,
             internal_user_id,

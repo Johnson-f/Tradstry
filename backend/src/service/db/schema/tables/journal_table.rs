@@ -558,7 +558,9 @@ async fn validate_playbook_exists(
 ) -> Result<Option<String>> {
     match playbook_id {
         Some(playbook_id) => {
-            let row = sqlx::query("SELECT 1 FROM playbooks WHERE id = $1 AND user_id = $2 AND workspace_id = $3 AND deleted_at IS NULL LIMIT 1")
+            let row = sqlx::query("SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL \
+                AND (availability='all' OR EXISTS (SELECT 1 FROM playbook_workspace_applicability a \
+                     WHERE a.playbook_id=playbooks.id AND a.workspace_id=$3)) LIMIT 1")
                 .bind(playbook_id.as_str())
                 .bind(user_id)
                 .bind(workspace_id)
@@ -1522,7 +1524,9 @@ pub async fn create_journal_entry_tx(
 ) -> Result<()> {
     if let Some(playbook_id) = args.playbook_id.as_deref() {
         let valid: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND workspace_id=$3 AND deleted_at IS NULL)",
+            "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL \
+             AND (availability='all' OR EXISTS (SELECT 1 FROM playbook_workspace_applicability a \
+                  WHERE a.playbook_id=playbooks.id AND a.workspace_id=$3)))",
         )
         .bind(playbook_id)
         .bind(user_id)
@@ -1602,7 +1606,9 @@ pub async fn update_journal_entry_tx(
 ) -> Result<()> {
     if let Some(playbook_id) = args.playbook_id.as_deref() {
         let valid: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND workspace_id=$3 AND deleted_at IS NULL)",
+            "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL \
+             AND (availability='all' OR EXISTS (SELECT 1 FROM playbook_workspace_applicability a \
+                  WHERE a.playbook_id=playbooks.id AND a.workspace_id=$3)))",
         )
         .bind(playbook_id)
         .bind(user_id)

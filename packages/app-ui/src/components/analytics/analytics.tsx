@@ -3,7 +3,7 @@
 import { AnalyticsUpIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
-import { DashboardRangeSelect } from "@tradstry/app-ui/components/dashboard/range-select";
+import { DashboardRangeSelect } from "@tradstry/app-ui/components/dashboard/shared/range-select";
 import {
   Empty,
   EmptyDescription,

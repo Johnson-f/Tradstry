@@ -91,6 +91,16 @@ const USER_SCOPED: &[(&str, &str)] = &[
 /// these the export silently omits which tags and principles every trade was marked with.
 const JOINED: &[(&str, &str)] = &[
     (
+        "playbook_workspace_applicability",
+        "SELECT to_jsonb(a) FROM playbook_workspace_applicability a
+         JOIN playbooks p ON p.id = a.playbook_id WHERE p.user_id = $1",
+    ),
+    (
+        "tag_category_workspace_applicability",
+        "SELECT to_jsonb(a) FROM tag_category_workspace_applicability a
+         JOIN tag_categories c ON c.id = a.category_id WHERE c.user_id = $1",
+    ),
+    (
         "trade_tags",
         "SELECT to_jsonb(t) FROM trade_tags t
          JOIN journal_entries j ON j.id = t.journal_entry_id

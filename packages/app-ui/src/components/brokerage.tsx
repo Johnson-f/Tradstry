@@ -313,9 +313,9 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 	}
 
 	return (
-		<div className="rounded-lg border p-3">
+		<div className="overflow-hidden rounded-lg border bg-background">
 			{/* Header row */}
-			<div className="flex items-center justify-between">
+			<div className="flex items-center justify-between gap-4 px-3 py-2.5">
 				<div className="flex items-center gap-2.5">
 					<div className="flex size-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
 						<HugeiconsIcon icon={BankIcon} strokeWidth={2} className="size-4" />
@@ -406,60 +406,77 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 				</div>
 			</div>
 
-			{/* Balances */}
-			{isLoading ? (
-				<p className="mt-2 text-[0.65rem] text-muted-foreground">
-					Loading balances...
-				</p>
-			) : balances && balances.length > 0 ? (
-				<div className="mt-2.5 border-t pt-2.5">
-					<div className="flex flex-wrap gap-x-6 gap-y-2">
-						{balances.map((balance) => (
-							<div key={balance.id} className="flex items-center gap-4">
-								<span className="rounded-md bg-muted px-1.5 py-1 text-[0.6rem] font-semibold uppercase text-muted-foreground">
-									{balance.currency}
-								</span>
-								<div>
-									<p className="text-[0.6rem] text-muted-foreground">Cash</p>
-									<p className="text-xs font-semibold tabular-nums">
-										{formatCurrency(balance.cash, balance.currency)}
-									</p>
+			<div className="grid border-t sm:grid-cols-[minmax(13rem,0.72fr)_minmax(0,1.55fr)]">
+				<section aria-label="Account balance" className="bg-muted/[0.14] p-3">
+					<p className="text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+						Account balance
+					</p>
+					{isLoading ? (
+						<p className="mt-3 text-[0.65rem] text-muted-foreground">
+							Loading balances...
+						</p>
+					) : balances && balances.length > 0 ? (
+						<div className="mt-2.5 space-y-3">
+							{balances.map((balance) => (
+								<div key={balance.id}>
+									<div className="flex items-center gap-2">
+										<span className="rounded-md bg-background px-1.5 py-1 text-[0.6rem] font-semibold uppercase text-muted-foreground ring-1 ring-foreground/10">
+											{balance.currency}
+										</span>
+										<div className="h-px flex-1 bg-border" />
+									</div>
+									<div className="mt-2 grid grid-cols-2 gap-4">
+										<div>
+											<p className="text-[0.6rem] text-muted-foreground">Cash</p>
+											<p className="mt-0.5 text-sm font-semibold tabular-nums">
+												{formatCurrency(balance.cash, balance.currency)}
+											</p>
+										</div>
+										<div>
+											<p className="text-[0.6rem] text-muted-foreground">
+												Buying power
+											</p>
+											<p className="mt-0.5 text-sm font-semibold tabular-nums">
+												{formatCurrency(balance.buyingPower, balance.currency)}
+											</p>
+										</div>
+									</div>
 								</div>
-								<div>
-									<p className="text-[0.6rem] text-muted-foreground">
-										Buying power
-									</p>
-									<p className="text-xs font-semibold tabular-nums">
-										{formatCurrency(balance.buyingPower, balance.currency)}
-									</p>
-								</div>
-							</div>
-						))}
-					</div>
-					{latestBalanceSync && (
-						<p className="mt-2 text-[0.6rem] text-muted-foreground">
-							Updated {formatSyncTime(latestBalanceSync)}
+							))}
+							{latestBalanceSync && (
+								<p className="text-[0.6rem] text-muted-foreground">
+									Updated {formatSyncTime(latestBalanceSync)}
+								</p>
+							)}
+						</div>
+					) : (
+						<p className="mt-3 text-[0.65rem] text-muted-foreground">
+							No balance reported.
 						</p>
 					)}
+				</section>
+				<div className="border-t p-3 sm:border-t-0 sm:border-l">
+					<SyncConfidenceCard
+						workspaceId={workspace.id}
+						workspaceName={workspace.name}
+						brokerageAccountName={
+							connectionAccounts.data?.find((account) => account.current)
+								?.name ?? workspace.name
+						}
+						outcome={syncOutcome}
+						reconciliation={reconciliation}
+						connectionDisabled={workspace.snaptradeConnectionDisabled}
+						isRefreshing={refreshActive}
+						isSyncing={sync.isPending}
+						isReconnecting={reconnecting}
+						onSync={() => void handleSync()}
+						onReconnect={() => void handleReconnect()}
+					/>
 				</div>
-			) : null}
-			<SyncConfidenceCard
-				workspaceId={workspace.id}
-				workspaceName={workspace.name}
-				brokerageAccountName={
-					connectionAccounts.data?.find((account) => account.current)?.name ??
-					workspace.name
-				}
-				outcome={syncOutcome}
-				reconciliation={reconciliation}
-				connectionDisabled={workspace.snaptradeConnectionDisabled}
-				isRefreshing={refreshActive}
-				isSyncing={sync.isPending}
-				isReconnecting={reconnecting}
-				onSync={() => void handleSync()}
-				onReconnect={() => void handleReconnect()}
-			/>
-			<AdditionalBrokerageAccounts workspace={workspace} />
+			</div>
+			<div className="px-3 pb-3">
+				<AdditionalBrokerageAccounts workspace={workspace} />
+			</div>
 		</div>
 	);
 }
@@ -526,7 +543,7 @@ export function BrokerageButton() {
 					{connected ? "Brokerage connected" : "Connect brokerage"}
 				</TooltipContent>
 			</Tooltip>
-			<DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-md">
+			<DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-4xl">
 				<DialogHeader className="shrink-0">
 					<DialogTitle>Brokerage connection</DialogTitle>
 					<DialogDescription>
@@ -534,7 +551,7 @@ export function BrokerageButton() {
 					</DialogDescription>
 				</DialogHeader>
 
-				<ScrollArea className="-mx-6 min-h-0 px-6 [&>[data-radix-scroll-area-viewport]]:max-h-[calc(100svh-9rem)]">
+				<ScrollArea className="-mx-4 min-h-0 px-4 [&>[data-radix-scroll-area-viewport]]:max-h-[calc(100svh-9rem)]">
 					<div className="flex flex-col gap-3">
 						{!connected || !workspace ? (
 							<div className="flex flex-col items-center gap-3 py-6 text-center">

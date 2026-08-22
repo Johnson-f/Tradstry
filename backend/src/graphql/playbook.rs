@@ -1,4 +1,4 @@
-use async_graphql::{Context, Object, Result, SimpleObject};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
 use std::sync::Arc;
 
 use crate::service::db::schema::tables::notebook::sync as notebook_sync;
@@ -18,6 +18,8 @@ pub struct PlaybookDeltaGql {
     pub exit_rules: String,
     pub position_sizing_rules: String,
     pub additional_rules: Option<String>,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub hlc: String,
     pub deleted_at: Option<String>,
     pub updated_at: String,
@@ -33,11 +35,20 @@ impl From<PlaybookDelta> for PlaybookDeltaGql {
             exit_rules: d.exit_rules,
             position_sizing_rules: d.position_sizing_rules,
             additional_rules: d.additional_rules,
+            availability: d.availability,
+            workspace_ids: d.workspace_ids,
             hlc: d.hlc,
             deleted_at: d.deleted_at,
             updated_at: d.updated_at,
         }
     }
+}
+
+#[derive(InputObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct StrategyApplicabilityInput {
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
 }
 
 #[derive(SimpleObject)]
@@ -50,6 +61,30 @@ pub struct PlaybookPullResult {
 
 async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db::client::UserDb> {
     crate::graphql::auth::user_db(ctx).await
+}
+
+async fn reindex_playbook_library(
+    ctx: &Context<'_>,
+    user_db: &crate::service::db::client::UserDb,
+    playbook_id: &str,
+) -> Result<()> {
+    let workspace_ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM workspaces WHERE user_id=$1 ORDER BY created_at,id")
+            .bind(user_db.user_id())
+            .fetch_all(user_db.pool())
+            .await?;
+    let db = ctx.data::<Arc<Db>>()?;
+    for workspace_id in workspace_ids {
+        ai_jobs::enqueue_source_reindex(
+            db.as_ref(),
+            user_db.user_id(),
+            &workspace_id,
+            "playbook",
+            playbook_id,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -73,6 +108,18 @@ impl PlaybookQuery {
     ) -> Result<Option<playbook_service::PlaybookWithStats>> {
         let user_db = get_user_db(ctx).await?;
         Ok(playbook_service::get_playbook(&user_db, &id).await?)
+    }
+
+    async fn strategy_library_playbooks(
+        &self,
+        ctx: &Context<'_>,
+        stats_workspace_id: String,
+    ) -> Result<Vec<playbook_service::PlaybookWithStats>> {
+        let user_db = get_user_db(ctx).await?;
+        Ok(
+            playbook_service::list_strategy_library_playbooks(&user_db, &stats_workspace_id)
+                .await?,
+        )
     }
 
     /// Offline-first pull for one workspace, with its own cursor. It is separate
@@ -123,15 +170,7 @@ impl PlaybookMutation {
     ) -> Result<playbook_service::PlaybookWithStats> {
         let user_db = get_user_db(ctx).await?;
         let playbook = playbook_service::create_playbook(&user_db, input).await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &playbook.workspace_id,
-            "playbook",
-            &playbook.id,
-        )
-        .await?;
+        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         Ok(playbook)
     }
 
@@ -143,15 +182,25 @@ impl PlaybookMutation {
     ) -> Result<playbook_service::PlaybookWithStats> {
         let user_db = get_user_db(ctx).await?;
         let playbook = playbook_service::update_playbook(&user_db, &id, input).await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &playbook.workspace_id,
-            "playbook",
-            &playbook.id,
+        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
+        Ok(playbook)
+    }
+
+    async fn set_playbook_applicability(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: StrategyApplicabilityInput,
+    ) -> Result<playbook_service::PlaybookWithStats> {
+        let user_db = get_user_db(ctx).await?;
+        let playbook = playbook_service::set_playbook_applicability(
+            &user_db,
+            &id,
+            &input.availability,
+            &input.workspace_ids,
         )
         .await?;
+        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         Ok(playbook)
     }
 
@@ -159,18 +208,8 @@ impl PlaybookMutation {
         let user_db = get_user_db(ctx).await?;
         let existing = playbook_service::get_playbook(&user_db, &id).await?;
         let deleted = playbook_service::delete_playbook(&user_db, &id).await?;
-        if deleted {
-            let db = ctx.data::<Arc<Db>>()?;
-            if let Some(playbook) = existing {
-                ai_jobs::enqueue_source_reindex(
-                    db.as_ref(),
-                    user_db.user_id(),
-                    &playbook.workspace_id,
-                    "playbook",
-                    &playbook.id,
-                )
-                .await?;
-            }
+        if deleted && let Some(playbook) = existing {
+            reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         }
         Ok(deleted)
     }

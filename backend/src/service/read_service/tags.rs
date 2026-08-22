@@ -15,6 +15,10 @@ pub async fn get_category(user_db: &UserDb, id: &str) -> Result<Option<TagCatego
     tags_table::find_category(user_db.pool(), user_db.user_id(), id).await
 }
 
+pub async fn list_strategy_library_categories(user_db: &UserDb) -> Result<Vec<TagCategory>> {
+    tags_table::list_strategy_library_categories(user_db.pool(), user_db.user_id()).await
+}
+
 pub async fn create_category(
     user_db: &UserDb,
     workspace_id: &str,
@@ -58,6 +62,13 @@ pub async fn list_tags(
 
 pub async fn get_tag(user_db: &UserDb, id: &str) -> Result<Option<Tag>> {
     tags_table::find_tag(user_db.pool(), user_db.user_id(), id).await
+}
+
+pub async fn list_strategy_library_tags(
+    user_db: &UserDb,
+    category_id: Option<&str>,
+) -> Result<Vec<Tag>> {
+    tags_table::list_strategy_library_tags(user_db.pool(), user_db.user_id(), category_id).await
 }
 
 pub async fn create_tag(

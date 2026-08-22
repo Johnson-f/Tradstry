@@ -29,6 +29,7 @@ export const EVENTS = {
   noteEdited: "note_edited",
   chatMessageSent: "chat_message_sent",
   analyticsRangeChanged: "analytics_range_changed",
+  dashboardCardFailed: "dashboard_card_failed",
 
   dataExportRequested: "data_export_requested",
   accountDeletionRequested: "account_deletion_requested",
@@ -61,6 +62,10 @@ export type EventProps = {
   note_edited: Record<string, never>;
   chat_message_sent: { hasContext: boolean };
   analytics_range_changed: { range: string };
+  dashboard_card_failed: {
+    card: string;
+    category: "network" | "session" | "unknown";
+  };
 
   data_export_requested: Record<string, never>;
   account_deletion_requested: Record<string, never>;

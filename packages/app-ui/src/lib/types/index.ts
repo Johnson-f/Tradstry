@@ -2,7 +2,6 @@ export * from "./workspaces";
 export * from "./ai";
 export * from "./analytics";
 export * from "./brokerage";
-export * from "./equity";
 export * from "./journal";
 export * from "./notebook";
 export * from "./notifications";

@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS playbooks (
     exit_rules             TEXT NOT NULL DEFAULT '',
     position_sizing_rules  TEXT NOT NULL DEFAULT '',
     additional_rules       TEXT NULL,
+    availability           TEXT NOT NULL DEFAULT 'all',
+    workspace_ids          TEXT NOT NULL DEFAULT '[]',
     hlc                    TEXT NOT NULL DEFAULT '',
     deleted_at             TEXT NULL,
     sync_state             TEXT NOT NULL DEFAULT 'pending'
@@ -197,6 +199,8 @@ CREATE TABLE IF NOT EXISTS tag_categories_cache (
     role       TEXT NULL,
     color      TEXT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    availability TEXT NOT NULL DEFAULT 'all',
+    workspace_ids TEXT NOT NULL DEFAULT '[]',
     hlc        TEXT NOT NULL DEFAULT '',
     deleted_at TEXT NULL,
     sync_state TEXT NOT NULL DEFAULT 'pending'

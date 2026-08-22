@@ -1,8 +1,8 @@
 import type { GraphQLFetcher } from "@tradstry/app-ui/lib/client";
 import type {
-  ReorderTagCategoryItem,
-  Tag,
-  TagCategory,
+	ReorderTagCategoryItem,
+	Tag,
+	TagCategory,
 } from "@tradstry/app-ui/lib/types/tags";
 
 // ---------------------------------------------------------------------------
@@ -17,6 +17,8 @@ const TAG_CATEGORY_FIELDS = `
   role
   color
   sortOrder
+  availability
+  workspaceIds
   createdAt
   updatedAt
 `;
@@ -49,6 +51,18 @@ const TAGS_QUERY = `
     tags(workspaceId: $workspaceId, categoryId: $categoryId) {
       ${TAG_FIELDS}
     }
+  }
+`;
+
+const STRATEGY_LIBRARY_TAG_CATEGORIES_QUERY = `
+  query StrategyLibraryTagCategories {
+    strategyLibraryTagCategories { ${TAG_CATEGORY_FIELDS} }
+  }
+`;
+
+const STRATEGY_LIBRARY_TAGS_QUERY = `
+  query StrategyLibraryTags($categoryId: String) {
+    strategyLibraryTags(categoryId: $categoryId) { ${TAG_FIELDS} }
   }
 `;
 
@@ -89,6 +103,14 @@ const REORDER_TAG_CATEGORIES_MUTATION = `
 const DELETE_TAG_CATEGORY_MUTATION = `
   mutation DeleteTagCategory($id: String!) {
     deleteTagCategory(id: $id)
+  }
+`;
+
+const SET_TAG_CATEGORY_APPLICABILITY_MUTATION = `
+  mutation SetTagCategoryApplicability($id: String!, $input: TagCategoryApplicabilityInput!) {
+    setTagCategoryApplicability(id: $id, input: $input) {
+      ${TAG_CATEGORY_FIELDS}
+    }
   }
 `;
 
@@ -137,26 +159,46 @@ const MERGE_TAGS_MUTATION = `
 // ---------------------------------------------------------------------------
 
 export async function fetchTagCategories(
-  fetcher: GraphQLFetcher,
-  workspaceId: string,
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
 ): Promise<TagCategory[]> {
-  const data = await fetcher<{ tagCategories: TagCategory[] }>(
-    TAG_CATEGORIES_QUERY,
-    { workspaceId },
-  );
-  return data.tagCategories;
+	const data = await fetcher<{ tagCategories: TagCategory[] }>(
+		TAG_CATEGORIES_QUERY,
+		{ workspaceId },
+	);
+	return data.tagCategories;
 }
 
 export async function fetchTags(
-  fetcher: GraphQLFetcher,
-  workspaceId: string,
-  categoryId?: string,
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
+	categoryId?: string,
 ): Promise<Tag[]> {
-  const data = await fetcher<{ tags: Tag[] }>(TAGS_QUERY, {
-    workspaceId,
-    categoryId: categoryId ?? null,
-  });
-  return data.tags;
+	const data = await fetcher<{ tags: Tag[] }>(TAGS_QUERY, {
+		workspaceId,
+		categoryId: categoryId ?? null,
+	});
+	return data.tags;
+}
+
+export async function fetchStrategyLibraryTagCategories(
+	fetcher: GraphQLFetcher,
+): Promise<TagCategory[]> {
+	const data = await fetcher<{ strategyLibraryTagCategories: TagCategory[] }>(
+		STRATEGY_LIBRARY_TAG_CATEGORIES_QUERY,
+	);
+	return data.strategyLibraryTagCategories;
+}
+
+export async function fetchStrategyLibraryTags(
+	fetcher: GraphQLFetcher,
+	categoryId?: string,
+): Promise<Tag[]> {
+	const data = await fetcher<{ strategyLibraryTags: Tag[] }>(
+		STRATEGY_LIBRARY_TAGS_QUERY,
+		{ categoryId: categoryId ?? null },
+	);
+	return data.strategyLibraryTags;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,62 +206,74 @@ export async function fetchTags(
 // ---------------------------------------------------------------------------
 
 export async function createTagCategory(
-  fetcher: GraphQLFetcher,
-  workspaceId: string,
-  name: string,
-  color?: string | null,
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
+	name: string,
+	color?: string | null,
 ): Promise<TagCategory> {
-  const data = await fetcher<{ createTagCategory: TagCategory }>(
-    CREATE_TAG_CATEGORY_MUTATION,
-    { workspaceId, name, color: color ?? null },
-  );
-  return data.createTagCategory;
+	const data = await fetcher<{ createTagCategory: TagCategory }>(
+		CREATE_TAG_CATEGORY_MUTATION,
+		{ workspaceId, name, color: color ?? null },
+	);
+	return data.createTagCategory;
 }
 
 export async function renameTagCategory(
-  fetcher: GraphQLFetcher,
-  id: string,
-  name: string,
+	fetcher: GraphQLFetcher,
+	id: string,
+	name: string,
 ): Promise<TagCategory> {
-  const data = await fetcher<{ renameTagCategory: TagCategory }>(
-    RENAME_TAG_CATEGORY_MUTATION,
-    { id, name },
-  );
-  return data.renameTagCategory;
+	const data = await fetcher<{ renameTagCategory: TagCategory }>(
+		RENAME_TAG_CATEGORY_MUTATION,
+		{ id, name },
+	);
+	return data.renameTagCategory;
 }
 
 export async function setTagCategoryColor(
-  fetcher: GraphQLFetcher,
-  id: string,
-  color: string | null,
+	fetcher: GraphQLFetcher,
+	id: string,
+	color: string | null,
 ): Promise<TagCategory> {
-  const data = await fetcher<{ setTagCategoryColor: TagCategory }>(
-    SET_TAG_CATEGORY_COLOR_MUTATION,
-    { id, color },
-  );
-  return data.setTagCategoryColor;
+	const data = await fetcher<{ setTagCategoryColor: TagCategory }>(
+		SET_TAG_CATEGORY_COLOR_MUTATION,
+		{ id, color },
+	);
+	return data.setTagCategoryColor;
 }
 
 export async function reorderTagCategories(
-  fetcher: GraphQLFetcher,
-  order: ReorderTagCategoryItem[],
+	fetcher: GraphQLFetcher,
+	order: ReorderTagCategoryItem[],
 ): Promise<boolean> {
-  const data = await fetcher<{ reorderTagCategories: boolean }>(
-    REORDER_TAG_CATEGORIES_MUTATION,
-    { order },
-  );
-  return data.reorderTagCategories;
+	const data = await fetcher<{ reorderTagCategories: boolean }>(
+		REORDER_TAG_CATEGORIES_MUTATION,
+		{ order },
+	);
+	return data.reorderTagCategories;
 }
 
 export async function deleteTagCategory(
-  fetcher: GraphQLFetcher,
-  id: string,
+	fetcher: GraphQLFetcher,
+	id: string,
 ): Promise<boolean> {
-  const data = await fetcher<{ deleteTagCategory: boolean }>(
-    DELETE_TAG_CATEGORY_MUTATION,
-    { id },
-  );
-  return data.deleteTagCategory;
+	const data = await fetcher<{ deleteTagCategory: boolean }>(
+		DELETE_TAG_CATEGORY_MUTATION,
+		{ id },
+	);
+	return data.deleteTagCategory;
+}
+
+export async function setTagCategoryApplicability(
+	fetcher: GraphQLFetcher,
+	id: string,
+	input: { availability: "all" | "selected"; workspaceIds: string[] },
+): Promise<TagCategory> {
+	const data = await fetcher<{ setTagCategoryApplicability: TagCategory }>(
+		SET_TAG_CATEGORY_APPLICABILITY_MUTATION,
+		{ id, input },
+	);
+	return data.setTagCategoryApplicability;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,63 +281,63 @@ export async function deleteTagCategory(
 // ---------------------------------------------------------------------------
 
 export async function createTag(
-  fetcher: GraphQLFetcher,
-  workspaceId: string,
-  categoryId: string,
-  name: string,
-  color?: string | null,
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
+	categoryId: string,
+	name: string,
+	color?: string | null,
 ): Promise<Tag> {
-  const data = await fetcher<{ createTag: Tag }>(CREATE_TAG_MUTATION, {
-    workspaceId,
-    categoryId,
-    name,
-    color: color ?? null,
-  });
-  return data.createTag;
+	const data = await fetcher<{ createTag: Tag }>(CREATE_TAG_MUTATION, {
+		workspaceId,
+		categoryId,
+		name,
+		color: color ?? null,
+	});
+	return data.createTag;
 }
 
 export async function renameTag(
-  fetcher: GraphQLFetcher,
-  id: string,
-  name: string,
+	fetcher: GraphQLFetcher,
+	id: string,
+	name: string,
 ): Promise<Tag> {
-  const data = await fetcher<{ renameTag: Tag }>(RENAME_TAG_MUTATION, {
-    id,
-    name,
-  });
-  return data.renameTag;
+	const data = await fetcher<{ renameTag: Tag }>(RENAME_TAG_MUTATION, {
+		id,
+		name,
+	});
+	return data.renameTag;
 }
 
 export async function setTagColor(
-  fetcher: GraphQLFetcher,
-  id: string,
-  color: string | null,
+	fetcher: GraphQLFetcher,
+	id: string,
+	color: string | null,
 ): Promise<Tag> {
-  const data = await fetcher<{ setTagColor: Tag }>(SET_TAG_COLOR_MUTATION, {
-    id,
-    color,
-  });
-  return data.setTagColor;
+	const data = await fetcher<{ setTagColor: Tag }>(SET_TAG_COLOR_MUTATION, {
+		id,
+		color,
+	});
+	return data.setTagColor;
 }
 
 export async function deleteTag(
-  fetcher: GraphQLFetcher,
-  id: string,
+	fetcher: GraphQLFetcher,
+	id: string,
 ): Promise<boolean> {
-  const data = await fetcher<{ deleteTag: boolean }>(DELETE_TAG_MUTATION, {
-    id,
-  });
-  return data.deleteTag;
+	const data = await fetcher<{ deleteTag: boolean }>(DELETE_TAG_MUTATION, {
+		id,
+	});
+	return data.deleteTag;
 }
 
 export async function mergeTags(
-  fetcher: GraphQLFetcher,
-  fromId: string,
-  intoId: string,
+	fetcher: GraphQLFetcher,
+	fromId: string,
+	intoId: string,
 ): Promise<boolean> {
-  const data = await fetcher<{ mergeTags: boolean }>(MERGE_TAGS_MUTATION, {
-    fromId,
-    intoId,
-  });
-  return data.mergeTags;
+	const data = await fetcher<{ mergeTags: boolean }>(MERGE_TAGS_MUTATION, {
+		fromId,
+		intoId,
+	});
+	return data.mergeTags;
 }

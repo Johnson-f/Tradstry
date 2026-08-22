@@ -1,5 +1,6 @@
 "use client";
 
+import { currentBrokerageQuery } from "@tradstry/app-ui/components/brokerage/brokerage-query";
 import { BrokerageTable } from "@tradstry/app-ui/components/brokerage/brokerage-table";
 import { MergeTradesModal } from "@tradstry/app-ui/components/brokerage/merge-trades-modal";
 import { PendingTrades } from "@tradstry/app-ui/components/brokerage/pending-trades";
@@ -29,12 +30,23 @@ type BrokerageTab = "pending" | "all" | "journalled";
 
 type JournalledFilter = "journalled" | "unjournalled";
 
+function formatClosedDate(value: string) {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function BrokerageTransactions() {
   const account = useActiveWorkspace();
   const workspaceId = account?.id ?? null;
+  const [initialQuery] = useState(currentBrokerageQuery);
 
-  const [tab, setTab] = useState<BrokerageTab>("pending");
-  const [dateRange, setDateRange] = useState<AnalyticsRange>("ALL");
+  const [tab, setTab] = useState<BrokerageTab>(initialQuery.tab);
+  const [dateRange, setDateRange] = useState<AnalyticsRange>(
+    initialQuery.range,
+  );
   // Sub-filter for the "Journalled" tab: linked vs not-yet-linked trades.
   // Persisted to localStorage so the last choice is remembered across visits.
   const [journalledFilter, setJournalledFilter] = useState<JournalledFilter>(
@@ -52,6 +64,15 @@ export function BrokerageTransactions() {
     offset: 0,
     limit: DEFAULT_PAGE_SIZE,
     sortBy: "symbol",
+    symbol: initialQuery.symbol,
+    range: initialQuery.episodeClosedDate ? undefined : initialQuery.range,
+    startDate: initialQuery.startDate,
+    endDate: initialQuery.endDate,
+    episodeClosedDate: initialQuery.episodeClosedDate,
+    isJournalled:
+      initialQuery.tab === "journalled"
+        ? journalledFilter === "journalled"
+        : undefined,
   });
 
   // Track page offsets so "previous" works after trimming
@@ -63,6 +84,9 @@ export function BrokerageTransactions() {
     setFilters((prev) => ({
       ...prev,
       range,
+      startDate: undefined,
+      endDate: undefined,
+      episodeClosedDate: undefined,
       offset: 0,
     }));
   }
@@ -72,7 +96,7 @@ export function BrokerageTransactions() {
   const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null);
 
   // Symbol search drives the server-side filter (filters.symbol).
-  const [symbolSearch, setSymbolSearch] = useState("");
+  const [symbolSearch, setSymbolSearch] = useState(initialQuery.symbol ?? "");
 
   function handleTabChange(next: BrokerageTab) {
     if (next === tab) return;
@@ -298,32 +322,39 @@ export function BrokerageTransactions() {
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
             scopeControl={
-              tab === "journalled" ? (
-                <fieldset className="flex items-center rounded-lg border bg-background p-0.5">
-                  <legend className="sr-only">Journal status</legend>
-                  {(
-                    [
-                      ["journalled", "In journal"],
-                      ["unjournalled", "Needs journal"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={journalledFilter === value}
-                      onClick={() => handleJournalledFilterChange(value)}
-                      className={cn(
-                        "h-7 rounded-md px-2.5 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                        journalledFilter === value
-                          ? "bg-foreground text-background shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </fieldset>
-              ) : undefined
+              <>
+                {filters.episodeClosedDate ? (
+                  <span className="inline-flex h-8 items-center rounded-lg border bg-background px-2.5 text-[0.6875rem] font-medium text-foreground">
+                    Closed {formatClosedDate(filters.episodeClosedDate)}
+                  </span>
+                ) : null}
+                {tab === "journalled" ? (
+                  <fieldset className="flex items-center rounded-lg border bg-background p-0.5">
+                    <legend className="sr-only">Journal status</legend>
+                    {(
+                      [
+                        ["journalled", "In journal"],
+                        ["unjournalled", "Needs journal"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={journalledFilter === value}
+                        onClick={() => handleJournalledFilterChange(value)}
+                        className={cn(
+                          "h-7 rounded-md px-2.5 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                          journalledFilter === value
+                            ? "bg-foreground text-background shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </fieldset>
+                ) : null}
+              </>
             }
           />
           {(selectedIds.size >= 1 || editingEpisodeId) && (

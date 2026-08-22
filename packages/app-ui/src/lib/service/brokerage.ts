@@ -94,6 +94,7 @@ const BROKERAGE_TRANSACTIONS_QUERY = `
     $workspaceId: String!
     $startDate: String
     $endDate: String
+    $episodeClosedDate: String
     $range: AnalyticsRange
     $transactionType: String
     $symbol: String
@@ -106,6 +107,7 @@ const BROKERAGE_TRANSACTIONS_QUERY = `
       workspaceId: $workspaceId
       startDate: $startDate
       endDate: $endDate
+      episodeClosedDate: $episodeClosedDate
       range: $range
       transactionType: $transactionType
       symbol: $symbol

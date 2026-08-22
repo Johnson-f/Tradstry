@@ -1,13 +1,13 @@
 import type { AnalyticsRange } from "@tradstry/app-ui/lib/types/analytics";
 
 /**
- * Lower-case human labels for each range preset. Used for inline sublabels
+ * Human labels for each range preset. Used for inline sublabels
  * (e.g. "Net realized P/L · year to date").
  */
 const RANGE_LABELS: Record<AnalyticsRange, string> = {
   TODAY: "today",
   LAST_7_DAYS: "past 7 days",
-  LAST_1_MONTH: "past month",
+  LAST_1_MONTH: "Past Month",
   LAST_3_MONTHS: "past 3 months",
   LAST_6_MONTHS: "past 6 months",
   YEAR_TO_DATE: "year to date",
@@ -31,7 +31,7 @@ const MONTHS = [
   "Dec",
 ];
 
-/** Lower-case label for a range, e.g. "year to date". */
+/** Human label for a range, e.g. "Past Month" or "year to date". */
 export function rangeSublabel(range: AnalyticsRange): string {
   return RANGE_LABELS[range] ?? "selected range";
 }

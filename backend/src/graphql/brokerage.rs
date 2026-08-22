@@ -535,6 +535,7 @@ impl BrokerageQuery {
         range: Option<AnalyticsRange>,
         start_date: Option<String>,
         end_date: Option<String>,
+        episode_closed_date: Option<String>,
         transaction_type: Option<String>,
         symbol: Option<String>,
         offset: Option<i32>,
@@ -567,6 +568,7 @@ impl BrokerageQuery {
         let filters = TransactionFilters {
             start_date: range_start,
             end_date: range_end,
+            episode_closed_date: episode_closed_date.clone(),
             transaction_type: transaction_type.clone(),
             symbol: symbol.clone(),
             sort_by: sort_by.clone(),
@@ -586,6 +588,7 @@ impl BrokerageQuery {
                     &acct,
                     filters.start_date.as_deref(),
                     filters.end_date.as_deref(),
+                    filters.episode_closed_date.as_deref(),
                     filters.transaction_type.as_deref(),
                     filters.symbol.as_deref(),
                     filters.sort_by.as_deref(),

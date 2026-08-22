@@ -423,6 +423,19 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
             let a: IdArgs = serde_json::from_str(&m.args)?;
             playbook_table::soft_delete_playbook_tx(conn, user_id, &a.id, &m.hlc).await?;
         }
+        "setPlaybookApplicability" => {
+            let a: ApplicabilityArgs = serde_json::from_str(&m.args)?;
+            apply_applicability_tx(
+                conn,
+                user_id,
+                "playbooks",
+                "playbook_workspace_applicability",
+                "playbook_id",
+                &a,
+                &m.hlc,
+            )
+            .await?;
+        }
         "createJournalEntry" => {
             let a: JournalArgs = serde_json::from_str(&m.args)?;
             journal_table::create_journal_entry_tx(conn, user_id, &a.into_write_args(), &m.hlc)
@@ -485,6 +498,19 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
             let a: SetColorArgs = serde_json::from_str(&m.args)?;
             tags_table::set_category_color_tx(conn, user_id, &a.id, a.color.as_deref(), &m.hlc)
                 .await?;
+        }
+        "setTagCategoryApplicability" => {
+            let a: ApplicabilityArgs = serde_json::from_str(&m.args)?;
+            apply_applicability_tx(
+                conn,
+                user_id,
+                "tag_categories",
+                "tag_category_workspace_applicability",
+                "category_id",
+                &a,
+                &m.hlc,
+            )
+            .await?;
         }
         "reorderTagCategories" => {
             let a: ReorderArgs = serde_json::from_str(&m.args)?;
@@ -589,6 +615,72 @@ struct PlaybookArgs {
     exit_rules: String,
     position_sizing_rules: String,
     additional_rules: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplicabilityArgs {
+    id: String,
+    availability: String,
+    workspace_ids: Vec<String>,
+}
+
+async fn apply_applicability_tx(
+    conn: &mut PgConnection,
+    user_id: &str,
+    definition_table: &str,
+    junction_table: &str,
+    definition_column: &str,
+    args: &ApplicabilityArgs,
+    hlc: &str,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        matches!(args.availability.as_str(), "all" | "selected"),
+        "invalid availability"
+    );
+    anyhow::ensure!(
+        args.availability == "all" || !args.workspace_ids.is_empty(),
+        "selected availability requires at least one workspace"
+    );
+    let owned: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workspaces WHERE user_id=$1 AND id=ANY($2::text[])",
+    )
+    .bind(user_id)
+    .bind(&args.workspace_ids)
+    .fetch_one(&mut *conn)
+    .await?;
+    anyhow::ensure!(
+        owned as usize == args.workspace_ids.len(),
+        "invalid workspace selection"
+    );
+    let update_sql = format!(
+        "UPDATE {definition_table} SET availability=$1,hlc=$2,updated_at=now() WHERE id=$3 AND user_id=$4"
+    );
+    sqlx::query(sqlx::AssertSqlSafe(update_sql))
+        .bind(&args.availability)
+        .bind(hlc)
+        .bind(&args.id)
+        .bind(user_id)
+        .execute(&mut *conn)
+        .await?;
+    let delete_sql = format!("DELETE FROM {junction_table} WHERE {definition_column}=$1");
+    sqlx::query(sqlx::AssertSqlSafe(delete_sql))
+        .bind(&args.id)
+        .execute(&mut *conn)
+        .await?;
+    if args.availability == "selected" {
+        let insert_sql = format!(
+            "INSERT INTO {junction_table} ({definition_column},workspace_id) VALUES ($1,$2)"
+        );
+        for workspace_id in &args.workspace_ids {
+            sqlx::query(sqlx::AssertSqlSafe(insert_sql.clone()))
+                .bind(&args.id)
+                .bind(workspace_id)
+                .execute(&mut *conn)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 impl PlaybookArgs {

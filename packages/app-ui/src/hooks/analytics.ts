@@ -9,6 +9,7 @@ import type {
   AnalyticsTimeFilterInput,
   CalendarAnalytics,
   JournalAnalytics,
+  TradingPerformance,
 } from "@tradstry/app-ui/lib/types/analytics";
 
 const ANALYTICS_KEY = ["analytics"] as const;
@@ -67,6 +68,35 @@ export function useJournalAnalytics(
       }
 
       return analyticsService.fetchJournalAnalytics(
+        fetcher,
+        workspaceId,
+        timeFilter,
+      );
+    },
+    enabled: isLoaded && isSignedIn && !!workspaceId,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTradingPerformance(
+  workspaceId: string | null,
+  timeFilter: AnalyticsTimeFilterInput,
+) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const fetcher = useGraphQL();
+
+  return useQuery<TradingPerformance>({
+    queryKey: [
+      ...ANALYTICS_KEY,
+      "trading-performance",
+      workspaceId,
+      timeFilter.range,
+      timeFilter.startDate ?? null,
+      timeFilter.endDate ?? null,
+    ],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("workspace id is required");
+      return analyticsService.fetchTradingPerformance(
         fetcher,
         workspaceId,
         timeFilter,

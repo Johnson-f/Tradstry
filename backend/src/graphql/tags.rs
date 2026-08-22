@@ -13,6 +13,22 @@ async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db::client::Us
     crate::graphql::auth::user_db(ctx).await
 }
 
+async fn reindex_tag_library(
+    ctx: &Context<'_>,
+    user_db: &crate::service::db::client::UserDb,
+) -> Result<()> {
+    let workspace_ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM workspaces WHERE user_id=$1 ORDER BY created_at,id")
+            .bind(user_db.user_id())
+            .fetch_all(user_db.pool())
+            .await?;
+    let db = ctx.data::<Arc<Db>>()?;
+    for workspace_id in workspace_ids {
+        ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &workspace_id).await?;
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // GraphQL types
 // ---------------------------------------------------------------------------
@@ -45,6 +61,8 @@ pub struct TagCategoryGql {
     pub role: Option<TagRoleGql>,
     pub color: Option<String>,
     pub sort_order: i64,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -59,6 +77,8 @@ impl From<TagCategory> for TagCategoryGql {
             role: c.role.map(TagRoleGql::from),
             color: c.color,
             sort_order: c.sort_order,
+            availability: c.availability,
+            workspace_ids: c.workspace_ids,
             created_at: c.created_at,
             updated_at: c.updated_at,
         }
@@ -100,6 +120,13 @@ pub struct ReorderTagCategoryInput {
     pub sort_order: i64,
 }
 
+#[derive(Debug, InputObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct TagCategoryApplicabilityInput {
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Offline-first sync (whole-row LWW + soft-delete)
 // ---------------------------------------------------------------------------
@@ -112,6 +139,8 @@ pub struct TagCategoryDeltaGql {
     pub role: Option<String>,
     pub color: Option<String>,
     pub sort_order: i64,
+    pub availability: String,
+    pub workspace_ids: Vec<String>,
     pub hlc: String,
     pub deleted_at: Option<String>,
     pub updated_at: String,
@@ -125,6 +154,8 @@ impl From<TagCategoryDelta> for TagCategoryDeltaGql {
             role: d.role,
             color: d.color,
             sort_order: d.sort_order,
+            availability: d.availability,
+            workspace_ids: d.workspace_ids,
             hlc: d.hlc,
             deleted_at: d.deleted_at,
             updated_at: d.updated_at,
@@ -213,6 +244,33 @@ impl TagQuery {
         )
     }
 
+    async fn strategy_library_tag_categories(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<TagCategoryGql>> {
+        let user_db = get_user_db(ctx).await?;
+        Ok(tags_service::list_strategy_library_categories(&user_db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn strategy_library_tags(
+        &self,
+        ctx: &Context<'_>,
+        category_id: Option<String>,
+    ) -> Result<Vec<TagGql>> {
+        let user_db = get_user_db(ctx).await?;
+        Ok(
+            tags_service::list_strategy_library_tags(&user_db, category_id.as_deref())
+                .await?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
+    }
+
     /// Offline-first pull for the desktop. User-scoped, with one cursor spanning
     /// BOTH tables (categories + tags) — the desktop's tag store syncs both in a
     /// single cycle. `lastMutationId` is the shared per-client watermark because
@@ -287,9 +345,7 @@ impl TagMutation {
     ) -> Result<TagCategoryGql> {
         let user_db = get_user_db(ctx).await?;
         let category = tags_service::rename_category(&user_db, &id, &name).await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &category.workspace_id)
-            .await?;
+        reindex_tag_library(ctx, &user_db).await?;
         Ok(category.into())
     }
 
@@ -318,18 +374,31 @@ impl TagMutation {
         Ok(true)
     }
 
+    async fn set_tag_category_applicability(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: TagCategoryApplicabilityInput,
+    ) -> Result<TagCategoryGql> {
+        let user_db = get_user_db(ctx).await?;
+        let category = tags_table::set_category_applicability(
+            user_db.pool(),
+            user_db.user_id(),
+            &id,
+            &input.availability,
+            &input.workspace_ids,
+        )
+        .await?;
+        reindex_tag_library(ctx, &user_db).await?;
+        Ok(category.into())
+    }
+
     async fn delete_tag_category(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
         let existing = tags_service::get_category(&user_db, &id).await?;
         let deleted = tags_service::delete_category(&user_db, &id).await?;
-        if deleted && let Some(category) = existing {
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_account_reindex(
-                db.as_ref(),
-                user_db.user_id(),
-                &category.workspace_id,
-            )
-            .await?;
+        if deleted && existing.is_some() {
+            reindex_tag_library(ctx, &user_db).await?;
         }
         Ok(deleted)
     }
@@ -357,8 +426,7 @@ impl TagMutation {
     async fn rename_tag(&self, ctx: &Context<'_>, id: String, name: String) -> Result<TagGql> {
         let user_db = get_user_db(ctx).await?;
         let tag = tags_service::rename_tag(&user_db, &id, &name).await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &tag.workspace_id).await?;
+        reindex_tag_library(ctx, &user_db).await?;
         Ok(tag.into())
     }
 
@@ -378,10 +446,8 @@ impl TagMutation {
         let user_db = get_user_db(ctx).await?;
         let existing = tags_service::get_tag(&user_db, &id).await?;
         let deleted = tags_service::delete_tag(&user_db, &id).await?;
-        if deleted && let Some(tag) = existing {
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &tag.workspace_id)
-                .await?;
+        if deleted && existing.is_some() {
+            reindex_tag_library(ctx, &user_db).await?;
         }
         Ok(deleted)
     }
@@ -395,10 +461,8 @@ impl TagMutation {
         let user_db = get_user_db(ctx).await?;
         let source = tags_service::get_tag(&user_db, &from_id).await?;
         tags_service::merge_tags(&user_db, &from_id, &into_id).await?;
-        if let Some(tag) = source {
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &tag.workspace_id)
-                .await?;
+        if source.is_some() {
+            reindex_tag_library(ctx, &user_db).await?;
         }
         Ok(true)
     }
