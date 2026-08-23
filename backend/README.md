@@ -163,6 +163,12 @@ cargo build --release
 ./target/release/tradstry-backend
 ```
 
+Local backend startup verifies the ignored `projector/notebook-core.gen.mjs`
+and `projector/notebook-seed.gen.mjs` bundles before starting workers. If either
+is absent in a source checkout, it runs `projector:sync-core` automatically.
+Docker images continue to generate both bundles during their projector build
+stage.
+
 The API server binds `0.0.0.0:7899`, the MCP server `0.0.0.0:7900`. Both stop gracefully on SIGTERM/SIGINT: HTTP drains first, then the background workers get 20 seconds to finish the unit of work in flight.
 
 ## API

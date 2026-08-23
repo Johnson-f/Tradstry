@@ -51,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting backend...");
 
     let db = Arc::new(Db::new().await?);
+    tradstry_backend::service::ai::projector::ensure_ready().await?;
+    info!("Projector bundles ready");
     let r2_client = Arc::new(R2Client::from_env()?);
     let agents_client = Arc::new(AgentsClient::from_env()?);
     let vector_database_client = Arc::new(VectorDatabaseClient::from_env()?);
@@ -325,7 +327,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "/notebook/media/{hash}/thumb".to_string(),
                     "/notebook/assist/autocomplete".to_string(),
                     "/notebook/assist/transform".to_string(),
-                    "/webhooks/snaptrade".to_string(),
                 ]),
                 true,
             ))

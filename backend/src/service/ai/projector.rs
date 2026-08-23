@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::sync::Mutex;
 
 // Asymmetric stdio contract: `project` takes base64 update blobs (one per line) and
 // emits document JSON; `seed` takes raw document JSON and emits a single base64 blob.
@@ -9,6 +10,8 @@ const PROJECT_ENTRY: &str = "project.mjs";
 const SEED_ENTRY: &str = "seed.mjs";
 const COMPACT_ENTRY: &str = "compact.mjs";
 const MARKDOWN_ENTRY: &str = "markdown.mjs";
+const GENERATED_BUNDLES: [&str; 2] = ["notebook-core.gen.mjs", "notebook-seed.gen.mjs"];
+static PREPARE_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// Where `projector/` lives. In the Docker image it sits next to the binary; under
 /// `cargo test` the binary is in target/debug, so fall back to the crate root.
@@ -25,7 +28,66 @@ fn projector_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/projector"))
 }
 
+/// Verify the untracked projector bundles exist, generating them from the shared
+/// notebook package when running from a source checkout. Docker builds create
+/// these ahead of time; this fallback keeps direct `cargo run` and tests equally
+/// reliable after a clean checkout or `make cleanup`.
+pub async fn ensure_ready() -> Result<()> {
+    let dir = projector_dir();
+    if GENERATED_BUNDLES
+        .iter()
+        .all(|name| dir.join(name).is_file())
+    {
+        return Ok(());
+    }
+
+    let _guard = PREPARE_LOCK.lock().await;
+    if GENERATED_BUNDLES
+        .iter()
+        .all(|name| dir.join(name).is_file())
+    {
+        return Ok(());
+    }
+
+    let package = dir.join("package.json");
+    if !package.is_file() {
+        return Err(anyhow!(
+            "projector generated bundles are missing and {} is unavailable",
+            package.display()
+        ));
+    }
+
+    let output = Command::new("bun")
+        .args(["run", "sync-core"])
+        .current_dir(&dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+        .context("failed to run projector sync-core")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "projector sync-core failed (status {}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let missing: Vec<&str> = GENERATED_BUNDLES
+        .iter()
+        .copied()
+        .filter(|name| !dir.join(name).is_file())
+        .collect();
+    if !missing.is_empty() {
+        return Err(anyhow!(
+            "projector sync-core completed without producing {}",
+            missing.join(", ")
+        ));
+    }
+    Ok(())
+}
+
 async fn run(script: &str, stdin: Vec<u8>) -> Result<Vec<u8>> {
+    ensure_ready().await?;
     let entry = projector_dir().join(script);
     let entry = entry.display().to_string();
     let entry = entry.as_str();
