@@ -78,8 +78,8 @@ export function ProfileSection() {
 
   return (
     <Section
-      title="Profile"
-      description="How you appear across Tradstry."
+      title="Personal details"
+      description="Your photo and display name appear throughout the workspace."
       footer={
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
           {saving ? <Spinner /> : null}

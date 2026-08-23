@@ -37,16 +37,16 @@ export function Section({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-xl border bg-background",
+        "overflow-hidden rounded-2xl border bg-muted/[0.14]",
         tone === "destructive"
           ? "border-destructive/35"
-          : "border-border/60",
+          : "border-border/65",
       )}
     >
-      <header className="px-4 pt-4">
+      <header className="px-5 pt-5">
         <h3
           className={cn(
-            "text-sm font-semibold tracking-[-0.01em]",
+            "text-sm font-semibold tracking-[-0.015em]",
             tone === "destructive" && "text-destructive",
           )}
         >
@@ -58,9 +58,9 @@ export function Section({
           </p>
         ) : null}
       </header>
-      <div className="px-4 py-4">{children}</div>
+      <div className="px-5 py-5">{children}</div>
       {footer ? (
-        <div className="flex items-center justify-end gap-2 border-t border-border/60 bg-muted/20 px-4 py-2.5">
+        <div className="flex items-center justify-end gap-2 border-t border-border/60 bg-background/70 px-5 py-3">
           {footer}
         </div>
       ) : null}
@@ -83,7 +83,7 @@ export function Field({
 }) {
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
+      <Label htmlFor={htmlFor} className="text-xs font-medium text-foreground/80">
         {label}
       </Label>
       {children}
@@ -110,7 +110,7 @@ export function Spinner({ className }: { className?: string }) {
 
 export function EmptyRow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground">
+    <p className="rounded-xl border border-dashed border-border/70 bg-background/60 px-3 py-7 text-center text-xs text-muted-foreground">
       {children}
     </p>
   );
