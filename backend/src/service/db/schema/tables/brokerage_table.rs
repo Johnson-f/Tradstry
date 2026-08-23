@@ -901,6 +901,27 @@ pub async fn count_transactions(pool: &PgPool, user_id: &str, workspace_id: &str
     .context("Failed to count brokerage transactions")
 }
 
+pub async fn count_transactions_from(
+    pool: &PgPool,
+    user_id: &str,
+    workspace_id: &str,
+    start_date: Option<&str>,
+) -> Result<i64> {
+    match start_date {
+        Some(start_date) => sqlx::query_scalar(
+            "SELECT count(*) FROM brokerage_transactions
+             WHERE user_id=$1 AND workspace_id=$2 AND trade_date >= $3::date",
+        )
+        .bind(user_id)
+        .bind(workspace_id)
+        .bind(start_date)
+        .fetch_one(pool)
+        .await
+        .context("Failed to count bounded brokerage transactions"),
+        None => count_transactions(pool, user_id, workspace_id).await,
+    }
+}
+
 pub async fn count_transactions_matching_snaptrade_ids(
     pool: &PgPool,
     user_id: &str,

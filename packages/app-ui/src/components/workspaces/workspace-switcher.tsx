@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  ArrowReloadHorizontalIcon,
   Delete02Icon,
+  Loading03Icon,
   PencilEdit01Icon,
   PlusSignIcon,
   UnfoldMoreIcon,
@@ -25,14 +27,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@tradstry/app-ui/components/ui/dropdown-menu";
-import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
-import {
-  useActiveWorkspace,
-  useWorkspaceActions,
-  useWorkspaces,
-  useWorkspacesError,
-  useWorkspacesLoading,
-} from "./hooks";
+import { useWorkspaces as useWorkspacesQuery } from "@tradstry/app-ui/hooks/workspaces";
+import { useActiveWorkspace, useWorkspaceActions } from "./hooks";
 import { ACCOUNT_ICONS } from "./icon-map";
 import type { Workspace } from "./types";
 import { WorkspaceDialog } from "./workspace-dialog";
@@ -48,11 +44,12 @@ const ASSET_LABELS: Record<Workspace["assetClass"], string> = {
 };
 
 export function WorkspaceSwitcher() {
-  const workspaces = useWorkspaces();
+  const workspacesQuery = useWorkspacesQuery();
+  const workspaces = workspacesQuery.data ?? [];
   const activeWorkspace = useActiveWorkspace();
   const actions = useWorkspaceActions();
-  const isLoading = useWorkspacesLoading();
-  const error = useWorkspacesError();
+  const isLoading = workspacesQuery.isLoading || workspacesQuery.isPending;
+  const error = workspacesQuery.error;
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingWorkspace, setEditingWorkspace] =
     React.useState<Workspace | null>(null);
@@ -60,7 +57,23 @@ export function WorkspaceSwitcher() {
     null,
   );
 
-  if (isLoading) return <Skeleton className="h-7 w-32 rounded-md" />;
+  if (isLoading) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled
+        className="min-w-0 gap-1.5 px-1.5 text-muted-foreground opacity-100"
+      >
+        <HugeiconsIcon
+          icon={Loading03Icon}
+          strokeWidth={2}
+          className="size-3.5 animate-spin"
+        />
+        <span className="hidden sm:inline">Loading workspace</span>
+      </Button>
+    );
+  }
 
   const activeIcon = activeWorkspace
     ? ACCOUNT_ICONS[activeWorkspace.icon]
@@ -98,6 +111,19 @@ export function WorkspaceSwitcher() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
           <DropdownMenuLabel>Trading workspaces</DropdownMenuLabel>
+          {error ? (
+            <DropdownMenuItem
+              className="gap-2"
+              onClick={() => void workspacesQuery.refetch()}
+            >
+              <HugeiconsIcon
+                icon={ArrowReloadHorizontalIcon}
+                strokeWidth={2}
+                className="size-4"
+              />
+              Retry loading workspaces
+            </DropdownMenuItem>
+          ) : null}
           {workspaces.map((workspace) => {
             const icon = ACCOUNT_ICONS[workspace.icon];
             return (

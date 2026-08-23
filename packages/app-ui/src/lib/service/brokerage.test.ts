@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { GraphQLFetcher } from "@tradstry/app-ui/lib/client";
 import {
 	createBrokerageAccountWorkspaces,
+	expandBrokerageTransactionHistory,
 	fetchBrokerageConnectionAccounts,
 	fetchBrokerageReconciliation,
 	fetchBrokerageSyncOutcome,
+	finalizeBrokerageSetup,
 	regroupBrokerageEpisode,
 	reportBrokerageDataIssue,
 } from "./brokerage";
@@ -76,6 +78,60 @@ describe("brokerage account workspace service", () => {
 		expect(calls[0]?.variables).toEqual({
 			workspaceId: "workspace",
 			snaptradeAccountIds: ["margin", "events"],
+		});
+	});
+
+	test("finalizes account mapping and independent history policies together", async () => {
+		const calls: Array<{ query: string; variables?: Record<string, unknown> }> =
+			[];
+		const fetcher = (async <T>(
+			query: string,
+			variables?: Record<string, unknown>,
+		) => {
+			calls.push({ query, variables });
+			return { finalizeBrokerageSetup: [] } as T;
+		}) as GraphQLFetcher;
+		const input = {
+			workspaceId: "workspace",
+			primarySnaptradeAccountId: "cash",
+			accounts: [
+				{ snaptradeAccountId: "cash", policy: { mode: "one_year" as const } },
+				{ snaptradeAccountId: "margin", policy: { mode: "all" as const } },
+			],
+		};
+
+		await finalizeBrokerageSetup(fetcher, input);
+
+		expect(calls[0]?.query).toContain("finalizeBrokerageSetup");
+		expect(calls[0]?.variables).toEqual({ input });
+	});
+
+	test("expands history without sending a deletion boundary", async () => {
+		const calls: Array<{ query: string; variables?: Record<string, unknown> }> =
+			[];
+		const fetcher = (async <T>(
+			query: string,
+			variables?: Record<string, unknown>,
+		) => {
+			calls.push({ query, variables });
+			return {
+				expandBrokerageTransactionHistory: {
+					mode: "custom",
+					startDate: "2023-01-01",
+					configuredAt: "2026-08-23T00:00:00Z",
+					initialImportCompletedAt: null,
+				},
+			} as T;
+		}) as GraphQLFetcher;
+
+		await expandBrokerageTransactionHistory(fetcher, "workspace", {
+			mode: "custom",
+			customStartDate: "2023-01-01",
+		});
+
+		expect(calls[0]?.variables).toEqual({
+			workspaceId: "workspace",
+			policy: { mode: "custom", customStartDate: "2023-01-01" },
 		});
 	});
 

@@ -35,6 +35,7 @@ async fn migrate_creates_all_tables_idempotently() {
         "brokerage_balances",
         "journal_entries",
         "playbooks",
+        "playbook_workspace_applicability",
         "notebook_folders",
         "notebook_notes",
         "notebook_note_trades",
@@ -53,6 +54,7 @@ async fn migrate_creates_all_tables_idempotently() {
         "position_calculator_history",
         "position_calculator_plans",
         "tag_categories",
+        "tag_category_workspace_applicability",
         "tags",
         "trade_tags",
         "trading_principles",
@@ -93,8 +95,8 @@ async fn migrate_creates_all_tables_idempotently() {
     }
     assert_eq!(
         tables.len(),
-        60,
-        "expected exactly 60 tables, got {tables:?}"
+        62,
+        "expected exactly 62 tables, got {tables:?}"
     );
 
     let indexes: Vec<String> = sqlx::query_scalar(

@@ -8,11 +8,11 @@ import {
   Task01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import {
   buildReviewQueueModel,
   type ReviewQueueItem,
 } from "@tradstry/app-ui/components/dashboard/review-queue/model";
+import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
@@ -125,7 +125,7 @@ export function DashboardReviewQueueCard() {
 
   if (isLoading) {
     return (
-      <section className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+      <section className="rounded-xl border border-border/70 bg-card/55 p-4">
         <Skeleton className="h-4 w-28" />
         <div className="mt-4 grid grid-cols-3 gap-2">
           {["a", "b", "c"].map((key) => (
@@ -152,7 +152,7 @@ export function DashboardReviewQueueCard() {
   const caughtUp = model.actionLabel === "All caught up";
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border bg-background/90 p-4 shadow-sm">
+    <section className="flex h-full flex-col rounded-xl border border-border/70 bg-card/55 p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">

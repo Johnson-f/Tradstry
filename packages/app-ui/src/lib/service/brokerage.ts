@@ -1,5 +1,6 @@
 import type { GraphQLFetcher } from "@tradstry/app-ui/lib/client";
 import type {
+	BrokerageAccountImportInput,
 	BrokerageBalance,
 	BrokerageConnectionAccount,
 	BrokerageDataIssueReport,
@@ -13,6 +14,8 @@ import type {
 	ReportBrokerageDataIssueInput,
 	SyncResult,
 	TransactionFilters,
+	TransactionImportPolicy,
+	TransactionImportPolicyInput,
 } from "@tradstry/app-ui/lib/types/brokerage";
 import type { Workspace } from "@tradstry/app-ui/lib/types/workspaces";
 
@@ -181,6 +184,7 @@ const BROKERAGE_RECONCILIATION_QUERY = `
       localTransactionCount
       missingTransactionCount
       extraTransactionCount
+      transactionImportStartDate
       portfolioStatus
       portfolioCheckedAt
       brokerHoldingCount
@@ -191,6 +195,17 @@ const BROKERAGE_RECONCILIATION_QUERY = `
       balanceDiscrepancyCount
       transactionError
       portfolioError
+    }
+  }
+`;
+
+const BROKERAGE_TRANSACTION_IMPORT_POLICY_QUERY = `
+  query BrokerageTransactionImportPolicy($workspaceId: String!) {
+    brokerageTransactionImportPolicy(workspaceId: $workspaceId) {
+      mode
+      startDate
+      configuredAt
+      initialImportCompletedAt
     }
   }
 `;
@@ -235,6 +250,29 @@ const CREATE_BROKERAGE_ACCOUNT_WORKSPACES_MUTATION = `
       id
       name
       snaptradeAccountId
+    }
+  }
+`;
+
+const FINALIZE_BROKERAGE_SETUP_MUTATION = `
+  mutation FinalizeBrokerageSetup($input: FinalizeBrokerageSetupInput!) {
+    finalizeBrokerageSetup(input: $input) {
+      id
+      name
+      snaptradeAccountId
+      brokerageSetupComplete
+      brokerageSetupCompletedAt
+    }
+  }
+`;
+
+const EXPAND_BROKERAGE_HISTORY_MUTATION = `
+  mutation ExpandBrokerageTransactionHistory($workspaceId: String!, $policy: TransactionImportPolicyInput!) {
+    expandBrokerageTransactionHistory(workspaceId: $workspaceId, policy: $policy) {
+      mode
+      startDate
+      configuredAt
+      initialImportCompletedAt
     }
   }
 `;
@@ -313,6 +351,16 @@ export async function fetchBalances(
 	return data.brokerageBalances;
 }
 
+export async function fetchTransactionImportPolicy(
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
+): Promise<TransactionImportPolicy | null> {
+	const data = await fetcher<{
+		brokerageTransactionImportPolicy: TransactionImportPolicy | null;
+	}>(BROKERAGE_TRANSACTION_IMPORT_POLICY_QUERY, { workspaceId });
+	return data.brokerageTransactionImportPolicy;
+}
+
 export async function initiateConnection(
 	fetcher: GraphQLFetcher,
 	workspaceId: string,
@@ -364,6 +412,47 @@ export async function createBrokerageAccountWorkspaces(
 		snaptradeAccountIds,
 	});
 	return data.createBrokerageAccountWorkspaces;
+}
+
+export async function finalizeBrokerageSetup(
+	fetcher: GraphQLFetcher,
+	input: {
+		workspaceId: string;
+		primarySnaptradeAccountId: string;
+		accounts: BrokerageAccountImportInput[];
+	},
+): Promise<
+	Pick<
+		Workspace,
+		| "id"
+		| "name"
+		| "snaptradeAccountId"
+		| "brokerageSetupComplete"
+		| "brokerageSetupCompletedAt"
+	>[]
+> {
+	const data = await fetcher<{
+		finalizeBrokerageSetup: Pick<
+			Workspace,
+			| "id"
+			| "name"
+			| "snaptradeAccountId"
+			| "brokerageSetupComplete"
+			| "brokerageSetupCompletedAt"
+		>[];
+	}>(FINALIZE_BROKERAGE_SETUP_MUTATION, { input });
+	return data.finalizeBrokerageSetup;
+}
+
+export async function expandBrokerageTransactionHistory(
+	fetcher: GraphQLFetcher,
+	workspaceId: string,
+	policy: TransactionImportPolicyInput,
+): Promise<TransactionImportPolicy> {
+	const data = await fetcher<{
+		expandBrokerageTransactionHistory: TransactionImportPolicy;
+	}>(EXPAND_BROKERAGE_HISTORY_MUTATION, { workspaceId, policy });
+	return data.expandBrokerageTransactionHistory;
 }
 
 export async function disconnectBrokerage(

@@ -26,6 +26,8 @@ pub struct Workspace {
     pub total_value_currency: Option<String>,
     pub snaptrade_connection_disabled: bool,
     pub snaptrade_connection_disabled_at: Option<String>,
+    pub brokerage_setup_complete: bool,
+    pub brokerage_setup_completed_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -81,6 +83,8 @@ fn row_to_workspace(row: &sqlx::postgres::PgRow) -> Result<Workspace> {
         updated_at: row.try_get(15)?,
         snaptrade_connection_disabled: row.try_get::<Option<bool>, _>(16)?.unwrap_or(false),
         snaptrade_connection_disabled_at: row.try_get(17)?,
+        brokerage_setup_complete: row.try_get(18)?,
+        brokerage_setup_completed_at: row.try_get(19)?,
     })
 }
 
@@ -90,7 +94,9 @@ const SELECT_COLS: &str = "w.id, w.user_id, w.name, w.icon, w.currency, w.risk_p
     to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
     to_char(w.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at, \
     bc.connection_disabled, \
-    to_char(bc.connection_disabled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS connection_disabled_at";
+    to_char(bc.connection_disabled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS connection_disabled_at, \
+    bc.setup_completed_at IS NOT NULL AS brokerage_setup_complete, \
+    to_char(bc.setup_completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS brokerage_setup_completed_at";
 
 const FROM_JOIN: &str =
     "FROM workspaces w LEFT JOIN brokerage_connections bc ON bc.workspace_id = w.id";
@@ -342,12 +348,60 @@ pub async fn update_snaptrade_credentials(
         .expect("workspace exists"))
 }
 
+pub async fn prepare_snaptrade_connection(
+    pool: &PgPool,
+    id: &str,
+    user_id: &str,
+    snaptrade_user_id: &str,
+    encrypted_secret: &str,
+    connection_id: &str,
+) -> Result<Workspace> {
+    ensure!(
+        find_workspace(pool, id, user_id).await?.is_some(),
+        "Workspace not found"
+    );
+    sqlx::query(
+        "INSERT INTO brokerage_connections (
+             workspace_id,user_id,snaptrade_user_id,
+             snaptrade_user_secret_encrypted,snaptrade_connection_id,setup_completed_at
+         ) VALUES ($1,$2,$3,$4,$5,NULL)
+         ON CONFLICT (workspace_id) DO UPDATE SET
+             snaptrade_user_id=EXCLUDED.snaptrade_user_id,
+             snaptrade_user_secret_encrypted=EXCLUDED.snaptrade_user_secret_encrypted,
+             setup_completed_at=CASE
+                 WHEN brokerage_connections.snaptrade_connection_id=EXCLUDED.snaptrade_connection_id
+                 THEN brokerage_connections.setup_completed_at
+                 ELSE NULL
+             END,
+             snaptrade_account_id=CASE
+                 WHEN brokerage_connections.snaptrade_connection_id=EXCLUDED.snaptrade_connection_id
+                 THEN brokerage_connections.snaptrade_account_id
+                 ELSE NULL
+             END,
+             snaptrade_connection_id=EXCLUDED.snaptrade_connection_id",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(snaptrade_user_id)
+    .bind(encrypted_secret)
+    .bind(connection_id)
+    .execute(pool)
+    .await
+    .context("Failed to prepare brokerage connection")?;
+    find_workspace(pool, id, user_id)
+        .await?
+        .context("Workspace not found after preparing brokerage connection")
+}
+
 pub async fn set_snaptrade_account_id(
     pool: &PgPool,
     id: &str,
     user_id: &str,
     snaptrade_account_id: &str,
 ) -> Result<Workspace> {
+    let previous_account_id = find_workspace(pool, id, user_id)
+        .await?
+        .and_then(|workspace| workspace.snaptrade_account_id);
     let result = sqlx::query(
         "UPDATE brokerage_connections SET snaptrade_account_id=$1 WHERE workspace_id=$2 AND user_id=$3",
     )
@@ -360,6 +414,58 @@ pub async fn set_snaptrade_account_id(
         result.rows_affected() == 1,
         "Workspace has no brokerage connection"
     );
+    if let Some(previous_account_id) = previous_account_id
+        && previous_account_id != snaptrade_account_id
+    {
+        sqlx::query(
+            "INSERT INTO brokerage_sync_state (
+                 user_id,workspace_id,snaptrade_account_id,
+                 transaction_import_mode,transaction_import_start_date,
+                 transaction_import_configured_at
+             )
+             SELECT user_id,workspace_id,$1,transaction_import_mode,
+                    transaction_import_start_date,transaction_import_configured_at
+             FROM brokerage_sync_state
+             WHERE user_id=$2 AND workspace_id=$3 AND snaptrade_account_id=$4
+               AND transaction_import_configured_at IS NOT NULL
+             ON CONFLICT (user_id,workspace_id,snaptrade_account_id) DO NOTHING",
+        )
+        .bind(snaptrade_account_id)
+        .bind(user_id)
+        .bind(id)
+        .bind(previous_account_id)
+        .execute(pool)
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO brokerage_sync_state (
+             user_id,workspace_id,snaptrade_account_id,
+             transaction_import_mode,transaction_import_configured_at
+         ) VALUES ($1,$2,$3,'all',now())
+         ON CONFLICT (user_id,workspace_id,snaptrade_account_id) DO UPDATE SET
+             transaction_import_mode=COALESCE(
+                 brokerage_sync_state.transaction_import_mode,
+                 EXCLUDED.transaction_import_mode
+             ),
+             transaction_import_configured_at=COALESCE(
+                 brokerage_sync_state.transaction_import_configured_at,
+                 EXCLUDED.transaction_import_configured_at
+             ),
+             updated_at=now()",
+    )
+    .bind(user_id)
+    .bind(id)
+    .bind(snaptrade_account_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "UPDATE brokerage_connections SET setup_completed_at=COALESCE(setup_completed_at,now())
+         WHERE workspace_id=$1 AND user_id=$2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
     Ok(find_workspace(pool, id, user_id)
         .await?
         .expect("workspace exists"))
@@ -399,7 +505,7 @@ pub async fn clear_shared_snaptrade_credentials(
          snaptrade_user_id=NULL, snaptrade_user_secret_encrypted=NULL, \
          snaptrade_connection_id=NULL, snaptrade_account_id=NULL, \
          connection_disabled=false, connection_disabled_at=NULL, \
-         data_freshness_mode='unknown' \
+         data_freshness_mode='unknown', setup_completed_at=NULL \
          WHERE user_id=$1 AND snaptrade_user_secret_encrypted=$2",
     )
     .bind(user_id)
@@ -646,6 +752,8 @@ mod tests {
             total_value_currency: Some("USD".into()),
             snaptrade_connection_disabled: false,
             snaptrade_connection_disabled_at: None,
+            brokerage_setup_complete: true,
+            brokerage_setup_completed_at: Some("2026-01-01T00:00:00Z".into()),
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
         };

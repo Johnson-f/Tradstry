@@ -10,15 +10,21 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { TradstryMark } from "@tradstry/app-ui/components/logo";
+import { BrokerageHistorySetup } from "@tradstry/app-ui/components/brokerage/history-import-policy";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import * as brokerageService from "@tradstry/app-ui/lib/service/brokerage";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import type {
+  BrokerageAccountImportInput,
+  BrokerageConnectionAccount,
+} from "@tradstry/app-ui/lib/types/brokerage";
 import { GraphQLProvider, useGraphQL } from "@/lib/client";
 
 type ConnectionState =
   | { kind: "connecting" }
+  | { kind: "setup"; accounts: BrokerageConnectionAccount[]; workspaceId: string }
   | { kind: "success" }
   | { kind: "error"; detail: string }
   | { kind: "cancelled" };
@@ -52,7 +58,9 @@ const COPY = {
   },
 } as const;
 
-function stepsFor(state: ConnectionState): Array<{
+type ReceiptState = Exclude<ConnectionState, { kind: "setup" }>;
+
+function stepsFor(state: ReceiptState): Array<{
   label: string;
   detail: string;
   status: StepStatus;
@@ -152,7 +160,7 @@ function StepMark({ status }: { status: StepStatus }) {
   );
 }
 
-function StatusMark({ kind }: { kind: ConnectionState["kind"] }) {
+function StatusMark({ kind }: { kind: ReceiptState["kind"] }) {
   const icon =
     kind === "success"
       ? CheckmarkCircle02Icon
@@ -184,7 +192,7 @@ function ConnectionReceipt({
   state,
   onReturn,
 }: {
-  state: ConnectionState;
+  state: ReceiptState;
   onReturn?: () => void;
 }) {
   const copy = COPY[state.kind];
@@ -326,6 +334,7 @@ function CallbackHandler() {
   const fetcher = useGraphQL();
   const didRun = useRef(false);
   const [state, setState] = useState<ConnectionState>({ kind: "connecting" });
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   useEffect(() => {
     if (didRun.current) return;
@@ -343,10 +352,21 @@ function CallbackHandler() {
             workspaceId,
             connectionId,
           );
-          setState({ kind: "success" });
-          window.setTimeout(() => {
-            router.replace("/dashboard/brokerage");
-          }, 2200);
+          const accounts = await brokerageService.fetchBrokerageConnectionAccounts(
+            fetcher,
+            workspaceId,
+          );
+          if (accounts.some((account) => account.current)) {
+            setState({ kind: "success" });
+            window.setTimeout(() => router.replace("/dashboard/brokerage"), 2200);
+          } else if (accounts.length > 0) {
+            setState({ kind: "setup", accounts, workspaceId });
+          } else {
+            setState({
+              kind: "error",
+              detail: "The connection is ready, but no brokerage accounts are available yet. Wait a moment and retry.",
+            });
+          }
         } catch {
           setState({
             kind: "error",
@@ -382,6 +402,48 @@ function CallbackHandler() {
 
     completeConnection();
   }, [searchParams, router, fetcher]);
+
+  async function finalizeSetup(value: {
+    primarySnaptradeAccountId: string;
+    accounts: BrokerageAccountImportInput[];
+  }) {
+    if (state.kind !== "setup") return;
+    setIsFinalizing(true);
+    try {
+      const configured = await brokerageService.finalizeBrokerageSetup(fetcher, {
+        workspaceId: state.workspaceId,
+        ...value,
+      });
+      for (const workspace of configured) {
+        await brokerageService.syncBrokerageData(fetcher, workspace.id);
+      }
+      setState({ kind: "success" });
+      window.setTimeout(() => router.replace("/dashboard/brokerage"), 2200);
+    } catch (error) {
+      setState({
+        kind: "error",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "The import setup could not be saved. Return to Brokerage and try again.",
+      });
+    } finally {
+      setIsFinalizing(false);
+    }
+  }
+
+  if (state.kind === "setup") {
+    return (
+      <main className="flex min-h-svh items-center justify-center bg-[#f7f7f5] px-5 py-10 dark:bg-[#111112]">
+        <BrokerageHistorySetup
+          accounts={state.accounts}
+          workspaceName="this workspace"
+          onSubmit={(value) => void finalizeSetup(value)}
+          isSubmitting={isFinalizing}
+        />
+      </main>
+    );
+  }
 
   return (
     <ConnectionReceipt

@@ -2,6 +2,7 @@
 
 import { Loading01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { TradstryMark } from "@tradstry/app-ui/components/logo";
 import { redactInternalIds } from "@tradstry/app-ui/lib/types/chat";
 
 interface ChatStreamMessageProps {
@@ -26,17 +27,20 @@ export function ChatStreamMessage({
   isStreaming,
 }: ChatStreamMessageProps) {
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%]">
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+        <TradstryMark className="size-3.5" />
+      </span>
+      <div className="min-w-0 max-w-[calc(100%-2.25rem)]">
         {content ? (
-          <div className="whitespace-pre-wrap rounded-lg bg-muted px-4 py-3 text-xs/relaxed text-foreground">
+          <div className="whitespace-pre-wrap text-xs/relaxed text-foreground">
             {cleanContent(content)}
             {isStreaming && (
               <span className="ml-0.5 inline-block animate-pulse">&#9612;</span>
             )}
           </div>
         ) : (
-          <div className="rounded-lg bg-muted px-4 py-3 text-xs/relaxed">
+          <div className="py-1 text-xs/relaxed">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <HugeiconsIcon
                 icon={Loading01Icon}

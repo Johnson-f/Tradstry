@@ -39,6 +39,8 @@ export interface Workspace {
   snaptradeAccountId: string | null;
   snaptradeConnectionDisabled: boolean;
   snaptradeConnectionDisabledAt: string | null;
+  brokerageSetupComplete: boolean;
+  brokerageSetupCompletedAt: string | null;
 }
 
 export interface CreateWorkspaceInput {

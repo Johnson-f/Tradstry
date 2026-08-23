@@ -141,7 +141,7 @@ export function WorkspaceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="gap-0 overflow-hidden p-0 sm:max-w-lg"
+        className="gap-0 overflow-hidden p-0 sm:max-w-[27rem]"
         showCloseButton={false}
       >
         <form onSubmit={handleSubmit}>
@@ -150,19 +150,23 @@ export function WorkspaceDialog({
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="absolute top-7 right-5 z-10 text-muted-foreground"
+              className="absolute top-3 right-3 z-10 text-muted-foreground"
             >
-              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+              <HugeiconsIcon
+                icon={Cancel01Icon}
+                strokeWidth={2}
+                className="size-4.5"
+              />
               <span className="sr-only">Close</span>
             </Button>
           </DialogClose>
-          <DialogHeader className="border-b px-6 py-5 pr-14 text-left">
-            <div className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted/60 text-foreground">
+          <DialogHeader className="border-b px-5 py-3.5 pr-12 text-left">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/60 text-foreground">
                 <HugeiconsIcon
                   icon={isEditing ? PencilEdit01Icon : PlusSignIcon}
                   strokeWidth={2}
-                  className="size-5"
+                  className="size-4"
                 />
               </span>
               <div className="min-w-0 space-y-1">
@@ -178,8 +182,8 @@ export function WorkspaceDialog({
             </div>
           </DialogHeader>
 
-          <div className="grid gap-5 px-6 py-5">
-            <div className="grid gap-2">
+          <div className="grid gap-3.5 px-5 py-4">
+            <div className="grid gap-1.5">
               <Label htmlFor="workspace-name">Name</Label>
               <Input
                 id="workspace-name"
@@ -192,11 +196,11 @@ export function WorkspaceDialog({
                 placeholder="e.g., Futures workspace"
                 maxLength={50}
               />
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
                 <Label>Trading type</Label>
                 <Select
                   value={assetClass}
@@ -215,7 +219,7 @@ export function WorkspaceDialog({
                 </Select>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 <Label>Currency</Label>
                 <Select
                   value={currency}
@@ -239,12 +243,12 @@ export function WorkspaceDialog({
               </p>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-1.5">
               <Label>Risk profile</Label>
               <RadioGroup
                 value={riskProfile}
                 onValueChange={(value) => setRiskProfile(value as RiskProfile)}
-                className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+                className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
               >
                 {RISK_OPTIONS.map((option) => {
                   const selected = riskProfile === option.value;
@@ -253,7 +257,7 @@ export function WorkspaceDialog({
                     <Label
                       key={option.value}
                       htmlFor={id}
-                      className={`cursor-pointer rounded-lg border px-3 py-3 font-normal transition-colors ${
+                      className={`cursor-pointer rounded-lg border px-2.5 py-2 font-normal transition-colors ${
                         selected
                           ? "border-primary bg-primary/5 text-foreground"
                           : "border-border bg-input/10 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
@@ -267,9 +271,9 @@ export function WorkspaceDialog({
               </RadioGroup>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-1.5">
               <Label>Workspace icon</Label>
-              <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+              <div className="flex flex-wrap gap-1.5">
                 {ICON_OPTIONS.map((key) => {
                   const iconData = ACCOUNT_ICONS[key];
                   if (!iconData) return null;
@@ -280,7 +284,7 @@ export function WorkspaceDialog({
                       aria-label={`Use ${key.replaceAll("-", " ")} icon`}
                       aria-pressed={icon === key}
                       onClick={() => setIcon(key)}
-                      className={`flex aspect-square w-full items-center justify-center rounded-lg border transition-colors ${
+                      className={`flex size-8 items-center justify-center rounded-lg border transition-colors ${
                         icon === key
                           ? "border-primary bg-primary text-primary-foreground shadow-sm"
                           : "border-border bg-input/10 text-muted-foreground hover:border-primary/50 hover:bg-muted hover:text-foreground"
@@ -298,7 +302,7 @@ export function WorkspaceDialog({
             </div>
           </div>
 
-          <DialogFooter className="border-t bg-muted/20 px-6 py-4 sm:items-center sm:justify-between">
+          <DialogFooter className="border-t bg-muted/20 px-5 py-3 sm:items-center sm:justify-between">
             {isEditing && workspace ? (
               <Button
                 type="button"

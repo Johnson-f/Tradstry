@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { TradstryMark } from "@tradstry/app-ui/components/logo";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
-import { useChatMessages, useChatStore, useSendMessage } from "@tradstry/app-ui/hooks/chat";
+import {
+  useChatMessages,
+  useChatStore,
+  useSendMessage,
+} from "@tradstry/app-ui/hooks/chat";
 import { useJournalEntriesForWorkspace } from "@tradstry/app-ui/hooks/journal";
 import { usePlaybooks } from "@tradstry/app-ui/hooks/playbook";
 import {
@@ -13,6 +17,7 @@ import {
 } from "@tradstry/app-ui/lib/types/chat";
 import type { JournalEntry } from "@tradstry/app-ui/lib/types/journal";
 import type { PlaybookWithStats } from "@tradstry/app-ui/lib/types/playbook";
+import { useEffect, useRef, useState } from "react";
 import { ChatStreamMessage } from "./chat-stream-message";
 
 interface ChatMessageListProps {
@@ -171,7 +176,7 @@ function UserMessageBubble({
   playbooks: PlaybookWithStats[];
 }) {
   return (
-    <div className="flex max-w-[80%] flex-col items-start gap-2 rounded-lg bg-primary px-4 py-3 text-primary-foreground">
+    <div className="flex max-w-[86%] flex-col items-start gap-2 rounded-2xl rounded-br-md bg-foreground px-3.5 py-2.5 text-background">
       <MessageContextChips
         context={context}
         trades={trades}
@@ -288,11 +293,20 @@ export function ChatMessageList({ sessionId }: ChatMessageListProps) {
 
   return (
     <ScrollArea className="h-full">
-      <div ref={contentRef} className="px-3 pt-4 pb-3">
-        <div ref={turnsRef} className="flex flex-col gap-3">
+      <div ref={contentRef} className="px-4 pb-4 pt-5">
+        <div ref={turnsRef} className="flex flex-col gap-5">
           {groups.length === 0 && !isStreaming && (
-            <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
-              No messages yet. Start a conversation!
+            <div className="flex h-48 flex-col items-center justify-center text-center">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-foreground text-background">
+                <TradstryMark className="size-5" />
+              </span>
+              <p className="mt-3 text-xs font-medium text-foreground">
+                Ready when you are
+              </p>
+              <p className="mt-1 max-w-52 text-[0.68rem]/relaxed text-muted-foreground">
+                Ask a question and Tradstry AI will work from the selected
+                workspace.
+              </p>
             </div>
           )}
 
@@ -317,9 +331,12 @@ export function ChatMessageList({ sessionId }: ChatMessageListProps) {
 
             if (group.message.content.trim() === "") return null;
             return (
-              <div key={group.message.id} className="flex justify-start">
-                <div className="max-w-[80%]">
-                  <div className="whitespace-pre-wrap rounded-lg bg-muted px-4 py-3 text-xs/relaxed text-foreground">
+              <div key={group.message.id} className="flex items-start gap-2.5">
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+                  <TradstryMark className="size-3.5" />
+                </span>
+                <div className="min-w-0 max-w-[calc(100%-2.25rem)]">
+                  <div className="whitespace-pre-wrap text-xs/relaxed text-foreground">
                     {renderContent(group.message.content)}
                   </div>
                 </div>

@@ -243,7 +243,7 @@ export function PrinciplesTab() {
 
   if (!workspaceId) {
     return (
-      <Empty>
+      <Empty layout="page">
         <EmptyHeader>
           <EmptyTitle>No workspace selected</EmptyTitle>
           <EmptyDescription>
@@ -266,7 +266,7 @@ export function PrinciplesTab() {
       {principlesQuery.isLoading ? (
         <p className="text-xs text-muted-foreground">Loading…</p>
       ) : groups.length === 0 ? (
-        <Empty>
+        <Empty layout="page">
           <EmptyHeader>
             <EmptyTitle>No principles yet</EmptyTitle>
             <EmptyDescription>

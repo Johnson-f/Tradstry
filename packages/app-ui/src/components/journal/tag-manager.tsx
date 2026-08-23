@@ -6,6 +6,7 @@ import {
 	ArrowUp01Icon,
 	Delete02Icon,
 	GitMergeIcon,
+	MoreHorizontalCircle01Icon,
 	PencilEdit01Icon,
 	Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -25,6 +26,13 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@tradstry/app-ui/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@tradstry/app-ui/components/ui/dropdown-menu";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { Separator } from "@tradstry/app-ui/components/ui/separator";
@@ -250,7 +258,7 @@ function TagRow({ tag, categoryColor, allTagsInCategory }: TagRowProps) {
 	}
 
 	return (
-		<div className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+		<div className="group flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/50">
 			{/* Color swatch — clicking the visible dot triggers the hidden input */}
 			<button
 				type="button"
@@ -302,7 +310,7 @@ function TagRow({ tag, categoryColor, allTagsInCategory }: TagRowProps) {
 					</Button>
 				</>
 			) : (
-				<span className="min-w-0 flex-1 truncate text-xs">{tag.name}</span>
+				<span className="min-w-0 flex-1 truncate text-sm">{tag.name}</span>
 			)}
 
 			{/* Actions — revealed on hover, but they always occupy their space, so the row
@@ -444,6 +452,7 @@ function TagsPanel({ category }: TagsPanelProps) {
 	const [workspaceIds, setWorkspaceIds] = React.useState(category.workspaceIds);
 
 	const [newTagName, setNewTagName] = React.useState("");
+	const newTagInputRef = React.useRef<HTMLInputElement>(null);
 	const [newTagColor, setNewTagColor] = React.useState(
 		category.color ?? DEFAULT_COLOR,
 	);
@@ -464,6 +473,32 @@ function TagsPanel({ category }: TagsPanelProps) {
 		workspaceIds,
 	);
 
+	React.useEffect(() => {
+		if (
+			!applicabilityChanged ||
+			applicabilityError !== null ||
+			setApplicability.isPending
+		) {
+			return;
+		}
+		const timeout = window.setTimeout(() => {
+			setApplicability.mutate(
+				{ id: category.id, availability, workspaceIds },
+				{
+					onError: () => toast.error("Failed to update category availability."),
+				},
+			);
+		}, 350);
+		return () => window.clearTimeout(timeout);
+	}, [
+		applicabilityChanged,
+		applicabilityError,
+		availability,
+		category.id,
+		setApplicability,
+		workspaceIds,
+	]);
+
 	function handleCreateTag(e: React.FormEvent) {
 		e.preventDefault();
 		const name = newTagName.trim();
@@ -481,8 +516,8 @@ function TagsPanel({ category }: TagsPanelProps) {
 	}
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-			<div className="flex items-center gap-2">
+		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+			<div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-4">
 				{colorDot(category.color)}
 				<h3 className="text-sm font-medium">{category.name}</h3>
 				{category.role !== null && (
@@ -492,56 +527,54 @@ function TagsPanel({ category }: TagsPanelProps) {
 				)}
 			</div>
 
-			<StrategyAvailabilityFields
-				workspaces={workspaces}
-				availability={availability}
-				workspaceIds={workspaceIds}
-				disabled={setApplicability.isPending}
-				onChange={(next) => {
-					setAvailability(next.availability);
-					setWorkspaceIds(next.workspaceIds);
-				}}
-			/>
-			<div className="flex items-center justify-between gap-3">
-				<p className="text-[0.6875rem] text-destructive">
-					{applicabilityError ?? ""}
-				</p>
-				<Button
-					type="button"
-					size="sm"
-					variant="outline"
-					disabled={
-						!applicabilityChanged ||
-						applicabilityError !== null ||
-						setApplicability.isPending
-					}
-					onClick={() =>
-						setApplicability.mutate(
-							{ id: category.id, availability, workspaceIds },
-							{
-								onSuccess: () =>
-									toast.success("Category availability updated."),
-								onError: () =>
-									toast.error("Failed to update category availability."),
-							},
-						)
-					}
-				>
-					{setApplicability.isPending ? "Saving…" : "Save availability"}
-				</Button>
+			<div className="shrink-0 border-b border-border/60 p-3">
+				<StrategyAvailabilityFields
+					workspaces={workspaces}
+					availability={availability}
+					workspaceIds={workspaceIds}
+					disabled={setApplicability.isPending}
+					onChange={(next) => {
+						setAvailability(next.availability);
+						setWorkspaceIds(next.workspaceIds);
+					}}
+				/>
+				<div className="mt-2 flex min-h-4 items-center justify-between px-1 text-[0.625rem]">
+					<span className="text-destructive">{applicabilityError ?? ""}</span>
+					<span className="text-muted-foreground">
+						{setApplicability.isPending
+							? "Saving availability…"
+							: applicabilityChanged
+								? "Changes save automatically"
+								: "Availability saved"}
+					</span>
+				</div>
 			</div>
 
 			{/* Tag list */}
-			<ScrollArea className="min-h-0 flex-1 rounded-md border">
-				<div className="p-1">
+			<ScrollArea className="min-h-0 flex-1">
+				<div className="p-2">
 					{tagsQuery.isLoading ? (
 						<p className="py-4 text-center text-xs text-muted-foreground">
 							Loading tags…
 						</p>
 					) : tags.length === 0 ? (
-						<p className="py-4 text-center text-xs text-muted-foreground">
-							No tags yet. Create one below.
-						</p>
+						<div className="flex min-h-48 flex-col items-center justify-center gap-3 px-6 text-center">
+							<div>
+								<p className="text-sm font-medium">No tags in this category</p>
+								<p className="mt-1 text-xs text-muted-foreground">
+									Create the first tag to start organizing trades.
+								</p>
+							</div>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() => newTagInputRef.current?.focus()}
+							>
+								<HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+								Create first tag
+							</Button>
+						</div>
 					) : (
 						tags.map((tag) => (
 							<TagRow
@@ -558,7 +591,7 @@ function TagsPanel({ category }: TagsPanelProps) {
 			{/* Create new tag */}
 			<form
 				onSubmit={handleCreateTag}
-				className="flex shrink-0 items-center gap-2 rounded-md border border-dashed p-2"
+				className="flex shrink-0 items-center gap-2 border-t border-border/60 p-3"
 			>
 				<ColorInput
 					value={newTagColor}
@@ -566,6 +599,7 @@ function TagsPanel({ category }: TagsPanelProps) {
 					id={`new-tag-color-${category.id}`}
 				/>
 				<Input
+					ref={newTagInputRef}
 					placeholder="New tag name…"
 					value={newTagName}
 					onChange={(e) => setNewTagName(e.target.value)}
@@ -639,20 +673,23 @@ function CategoryRow({
 	}
 
 	return (
-		<button
-			type="button"
+		<div
 			className={cn(
-				"group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+				"group relative flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors",
 				isSelected ? "bg-muted" : "hover:bg-muted/50",
 			)}
-			onClick={onSelect}
-			aria-pressed={isSelected}
-			aria-label={`Select category ${category.name}`}
 		>
+			<button
+				type="button"
+				className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+				onClick={onSelect}
+				aria-pressed={isSelected}
+				aria-label={`Select category ${category.name}`}
+			/>
 			{/* Hidden color input triggered by dot click */}
 			<button
 				type="button"
-				className="shrink-0 cursor-pointer"
+				className="relative z-10 shrink-0 cursor-pointer"
 				title="Change category color"
 				onClick={(e) => {
 					e.stopPropagation();
@@ -684,7 +721,7 @@ function CategoryRow({
 						ref={inputRef}
 						value={draft}
 						onChange={(e) => setDraft(e.target.value)}
-						className="h-6 flex-1 text-xs"
+						className="relative z-10 h-6 flex-1 text-xs"
 						onKeyDown={(e) => {
 							e.stopPropagation();
 							if (e.key === "Enter") commit();
@@ -707,102 +744,64 @@ function CategoryRow({
 					</Button>
 				</>
 			) : (
-				<span className="min-w-0 flex-1 truncate text-xs">{category.name}</span>
+				<span className="min-w-0 flex-1 truncate text-sm font-medium">
+					{category.name}
+				</span>
 			)}
 
-			{/* The role badge and the actions share one slot: a 13rem column cannot hold a name,
-          a badge and four buttons at once, so the badge steps aside on hover. */}
-			<div className="relative ml-auto flex h-5 shrink-0 items-center justify-end">
+			<div className="relative z-10 ml-auto flex shrink-0 items-center gap-1">
 				{category.role !== null ? (
-					<Badge
-						variant="secondary"
-						className="text-[0.6rem] transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
-					>
+					<Badge variant="secondary" className="text-[0.58rem]">
 						{category.role}
 					</Badge>
 				) : null}
 
 				{!editing && (
-					<div className="absolute right-0 flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									size="icon-xs"
-									variant="ghost"
-									aria-label={`Move ${category.name} up`}
-									disabled={index === 0}
-									onClick={(e) => {
-										e.stopPropagation();
-										onMoveUp();
-									}}
-								>
-									<HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent side="top">Move up</TooltipContent>
-						</Tooltip>
-
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									size="icon-xs"
-									variant="ghost"
-									aria-label={`Move ${category.name} down`}
-									disabled={index === totalCategories - 1}
-									onClick={(e) => {
-										e.stopPropagation();
-										onMoveDown();
-									}}
-								>
-									<HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent side="top">Move down</TooltipContent>
-						</Tooltip>
-
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									size="icon-xs"
-									variant="ghost"
-									aria-label={`Rename category ${category.name}`}
-									onClick={(e) => {
-										e.stopPropagation();
-										setEditing(true);
-									}}
-								>
-									<HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent side="top">Rename</TooltipContent>
-						</Tooltip>
-
-						{/* A seeded role category is load-bearing for the analytics, so it has no
-                delete — the absent button is the honest signal. */}
-						{isDeletable ? (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										type="button"
-										size="icon-xs"
-										variant="ghost"
-										className="hover:bg-destructive/10 hover:text-destructive"
-										aria-label={`Delete category ${category.name}`}
-										onClick={(e) => {
-											e.stopPropagation();
-											setConfirmDeleteOpen(true);
-										}}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								type="button"
+								size="icon-xs"
+								variant="ghost"
+								aria-label={`Actions for ${category.name}`}
+								onClick={(event) => event.stopPropagation()}
+							>
+								<HugeiconsIcon
+									icon={MoreHorizontalCircle01Icon}
+									strokeWidth={2}
+								/>
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent
+							align="end"
+							onClick={(event) => event.stopPropagation()}
+						>
+							<DropdownMenuItem disabled={index === 0} onClick={onMoveUp}>
+								<HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} /> Move up
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								disabled={index === totalCategories - 1}
+								onClick={onMoveDown}
+							>
+								<HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} /> Move
+								down
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => setEditing(true)}>
+								<HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} /> Rename
+							</DropdownMenuItem>
+							{isDeletable ? (
+								<>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										variant="destructive"
+										onClick={() => setConfirmDeleteOpen(true)}
 									>
-										<HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent side="top">Delete</TooltipContent>
-							</Tooltip>
-						) : null}
-					</div>
+										<HugeiconsIcon icon={Delete02Icon} strokeWidth={2} /> Delete
+									</DropdownMenuItem>
+								</>
+							) : null}
+						</DropdownMenuContent>
+					</DropdownMenu>
 				)}
 			</div>
 
@@ -818,7 +817,7 @@ function CategoryRow({
 					onConfirm={handleDelete}
 				/>
 			)}
-		</button>
+		</div>
 	);
 }
 
@@ -895,15 +894,18 @@ function TagManagerContent() {
 	}
 
 	return (
-		<div className="flex h-[min(28rem,60svh)] min-h-0 gap-0 overflow-hidden">
+		<div className="flex h-[min(34rem,68svh)] min-h-0 overflow-hidden">
 			{/* ── Left column: categories ─────────────────────────────── */}
-			<div className="flex min-h-0 w-52 shrink-0 flex-col gap-2 border-r pr-3">
-				<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-					Categories
-				</p>
+			<div className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border/60 bg-muted/10">
+				<div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
+					<p className="text-xs font-semibold">Categories</p>
+					<span className="text-[0.625rem] text-muted-foreground">
+						{categories.length}
+					</span>
+				</div>
 
-				<ScrollArea className="min-h-0 flex-1 rounded-md border">
-					<div className="p-1">
+				<ScrollArea className="min-h-0 flex-1">
+					<div className="space-y-1 p-2">
 						{categoriesQuery.isLoading ? (
 							<p className="py-4 text-center text-xs text-muted-foreground">
 								Loading…
@@ -932,40 +934,33 @@ function TagManagerContent() {
 				{/* Create new category */}
 				<form
 					onSubmit={handleCreateCategory}
-					className="flex shrink-0 flex-col gap-1.5 rounded-md border border-dashed p-2"
+					className="flex shrink-0 items-center gap-2 border-t border-border/60 p-3"
 				>
-					<p className="text-[0.65rem] font-medium text-muted-foreground">
-						New category
-					</p>
-					<div className="flex items-center gap-1.5">
-						<ColorInput
-							value={newCatColor}
-							onChange={setNewCatColor}
-							id={newCategoryColorId}
-						/>
-						<Input
-							placeholder="Name…"
-							value={newCatName}
-							onChange={(e) => setNewCatName(e.target.value)}
-							className="flex-1 text-xs"
-							disabled={createCategory.isPending}
-						/>
-					</div>
+					<ColorInput
+						value={newCatColor}
+						onChange={setNewCatColor}
+						id={newCategoryColorId}
+					/>
+					<Input
+						placeholder="New category…"
+						value={newCatName}
+						onChange={(e) => setNewCatName(e.target.value)}
+						className="h-8 min-w-0 flex-1 text-xs"
+						disabled={createCategory.isPending}
+					/>
 					<Button
 						type="submit"
-						size="sm"
-						variant="outline"
-						className="w-full"
+						size="icon-sm"
 						disabled={createCategory.isPending || !newCatName.trim()}
+						aria-label="Add category"
 					>
 						<HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-						Add category
 					</Button>
 				</form>
 			</div>
 
 			{/* ── Right column: tags in selected category ──────────────── */}
-			<div className="flex min-h-0 flex-1 flex-col overflow-hidden pl-3">
+			<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 				{selectedCategory !== null ? (
 					<TagsPanel category={selectedCategory} />
 				) : (
@@ -1001,10 +996,10 @@ export function TagManager({ trigger }: TagManagerProps) {
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger asChild>{trigger ?? defaultTrigger}</DialogTrigger>
 			<DialogContent
-				className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
+				className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
 				aria-describedby={descriptionId}
 			>
-				<DialogHeader className="shrink-0">
+				<DialogHeader className="shrink-0 px-5 pb-4 pt-5">
 					<DialogTitle>Manage Tags</DialogTitle>
 					<DialogDescription id={descriptionId}>
 						Create, rename, recolor, reorder, and delete tag categories and the

@@ -23,6 +23,8 @@ import type {
 	ReportBrokerageDataIssueInput,
 	SyncResult,
 	TransactionFilters,
+	TransactionImportPolicy,
+	TransactionImportPolicyInput,
 } from "@tradstry/app-ui/lib/types/brokerage";
 import type { Workspace } from "@tradstry/app-ui/lib/types/workspaces";
 import { useAuth } from "@tradstry/app-ui/platform";
@@ -38,6 +40,7 @@ const PENDING_TRADES_KEY = ["pending-trades"] as const;
 const WORKSPACES_KEY = ["workspaces"] as const;
 const SYNC_OUTCOME_KEY = ["brokerage-sync-outcome"] as const;
 const RECONCILIATION_KEY = ["brokerage-reconciliation"] as const;
+const IMPORT_POLICY_KEY = ["brokerage-transaction-import-policy"] as const;
 
 export function useBrokerageTransactions(
 	workspaceId: string | null,
@@ -137,6 +140,21 @@ export function useBrokerageConnectionAccounts(
 			);
 		},
 		enabled: isLoaded && isSignedIn && enabled && !!workspaceId,
+	});
+}
+
+export function useBrokerageTransactionImportPolicy(
+	workspaceId: string | null,
+) {
+	const { isLoaded, isSignedIn } = useAuth();
+	const fetcher = useGraphQL();
+	return useQuery<TransactionImportPolicy | null>({
+		queryKey: [...IMPORT_POLICY_KEY, workspaceId],
+		queryFn: () => {
+			if (!workspaceId) throw new Error("workspace id is required");
+			return brokerageService.fetchTransactionImportPolicy(fetcher, workspaceId);
+		},
+		enabled: isLoaded && isSignedIn && !!workspaceId,
 	});
 }
 
@@ -288,6 +306,52 @@ export function useCreateBrokerageAccountWorkspaces() {
 			queryClient.invalidateQueries({ queryKey: WORKSPACES_KEY });
 			queryClient.invalidateQueries({
 				queryKey: [...CONNECTION_ACCOUNTS_KEY, workspaceId],
+			});
+		},
+	});
+}
+
+export function useFinalizeBrokerageSetup() {
+	const fetcher = useGraphQL();
+	const queryClient = useQueryClient();
+	return useMutation<
+		Awaited<ReturnType<typeof brokerageService.finalizeBrokerageSetup>>,
+		Error,
+		Parameters<typeof brokerageService.finalizeBrokerageSetup>[1]
+	>({
+		mutationFn: (input) =>
+			brokerageService.finalizeBrokerageSetup(fetcher, input),
+		onSuccess: (configured) => {
+			queryClient.invalidateQueries({ queryKey: WORKSPACES_KEY });
+			for (const workspace of configured) {
+				queryClient.invalidateQueries({
+					queryKey: [...IMPORT_POLICY_KEY, workspace.id],
+				});
+			}
+		},
+	});
+}
+
+export function useExpandBrokerageTransactionHistory() {
+	const fetcher = useGraphQL();
+	const queryClient = useQueryClient();
+	return useMutation<
+		TransactionImportPolicy,
+		Error,
+		{ workspaceId: string; policy: TransactionImportPolicyInput }
+	>({
+		mutationFn: ({ workspaceId, policy }) =>
+			brokerageService.expandBrokerageTransactionHistory(
+				fetcher,
+				workspaceId,
+				policy,
+			),
+		onSuccess: (_policy, { workspaceId }) => {
+			queryClient.invalidateQueries({
+				queryKey: [...IMPORT_POLICY_KEY, workspaceId],
+			});
+			queryClient.invalidateQueries({
+				queryKey: [...RECONCILIATION_KEY, workspaceId],
 			});
 		},
 	});

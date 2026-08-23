@@ -1,13 +1,5 @@
 "use client";
 
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { MetricHelp } from "@tradstry/app-ui/components/dashboard/performance/metrics-row";
 import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import {
@@ -26,6 +18,14 @@ import type {
 } from "@tradstry/app-ui/lib/types/analytics";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import { useId } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -172,7 +172,7 @@ export function DashboardTradingPerformanceCard({
 
   if (isLoading || isPending) {
     return (
-      <section className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+      <section className="rounded-xl border border-border/70 bg-card/55 p-4">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="mt-3 h-[260px] w-full rounded-xl" />
       </section>
@@ -195,14 +195,11 @@ export function DashboardTradingPerformanceCard({
   return (
     <section
       className={cn(
-        "rounded-2xl border bg-background/90 p-4 shadow-sm transition-opacity duration-200",
+        "rounded-xl border border-border/70 bg-card/55 p-4 transition-opacity duration-200",
         isPlaceholderData && "opacity-60",
       )}
     >
-      <TradingPerformanceSummary
-        performance={data}
-        rangeLabel={rangeLabel}
-      />
+      <TradingPerformanceSummary performance={data} rangeLabel={rangeLabel} />
 
       {data.points.length === 0 ? (
         <div className="mt-6 flex h-[220px] items-center justify-center rounded-xl border border-dashed bg-muted/10 px-6 text-center">
@@ -211,10 +208,7 @@ export function DashboardTradingPerformanceCard({
           </p>
         </div>
       ) : (
-        <ChartContainer
-          config={CHART_CONFIG}
-          className="mt-4 h-[250px] w-full"
-        >
+        <ChartContainer config={CHART_CONFIG} className="mt-4 h-[250px] w-full">
           <AreaChart data={data.points} margin={{ left: 4, right: 12 }}>
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -253,17 +247,21 @@ export function DashboardTradingPerformanceCard({
                   formatter={(value, name, item) => (
                     <div className="grid w-full grid-cols-[1fr_auto] gap-x-4 gap-y-1">
                       <span className="text-muted-foreground">
-                        {CHART_CONFIG[name as keyof typeof CHART_CONFIG]?.label ??
-                          name}
+                        {CHART_CONFIG[name as keyof typeof CHART_CONFIG]
+                          ?.label ?? name}
                       </span>
                       <span className="text-right font-mono tabular-nums">
                         {USD.format(Number(value))}
                       </span>
-                      <span className="text-muted-foreground">Daily P&amp;L</span>
+                      <span className="text-muted-foreground">
+                        Daily P&amp;L
+                      </span>
                       <span className="text-right font-mono tabular-nums">
                         {USD.format(Number(item.payload.dailyPnl))}
                       </span>
-                      <span className="text-muted-foreground">Closed trades</span>
+                      <span className="text-muted-foreground">
+                        Closed trades
+                      </span>
                       <span className="text-right font-mono tabular-nums">
                         {item.payload.closedTradeCount}
                       </span>

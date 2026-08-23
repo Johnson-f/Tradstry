@@ -7,6 +7,7 @@ import {
 	Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { BrokerageHistorySetup } from "@tradstry/app-ui/components/brokerage/history-import-policy";
 import { SyncConfidenceCard } from "@tradstry/app-ui/components/brokerage/sync-confidence-card";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Checkbox } from "@tradstry/app-ui/components/ui/checkbox";
@@ -31,13 +32,19 @@ import {
 	useBrokerageConnectionAccounts,
 	useBrokerageReconciliation,
 	useBrokerageSyncOutcome,
-	useCreateBrokerageAccountWorkspaces,
+	useBrokerageTransactionImportPolicy,
 	useDisconnectBrokerage,
+	useExpandBrokerageTransactionHistory,
+	useFinalizeBrokerageSetup,
 	useInitiateConnection,
 	useSyncBrokerageData,
 } from "@tradstry/app-ui/hooks/brokerage";
+import type {
+	TransactionImportMode,
+	TransactionImportPolicyInput,
+} from "@tradstry/app-ui/lib/types/brokerage";
 import { platformUrl, useTradstryPlatform } from "@tradstry/app-ui/platform";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
@@ -74,7 +81,8 @@ function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 		workspace.id,
 		!workspace.snaptradeConnectionDisabled,
 	);
-	const createWorkspaces = useCreateBrokerageAccountWorkspaces();
+	const finalizeSetup = useFinalizeBrokerageSetup();
+	const currentPolicy = useBrokerageTransactionImportPolicy(workspace.id);
 	const available = useMemo(
 		() =>
 			(accounts.data ?? []).filter(
@@ -83,7 +91,12 @@ function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 		[accounts.data],
 	);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [importPolicy, setImportPolicy] =
+		useState<TransactionImportPolicyInput>({
+			mode: "one_year",
+		});
 	const initializedAccounts = useRef("");
+	const historySelectId = useId();
 	const availableKey = available.map((account) => account.id).join(":");
 
 	useEffect(() => {
@@ -111,18 +124,34 @@ function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 
 	async function handleCreateWorkspaces() {
 		try {
-			const created = await createWorkspaces.mutateAsync({
+			const primary = (accounts.data ?? []).find((account) => account.current);
+			if (!primary)
+				throw new Error("The current brokerage account is not mapped");
+			const saved = currentPolicy.data;
+			const primaryPolicy: TransactionImportPolicyInput = saved
+				? {
+						mode: saved.mode,
+						...(saved.mode === "custom" && saved.startDate
+							? { customStartDate: saved.startDate }
+							: {}),
+					}
+				: { mode: "all" };
+			const created = await finalizeSetup.mutateAsync({
 				workspaceId: workspace.id,
-				snaptradeAccountIds: [...selectedIds],
+				primarySnaptradeAccountId: primary.id,
+				accounts: [
+					{ snaptradeAccountId: primary.id, policy: primaryPolicy },
+					...[...selectedIds].map((snaptradeAccountId) => ({
+						snaptradeAccountId,
+						policy: importPolicy,
+					})),
+				],
 			});
-			if (created.length === 0) {
-				toast.info("The selected brokerage accounts are already linked");
-				return;
-			}
+			const additions = created.filter((item) => item.id !== workspace.id);
 			toast.success(
-				created.length === 1
-					? `Created ${created[0]?.name ?? "brokerage"} workspace`
-					: `Created ${created.length} brokerage workspaces`,
+				additions.length === 1
+					? `Created ${additions[0]?.name ?? "brokerage"} workspace`
+					: `Created ${additions.length} brokerage workspaces`,
 			);
 		} catch (error) {
 			toast.error(
@@ -173,13 +202,55 @@ function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 					</label>
 				))}
 			</div>
+			<div className="mt-2.5 flex flex-wrap items-center gap-2">
+				<label
+					htmlFor={historySelectId}
+					className="text-[0.65rem] text-muted-foreground"
+				>
+					Import history
+				</label>
+				<select
+					id={historySelectId}
+					className="h-8 rounded-md border bg-background px-2 text-xs"
+					value={importPolicy.mode}
+					onChange={(event) =>
+						setImportPolicy({
+							mode: event.target.value as TransactionImportMode,
+						})
+					}
+				>
+					<option value="one_year">Past year · Recommended</option>
+					<option value="two_years">Past 2 years</option>
+					<option value="all">All available history</option>
+					<option value="custom">Custom start date</option>
+				</select>
+				{importPolicy.mode === "custom" ? (
+					<input
+						type="date"
+						aria-label="Additional accounts custom start date"
+						max={new Date().toISOString().slice(0, 10)}
+						className="h-8 rounded-md border bg-background px-2 text-xs"
+						value={importPolicy.customStartDate ?? ""}
+						onChange={(event) =>
+							setImportPolicy({
+								mode: "custom",
+								customStartDate: event.target.value,
+							})
+						}
+					/>
+				) : null}
+			</div>
 			<Button
 				className="mt-2.5 w-full"
 				size="sm"
 				onClick={handleCreateWorkspaces}
-				disabled={selectedIds.size === 0 || createWorkspaces.isPending}
+				disabled={
+					selectedIds.size === 0 ||
+					finalizeSetup.isPending ||
+					(importPolicy.mode === "custom" && !importPolicy.customStartDate)
+				}
 			>
-				{createWorkspaces.isPending
+				{finalizeSetup.isPending
 					? "Creating workspaces…"
 					: `Create ${selectedIds.size} workspace${selectedIds.size === 1 ? "" : "s"}`}
 			</Button>
@@ -215,7 +286,14 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 	const disconnect = useDisconnectBrokerage();
 	const sync = useSyncBrokerageData();
 	const initiate = useInitiateConnection();
+	const importPolicy = useBrokerageTransactionImportPolicy(workspace.id);
+	const expandHistory = useExpandBrokerageTransactionHistory();
 	const [reconnecting, setReconnecting] = useState(false);
+	const [showHistoryExpansion, setShowHistoryExpansion] = useState(false);
+	const [expandedPolicy, setExpandedPolicy] =
+		useState<TransactionImportPolicyInput>({
+			mode: "all",
+		});
 
 	const latestBalanceSync = useMemo(() => {
 		return (balances ?? []).reduce<string | null>((latest, balance) => {
@@ -309,6 +387,24 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 			toast.success("Brokerage disconnected");
 		} catch {
 			toast.error("Failed to disconnect");
+		}
+	}
+
+	async function handleExpandHistory() {
+		try {
+			await expandHistory.mutateAsync({
+				workspaceId: workspace.id,
+				policy: expandedPolicy,
+			});
+			setShowHistoryExpansion(false);
+			await handleSync();
+			toast.success("Older brokerage history is being imported");
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Could not expand brokerage history",
+			);
 		}
 	}
 
@@ -427,7 +523,9 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 									</div>
 									<div className="mt-2 grid grid-cols-2 gap-4">
 										<div>
-											<p className="text-[0.6rem] text-muted-foreground">Cash</p>
+											<p className="text-[0.6rem] text-muted-foreground">
+												Cash
+											</p>
 											<p className="mt-0.5 text-sm font-semibold tabular-nums">
 												{formatCurrency(balance.cash, balance.currency)}
 											</p>
@@ -475,6 +573,84 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 				</div>
 			</div>
 			<div className="px-3 pb-3">
+				{importPolicy.data ? (
+					<div className="mb-3 rounded-md border bg-muted/15 p-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<div>
+								<p className="text-xs font-medium">Transaction history</p>
+								<p className="mt-0.5 text-[0.65rem] text-muted-foreground">
+									{importPolicy.data.mode === "all"
+										? "All available history"
+										: `Imported since ${importPolicy.data.startDate ?? "the configured date"}`}
+									{importPolicy.data.initialImportCompletedAt
+										? " · Initial import complete"
+										: " · Initial import pending"}
+								</p>
+							</div>
+							{importPolicy.data.mode !== "all" ? (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => setShowHistoryExpansion((value) => !value)}
+								>
+									Import older history
+								</Button>
+							) : null}
+						</div>
+						{showHistoryExpansion ? (
+							<div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+								<label className="grid gap-1 text-[0.65rem] text-muted-foreground">
+									Older range
+									<select
+										className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+										value={expandedPolicy.mode}
+										onChange={(event) =>
+											setExpandedPolicy({
+												mode: event.target.value as TransactionImportMode,
+											})
+										}
+									>
+										{importPolicy.data.mode === "one_year" ? (
+											<option value="two_years">Past 2 years</option>
+										) : null}
+										<option value="all">All available history</option>
+										<option value="custom">Custom earlier date</option>
+									</select>
+								</label>
+								{expandedPolicy.mode === "custom" ? (
+									<input
+										type="date"
+										aria-label="Older history start date"
+										max={importPolicy.data.startDate ?? undefined}
+										className="h-8 rounded-md border bg-background px-2 text-xs"
+										value={expandedPolicy.customStartDate ?? ""}
+										onChange={(event) =>
+											setExpandedPolicy({
+												mode: "custom",
+												customStartDate: event.target.value,
+											})
+										}
+									/>
+								) : null}
+								<Button
+									size="sm"
+									onClick={() => void handleExpandHistory()}
+									disabled={
+										expandHistory.isPending ||
+										(expandedPolicy.mode === "custom" &&
+											!expandedPolicy.customStartDate)
+									}
+								>
+									{expandHistory.isPending ? "Saving…" : "Import older history"}
+								</Button>
+								<p className="w-full text-[0.625rem] text-muted-foreground">
+									Existing transactions and journal work are preserved.
+								</p>
+							</div>
+						) : null}
+					</div>
+				) : null}
 				<AdditionalBrokerageAccounts workspace={workspace} />
 			</div>
 		</div>
@@ -492,6 +668,36 @@ export function BrokerageButton() {
 	const workspace = useActiveWorkspace();
 	const connected = !!workspace?.snaptradeConnectionId;
 	const initiate = useInitiateConnection();
+	const setupAccounts = useBrokerageConnectionAccounts(
+		workspace?.id ?? null,
+		connected && workspace?.brokerageSetupComplete === false,
+	);
+	const finalizeSetup = useFinalizeBrokerageSetup();
+	const setupSync = useSyncBrokerageData();
+
+	async function handleFinalizeSetup(value: {
+		primarySnaptradeAccountId: string;
+		accounts: Array<{
+			snaptradeAccountId: string;
+			policy: TransactionImportPolicyInput;
+		}>;
+	}) {
+		if (!workspace) return;
+		try {
+			const configured = await finalizeSetup.mutateAsync({
+				workspaceId: workspace.id,
+				...value,
+			});
+			for (const item of configured) await setupSync.mutateAsync(item.id);
+			toast.success("Brokerage import started");
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Could not save brokerage import setup",
+			);
+		}
+	}
 
 	async function handleConnect() {
 		if (!workspace) return;
@@ -589,6 +795,27 @@ export function BrokerageButton() {
 									)}
 								</Button>
 							</div>
+						) : !workspace.brokerageSetupComplete ? (
+							setupAccounts.isLoading ? (
+								<p className="py-8 text-center text-sm text-muted-foreground">
+									Loading brokerage accounts…
+								</p>
+							) : setupAccounts.error ? (
+								<p
+									role="alert"
+									className="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"
+								>
+									Could not load the accounts for this connection. Close and
+									reopen this panel to retry.
+								</p>
+							) : (
+								<BrokerageHistorySetup
+									accounts={setupAccounts.data ?? []}
+									workspaceName={workspace.name}
+									onSubmit={(value) => void handleFinalizeSetup(value)}
+									isSubmitting={finalizeSetup.isPending || setupSync.isPending}
+								/>
+							)
 						) : (
 							<ConnectionCard workspace={workspace} />
 						)}

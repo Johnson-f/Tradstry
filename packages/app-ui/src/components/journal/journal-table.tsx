@@ -12,12 +12,32 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
+import {
+  MoreHorizontalCircle01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { type ComponentProps, useDeferredValue, useState } from "react";
 import { CreateTrades } from "@tradstry/app-ui/components/journal/create-trades";
 import { DeleteTrades } from "@tradstry/app-ui/components/journal/delete-trades";
 import { EditTrades } from "@tradstry/app-ui/components/journal/edit-trades";
+import { TagManager } from "@tradstry/app-ui/components/journal/tag-manager";
 import { Badge } from "@tradstry/app-ui/components/ui/badge";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@tradstry/app-ui/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@tradstry/app-ui/components/ui/empty";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import {
@@ -153,7 +173,7 @@ function SortableHeader({
   );
 }
 
-function MetricCard({
+function SummaryMetric({
   label,
   value,
   sublabel,
@@ -163,11 +183,11 @@ function MetricCard({
   sublabel: string;
 }) {
   return (
-    <div className="rounded-xl border bg-background p-4">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+    <div className="bg-card px-4 py-3.5">
+      <p className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-1.5 text-xl font-semibold text-foreground">{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{sublabel}</p>
     </div>
   );
@@ -276,7 +296,7 @@ const columns: ColumnDef<JournalEntry>[] = [
     ),
     cell: ({ row }) => (
       <span className={cn("font-semibold", valueClasses(row.original.totalPl))}>
-        {formatPercent(row.original.totalPl)}
+        {formatCurrency(row.original.totalPl)}
       </span>
     ),
   },
@@ -385,7 +405,7 @@ const columns: ColumnDef<JournalEntry>[] = [
               <span className="text-xs text-muted-foreground">—</span>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100">
             <EditTrades trade={row.original} />
             <DeleteTrades trade={row.original} />
           </div>
@@ -397,14 +417,27 @@ const columns: ColumnDef<JournalEntry>[] = [
 
 function JournalTableLoading() {
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-4">
+    <div className="overflow-hidden rounded-xl border border-border/70">
+      <div className="grid gap-px bg-border/60 sm:grid-cols-2 lg:grid-cols-4">
         {["summary-a", "summary-b", "summary-c", "summary-d"].map((key) => (
-          <Skeleton key={key} className="h-24 rounded-xl" />
+          <div key={key} className="space-y-3 bg-card p-4">
+            <Skeleton className="h-2.5 w-20 rounded" />
+            <Skeleton className="h-6 w-24 rounded-md" />
+            <Skeleton className="h-2.5 w-36 rounded" />
+          </div>
         ))}
       </div>
-      <Skeleton className="h-14 rounded-xl" />
-      <Skeleton className="h-[28rem] rounded-xl" />
+      <div className="flex h-14 items-center gap-3 border-t p-3">
+        <Skeleton className="h-8 w-64 rounded-lg" />
+        <Skeleton className="h-8 w-28 rounded-lg" />
+        <Skeleton className="h-8 w-28 rounded-lg" />
+        <Skeleton className="ml-auto h-8 w-24 rounded-lg" />
+      </div>
+      <div className="space-y-3 border-t p-4">
+        {["row-a", "row-b", "row-c", "row-d", "row-e"].map((key) => (
+          <Skeleton key={key} className="h-12 rounded-lg" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -487,6 +520,15 @@ export function JournalTable() {
           second: "2-digit",
         }).format(new Date(dataUpdatedAt))
       : "Waiting for data";
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    statusFilter !== "all" ||
+    tradeTypeFilter !== "all";
+  const clearFilters = () => {
+    setSearch("");
+    table.resetColumnFilters();
+    table.resetSorting();
+  };
 
   if (isLoading || isPending) {
     return <JournalTableLoading />;
@@ -504,10 +546,10 @@ export function JournalTable() {
   }
 
   return (
-    <div className="space-y-4 pt-3 md:pt-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <MetricCard
-          label="Cumulative Profit"
+    <div className="space-y-3">
+      <section className="grid gap-px overflow-hidden rounded-xl border border-border/70 bg-border/60 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryMetric
+          label="Net P&L"
           value={formatCurrency(cumulativeProfit)}
           sublabel={
             activeWorkspace
@@ -515,7 +557,7 @@ export function JournalTable() {
               : "Select a workspace to view cumulative profit"
           }
         />
-        <MetricCard
+        <SummaryMetric
           label="Win Rate"
           value={
             decisiveTrades === 0
@@ -524,15 +566,34 @@ export function JournalTable() {
           }
           sublabel={`${profitTrades} winning trades out of ${decisiveTrades}`}
         />
-        <MetricCard
+        <SummaryMetric
           label="Average R:R"
           value={`${averageRiskReward.toFixed(2)}R`}
           sublabel="Realized reward-to-risk across trades"
         />
-      </div>
+        <SummaryMetric
+          label="Total Trades"
+          value={String(filteredRows.length)}
+          sublabel={`${table.getRowModel().rows.length} visible on this page`}
+        />
+      </section>
 
-      <div className="rounded-xl border bg-background">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 md:flex-row md:items-center md:justify-between">
+      <section className="overflow-hidden rounded-xl border border-border/70 bg-background">
+        <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-3 md:px-4">
+          <div>
+            <h2 className="text-sm font-semibold">Trade ledger</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Review, filter, and update trades in{" "}
+              {activeWorkspace?.name ?? "this workspace"}.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <TagManager />
+            <CreateTrades />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-b border-border/60 px-3 py-3 md:flex-row md:items-center md:px-4">
           <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
             <Input
               value={search}
@@ -576,142 +637,237 @@ export function JournalTable() {
             </Select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <CreateTrades />
-            <div className="rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 md:justify-end">
+            <div className="text-[0.625rem] font-medium text-muted-foreground">
               {isFetching ? "Syncing..." : `Updated ${lastUpdated}`}
             </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Refresh
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearch("");
-                table.resetColumnFilters();
-                table.resetSorting();
-              }}
-            >
-              Reset
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Journal options"
+                >
+                  <HugeiconsIcon
+                    icon={MoreHorizontalCircle01Icon}
+                    strokeWidth={2}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void refetch()}>
+                  Refresh trades
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={clearFilters}>
+                  Reset filters
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        {/* A real min-width, not min-w-full: with the AI panel open the table would
-            otherwise crush its columns and stack every tag onto its own line. It now
-            overflows and the ScrollArea scrolls it sideways instead. */}
-        <ScrollArea orientation="horizontal" className="w-full">
-          <table className="w-full min-w-[64rem] text-sm">
-            <thead>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b">
-                  {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      className="px-4 py-3 text-left text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={columns.length}
-                    className="px-4 py-14 text-center"
-                  >
-                    <p className="text-sm font-medium text-foreground">
-                      No trades found
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {activeWorkspace
-                        ? `No journal entries found for ${activeWorkspace.name}.`
-                        : "Select a workspace to view journal entries."}
-                    </p>
-                  </td>
-                </tr>
+        {table.getRowModel().rows.length === 0 ? (
+          <Empty className="min-h-[22rem] rounded-none border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon" className="size-10 rounded-xl">
+                <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} />
+              </EmptyMedia>
+              <EmptyTitle>
+                {hasActiveFilters ? "No matching trades" : "No trades yet"}
+              </EmptyTitle>
+              <EmptyDescription>
+                {hasActiveFilters
+                  ? "Try clearing the current search and filters."
+                  : `Add the first journal entry for ${activeWorkspace?.name ?? "this workspace"}.`}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              {hasActiveFilters ? (
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b last:border-b-0">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 align-top">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                <CreateTrades
+                  trigger={
+                    <Button size="sm">
+                      <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} />
+                      Add your first trade
+                    </Button>
+                  }
+                />
               )}
-            </tbody>
-          </table>
-        </ScrollArea>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          <>
+            <div className="divide-y divide-border/60 md:hidden">
+              {table.getRowModel().rows.map((row) => {
+                const trade = row.original;
+                return (
+                  <article key={row.id} className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold uppercase tracking-[0.08em]">
+                            {trade.symbol}
+                          </span>
+                          <Badge variant="outline" className="text-[0.6rem]">
+                            {trade.tradeType}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDate(trade.openDate)} ·{" "}
+                          {formatDuration(trade.duration)}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          "font-mono text-sm font-semibold",
+                          valueClasses(trade.totalPl),
+                        )}
+                      >
+                        {formatCurrency(trade.totalPl)}
+                      </span>
+                    </div>
+                    <dl className="grid grid-cols-3 gap-2 rounded-lg bg-muted/45 p-2.5 text-xs">
+                      <div>
+                        <dt className="text-muted-foreground">ROI</dt>
+                        <dd
+                          className={cn(
+                            "mt-0.5 font-medium",
+                            valueClasses(trade.netRoi),
+                          )}
+                        >
+                          {formatPercent(trade.netRoi)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">R:R</dt>
+                        <dd className="mt-0.5 font-medium">
+                          {trade.riskReward === null
+                            ? "—"
+                            : `${trade.riskReward.toFixed(2)}R`}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Status</dt>
+                        <dd className="mt-0.5 font-medium capitalize">
+                          {trade.status}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="flex justify-end gap-1">
+                      <EditTrades trade={trade} />
+                      <DeleteTrades trade={trade} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
 
-        <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
+            <ScrollArea
+              orientation="horizontal"
+              className="hidden w-full md:block"
+            >
+              <table className="w-full min-w-[64rem] text-sm">
+                <thead className="sticky top-0 z-10 bg-background">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id} className="border-b">
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className="px-4 py-3 text-left text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {table.getRowModel().rows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="group/row border-b transition-colors hover:bg-muted/30 last:border-b-0"
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id} className="px-4 py-3 align-top">
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollArea>
+          </>
+        )}
+
+        {filteredRows.length > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span>Rows per page</span>
+                <Select
+                  value={String(table.getState().pagination.pageSize)}
+                  onValueChange={(value) => table.setPageSize(Number(value))}
+                >
+                  <SelectTrigger className="h-9 w-[5.5rem] rounded-xl border-border bg-muted/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="8">8</SelectItem>
+                    <SelectItem value="12">12</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p>
+                Showing{" "}
+                <span className="font-medium text-foreground">
+                  {table.getRowModel().rows.length}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-foreground">
+                  {filteredRows.length}
+                </span>{" "}
+                filtered trades
+              </p>
+            </div>
+
             <div className="flex items-center gap-2">
-              <span>Rows per page</span>
-              <Select
-                value={String(table.getState().pagination.pageSize)}
-                onValueChange={(value) => table.setPageSize(Number(value))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
               >
-                <SelectTrigger className="h-9 w-[5.5rem] rounded-xl border-border bg-muted/50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="8">8</SelectItem>
-                  <SelectItem value="12">12</SelectItem>
-                  <SelectItem value="20">20</SelectItem>
-                </SelectContent>
-              </Select>
+                Previous
+              </Button>
+              <div className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground">
+                Page {table.getState().pagination.pageIndex + 1} of{" "}
+                {table.getPageCount() || 1}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                Next
+              </Button>
             </div>
-            <p>
-              Showing{" "}
-              <span className="font-medium text-foreground">
-                {table.getRowModel().rows.length}
-              </span>{" "}
-              of{" "}
-              <span className="font-medium text-foreground">
-                {filteredRows.length}
-              </span>{" "}
-              filtered trades
-            </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              Previous
-            </Button>
-            <div className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount() || 1}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
+        ) : null}
+      </section>
     </div>
   );
 }

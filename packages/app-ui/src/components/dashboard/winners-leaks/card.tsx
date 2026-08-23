@@ -192,7 +192,7 @@ export function DashboardWinnersLeaksCard({
 
 	if (isLoading || isPending) {
 		return (
-			<section className="@container/winners rounded-2xl border bg-background/90 p-4 shadow-sm">
+			<section className="@container/winners rounded-xl border border-border/70 bg-card/55 p-4">
 				<Skeleton className="h-4 w-36" />
 				<div className="mt-4 grid gap-3 @md/winners:grid-cols-2">
 					{["a", "b", "c", "d"].map((key) => (
@@ -219,7 +219,7 @@ export function DashboardWinnersLeaksCard({
 	return (
 		<section
 			className={cn(
-				"@container/winners h-full rounded-2xl border bg-background/90 p-4 shadow-sm transition-opacity duration-200",
+				"@container/winners h-full rounded-xl border border-border/70 bg-card/55 p-4 transition-opacity duration-200",
 				isPlaceholderData && "opacity-60",
 			)}
 		>

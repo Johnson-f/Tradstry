@@ -157,7 +157,8 @@ async fn sync_all_accounts(
              JOIN brokerage_connections bc ON bc.workspace_id = w.id AND bc.user_id = w.user_id \
              WHERE bc.snaptrade_connection_id IS NOT NULL \
                AND bc.snaptrade_user_id IS NOT NULL \
-               AND bc.snaptrade_user_secret_encrypted IS NOT NULL",
+               AND bc.snaptrade_user_secret_encrypted IS NOT NULL \
+               AND bc.setup_completed_at IS NOT NULL",
     )
     .fetch_all(db.pool())
     .await;
@@ -441,36 +442,8 @@ async fn sync_all_accounts(
         let mut snaptrade_account_id = match stored_snaptrade_account_id {
             Some(id) => id.clone(),
             None => {
-                if let Err(error) =
-                    crate::service::brokerage::workspaces::bind_workspace_brokerage_account(
-                        db.pool(),
-                        user_id,
-                        workspace_id,
-                        &st_accounts,
-                    )
-                    .await
-                {
-                    error!(
-                        "[sync] Failed to materialize SnapTrade accounts for {workspace_id}: {error}"
-                    );
-                    continue;
-                }
-                match workspaces_table::find_workspace(db.pool(), workspace_id, user_id).await {
-                    Ok(Some(account)) => match account.snaptrade_account_id {
-                        Some(id) => id,
-                        None => {
-                            warn!("[sync] No SnapTrade account is available for {workspace_id}");
-                            continue;
-                        }
-                    },
-                    Ok(None) => continue,
-                    Err(error) => {
-                        error!(
-                            "[sync] Failed to reload {workspace_id} after materializing accounts: {error}"
-                        );
-                        continue;
-                    }
-                }
+                warn!("[sync] Brokerage setup is incomplete for {workspace_id}");
+                continue;
             }
         };
         let mut st_account = st_accounts

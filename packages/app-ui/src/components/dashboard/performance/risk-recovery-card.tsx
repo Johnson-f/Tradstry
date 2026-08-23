@@ -1,13 +1,5 @@
 "use client";
 
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { MetricHelp } from "@tradstry/app-ui/components/dashboard/performance/metrics-row";
 import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import {
@@ -26,6 +18,14 @@ import type {
 } from "@tradstry/app-ui/lib/types/analytics";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import { useId } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -157,7 +157,7 @@ export function DashboardRiskRecoveryCard({
 
   if (isLoading || isPending) {
     return (
-      <section className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+      <section className="rounded-xl border border-border/70 bg-card/55 p-4">
         <Skeleton className="h-4 w-36" />
         <div className="mt-4 grid gap-3 md:grid-cols-5">
           <Skeleton className="h-20 rounded-xl" />
@@ -186,7 +186,7 @@ export function DashboardRiskRecoveryCard({
   return (
     <section
       className={cn(
-        "@container/risk rounded-2xl border bg-background/90 p-4 shadow-sm transition-opacity duration-200",
+        "@container/risk rounded-xl border border-border/70 bg-card/55 p-4 transition-opacity duration-200",
         isPlaceholderData && "opacity-60",
       )}
     >

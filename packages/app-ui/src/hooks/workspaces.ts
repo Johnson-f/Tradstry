@@ -21,6 +21,7 @@ export function useWorkspaces() {
     queryKey: WORKSPACES_KEY,
     queryFn: () => workspaceService.fetchWorkspaces(fetcher),
     enabled: isLoaded && isSignedIn,
+    retry: false,
   });
 }
 

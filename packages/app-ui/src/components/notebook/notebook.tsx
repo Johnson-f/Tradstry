@@ -15,11 +15,9 @@ import {
   EmptyTitle,
 } from "@tradstry/app-ui/components/ui/empty";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
-import {
-  useActiveWorkspace,
-  useWorkspacesLoading,
-} from "@tradstry/app-ui/components/workspaces/hooks";
+import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces/hooks";
 import { useJournalEntriesForWorkspace } from "@tradstry/app-ui/hooks/journal";
+import { useWorkspaces as useWorkspacesQuery } from "@tradstry/app-ui/hooks/workspaces";
 import {
   useCreateNotebookFolder,
   useCreateNotebookNote,
@@ -80,15 +78,88 @@ function UploadProgressToast({
   );
 }
 
+function NotebookLoadingSkeleton() {
+  return (
+    <div
+      data-testid="notebook-loading"
+      className="flex h-full min-h-0 w-full overflow-hidden"
+    >
+      <aside className="hidden w-60 shrink-0 border-r border-border/60 p-3 md:block">
+        <div className="flex h-9 items-center justify-between">
+          <Skeleton className="h-4 w-20 rounded-md" />
+          <Skeleton className="size-6 rounded-lg" />
+        </div>
+        <div className="mt-3 space-y-2">
+          {["folder-a", "folder-b", "folder-c"].map((key) => (
+            <div
+              key={key}
+              className="flex h-9 items-center gap-2 rounded-lg px-2"
+            >
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-3 flex-1 rounded" />
+              <Skeleton className="size-4 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <section className="w-64 shrink-0 border-r border-border/60 p-3">
+        <div className="flex h-9 items-center justify-between">
+          <Skeleton className="h-4 w-24 rounded-md" />
+          <Skeleton className="size-6 rounded-lg" />
+        </div>
+        <div className="mt-3 space-y-2">
+          {["note-a", "note-b", "note-c", "note-d", "note-e"].map(
+            (key, index) => (
+              <div
+                key={key}
+                className="space-y-2 rounded-xl border border-border/45 p-3"
+              >
+                <Skeleton className="h-3.5 w-3/4 rounded" />
+                <Skeleton
+                  className={cn(
+                    "h-2.5 rounded",
+                    index % 2 === 0 ? "w-full" : "w-4/5",
+                  )}
+                />
+                <Skeleton className="h-2.5 w-16 rounded" />
+              </div>
+            ),
+          )}
+        </div>
+      </section>
+
+      <section className="min-w-0 flex-1 p-5 md:p-8">
+        <div className="mx-auto max-w-3xl">
+          <Skeleton className="h-7 w-2/5 rounded-lg" />
+          <Skeleton className="mt-3 h-3 w-28 rounded" />
+          <div className="mt-10 space-y-4">
+            <Skeleton className="h-4 w-full rounded" />
+            <Skeleton className="h-4 w-[92%] rounded" />
+            <Skeleton className="h-4 w-[78%] rounded" />
+            <Skeleton className="mt-7 h-24 w-full rounded-xl" />
+            <Skeleton className="h-4 w-[86%] rounded" />
+            <Skeleton className="h-4 w-[68%] rounded" />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function Notebook() {
-  const accountsLoading = useWorkspacesLoading();
+  const workspacesQuery = useWorkspacesQuery();
+  const accountsLoading =
+    workspacesQuery.isLoading || workspacesQuery.isPending;
   const activeWorkspace = useActiveWorkspace();
+  const notesQuery = useNotebookNotes(activeWorkspace?.id ?? null);
   const {
     data: notes = [],
     isLoading,
     isPending,
+    error: notesError,
     refetch: refetchNotes,
-  } = useNotebookNotes(activeWorkspace?.id ?? null);
+  } = notesQuery;
   const createNoteMutation = useCreateNotebookNote();
   const deleteNoteMutation = useDeleteNotebookNote();
   const uploadMediaMutation = useUploadNotebookMedia();
@@ -99,9 +170,8 @@ export function Notebook() {
   const deleteFolderMutation = useDeleteNotebookFolder();
   const moveNodeMutation = useMoveNotebookNode();
   const setFlagsMutation = useSetNotebookNoteFlags();
-  const { data: folders = [] } = useNotebookFolders(
-    activeWorkspace?.id ?? null,
-  );
+  const foldersQuery = useNotebookFolders(activeWorkspace?.id ?? null);
+  const { data: folders = [], error: foldersError } = foldersQuery;
   const { data: trades = [] } = useJournalEntriesForWorkspace(
     activeWorkspace?.id ?? null,
   );
@@ -364,7 +434,49 @@ export function Notebook() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [toggleSidebar]);
 
-  const loading = accountsLoading || (activeWorkspace && isNotesLoading);
+  const loading =
+    accountsLoading ||
+    Boolean(
+      activeWorkspace &&
+        (isNotesLoading || foldersQuery.isLoading || foldersQuery.isPending),
+    );
+  const loadError =
+    (workspacesQuery.data === undefined ? workspacesQuery.error : null) ??
+    (notesQuery.data === undefined ? notesError : null) ??
+    (foldersQuery.data === undefined ? foldersError : null);
+
+  if (loading) return <NotebookLoadingSkeleton />;
+
+  if (loadError) {
+    return (
+      <Empty layout="page" className="flex-1">
+        <EmptyHeader>
+          <EmptyMedia variant="icon" className="size-12 rounded-xl">
+            <HugeiconsIcon icon={Notebook01Icon} strokeWidth={2} />
+          </EmptyMedia>
+          <EmptyTitle>Notebook could not load</EmptyTitle>
+          <EmptyDescription>
+            The latest notes are still safe. Check the local backend connection,
+            then try again.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!activeWorkspace) {
+                void workspacesQuery.refetch();
+                return;
+              }
+              void Promise.all([refetchNotes(), foldersQuery.refetch()]);
+            }}
+          >
+            Try again
+          </Button>
+        </EmptyContent>
+      </Empty>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full">
@@ -412,20 +524,9 @@ export function Notebook() {
   );
 
   function renderEditorPane() {
-    if (loading) {
-      return (
-        <div className="flex-1 p-6">
-          <Skeleton
-            data-testid="notebook-notes-loading"
-            className="h-full rounded-2xl"
-          />
-        </div>
-      );
-    }
-
     if (!activeWorkspace) {
       return (
-        <Empty className="flex-1">
+        <Empty layout="page" className="flex-1">
           <EmptyHeader>
             <EmptyMedia variant="icon" className="size-12 rounded-xl">
               <HugeiconsIcon icon={Notebook01Icon} strokeWidth={2} />
@@ -441,7 +542,7 @@ export function Notebook() {
 
     if (!selectedNote) {
       return (
-        <Empty className="flex-1">
+        <Empty layout="page" className="flex-1">
           <EmptyHeader>
             <EmptyMedia variant="icon" className="size-12 rounded-xl">
               <HugeiconsIcon icon={Notebook01Icon} strokeWidth={2} />

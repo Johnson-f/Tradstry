@@ -27,6 +27,8 @@ const WORKSPACE_FIELDS = `
   snaptradeAccountId
   snaptradeConnectionDisabled
   snaptradeConnectionDisabledAt
+  brokerageSetupComplete
+  brokerageSetupCompletedAt
 `;
 
 const WORKSPACES_QUERY = `

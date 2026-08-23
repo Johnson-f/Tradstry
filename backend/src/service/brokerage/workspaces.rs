@@ -3,7 +3,14 @@ use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
 
 use super::client::SnapTradeAccount;
+use super::history_policy::{self, ResolvedTransactionImportPolicy};
 use crate::service::db::schema::tables::workspaces_table::{self, CreateWorkspaceInput, Workspace};
+
+#[derive(Debug, Clone, Copy)]
+pub struct AccountImportSelection<'a> {
+    pub snaptrade_account_id: &'a str,
+    pub policy: ResolvedTransactionImportPolicy,
+}
 
 /// Bind one upstream SnapTrade account to one workspace. A brokerage
 /// authorization can expose several upstream accounts; the workspace keeps its
@@ -311,6 +318,232 @@ pub async fn create_workspaces_for_connection_accounts(
     }
 
     Ok(created)
+}
+
+pub async fn finalize_connection_accounts(
+    pool: &PgPool,
+    user_id: &str,
+    source_workspace_id: &str,
+    snaptrade_accounts: &[SnapTradeAccount],
+    primary_account_id: &str,
+    selections: &[AccountImportSelection<'_>],
+) -> Result<Vec<Workspace>> {
+    let source = workspaces_table::find_workspace(pool, source_workspace_id, user_id)
+        .await?
+        .context("Source workspace not found")?;
+    let snaptrade_user_id = source
+        .snaptrade_user_id
+        .as_deref()
+        .context("Source workspace is not registered with SnapTrade")?;
+    let encrypted_secret = source
+        .snaptrade_user_secret_encrypted
+        .as_deref()
+        .context("Source workspace has no SnapTrade secret")?;
+    let connection_id = source
+        .snaptrade_connection_id
+        .as_deref()
+        .context("Source workspace has no brokerage connection")?;
+
+    ensure_selection_is_valid(
+        snaptrade_accounts,
+        connection_id,
+        primary_account_id,
+        selections,
+    )?;
+
+    let existing = workspaces_table::list_workspaces(pool, user_id).await?;
+    let mut existing_names: HashSet<String> = existing
+        .iter()
+        .map(|workspace| normalized_workspace_name(&workspace.name))
+        .collect();
+    let mut target_by_account: HashMap<String, Workspace> = existing
+        .iter()
+        .filter_map(|workspace| {
+            workspace
+                .snaptrade_account_id
+                .as_ref()
+                .map(|account_id| (account_id.clone(), workspace.clone()))
+        })
+        .collect();
+    let mut reusable_by_name: HashMap<String, Workspace> = existing
+        .iter()
+        .filter(|workspace| {
+            workspace.id != source.id
+                && workspace.snaptrade_account_id.is_none()
+                && workspace.snaptrade_connection_id.is_none()
+        })
+        .map(|workspace| {
+            (
+                normalized_workspace_name(&workspace.name),
+                workspace.clone(),
+            )
+        })
+        .collect();
+
+    let mut tx = pool.begin().await?;
+    let mut target_ids = Vec::new();
+    let mut created_ids = Vec::new();
+
+    for selection in selections {
+        let account = snaptrade_accounts
+            .iter()
+            .find(|account| account.id.as_deref() == Some(selection.snaptrade_account_id))
+            .expect("validated account selection");
+        let workspace = if selection.snaptrade_account_id == primary_account_id {
+            source.clone()
+        } else if let Some(workspace) = target_by_account.remove(selection.snaptrade_account_id) {
+            workspace
+        } else {
+            let preferred_name = brokerage_account_name(account);
+            if let Some(workspace) =
+                reusable_by_name.remove(&normalized_workspace_name(&preferred_name))
+            {
+                workspace
+            } else {
+                let id = uuid::Uuid::new_v4().to_string();
+                let name = unique_workspace_name(&preferred_name, &mut existing_names);
+                sqlx::query(
+                    "INSERT INTO workspaces (
+                         id,user_id,name,icon,currency,risk_profile,asset_class
+                     ) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+                )
+                .bind(&id)
+                .bind(user_id)
+                .bind(&name)
+                .bind(&source.icon)
+                .bind(&source.currency)
+                .bind(&source.risk_profile)
+                .bind(&source.asset_class)
+                .execute(&mut *tx)
+                .await?;
+                created_ids.push(id.clone());
+                Workspace {
+                    id,
+                    user_id: user_id.to_string(),
+                    name,
+                    icon: source.icon.clone(),
+                    currency: source.currency.clone(),
+                    risk_profile: source.risk_profile.clone(),
+                    asset_class: source.asset_class.clone(),
+                    broker: source
+                        .broker
+                        .clone()
+                        .or_else(|| account.institution_name.clone()),
+                    snaptrade_user_id: None,
+                    snaptrade_user_secret_encrypted: None,
+                    snaptrade_connection_id: None,
+                    snaptrade_account_id: None,
+                    total_value: None,
+                    total_value_currency: None,
+                    snaptrade_connection_disabled: false,
+                    snaptrade_connection_disabled_at: None,
+                    brokerage_setup_complete: false,
+                    brokerage_setup_completed_at: None,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                }
+            }
+        };
+
+        sqlx::query(
+            "INSERT INTO brokerage_connections (
+                 workspace_id,user_id,broker,snaptrade_user_id,
+                 snaptrade_user_secret_encrypted,snaptrade_connection_id,
+                 snaptrade_account_id,setup_completed_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+             ON CONFLICT (workspace_id) DO UPDATE SET
+                 broker=COALESCE(brokerage_connections.broker,EXCLUDED.broker),
+                 snaptrade_user_id=EXCLUDED.snaptrade_user_id,
+                 snaptrade_user_secret_encrypted=EXCLUDED.snaptrade_user_secret_encrypted,
+                 snaptrade_connection_id=EXCLUDED.snaptrade_connection_id,
+                 snaptrade_account_id=EXCLUDED.snaptrade_account_id,
+                 setup_completed_at=now(),
+                 connection_disabled=false,
+                 connection_disabled_at=NULL",
+        )
+        .bind(&workspace.id)
+        .bind(user_id)
+        .bind(
+            source
+                .broker
+                .as_deref()
+                .or(account.institution_name.as_deref()),
+        )
+        .bind(snaptrade_user_id)
+        .bind(encrypted_secret)
+        .bind(connection_id)
+        .bind(selection.snaptrade_account_id)
+        .execute(&mut *tx)
+        .await?;
+
+        history_policy::upsert(
+            &mut *tx,
+            user_id,
+            &workspace.id,
+            selection.snaptrade_account_id,
+            selection.policy,
+        )
+        .await?;
+        target_ids.push(workspace.id);
+    }
+
+    tx.commit().await?;
+    for workspace_id in created_ids {
+        crate::service::db::schema::tables::notebook::folders::ensure_system_folder(
+            pool,
+            user_id,
+            &workspace_id,
+        )
+        .await?;
+    }
+
+    let mut result = Vec::with_capacity(target_ids.len());
+    for workspace_id in target_ids {
+        result.push(
+            workspaces_table::find_workspace(pool, &workspace_id, user_id)
+                .await?
+                .context("Configured workspace was not found")?,
+        );
+    }
+    Ok(result)
+}
+
+fn ensure_selection_is_valid(
+    accounts: &[SnapTradeAccount],
+    connection_id: &str,
+    primary_account_id: &str,
+    selections: &[AccountImportSelection<'_>],
+) -> Result<()> {
+    anyhow::ensure!(
+        !selections.is_empty(),
+        "Choose at least one brokerage account"
+    );
+    anyhow::ensure!(
+        selections.len() <= 25,
+        "A maximum of 25 brokerage accounts can be imported at once"
+    );
+    let selected: HashSet<&str> = selections
+        .iter()
+        .map(|selection| selection.snaptrade_account_id)
+        .collect();
+    anyhow::ensure!(
+        selected.len() == selections.len(),
+        "Each brokerage account can be selected once"
+    );
+    anyhow::ensure!(
+        selected.contains(primary_account_id),
+        "Choose which brokerage account belongs to this workspace"
+    );
+    for account_id in selected {
+        anyhow::ensure!(
+            accounts.iter().any(|account| {
+                account.id.as_deref() == Some(account_id)
+                    && account.brokerage_authorization.as_deref() == Some(connection_id)
+            }),
+            "A selected brokerage account does not belong to this connection"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -114,6 +114,11 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 		(pinnedContext.tradeIds?.length ?? 0) > 0 ||
 		(pinnedContext.playbookIds?.length ?? 0) > 0 ||
 		Boolean(pinnedContext.marketSymbol);
+	const attachmentCount =
+		(pinnedContext.tradeIds?.length ?? 0) +
+		(pinnedContext.playbookIds?.length ?? 0) +
+		(pinnedContext.dateRange ? 1 : 0) +
+		(pinnedContext.marketSymbol ? 1 : 0);
 
 	function closePicker() {
 		setPickerOpen(false);
@@ -328,8 +333,22 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 	}
 
 	return (
-		<div className="relative px-3 py-3">
-			<div className="rounded-2xl border border-border bg-background p-3 shadow-sm">
+		<div className="relative border-t border-border/50 bg-background px-3 pb-3 pt-2.5">
+			<div className="mb-2 flex items-center gap-2 px-1 text-[0.62rem] text-muted-foreground">
+				<span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+				<span className="min-w-0 truncate">
+					{workspace?.name ?? "Workspace"}
+				</span>
+				<span aria-hidden className="text-border">
+					/
+				</span>
+				<span>
+					{attachmentCount > 0
+						? `${attachmentCount} context ${attachmentCount === 1 ? "item" : "items"}`
+						: "Workspace context"}
+				</span>
+			</div>
+			<div className="rounded-2xl border border-border/80 bg-background p-3 shadow-[0_1px_2px_rgb(0_0_0/0.03)] focus-within:border-foreground/25">
 				{/* Pinned context chips */}
 				{hasPinnedContext && (
 					<div className="mb-2 flex flex-wrap gap-1">
@@ -338,7 +357,7 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 							return (
 								<span
 									key={tradeId}
-									className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground"
+									className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/70 px-2 py-0.5 text-[0.65rem] text-foreground"
 								>
 									@{trade?.symbol ?? "Trade"}
 									<button
@@ -357,7 +376,7 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 							return (
 								<span
 									key={playbookId}
-									className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground"
+									className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/70 px-2 py-0.5 text-[0.65rem] text-foreground"
 								>
 									@{playbook?.name ?? "Playbook"}
 									<button
@@ -372,7 +391,7 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 							);
 						})}
 						{pinnedContext.dateRange && (
-							<span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+							<span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/70 px-2 py-0.5 text-[0.65rem] text-foreground">
 								{pinnedContext.dateRange.from} – {pinnedContext.dateRange.to}
 								<button
 									type="button"
@@ -385,7 +404,7 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 							</span>
 						)}
 						{pinnedContext.marketSymbol && (
-							<span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs text-foreground">
+							<span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[0.65rem] text-foreground">
 								@{pinnedContext.marketSymbol} research
 								<button
 									type="button"
@@ -409,7 +428,7 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 							setPickerOpen((open) => !open);
 						}}
 						disabled={isStreaming}
-						className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[0.65rem] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<span className="font-medium">@</span>
 						Add context
@@ -812,21 +831,31 @@ export function ChatInput({ sessionId, workspaceId }: ChatInputProps) {
 					value={text}
 					onChange={handleChange}
 					onKeyDown={handleKeyDown}
-					placeholder="Ask, use @ for context, or / for commands…"
+					placeholder="Ask about your trading…"
 					rows={1}
-					className="max-h-64 min-h-[1.5rem] w-full resize-none overflow-y-auto bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+					className="max-h-64 min-h-[1.75rem] w-full resize-none overflow-y-auto bg-transparent text-sm/relaxed text-foreground placeholder:text-muted-foreground/75 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				/>
 
 				{/* Bottom toolbar */}
 				<div className="flex items-center justify-between pt-2">
-					<div />
+					<span className="text-[0.58rem] text-muted-foreground/70">
+						@ context · / commands
+					</span>
 					<button
+						type="button"
 						onClick={handleSend}
-						disabled={!text.trim()}
-						className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30"
-						title="Send"
+						disabled={!text.trim() || isStreaming}
+						className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30"
+						title="Send message"
+						aria-label="Send message"
 					>
-						<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+						<svg
+							aria-hidden="true"
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+						>
 							<path
 								d="M8 13V3M8 3l4 4M8 3L4 7"
 								stroke="currentColor"

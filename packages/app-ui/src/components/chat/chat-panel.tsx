@@ -2,18 +2,18 @@
 
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import * as React from "react";
 import { TradstryMark } from "@tradstry/app-ui/components/logo";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import { useChatSessions, useChatStore } from "@tradstry/app-ui/hooks/chat";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import * as React from "react";
 import { ChatInput } from "./chat-input";
 import { ChatMessageList } from "./chat-message-list";
 import { ChatSessionList } from "./chat-session-list";
 
-const CHAT_WIDTH = "min(440px, 100vw)";
+const CHAT_WIDTH = "min(400px, 100vw)";
 
 // ── Context so any component can check if chat panel is open ──
 
@@ -106,21 +106,21 @@ function ChatPanelContent() {
       {/* Header */}
       <div
         className={cn(
-          "flex shrink-0 items-center justify-between border-b border-border",
-          activeSessionId ? "px-3 py-2" : "px-4 py-3",
+          "flex min-h-10 shrink-0 items-center justify-between border-b border-border/60 py-1",
+          activeSessionId ? "px-0.5" : "pl-3 pr-0.5",
         )}
       >
         <div
           className={cn(
-            "flex items-center",
-            activeSessionId ? "gap-1.5" : "gap-2",
+            "flex min-w-0 items-center",
+            activeSessionId ? "gap-2" : "gap-2.5",
           )}
         >
           {activeSessionId ? (
             <button
               type="button"
               onClick={handleBack}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Back to sessions"
             >
               <svg
@@ -138,31 +138,33 @@ function ChatPanelContent() {
               </svg>
             </button>
           ) : (
-            <span className="flex size-7 items-center justify-center rounded-md bg-foreground text-background">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
               <TradstryMark className="size-[18px]" />
             </span>
           )}
-          <div>
-            <h2 className="text-sm font-semibold">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold tracking-[-0.01em]">
               {activeSessionId
                 ? (activeSession?.title ?? "Chat")
                 : "Tradstry AI"}
             </h2>
-            {!activeSessionId && (
-              <p className="text-xs text-muted-foreground">
-                Ask questions about your trades
+            {!activeSessionId ? (
+              <p className="mt-0.5 truncate text-[0.68rem] text-muted-foreground">
+                {activeWorkspace?.name
+                  ? `Trading copilot · ${activeWorkspace.name}`
+                  : "Select a workspace to begin"}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0"
+          className="size-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
           onClick={() => setOpen(false)}
           aria-label="Close Tradstry AI"
         >
-          <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+          <HugeiconsIcon icon={Cancel01Icon} className="size-4.5" />
         </Button>
       </div>
 

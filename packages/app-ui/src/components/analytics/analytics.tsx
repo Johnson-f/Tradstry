@@ -2,7 +2,6 @@
 
 import { AnalyticsUpIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
 import { DashboardRangeSelect } from "@tradstry/app-ui/components/dashboard/shared/range-select";
 import {
   Empty,
@@ -12,13 +11,19 @@ import {
   EmptyTitle,
 } from "@tradstry/app-ui/components/ui/empty";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@tradstry/app-ui/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@tradstry/app-ui/components/ui/tabs";
 import { TooltipProvider } from "@tradstry/app-ui/components/ui/tooltip";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import { useAdvancedAnalytics } from "@tradstry/app-ui/hooks/analytics";
 import { rangeSubtitleSuffix } from "@tradstry/app-ui/lib/range-format";
 import type { AnalyticsRange } from "@tradstry/app-ui/lib/types/analytics";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { useState } from "react";
 import { Behavioral } from "./behavioral";
 import { Breakdowns } from "./breakdowns";
 import { PnlCalendar } from "./calendar";
@@ -50,7 +55,7 @@ function LoadingState() {
 
 function Notice({ title, body }: { title: string; body: string }) {
   return (
-    <Empty className="border">
+    <Empty layout="page">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <HugeiconsIcon icon={AnalyticsUpIcon} strokeWidth={2} />
@@ -82,7 +87,7 @@ export function Analytics() {
     useAdvancedAnalytics(activeWorkspace?.id ?? null, { range });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">
@@ -114,7 +119,7 @@ export function Analytics() {
         />
       ) : (
         <TooltipProvider delayDuration={150}>
-          <Tabs value={tab} onValueChange={onTabChange} className="gap-6">
+          <Tabs value={tab} onValueChange={onTabChange} className="gap-4">
             <TabsList>
               {TABS.map((t) => (
                 <TabsTrigger key={t.value} value={t.value}>
@@ -129,19 +134,19 @@ export function Analytics() {
                 isPlaceholderData && "opacity-60",
               )}
             >
-              <TabsContent value="overview" className="flex flex-col gap-8">
+              <TabsContent value="overview" className="flex flex-col gap-4">
                 <AnalyticsKpiCards data={data} range={range} />
                 <EquityDrawdown data={data} />
               </TabsContent>
-              <TabsContent value="risk" className="flex flex-col gap-8">
+              <TabsContent value="risk" className="flex flex-col gap-4">
                 <RMultiples data={data} />
                 <StreaksConsistency data={data} />
               </TabsContent>
-              <TabsContent value="edges" className="flex flex-col gap-8">
+              <TabsContent value="edges" className="flex flex-col gap-4">
                 <Breakdowns data={data} />
                 <PnlCalendar />
               </TabsContent>
-              <TabsContent value="behavior" className="flex flex-col gap-8">
+              <TabsContent value="behavior" className="flex flex-col gap-4">
                 <Behavioral data={data} />
               </TabsContent>
             </div>

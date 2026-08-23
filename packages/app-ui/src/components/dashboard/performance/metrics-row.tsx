@@ -94,14 +94,10 @@ function MetricShell({
   children: ReactNode;
 }) {
   return (
-    <article className="min-h-36 rounded-2xl border bg-background/90 p-4 shadow-sm">
+    <article className="min-h-36 bg-card p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
         <h2 className="text-xs font-medium">{title}</h2>
-        <MetricHelp
-          title={title}
-          description={description}
-          formula={formula}
-        />
+        <MetricHelp title={title} description={description} formula={formula} />
         {badge !== undefined ? (
           <span className="rounded-full bg-muted px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground">
             {badge}
@@ -128,7 +124,8 @@ export function WinRateGauge({
 }) {
   const decisiveOutcomes = wins + losses;
   const winShare = decisiveOutcomes > 0 ? (wins / decisiveOutcomes) * 100 : 0;
-  const lossShare = decisiveOutcomes > 0 ? (losses / decisiveOutcomes) * 100 : 0;
+  const lossShare =
+    decisiveOutcomes > 0 ? (losses / decisiveOutcomes) * 100 : 0;
   const accessibleLabel = `${label}: ${formatPercent(rate)}. ${outcomeLabel(wins, "win", "wins")}, ${outcomeLabel(breakevens, "breakeven", "breakevens")}, ${outcomeLabel(losses, "loss", "losses")}.`;
 
   return (
@@ -228,7 +225,8 @@ export function RiskRewardValue({
         {formatted}
       </p>
       <p className="mt-2 text-xs text-muted-foreground">
-        {qualifyingTradeCount} risk-defined {qualifyingTradeCount === 1 ? "trade" : "trades"}
+        {qualifyingTradeCount} risk-defined{" "}
+        {qualifyingTradeCount === 1 ? "trade" : "trades"}
       </p>
     </div>
   );
@@ -325,9 +323,7 @@ export function WinLossBar({
         </div>
         <div className="mt-2 flex justify-between gap-2 text-xs font-medium tabular-nums">
           <span className="text-emerald-600">{formatCurrency(averageWin)}</span>
-          <span className="text-rose-600">
-            -{formatCurrency(averageLoss)}
-          </span>
+          <span className="text-rose-600">-{formatCurrency(averageLoss)}</span>
         </div>
       </div>
     </div>
@@ -342,7 +338,7 @@ export function DashboardUpperCard({ range }: { range: AnalyticsRange }) {
 
   if (!activeWorkspace) {
     return (
-      <section className="rounded-2xl border bg-background/80 p-6">
+      <section className="rounded-xl border border-border/70 bg-card/55 p-5">
         <p className="text-sm font-medium text-foreground">
           No active workspace
         </p>
@@ -356,7 +352,7 @@ export function DashboardUpperCard({ range }: { range: AnalyticsRange }) {
   if (performance.isLoading || performance.isPending) {
     return (
       <section className="pt-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-5">
           {["a", "b", "c", "d", "e"].map((key) => (
             <Skeleton key={key} className="h-36 rounded-2xl" />
           ))}
@@ -387,14 +383,12 @@ export function DashboardUpperCard({ range }: { range: AnalyticsRange }) {
         performance.isPlaceholderData && "opacity-60",
       )}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-px overflow-hidden rounded-xl border border-border/70 bg-border/70 sm:grid-cols-2 lg:grid-cols-5">
         <MetricShell
           title="Net P&L"
           description={`Net realized profit and loss from completed broker-derived trades · ${rangeSublabel(range)}.`}
           formula="Σ closed-trade proceeds − cost basis − fees"
-          badge={
-            performanceData.closedTradeCount
-          }
+          badge={performanceData.closedTradeCount}
         >
           <p
             className={cn(

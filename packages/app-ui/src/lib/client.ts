@@ -31,34 +31,53 @@ export function getBackendBaseUrl(): string {
 export function createHttpGraphQLFetcher(options: {
   endpoint: string;
   getToken: () => Promise<string | null>;
+  timeoutMs?: number;
 }): GraphQLFetcher {
   return async <T>(query: string, variables?: Record<string, unknown>) => {
-    const token = await options.getToken();
-    const response = await fetch(options.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/graphql-response+json, application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ query, variables }),
+    const controller = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(new Error("GraphQL request timed out"));
+      }, options.timeoutMs ?? 10_000);
     });
-    if (!response.ok) {
-      throw new Error(
-        `GraphQL request failed: ${response.status} ${response.statusText}`,
-      );
-    }
-    const payload = (await response.json()) as {
-      data?: T;
-      errors?: Array<{ message?: string }>;
+
+    const request = async () => {
+      const token = await options.getToken();
+      const response = await fetch(options.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/graphql-response+json, application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ query, variables }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `GraphQL request failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      const payload = (await response.json()) as {
+        data?: T;
+        errors?: Array<{ message?: string }>;
+      };
+      if (payload.errors?.length) {
+        throw new Error(payload.errors[0]?.message ?? "GraphQL request failed");
+      }
+      if (payload.data === undefined) {
+        throw new Error("GraphQL response did not include data");
+      }
+      return payload.data;
     };
-    if (payload.errors?.length) {
-      throw new Error(payload.errors[0]?.message ?? "GraphQL request failed");
+
+    try {
+      return await Promise.race([request(), timeout]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
-    if (payload.data === undefined) {
-      throw new Error("GraphQL response did not include data");
-    }
-    return payload.data;
   };
 }
 
@@ -66,7 +85,11 @@ export function createWebSocketGraphQLSubscriber(options: {
   endpoint: string;
   getToken: () => Promise<string | null>;
 }): GraphQLSubscriber {
-  return <T>(query: string, variables: Record<string, unknown> | undefined, handlers: GraphQLSubscriptionHandlers<T>) => {
+  return <T>(
+    query: string,
+    variables: Record<string, unknown> | undefined,
+    handlers: GraphQLSubscriptionHandlers<T>,
+  ) => {
     const id = crypto.randomUUID();
     const url = new URL(options.endpoint);
     url.pathname = "/graphql/ws";
@@ -101,44 +124,66 @@ export function createWebSocketGraphQLSubscriber(options: {
       handlers.onComplete?.();
     };
 
-    void options.getToken().then((token) => {
-      if (closed) return;
-      socket = new WebSocket(url, "graphql-transport-ws");
-      socket.onopen = () => {
-        socket?.send(JSON.stringify({
-          type: "connection_init",
-          payload: token ? { authorization: `Bearer ${token}` } : {},
-        }));
-      };
-      socket.onmessage = (event) => {
+    void options
+      .getToken()
+      .then((token) => {
         if (closed) return;
-        try {
-          const message = JSON.parse(String(event.data)) as {
-            type: string;
-            payload?: { data?: T; errors?: Array<{ message?: string }> };
-          };
-          if (message.type === "connection_ack") {
-            socket?.send(JSON.stringify({ id, type: "subscribe", payload: { query, variables } }));
-          } else if (message.type === "ping") {
-            socket?.send(JSON.stringify({ type: "pong" }));
-          } else if (message.type === "next" && message.payload?.data) {
-            handlers.onMessage(message.payload.data);
-          } else if (message.type === "error") {
-            fail(new Error(message.payload?.errors?.[0]?.message ?? "GraphQL subscription failed"));
-          } else if (message.type === "complete") {
-            complete();
+        socket = new WebSocket(url, "graphql-transport-ws");
+        socket.onopen = () => {
+          socket?.send(
+            JSON.stringify({
+              type: "connection_init",
+              payload: token ? { authorization: `Bearer ${token}` } : {},
+            }),
+          );
+        };
+        socket.onmessage = (event) => {
+          if (closed) return;
+          try {
+            const message = JSON.parse(String(event.data)) as {
+              type: string;
+              payload?: { data?: T; errors?: Array<{ message?: string }> };
+            };
+            if (message.type === "connection_ack") {
+              socket?.send(
+                JSON.stringify({
+                  id,
+                  type: "subscribe",
+                  payload: { query, variables },
+                }),
+              );
+            } else if (message.type === "ping") {
+              socket?.send(JSON.stringify({ type: "pong" }));
+            } else if (message.type === "next" && message.payload?.data) {
+              handlers.onMessage(message.payload.data);
+            } else if (message.type === "error") {
+              fail(
+                new Error(
+                  message.payload?.errors?.[0]?.message ??
+                    "GraphQL subscription failed",
+                ),
+              );
+            } else if (message.type === "complete") {
+              complete();
+            }
+          } catch (error) {
+            fail(
+              error instanceof Error
+                ? error
+                : new Error("Failed to parse subscription payload"),
+            );
           }
-        } catch (error) {
-          fail(error instanceof Error ? error : new Error("Failed to parse subscription payload"));
-        }
-      };
-      socket.onerror = () => fail(new Error("WebSocket connection error"));
-      socket.onclose = (event) => {
-        if (closed) return;
-        if (event.wasClean) complete();
-        else fail(new Error("WebSocket connection closed unexpectedly"));
-      };
-    }).catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
+        };
+        socket.onerror = () => fail(new Error("WebSocket connection error"));
+        socket.onclose = (event) => {
+          if (closed) return;
+          if (event.wasClean) complete();
+          else fail(new Error("WebSocket connection closed unexpectedly"));
+        };
+      })
+      .catch((error) =>
+        fail(error instanceof Error ? error : new Error(String(error))),
+      );
 
     return () => {
       if (closed) return;

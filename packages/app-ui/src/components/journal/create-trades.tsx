@@ -31,7 +31,10 @@ import { useCreateJournalEntry } from "@tradstry/app-ui/hooks/journal";
 import { usePlaybooks } from "@tradstry/app-ui/hooks/playbook";
 import { usePrinciples } from "@tradstry/app-ui/hooks/principle";
 import { useTagCategories } from "@tradstry/app-ui/hooks/tags";
-import type { CreateJournalEntryInput, TradeType } from "@tradstry/app-ui/lib/types/journal";
+import type {
+  CreateJournalEntryInput,
+  TradeType,
+} from "@tradstry/app-ui/lib/types/journal";
 import { cn } from "@tradstry/app-ui/lib/utils";
 
 type Instrument = "stock" | "option";
@@ -269,7 +272,7 @@ export function CreateTrades({
                 strokeWidth={2}
                 className="size-4"
               />
-              Enter Trade
+              New trade
             </Button>
           )}
         </DialogTrigger>

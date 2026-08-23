@@ -249,8 +249,8 @@ export function BrokerageTransactions() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/10">
-      <div className="shrink-0 border-b bg-background px-4 md:px-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+      <div className="shrink-0 border-b border-border/60 bg-background px-3 md:px-4">
         <div
           aria-label="Brokerage views"
           role="tablist"
@@ -280,7 +280,7 @@ export function BrokerageTransactions() {
       {tab === "pending" ? (
         <PendingTrades onAdjustFills={beginGroupingEdit} />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-5 xl:p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-4">
           {editingEpisodeId ? (
             <div className="mb-3 shrink-0 rounded-lg border border-l-2 border-l-sky-500 bg-background px-3 py-2">
               <p className="text-xs font-medium">Edit trade grouping</p>

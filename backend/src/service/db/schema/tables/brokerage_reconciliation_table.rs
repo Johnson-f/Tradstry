@@ -16,6 +16,7 @@ pub struct TransactionReconciliation {
     pub missing_count: i32,
     pub extra_count: i32,
     pub error: Option<String>,
+    pub import_start_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -55,6 +56,7 @@ pub struct BrokerageReconciliationState {
     pub balance_discrepancy_count: i32,
     pub transaction_error: Option<String>,
     pub portfolio_error: Option<String>,
+    pub transaction_import_start_date: Option<String>,
 }
 
 pub async fn record_transaction_reconciliation(
@@ -73,8 +75,8 @@ pub async fn record_transaction_reconciliation(
              duplicate_transaction_count, skipped_transaction_count,
              pending_transaction_count, failed_transaction_count,
              local_transaction_count, missing_transaction_count,
-             extra_transaction_count, transaction_error
-         ) VALUES ($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+             extra_transaction_count, transaction_error, transaction_import_start_date
+         ) VALUES ($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::date)
          ON CONFLICT (user_id, workspace_id, snaptrade_account_id) DO UPDATE SET
              transaction_status=EXCLUDED.transaction_status,
              transaction_checked_at=EXCLUDED.transaction_checked_at,
@@ -88,7 +90,8 @@ pub async fn record_transaction_reconciliation(
              local_transaction_count=EXCLUDED.local_transaction_count,
              missing_transaction_count=EXCLUDED.missing_transaction_count,
              extra_transaction_count=EXCLUDED.extra_transaction_count,
-             transaction_error=EXCLUDED.transaction_error",
+             transaction_error=EXCLUDED.transaction_error,
+             transaction_import_start_date=EXCLUDED.transaction_import_start_date",
     )
     .bind(user_id)
     .bind(workspace_id)
@@ -106,6 +109,7 @@ pub async fn record_transaction_reconciliation(
     .bind(report.missing_count)
     .bind(report.extra_count)
     .bind(report.error.as_deref())
+    .bind(report.import_start_date.as_deref())
     .execute(pool)
     .await
     .context("Failed to record transaction reconciliation")?;
@@ -172,7 +176,8 @@ pub async fn get_for_workspace(
                 portfolio_status, portfolio_checked_at, broker_holding_count,
                 mapped_holding_count, local_holding_count, broker_balance_count,
                 local_balance_count, balance_discrepancy_count, transaction_error,
-                portfolio_error
+                portfolio_error,
+                to_char(transaction_import_start_date, 'YYYY-MM-DD')
          FROM brokerage_reconciliation_state
          WHERE user_id=$1 AND workspace_id=$2 AND snaptrade_account_id=$3",
     )
@@ -210,6 +215,7 @@ pub async fn get_for_workspace(
             balance_discrepancy_count: row.try_get(20)?,
             transaction_error: row.try_get(21)?,
             portfolio_error: row.try_get(22)?,
+            transaction_import_start_date: row.try_get(23)?,
         })
     })
     .transpose()

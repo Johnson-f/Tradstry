@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createWebSocketGraphQLSubscriber } from "./client";
+import {
+  createHttpGraphQLFetcher,
+  createWebSocketGraphQLSubscriber,
+} from "./client";
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -72,7 +75,9 @@ describe("createWebSocketGraphQLSubscriber", () => {
     subscribe("subscription Test { value }", undefined, {
       onMessage: () => {},
       onError: (error) => errors.push(error.message),
-      onComplete: () => { completions += 1; },
+      onComplete: () => {
+        completions += 1;
+      },
     });
 
     const socket = await connectedSocket();
@@ -109,5 +114,19 @@ describe("createWebSocketGraphQLSubscriber", () => {
     ]);
     expect(errors).toEqual([]);
     expect(socket.closeCalls).toBe(1);
+  });
+});
+
+describe("createHttpGraphQLFetcher", () => {
+  test("fails a stalled authentication request instead of loading forever", async () => {
+    const fetcher = createHttpGraphQLFetcher({
+      endpoint: "http://localhost:7899/graphql",
+      getToken: () => new Promise<string | null>(() => {}),
+      timeoutMs: 10,
+    });
+
+    await expect(
+      fetcher("query Workspaces { workspaces { id } }"),
+    ).rejects.toThrow("GraphQL request timed out");
   });
 });

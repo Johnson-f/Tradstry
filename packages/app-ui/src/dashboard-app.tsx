@@ -4,6 +4,7 @@ import { Analytics } from "@tradstry/app-ui/components/analytics";
 import { AppSidebar } from "@tradstry/app-ui/components/app-sidebar";
 import { BrokerageEmptyState } from "@tradstry/app-ui/components/brokerage/brokerage-empty-state";
 import { BrokerageTransactions } from "@tradstry/app-ui/components/brokerage/brokerage-transactions";
+import { ChatButton } from "@tradstry/app-ui/components/chat";
 import { ChatProvider } from "@tradstry/app-ui/components/chat/chat-panel";
 import {
 	DashboardCalendar,
@@ -21,11 +22,11 @@ import { Notebook } from "@tradstry/app-ui/components/notebook";
 import { Playbook } from "@tradstry/app-ui/components/playbook";
 import { SiteHeader } from "@tradstry/app-ui/components/site-header";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
-import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import {
 	SidebarInset,
 	SidebarProvider,
 } from "@tradstry/app-ui/components/ui/sidebar";
+import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import { useWorkspaces as useWorkspacesQuery } from "@tradstry/app-ui/hooks/workspaces";
 import type { AnalyticsRange } from "@tradstry/app-ui/lib/types/analytics";
@@ -41,45 +42,47 @@ function DashboardHome() {
 					<DashboardRangeSelect value={range} onValueChange={setRange} />
 				}
 			/>
-			<div className="flex flex-1 flex-col overflow-auto">
-				{workspaces.isLoading || workspaces.isPending ? (
-					<div className="flex flex-col gap-4 p-4 md:gap-6 md:p-6">
-						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-							{["a", "b", "c", "d", "e"].map((key) => (
-								<Skeleton key={key} className="h-36 rounded-2xl" />
-							))}
-						</div>
-						<div className="grid gap-4 xl:grid-cols-2">
-							<Skeleton className="h-96 rounded-2xl" />
-							<Skeleton className="h-96 rounded-2xl" />
-						</div>
-					</div>
-				) : workspaces.isError ? (
-					<div className="p-4 md:p-6">
-						<DashboardCardError
-							title="Dashboard"
-							error={workspaces.error}
-							onRetry={workspaces.refetch}
-							className="min-h-[32rem]"
-						/>
-					</div>
-				) : (
-					<div className="@container/main flex flex-1 flex-col gap-2">
-						<div className="flex flex-col gap-4 px-4 py-4 md:gap-6 md:px-6 md:py-6">
-							<DashboardUpperCard range={range} />
-							<div className="grid items-stretch gap-4 md:gap-6 @4xl/main:grid-cols-2">
-								<DashboardTradingPerformanceCard range={range} />
-								<DashboardReviewQueueCard />
+			<PageCanvas>
+				<div className="flex min-h-0 flex-1 flex-col overflow-auto">
+					{workspaces.isLoading || workspaces.isPending ? (
+						<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
+							<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+								{["a", "b", "c", "d", "e"].map((key) => (
+									<Skeleton key={key} className="h-36 rounded-2xl" />
+								))}
 							</div>
-							<div className="grid items-stretch gap-4 md:gap-6 @4xl/main:grid-cols-2">
-								<DashboardRiskRecoveryCard range={range} />
-								<DashboardWinnersLeaksCard range={range} />
+							<div className="grid gap-4 xl:grid-cols-2">
+								<Skeleton className="h-96 rounded-2xl" />
+								<Skeleton className="h-96 rounded-2xl" />
 							</div>
-							<DashboardCalendar />
 						</div>
-					</div>
-				)}
-			</div>
+					) : workspaces.isError ? (
+						<div className="p-3 md:p-4">
+							<DashboardCardError
+								title="Dashboard"
+								error={workspaces.error}
+								onRetry={workspaces.refetch}
+								className="min-h-[32rem]"
+							/>
+						</div>
+					) : (
+						<div className="@container/main flex flex-1 flex-col gap-2">
+							<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
+								<DashboardUpperCard range={range} />
+								<div className="grid items-stretch gap-4 md:gap-6 @4xl/main:grid-cols-2">
+									<DashboardTradingPerformanceCard range={range} />
+									<DashboardReviewQueueCard />
+								</div>
+								<div className="grid items-stretch gap-4 md:gap-6 @4xl/main:grid-cols-2">
+									<DashboardRiskRecoveryCard range={range} />
+									<DashboardWinnersLeaksCard range={range} />
+								</div>
+								<DashboardCalendar />
+							</div>
+						</div>
+					)}
+				</div>
+			</PageCanvas>
 		</>
 	);
 }
@@ -89,13 +92,15 @@ function BrokerageScreen() {
 	return (
 		<>
 			<SiteHeader />
-			<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-				{workspace?.snaptradeConnectionId ? (
-					<BrokerageTransactions />
-				) : (
-					<BrokerageEmptyState />
-				)}
-			</div>
+			<PageCanvas>
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{workspace?.snaptradeConnectionId ? (
+						<BrokerageTransactions />
+					) : (
+						<BrokerageEmptyState />
+					)}
+				</div>
+			</PageCanvas>
 		</>
 	);
 }
@@ -105,9 +110,11 @@ function Screen({ pathname }: { pathname: string }) {
 		return (
 			<>
 				<SiteHeader />
-				<FeatureScroll>
-					<Analytics />
-				</FeatureScroll>
+				<PageCanvas>
+					<FeatureScroll>
+						<Analytics />
+					</FeatureScroll>
+				</PageCanvas>
 			</>
 		);
 	}
@@ -116,7 +123,9 @@ function Screen({ pathname }: { pathname: string }) {
 		return (
 			<>
 				<SiteHeader />
-				<Markets />
+				<PageCanvas>
+					<Markets />
+				</PageCanvas>
 			</>
 		);
 	}
@@ -124,9 +133,11 @@ function Screen({ pathname }: { pathname: string }) {
 		return (
 			<>
 				<SiteHeader />
-				<FeatureScroll>
-					<Journal />
-				</FeatureScroll>
+				<PageCanvas>
+					<FeatureScroll>
+						<Journal />
+					</FeatureScroll>
+				</PageCanvas>
 			</>
 		);
 	}
@@ -134,9 +145,11 @@ function Screen({ pathname }: { pathname: string }) {
 		return (
 			<>
 				<SiteHeader />
-				<div className="flex min-h-0 flex-1">
-					<Notebook />
-				</div>
+				<PageCanvas>
+					<div className="flex min-h-0 flex-1">
+						<Notebook />
+					</div>
+				</PageCanvas>
 			</>
 		);
 	}
@@ -144,9 +157,11 @@ function Screen({ pathname }: { pathname: string }) {
 		return (
 			<>
 				<SiteHeader />
-				<FeatureScroll>
-					<Playbook />
-				</FeatureScroll>
+				<PageCanvas>
+					<FeatureScroll>
+						<Playbook />
+					</FeatureScroll>
+				</PageCanvas>
 			</>
 		);
 	}
@@ -157,7 +172,7 @@ function FeatureScroll({ children }: { children: React.ReactNode }) {
 	return (
 		<ScrollArea className="min-h-0 flex-1">
 			<div className="@container/main flex flex-1 flex-col gap-2">
-				<div className="flex flex-col gap-4 px-4 py-4 md:gap-6 md:px-6 md:py-6">
+				<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
 					{children}
 				</div>
 			</div>
@@ -165,21 +180,37 @@ function FeatureScroll({ children }: { children: React.ReactNode }) {
 	);
 }
 
+function PageCanvas({ children }: { children: React.ReactNode }) {
+	return (
+		<section
+			data-slot="app-canvas"
+			className="mx-1.5 mb-1.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1rem] border border-black/10 bg-background shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_rgba(0,0,0,0.035)] md:mx-2.5 md:mb-10 dark:border-white/10 dark:shadow-[0_1px_2px_rgba(0,0,0,0.28),0_18px_46px_rgba(0,0,0,0.16)]"
+		>
+			{children}
+		</section>
+	);
+}
+
 export function DashboardApp({ pathname }: { pathname: string }) {
 	return (
 		<ChatProvider>
 			<SidebarProvider
+				className="bg-[var(--app-chrome)]"
 				style={
 					{
-						"--sidebar-width": "calc(var(--spacing) * 72)",
-						"--header-height": "calc(var(--spacing) * 12)",
+						"--sidebar-width": "13.5rem",
+						"--sidebar-width-icon": "3.25rem",
+						"--header-height": "2.75rem",
 					} as React.CSSProperties
 				}
 			>
 				<AppSidebar />
-				<SidebarInset className="min-h-0 overflow-hidden">
+				<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
 					<Screen pathname={pathname} />
 				</SidebarInset>
+				<div className="fixed bottom-1.5 right-3 z-40 hidden md:block">
+					<ChatButton showLabel />
+				</div>
 			</SidebarProvider>
 		</ChatProvider>
 	);

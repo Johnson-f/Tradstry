@@ -2,6 +2,7 @@
 
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { parseRules } from "@tradstry/app-ui/lib/playbook-rules";
+import { cn } from "@tradstry/app-ui/lib/utils";
 
 /**
  * The read-only half of the rules editor.
@@ -61,20 +62,32 @@ export function RulesView({
   exitRules,
   positionSizingRules,
   additionalRules,
+  className,
+  columns = false,
 }: {
   entryRules: string;
   exitRules: string;
   positionSizingRules: string;
   additionalRules?: string | null;
+  className?: string;
+  columns?: boolean;
 }) {
+  const content = (
+    <div
+      className={cn(
+        "grid gap-3 pb-1",
+        columns && "grid-cols-2 gap-x-5 gap-y-4",
+      )}
+    >
+      <RuleGroup label="Entry" value={entryRules} />
+      <RuleGroup label="Exit" value={exitRules} />
+      <RuleGroup label="Position sizing" value={positionSizingRules} />
+      <RuleGroup label="Additional" value={additionalRules ?? ""} />
+    </div>
+  );
   return (
-    <ScrollArea className="h-52 -mr-2 pr-2">
-      <div className="grid gap-3 pb-1">
-        <RuleGroup label="Entry" value={entryRules} />
-        <RuleGroup label="Exit" value={exitRules} />
-        <RuleGroup label="Position sizing" value={positionSizingRules} />
-        <RuleGroup label="Additional" value={additionalRules ?? ""} />
-      </div>
+    <ScrollArea className={cn("h-52 -mr-2 pr-2", className)}>
+      {content}
     </ScrollArea>
   );
 }

@@ -9,6 +9,7 @@ use super::client::{
     BrokerageClient, HoldingsSyncStatus, SnapTradeActivity, SnapTradePosition,
     TransactionsSyncStatus,
 };
+use super::history_policy;
 use crate::service::db::schema::tables::brokerage_reconciliation_table::{
     self, PortfolioReconciliation, TransactionReconciliation,
 };
@@ -74,9 +75,17 @@ pub async fn record_transaction_failure(
     snaptrade_account_id: &str,
     message: &str,
 ) -> Result<()> {
-    let local_count = brokerage_table::count_transactions(pool, user_id, workspace_id)
+    let import_start_date = history_policy::get(pool, user_id, workspace_id, snaptrade_account_id)
         .await?
-        .try_into()?;
+        .and_then(|policy| policy.start_date);
+    let local_count = brokerage_table::count_transactions_from(
+        pool,
+        user_id,
+        workspace_id,
+        import_start_date.as_deref(),
+    )
+    .await?
+    .try_into()?;
     brokerage_reconciliation_table::record_transaction_reconciliation(
         pool,
         user_id,
@@ -88,6 +97,7 @@ pub async fn record_transaction_failure(
             failed_count: 1,
             local_count,
             error: Some(bounded_reconciliation_message(message)),
+            import_start_date,
             ..Default::default()
         },
     )
@@ -100,9 +110,17 @@ async fn record_pending_transaction_reconciliation(
     workspace_id: &str,
     snaptrade_account_id: &str,
 ) -> Result<()> {
-    let local_count = brokerage_table::count_transactions(pool, user_id, workspace_id)
+    let import_start_date = history_policy::get(pool, user_id, workspace_id, snaptrade_account_id)
         .await?
-        .try_into()?;
+        .and_then(|policy| policy.start_date);
+    let local_count = brokerage_table::count_transactions_from(
+        pool,
+        user_id,
+        workspace_id,
+        import_start_date.as_deref(),
+    )
+    .await?
+    .try_into()?;
     brokerage_reconciliation_table::record_transaction_reconciliation(
         pool,
         user_id,
@@ -113,6 +131,7 @@ async fn record_pending_transaction_reconciliation(
             status: "pending".to_string(),
             pending_count: 1,
             local_count,
+            import_start_date,
             ..Default::default()
         },
     )
@@ -212,6 +231,25 @@ pub async fn sync_transactions_if_advanced(
     remote: Option<&TransactionsSyncStatus>,
     force: bool,
 ) -> Result<Option<TransactionSyncReport>> {
+    let Some(import_policy) = history_policy::get(
+        pool,
+        internal_user_id,
+        internal_account_id,
+        snaptrade_account_id,
+    )
+    .await?
+    else {
+        log::info!("Transaction import is waiting for setup for account={internal_account_id}");
+        record_pending_transaction_reconciliation(
+            pool,
+            internal_user_id,
+            internal_account_id,
+            snaptrade_account_id,
+        )
+        .await?;
+        return Ok(None);
+    };
+
     // Wait for backfill rather than storing a partial history.
     if let Some(status) = remote
         && status.initial_sync_completed == Some(false)
@@ -258,6 +296,15 @@ pub async fn sync_transactions_if_advanced(
         snaptrade_account_id,
         internal_user_id,
         internal_account_id,
+        import_policy.start_date.as_deref(),
+    )
+    .await?;
+
+    history_policy::mark_initial_import_completed(
+        pool,
+        internal_user_id,
+        internal_account_id,
+        snaptrade_account_id,
     )
     .await?;
 
@@ -318,6 +365,7 @@ pub async fn sync_transactions_if_advanced(
 /// Syncs transactions from SnapTrade.
 /// SnapTrade IDs are for API calls; internal IDs are for database access. The
 /// namespaces are not guaranteed to match.
+#[allow(clippy::too_many_arguments)]
 pub async fn sync_transactions(
     client: &BrokerageClient,
     pool: &PgPool,
@@ -326,9 +374,15 @@ pub async fn sync_transactions(
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
+    import_start_date: Option<&str>,
 ) -> Result<TransactionSyncReport> {
-    let held_before =
-        brokerage_table::count_transactions(pool, internal_user_id, internal_account_id).await?;
+    let held_before = brokerage_table::count_transactions_from(
+        pool,
+        internal_user_id,
+        internal_account_id,
+        import_start_date,
+    )
+    .await?;
     let mut broker_count = 0usize;
     let mut mapped_count = 0usize;
     let mut offset = 0i32;
@@ -337,7 +391,10 @@ pub async fn sync_transactions(
     // Preserve partial-fill ordinals across page boundaries.
     let mut seen = brokerage_table::SignatureCounts::new();
 
-    log::info!("Full-history sync for account={internal_account_id}");
+    log::info!(
+        "Transaction sync for account={internal_account_id}, start_date={}",
+        import_start_date.unwrap_or("all")
+    );
 
     loop {
         let response = match client
@@ -345,7 +402,7 @@ pub async fn sync_transactions(
                 snaptrade_user_id,
                 user_secret,
                 snaptrade_account_id,
-                None,
+                import_start_date,
                 None,
                 None,
                 Some(offset),
@@ -356,10 +413,11 @@ pub async fn sync_transactions(
         {
             Ok(response) => response,
             Err(error) => {
-                let local_count = brokerage_table::count_transactions(
+                let local_count = brokerage_table::count_transactions_from(
                     pool,
                     internal_user_id,
                     internal_account_id,
+                    import_start_date,
                 )
                 .await?
                 .try_into()?;
@@ -376,6 +434,7 @@ pub async fn sync_transactions(
                         failed_count: 1,
                         local_count,
                         error: Some(safe_reconciliation_error(&error)),
+                        import_start_date: import_start_date.map(str::to_string),
                         ..Default::default()
                     },
                 )
@@ -412,10 +471,14 @@ pub async fn sync_transactions(
         .await
         .context("Failed to upsert transactions")
         {
-            let local_count =
-                brokerage_table::count_transactions(pool, internal_user_id, internal_account_id)
-                    .await?
-                    .try_into()?;
+            let local_count = brokerage_table::count_transactions_from(
+                pool,
+                internal_user_id,
+                internal_account_id,
+                import_start_date,
+            )
+            .await?
+            .try_into()?;
             brokerage_reconciliation_table::record_transaction_reconciliation(
                 pool,
                 internal_user_id,
@@ -429,6 +492,7 @@ pub async fn sync_transactions(
                     failed_count: 1,
                     local_count,
                     error: Some(safe_reconciliation_error(&error)),
+                    import_start_date: import_start_date.map(str::to_string),
                     ..Default::default()
                 },
             )
@@ -448,8 +512,13 @@ pub async fn sync_transactions(
         }
     }
 
-    let local_count =
-        brokerage_table::count_transactions(pool, internal_user_id, internal_account_id).await?;
+    let local_count = brokerage_table::count_transactions_from(
+        pool,
+        internal_user_id,
+        internal_account_id,
+        import_start_date,
+    )
+    .await?;
     let imported_count = local_count.saturating_sub(held_before);
     let broker_ids: Vec<String> = broker_ids.into_iter().collect();
     let matched_count = brokerage_table::count_transactions_matching_snaptrade_ids(
@@ -495,6 +564,7 @@ pub async fn sync_transactions(
             local_count: report.local_count,
             missing_count: report.missing_count,
             extra_count: report.extra_count,
+            import_start_date: import_start_date.map(str::to_string),
             ..Default::default()
         },
     )

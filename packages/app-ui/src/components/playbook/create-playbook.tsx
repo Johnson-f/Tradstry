@@ -81,7 +81,7 @@ export function CreatePlaybookDialog({
 	open,
 	onOpenChange,
 	trigger,
-	triggerLabel = "Create Playbook",
+	triggerLabel = "New playbook",
 	onCreated,
 	disabled = false,
 }: CreatePlaybookDialogProps) {
@@ -188,9 +188,14 @@ export function CreatePlaybookDialog({
 							size="sm"
 							variant="default"
 							disabled={disabled}
-							className="gap-2 font-semibold"
+							className="group/create h-8 gap-2 rounded-full px-2 pr-3 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_-7px_rgba(0,0,0,0.55)]"
 						>
-							<HugeiconsIcon icon={PlusSignIcon} className="size-4" />
+							<span className="flex size-5 items-center justify-center rounded-full bg-primary-foreground/12">
+								<HugeiconsIcon
+									icon={PlusSignIcon}
+									className="size-3.5 transition-transform duration-200 group-hover/create:rotate-90 motion-reduce:transition-none"
+								/>
+							</span>
 							{triggerLabel}
 						</Button>
 					)}

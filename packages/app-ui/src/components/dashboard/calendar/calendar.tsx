@@ -3,6 +3,7 @@
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MetricHelp } from "@tradstry/app-ui/components/dashboard/performance/metrics-row";
+import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
@@ -15,7 +16,6 @@ import type {
 import { cn, formatPnl } from "@tradstry/app-ui/lib/utils";
 import { useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Fragment, useState } from "react";
-import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 
 const MONTH = new Intl.DateTimeFormat("en-US", {
 	month: "long",
@@ -185,7 +185,7 @@ function DayCell({
 		"relative min-h-24 overflow-hidden rounded-xl border p-2.5 text-left",
 		currentMonth ? "bg-background" : "bg-muted/15 text-muted-foreground/45",
 		traded &&
-			"outline-none transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/40",
+			"outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring/40",
 	);
 
 	if (!traded || !day) return <div className={className}>{content}</div>;
@@ -199,13 +199,6 @@ function DayCell({
 			style={{ backgroundColor: background }}
 			onClick={() => onNavigate(buildCalendarDayDestination(day.date))}
 		>
-			<span
-				className={cn(
-					"absolute inset-y-2 left-0 w-0.5 rounded-full",
-					positive ? "bg-emerald-500" : "bg-rose-500",
-				)}
-				style={{ opacity: 0.45 + intensity * 0.55 }}
-			/>
 			{content}
 		</button>
 	);
@@ -288,7 +281,7 @@ export function TradingCalendarView({
 	);
 
 	return (
-		<section className="rounded-2xl border bg-background/90 p-4 shadow-sm md:p-5">
+		<section className="rounded-xl border border-border/70 bg-card/55 p-4 md:p-5">
 			<div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
 				<div>
 					<div className="flex items-center gap-2">
@@ -439,7 +432,7 @@ export function DashboardCalendar() {
 	if (!workspace) return null;
 	if (isLoading || isPending) {
 		return (
-			<section className="rounded-2xl border bg-background/90 p-5 shadow-sm">
+			<section className="rounded-xl border border-border/70 bg-card/55 p-5">
 				<div className="flex justify-between gap-4">
 					<div>
 						<Skeleton className="h-4 w-32" />

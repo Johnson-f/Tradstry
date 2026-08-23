@@ -165,6 +165,26 @@ export interface BrokerageReconciliation {
 	balanceDiscrepancyCount: number;
 	transactionError: string | null;
 	portfolioError: string | null;
+	transactionImportStartDate: string | null;
+}
+
+export type TransactionImportMode = "one_year" | "two_years" | "all" | "custom";
+
+export interface TransactionImportPolicyInput {
+	mode: TransactionImportMode;
+	customStartDate?: string;
+}
+
+export interface TransactionImportPolicy {
+	mode: TransactionImportMode;
+	startDate: string | null;
+	configuredAt: string;
+	initialImportCompletedAt: string | null;
+}
+
+export interface BrokerageAccountImportInput {
+	snaptradeAccountId: string;
+	policy: TransactionImportPolicyInput;
 }
 
 export type BrokerageDataIssueCategory =

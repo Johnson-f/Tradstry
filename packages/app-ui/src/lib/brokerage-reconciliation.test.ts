@@ -28,7 +28,8 @@ function reconciliation(
 		localBalanceCount: 1,
 		balanceDiscrepancyCount: 0,
 		transactionError: null,
-		portfolioError: null,
+	portfolioError: null,
+	transactionImportStartDate: null,
 		...overrides,
 	};
 }

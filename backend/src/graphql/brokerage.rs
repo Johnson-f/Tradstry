@@ -11,6 +11,9 @@ use uuid::Uuid;
 use crate::graphql::analytics::{AnalyticsRange, AnalyticsTimeFilterInput, map_time_filter};
 use crate::service::brokerage::client::{BrokerageClient, SnapTradeAccount, SnapTradeError};
 use crate::service::brokerage::db::decrypt_secret;
+use crate::service::brokerage::history_policy::{
+    self, TransactionImportMode, TransactionImportPolicy,
+};
 use crate::service::brokerage::transaction;
 use crate::service::db::schema::tables::brokerage_table::{
     BrokerageBalance, BrokerageHolding, BrokerageTransaction, TransactionFilters,
@@ -285,6 +288,28 @@ pub struct BrokerageConnectionAccount {
     pub current: bool,
 }
 
+#[derive(InputObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct TransactionImportPolicyInput {
+    pub mode: TransactionImportMode,
+    pub custom_start_date: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct BrokerageAccountImportInput {
+    pub snaptrade_account_id: String,
+    pub policy: TransactionImportPolicyInput,
+}
+
+#[derive(InputObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct FinalizeBrokerageSetupInput {
+    pub workspace_id: String,
+    pub primary_snaptrade_account_id: String,
+    pub accounts: Vec<BrokerageAccountImportInput>,
+}
+
 #[derive(SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
 pub struct SyncResult {
@@ -335,6 +360,7 @@ pub struct BrokerageReconciliation {
     pub balance_discrepancy_count: i32,
     pub transaction_error: Option<String>,
     pub portfolio_error: Option<String>,
+    pub transaction_import_start_date: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -437,6 +463,28 @@ pub struct BrokerageQuery;
 
 #[Object]
 impl BrokerageQuery {
+    async fn brokerage_transaction_import_policy(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+    ) -> Result<Option<TransactionImportPolicy>> {
+        let user_db = get_user_db(ctx).await?;
+        let workspace =
+            workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
+                .await?
+                .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        let Some(account_id) = workspace.snaptrade_account_id else {
+            return Ok(None);
+        };
+        Ok(history_policy::get(
+            user_db.pool(),
+            user_db.user_id(),
+            &workspace_id,
+            &account_id,
+        )
+        .await?)
+    }
+
     async fn brokerage_reconciliation(
         &self,
         ctx: &Context<'_>,
@@ -484,6 +532,7 @@ impl BrokerageQuery {
             balance_discrepancy_count: state.balance_discrepancy_count,
             transaction_error: state.transaction_error,
             portfolio_error: state.portfolio_error,
+            transaction_import_start_date: state.transaction_import_start_date,
         }))
     }
 
@@ -1082,13 +1131,13 @@ impl BrokerageMutation {
             ));
         }
 
-        workspaces_table::update_snaptrade_credentials(
+        workspaces_table::prepare_snaptrade_connection(
             user_db.pool(),
             &workspace_id,
             user_db.user_id(),
             &snaptrade_user_id,
             &encrypted,
-            Some(&connection_id),
+            &connection_id,
         )
         .await?;
 
@@ -1109,27 +1158,126 @@ impl BrokerageMutation {
         )
         .await?;
 
-        match brokerage_client
-            .list_snaptrade_accounts(&snaptrade_user_id, &user_secret)
-            .await
-        {
-            Ok(snaptrade_accounts) => {
-                crate::service::brokerage::workspaces::bind_workspace_brokerage_account(
-                    user_db.pool(),
-                    user_db.user_id(),
-                    &workspace_id,
-                    &snaptrade_accounts,
-                )
-                .await?;
-            }
-            Err(error) => {
-                log::warn!(
-                    "Connected brokerage but could not discover its accounts for account={workspace_id}: {error}"
-                );
+        Ok(true)
+    }
+
+    async fn finalize_brokerage_setup(
+        &self,
+        ctx: &Context<'_>,
+        input: FinalizeBrokerageSetupInput,
+    ) -> Result<Vec<workspaces_table::Workspace>> {
+        let user_db = get_user_db(ctx).await?;
+        let brokerage_client = ctx.data::<Arc<BrokerageClient>>()?;
+        let workspace = workspaces_table::find_workspace(
+            user_db.pool(),
+            &input.workspace_id,
+            user_db.user_id(),
+        )
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        let snaptrade_user_id = workspace
+            .snaptrade_user_id
+            .as_deref()
+            .ok_or_else(|| async_graphql::Error::new("Workspace not linked to SnapTrade"))?;
+        let encrypted = workspace
+            .snaptrade_user_secret_encrypted
+            .as_deref()
+            .ok_or_else(|| async_graphql::Error::new("No SnapTrade secret stored"))?;
+        let accounts = brokerage_client
+            .list_snaptrade_accounts(snaptrade_user_id, &decrypt_secret(encrypted)?)
+            .await?;
+        let today = history_policy::eastern_today();
+        let mut resolved = Vec::with_capacity(input.accounts.len());
+        for account in &input.accounts {
+            let policy = history_policy::resolve(
+                account.policy.mode,
+                account.policy.custom_start_date.as_deref(),
+                today,
+            )?;
+            resolved.push(
+                crate::service::brokerage::workspaces::AccountImportSelection {
+                    snaptrade_account_id: &account.snaptrade_account_id,
+                    policy,
+                },
+            );
+        }
+        let configured = crate::service::brokerage::workspaces::finalize_connection_accounts(
+            user_db.pool(),
+            user_db.user_id(),
+            &input.workspace_id,
+            &accounts,
+            &input.primary_snaptrade_account_id,
+            &resolved,
+        )
+        .await?;
+        if let Ok(redis) = ctx.data::<Arc<RedisClient>>() {
+            for workspace in &configured {
+                brokerage_cache::invalidate_account_cache(redis, user_db.user_id(), &workspace.id)
+                    .await;
             }
         }
+        Ok(configured)
+    }
 
-        Ok(true)
+    async fn expand_brokerage_transaction_history(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        policy: TransactionImportPolicyInput,
+    ) -> Result<TransactionImportPolicy> {
+        let user_db = get_user_db(ctx).await?;
+        let workspace =
+            workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
+                .await?
+                .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        let account_id = workspace
+            .snaptrade_account_id
+            .as_deref()
+            .ok_or_else(|| async_graphql::Error::new("No brokerage account is linked here"))?;
+        let current =
+            history_policy::get(user_db.pool(), user_db.user_id(), &workspace_id, account_id)
+                .await?
+                .ok_or_else(|| async_graphql::Error::new("Import history is not configured"))?;
+        let next = history_policy::resolve(
+            policy.mode,
+            policy.custom_start_date.as_deref(),
+            history_policy::eastern_today(),
+        )?;
+        if current.mode == TransactionImportMode::All {
+            return Err(async_graphql::Error::new(
+                "All available history is already imported",
+            ));
+        }
+        if let Some(next_date) = next.start_date {
+            let current_date = current
+                .start_date
+                .as_deref()
+                .and_then(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+                .ok_or_else(|| async_graphql::Error::new("Current import boundary is invalid"))?;
+            if next_date >= current_date {
+                return Err(async_graphql::Error::new(
+                    "Choose a date earlier than the current import boundary",
+                ));
+            }
+        }
+        history_policy::upsert(
+            user_db.pool(),
+            user_db.user_id(),
+            &workspace_id,
+            account_id,
+            next,
+        )
+        .await?;
+        history_policy::clear_transaction_watermark(
+            user_db.pool(),
+            user_db.user_id(),
+            &workspace_id,
+            account_id,
+        )
+        .await?;
+        history_policy::get(user_db.pool(), user_db.user_id(), &workspace_id, account_id)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Import history was not saved"))
     }
 
     /// Creates separate workspaces for selected, currently unlinked accounts
@@ -1180,6 +1328,24 @@ impl BrokerageMutation {
                 &requested,
             )
             .await?;
+
+        let default_policy = history_policy::resolve(
+            TransactionImportMode::OneYear,
+            None,
+            history_policy::eastern_today(),
+        )?;
+        for workspace in &created {
+            if let Some(account_id) = workspace.snaptrade_account_id.as_deref() {
+                history_policy::upsert(
+                    user_db.pool(),
+                    user_db.user_id(),
+                    &workspace.id,
+                    account_id,
+                    default_policy,
+                )
+                .await?;
+            }
+        }
 
         if let Ok(redis) = ctx.data::<Arc<RedisClient>>() {
             for workspace in &created {
@@ -1249,6 +1415,11 @@ impl BrokerageMutation {
             workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
                 .await?
                 .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        if !account.brokerage_setup_complete {
+            return Err(async_graphql::Error::new(
+                "Finish choosing the brokerage account and import history before syncing.",
+            ));
+        }
 
         let sync_key = format!("{}:{workspace_id}", user_db.user_id());
         if !begin_sync(&sync_key).await {
@@ -1276,7 +1447,7 @@ impl BrokerageMutation {
         }
 
         let result: Result<SyncResult> = async {
-        let mut snaptrade_account_id = account.snaptrade_account_id.clone();
+        let snaptrade_account_id = account.snaptrade_account_id.clone();
         let connection_id = account
             .snaptrade_connection_id
             .clone()
@@ -1387,20 +1558,6 @@ impl BrokerageMutation {
             return Err(async_graphql::Error::new(
                 "No brokerage accounts are available yet. Wait a moment, then retry.",
             ));
-        }
-
-        if snaptrade_account_id.is_none() {
-            crate::service::brokerage::workspaces::bind_workspace_brokerage_account(
-                user_db.pool(),
-                user_db.user_id(),
-                &workspace_id,
-                &snaptrade_accounts,
-            )
-            .await?;
-            snaptrade_account_id =
-                workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
-                    .await?
-                    .and_then(|account| account.snaptrade_account_id);
         }
 
         let mut snaptrade_account_id = snaptrade_account_id.ok_or_else(|| {
