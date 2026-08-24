@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@tradstry/app-ui/lib/utils";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import * as React from "react";
 import { EASE_OUT, Reveal } from "@/components/landing/motion";
@@ -9,7 +10,6 @@ import {
   Lede,
   Section,
 } from "@/components/landing/primitives";
-import { cn } from "@tradstry/app-ui/lib/utils";
 
 type Leak = { annual: number; recovered: number };
 
@@ -167,7 +167,10 @@ export function LeakSection() {
   const breaking = Math.round(trades * (breakRate / 100));
 
   return (
-    <Section id="leak">
+    <Section
+      id="leak"
+      className="bg-[radial-gradient(ellipse_at_15%_40%,rgba(255,82,119,0.055),transparent_44%)]"
+    >
       <Reveal className="max-w-2xl">
         <Eyebrow>The leak</Eyebrow>
         <Heading>
@@ -181,7 +184,7 @@ export function LeakSection() {
       </Reveal>
 
       <div className="mt-14 grid items-stretch gap-6 md:grid-cols-[1fr_1fr]">
-        <Reveal className="rounded-xl border border-white/[0.08] bg-white/[0.015] p-6 md:p-7">
+        <Reveal className="rounded-3xl border border-white/[0.08] bg-white/[0.018] p-6 md:p-8">
           <div className="grid gap-7">
             <Dial
               label="Trades per month"
@@ -216,18 +219,18 @@ export function LeakSection() {
           </div>
         </Reveal>
 
-        <Reveal className="flex flex-col justify-center rounded-xl border border-white/[0.08] bg-[#131316] p-6 md:p-7">
-          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+        <Reveal className="flex flex-col justify-center rounded-3xl border border-[#ff5277]/20 bg-[linear-gradient(145deg,rgba(255,82,119,0.09),rgba(255,255,255,0.02))] p-6 md:p-8">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
             Breaking your rules costs you
           </p>
           <Figure
             value={annual}
-            className="mt-3 font-mono text-4xl text-loss tabular-nums md:text-5xl"
+            className="mt-3 font-mono text-5xl text-loss tabular-nums md:text-6xl"
           />
           <p className="mt-1.5 text-sm text-zinc-500">every year</p>
 
           <div className="mt-7 border-t border-white/[0.06] pt-6">
-            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
               Cut half of them and you keep
             </p>
             <Figure
@@ -252,8 +255,6 @@ export function LeakLink() {
   return (
     <motion.a
       href="#leak"
-      whileHover={{ x: 2 }}
-      transition={{ duration: 0.15, ease: EASE_OUT }}
       className="mt-4 inline-flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-200"
     >
       Price your own leak

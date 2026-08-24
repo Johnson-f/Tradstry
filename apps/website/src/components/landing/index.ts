@@ -8,3 +8,4 @@ export { Pillars } from "./pillars";
 export { Pricing } from "./pricing";
 export { Problem } from "./problem";
 export { Proof } from "./proof";
+export { SignalStrip } from "./signal-strip";

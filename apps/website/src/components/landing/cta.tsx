@@ -4,7 +4,6 @@ import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { motion } from "motion/react";
 import { EASE_OUT } from "@/components/landing/motion";
-import { Tape } from "@/components/landing/tape";
 import { capture, EVENTS } from "@/lib/analytics/events";
 
 const VIEWPORT = { once: true, amount: 0.6 } as const;
@@ -61,11 +60,18 @@ function DrawnMark() {
 
 export function Cta() {
   return (
-    <section className="relative overflow-hidden border-t border-white/[0.06] py-28 md:py-36">
-      <Tape lanes={9} />
+    <section className="relative overflow-hidden border-t border-white/[0.06] py-28 md:py-40">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.055] blur-[130px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[52rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.045]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ff8b3d]/10"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ff8b3d]/[0.07] blur-[130px]"
       />
 
       <div className="relative mx-auto max-w-2xl px-6 text-center">
@@ -74,7 +80,7 @@ export function Cta() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={VIEWPORT}
           transition={{ duration: 0.45, ease: EASE_OUT }}
-          className="inline-flex size-11 items-center justify-center rounded-xl bg-zinc-50 text-[#0A0A0B]"
+          className="inline-flex size-12 items-center justify-center rounded-2xl border border-[#ff8b3d]/25 bg-[#ff8b3d]/10 text-[#ff9a52]"
         >
           <DrawnMark />
         </motion.span>
@@ -84,7 +90,7 @@ export function Cta() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={VIEWPORT}
           transition={{ duration: 0.5, delay: 0.5, ease: EASE_OUT }}
-          className="mt-8 text-balance text-3xl font-semibold tracking-[-0.02em] text-zinc-50 md:text-[2.75rem] md:leading-[1.1]"
+          className="mt-8 text-balance text-4xl font-semibold tracking-[-0.045em] text-zinc-50 md:text-6xl md:leading-[1.02]"
         >
           <span className="block">Plan the risk. Sync the execution.</span>
           <span className="block text-zinc-500">
@@ -115,12 +121,12 @@ export function Cta() {
               onClick={() =>
                 capture(EVENTS.ctaClicked, {
                   location: "footer_cta",
-                  label: "Start journalling",
+                  label: "Start free",
                 })
               }
-              className="mt-9 h-11 bg-zinc-50 px-8 text-[15px] text-[#0A0A0B] transition-transform duration-150 hover:bg-zinc-200 active:scale-[0.97]"
+              className="mt-9 h-12 rounded-xl bg-zinc-50 px-8 text-[15px] font-semibold text-[#0A0A0B] hover:bg-white active:scale-[0.98]"
             >
-              Start journalling
+              Start free
             </Button>
           </SignUpButton>
         </motion.div>

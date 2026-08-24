@@ -7,16 +7,35 @@ export const SITE_URL = "https://www.tradstry.com";
 
 export const SITE_NAME = "Tradstry";
 
+export const SITE_TITLE =
+  "Tradstry | Trading Journal with a Built-In MCP Server";
+
 /** What an AI assistant quotes when asked what Tradstry is — so it carries the specifics. */
 export const SITE_DESCRIPTION =
-  "Tradstry is a trading journal that syncs every fill from 35+ brokerages, holds you to the rules you wrote, and computes 36 performance analytics. Query and edit your journal from Claude over MCP. $20/month or $180/year, with a macOS desktop app.";
+  "Tradstry is a brokerage-synced trading journal with playbooks, performance analytics, and a built-in MCP server that lets compatible AI tools securely work with your trading record.";
+
+export const SITE_KEYWORDS = [
+  "brokerage synced trading journal",
+  "trading journal",
+  "trade journal software",
+  "trading performance analytics",
+  "stock trading journal",
+  "options trading journal",
+  "trading playbook",
+  "trading discipline tracker",
+  "rule break tracking",
+  "trade expectancy",
+  "drawdown analysis",
+  "MCP server",
+  "Model Context Protocol",
+] as const;
 
 /**
  * Bumped by hand when public page copy changes. A build-time `new Date()` would mark
  * every route as freshly modified on every deploy, which is a recrawl signal crawlers
  * learn to ignore.
  */
-export const CONTENT_LAST_MODIFIED = new Date("2026-08-17");
+export const CONTENT_LAST_MODIFIED = new Date("2026-08-24");
 
 export const PUBLIC_ROUTES = [
   { path: "/", changeFrequency: "weekly", priority: 1 },

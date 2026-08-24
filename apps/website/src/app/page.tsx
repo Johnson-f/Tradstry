@@ -7,8 +7,9 @@ import {
   Hero,
   Mcp,
   Pillars,
-  Problem,
+  Pricing,
   Proof,
+  SignalStrip,
 } from "@/components/landing";
 import { LeakProvider, LeakSection } from "@/components/landing/leak";
 import { StructuredData } from "@/components/landing/structured-data";
@@ -21,18 +22,19 @@ export default function Home() {
   return (
     <div
       data-shell="marketing"
-      className="dark min-h-svh bg-[#0A0A0B] antialiased"
+      className="dark min-h-svh bg-[#070809] antialiased"
     >
       <StructuredData />
       <Header />
       <LeakProvider>
         <main>
           <Hero />
-          <Problem />
+          <SignalStrip />
           <LeakSection />
           <Pillars />
           <Mcp />
           <Proof />
+          <Pricing />
           <Faq />
           <Cta />
         </main>

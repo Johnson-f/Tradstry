@@ -58,14 +58,44 @@ export const FAQS = [
 
 export type Metric = { value: string; label: string; note: string };
 export type Plan = {
-  id: "monthly" | "annual";
-  price: string;
-  cadence: string;
-  note: string;
+  id: "free" | "pro";
+  name: string;
+  description: string;
+  monthlyPrice: string;
+  annualPrice: string;
   cta: string;
+  features: readonly string[];
 };
 
 export const PLACEHOLDER = "TODO";
+
+export const LANDING_SECTIONS = [
+  "signal",
+  "leak",
+  "record",
+  "mcp",
+  "proof",
+  "pricing",
+  "faq",
+] as const;
+
+export type OrbitMode = "static" | "light" | "full";
+
+export function getOrbitMode({
+  reducedMotion,
+  saveData,
+  viewportWidth,
+}: {
+  reducedMotion: boolean;
+  saveData: boolean;
+  viewportWidth: number;
+}): OrbitMode {
+  if (reducedMotion || saveData) {
+    return "static";
+  }
+
+  return viewportWidth < 768 ? "light" : "full";
+}
 
 /**
  * Product facts, not adoption claims — every one is checkable.
@@ -75,7 +105,7 @@ export const METRICS: Metric[] = [
   {
     value: "27",
     label: "MCP tools",
-    note: "Read and write your journal from Claude",
+    note: "Connect your journal to compatible AI clients",
   },
   {
     value: "36",
@@ -130,19 +160,37 @@ export const EXAMPLE = {
 
 export const PLANS: Plan[] = [
   {
-    id: "monthly",
-    price: "$20",
-    cadence: "/mo",
-    note: "Billed monthly · Cancel anytime",
-    cta: "Start monthly",
+    id: "free",
+    name: "Free",
+    description: "Build the record before you pay for the analysis.",
+    monthlyPrice: "$0",
+    annualPrice: "$0",
+    cta: "Start free",
+    features: [
+      "6 workspaces",
+      "1 brokerage connection",
+      "Unlimited imported trades",
+      "1 year of brokerage history",
+      "Core journal and dashboard",
+      "15 Tradstry AI actions per month",
+      "50 MB media storage",
+    ],
   },
   {
-    id: "annual",
-    price: "$15",
-    cadence: "/mo",
-    // $240 monthly − $180 annual = $60, which is exactly three months at $20.
-    note: "$180 billed annually · three months free",
-    cta: "Start annual",
+    id: "pro",
+    name: "Pro",
+    description: "The complete feedback loop for an active trading practice.",
+    monthlyPrice: "$20",
+    annualPrice: "$15",
+    cta: "Upgrade to Pro",
+    features: [
+      "Unlimited workspaces and imported trades",
+      "5 brokerage connections",
+      "Complete analytics and discipline tracking",
+      "300 Tradstry AI actions per month",
+      "1 GB media storage",
+      "MCP access and the macOS desktop app",
+    ],
   },
 ];
 
@@ -153,7 +201,7 @@ export const PLAN_INCLUDES = [
   "Playbooks, principles and discipline tracking",
   "Notebook with offline-first sync",
   "Desktop app for macOS",
-  "MCP server — bring your journal into Claude",
+  "Authenticated MCP server for your trading record",
 ];
 
 export const SCREENSHOTS = {

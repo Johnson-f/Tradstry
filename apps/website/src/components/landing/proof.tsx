@@ -1,53 +1,28 @@
 "use client";
 
-import { motion } from "motion/react";
-import { EXAMPLE, METRICS } from "@/components/landing/content";
-import { Reveal, RevealGroup, rise } from "@/components/landing/motion";
+import { cn } from "@tradstry/app-ui/lib/utils";
+import { EXAMPLE } from "@/components/landing/content";
+import { Reveal } from "@/components/landing/motion";
 import {
   Eyebrow,
   Heading,
   Lede,
-  Pending,
   Section,
 } from "@/components/landing/primitives";
-import { cn } from "@tradstry/app-ui/lib/utils";
 
 export function Proof() {
   return (
-    <Section>
-      <Reveal className="max-w-2xl">
-        <Eyebrow>Shipped, not promised</Eyebrow>
-        <Heading>Everything on this page already runs.</Heading>
+    <Section id="proof">
+      <Reveal className="max-w-3xl">
+        <Eyebrow>The evidence</Eyebrow>
+        <Heading>The loss is not the lesson. The deviation is.</Heading>
         <Lede>
-          No waitlist, no roadmap items dressed up as features. Every number
-          below is a fact about the product you would be paying for.
+          Split the same trader and the same setups by one fact: whether the
+          written plan was followed. Tradstry makes that comparison visible.
         </Lede>
       </Reveal>
 
-      <RevealGroup
-        as="dl"
-        className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.06] md:grid-cols-4"
-      >
-        {METRICS.map((metric) => (
-          <motion.div
-            key={metric.label}
-            variants={rise}
-            className="flex flex-col bg-[#0A0A0B] px-6 py-8"
-          >
-            <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-              {metric.label}
-            </dt>
-            <dd className="mt-3 font-mono text-3xl text-zinc-50 tabular-nums">
-              <Pending>{metric.value}</Pending>
-            </dd>
-            <p className="mt-3 text-xs leading-relaxed text-zinc-600">
-              {metric.note}
-            </p>
-          </motion.div>
-        ))}
-      </RevealGroup>
-
-      <Reveal className="mt-6 overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.015] p-6 md:p-8">
+      <Reveal className="mt-14 overflow-hidden rounded-3xl border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01))] p-6 md:p-10">
         <div className="max-w-xl">
           <p className="text-balance text-xl font-medium tracking-[-0.01em] text-zinc-50">
             {EXAMPLE.lede}
@@ -57,11 +32,11 @@ export function Proof() {
           </p>
         </div>
 
-        <div className="mt-7 grid gap-4 sm:grid-cols-2">
+        <div className="mt-9 grid gap-4 sm:grid-cols-2">
           {EXAMPLE.columns.map((column) => (
             <div
               key={column.title}
-              className="rounded-xl border border-white/[0.08] bg-[#131316] p-5"
+              className="rounded-2xl border border-white/[0.08] bg-[#0c0e10] p-6"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <p className="text-sm font-medium text-zinc-200">

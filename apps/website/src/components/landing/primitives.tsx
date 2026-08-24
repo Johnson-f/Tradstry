@@ -1,8 +1,8 @@
 "use client";
 
+import { cn } from "@tradstry/app-ui/lib/utils";
 import type * as React from "react";
 import { PLACEHOLDER } from "@/components/landing/content";
-import { cn } from "@tradstry/app-ui/lib/utils";
 
 export function Section({
   id,
@@ -16,17 +16,34 @@ export function Section({
   return (
     <section
       id={id}
-      className={cn("border-t border-white/[0.06] py-24 md:py-32", className)}
+      className={cn(
+        "relative border-t border-white/[0.055] py-24 md:py-36",
+        className,
+      )}
     >
       <div className="mx-auto max-w-6xl px-6">{children}</div>
     </section>
   );
 }
 
-export function Eyebrow({ children }: { children: React.ReactNode }) {
+export function Eyebrow({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <p className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-      <span aria-hidden="true" className="h-px w-6 bg-white/25" />
+    <p
+      className={cn(
+        "flex items-center gap-3 font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-[#ff9a52]",
+        className,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="size-1.5 rounded-full bg-[#ff8b3d] shadow-[0_0_12px_rgba(255,139,61,0.75)]"
+      />
       {children}
     </p>
   );
@@ -42,7 +59,7 @@ export function Heading({
   return (
     <h2
       className={cn(
-        "mt-3 text-balance text-3xl font-semibold tracking-[-0.02em] text-zinc-50 md:text-[2.75rem] md:leading-[1.1]",
+        "mt-4 text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-50 md:text-[3.75rem]",
         className,
       )}
     >
@@ -51,9 +68,20 @@ export function Heading({
   );
 }
 
-export function Lede({ children }: { children: React.ReactNode }) {
+export function Lede({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-zinc-400">
+    <p
+      className={cn(
+        "mt-5 max-w-xl text-[16px] leading-7 text-zinc-400",
+        className,
+      )}
+    >
       {children}
     </p>
   );
@@ -82,7 +110,7 @@ export function Shot({
   return (
     <figure
       className={cn(
-        "overflow-hidden rounded-xl border border-white/10 bg-[#131316] shadow-2xl shadow-black/60",
+        "overflow-hidden rounded-2xl border border-white/10 bg-[#111316] shadow-[0_30px_90px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)]",
         className,
       )}
     >

@@ -9,7 +9,7 @@ import { Eyebrow, Heading, Section } from "@/components/landing/primitives";
 
 export function Faq() {
   return (
-    <Section id="faq">
+    <Section id="faq" className="bg-white/[0.008]">
       <div className="grid gap-12 md:grid-cols-[1fr_1.4fr]">
         <Reveal>
           <Eyebrow>FAQ</Eyebrow>
@@ -18,7 +18,7 @@ export function Faq() {
           </Heading>
         </Reveal>
 
-        <RevealGroup className="divide-y divide-white/[0.06] border-y border-white/[0.06]">
+        <RevealGroup className="overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.018] px-6 divide-y divide-white/[0.06]">
           {FAQS.map((item) => (
             <motion.details key={item.q} variants={rise} className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-[15px] font-medium text-zinc-200 outline-none transition-colors hover:text-zinc-50 focus-visible:text-zinc-50">

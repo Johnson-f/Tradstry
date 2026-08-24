@@ -40,11 +40,11 @@ export function LegalPage({
   return (
     <div
       data-shell="marketing"
-      className="dark min-h-svh bg-[#0A0A0B] antialiased"
+      className="dark min-h-svh bg-[#070809] antialiased"
     >
       <Header />
 
-      <main className="mx-auto max-w-6xl px-6 py-20 md:py-24">
+      <main className="mx-auto max-w-6xl px-6 pb-20 pt-32 md:pb-24 md:pt-36">
         <header className="max-w-2xl">
           <p className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
             <span aria-hidden="true" className="h-px w-6 bg-white/25" />

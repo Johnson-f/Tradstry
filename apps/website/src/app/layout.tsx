@@ -7,9 +7,16 @@ import { ThemeProvider } from "next-themes";
 import { CountlyIdentify } from "@/components/providers/countly-identify";
 import { CountlyProvider } from "@/components/providers/countly-provider";
 import "./globals.css";
+import "@designcodeio/threeui/style.css";
 import { Toaster } from "@tradstry/app-ui/components/ui/sonner";
 import { cn } from "@tradstry/app-ui/lib/utils";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+import {
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -26,34 +33,23 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} — Trading journal, analytics and MCP for Claude`,
+    default: SITE_TITLE,
     template: `%s · ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
-  keywords: [
-    "trading journal",
-    "trade journal software",
-    "trading analytics",
-    "MCP server",
-    "Model Context Protocol",
-    "brokerage sync",
-    "trading discipline",
-    "expectancy",
-    "R-multiple",
-    "SnapTrade",
-  ],
+  keywords: [...SITE_KEYWORDS],
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
     url: SITE_URL,
-    title: `${SITE_NAME} — Trading journal, analytics and MCP for Claude`,
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} — Trading journal, analytics and MCP for Claude`,
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
   },
   robots: {

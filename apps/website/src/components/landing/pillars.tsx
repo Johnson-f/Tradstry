@@ -7,10 +7,15 @@ import {
   Notebook01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 import { EquityCard, PlaybookCard } from "@/components/landing/cards";
 import { SCREENSHOTS } from "@/components/landing/content";
-import { Reveal } from "@/components/landing/motion";
+import {
+  EASE_OUT,
+  getEntranceDelays,
+  Reveal,
+} from "@/components/landing/motion";
 import {
   Eyebrow,
   Heading,
@@ -57,41 +62,91 @@ const PILLARS = [
 }>;
 
 export function Pillars() {
+  const reducedMotion = useReducedMotion() === true;
+  const flowDelays = getEntranceDelays(PILLARS.length, 0.12, reducedMotion);
+
   return (
-    <Section id="product">
-      <Reveal className="max-w-2xl">
+    <Section id="product" className="overflow-hidden bg-white/[0.008]">
+      <Reveal className="max-w-3xl">
         <Eyebrow>The product</Eyebrow>
-        <Heading>Four pieces. One record.</Heading>
+        <Heading>One record. Four ways to read it.</Heading>
         <Lede>
-          Not four apps you glue together at the end of the week. One record
-          that every part reads from and writes to.
+          A fill enters once. The journal adds intent, the playbook checks the
+          rules, analytics prices the outcome, and your notebook keeps the
+          lesson attached.
         </Lede>
       </Reveal>
 
-      <div className="mt-14 space-y-6">
+      <div className="mt-12 flex flex-wrap items-center gap-2 font-mono text-[9px] tracking-[0.16em] text-zinc-500">
+        {PILLARS.map((pillar, index) => (
+          <div key={pillar.kicker} className="flex items-center gap-2">
+            <motion.span
+              initial={
+                reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }
+              }
+              whileInView={{
+                opacity: 1,
+                scale: 1,
+                borderColor: "rgba(255,139,61,0.22)",
+                color: "rgb(212,212,216)",
+              }}
+              viewport={{ once: true, amount: 0.8 }}
+              transition={{
+                duration: reducedMotion ? 0.15 : 0.38,
+                delay: flowDelays[index],
+                ease: EASE_OUT,
+              }}
+              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2"
+            >
+              {pillar.kicker.toUpperCase()}
+            </motion.span>
+            {index < PILLARS.length - 1 ? (
+              <span className="relative h-px w-5 overflow-hidden bg-white/[0.08]">
+                <motion.span
+                  className="absolute inset-0 origin-left bg-[#ff8b3d] shadow-[0_0_8px_rgba(255,139,61,0.8)]"
+                  initial={{ scaleX: 0 }}
+                  whileInView={{ scaleX: 1 }}
+                  viewport={{ once: true, amount: 0.8 }}
+                  transition={{
+                    duration: reducedMotion ? 0.15 : 0.45,
+                    delay: flowDelays[index] + (reducedMotion ? 0 : 0.08),
+                    ease: EASE_OUT,
+                  }}
+                />
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="relative mt-10 overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0b0c0e]">
+        <div
+          aria-hidden="true"
+          className="absolute bottom-0 left-1/2 top-0 hidden w-px bg-white/[0.06] md:block"
+        />
         {PILLARS.map((pillar, index) => (
           <Reveal
             key={pillar.kicker}
             as="article"
-            className="grid items-center gap-8 overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.015] p-6 md:grid-cols-2 md:p-8"
+            className="relative grid items-center gap-8 border-b border-white/[0.07] p-6 last:border-b-0 md:grid-cols-2 md:p-10 lg:p-14"
           >
             <div className={index % 2 === 1 ? "md:order-2" : undefined}>
               <div className="flex items-center gap-2.5">
-                <span className="flex size-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.06] text-zinc-300">
+                <span className="flex size-10 items-center justify-center rounded-xl border border-[#ff8b3d]/20 bg-[#ff8b3d]/[0.07] text-[#ff9a52]">
                   <HugeiconsIcon
                     icon={pillar.icon}
                     strokeWidth={2}
-                    className="size-4"
+                    className="size-[18px]"
                   />
                 </span>
-                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
-                  {pillar.kicker}
+                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+                  0{index + 1} · {pillar.kicker}
                 </span>
               </div>
-              <h3 className="mt-5 text-balance text-2xl font-semibold tracking-[-0.02em] text-zinc-50">
+              <h3 className="mt-6 text-balance text-3xl font-semibold tracking-[-0.04em] text-zinc-50">
                 {pillar.title}
               </h3>
-              <p className="mt-3 text-[15px] leading-relaxed text-zinc-400">
+              <p className="mt-4 max-w-lg text-[15px] leading-7 text-zinc-400">
                 {pillar.body}
               </p>
             </div>

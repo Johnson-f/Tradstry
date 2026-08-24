@@ -5,6 +5,16 @@ import type * as React from "react";
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
+export function getEntranceDelays(
+  count: number,
+  step: number,
+  reducedMotion: boolean,
+) {
+  return Array.from({ length: count }, (_, index) =>
+    reducedMotion ? 0 : Number((index * step).toFixed(3)),
+  );
+}
+
 /** Every entrance on the page runs on these two variants, so the whole thing shares one rhythm. */
 export const stagger: Variants = {
   hidden: {},

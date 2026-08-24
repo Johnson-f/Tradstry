@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { SITE_NAME } from "@/lib/site";
 
-export const alt = `${SITE_NAME} — trading journal, analytics and MCP for Claude`;
+export const alt = `${SITE_NAME}, brokerage-synced trading journal, performance analytics and MCP server`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -45,7 +45,7 @@ export default function OpengraphImage() {
       </div>
 
       <div style={{ display: "flex", fontSize: 28, color: "#a1a1aa" }}>
-        Broker sync · 36 analytics · Your journal, inside Claude
+        Trading journal · Performance analytics · Built-in MCP server
       </div>
     </div>,
     size,
