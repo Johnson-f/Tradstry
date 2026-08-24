@@ -74,6 +74,7 @@ pub struct Subscription(
 
 pub fn build_schema(
     brokerage_client: std::sync::Arc<crate::service::brokerage::client::BrokerageClient>,
+    snaptrade_oauth_config: crate::service::brokerage::oauth::SnapTradeOAuthConfig,
     checkpoint_saver: std::sync::Arc<dyn langgraph::prelude::CheckpointSaver>,
     memory_store: Option<std::sync::Arc<dyn langgraph::prelude::Store>>,
     redis_client: Option<std::sync::Arc<crate::service::redis::client::RedisClient>>,
@@ -89,6 +90,7 @@ pub fn build_schema(
     .limit_recursive_depth(32)
     .limit_directives(50)
     .data(brokerage_client)
+    .data(snaptrade_oauth_config)
     .data(checkpoint_saver)
     .data(notification_events);
 

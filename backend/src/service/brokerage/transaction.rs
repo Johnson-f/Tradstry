@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use super::auth::BrokerageAuth;
 use super::client::{
     BrokerageClient, HoldingsSyncStatus, SnapTradeActivity, SnapTradePosition,
     TransactionsSyncStatus,
@@ -222,8 +223,7 @@ fn should_advance_watermark(synced: u64, stored: i64) -> bool {
 pub async fn sync_transactions_if_advanced(
     client: &BrokerageClient,
     pool: &PgPool,
-    snaptrade_user_id: &str,
-    user_secret: &str,
+    auth: &BrokerageAuth,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
@@ -291,8 +291,7 @@ pub async fn sync_transactions_if_advanced(
     let report = sync_transactions(
         client,
         pool,
-        snaptrade_user_id,
-        user_secret,
+        auth,
         snaptrade_account_id,
         internal_user_id,
         internal_account_id,
@@ -369,8 +368,7 @@ pub async fn sync_transactions_if_advanced(
 pub async fn sync_transactions(
     client: &BrokerageClient,
     pool: &PgPool,
-    snaptrade_user_id: &str,
-    user_secret: &str,
+    auth: &BrokerageAuth,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
@@ -397,10 +395,9 @@ pub async fn sync_transactions(
     );
 
     loop {
-        let response = match client
+        let response = match auth
             .fetch_transactions(
-                snaptrade_user_id,
-                user_secret,
+                client,
                 snaptrade_account_id,
                 import_start_date,
                 None,
@@ -597,14 +594,13 @@ pub async fn sync_transactions(
 pub async fn sync_holdings(
     client: &BrokerageClient,
     pool: &PgPool,
-    snaptrade_user_id: &str,
-    user_secret: &str,
+    auth: &BrokerageAuth,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
 ) -> Result<PortfolioSyncReport> {
-    let response = match client
-        .fetch_holdings(snaptrade_user_id, user_secret, snaptrade_account_id)
+    let response = match auth
+        .fetch_holdings(client, snaptrade_account_id)
         .await
         .context("Failed to fetch holdings")
     {
@@ -835,8 +831,7 @@ pub async fn sync_holdings(
 pub async fn sync_holdings_if_advanced(
     client: &BrokerageClient,
     pool: &PgPool,
-    snaptrade_user_id: &str,
-    user_secret: &str,
+    auth: &BrokerageAuth,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
@@ -876,8 +871,7 @@ pub async fn sync_holdings_if_advanced(
     let result = sync_holdings(
         client,
         pool,
-        snaptrade_user_id,
-        user_secret,
+        auth,
         snaptrade_account_id,
         internal_user_id,
         internal_account_id,

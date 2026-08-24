@@ -98,6 +98,8 @@ SNAPTRADE_GRPC_SOCKET=/tmp/tradstry-snaptrade.sock
 SNAPTRADE_INTERNAL_SECRET=                   # same private HMAC key as the Go adapter
 SNAPTRADE_CONSUMER_KEY=                      # verifies public SnapTrade webhooks in Rust
 BROKERAGE_ENCRYPTION_KEY=                    # AES-GCM key for stored user secrets
+SNAPTRADE_OAUTH_REDIRECT_URI=                # backend callback registered exactly in SnapTrade
+SNAPTRADE_OAUTH_FRONTEND_RETURN_URL=         # allowlisted web receipt after the callback
 SYNC_TEST_NOW=false                          # true = sync every account once at boot
 
 # Cache — optional. Absent or unreachable, the server logs a warning and runs uncached.

@@ -171,14 +171,27 @@ pub async fn create_workspaces_for_connection_accounts(
     let source = workspaces_table::find_workspace(pool, source_workspace_id, user_id)
         .await?
         .context("Source workspace not found")?;
-    let snaptrade_user_id = source
-        .snaptrade_user_id
-        .as_deref()
-        .context("Source workspace is not registered with SnapTrade")?;
-    let encrypted_secret = source
-        .snaptrade_user_secret_encrypted
-        .as_deref()
-        .context("Source workspace has no SnapTrade secret")?;
+    let auth_mode = source.snaptrade_auth_mode.as_str();
+    let snaptrade_user_id = source.snaptrade_user_id.as_deref();
+    let encrypted_secret = source.snaptrade_user_secret_encrypted.as_deref();
+    let oauth_grant_id = source.snaptrade_oauth_grant_id.as_deref();
+    match auth_mode {
+        "commercial" => {
+            anyhow::ensure!(
+                snaptrade_user_id.is_some(),
+                "Source workspace is not registered with SnapTrade"
+            );
+            anyhow::ensure!(
+                encrypted_secret.is_some(),
+                "Source workspace has no SnapTrade secret"
+            );
+        }
+        "oauth" => anyhow::ensure!(
+            oauth_grant_id.is_some(),
+            "Source workspace has no SnapTrade OAuth grant"
+        ),
+        _ => anyhow::bail!("Source workspace has an unsupported brokerage authentication mode"),
+    }
     let connection_id = source
         .snaptrade_connection_id
         .as_deref()
@@ -201,10 +214,6 @@ pub async fn create_workspaces_for_connection_accounts(
             workspace.id != source.id
                 && workspace.snaptrade_account_id.is_none()
                 && workspace.snaptrade_connection_id.is_none()
-                && workspace
-                    .snaptrade_user_id
-                    .as_deref()
-                    .is_none_or(|value| value == snaptrade_user_id)
         })
         .cloned()
         .collect();
@@ -276,15 +285,30 @@ pub async fn create_workspaces_for_connection_accounts(
         };
 
         let binding = async {
-            workspaces_table::update_snaptrade_credentials(
-                pool,
-                &workspace.id,
-                user_id,
-                snaptrade_user_id,
-                encrypted_secret,
-                Some(connection_id),
-            )
-            .await?;
+            match auth_mode {
+                "commercial" => {
+                    workspaces_table::update_snaptrade_credentials(
+                        pool,
+                        &workspace.id,
+                        user_id,
+                        snaptrade_user_id.expect("validated commercial user ID"),
+                        encrypted_secret.expect("validated commercial secret"),
+                        Some(connection_id),
+                    )
+                    .await?;
+                }
+                "oauth" => {
+                    workspaces_table::prepare_snaptrade_oauth_connection(
+                        pool,
+                        &workspace.id,
+                        user_id,
+                        oauth_grant_id.expect("validated OAuth grant"),
+                        connection_id,
+                    )
+                    .await?;
+                }
+                _ => unreachable!("validated authentication mode"),
+            }
             let workspace = workspaces_table::set_snaptrade_account_id(
                 pool,
                 &workspace.id,
@@ -331,14 +355,27 @@ pub async fn finalize_connection_accounts(
     let source = workspaces_table::find_workspace(pool, source_workspace_id, user_id)
         .await?
         .context("Source workspace not found")?;
-    let snaptrade_user_id = source
-        .snaptrade_user_id
-        .as_deref()
-        .context("Source workspace is not registered with SnapTrade")?;
-    let encrypted_secret = source
-        .snaptrade_user_secret_encrypted
-        .as_deref()
-        .context("Source workspace has no SnapTrade secret")?;
+    let auth_mode = source.snaptrade_auth_mode.as_str();
+    let snaptrade_user_id = source.snaptrade_user_id.as_deref();
+    let encrypted_secret = source.snaptrade_user_secret_encrypted.as_deref();
+    let oauth_grant_id = source.snaptrade_oauth_grant_id.as_deref();
+    match auth_mode {
+        "commercial" => {
+            anyhow::ensure!(
+                snaptrade_user_id.is_some(),
+                "Source workspace is not registered with SnapTrade"
+            );
+            anyhow::ensure!(
+                encrypted_secret.is_some(),
+                "Source workspace has no SnapTrade secret"
+            );
+        }
+        "oauth" => anyhow::ensure!(
+            oauth_grant_id.is_some(),
+            "Source workspace has no SnapTrade OAuth grant"
+        ),
+        _ => anyhow::bail!("Source workspace has an unsupported brokerage authentication mode"),
+    }
     let connection_id = source
         .snaptrade_connection_id
         .as_deref()
@@ -439,6 +476,8 @@ pub async fn finalize_connection_accounts(
                     snaptrade_connection_disabled_at: None,
                     brokerage_setup_complete: false,
                     brokerage_setup_completed_at: None,
+                    snaptrade_auth_mode: source.snaptrade_auth_mode.clone(),
+                    snaptrade_oauth_grant_id: source.snaptrade_oauth_grant_id.clone(),
                     created_at: String::new(),
                     updated_at: String::new(),
                 }
@@ -447,12 +486,14 @@ pub async fn finalize_connection_accounts(
 
         sqlx::query(
             "INSERT INTO brokerage_connections (
-                 workspace_id,user_id,broker,snaptrade_user_id,
+                 workspace_id,user_id,broker,auth_mode,oauth_grant_id,snaptrade_user_id,
                  snaptrade_user_secret_encrypted,snaptrade_connection_id,
                  snaptrade_account_id,setup_completed_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
              ON CONFLICT (workspace_id) DO UPDATE SET
                  broker=COALESCE(brokerage_connections.broker,EXCLUDED.broker),
+                 auth_mode=EXCLUDED.auth_mode,
+                 oauth_grant_id=EXCLUDED.oauth_grant_id,
                  snaptrade_user_id=EXCLUDED.snaptrade_user_id,
                  snaptrade_user_secret_encrypted=EXCLUDED.snaptrade_user_secret_encrypted,
                  snaptrade_connection_id=EXCLUDED.snaptrade_connection_id,
@@ -469,6 +510,8 @@ pub async fn finalize_connection_accounts(
                 .as_deref()
                 .or(account.institution_name.as_deref()),
         )
+        .bind(auth_mode)
+        .bind(oauth_grant_id)
         .bind(snaptrade_user_id)
         .bind(encrypted_secret)
         .bind(connection_id)

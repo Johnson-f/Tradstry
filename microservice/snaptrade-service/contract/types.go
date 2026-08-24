@@ -1,6 +1,15 @@
 package contract
 
-const Version = "2026-08-09"
+const Version = "2026-08-24"
+
+type OAuthTokens struct {
+	AccessToken     string
+	RefreshToken    string
+	ExpiresIn       int64
+	Scopes          []string
+	OAuthClientID   string
+	SnapTradeUserID string
+}
 
 type ResponseMeta struct {
 	RequestID string     `json:"request_id,omitempty"`

@@ -8,5 +8,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &["proto"],
     )?;
     println!("cargo:rerun-if-changed=proto/tradstry/snaptrade/v1/adapter.proto");
+    println!("cargo:rerun-if-changed=migrations");
     Ok(())
 }

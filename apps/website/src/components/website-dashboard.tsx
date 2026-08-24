@@ -48,6 +48,7 @@ export function WebsiteDashboard() {
 
   const platform = React.useMemo<TradstryPlatform>(
     () => ({
+      kind: "web",
       auth: {
         isLoaded: auth.isLoaded,
         isSignedIn: auth.isSignedIn ?? false,

@@ -210,6 +210,23 @@ export interface ConnectionPortal {
 	redirectUrl: string;
 }
 
+export interface SnapTradeOAuthStart {
+	attemptId: string;
+	authorizationUrl: string;
+}
+
+export interface SnapTradeOAuthStatus {
+	status:
+		| "pending"
+		| "processing"
+		| "authorized"
+		| "denied"
+		| "failed"
+		| "expired";
+	errorCode: string | null;
+	workspaceId: string;
+}
+
 export interface BrokerageConnectionAccount {
 	id: string;
 	name: string;

@@ -24,11 +24,14 @@ import (
 )
 
 type SnapTradeClient struct {
-	client      *snaptrade.APIClient
-	httpClient  *http.Client
-	clientID    string
-	consumerKey string
-	baseURL     string
+	client            *snaptrade.APIClient
+	httpClient        *http.Client
+	clientID          string
+	consumerKey       string
+	oauthClientID     string
+	oauthClientSecret string
+	oauthMetadataURL  string
+	baseURL           string
 }
 
 func NewSnapTradeClient() (*SnapTradeClient, error) {
@@ -53,11 +56,14 @@ func NewSnapTradeClient() (*SnapTradeClient, error) {
 	config.SetConsumerKey(consumerKey)
 
 	return &SnapTradeClient{
-		client:      snaptrade.NewAPIClient(config),
-		httpClient:  httpClient,
-		clientID:    clientID,
-		consumerKey: consumerKey,
-		baseURL:     "https://api.snaptrade.com",
+		client:            snaptrade.NewAPIClient(config),
+		httpClient:        httpClient,
+		clientID:          clientID,
+		consumerKey:       consumerKey,
+		oauthClientID:     os.Getenv("SNAPTRADE_OAUTH_CLIENT_ID"),
+		oauthClientSecret: os.Getenv("SNAPTRADE_OAUTH_CLIENT_SECRET"),
+		oauthMetadataURL:  oauthMetadataURL,
+		baseURL:           "https://api.snaptrade.com",
 	}, nil
 }
 

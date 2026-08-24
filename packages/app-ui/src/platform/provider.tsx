@@ -2,12 +2,9 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
-import type {
-  GraphQLFetcher,
-  GraphQLSubscriber,
-} from "../lib/client";
-import { configureBackendBaseUrl } from "../lib/client";
 import { configureCapture } from "../lib/analytics/events";
+import type { GraphQLFetcher, GraphQLSubscriber } from "../lib/client";
+import { configureBackendBaseUrl } from "../lib/client";
 
 export type TradstryAuth = {
   isLoaded: boolean;
@@ -24,6 +21,7 @@ export type TradstryUser = {
 export type TradstryTheme = "light" | "dark" | "system";
 
 export type TradstryPlatform = {
+  kind: "web" | "desktop";
   auth: TradstryAuth;
   user: TradstryUser;
   pathname: string;

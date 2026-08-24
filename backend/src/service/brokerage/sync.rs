@@ -6,8 +6,10 @@ use log::{error, info, warn};
 use sqlx::Row;
 use tokio::time::{Duration, sleep};
 
+use super::auth::{
+    list_accounts_with_oauth_retry, mark_reauthorization_if_needed, resolve_workspace_auth,
+};
 use super::client::{BrokerageClient, ConnectionStatus};
-use super::db::decrypt_secret;
 use super::transaction;
 use crate::service::countly::{Countly, clerk_id_for_user};
 use crate::service::db::Db;
@@ -33,8 +35,6 @@ const TICK_INTERVAL: Duration = Duration::from_secs(60);
 struct ScheduledAccount {
     user_id: String,
     workspace_id: String,
-    snaptrade_user_id: String,
-    encrypted_secret: String,
     connection_id: String,
     broker: String,
     snaptrade_account_id: Option<String>,
@@ -150,14 +150,16 @@ async fn sync_all_accounts(
 
     // Find all users who have accounts with snaptrade credentials
     let rows = sqlx::query(
-        "SELECT DISTINCT w.user_id, w.id, bc.snaptrade_user_id, \
-             bc.snaptrade_user_secret_encrypted, bc.snaptrade_connection_id, \
+        "SELECT DISTINCT w.user_id, w.id, bc.snaptrade_connection_id, \
              COALESCE(bc.broker, 'your brokerage') AS broker, bc.snaptrade_account_id \
              FROM workspaces w \
              JOIN brokerage_connections bc ON bc.workspace_id = w.id AND bc.user_id = w.user_id \
              WHERE bc.snaptrade_connection_id IS NOT NULL \
-               AND bc.snaptrade_user_id IS NOT NULL \
-               AND bc.snaptrade_user_secret_encrypted IS NOT NULL \
+               AND ( \
+                    (bc.auth_mode='commercial' AND bc.snaptrade_user_id IS NOT NULL \
+                     AND bc.snaptrade_user_secret_encrypted IS NOT NULL) \
+                    OR (bc.auth_mode='oauth' AND bc.oauth_grant_id IS NOT NULL) \
+               ) \
                AND bc.setup_completed_at IS NOT NULL",
     )
     .fetch_all(db.pool())
@@ -175,17 +177,13 @@ async fn sync_all_accounts(
     for row in &rows {
         let user_id: String = row.try_get(0).unwrap_or_default();
         let workspace_id: String = row.try_get(1).unwrap_or_default();
-        let snaptrade_user_id: String = row.try_get(2).unwrap_or_default();
-        let encrypted_secret: String = row.try_get(3).unwrap_or_default();
-        let connection_id: String = row.try_get(4).unwrap_or_default();
-        let broker: String = row.try_get(5).unwrap_or_default();
-        let snaptrade_account_id: Option<String> = row.try_get(6).unwrap_or(None);
-        if !user_id.is_empty() && !snaptrade_user_id.is_empty() {
+        let connection_id: String = row.try_get(2).unwrap_or_default();
+        let broker: String = row.try_get(3).unwrap_or_default();
+        let snaptrade_account_id: Option<String> = row.try_get(4).unwrap_or(None);
+        if !user_id.is_empty() && !workspace_id.is_empty() {
             accounts.push(ScheduledAccount {
                 user_id,
                 workspace_id,
-                snaptrade_user_id,
-                encrypted_secret,
                 connection_id,
                 broker,
                 snaptrade_account_id,
@@ -203,8 +201,6 @@ async fn sync_all_accounts(
     for ScheduledAccount {
         user_id,
         workspace_id,
-        snaptrade_user_id,
-        encrypted_secret,
         connection_id,
         broker,
         snaptrade_account_id: stored_snaptrade_account_id,
@@ -216,25 +212,36 @@ async fn sync_all_accounts(
             workspace_id, user_id
         );
 
-        let user_secret = match decrypt_secret(encrypted_secret) {
-            Ok(s) => s,
-            Err(e) => {
+        let workspace =
+            match workspaces_table::find_workspace(db.pool(), workspace_id, user_id).await {
+                Ok(Some(workspace)) => workspace,
+                Ok(None) => continue,
+                Err(e) => {
+                    error!(
+                        "[sync] Failed to load workspace credentials for account {}: {e}",
+                        workspace_id
+                    );
+                    capture(
+                        countly,
+                        db,
+                        user_id,
+                        "brokerage_sync_failed",
+                        serde_json::json!({
+                            "broker": broker,
+                            "workspace_id": workspace_id,
+                            "reason": "credential_load_failed",
+                        }),
+                    )
+                    .await;
+                    continue;
+                }
+            };
+        let auth = match resolve_workspace_auth(db.pool(), brokerage, &workspace).await {
+            Ok(auth) => auth,
+            Err(error) => {
                 error!(
-                    "[sync] Failed to decrypt secret for account {}: {e}",
-                    workspace_id
+                    "[sync] Failed to resolve brokerage authorization for {workspace_id}: {error}"
                 );
-                capture(
-                    countly,
-                    db,
-                    user_id,
-                    "brokerage_sync_failed",
-                    serde_json::json!({
-                        "broker": broker,
-                        "workspace_id": workspace_id,
-                        "reason": "decrypt_failed",
-                    }),
-                )
-                .await;
                 continue;
             }
         };
@@ -246,7 +253,7 @@ async fn sync_all_accounts(
         if !connection_id.is_empty() {
             match tokio::time::timeout(
                 ACCOUNT_SYNC_TIMEOUT,
-                brokerage.get_connection_status(snaptrade_user_id, &user_secret, connection_id),
+                auth.get_connection(brokerage, connection_id),
             )
             .await
             {
@@ -334,6 +341,7 @@ async fn sync_all_accounts(
                     }
                 }
                 Ok(Err(e)) => {
+                    let _ = mark_reauthorization_if_needed(db.pool(), &auth, &e).await;
                     // Fail-open: a status hiccup must not block data sync.
                     warn!(
                         "[sync] Connection status check failed for {} ({e}); proceeding with sync",
@@ -352,22 +360,26 @@ async fn sync_all_accounts(
         // Discover SnapTrade accounts
         let st_accounts = match tokio::time::timeout(
             ACCOUNT_SYNC_TIMEOUT,
-            brokerage.list_snaptrade_accounts(snaptrade_user_id, &user_secret),
+            list_accounts_with_oauth_retry(db.pool(), brokerage, user_id, &auth),
         )
         .await
         {
             Ok(Ok(accs)) => accs,
             Ok(Err(e)) => {
+                let oauth_reauthorization = mark_reauthorization_if_needed(db.pool(), &auth, &e)
+                    .await
+                    .unwrap_or(false);
                 // Stale credentials never resolve on their own, so retrying every
                 // half hour just burns requests. Flag the connection instead; the
                 // user-driven reconnect path re-registers.
-                if e.downcast_ref::<crate::service::brokerage::client::SnapTradeError>()
-                    .is_some_and(|err| {
-                        matches!(
-                            err,
-                            crate::service::brokerage::client::SnapTradeError::StaleCredentials
-                        )
-                    })
+                if oauth_reauthorization
+                    || e.downcast_ref::<crate::service::brokerage::client::SnapTradeError>()
+                        .is_some_and(|err| {
+                            matches!(
+                                err,
+                                crate::service::brokerage::client::SnapTradeError::StaleCredentials
+                            )
+                        })
                 {
                     warn!(
                         "[sync] SnapTrade rejected stored credentials for {} — flagging \
@@ -498,8 +510,7 @@ async fn sync_all_accounts(
                 transaction::sync_transactions_if_advanced(
                     brokerage,
                     db.pool(),
-                    snaptrade_user_id,
-                    &user_secret,
+                    &auth,
                     &snaptrade_account_id,
                     user_id,
                     workspace_id,
@@ -516,8 +527,7 @@ async fn sync_all_accounts(
                 transaction::sync_holdings_if_advanced(
                     brokerage,
                     db.pool(),
-                    snaptrade_user_id,
-                    &user_secret,
+                    &auth,
                     &snaptrade_account_id,
                     user_id,
                     workspace_id,

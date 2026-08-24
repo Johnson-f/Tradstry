@@ -24,6 +24,7 @@ const WORKSPACE_FIELDS = `
   updatedAt
   snaptradeUserId
   snaptradeConnectionId
+  snaptradeAuthMode
   snaptradeAccountId
   snaptradeConnectionDisabled
   snaptradeConnectionDisabledAt

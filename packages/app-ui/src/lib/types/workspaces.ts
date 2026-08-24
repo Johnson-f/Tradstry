@@ -36,6 +36,7 @@ export interface Workspace {
   updatedAt: string;
   snaptradeUserId: string | null;
   snaptradeConnectionId: string | null;
+  snaptradeAuthMode: "commercial" | "oauth";
   snaptradeAccountId: string | null;
   snaptradeConnectionDisabled: boolean;
   snaptradeConnectionDisabledAt: string | null;

@@ -14,7 +14,7 @@ use tonic::transport::{Channel, Endpoint, Uri};
 use tonic::{Request, Response, Status};
 use tower::service_fn;
 
-const CONTRACT_VERSION: &str = "2026-08-09";
+const CONTRACT_VERSION: &str = "2026-08-24";
 const DEFAULT_SOCKET_PATH: &str = "/tmp/tradstry-snaptrade.sock";
 const MAX_RATE_LIMIT_RETRIES: usize = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
@@ -31,6 +31,13 @@ const LIST_ACCOUNTS_RPC: &str = "/tradstry.snaptrade.v1.SnapTradeAdapterService/
 const GET_PORTFOLIO_SNAPSHOT_RPC: &str =
     "/tradstry.snaptrade.v1.SnapTradeAdapterService/GetPortfolioSnapshot";
 const GET_ACTIVITIES_RPC: &str = "/tradstry.snaptrade.v1.SnapTradeAdapterService/GetActivities";
+const BEGIN_OAUTH_RPC: &str = "/tradstry.snaptrade.v1.SnapTradeAdapterService/BeginOAuth";
+const EXCHANGE_OAUTH_CODE_RPC: &str =
+    "/tradstry.snaptrade.v1.SnapTradeAdapterService/ExchangeOAuthCode";
+const REFRESH_OAUTH_TOKEN_RPC: &str =
+    "/tradstry.snaptrade.v1.SnapTradeAdapterService/RefreshOAuthToken";
+const REVOKE_OAUTH_TOKEN_RPC: &str =
+    "/tradstry.snaptrade.v1.SnapTradeAdapterService/RevokeOAuthToken";
 
 pub mod proto {
     tonic::include_proto!("tradstry.snaptrade.v1");
@@ -81,6 +88,19 @@ impl std::fmt::Display for SnapTradeError {
 }
 
 impl std::error::Error for SnapTradeError {}
+
+impl SnapTradeError {
+    pub fn requires_reauthorization(&self) -> bool {
+        matches!(self, Self::StaleCredentials)
+            || matches!(
+                self,
+                Self::Upstream {
+                    status: 400 | 401,
+                    ..
+                }
+            )
+    }
+}
 
 #[derive(Clone)]
 pub struct BrokerageClient {
@@ -271,6 +291,16 @@ pub struct RefreshConnectionResponse {
     pub status: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct OAuthTokenSet {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: i64,
+    pub scopes: Vec<String>,
+    pub oauth_client_id: String,
+    pub snaptrade_user_id: String,
+}
+
 trait AuthenticatedMessage: Message + Clone {
     fn set_auth(&mut self, auth: proto::RequestAuth);
 }
@@ -297,6 +327,10 @@ authenticated_messages!(
     proto::GetAccountRequest,
     proto::GetPortfolioSnapshotRequest,
     proto::GetActivitiesRequest,
+    proto::BeginOAuthRequest,
+    proto::ExchangeOAuthCodeRequest,
+    proto::RefreshOAuthTokenRequest,
+    proto::RevokeOAuthTokenRequest,
 );
 
 impl BrokerageClient {
@@ -330,6 +364,90 @@ impl BrokerageClient {
             channel,
             internal_secret: Arc::from(internal_secret),
         })
+    }
+
+    pub async fn begin_oauth(
+        &self,
+        state: &str,
+        code_challenge: &str,
+        redirect_uri: &str,
+        scopes: &[String],
+    ) -> Result<String> {
+        let response = self
+            .call(
+                BEGIN_OAUTH_RPC,
+                proto::BeginOAuthRequest {
+                    auth: None,
+                    state: state.to_string(),
+                    code_challenge: code_challenge.to_string(),
+                    redirect_uri: redirect_uri.to_string(),
+                    scopes: scopes.to_vec(),
+                },
+                |mut client, request| async move { client.begin_o_auth(request).await },
+            )
+            .await?;
+        validate_meta(response.meta.as_ref())?;
+        anyhow::ensure!(
+            !response.authorization_url.is_empty(),
+            "SnapTrade adapter omitted OAuth authorization URL"
+        );
+        Ok(response.authorization_url)
+    }
+
+    pub async fn exchange_oauth_code(
+        &self,
+        code: &str,
+        code_verifier: &str,
+        redirect_uri: &str,
+    ) -> Result<OAuthTokenSet> {
+        let response = self
+            .call(
+                EXCHANGE_OAUTH_CODE_RPC,
+                proto::ExchangeOAuthCodeRequest {
+                    auth: None,
+                    code: code.to_string(),
+                    code_verifier: code_verifier.to_string(),
+                    redirect_uri: redirect_uri.to_string(),
+                },
+                |mut client, request| async move { client.exchange_o_auth_code(request).await },
+            )
+            .await?;
+        validate_meta(response.meta.as_ref())?;
+        oauth_token_set(response.tokens)
+    }
+
+    pub async fn refresh_oauth_token(&self, refresh_token: &str) -> Result<OAuthTokenSet> {
+        let response = self
+            .call(
+                REFRESH_OAUTH_TOKEN_RPC,
+                proto::RefreshOAuthTokenRequest {
+                    auth: None,
+                    refresh_token: refresh_token.to_string(),
+                },
+                |mut client, request| async move { client.refresh_o_auth_token(request).await },
+            )
+            .await?;
+        validate_meta(response.meta.as_ref())?;
+        oauth_token_set(response.tokens)
+    }
+
+    pub async fn revoke_oauth_token(&self, token: &str) -> Result<()> {
+        let response = self
+            .call(
+                REVOKE_OAUTH_TOKEN_RPC,
+                proto::RevokeOAuthTokenRequest {
+                    auth: None,
+                    token: token.to_string(),
+                },
+                |mut client, request| async move { client.revoke_o_auth_token(request).await },
+            )
+            .await?;
+        validate_meta(response.meta.as_ref())?;
+        anyhow::ensure!(
+            response.revoked,
+            "SnapTrade adapter did not confirm OAuth revocation"
+        );
+        Ok(())
     }
 
     pub async fn register_user(&self, user_id: &str) -> Result<CreateUserResponse> {
@@ -412,12 +530,24 @@ impl BrokerageClient {
         user_id: &str,
         user_secret: &str,
     ) -> Result<Vec<SnapTradeAccount>> {
+        self.list_accounts(commercial_credentials(user_id, user_secret))
+            .await
+    }
+
+    pub async fn list_oauth_accounts(&self, access_token: &str) -> Result<Vec<SnapTradeAccount>> {
+        self.list_accounts(oauth_credentials(access_token)).await
+    }
+
+    async fn list_accounts(
+        &self,
+        credentials: proto::ApiCredentials,
+    ) -> Result<Vec<SnapTradeAccount>> {
         let response = self
             .call(
                 LIST_ACCOUNTS_RPC,
                 proto::ListAccountsRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(credentials),
                 },
                 |mut client, request| async move { client.list_accounts(request).await },
             )
@@ -442,12 +572,58 @@ impl BrokerageClient {
         offset: Option<i32>,
         limit: Option<i32>,
     ) -> Result<SnapTradeTransactionsResponse> {
+        self.fetch_transactions_with_credentials(
+            commercial_credentials(user_id, user_secret),
+            snaptrade_account_id,
+            start_date,
+            end_date,
+            transaction_type,
+            offset,
+            limit,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn fetch_oauth_transactions(
+        &self,
+        access_token: &str,
+        snaptrade_account_id: &str,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
+        transaction_type: Option<&str>,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<SnapTradeTransactionsResponse> {
+        self.fetch_transactions_with_credentials(
+            oauth_credentials(access_token),
+            snaptrade_account_id,
+            start_date,
+            end_date,
+            transaction_type,
+            offset,
+            limit,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn fetch_transactions_with_credentials(
+        &self,
+        credentials: proto::ApiCredentials,
+        snaptrade_account_id: &str,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
+        transaction_type: Option<&str>,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<SnapTradeTransactionsResponse> {
         let response = self
             .call(
                 GET_ACTIVITIES_RPC,
                 proto::GetActivitiesRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(credentials),
                     account_id: snaptrade_account_id.to_string(),
                     start_date: start_date.map(str::to_string),
                     end_date: end_date.map(str::to_string),
@@ -482,12 +658,33 @@ impl BrokerageClient {
         user_secret: &str,
         snaptrade_account_id: &str,
     ) -> Result<SnapTradeHoldingsResponse> {
+        self.fetch_holdings_with_credentials(
+            commercial_credentials(user_id, user_secret),
+            snaptrade_account_id,
+        )
+        .await
+    }
+
+    pub async fn fetch_oauth_holdings(
+        &self,
+        access_token: &str,
+        snaptrade_account_id: &str,
+    ) -> Result<SnapTradeHoldingsResponse> {
+        self.fetch_holdings_with_credentials(oauth_credentials(access_token), snaptrade_account_id)
+            .await
+    }
+
+    async fn fetch_holdings_with_credentials(
+        &self,
+        credentials: proto::ApiCredentials,
+        snaptrade_account_id: &str,
+    ) -> Result<SnapTradeHoldingsResponse> {
         let response = self
             .call(
                 GET_PORTFOLIO_SNAPSHOT_RPC,
                 proto::GetPortfolioSnapshotRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(credentials),
                     account_id: snaptrade_account_id.to_string(),
                 },
                 |mut client, request| async move { client.get_portfolio_snapshot(request).await },
@@ -506,12 +703,33 @@ impl BrokerageClient {
         user_secret: &str,
         connection_id: &str,
     ) -> Result<ConnectionStatus> {
+        self.get_connection_with_credentials(
+            commercial_credentials(user_id, user_secret),
+            connection_id,
+        )
+        .await
+    }
+
+    pub async fn get_oauth_connection_status(
+        &self,
+        access_token: &str,
+        connection_id: &str,
+    ) -> Result<ConnectionStatus> {
+        self.get_connection_with_credentials(oauth_credentials(access_token), connection_id)
+            .await
+    }
+
+    async fn get_connection_with_credentials(
+        &self,
+        credentials: proto::ApiCredentials,
+        connection_id: &str,
+    ) -> Result<ConnectionStatus> {
         let response = self
             .call(
                 GET_CONNECTION_RPC,
                 proto::GetConnectionRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(credentials),
                     connection_id: connection_id.to_string(),
                 },
                 |mut client, request| async move { client.get_connection(request).await },
@@ -542,7 +760,7 @@ impl BrokerageClient {
                 REFRESH_CONNECTION_RPC,
                 proto::RefreshConnectionRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(commercial_credentials(user_id, user_secret)),
                     connection_id: connection_id.to_string(),
                 },
                 |mut client, request| async move { client.refresh_connection(request).await },
@@ -569,7 +787,7 @@ impl BrokerageClient {
                 DELETE_CONNECTION_RPC,
                 proto::DeleteConnectionRequest {
                     auth: None,
-                    credentials: Some(credentials(user_id, user_secret)),
+                    credentials: Some(commercial_credentials(user_id, user_secret)),
                     connection_id: connection_id.to_string(),
                 },
                 |mut client, request| async move { client.delete_connection(request).await },
@@ -663,11 +881,44 @@ fn sign_request(
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
-fn credentials(user_id: &str, user_secret: &str) -> proto::Credentials {
-    proto::Credentials {
-        user_id: user_id.to_string(),
-        user_secret: user_secret.to_string(),
+fn commercial_credentials(user_id: &str, user_secret: &str) -> proto::ApiCredentials {
+    proto::ApiCredentials {
+        kind: Some(proto::api_credentials::Kind::Commercial(
+            proto::Credentials {
+                user_id: user_id.to_string(),
+                user_secret: user_secret.to_string(),
+            },
+        )),
     }
+}
+
+fn oauth_credentials(access_token: &str) -> proto::ApiCredentials {
+    proto::ApiCredentials {
+        kind: Some(proto::api_credentials::Kind::Oauth(
+            proto::OAuthCredentials {
+                access_token: access_token.to_string(),
+            },
+        )),
+    }
+}
+
+fn oauth_token_set(value: Option<proto::OAuthTokens>) -> Result<OAuthTokenSet> {
+    let value = value.context("SnapTrade adapter omitted OAuth tokens")?;
+    anyhow::ensure!(
+        !value.access_token.is_empty()
+            && !value.refresh_token.is_empty()
+            && value.expires_in > 0
+            && !value.oauth_client_id.is_empty(),
+        "SnapTrade adapter returned incomplete OAuth tokens"
+    );
+    Ok(OAuthTokenSet {
+        access_token: value.access_token,
+        refresh_token: value.refresh_token,
+        expires_in: value.expires_in,
+        scopes: value.scopes,
+        oauth_client_id: value.oauth_client_id,
+        snaptrade_user_id: value.snaptrade_user_id,
+    })
 }
 
 fn optional_string(value: &str) -> Option<String> {
@@ -895,6 +1146,28 @@ mod tests {
             parse_adapter_error(&Status::unauthenticated("rejected")),
             SnapTradeError::StaleCredentials
         ));
+    }
+
+    #[test]
+    fn oauth_unauthorized_and_invalid_grant_errors_require_reauthorization() {
+        for status in [400, 401] {
+            let error = SnapTradeError::Upstream {
+                code: "SNAPTRADE_REJECTED".into(),
+                message: "OAuth request rejected".into(),
+                retryable: false,
+                status,
+                upstream_code: None,
+            };
+            assert!(error.requires_reauthorization());
+        }
+        let outage = SnapTradeError::Upstream {
+            code: "UPSTREAM_UNAVAILABLE".into(),
+            message: "unavailable".into(),
+            retryable: true,
+            status: 503,
+            upstream_code: None,
+        };
+        assert!(!outage.requires_reauthorization());
     }
 
     #[test]

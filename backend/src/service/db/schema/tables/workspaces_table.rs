@@ -28,6 +28,10 @@ pub struct Workspace {
     pub snaptrade_connection_disabled_at: Option<String>,
     pub brokerage_setup_complete: bool,
     pub brokerage_setup_completed_at: Option<String>,
+    pub snaptrade_auth_mode: String,
+    #[graphql(skip)]
+    #[serde(default, skip_serializing)]
+    pub snaptrade_oauth_grant_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -85,6 +89,8 @@ fn row_to_workspace(row: &sqlx::postgres::PgRow) -> Result<Workspace> {
         snaptrade_connection_disabled_at: row.try_get(17)?,
         brokerage_setup_complete: row.try_get(18)?,
         brokerage_setup_completed_at: row.try_get(19)?,
+        snaptrade_auth_mode: row.try_get(20)?,
+        snaptrade_oauth_grant_id: opt_text(row, 21),
     })
 }
 
@@ -96,7 +102,8 @@ const SELECT_COLS: &str = "w.id, w.user_id, w.name, w.icon, w.currency, w.risk_p
     bc.connection_disabled, \
     to_char(bc.connection_disabled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS connection_disabled_at, \
     bc.setup_completed_at IS NOT NULL AS brokerage_setup_complete, \
-    to_char(bc.setup_completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS brokerage_setup_completed_at";
+    to_char(bc.setup_completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS brokerage_setup_completed_at, \
+    COALESCE(bc.auth_mode, 'commercial'), bc.oauth_grant_id";
 
 const FROM_JOIN: &str =
     "FROM workspaces w LEFT JOIN brokerage_connections bc ON bc.workspace_id = w.id";
@@ -332,6 +339,7 @@ pub async fn update_snaptrade_credentials(
         "INSERT INTO brokerage_connections \
          (workspace_id,user_id,snaptrade_user_id,snaptrade_user_secret_encrypted,snaptrade_connection_id) \
          VALUES ($1,$2,$3,$4,$5) ON CONFLICT (workspace_id) DO UPDATE SET \
+         auth_mode='commercial',oauth_grant_id=NULL, \
          snaptrade_user_id=EXCLUDED.snaptrade_user_id, \
          snaptrade_user_secret_encrypted=EXCLUDED.snaptrade_user_secret_encrypted, \
          snaptrade_connection_id=EXCLUDED.snaptrade_connection_id",
@@ -366,6 +374,7 @@ pub async fn prepare_snaptrade_connection(
              snaptrade_user_secret_encrypted,snaptrade_connection_id,setup_completed_at
          ) VALUES ($1,$2,$3,$4,$5,NULL)
          ON CONFLICT (workspace_id) DO UPDATE SET
+             auth_mode='commercial',oauth_grant_id=NULL,
              snaptrade_user_id=EXCLUDED.snaptrade_user_id,
              snaptrade_user_secret_encrypted=EXCLUDED.snaptrade_user_secret_encrypted,
              setup_completed_at=CASE
@@ -391,6 +400,39 @@ pub async fn prepare_snaptrade_connection(
     find_workspace(pool, id, user_id)
         .await?
         .context("Workspace not found after preparing brokerage connection")
+}
+
+pub async fn prepare_snaptrade_oauth_connection(
+    pool: &PgPool,
+    id: &str,
+    user_id: &str,
+    oauth_grant_id: &str,
+    connection_id: &str,
+) -> Result<Workspace> {
+    ensure!(
+        find_workspace(pool, id, user_id).await?.is_some(),
+        "Workspace not found"
+    );
+    sqlx::query(
+        "INSERT INTO brokerage_connections (workspace_id,user_id,auth_mode,oauth_grant_id, \
+         snaptrade_connection_id,setup_completed_at) VALUES ($1,$2,'oauth',$3,$4,NULL) \
+         ON CONFLICT (workspace_id) DO UPDATE SET auth_mode='oauth',oauth_grant_id=EXCLUDED.oauth_grant_id, \
+         snaptrade_user_id=NULL,snaptrade_user_secret_encrypted=NULL, \
+         setup_completed_at=CASE WHEN brokerage_connections.snaptrade_connection_id=EXCLUDED.snaptrade_connection_id \
+           THEN brokerage_connections.setup_completed_at ELSE NULL END, \
+         snaptrade_account_id=CASE WHEN brokerage_connections.snaptrade_connection_id=EXCLUDED.snaptrade_connection_id \
+           THEN brokerage_connections.snaptrade_account_id ELSE NULL END, \
+         snaptrade_connection_id=EXCLUDED.snaptrade_connection_id",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(oauth_grant_id)
+    .bind(connection_id)
+    .execute(pool)
+    .await?;
+    Ok(find_workspace(pool, id, user_id)
+        .await?
+        .expect("workspace exists"))
 }
 
 pub async fn set_snaptrade_account_id(
@@ -754,6 +796,8 @@ mod tests {
             snaptrade_connection_disabled_at: None,
             brokerage_setup_complete: true,
             brokerage_setup_completed_at: Some("2026-01-01T00:00:00Z".into()),
+            snaptrade_auth_mode: "commercial".into(),
+            snaptrade_oauth_grant_id: None,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
         };

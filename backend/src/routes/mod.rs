@@ -3,6 +3,7 @@ mod graphql;
 mod notebook_assistance;
 mod notebook_images;
 pub mod notebook_media;
+pub mod snaptrade_oauth;
 pub mod snaptrade_webhook;
 pub mod user_export;
 
@@ -17,6 +18,10 @@ async fn health() -> HttpResponse {
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/health", web::get().to(health))
+        .service(
+            web::resource("/oauth/snaptrade/callback")
+                .route(web::get().to(snaptrade_oauth::callback)),
+        )
         .service(
             web::resource("/webhooks/snaptrade").route(web::post().to(snaptrade_webhook::ingest)),
         )

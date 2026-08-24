@@ -277,6 +277,132 @@ func (x *Credentials) GetUserSecret() string {
 	return ""
 }
 
+type OAuthCredentials struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OAuthCredentials) Reset() {
+	*x = OAuthCredentials{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthCredentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthCredentials) ProtoMessage() {}
+
+func (x *OAuthCredentials) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthCredentials.ProtoReflect.Descriptor instead.
+func (*OAuthCredentials) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *OAuthCredentials) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+type ApiCredentials struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*ApiCredentials_Commercial
+	//	*ApiCredentials_Oauth
+	Kind          isApiCredentials_Kind `protobuf_oneof:"kind"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApiCredentials) Reset() {
+	*x = ApiCredentials{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApiCredentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApiCredentials) ProtoMessage() {}
+
+func (x *ApiCredentials) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApiCredentials.ProtoReflect.Descriptor instead.
+func (*ApiCredentials) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ApiCredentials) GetKind() isApiCredentials_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *ApiCredentials) GetCommercial() *Credentials {
+	if x != nil {
+		if x, ok := x.Kind.(*ApiCredentials_Commercial); ok {
+			return x.Commercial
+		}
+	}
+	return nil
+}
+
+func (x *ApiCredentials) GetOauth() *OAuthCredentials {
+	if x != nil {
+		if x, ok := x.Kind.(*ApiCredentials_Oauth); ok {
+			return x.Oauth
+		}
+	}
+	return nil
+}
+
+type isApiCredentials_Kind interface {
+	isApiCredentials_Kind()
+}
+
+type ApiCredentials_Commercial struct {
+	Commercial *Credentials `protobuf:"bytes,1,opt,name=commercial,proto3,oneof"`
+}
+
+type ApiCredentials_Oauth struct {
+	Oauth *OAuthCredentials `protobuf:"bytes,2,opt,name=oauth,proto3,oneof"`
+}
+
+func (*ApiCredentials_Commercial) isApiCredentials_Kind() {}
+
+func (*ApiCredentials_Oauth) isApiCredentials_Kind() {}
+
 type RegisterUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
@@ -287,7 +413,7 @@ type RegisterUserRequest struct {
 
 func (x *RegisterUserRequest) Reset() {
 	*x = RegisterUserRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[4]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -299,7 +425,7 @@ func (x *RegisterUserRequest) String() string {
 func (*RegisterUserRequest) ProtoMessage() {}
 
 func (x *RegisterUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[4]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -312,7 +438,7 @@ func (x *RegisterUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterUserRequest.ProtoReflect.Descriptor instead.
 func (*RegisterUserRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{4}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RegisterUserRequest) GetAuth() *RequestAuth {
@@ -339,7 +465,7 @@ type RegisterUserResponse struct {
 
 func (x *RegisterUserResponse) Reset() {
 	*x = RegisterUserResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[5]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +477,7 @@ func (x *RegisterUserResponse) String() string {
 func (*RegisterUserResponse) ProtoMessage() {}
 
 func (x *RegisterUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[5]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,7 +490,7 @@ func (x *RegisterUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterUserResponse.ProtoReflect.Descriptor instead.
 func (*RegisterUserResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{5}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RegisterUserResponse) GetMeta() *ResponseMeta {
@@ -391,7 +517,7 @@ type UserRegistration struct {
 
 func (x *UserRegistration) Reset() {
 	*x = UserRegistration{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[6]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +529,7 @@ func (x *UserRegistration) String() string {
 func (*UserRegistration) ProtoMessage() {}
 
 func (x *UserRegistration) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[6]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +542,7 @@ func (x *UserRegistration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserRegistration.ProtoReflect.Descriptor instead.
 func (*UserRegistration) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{6}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UserRegistration) GetUserId() string {
@@ -443,7 +569,7 @@ type DeleteUserRequest struct {
 
 func (x *DeleteUserRequest) Reset() {
 	*x = DeleteUserRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[7]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -455,7 +581,7 @@ func (x *DeleteUserRequest) String() string {
 func (*DeleteUserRequest) ProtoMessage() {}
 
 func (x *DeleteUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[7]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -468,7 +594,7 @@ func (x *DeleteUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRequest.ProtoReflect.Descriptor instead.
 func (*DeleteUserRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{7}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteUserRequest) GetAuth() *RequestAuth {
@@ -495,7 +621,7 @@ type DeleteUserResponse struct {
 
 func (x *DeleteUserResponse) Reset() {
 	*x = DeleteUserResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[8]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -507,7 +633,7 @@ func (x *DeleteUserResponse) String() string {
 func (*DeleteUserResponse) ProtoMessage() {}
 
 func (x *DeleteUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[8]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -520,7 +646,7 @@ func (x *DeleteUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserResponse.ProtoReflect.Descriptor instead.
 func (*DeleteUserResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{8}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteUserResponse) GetMeta() *ResponseMeta {
@@ -552,7 +678,7 @@ type InitiateConnectionRequest struct {
 
 func (x *InitiateConnectionRequest) Reset() {
 	*x = InitiateConnectionRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[9]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -564,7 +690,7 @@ func (x *InitiateConnectionRequest) String() string {
 func (*InitiateConnectionRequest) ProtoMessage() {}
 
 func (x *InitiateConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[9]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -577,7 +703,7 @@ func (x *InitiateConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitiateConnectionRequest.ProtoReflect.Descriptor instead.
 func (*InitiateConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{9}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *InitiateConnectionRequest) GetAuth() *RequestAuth {
@@ -639,7 +765,7 @@ type InitiateConnectionResponse struct {
 
 func (x *InitiateConnectionResponse) Reset() {
 	*x = InitiateConnectionResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[10]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -651,7 +777,7 @@ func (x *InitiateConnectionResponse) String() string {
 func (*InitiateConnectionResponse) ProtoMessage() {}
 
 func (x *InitiateConnectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[10]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -664,7 +790,7 @@ func (x *InitiateConnectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitiateConnectionResponse.ProtoReflect.Descriptor instead.
 func (*InitiateConnectionResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{10}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *InitiateConnectionResponse) GetMeta() *ResponseMeta {
@@ -691,7 +817,7 @@ type ConnectionPortal struct {
 
 func (x *ConnectionPortal) Reset() {
 	*x = ConnectionPortal{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[11]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -703,7 +829,7 @@ func (x *ConnectionPortal) String() string {
 func (*ConnectionPortal) ProtoMessage() {}
 
 func (x *ConnectionPortal) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[11]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,7 +842,7 @@ func (x *ConnectionPortal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectionPortal.ProtoReflect.Descriptor instead.
 func (*ConnectionPortal) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{11}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ConnectionPortal) GetRedirectUrl() string {
@@ -736,7 +862,7 @@ func (x *ConnectionPortal) GetSessionId() string {
 type GetConnectionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	ConnectionId  string                 `protobuf:"bytes,3,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -744,7 +870,7 @@ type GetConnectionRequest struct {
 
 func (x *GetConnectionRequest) Reset() {
 	*x = GetConnectionRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[12]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +882,7 @@ func (x *GetConnectionRequest) String() string {
 func (*GetConnectionRequest) ProtoMessage() {}
 
 func (x *GetConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[12]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +895,7 @@ func (x *GetConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConnectionRequest.ProtoReflect.Descriptor instead.
 func (*GetConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{12}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetConnectionRequest) GetAuth() *RequestAuth {
@@ -779,7 +905,7 @@ func (x *GetConnectionRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *GetConnectionRequest) GetCredentials() *Credentials {
+func (x *GetConnectionRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -803,7 +929,7 @@ type GetConnectionResponse struct {
 
 func (x *GetConnectionResponse) Reset() {
 	*x = GetConnectionResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[13]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +941,7 @@ func (x *GetConnectionResponse) String() string {
 func (*GetConnectionResponse) ProtoMessage() {}
 
 func (x *GetConnectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[13]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +954,7 @@ func (x *GetConnectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConnectionResponse.ProtoReflect.Descriptor instead.
 func (*GetConnectionResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{13}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetConnectionResponse) GetMeta() *ResponseMeta {
@@ -848,14 +974,14 @@ func (x *GetConnectionResponse) GetConnection() *Connection {
 type ListConnectionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListConnectionsRequest) Reset() {
 	*x = ListConnectionsRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[14]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +993,7 @@ func (x *ListConnectionsRequest) String() string {
 func (*ListConnectionsRequest) ProtoMessage() {}
 
 func (x *ListConnectionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[14]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +1006,7 @@ func (x *ListConnectionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConnectionsRequest.ProtoReflect.Descriptor instead.
 func (*ListConnectionsRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{14}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListConnectionsRequest) GetAuth() *RequestAuth {
@@ -890,7 +1016,7 @@ func (x *ListConnectionsRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *ListConnectionsRequest) GetCredentials() *Credentials {
+func (x *ListConnectionsRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -907,7 +1033,7 @@ type ListConnectionsResponse struct {
 
 func (x *ListConnectionsResponse) Reset() {
 	*x = ListConnectionsResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[15]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -919,7 +1045,7 @@ func (x *ListConnectionsResponse) String() string {
 func (*ListConnectionsResponse) ProtoMessage() {}
 
 func (x *ListConnectionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[15]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -932,7 +1058,7 @@ func (x *ListConnectionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConnectionsResponse.ProtoReflect.Descriptor instead.
 func (*ListConnectionsResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{15}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListConnectionsResponse) GetMeta() *ResponseMeta {
@@ -952,7 +1078,7 @@ func (x *ListConnectionsResponse) GetConnections() []*Connection {
 type RefreshConnectionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	ConnectionId  string                 `protobuf:"bytes,3,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -960,7 +1086,7 @@ type RefreshConnectionRequest struct {
 
 func (x *RefreshConnectionRequest) Reset() {
 	*x = RefreshConnectionRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[16]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -972,7 +1098,7 @@ func (x *RefreshConnectionRequest) String() string {
 func (*RefreshConnectionRequest) ProtoMessage() {}
 
 func (x *RefreshConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[16]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -985,7 +1111,7 @@ func (x *RefreshConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshConnectionRequest.ProtoReflect.Descriptor instead.
 func (*RefreshConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{16}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RefreshConnectionRequest) GetAuth() *RequestAuth {
@@ -995,7 +1121,7 @@ func (x *RefreshConnectionRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *RefreshConnectionRequest) GetCredentials() *Credentials {
+func (x *RefreshConnectionRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -1019,7 +1145,7 @@ type RefreshConnectionResponse struct {
 
 func (x *RefreshConnectionResponse) Reset() {
 	*x = RefreshConnectionResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[17]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1031,7 +1157,7 @@ func (x *RefreshConnectionResponse) String() string {
 func (*RefreshConnectionResponse) ProtoMessage() {}
 
 func (x *RefreshConnectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[17]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1044,7 +1170,7 @@ func (x *RefreshConnectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshConnectionResponse.ProtoReflect.Descriptor instead.
 func (*RefreshConnectionResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{17}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RefreshConnectionResponse) GetMeta() *ResponseMeta {
@@ -1064,7 +1190,7 @@ func (x *RefreshConnectionResponse) GetResult() *RefreshResult {
 type DeleteConnectionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	ConnectionId  string                 `protobuf:"bytes,3,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1072,7 +1198,7 @@ type DeleteConnectionRequest struct {
 
 func (x *DeleteConnectionRequest) Reset() {
 	*x = DeleteConnectionRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[18]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1084,7 +1210,7 @@ func (x *DeleteConnectionRequest) String() string {
 func (*DeleteConnectionRequest) ProtoMessage() {}
 
 func (x *DeleteConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[18]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1097,7 +1223,7 @@ func (x *DeleteConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConnectionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{18}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DeleteConnectionRequest) GetAuth() *RequestAuth {
@@ -1107,7 +1233,7 @@ func (x *DeleteConnectionRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *DeleteConnectionRequest) GetCredentials() *Credentials {
+func (x *DeleteConnectionRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -1131,7 +1257,7 @@ type DeleteConnectionResponse struct {
 
 func (x *DeleteConnectionResponse) Reset() {
 	*x = DeleteConnectionResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[19]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1143,7 +1269,7 @@ func (x *DeleteConnectionResponse) String() string {
 func (*DeleteConnectionResponse) ProtoMessage() {}
 
 func (x *DeleteConnectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[19]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1156,7 +1282,7 @@ func (x *DeleteConnectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConnectionResponse.ProtoReflect.Descriptor instead.
 func (*DeleteConnectionResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{19}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DeleteConnectionResponse) GetMeta() *ResponseMeta {
@@ -1187,7 +1313,7 @@ type Connection struct {
 
 func (x *Connection) Reset() {
 	*x = Connection{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[20]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1325,7 @@ func (x *Connection) String() string {
 func (*Connection) ProtoMessage() {}
 
 func (x *Connection) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[20]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1338,7 @@ func (x *Connection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Connection.ProtoReflect.Descriptor instead.
 func (*Connection) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{20}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Connection) GetId() string {
@@ -1267,7 +1393,7 @@ type RefreshResult struct {
 
 func (x *RefreshResult) Reset() {
 	*x = RefreshResult{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[21]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1279,7 +1405,7 @@ func (x *RefreshResult) String() string {
 func (*RefreshResult) ProtoMessage() {}
 
 func (x *RefreshResult) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[21]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1292,7 +1418,7 @@ func (x *RefreshResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshResult.ProtoReflect.Descriptor instead.
 func (*RefreshResult) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{21}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RefreshResult) GetConnectionId() string {
@@ -1312,14 +1438,14 @@ func (x *RefreshResult) GetStatus() string {
 type ListAccountsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListAccountsRequest) Reset() {
 	*x = ListAccountsRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[22]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1457,7 @@ func (x *ListAccountsRequest) String() string {
 func (*ListAccountsRequest) ProtoMessage() {}
 
 func (x *ListAccountsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[22]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1470,7 @@ func (x *ListAccountsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsRequest.ProtoReflect.Descriptor instead.
 func (*ListAccountsRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{22}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListAccountsRequest) GetAuth() *RequestAuth {
@@ -1354,7 +1480,7 @@ func (x *ListAccountsRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *ListAccountsRequest) GetCredentials() *Credentials {
+func (x *ListAccountsRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -1371,7 +1497,7 @@ type ListAccountsResponse struct {
 
 func (x *ListAccountsResponse) Reset() {
 	*x = ListAccountsResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[23]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1509,7 @@ func (x *ListAccountsResponse) String() string {
 func (*ListAccountsResponse) ProtoMessage() {}
 
 func (x *ListAccountsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[23]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1522,7 @@ func (x *ListAccountsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsResponse.ProtoReflect.Descriptor instead.
 func (*ListAccountsResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{23}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListAccountsResponse) GetMeta() *ResponseMeta {
@@ -1416,7 +1542,7 @@ func (x *ListAccountsResponse) GetAccounts() []*Account {
 type GetAccountRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	AccountId     string                 `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1424,7 +1550,7 @@ type GetAccountRequest struct {
 
 func (x *GetAccountRequest) Reset() {
 	*x = GetAccountRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[24]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1436,7 +1562,7 @@ func (x *GetAccountRequest) String() string {
 func (*GetAccountRequest) ProtoMessage() {}
 
 func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[24]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1449,7 +1575,7 @@ func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountRequest.ProtoReflect.Descriptor instead.
 func (*GetAccountRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{24}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetAccountRequest) GetAuth() *RequestAuth {
@@ -1459,7 +1585,7 @@ func (x *GetAccountRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *GetAccountRequest) GetCredentials() *Credentials {
+func (x *GetAccountRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -1483,7 +1609,7 @@ type GetAccountResponse struct {
 
 func (x *GetAccountResponse) Reset() {
 	*x = GetAccountResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[25]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1495,7 +1621,7 @@ func (x *GetAccountResponse) String() string {
 func (*GetAccountResponse) ProtoMessage() {}
 
 func (x *GetAccountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[25]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1508,7 +1634,7 @@ func (x *GetAccountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountResponse.ProtoReflect.Descriptor instead.
 func (*GetAccountResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{25}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetAccountResponse) GetMeta() *ResponseMeta {
@@ -1540,7 +1666,7 @@ type Account struct {
 
 func (x *Account) Reset() {
 	*x = Account{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[26]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1552,7 +1678,7 @@ func (x *Account) String() string {
 func (*Account) ProtoMessage() {}
 
 func (x *Account) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[26]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1565,7 +1691,7 @@ func (x *Account) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Account.ProtoReflect.Descriptor instead.
 func (*Account) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{26}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Account) GetId() string {
@@ -1627,7 +1753,7 @@ type SyncStatus struct {
 
 func (x *SyncStatus) Reset() {
 	*x = SyncStatus{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[27]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1765,7 @@ func (x *SyncStatus) String() string {
 func (*SyncStatus) ProtoMessage() {}
 
 func (x *SyncStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[27]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1778,7 @@ func (x *SyncStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncStatus.ProtoReflect.Descriptor instead.
 func (*SyncStatus) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{27}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SyncStatus) GetTransactions() *TransactionsSyncStatus {
@@ -1680,7 +1806,7 @@ type TransactionsSyncStatus struct {
 
 func (x *TransactionsSyncStatus) Reset() {
 	*x = TransactionsSyncStatus{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[28]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1692,7 +1818,7 @@ func (x *TransactionsSyncStatus) String() string {
 func (*TransactionsSyncStatus) ProtoMessage() {}
 
 func (x *TransactionsSyncStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[28]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1705,7 +1831,7 @@ func (x *TransactionsSyncStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionsSyncStatus.ProtoReflect.Descriptor instead.
 func (*TransactionsSyncStatus) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{28}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *TransactionsSyncStatus) GetInitialSyncCompleted() bool {
@@ -1740,7 +1866,7 @@ type HoldingsSyncStatus struct {
 
 func (x *HoldingsSyncStatus) Reset() {
 	*x = HoldingsSyncStatus{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[29]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1752,7 +1878,7 @@ func (x *HoldingsSyncStatus) String() string {
 func (*HoldingsSyncStatus) ProtoMessage() {}
 
 func (x *HoldingsSyncStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[29]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1765,7 +1891,7 @@ func (x *HoldingsSyncStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HoldingsSyncStatus.ProtoReflect.Descriptor instead.
 func (*HoldingsSyncStatus) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{29}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *HoldingsSyncStatus) GetInitialSyncCompleted() bool {
@@ -1799,7 +1925,7 @@ type Money struct {
 
 func (x *Money) Reset() {
 	*x = Money{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[30]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1811,7 +1937,7 @@ func (x *Money) String() string {
 func (*Money) ProtoMessage() {}
 
 func (x *Money) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[30]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1824,7 +1950,7 @@ func (x *Money) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Money.ProtoReflect.Descriptor instead.
 func (*Money) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{30}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Money) GetAmount() float64 {
@@ -1844,7 +1970,7 @@ func (x *Money) GetCurrency() string {
 type GetPortfolioSnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	AccountId     string                 `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1852,7 +1978,7 @@ type GetPortfolioSnapshotRequest struct {
 
 func (x *GetPortfolioSnapshotRequest) Reset() {
 	*x = GetPortfolioSnapshotRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[31]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +1990,7 @@ func (x *GetPortfolioSnapshotRequest) String() string {
 func (*GetPortfolioSnapshotRequest) ProtoMessage() {}
 
 func (x *GetPortfolioSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[31]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +2003,7 @@ func (x *GetPortfolioSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPortfolioSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetPortfolioSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{31}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetPortfolioSnapshotRequest) GetAuth() *RequestAuth {
@@ -1887,7 +2013,7 @@ func (x *GetPortfolioSnapshotRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *GetPortfolioSnapshotRequest) GetCredentials() *Credentials {
+func (x *GetPortfolioSnapshotRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -1911,7 +2037,7 @@ type GetPortfolioSnapshotResponse struct {
 
 func (x *GetPortfolioSnapshotResponse) Reset() {
 	*x = GetPortfolioSnapshotResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[32]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1923,7 +2049,7 @@ func (x *GetPortfolioSnapshotResponse) String() string {
 func (*GetPortfolioSnapshotResponse) ProtoMessage() {}
 
 func (x *GetPortfolioSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[32]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1936,7 +2062,7 @@ func (x *GetPortfolioSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPortfolioSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*GetPortfolioSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{32}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetPortfolioSnapshotResponse) GetMeta() *ResponseMeta {
@@ -1969,7 +2095,7 @@ type PortfolioSnapshot struct {
 
 func (x *PortfolioSnapshot) Reset() {
 	*x = PortfolioSnapshot{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[33]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1981,7 +2107,7 @@ func (x *PortfolioSnapshot) String() string {
 func (*PortfolioSnapshot) ProtoMessage() {}
 
 func (x *PortfolioSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[33]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1994,7 +2120,7 @@ func (x *PortfolioSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortfolioSnapshot.ProtoReflect.Descriptor instead.
 func (*PortfolioSnapshot) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{33}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *PortfolioSnapshot) GetAccountId() string {
@@ -2071,7 +2197,7 @@ type Position struct {
 
 func (x *Position) Reset() {
 	*x = Position{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[34]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2083,7 +2209,7 @@ func (x *Position) String() string {
 func (*Position) ProtoMessage() {}
 
 func (x *Position) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[34]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2096,7 +2222,7 @@ func (x *Position) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Position.ProtoReflect.Descriptor instead.
 func (*Position) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{34}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *Position) GetInstrumentId() string {
@@ -2182,7 +2308,7 @@ type OptionDetails struct {
 
 func (x *OptionDetails) Reset() {
 	*x = OptionDetails{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[35]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2194,7 +2320,7 @@ func (x *OptionDetails) String() string {
 func (*OptionDetails) ProtoMessage() {}
 
 func (x *OptionDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[35]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2207,7 +2333,7 @@ func (x *OptionDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OptionDetails.ProtoReflect.Descriptor instead.
 func (*OptionDetails) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{35}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *OptionDetails) GetOptionType() string {
@@ -2256,7 +2382,7 @@ type Balance struct {
 
 func (x *Balance) Reset() {
 	*x = Balance{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[36]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2268,7 +2394,7 @@ func (x *Balance) String() string {
 func (*Balance) ProtoMessage() {}
 
 func (x *Balance) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[36]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2281,7 +2407,7 @@ func (x *Balance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Balance.ProtoReflect.Descriptor instead.
 func (*Balance) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{36}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Balance) GetCurrency() string {
@@ -2322,7 +2448,7 @@ type Order struct {
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[37]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2334,7 +2460,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[37]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2347,7 +2473,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{37}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Order) GetBrokerageOrderId() string {
@@ -2416,7 +2542,7 @@ func (x *Order) GetTimePlaced() string {
 type GetActivitiesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
-	Credentials   *Credentials           `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	Credentials   *ApiCredentials        `protobuf:"bytes,2,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	AccountId     string                 `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	StartDate     *string                `protobuf:"bytes,4,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
 	EndDate       *string                `protobuf:"bytes,5,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
@@ -2429,7 +2555,7 @@ type GetActivitiesRequest struct {
 
 func (x *GetActivitiesRequest) Reset() {
 	*x = GetActivitiesRequest{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[38]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2441,7 +2567,7 @@ func (x *GetActivitiesRequest) String() string {
 func (*GetActivitiesRequest) ProtoMessage() {}
 
 func (x *GetActivitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[38]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2454,7 +2580,7 @@ func (x *GetActivitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetActivitiesRequest.ProtoReflect.Descriptor instead.
 func (*GetActivitiesRequest) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{38}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetActivitiesRequest) GetAuth() *RequestAuth {
@@ -2464,7 +2590,7 @@ func (x *GetActivitiesRequest) GetAuth() *RequestAuth {
 	return nil
 }
 
-func (x *GetActivitiesRequest) GetCredentials() *Credentials {
+func (x *GetActivitiesRequest) GetCredentials() *ApiCredentials {
 	if x != nil {
 		return x.Credentials
 	}
@@ -2523,7 +2649,7 @@ type GetActivitiesResponse struct {
 
 func (x *GetActivitiesResponse) Reset() {
 	*x = GetActivitiesResponse{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[39]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2535,7 +2661,7 @@ func (x *GetActivitiesResponse) String() string {
 func (*GetActivitiesResponse) ProtoMessage() {}
 
 func (x *GetActivitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[39]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2548,7 +2674,7 @@ func (x *GetActivitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetActivitiesResponse.ProtoReflect.Descriptor instead.
 func (*GetActivitiesResponse) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{39}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetActivitiesResponse) GetMeta() *ResponseMeta {
@@ -2575,7 +2701,7 @@ type ActivitiesPage struct {
 
 func (x *ActivitiesPage) Reset() {
 	*x = ActivitiesPage{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[40]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2587,7 +2713,7 @@ func (x *ActivitiesPage) String() string {
 func (*ActivitiesPage) ProtoMessage() {}
 
 func (x *ActivitiesPage) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[40]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2600,7 +2726,7 @@ func (x *ActivitiesPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivitiesPage.ProtoReflect.Descriptor instead.
 func (*ActivitiesPage) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{40}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ActivitiesPage) GetActivities() []*Activity {
@@ -2628,7 +2754,7 @@ type Pagination struct {
 
 func (x *Pagination) Reset() {
 	*x = Pagination{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[41]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2640,7 +2766,7 @@ func (x *Pagination) String() string {
 func (*Pagination) ProtoMessage() {}
 
 func (x *Pagination) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[41]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2653,7 +2779,7 @@ func (x *Pagination) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pagination.ProtoReflect.Descriptor instead.
 func (*Pagination) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{41}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *Pagination) GetOffset() int32 {
@@ -2701,7 +2827,7 @@ type Activity struct {
 
 func (x *Activity) Reset() {
 	*x = Activity{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[42]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2713,7 +2839,7 @@ func (x *Activity) String() string {
 func (*Activity) ProtoMessage() {}
 
 func (x *Activity) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[42]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2726,7 +2852,7 @@ func (x *Activity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Activity.ProtoReflect.Descriptor instead.
 func (*Activity) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{42}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *Activity) GetId() string {
@@ -2854,7 +2980,7 @@ type ActivitySymbol struct {
 
 func (x *ActivitySymbol) Reset() {
 	*x = ActivitySymbol{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[43]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2866,7 +2992,7 @@ func (x *ActivitySymbol) String() string {
 func (*ActivitySymbol) ProtoMessage() {}
 
 func (x *ActivitySymbol) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[43]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2879,7 +3005,7 @@ func (x *ActivitySymbol) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivitySymbol.ProtoReflect.Descriptor instead.
 func (*ActivitySymbol) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{43}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ActivitySymbol) GetId() string {
@@ -2928,7 +3054,7 @@ type Currency struct {
 
 func (x *Currency) Reset() {
 	*x = Currency{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[44]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2940,7 +3066,7 @@ func (x *Currency) String() string {
 func (*Currency) ProtoMessage() {}
 
 func (x *Currency) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[44]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2953,7 +3079,7 @@ func (x *Currency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Currency.ProtoReflect.Descriptor instead.
 func (*Currency) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{44}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Currency) GetId() string {
@@ -2992,7 +3118,7 @@ type OptionSymbol struct {
 
 func (x *OptionSymbol) Reset() {
 	*x = OptionSymbol{}
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[45]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3004,7 +3130,7 @@ func (x *OptionSymbol) String() string {
 func (*OptionSymbol) ProtoMessage() {}
 
 func (x *OptionSymbol) ProtoReflect() protoreflect.Message {
-	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[45]
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3017,7 +3143,7 @@ func (x *OptionSymbol) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OptionSymbol.ProtoReflect.Descriptor instead.
 func (*OptionSymbol) Descriptor() ([]byte, []int) {
-	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{45}
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *OptionSymbol) GetId() string {
@@ -3069,6 +3195,546 @@ func (x *OptionSymbol) GetUnderlyingSymbol() *ActivitySymbol {
 	return nil
 }
 
+type BeginOAuthRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	CodeChallenge string                 `protobuf:"bytes,3,opt,name=code_challenge,json=codeChallenge,proto3" json:"code_challenge,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,4,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	Scopes        []string               `protobuf:"bytes,5,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginOAuthRequest) Reset() {
+	*x = BeginOAuthRequest{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginOAuthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginOAuthRequest) ProtoMessage() {}
+
+func (x *BeginOAuthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginOAuthRequest.ProtoReflect.Descriptor instead.
+func (*BeginOAuthRequest) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *BeginOAuthRequest) GetAuth() *RequestAuth {
+	if x != nil {
+		return x.Auth
+	}
+	return nil
+}
+
+func (x *BeginOAuthRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *BeginOAuthRequest) GetCodeChallenge() string {
+	if x != nil {
+		return x.CodeChallenge
+	}
+	return ""
+}
+
+func (x *BeginOAuthRequest) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *BeginOAuthRequest) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+type BeginOAuthResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Meta             *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	AuthorizationUrl string                 `protobuf:"bytes,2,opt,name=authorization_url,json=authorizationUrl,proto3" json:"authorization_url,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *BeginOAuthResponse) Reset() {
+	*x = BeginOAuthResponse{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginOAuthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginOAuthResponse) ProtoMessage() {}
+
+func (x *BeginOAuthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginOAuthResponse.ProtoReflect.Descriptor instead.
+func (*BeginOAuthResponse) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *BeginOAuthResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *BeginOAuthResponse) GetAuthorizationUrl() string {
+	if x != nil {
+		return x.AuthorizationUrl
+	}
+	return ""
+}
+
+type ExchangeOAuthCodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	CodeVerifier  string                 `protobuf:"bytes,3,opt,name=code_verifier,json=codeVerifier,proto3" json:"code_verifier,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,4,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExchangeOAuthCodeRequest) Reset() {
+	*x = ExchangeOAuthCodeRequest{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeOAuthCodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeOAuthCodeRequest) ProtoMessage() {}
+
+func (x *ExchangeOAuthCodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeOAuthCodeRequest.ProtoReflect.Descriptor instead.
+func (*ExchangeOAuthCodeRequest) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ExchangeOAuthCodeRequest) GetAuth() *RequestAuth {
+	if x != nil {
+		return x.Auth
+	}
+	return nil
+}
+
+func (x *ExchangeOAuthCodeRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *ExchangeOAuthCodeRequest) GetCodeVerifier() string {
+	if x != nil {
+		return x.CodeVerifier
+	}
+	return ""
+}
+
+func (x *ExchangeOAuthCodeRequest) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+type RefreshOAuthTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefreshOAuthTokenRequest) Reset() {
+	*x = RefreshOAuthTokenRequest{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshOAuthTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshOAuthTokenRequest) ProtoMessage() {}
+
+func (x *RefreshOAuthTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshOAuthTokenRequest.ProtoReflect.Descriptor instead.
+func (*RefreshOAuthTokenRequest) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *RefreshOAuthTokenRequest) GetAuth() *RequestAuth {
+	if x != nil {
+		return x.Auth
+	}
+	return nil
+}
+
+func (x *RefreshOAuthTokenRequest) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+type RevokeOAuthTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Auth          *RequestAuth           `protobuf:"bytes,1,opt,name=auth,proto3,oneof" json:"auth,omitempty"`
+	Token         string                 `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeOAuthTokenRequest) Reset() {
+	*x = RevokeOAuthTokenRequest{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeOAuthTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeOAuthTokenRequest) ProtoMessage() {}
+
+func (x *RevokeOAuthTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeOAuthTokenRequest.ProtoReflect.Descriptor instead.
+func (*RevokeOAuthTokenRequest) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *RevokeOAuthTokenRequest) GetAuth() *RequestAuth {
+	if x != nil {
+		return x.Auth
+	}
+	return nil
+}
+
+func (x *RevokeOAuthTokenRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+type OAuthTokens struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken     string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken    string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	ExpiresIn       int64                  `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
+	Scopes          []string               `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	OauthClientId   string                 `protobuf:"bytes,5,opt,name=oauth_client_id,json=oauthClientId,proto3" json:"oauth_client_id,omitempty"`
+	SnaptradeUserId string                 `protobuf:"bytes,6,opt,name=snaptrade_user_id,json=snaptradeUserId,proto3" json:"snaptrade_user_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *OAuthTokens) Reset() {
+	*x = OAuthTokens{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthTokens) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthTokens) ProtoMessage() {}
+
+func (x *OAuthTokens) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthTokens.ProtoReflect.Descriptor instead.
+func (*OAuthTokens) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *OAuthTokens) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *OAuthTokens) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *OAuthTokens) GetExpiresIn() int64 {
+	if x != nil {
+		return x.ExpiresIn
+	}
+	return 0
+}
+
+func (x *OAuthTokens) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *OAuthTokens) GetOauthClientId() string {
+	if x != nil {
+		return x.OauthClientId
+	}
+	return ""
+}
+
+func (x *OAuthTokens) GetSnaptradeUserId() string {
+	if x != nil {
+		return x.SnaptradeUserId
+	}
+	return ""
+}
+
+type ExchangeOAuthCodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Tokens        *OAuthTokens           `protobuf:"bytes,2,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExchangeOAuthCodeResponse) Reset() {
+	*x = ExchangeOAuthCodeResponse{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeOAuthCodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeOAuthCodeResponse) ProtoMessage() {}
+
+func (x *ExchangeOAuthCodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeOAuthCodeResponse.ProtoReflect.Descriptor instead.
+func (*ExchangeOAuthCodeResponse) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *ExchangeOAuthCodeResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *ExchangeOAuthCodeResponse) GetTokens() *OAuthTokens {
+	if x != nil {
+		return x.Tokens
+	}
+	return nil
+}
+
+type RefreshOAuthTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Tokens        *OAuthTokens           `protobuf:"bytes,2,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefreshOAuthTokenResponse) Reset() {
+	*x = RefreshOAuthTokenResponse{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshOAuthTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshOAuthTokenResponse) ProtoMessage() {}
+
+func (x *RefreshOAuthTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshOAuthTokenResponse.ProtoReflect.Descriptor instead.
+func (*RefreshOAuthTokenResponse) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *RefreshOAuthTokenResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *RefreshOAuthTokenResponse) GetTokens() *OAuthTokens {
+	if x != nil {
+		return x.Tokens
+	}
+	return nil
+}
+
+type RevokeOAuthTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Revoked       bool                   `protobuf:"varint,2,opt,name=revoked,proto3" json:"revoked,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeOAuthTokenResponse) Reset() {
+	*x = RevokeOAuthTokenResponse{}
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeOAuthTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeOAuthTokenResponse) ProtoMessage() {}
+
+func (x *RevokeOAuthTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_tradstry_snaptrade_v1_adapter_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeOAuthTokenResponse.ProtoReflect.Descriptor instead.
+func (*RevokeOAuthTokenResponse) Descriptor() ([]byte, []int) {
+	return file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *RevokeOAuthTokenResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *RevokeOAuthTokenResponse) GetRevoked() bool {
+	if x != nil {
+		return x.Revoked
+	}
+	return false
+}
+
 var File_tradstry_snaptrade_v1_adapter_proto protoreflect.FileDescriptor
 
 const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
@@ -3103,7 +3769,15 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\vCredentials\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1f\n" +
 	"\vuser_secret\x18\x02 \x01(\tR\n" +
-	"userSecret\"t\n" +
+	"userSecret\"5\n" +
+	"\x10OAuthCredentials\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\"\x9f\x01\n" +
+	"\x0eApiCredentials\x12D\n" +
+	"\n" +
+	"commercial\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.CredentialsH\x00R\n" +
+	"commercial\x12?\n" +
+	"\x05oauth\x18\x02 \x01(\v2'.tradstry.snaptrade.v1.OAuthCredentialsH\x00R\x05oauthB\x06\n" +
+	"\x04kind\"t\n" +
 	"\x13RegisterUserRequest\x12;\n" +
 	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userIdB\a\n" +
@@ -3142,35 +3816,35 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\x10ConnectionPortal\x12!\n" +
 	"\fredirect_url\x18\x01 \x01(\tR\vredirectUrl\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"\xc7\x01\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\"\xca\x01\n" +
 	"\x14GetConnectionRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12#\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12#\n" +
 	"\rconnection_id\x18\x03 \x01(\tR\fconnectionIdB\a\n" +
 	"\x05_auth\"\x93\x01\n" +
 	"\x15GetConnectionResponse\x127\n" +
 	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12A\n" +
 	"\n" +
 	"connection\x18\x02 \x01(\v2!.tradstry.snaptrade.v1.ConnectionR\n" +
-	"connection\"\xa4\x01\n" +
+	"connection\"\xa7\x01\n" +
 	"\x16ListConnectionsRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentialsB\a\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentialsB\a\n" +
 	"\x05_auth\"\x97\x01\n" +
 	"\x17ListConnectionsResponse\x127\n" +
 	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12C\n" +
-	"\vconnections\x18\x02 \x03(\v2!.tradstry.snaptrade.v1.ConnectionR\vconnections\"\xcb\x01\n" +
+	"\vconnections\x18\x02 \x03(\v2!.tradstry.snaptrade.v1.ConnectionR\vconnections\"\xce\x01\n" +
 	"\x18RefreshConnectionRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12#\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12#\n" +
 	"\rconnection_id\x18\x03 \x01(\tR\fconnectionIdB\a\n" +
 	"\x05_auth\"\x92\x01\n" +
 	"\x19RefreshConnectionResponse\x127\n" +
 	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12<\n" +
-	"\x06result\x18\x02 \x01(\v2$.tradstry.snaptrade.v1.RefreshResultR\x06result\"\xca\x01\n" +
+	"\x06result\x18\x02 \x01(\v2$.tradstry.snaptrade.v1.RefreshResultR\x06result\"\xcd\x01\n" +
 	"\x17DeleteConnectionRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12#\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12#\n" +
 	"\rconnection_id\x18\x03 \x01(\tR\fconnectionIdB\a\n" +
 	"\x05_auth\"m\n" +
 	"\x18DeleteConnectionResponse\x127\n" +
@@ -3189,17 +3863,17 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\x0e_disabled_date\"L\n" +
 	"\rRefreshResult\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"\xa1\x01\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\xa4\x01\n" +
 	"\x13ListAccountsRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentialsB\a\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentialsB\a\n" +
 	"\x05_auth\"\x8b\x01\n" +
 	"\x14ListAccountsResponse\x127\n" +
 	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12:\n" +
-	"\baccounts\x18\x02 \x03(\v2\x1e.tradstry.snaptrade.v1.AccountR\baccounts\"\xbe\x01\n" +
+	"\baccounts\x18\x02 \x03(\v2\x1e.tradstry.snaptrade.v1.AccountR\baccounts\"\xc1\x01\n" +
 	"\x11GetAccountRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12\x1d\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x03 \x01(\tR\taccountIdB\a\n" +
 	"\x05_auth\"\x87\x01\n" +
@@ -3245,10 +3919,10 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\x06amount\x18\x01 \x01(\x01H\x00R\x06amount\x88\x01\x01\x12\x1f\n" +
 	"\bcurrency\x18\x02 \x01(\tH\x01R\bcurrency\x88\x01\x01B\t\n" +
 	"\a_amountB\v\n" +
-	"\t_currency\"\xc8\x01\n" +
+	"\t_currency\"\xcb\x01\n" +
 	"\x1bGetPortfolioSnapshotRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12\x1d\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x03 \x01(\tR\taccountIdB\a\n" +
 	"\x05_auth\"\x9d\x01\n" +
@@ -3322,10 +3996,10 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\v_order_typeB\b\n" +
 	"\x06_unitsB\b\n" +
 	"\x06_priceB\x0e\n" +
-	"\f_time_placed\"\xaa\x03\n" +
+	"\f_time_placed\"\xad\x03\n" +
 	"\x14GetActivitiesRequest\x12;\n" +
-	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12D\n" +
-	"\vcredentials\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.CredentialsR\vcredentials\x12\x1d\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12G\n" +
+	"\vcredentials\x18\x02 \x01(\v2%.tradstry.snaptrade.v1.ApiCredentialsR\vcredentials\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x03 \x01(\tR\taccountId\x12\"\n" +
 	"\n" +
@@ -3431,7 +4105,48 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\r_strike_priceB\x12\n" +
 	"\x10_expiration_dateB\x11\n" +
 	"\x0f_is_mini_optionB\x14\n" +
-	"\x12_underlying_symbol2\xe4\t\n" +
+	"\x12_underlying_symbol\"\xd1\x01\n" +
+	"\x11BeginOAuthRequest\x12;\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12%\n" +
+	"\x0ecode_challenge\x18\x03 \x01(\tR\rcodeChallenge\x12!\n" +
+	"\fredirect_uri\x18\x04 \x01(\tR\vredirectUri\x12\x16\n" +
+	"\x06scopes\x18\x05 \x03(\tR\x06scopesB\a\n" +
+	"\x05_auth\"z\n" +
+	"\x12BeginOAuthResponse\x127\n" +
+	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12+\n" +
+	"\x11authorization_url\x18\x02 \x01(\tR\x10authorizationUrl\"\xbc\x01\n" +
+	"\x18ExchangeOAuthCodeRequest\x12;\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x12#\n" +
+	"\rcode_verifier\x18\x03 \x01(\tR\fcodeVerifier\x12!\n" +
+	"\fredirect_uri\x18\x04 \x01(\tR\vredirectUriB\a\n" +
+	"\x05_auth\"\x85\x01\n" +
+	"\x18RefreshOAuthTokenRequest\x12;\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshTokenB\a\n" +
+	"\x05_auth\"u\n" +
+	"\x17RevokeOAuthTokenRequest\x12;\n" +
+	"\x04auth\x18\x01 \x01(\v2\".tradstry.snaptrade.v1.RequestAuthH\x00R\x04auth\x88\x01\x01\x12\x14\n" +
+	"\x05token\x18\x02 \x01(\tR\x05tokenB\a\n" +
+	"\x05_auth\"\xe0\x01\n" +
+	"\vOAuthTokens\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\x03 \x01(\x03R\texpiresIn\x12\x16\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes\x12&\n" +
+	"\x0foauth_client_id\x18\x05 \x01(\tR\roauthClientId\x12*\n" +
+	"\x11snaptrade_user_id\x18\x06 \x01(\tR\x0fsnaptradeUserId\"\x90\x01\n" +
+	"\x19ExchangeOAuthCodeResponse\x127\n" +
+	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12:\n" +
+	"\x06tokens\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.OAuthTokensR\x06tokens\"\x90\x01\n" +
+	"\x19RefreshOAuthTokenResponse\x127\n" +
+	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12:\n" +
+	"\x06tokens\x18\x02 \x01(\v2\".tradstry.snaptrade.v1.OAuthTokensR\x06tokens\"m\n" +
+	"\x18RevokeOAuthTokenResponse\x127\n" +
+	"\x04meta\x18\x01 \x01(\v2#.tradstry.snaptrade.v1.ResponseMetaR\x04meta\x12\x18\n" +
+	"\arevoked\x18\x02 \x01(\bR\arevoked2\xac\r\n" +
 	"\x17SnapTradeAdapterService\x12g\n" +
 	"\fRegisterUser\x12*.tradstry.snaptrade.v1.RegisterUserRequest\x1a+.tradstry.snaptrade.v1.RegisterUserResponse\x12a\n" +
 	"\n" +
@@ -3445,7 +4160,12 @@ const file_tradstry_snaptrade_v1_adapter_proto_rawDesc = "" +
 	"\n" +
 	"GetAccount\x12(.tradstry.snaptrade.v1.GetAccountRequest\x1a).tradstry.snaptrade.v1.GetAccountResponse\x12\x7f\n" +
 	"\x14GetPortfolioSnapshot\x122.tradstry.snaptrade.v1.GetPortfolioSnapshotRequest\x1a3.tradstry.snaptrade.v1.GetPortfolioSnapshotResponse\x12j\n" +
-	"\rGetActivities\x12+.tradstry.snaptrade.v1.GetActivitiesRequest\x1a,.tradstry.snaptrade.v1.GetActivitiesResponseB0Z.snaptrade-service/gen/snaptrade/v1;snaptradev1b\x06proto3"
+	"\rGetActivities\x12+.tradstry.snaptrade.v1.GetActivitiesRequest\x1a,.tradstry.snaptrade.v1.GetActivitiesResponse\x12a\n" +
+	"\n" +
+	"BeginOAuth\x12(.tradstry.snaptrade.v1.BeginOAuthRequest\x1a).tradstry.snaptrade.v1.BeginOAuthResponse\x12v\n" +
+	"\x11ExchangeOAuthCode\x12/.tradstry.snaptrade.v1.ExchangeOAuthCodeRequest\x1a0.tradstry.snaptrade.v1.ExchangeOAuthCodeResponse\x12v\n" +
+	"\x11RefreshOAuthToken\x12/.tradstry.snaptrade.v1.RefreshOAuthTokenRequest\x1a0.tradstry.snaptrade.v1.RefreshOAuthTokenResponse\x12s\n" +
+	"\x10RevokeOAuthToken\x12..tradstry.snaptrade.v1.RevokeOAuthTokenRequest\x1a/.tradstry.snaptrade.v1.RevokeOAuthTokenResponseB0Z.snaptrade-service/gen/snaptrade/v1;snaptradev1b\x06proto3"
 
 var (
 	file_tradstry_snaptrade_v1_adapter_proto_rawDescOnce sync.Once
@@ -3459,139 +4179,170 @@ func file_tradstry_snaptrade_v1_adapter_proto_rawDescGZIP() []byte {
 	return file_tradstry_snaptrade_v1_adapter_proto_rawDescData
 }
 
-var file_tradstry_snaptrade_v1_adapter_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
+var file_tradstry_snaptrade_v1_adapter_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_tradstry_snaptrade_v1_adapter_proto_goTypes = []any{
 	(*RequestAuth)(nil),                  // 0: tradstry.snaptrade.v1.RequestAuth
 	(*ResponseMeta)(nil),                 // 1: tradstry.snaptrade.v1.ResponseMeta
 	(*RateLimit)(nil),                    // 2: tradstry.snaptrade.v1.RateLimit
 	(*Credentials)(nil),                  // 3: tradstry.snaptrade.v1.Credentials
-	(*RegisterUserRequest)(nil),          // 4: tradstry.snaptrade.v1.RegisterUserRequest
-	(*RegisterUserResponse)(nil),         // 5: tradstry.snaptrade.v1.RegisterUserResponse
-	(*UserRegistration)(nil),             // 6: tradstry.snaptrade.v1.UserRegistration
-	(*DeleteUserRequest)(nil),            // 7: tradstry.snaptrade.v1.DeleteUserRequest
-	(*DeleteUserResponse)(nil),           // 8: tradstry.snaptrade.v1.DeleteUserResponse
-	(*InitiateConnectionRequest)(nil),    // 9: tradstry.snaptrade.v1.InitiateConnectionRequest
-	(*InitiateConnectionResponse)(nil),   // 10: tradstry.snaptrade.v1.InitiateConnectionResponse
-	(*ConnectionPortal)(nil),             // 11: tradstry.snaptrade.v1.ConnectionPortal
-	(*GetConnectionRequest)(nil),         // 12: tradstry.snaptrade.v1.GetConnectionRequest
-	(*GetConnectionResponse)(nil),        // 13: tradstry.snaptrade.v1.GetConnectionResponse
-	(*ListConnectionsRequest)(nil),       // 14: tradstry.snaptrade.v1.ListConnectionsRequest
-	(*ListConnectionsResponse)(nil),      // 15: tradstry.snaptrade.v1.ListConnectionsResponse
-	(*RefreshConnectionRequest)(nil),     // 16: tradstry.snaptrade.v1.RefreshConnectionRequest
-	(*RefreshConnectionResponse)(nil),    // 17: tradstry.snaptrade.v1.RefreshConnectionResponse
-	(*DeleteConnectionRequest)(nil),      // 18: tradstry.snaptrade.v1.DeleteConnectionRequest
-	(*DeleteConnectionResponse)(nil),     // 19: tradstry.snaptrade.v1.DeleteConnectionResponse
-	(*Connection)(nil),                   // 20: tradstry.snaptrade.v1.Connection
-	(*RefreshResult)(nil),                // 21: tradstry.snaptrade.v1.RefreshResult
-	(*ListAccountsRequest)(nil),          // 22: tradstry.snaptrade.v1.ListAccountsRequest
-	(*ListAccountsResponse)(nil),         // 23: tradstry.snaptrade.v1.ListAccountsResponse
-	(*GetAccountRequest)(nil),            // 24: tradstry.snaptrade.v1.GetAccountRequest
-	(*GetAccountResponse)(nil),           // 25: tradstry.snaptrade.v1.GetAccountResponse
-	(*Account)(nil),                      // 26: tradstry.snaptrade.v1.Account
-	(*SyncStatus)(nil),                   // 27: tradstry.snaptrade.v1.SyncStatus
-	(*TransactionsSyncStatus)(nil),       // 28: tradstry.snaptrade.v1.TransactionsSyncStatus
-	(*HoldingsSyncStatus)(nil),           // 29: tradstry.snaptrade.v1.HoldingsSyncStatus
-	(*Money)(nil),                        // 30: tradstry.snaptrade.v1.Money
-	(*GetPortfolioSnapshotRequest)(nil),  // 31: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest
-	(*GetPortfolioSnapshotResponse)(nil), // 32: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse
-	(*PortfolioSnapshot)(nil),            // 33: tradstry.snaptrade.v1.PortfolioSnapshot
-	(*Position)(nil),                     // 34: tradstry.snaptrade.v1.Position
-	(*OptionDetails)(nil),                // 35: tradstry.snaptrade.v1.OptionDetails
-	(*Balance)(nil),                      // 36: tradstry.snaptrade.v1.Balance
-	(*Order)(nil),                        // 37: tradstry.snaptrade.v1.Order
-	(*GetActivitiesRequest)(nil),         // 38: tradstry.snaptrade.v1.GetActivitiesRequest
-	(*GetActivitiesResponse)(nil),        // 39: tradstry.snaptrade.v1.GetActivitiesResponse
-	(*ActivitiesPage)(nil),               // 40: tradstry.snaptrade.v1.ActivitiesPage
-	(*Pagination)(nil),                   // 41: tradstry.snaptrade.v1.Pagination
-	(*Activity)(nil),                     // 42: tradstry.snaptrade.v1.Activity
-	(*ActivitySymbol)(nil),               // 43: tradstry.snaptrade.v1.ActivitySymbol
-	(*Currency)(nil),                     // 44: tradstry.snaptrade.v1.Currency
-	(*OptionSymbol)(nil),                 // 45: tradstry.snaptrade.v1.OptionSymbol
+	(*OAuthCredentials)(nil),             // 4: tradstry.snaptrade.v1.OAuthCredentials
+	(*ApiCredentials)(nil),               // 5: tradstry.snaptrade.v1.ApiCredentials
+	(*RegisterUserRequest)(nil),          // 6: tradstry.snaptrade.v1.RegisterUserRequest
+	(*RegisterUserResponse)(nil),         // 7: tradstry.snaptrade.v1.RegisterUserResponse
+	(*UserRegistration)(nil),             // 8: tradstry.snaptrade.v1.UserRegistration
+	(*DeleteUserRequest)(nil),            // 9: tradstry.snaptrade.v1.DeleteUserRequest
+	(*DeleteUserResponse)(nil),           // 10: tradstry.snaptrade.v1.DeleteUserResponse
+	(*InitiateConnectionRequest)(nil),    // 11: tradstry.snaptrade.v1.InitiateConnectionRequest
+	(*InitiateConnectionResponse)(nil),   // 12: tradstry.snaptrade.v1.InitiateConnectionResponse
+	(*ConnectionPortal)(nil),             // 13: tradstry.snaptrade.v1.ConnectionPortal
+	(*GetConnectionRequest)(nil),         // 14: tradstry.snaptrade.v1.GetConnectionRequest
+	(*GetConnectionResponse)(nil),        // 15: tradstry.snaptrade.v1.GetConnectionResponse
+	(*ListConnectionsRequest)(nil),       // 16: tradstry.snaptrade.v1.ListConnectionsRequest
+	(*ListConnectionsResponse)(nil),      // 17: tradstry.snaptrade.v1.ListConnectionsResponse
+	(*RefreshConnectionRequest)(nil),     // 18: tradstry.snaptrade.v1.RefreshConnectionRequest
+	(*RefreshConnectionResponse)(nil),    // 19: tradstry.snaptrade.v1.RefreshConnectionResponse
+	(*DeleteConnectionRequest)(nil),      // 20: tradstry.snaptrade.v1.DeleteConnectionRequest
+	(*DeleteConnectionResponse)(nil),     // 21: tradstry.snaptrade.v1.DeleteConnectionResponse
+	(*Connection)(nil),                   // 22: tradstry.snaptrade.v1.Connection
+	(*RefreshResult)(nil),                // 23: tradstry.snaptrade.v1.RefreshResult
+	(*ListAccountsRequest)(nil),          // 24: tradstry.snaptrade.v1.ListAccountsRequest
+	(*ListAccountsResponse)(nil),         // 25: tradstry.snaptrade.v1.ListAccountsResponse
+	(*GetAccountRequest)(nil),            // 26: tradstry.snaptrade.v1.GetAccountRequest
+	(*GetAccountResponse)(nil),           // 27: tradstry.snaptrade.v1.GetAccountResponse
+	(*Account)(nil),                      // 28: tradstry.snaptrade.v1.Account
+	(*SyncStatus)(nil),                   // 29: tradstry.snaptrade.v1.SyncStatus
+	(*TransactionsSyncStatus)(nil),       // 30: tradstry.snaptrade.v1.TransactionsSyncStatus
+	(*HoldingsSyncStatus)(nil),           // 31: tradstry.snaptrade.v1.HoldingsSyncStatus
+	(*Money)(nil),                        // 32: tradstry.snaptrade.v1.Money
+	(*GetPortfolioSnapshotRequest)(nil),  // 33: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest
+	(*GetPortfolioSnapshotResponse)(nil), // 34: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse
+	(*PortfolioSnapshot)(nil),            // 35: tradstry.snaptrade.v1.PortfolioSnapshot
+	(*Position)(nil),                     // 36: tradstry.snaptrade.v1.Position
+	(*OptionDetails)(nil),                // 37: tradstry.snaptrade.v1.OptionDetails
+	(*Balance)(nil),                      // 38: tradstry.snaptrade.v1.Balance
+	(*Order)(nil),                        // 39: tradstry.snaptrade.v1.Order
+	(*GetActivitiesRequest)(nil),         // 40: tradstry.snaptrade.v1.GetActivitiesRequest
+	(*GetActivitiesResponse)(nil),        // 41: tradstry.snaptrade.v1.GetActivitiesResponse
+	(*ActivitiesPage)(nil),               // 42: tradstry.snaptrade.v1.ActivitiesPage
+	(*Pagination)(nil),                   // 43: tradstry.snaptrade.v1.Pagination
+	(*Activity)(nil),                     // 44: tradstry.snaptrade.v1.Activity
+	(*ActivitySymbol)(nil),               // 45: tradstry.snaptrade.v1.ActivitySymbol
+	(*Currency)(nil),                     // 46: tradstry.snaptrade.v1.Currency
+	(*OptionSymbol)(nil),                 // 47: tradstry.snaptrade.v1.OptionSymbol
+	(*BeginOAuthRequest)(nil),            // 48: tradstry.snaptrade.v1.BeginOAuthRequest
+	(*BeginOAuthResponse)(nil),           // 49: tradstry.snaptrade.v1.BeginOAuthResponse
+	(*ExchangeOAuthCodeRequest)(nil),     // 50: tradstry.snaptrade.v1.ExchangeOAuthCodeRequest
+	(*RefreshOAuthTokenRequest)(nil),     // 51: tradstry.snaptrade.v1.RefreshOAuthTokenRequest
+	(*RevokeOAuthTokenRequest)(nil),      // 52: tradstry.snaptrade.v1.RevokeOAuthTokenRequest
+	(*OAuthTokens)(nil),                  // 53: tradstry.snaptrade.v1.OAuthTokens
+	(*ExchangeOAuthCodeResponse)(nil),    // 54: tradstry.snaptrade.v1.ExchangeOAuthCodeResponse
+	(*RefreshOAuthTokenResponse)(nil),    // 55: tradstry.snaptrade.v1.RefreshOAuthTokenResponse
+	(*RevokeOAuthTokenResponse)(nil),     // 56: tradstry.snaptrade.v1.RevokeOAuthTokenResponse
 }
 var file_tradstry_snaptrade_v1_adapter_proto_depIdxs = []int32{
 	2,  // 0: tradstry.snaptrade.v1.ResponseMeta.rate_limit:type_name -> tradstry.snaptrade.v1.RateLimit
-	0,  // 1: tradstry.snaptrade.v1.RegisterUserRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	1,  // 2: tradstry.snaptrade.v1.RegisterUserResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	6,  // 3: tradstry.snaptrade.v1.RegisterUserResponse.user:type_name -> tradstry.snaptrade.v1.UserRegistration
-	0,  // 4: tradstry.snaptrade.v1.DeleteUserRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	1,  // 5: tradstry.snaptrade.v1.DeleteUserResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	0,  // 6: tradstry.snaptrade.v1.InitiateConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	1,  // 7: tradstry.snaptrade.v1.InitiateConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	11, // 8: tradstry.snaptrade.v1.InitiateConnectionResponse.portal:type_name -> tradstry.snaptrade.v1.ConnectionPortal
-	0,  // 9: tradstry.snaptrade.v1.GetConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 10: tradstry.snaptrade.v1.GetConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 11: tradstry.snaptrade.v1.GetConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	20, // 12: tradstry.snaptrade.v1.GetConnectionResponse.connection:type_name -> tradstry.snaptrade.v1.Connection
-	0,  // 13: tradstry.snaptrade.v1.ListConnectionsRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 14: tradstry.snaptrade.v1.ListConnectionsRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 15: tradstry.snaptrade.v1.ListConnectionsResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	20, // 16: tradstry.snaptrade.v1.ListConnectionsResponse.connections:type_name -> tradstry.snaptrade.v1.Connection
-	0,  // 17: tradstry.snaptrade.v1.RefreshConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 18: tradstry.snaptrade.v1.RefreshConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 19: tradstry.snaptrade.v1.RefreshConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	21, // 20: tradstry.snaptrade.v1.RefreshConnectionResponse.result:type_name -> tradstry.snaptrade.v1.RefreshResult
-	0,  // 21: tradstry.snaptrade.v1.DeleteConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 22: tradstry.snaptrade.v1.DeleteConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 23: tradstry.snaptrade.v1.DeleteConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	0,  // 24: tradstry.snaptrade.v1.ListAccountsRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 25: tradstry.snaptrade.v1.ListAccountsRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 26: tradstry.snaptrade.v1.ListAccountsResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	26, // 27: tradstry.snaptrade.v1.ListAccountsResponse.accounts:type_name -> tradstry.snaptrade.v1.Account
-	0,  // 28: tradstry.snaptrade.v1.GetAccountRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 29: tradstry.snaptrade.v1.GetAccountRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 30: tradstry.snaptrade.v1.GetAccountResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	26, // 31: tradstry.snaptrade.v1.GetAccountResponse.account:type_name -> tradstry.snaptrade.v1.Account
-	30, // 32: tradstry.snaptrade.v1.Account.total_value:type_name -> tradstry.snaptrade.v1.Money
-	27, // 33: tradstry.snaptrade.v1.Account.sync_status:type_name -> tradstry.snaptrade.v1.SyncStatus
-	28, // 34: tradstry.snaptrade.v1.SyncStatus.transactions:type_name -> tradstry.snaptrade.v1.TransactionsSyncStatus
-	29, // 35: tradstry.snaptrade.v1.SyncStatus.holdings:type_name -> tradstry.snaptrade.v1.HoldingsSyncStatus
-	0,  // 36: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 37: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 38: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	33, // 39: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse.snapshot:type_name -> tradstry.snaptrade.v1.PortfolioSnapshot
-	34, // 40: tradstry.snaptrade.v1.PortfolioSnapshot.positions:type_name -> tradstry.snaptrade.v1.Position
-	36, // 41: tradstry.snaptrade.v1.PortfolioSnapshot.balances:type_name -> tradstry.snaptrade.v1.Balance
-	37, // 42: tradstry.snaptrade.v1.PortfolioSnapshot.orders:type_name -> tradstry.snaptrade.v1.Order
-	30, // 43: tradstry.snaptrade.v1.PortfolioSnapshot.total_value:type_name -> tradstry.snaptrade.v1.Money
-	35, // 44: tradstry.snaptrade.v1.Position.option:type_name -> tradstry.snaptrade.v1.OptionDetails
-	0,  // 45: tradstry.snaptrade.v1.GetActivitiesRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
-	3,  // 46: tradstry.snaptrade.v1.GetActivitiesRequest.credentials:type_name -> tradstry.snaptrade.v1.Credentials
-	1,  // 47: tradstry.snaptrade.v1.GetActivitiesResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
-	40, // 48: tradstry.snaptrade.v1.GetActivitiesResponse.page:type_name -> tradstry.snaptrade.v1.ActivitiesPage
-	42, // 49: tradstry.snaptrade.v1.ActivitiesPage.activities:type_name -> tradstry.snaptrade.v1.Activity
-	41, // 50: tradstry.snaptrade.v1.ActivitiesPage.pagination:type_name -> tradstry.snaptrade.v1.Pagination
-	43, // 51: tradstry.snaptrade.v1.Activity.symbol:type_name -> tradstry.snaptrade.v1.ActivitySymbol
-	45, // 52: tradstry.snaptrade.v1.Activity.option_symbol:type_name -> tradstry.snaptrade.v1.OptionSymbol
-	44, // 53: tradstry.snaptrade.v1.Activity.currency:type_name -> tradstry.snaptrade.v1.Currency
-	44, // 54: tradstry.snaptrade.v1.ActivitySymbol.currency:type_name -> tradstry.snaptrade.v1.Currency
-	43, // 55: tradstry.snaptrade.v1.OptionSymbol.underlying_symbol:type_name -> tradstry.snaptrade.v1.ActivitySymbol
-	4,  // 56: tradstry.snaptrade.v1.SnapTradeAdapterService.RegisterUser:input_type -> tradstry.snaptrade.v1.RegisterUserRequest
-	7,  // 57: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteUser:input_type -> tradstry.snaptrade.v1.DeleteUserRequest
-	9,  // 58: tradstry.snaptrade.v1.SnapTradeAdapterService.InitiateConnection:input_type -> tradstry.snaptrade.v1.InitiateConnectionRequest
-	12, // 59: tradstry.snaptrade.v1.SnapTradeAdapterService.GetConnection:input_type -> tradstry.snaptrade.v1.GetConnectionRequest
-	14, // 60: tradstry.snaptrade.v1.SnapTradeAdapterService.ListConnections:input_type -> tradstry.snaptrade.v1.ListConnectionsRequest
-	16, // 61: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshConnection:input_type -> tradstry.snaptrade.v1.RefreshConnectionRequest
-	18, // 62: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteConnection:input_type -> tradstry.snaptrade.v1.DeleteConnectionRequest
-	22, // 63: tradstry.snaptrade.v1.SnapTradeAdapterService.ListAccounts:input_type -> tradstry.snaptrade.v1.ListAccountsRequest
-	24, // 64: tradstry.snaptrade.v1.SnapTradeAdapterService.GetAccount:input_type -> tradstry.snaptrade.v1.GetAccountRequest
-	31, // 65: tradstry.snaptrade.v1.SnapTradeAdapterService.GetPortfolioSnapshot:input_type -> tradstry.snaptrade.v1.GetPortfolioSnapshotRequest
-	38, // 66: tradstry.snaptrade.v1.SnapTradeAdapterService.GetActivities:input_type -> tradstry.snaptrade.v1.GetActivitiesRequest
-	5,  // 67: tradstry.snaptrade.v1.SnapTradeAdapterService.RegisterUser:output_type -> tradstry.snaptrade.v1.RegisterUserResponse
-	8,  // 68: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteUser:output_type -> tradstry.snaptrade.v1.DeleteUserResponse
-	10, // 69: tradstry.snaptrade.v1.SnapTradeAdapterService.InitiateConnection:output_type -> tradstry.snaptrade.v1.InitiateConnectionResponse
-	13, // 70: tradstry.snaptrade.v1.SnapTradeAdapterService.GetConnection:output_type -> tradstry.snaptrade.v1.GetConnectionResponse
-	15, // 71: tradstry.snaptrade.v1.SnapTradeAdapterService.ListConnections:output_type -> tradstry.snaptrade.v1.ListConnectionsResponse
-	17, // 72: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshConnection:output_type -> tradstry.snaptrade.v1.RefreshConnectionResponse
-	19, // 73: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteConnection:output_type -> tradstry.snaptrade.v1.DeleteConnectionResponse
-	23, // 74: tradstry.snaptrade.v1.SnapTradeAdapterService.ListAccounts:output_type -> tradstry.snaptrade.v1.ListAccountsResponse
-	25, // 75: tradstry.snaptrade.v1.SnapTradeAdapterService.GetAccount:output_type -> tradstry.snaptrade.v1.GetAccountResponse
-	32, // 76: tradstry.snaptrade.v1.SnapTradeAdapterService.GetPortfolioSnapshot:output_type -> tradstry.snaptrade.v1.GetPortfolioSnapshotResponse
-	39, // 77: tradstry.snaptrade.v1.SnapTradeAdapterService.GetActivities:output_type -> tradstry.snaptrade.v1.GetActivitiesResponse
-	67, // [67:78] is the sub-list for method output_type
-	56, // [56:67] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	3,  // 1: tradstry.snaptrade.v1.ApiCredentials.commercial:type_name -> tradstry.snaptrade.v1.Credentials
+	4,  // 2: tradstry.snaptrade.v1.ApiCredentials.oauth:type_name -> tradstry.snaptrade.v1.OAuthCredentials
+	0,  // 3: tradstry.snaptrade.v1.RegisterUserRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	1,  // 4: tradstry.snaptrade.v1.RegisterUserResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	8,  // 5: tradstry.snaptrade.v1.RegisterUserResponse.user:type_name -> tradstry.snaptrade.v1.UserRegistration
+	0,  // 6: tradstry.snaptrade.v1.DeleteUserRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	1,  // 7: tradstry.snaptrade.v1.DeleteUserResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	0,  // 8: tradstry.snaptrade.v1.InitiateConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	1,  // 9: tradstry.snaptrade.v1.InitiateConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	13, // 10: tradstry.snaptrade.v1.InitiateConnectionResponse.portal:type_name -> tradstry.snaptrade.v1.ConnectionPortal
+	0,  // 11: tradstry.snaptrade.v1.GetConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 12: tradstry.snaptrade.v1.GetConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 13: tradstry.snaptrade.v1.GetConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	22, // 14: tradstry.snaptrade.v1.GetConnectionResponse.connection:type_name -> tradstry.snaptrade.v1.Connection
+	0,  // 15: tradstry.snaptrade.v1.ListConnectionsRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 16: tradstry.snaptrade.v1.ListConnectionsRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 17: tradstry.snaptrade.v1.ListConnectionsResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	22, // 18: tradstry.snaptrade.v1.ListConnectionsResponse.connections:type_name -> tradstry.snaptrade.v1.Connection
+	0,  // 19: tradstry.snaptrade.v1.RefreshConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 20: tradstry.snaptrade.v1.RefreshConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 21: tradstry.snaptrade.v1.RefreshConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	23, // 22: tradstry.snaptrade.v1.RefreshConnectionResponse.result:type_name -> tradstry.snaptrade.v1.RefreshResult
+	0,  // 23: tradstry.snaptrade.v1.DeleteConnectionRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 24: tradstry.snaptrade.v1.DeleteConnectionRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 25: tradstry.snaptrade.v1.DeleteConnectionResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	0,  // 26: tradstry.snaptrade.v1.ListAccountsRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 27: tradstry.snaptrade.v1.ListAccountsRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 28: tradstry.snaptrade.v1.ListAccountsResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	28, // 29: tradstry.snaptrade.v1.ListAccountsResponse.accounts:type_name -> tradstry.snaptrade.v1.Account
+	0,  // 30: tradstry.snaptrade.v1.GetAccountRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 31: tradstry.snaptrade.v1.GetAccountRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 32: tradstry.snaptrade.v1.GetAccountResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	28, // 33: tradstry.snaptrade.v1.GetAccountResponse.account:type_name -> tradstry.snaptrade.v1.Account
+	32, // 34: tradstry.snaptrade.v1.Account.total_value:type_name -> tradstry.snaptrade.v1.Money
+	29, // 35: tradstry.snaptrade.v1.Account.sync_status:type_name -> tradstry.snaptrade.v1.SyncStatus
+	30, // 36: tradstry.snaptrade.v1.SyncStatus.transactions:type_name -> tradstry.snaptrade.v1.TransactionsSyncStatus
+	31, // 37: tradstry.snaptrade.v1.SyncStatus.holdings:type_name -> tradstry.snaptrade.v1.HoldingsSyncStatus
+	0,  // 38: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 39: tradstry.snaptrade.v1.GetPortfolioSnapshotRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 40: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	35, // 41: tradstry.snaptrade.v1.GetPortfolioSnapshotResponse.snapshot:type_name -> tradstry.snaptrade.v1.PortfolioSnapshot
+	36, // 42: tradstry.snaptrade.v1.PortfolioSnapshot.positions:type_name -> tradstry.snaptrade.v1.Position
+	38, // 43: tradstry.snaptrade.v1.PortfolioSnapshot.balances:type_name -> tradstry.snaptrade.v1.Balance
+	39, // 44: tradstry.snaptrade.v1.PortfolioSnapshot.orders:type_name -> tradstry.snaptrade.v1.Order
+	32, // 45: tradstry.snaptrade.v1.PortfolioSnapshot.total_value:type_name -> tradstry.snaptrade.v1.Money
+	37, // 46: tradstry.snaptrade.v1.Position.option:type_name -> tradstry.snaptrade.v1.OptionDetails
+	0,  // 47: tradstry.snaptrade.v1.GetActivitiesRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	5,  // 48: tradstry.snaptrade.v1.GetActivitiesRequest.credentials:type_name -> tradstry.snaptrade.v1.ApiCredentials
+	1,  // 49: tradstry.snaptrade.v1.GetActivitiesResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	42, // 50: tradstry.snaptrade.v1.GetActivitiesResponse.page:type_name -> tradstry.snaptrade.v1.ActivitiesPage
+	44, // 51: tradstry.snaptrade.v1.ActivitiesPage.activities:type_name -> tradstry.snaptrade.v1.Activity
+	43, // 52: tradstry.snaptrade.v1.ActivitiesPage.pagination:type_name -> tradstry.snaptrade.v1.Pagination
+	45, // 53: tradstry.snaptrade.v1.Activity.symbol:type_name -> tradstry.snaptrade.v1.ActivitySymbol
+	47, // 54: tradstry.snaptrade.v1.Activity.option_symbol:type_name -> tradstry.snaptrade.v1.OptionSymbol
+	46, // 55: tradstry.snaptrade.v1.Activity.currency:type_name -> tradstry.snaptrade.v1.Currency
+	46, // 56: tradstry.snaptrade.v1.ActivitySymbol.currency:type_name -> tradstry.snaptrade.v1.Currency
+	45, // 57: tradstry.snaptrade.v1.OptionSymbol.underlying_symbol:type_name -> tradstry.snaptrade.v1.ActivitySymbol
+	0,  // 58: tradstry.snaptrade.v1.BeginOAuthRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	1,  // 59: tradstry.snaptrade.v1.BeginOAuthResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	0,  // 60: tradstry.snaptrade.v1.ExchangeOAuthCodeRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	0,  // 61: tradstry.snaptrade.v1.RefreshOAuthTokenRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	0,  // 62: tradstry.snaptrade.v1.RevokeOAuthTokenRequest.auth:type_name -> tradstry.snaptrade.v1.RequestAuth
+	1,  // 63: tradstry.snaptrade.v1.ExchangeOAuthCodeResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	53, // 64: tradstry.snaptrade.v1.ExchangeOAuthCodeResponse.tokens:type_name -> tradstry.snaptrade.v1.OAuthTokens
+	1,  // 65: tradstry.snaptrade.v1.RefreshOAuthTokenResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	53, // 66: tradstry.snaptrade.v1.RefreshOAuthTokenResponse.tokens:type_name -> tradstry.snaptrade.v1.OAuthTokens
+	1,  // 67: tradstry.snaptrade.v1.RevokeOAuthTokenResponse.meta:type_name -> tradstry.snaptrade.v1.ResponseMeta
+	6,  // 68: tradstry.snaptrade.v1.SnapTradeAdapterService.RegisterUser:input_type -> tradstry.snaptrade.v1.RegisterUserRequest
+	9,  // 69: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteUser:input_type -> tradstry.snaptrade.v1.DeleteUserRequest
+	11, // 70: tradstry.snaptrade.v1.SnapTradeAdapterService.InitiateConnection:input_type -> tradstry.snaptrade.v1.InitiateConnectionRequest
+	14, // 71: tradstry.snaptrade.v1.SnapTradeAdapterService.GetConnection:input_type -> tradstry.snaptrade.v1.GetConnectionRequest
+	16, // 72: tradstry.snaptrade.v1.SnapTradeAdapterService.ListConnections:input_type -> tradstry.snaptrade.v1.ListConnectionsRequest
+	18, // 73: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshConnection:input_type -> tradstry.snaptrade.v1.RefreshConnectionRequest
+	20, // 74: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteConnection:input_type -> tradstry.snaptrade.v1.DeleteConnectionRequest
+	24, // 75: tradstry.snaptrade.v1.SnapTradeAdapterService.ListAccounts:input_type -> tradstry.snaptrade.v1.ListAccountsRequest
+	26, // 76: tradstry.snaptrade.v1.SnapTradeAdapterService.GetAccount:input_type -> tradstry.snaptrade.v1.GetAccountRequest
+	33, // 77: tradstry.snaptrade.v1.SnapTradeAdapterService.GetPortfolioSnapshot:input_type -> tradstry.snaptrade.v1.GetPortfolioSnapshotRequest
+	40, // 78: tradstry.snaptrade.v1.SnapTradeAdapterService.GetActivities:input_type -> tradstry.snaptrade.v1.GetActivitiesRequest
+	48, // 79: tradstry.snaptrade.v1.SnapTradeAdapterService.BeginOAuth:input_type -> tradstry.snaptrade.v1.BeginOAuthRequest
+	50, // 80: tradstry.snaptrade.v1.SnapTradeAdapterService.ExchangeOAuthCode:input_type -> tradstry.snaptrade.v1.ExchangeOAuthCodeRequest
+	51, // 81: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshOAuthToken:input_type -> tradstry.snaptrade.v1.RefreshOAuthTokenRequest
+	52, // 82: tradstry.snaptrade.v1.SnapTradeAdapterService.RevokeOAuthToken:input_type -> tradstry.snaptrade.v1.RevokeOAuthTokenRequest
+	7,  // 83: tradstry.snaptrade.v1.SnapTradeAdapterService.RegisterUser:output_type -> tradstry.snaptrade.v1.RegisterUserResponse
+	10, // 84: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteUser:output_type -> tradstry.snaptrade.v1.DeleteUserResponse
+	12, // 85: tradstry.snaptrade.v1.SnapTradeAdapterService.InitiateConnection:output_type -> tradstry.snaptrade.v1.InitiateConnectionResponse
+	15, // 86: tradstry.snaptrade.v1.SnapTradeAdapterService.GetConnection:output_type -> tradstry.snaptrade.v1.GetConnectionResponse
+	17, // 87: tradstry.snaptrade.v1.SnapTradeAdapterService.ListConnections:output_type -> tradstry.snaptrade.v1.ListConnectionsResponse
+	19, // 88: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshConnection:output_type -> tradstry.snaptrade.v1.RefreshConnectionResponse
+	21, // 89: tradstry.snaptrade.v1.SnapTradeAdapterService.DeleteConnection:output_type -> tradstry.snaptrade.v1.DeleteConnectionResponse
+	25, // 90: tradstry.snaptrade.v1.SnapTradeAdapterService.ListAccounts:output_type -> tradstry.snaptrade.v1.ListAccountsResponse
+	27, // 91: tradstry.snaptrade.v1.SnapTradeAdapterService.GetAccount:output_type -> tradstry.snaptrade.v1.GetAccountResponse
+	34, // 92: tradstry.snaptrade.v1.SnapTradeAdapterService.GetPortfolioSnapshot:output_type -> tradstry.snaptrade.v1.GetPortfolioSnapshotResponse
+	41, // 93: tradstry.snaptrade.v1.SnapTradeAdapterService.GetActivities:output_type -> tradstry.snaptrade.v1.GetActivitiesResponse
+	49, // 94: tradstry.snaptrade.v1.SnapTradeAdapterService.BeginOAuth:output_type -> tradstry.snaptrade.v1.BeginOAuthResponse
+	54, // 95: tradstry.snaptrade.v1.SnapTradeAdapterService.ExchangeOAuthCode:output_type -> tradstry.snaptrade.v1.ExchangeOAuthCodeResponse
+	55, // 96: tradstry.snaptrade.v1.SnapTradeAdapterService.RefreshOAuthToken:output_type -> tradstry.snaptrade.v1.RefreshOAuthTokenResponse
+	56, // 97: tradstry.snaptrade.v1.SnapTradeAdapterService.RevokeOAuthToken:output_type -> tradstry.snaptrade.v1.RevokeOAuthTokenResponse
+	83, // [83:98] is the sub-list for method output_type
+	68, // [68:83] is the sub-list for method input_type
+	68, // [68:68] is the sub-list for extension type_name
+	68, // [68:68] is the sub-list for extension extendee
+	0,  // [0:68] is the sub-list for field type_name
 }
 
 func init() { file_tradstry_snaptrade_v1_adapter_proto_init() }
@@ -3601,10 +4352,13 @@ func file_tradstry_snaptrade_v1_adapter_proto_init() {
 	}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[1].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[2].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[4].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[7].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[5].OneofWrappers = []any{
+		(*ApiCredentials_Commercial)(nil),
+		(*ApiCredentials_Oauth)(nil),
+	}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[6].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[9].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[12].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[11].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[14].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[16].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[18].OneofWrappers = []any{}
@@ -3612,29 +4366,34 @@ func file_tradstry_snaptrade_v1_adapter_proto_init() {
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[22].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[24].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[26].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[27].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[28].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[29].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[30].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[31].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[32].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[33].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[34].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[35].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[36].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[37].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[38].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[39].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[40].OneofWrappers = []any{}
-	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[41].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[42].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[43].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[44].OneofWrappers = []any{}
 	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[45].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[46].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[47].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[48].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[50].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[51].OneofWrappers = []any{}
+	file_tradstry_snaptrade_v1_adapter_proto_msgTypes[52].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tradstry_snaptrade_v1_adapter_proto_rawDesc), len(file_tradstry_snaptrade_v1_adapter_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   46,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

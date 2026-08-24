@@ -7,11 +7,32 @@ import {
 	fetchBrokerageReconciliation,
 	fetchBrokerageSyncOutcome,
 	finalizeBrokerageSetup,
+	finalizeSnapTradeOAuthSetup,
+	initiateSnapTradeOAuth,
 	regroupBrokerageEpisode,
 	reportBrokerageDataIssue,
 } from "./brokerage";
 
 describe("brokerage account workspace service", () => {
+	test("starts OAuth for a specific workspace and finalizes through the same history input", async () => {
+		const calls: Array<{ query: string; variables?: Record<string, unknown> }> = [];
+		const fetcher = (async <T>(query: string, variables?: Record<string, unknown>) => {
+			calls.push({ query, variables });
+			return query.includes("InitiateSnapTradeOauth")
+				? { initiateSnaptradeOauth: { attemptId: "attempt", authorizationUrl: "https://snaptrade.test/authorize" } }
+				: { finalizeSnaptradeOauthSetup: [] } as T;
+		}) as GraphQLFetcher;
+		const started = await initiateSnapTradeOAuth(fetcher, "workspace", "web");
+		const input = {
+			workspaceId: "workspace",
+			primarySnaptradeAccountId: "account",
+			accounts: [{ snaptradeAccountId: "account", policy: { mode: "one_year" as const } }],
+		};
+		await finalizeSnapTradeOAuthSetup(fetcher, started.attemptId, input);
+		expect(calls[0]?.variables).toEqual({ workspaceId: "workspace", platform: "web" });
+		expect(calls[1]?.variables).toEqual({ attemptId: "attempt", input });
+	});
+
 	test("requests the accounts exposed by a workspace connection", async () => {
 		const calls: Array<{
 			query: string;

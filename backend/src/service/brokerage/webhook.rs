@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use tokio::time::{Duration, sleep};
 
+use super::auth::resolve_workspace_auth;
 use super::client::BrokerageClient;
-use super::db::decrypt_secret;
 use super::transaction;
 use crate::service::db::Db;
 use crate::service::db::schema::tables::workspaces_table;
@@ -26,6 +26,7 @@ pub struct WebhookEvent {
     pub user_id: String,
     pub account_id: Option<String>,
     pub connection_id: Option<String>,
+    pub oauth_client_id: Option<String>,
     pub details: Option<WebhookDetails>,
 }
 
@@ -113,6 +114,7 @@ pub fn verify_and_normalize(
                 "connection_id",
             ],
         ),
+        oauth_client_id: read_string(raw, &["oauthClientId", "oauth_client_id"]),
         details,
     })
 }
@@ -134,7 +136,6 @@ struct PendingEvent {
 struct SyncTarget {
     user_id: String,
     workspace_id: String,
-    encrypted_secret: String,
     connection_id: String,
     account_id: Option<String>,
     broker: String,
@@ -156,8 +157,8 @@ pub async fn ingest(pool: &PgPool, event: &WebhookEvent) -> Result<bool> {
     let inserted = sqlx::query(
         "INSERT INTO snaptrade_webhook_events \
          (event_id, event_type, snaptrade_user_id, snaptrade_account_id, \
-          snaptrade_connection_id, event_timestamp, details, normalized_event) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (event_id) DO NOTHING",
+          snaptrade_connection_id, event_timestamp, details, normalized_event, oauth_client_id) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (event_id) DO NOTHING",
     )
     .bind(&event.event_id)
     .bind(&event.event_type)
@@ -173,6 +174,7 @@ pub async fn ingest(pool: &PgPool, event: &WebhookEvent) -> Result<bool> {
             .transpose()?,
     )
     .bind(serde_json::to_value(event)?)
+    .bind(event.oauth_client_id.as_deref())
     .execute(pool)
     .await
     .context("insert SnapTrade webhook event")?
@@ -194,7 +196,7 @@ async fn claim(pool: &PgPool) -> Result<Option<PendingEvent>> {
          FROM candidate WHERE event.event_id = candidate.event_id \
          RETURNING event.event_id, event.event_type, event.event_timestamp, \
              event.snaptrade_user_id, event.snaptrade_account_id, \
-             event.snaptrade_connection_id, event.details",
+             event.snaptrade_connection_id, event.details, event.oauth_client_id",
     )
     .fetch_optional(pool)
     .await
@@ -215,6 +217,7 @@ async fn claim(pool: &PgPool) -> Result<Option<PendingEvent>> {
                     .map(serde_json::from_value)
                     .transpose()?,
                 event_id: row.try_get(0)?,
+                oauth_client_id: row.try_get(7)?,
             },
         })
     })
@@ -237,12 +240,17 @@ fn holdings_refresh_succeeded(details: Option<&WebhookDetails>) -> bool {
 
 async fn targets(pool: &PgPool, event: &WebhookEvent) -> Result<Vec<SyncTarget>> {
     let rows = sqlx::query(
-        "SELECT bc.user_id, bc.workspace_id, bc.snaptrade_user_secret_encrypted, \
+        "SELECT bc.user_id, bc.workspace_id, \
                 bc.snaptrade_connection_id, bc.snaptrade_account_id, \
                 COALESCE(bc.broker, 'your brokerage') \
          FROM brokerage_connections bc \
-         WHERE bc.snaptrade_user_id = $1 \
-           AND bc.snaptrade_user_secret_encrypted IS NOT NULL \
+         LEFT JOIN snaptrade_oauth_grants grant ON grant.id=bc.oauth_grant_id \
+         WHERE ( \
+             (bc.auth_mode='commercial' AND bc.snaptrade_user_id=$1 \
+              AND bc.snaptrade_user_secret_encrypted IS NOT NULL) \
+             OR (bc.auth_mode='oauth' AND grant.snaptrade_user_id=$1 \
+                 AND grant.status='active' AND grant.oauth_client_id=$4) \
+         ) \
            AND bc.snaptrade_connection_id IS NOT NULL \
            AND ($2::text IS NULL OR bc.snaptrade_account_id = $2) \
            AND ($3::text IS NULL OR bc.snaptrade_connection_id = $3)",
@@ -250,6 +258,7 @@ async fn targets(pool: &PgPool, event: &WebhookEvent) -> Result<Vec<SyncTarget>>
     .bind(&event.user_id)
     .bind(event.account_id.as_deref())
     .bind(event.connection_id.as_deref())
+    .bind(event.oauth_client_id.as_deref().unwrap_or_default())
     .fetch_all(pool)
     .await
     .context("find webhook sync target")?;
@@ -259,10 +268,9 @@ async fn targets(pool: &PgPool, event: &WebhookEvent) -> Result<Vec<SyncTarget>>
             Ok(SyncTarget {
                 user_id: row.try_get(0)?,
                 workspace_id: row.try_get(1)?,
-                encrypted_secret: row.try_get(2)?,
-                connection_id: row.try_get(3)?,
-                account_id: row.try_get(4)?,
-                broker: row.try_get(5)?,
+                connection_id: row.try_get(2)?,
+                account_id: row.try_get(3)?,
+                broker: row.try_get(4)?,
             })
         })
         .collect()
@@ -275,9 +283,13 @@ async fn process_target(
     event: &WebhookEvent,
     target: SyncTarget,
 ) -> Result<()> {
-    let secret = decrypt_secret(&target.encrypted_secret).context("decrypt brokerage secret")?;
-    let connection = brokerage
-        .get_connection_status(&event.user_id, &secret, &target.connection_id)
+    let workspace =
+        workspaces_table::find_workspace(db.pool(), &target.workspace_id, &target.user_id)
+            .await?
+            .context("webhook workspace no longer exists")?;
+    let auth = resolve_workspace_auth(db.pool(), brokerage, &workspace).await?;
+    let connection = auth
+        .get_connection(brokerage, &target.connection_id)
         .await
         .context("read webhook connection status")?;
     workspaces_table::set_connection_disabled(
@@ -303,8 +315,8 @@ async fn process_target(
         return Ok(());
     }
 
-    let accounts = brokerage
-        .list_snaptrade_accounts(&event.user_id, &secret)
+    let accounts = auth
+        .list_accounts(brokerage)
         .await
         .context("list webhook brokerage accounts")?;
     let requested_account = event.account_id.as_deref().or(target.account_id.as_deref());
@@ -328,8 +340,7 @@ async fn process_target(
             transaction::sync_holdings_if_advanced(
                 brokerage,
                 db.pool(),
-                &event.user_id,
-                &secret,
+                &auth,
                 account_id,
                 &target.user_id,
                 &target.workspace_id,
@@ -346,8 +357,7 @@ async fn process_target(
             transaction::sync_transactions_if_advanced(
                 brokerage,
                 db.pool(),
-                &event.user_id,
-                &secret,
+                &auth,
                 account_id,
                 &target.user_id,
                 &target.workspace_id,
@@ -494,6 +504,7 @@ mod tests {
             "webhookId":"event-1",
             "eventTimestamp":"2026-08-09T12:00:00Z",
             "userId":"snaptrade-user",
+            "oauthClientId":"oauth-client",
             "eventType":"ACCOUNT_HOLDINGS_UPDATED",
             "accountId":"account-1",
             "brokerageAuthorizationId":"connection-1",
@@ -505,6 +516,7 @@ mod tests {
         assert_eq!(event.event_id, "event-1");
         assert_eq!(event.user_id, "snaptrade-user");
         assert_eq!(event.connection_id.as_deref(), Some("connection-1"));
+        assert_eq!(event.oauth_client_id.as_deref(), Some("oauth-client"));
     }
 
     #[test]

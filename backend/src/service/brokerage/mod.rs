@@ -1,6 +1,8 @@
+pub mod auth;
 pub mod client;
 pub mod db;
 pub mod history_policy;
+pub mod oauth;
 pub mod pending_trades;
 pub mod sync;
 pub mod transaction;

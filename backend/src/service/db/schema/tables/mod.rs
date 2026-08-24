@@ -8,6 +8,7 @@ pub mod playbook_table;
 pub mod position_calculator_history_table;
 pub mod position_calculator_plans_table;
 pub mod position_calculator_rule_table;
+pub mod snaptrade_oauth_table;
 pub mod tags_table;
 pub mod trade_review_table;
 pub mod trading_principle_table;

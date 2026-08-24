@@ -45,6 +45,7 @@ function DesktopDashboard({ auth, onSignOut, theme, setTheme }: {
   const [pathname, setPathname] = useState("/dashboard");
 
   const platform = useMemo<TradstryPlatform>(() => ({
+    kind: "desktop",
     auth: {
       isLoaded: true,
       isSignedIn: true,

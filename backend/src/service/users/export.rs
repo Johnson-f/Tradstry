@@ -14,6 +14,10 @@ const USER_SCOPED: &[(&str, &str)] = &[
         "SELECT to_jsonb(t) - 'snaptrade_user_secret_encrypted' FROM brokerage_connections t WHERE t.user_id = $1",
     ),
     (
+        "snaptrade_oauth_grants",
+        "SELECT to_jsonb(t) - 'access_token_encrypted' - 'refresh_token_encrypted' FROM snaptrade_oauth_grants t WHERE t.user_id = $1",
+    ),
+    (
         "journal_entries",
         "SELECT to_jsonb(t) FROM journal_entries t WHERE t.user_id = $1",
     ),

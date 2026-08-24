@@ -30,6 +30,10 @@ const (
 	SnapTradeAdapterService_GetAccount_FullMethodName           = "/tradstry.snaptrade.v1.SnapTradeAdapterService/GetAccount"
 	SnapTradeAdapterService_GetPortfolioSnapshot_FullMethodName = "/tradstry.snaptrade.v1.SnapTradeAdapterService/GetPortfolioSnapshot"
 	SnapTradeAdapterService_GetActivities_FullMethodName        = "/tradstry.snaptrade.v1.SnapTradeAdapterService/GetActivities"
+	SnapTradeAdapterService_BeginOAuth_FullMethodName           = "/tradstry.snaptrade.v1.SnapTradeAdapterService/BeginOAuth"
+	SnapTradeAdapterService_ExchangeOAuthCode_FullMethodName    = "/tradstry.snaptrade.v1.SnapTradeAdapterService/ExchangeOAuthCode"
+	SnapTradeAdapterService_RefreshOAuthToken_FullMethodName    = "/tradstry.snaptrade.v1.SnapTradeAdapterService/RefreshOAuthToken"
+	SnapTradeAdapterService_RevokeOAuthToken_FullMethodName     = "/tradstry.snaptrade.v1.SnapTradeAdapterService/RevokeOAuthToken"
 )
 
 // SnapTradeAdapterServiceClient is the client API for SnapTradeAdapterService service.
@@ -47,6 +51,10 @@ type SnapTradeAdapterServiceClient interface {
 	GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*GetAccountResponse, error)
 	GetPortfolioSnapshot(ctx context.Context, in *GetPortfolioSnapshotRequest, opts ...grpc.CallOption) (*GetPortfolioSnapshotResponse, error)
 	GetActivities(ctx context.Context, in *GetActivitiesRequest, opts ...grpc.CallOption) (*GetActivitiesResponse, error)
+	BeginOAuth(ctx context.Context, in *BeginOAuthRequest, opts ...grpc.CallOption) (*BeginOAuthResponse, error)
+	ExchangeOAuthCode(ctx context.Context, in *ExchangeOAuthCodeRequest, opts ...grpc.CallOption) (*ExchangeOAuthCodeResponse, error)
+	RefreshOAuthToken(ctx context.Context, in *RefreshOAuthTokenRequest, opts ...grpc.CallOption) (*RefreshOAuthTokenResponse, error)
+	RevokeOAuthToken(ctx context.Context, in *RevokeOAuthTokenRequest, opts ...grpc.CallOption) (*RevokeOAuthTokenResponse, error)
 }
 
 type snapTradeAdapterServiceClient struct {
@@ -167,6 +175,46 @@ func (c *snapTradeAdapterServiceClient) GetActivities(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *snapTradeAdapterServiceClient) BeginOAuth(ctx context.Context, in *BeginOAuthRequest, opts ...grpc.CallOption) (*BeginOAuthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BeginOAuthResponse)
+	err := c.cc.Invoke(ctx, SnapTradeAdapterService_BeginOAuth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *snapTradeAdapterServiceClient) ExchangeOAuthCode(ctx context.Context, in *ExchangeOAuthCodeRequest, opts ...grpc.CallOption) (*ExchangeOAuthCodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeOAuthCodeResponse)
+	err := c.cc.Invoke(ctx, SnapTradeAdapterService_ExchangeOAuthCode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *snapTradeAdapterServiceClient) RefreshOAuthToken(ctx context.Context, in *RefreshOAuthTokenRequest, opts ...grpc.CallOption) (*RefreshOAuthTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshOAuthTokenResponse)
+	err := c.cc.Invoke(ctx, SnapTradeAdapterService_RefreshOAuthToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *snapTradeAdapterServiceClient) RevokeOAuthToken(ctx context.Context, in *RevokeOAuthTokenRequest, opts ...grpc.CallOption) (*RevokeOAuthTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeOAuthTokenResponse)
+	err := c.cc.Invoke(ctx, SnapTradeAdapterService_RevokeOAuthToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SnapTradeAdapterServiceServer is the server API for SnapTradeAdapterService service.
 // All implementations must embed UnimplementedSnapTradeAdapterServiceServer
 // for forward compatibility.
@@ -182,6 +230,10 @@ type SnapTradeAdapterServiceServer interface {
 	GetAccount(context.Context, *GetAccountRequest) (*GetAccountResponse, error)
 	GetPortfolioSnapshot(context.Context, *GetPortfolioSnapshotRequest) (*GetPortfolioSnapshotResponse, error)
 	GetActivities(context.Context, *GetActivitiesRequest) (*GetActivitiesResponse, error)
+	BeginOAuth(context.Context, *BeginOAuthRequest) (*BeginOAuthResponse, error)
+	ExchangeOAuthCode(context.Context, *ExchangeOAuthCodeRequest) (*ExchangeOAuthCodeResponse, error)
+	RefreshOAuthToken(context.Context, *RefreshOAuthTokenRequest) (*RefreshOAuthTokenResponse, error)
+	RevokeOAuthToken(context.Context, *RevokeOAuthTokenRequest) (*RevokeOAuthTokenResponse, error)
 	mustEmbedUnimplementedSnapTradeAdapterServiceServer()
 }
 
@@ -224,6 +276,18 @@ func (UnimplementedSnapTradeAdapterServiceServer) GetPortfolioSnapshot(context.C
 }
 func (UnimplementedSnapTradeAdapterServiceServer) GetActivities(context.Context, *GetActivitiesRequest) (*GetActivitiesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetActivities not implemented")
+}
+func (UnimplementedSnapTradeAdapterServiceServer) BeginOAuth(context.Context, *BeginOAuthRequest) (*BeginOAuthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BeginOAuth not implemented")
+}
+func (UnimplementedSnapTradeAdapterServiceServer) ExchangeOAuthCode(context.Context, *ExchangeOAuthCodeRequest) (*ExchangeOAuthCodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeOAuthCode not implemented")
+}
+func (UnimplementedSnapTradeAdapterServiceServer) RefreshOAuthToken(context.Context, *RefreshOAuthTokenRequest) (*RefreshOAuthTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RefreshOAuthToken not implemented")
+}
+func (UnimplementedSnapTradeAdapterServiceServer) RevokeOAuthToken(context.Context, *RevokeOAuthTokenRequest) (*RevokeOAuthTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeOAuthToken not implemented")
 }
 func (UnimplementedSnapTradeAdapterServiceServer) mustEmbedUnimplementedSnapTradeAdapterServiceServer() {
 }
@@ -445,6 +509,78 @@ func _SnapTradeAdapterService_GetActivities_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SnapTradeAdapterService_BeginOAuth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginOAuthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapTradeAdapterServiceServer).BeginOAuth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapTradeAdapterService_BeginOAuth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapTradeAdapterServiceServer).BeginOAuth(ctx, req.(*BeginOAuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SnapTradeAdapterService_ExchangeOAuthCode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeOAuthCodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapTradeAdapterServiceServer).ExchangeOAuthCode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapTradeAdapterService_ExchangeOAuthCode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapTradeAdapterServiceServer).ExchangeOAuthCode(ctx, req.(*ExchangeOAuthCodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SnapTradeAdapterService_RefreshOAuthToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshOAuthTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapTradeAdapterServiceServer).RefreshOAuthToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapTradeAdapterService_RefreshOAuthToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapTradeAdapterServiceServer).RefreshOAuthToken(ctx, req.(*RefreshOAuthTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SnapTradeAdapterService_RevokeOAuthToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeOAuthTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapTradeAdapterServiceServer).RevokeOAuthToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapTradeAdapterService_RevokeOAuthToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapTradeAdapterServiceServer).RevokeOAuthToken(ctx, req.(*RevokeOAuthTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SnapTradeAdapterService_ServiceDesc is the grpc.ServiceDesc for SnapTradeAdapterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -495,6 +631,22 @@ var SnapTradeAdapterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetActivities",
 			Handler:    _SnapTradeAdapterService_GetActivities_Handler,
+		},
+		{
+			MethodName: "BeginOAuth",
+			Handler:    _SnapTradeAdapterService_BeginOAuth_Handler,
+		},
+		{
+			MethodName: "ExchangeOAuthCode",
+			Handler:    _SnapTradeAdapterService_ExchangeOAuthCode_Handler,
+		},
+		{
+			MethodName: "RefreshOAuthToken",
+			Handler:    _SnapTradeAdapterService_RefreshOAuthToken_Handler,
+		},
+		{
+			MethodName: "RevokeOAuthToken",
+			Handler:    _SnapTradeAdapterService_RevokeOAuthToken_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

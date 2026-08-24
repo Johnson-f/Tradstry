@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"snaptrade-service/client"
+	"snaptrade-service/contract"
 	pb "snaptrade-service/gen/snaptrade/v1"
 
 	"google.golang.org/grpc"
@@ -43,11 +44,19 @@ func (s *Server) authenticate(method string, auth *pb.RequestAuth, request proto
 	return nil
 }
 
-func credentials(value *pb.Credentials) (string, string, error) {
-	if value == nil || value.UserId == "" || value.UserSecret == "" {
+func commercialCredentials(value *pb.ApiCredentials) (string, string, error) {
+	commercial := value.GetCommercial()
+	if commercial == nil || commercial.UserId == "" || commercial.UserSecret == "" {
 		return "", "", status.Error(codes.InvalidArgument, "user credentials are required")
 	}
-	return value.UserId, value.UserSecret, nil
+	return commercial.UserId, commercial.UserSecret, nil
+}
+
+func oauthAccessToken(value *pb.ApiCredentials) string {
+	if value == nil || value.GetOauth() == nil {
+		return ""
+	}
+	return value.GetOauth().AccessToken
 }
 
 func (s *Server) RegisterUser(ctx context.Context, request *pb.RegisterUserRequest) (*pb.RegisterUserResponse, error) {
@@ -103,11 +112,18 @@ func (s *Server) GetConnection(ctx context.Context, request *pb.GetConnectionReq
 	if err := s.authenticate(pb.SnapTradeAdapterService_GetConnection_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var value contract.Connection
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		value, meta, err = s.snapTrade.GetConnectionOAuth(token, request.ConnectionId)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		value, meta, err = s.snapTrade.GetConnection(userID, secret, request.ConnectionId)
 	}
-	value, meta, err := s.snapTrade.GetConnection(userID, secret, request.ConnectionId)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to get connection", err)
 	}
@@ -118,11 +134,18 @@ func (s *Server) ListConnections(ctx context.Context, request *pb.ListConnection
 	if err := s.authenticate(pb.SnapTradeAdapterService_ListConnections_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var values []contract.Connection
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		values, meta, err = s.snapTrade.ListConnectionsOAuth(token)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		values, meta, err = s.snapTrade.ListConnections(userID, secret)
 	}
-	values, meta, err := s.snapTrade.ListConnections(userID, secret)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to list connections", err)
 	}
@@ -137,7 +160,7 @@ func (s *Server) RefreshConnection(ctx context.Context, request *pb.RefreshConne
 	if err := s.authenticate(pb.SnapTradeAdapterService_RefreshConnection_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
+	userID, secret, err := commercialCredentials(request.Credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +175,7 @@ func (s *Server) DeleteConnection(ctx context.Context, request *pb.DeleteConnect
 	if err := s.authenticate(pb.SnapTradeAdapterService_DeleteConnection_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
+	userID, secret, err := commercialCredentials(request.Credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -167,11 +190,18 @@ func (s *Server) ListAccounts(ctx context.Context, request *pb.ListAccountsReque
 	if err := s.authenticate(pb.SnapTradeAdapterService_ListAccounts_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var values []contract.Account
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		values, meta, err = s.snapTrade.ListAccountsOAuth(token)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		values, meta, err = s.snapTrade.ListAccounts(userID, secret)
 	}
-	values, meta, err := s.snapTrade.ListAccounts(userID, secret)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to list accounts", err)
 	}
@@ -186,11 +216,18 @@ func (s *Server) GetAccount(ctx context.Context, request *pb.GetAccountRequest) 
 	if err := s.authenticate(pb.SnapTradeAdapterService_GetAccount_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var value contract.Account
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		value, meta, err = s.snapTrade.GetAccountOAuth(token, request.AccountId)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		value, meta, err = s.snapTrade.GetAccount(userID, secret, request.AccountId)
 	}
-	value, meta, err := s.snapTrade.GetAccount(userID, secret, request.AccountId)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to get account", err)
 	}
@@ -201,11 +238,18 @@ func (s *Server) GetPortfolioSnapshot(ctx context.Context, request *pb.GetPortfo
 	if err := s.authenticate(pb.SnapTradeAdapterService_GetPortfolioSnapshot_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var value contract.PortfolioSnapshot
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		value, meta, err = s.snapTrade.GetPortfolioSnapshotOAuth(token, request.AccountId)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		value, meta, err = s.snapTrade.GetPortfolioSnapshot(userID, secret, request.AccountId)
 	}
-	value, meta, err := s.snapTrade.GetPortfolioSnapshot(userID, secret, request.AccountId)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to get complete portfolio snapshot", err)
 	}
@@ -216,18 +260,92 @@ func (s *Server) GetActivities(ctx context.Context, request *pb.GetActivitiesReq
 	if err := s.authenticate(pb.SnapTradeAdapterService_GetActivities_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
 		return nil, err
 	}
-	userID, secret, err := credentials(request.Credentials)
-	if err != nil {
-		return nil, err
+	var value contract.ActivitiesPage
+	var meta contract.ResponseMeta
+	var err error
+	if token := oauthAccessToken(request.Credentials); token != "" {
+		value, meta, err = s.snapTrade.GetActivitiesOAuth(
+			token, request.AccountId, request.StartDate, request.EndDate,
+			request.ActivityType, request.Offset, request.Limit,
+		)
+	} else {
+		userID, secret, credentialErr := commercialCredentials(request.Credentials)
+		if credentialErr != nil {
+			return nil, credentialErr
+		}
+		value, meta, err = s.snapTrade.GetActivities(
+			userID, secret, request.AccountId, request.StartDate, request.EndDate,
+			request.ActivityType, request.Offset, request.Limit,
+		)
 	}
-	value, meta, err := s.snapTrade.GetActivities(
-		userID, secret, request.AccountId, request.StartDate, request.EndDate,
-		request.ActivityType, request.Offset, request.Limit,
-	)
 	if err != nil {
 		return nil, upstreamError(ctx, "failed to get account activities", err)
 	}
 	return &pb.GetActivitiesResponse{Meta: responseMeta(meta), Page: activities(value)}, nil
+}
+
+func (s *Server) BeginOAuth(ctx context.Context, request *pb.BeginOAuthRequest) (*pb.BeginOAuthResponse, error) {
+	if err := s.authenticate(pb.SnapTradeAdapterService_BeginOAuth_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
+		return nil, err
+	}
+	if request.State == "" || request.CodeChallenge == "" || request.RedirectUri == "" || len(request.Scopes) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "complete OAuth authorization parameters are required")
+	}
+	value, meta, err := s.snapTrade.BeginOAuth(request.State, request.CodeChallenge, request.RedirectUri, request.Scopes)
+	if err != nil {
+		return nil, upstreamError(ctx, "failed to begin SnapTrade OAuth", err)
+	}
+	return &pb.BeginOAuthResponse{Meta: responseMeta(meta), AuthorizationUrl: value}, nil
+}
+
+func (s *Server) ExchangeOAuthCode(ctx context.Context, request *pb.ExchangeOAuthCodeRequest) (*pb.ExchangeOAuthCodeResponse, error) {
+	if err := s.authenticate(pb.SnapTradeAdapterService_ExchangeOAuthCode_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
+		return nil, err
+	}
+	if request.Code == "" || request.CodeVerifier == "" || request.RedirectUri == "" {
+		return nil, status.Error(codes.InvalidArgument, "complete OAuth code exchange parameters are required")
+	}
+	value, meta, err := s.snapTrade.ExchangeOAuthCode(request.Code, request.CodeVerifier, request.RedirectUri)
+	if err != nil {
+		return nil, upstreamError(ctx, "failed to exchange SnapTrade OAuth code", err)
+	}
+	return &pb.ExchangeOAuthCodeResponse{Meta: responseMeta(meta), Tokens: oauthTokens(value)}, nil
+}
+
+func (s *Server) RefreshOAuthToken(ctx context.Context, request *pb.RefreshOAuthTokenRequest) (*pb.RefreshOAuthTokenResponse, error) {
+	if err := s.authenticate(pb.SnapTradeAdapterService_RefreshOAuthToken_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
+		return nil, err
+	}
+	if request.RefreshToken == "" {
+		return nil, status.Error(codes.InvalidArgument, "refresh token is required")
+	}
+	value, meta, err := s.snapTrade.RefreshOAuthToken(request.RefreshToken)
+	if err != nil {
+		return nil, upstreamError(ctx, "failed to refresh SnapTrade OAuth token", err)
+	}
+	return &pb.RefreshOAuthTokenResponse{Meta: responseMeta(meta), Tokens: oauthTokens(value)}, nil
+}
+
+func (s *Server) RevokeOAuthToken(ctx context.Context, request *pb.RevokeOAuthTokenRequest) (*pb.RevokeOAuthTokenResponse, error) {
+	if err := s.authenticate(pb.SnapTradeAdapterService_RevokeOAuthToken_FullMethodName, request.Auth, request, func() { request.Auth = nil }); err != nil {
+		return nil, err
+	}
+	if request.Token == "" {
+		return nil, status.Error(codes.InvalidArgument, "token is required")
+	}
+	meta, err := s.snapTrade.RevokeOAuthToken(request.Token)
+	if err != nil {
+		return nil, upstreamError(ctx, "failed to revoke SnapTrade OAuth token", err)
+	}
+	return &pb.RevokeOAuthTokenResponse{Meta: responseMeta(meta), Revoked: true}, nil
+}
+
+func oauthTokens(value contract.OAuthTokens) *pb.OAuthTokens {
+	return &pb.OAuthTokens{
+		AccessToken: value.AccessToken, RefreshToken: value.RefreshToken,
+		ExpiresIn: value.ExpiresIn, Scopes: value.Scopes,
+		OauthClientId: value.OAuthClientID, SnaptradeUserId: value.SnapTradeUserID,
+	}
 }
 
 func stringValue(value *string) string {

@@ -16,6 +16,10 @@ service SnapTradeAdapterService {
   rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
   rpc GetPortfolioSnapshot(GetPortfolioSnapshotRequest) returns (GetPortfolioSnapshotResponse);
   rpc GetActivities(GetActivitiesRequest) returns (GetActivitiesResponse);
+  rpc BeginOAuth(BeginOAuthRequest) returns (BeginOAuthResponse);
+  rpc ExchangeOAuthCode(ExchangeOAuthCodeRequest) returns (ExchangeOAuthCodeResponse);
+  rpc RefreshOAuthToken(RefreshOAuthTokenRequest) returns (RefreshOAuthTokenResponse);
+  rpc RevokeOAuthToken(RevokeOAuthTokenRequest) returns (RevokeOAuthTokenResponse);
 }
 
 message RequestAuth {
@@ -42,6 +46,17 @@ message RateLimit {
 message Credentials {
   string user_id = 1;
   string user_secret = 2;
+}
+
+message OAuthCredentials {
+  string access_token = 1;
+}
+
+message ApiCredentials {
+  oneof kind {
+    Credentials commercial = 1;
+    OAuthCredentials oauth = 2;
+  }
 }
 
 message RegisterUserRequest {
@@ -91,7 +106,7 @@ message ConnectionPortal {
 
 message GetConnectionRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string connection_id = 3;
 }
 
@@ -102,7 +117,7 @@ message GetConnectionResponse {
 
 message ListConnectionsRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
 }
 
 message ListConnectionsResponse {
@@ -112,7 +127,7 @@ message ListConnectionsResponse {
 
 message RefreshConnectionRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string connection_id = 3;
 }
 
@@ -123,7 +138,7 @@ message RefreshConnectionResponse {
 
 message DeleteConnectionRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string connection_id = 3;
 }
 
@@ -148,7 +163,7 @@ message RefreshResult {
 
 message ListAccountsRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
 }
 
 message ListAccountsResponse {
@@ -158,7 +173,7 @@ message ListAccountsResponse {
 
 message GetAccountRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string account_id = 3;
 }
 
@@ -201,7 +216,7 @@ message Money {
 
 message GetPortfolioSnapshotRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string account_id = 3;
 }
 
@@ -262,7 +277,7 @@ message Order {
 
 message GetActivitiesRequest {
   optional RequestAuth auth = 1;
-  Credentials credentials = 2;
+  ApiCredentials credentials = 2;
   string account_id = 3;
   optional string start_date = 4;
   optional string end_date = 5;
@@ -328,4 +343,58 @@ message OptionSymbol {
   optional string expiration_date = 5;
   optional bool is_mini_option = 6;
   optional ActivitySymbol underlying_symbol = 7;
+}
+
+message BeginOAuthRequest {
+  optional RequestAuth auth = 1;
+  string state = 2;
+  string code_challenge = 3;
+  string redirect_uri = 4;
+  repeated string scopes = 5;
+}
+
+message BeginOAuthResponse {
+  ResponseMeta meta = 1;
+  string authorization_url = 2;
+}
+
+message ExchangeOAuthCodeRequest {
+  optional RequestAuth auth = 1;
+  string code = 2;
+  string code_verifier = 3;
+  string redirect_uri = 4;
+}
+
+message RefreshOAuthTokenRequest {
+  optional RequestAuth auth = 1;
+  string refresh_token = 2;
+}
+
+message RevokeOAuthTokenRequest {
+  optional RequestAuth auth = 1;
+  string token = 2;
+}
+
+message OAuthTokens {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  repeated string scopes = 4;
+  string oauth_client_id = 5;
+  string snaptrade_user_id = 6;
+}
+
+message ExchangeOAuthCodeResponse {
+  ResponseMeta meta = 1;
+  OAuthTokens tokens = 2;
+}
+
+message RefreshOAuthTokenResponse {
+  ResponseMeta meta = 1;
+  OAuthTokens tokens = 2;
+}
+
+message RevokeOAuthTokenResponse {
+  ResponseMeta meta = 1;
+  bool revoked = 2;
 }

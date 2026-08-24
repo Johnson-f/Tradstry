@@ -21,9 +21,15 @@ Create `microservice/snaptrade-service/.env`:
 ```bash
 SNAPTRADE_CLIENT_ID=your_client_id
 SNAPTRADE_CONSUMER_KEY=your_consumer_key
+SNAPTRADE_OAUTH_CLIENT_ID=your_oauth_app_client_id
+SNAPTRADE_OAUTH_CLIENT_SECRET=your_oauth_app_client_secret
 SNAPTRADE_INTERNAL_SECRET=generate_at_least_32_random_bytes
 SNAPTRADE_GRPC_SOCKET=/tmp/tradstry-snaptrade.sock
 ```
+
+The OAuth client secret is shown once when an OAuth app is registered. Store it
+only in the adapter environment. Never expose it to the browser, desktop app,
+logs, or the Rust GraphQL API.
 
 The Rust backend uses the same socket, internal secret, and consumer key.
 Production Compose changes the socket to `/run/tradstry/snaptrade.sock`.

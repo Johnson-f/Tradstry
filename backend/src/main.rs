@@ -12,6 +12,7 @@ use tradstry_backend::service::ai::run_worker_loop;
 use tradstry_backend::service::ai::vector_database::client::VectorDatabaseClient;
 use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::brokerage::client::BrokerageClient;
+use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::r2::R2Client;
 use tradstry_backend::service::redis::client::RedisClient;
@@ -57,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agents_client = Arc::new(AgentsClient::from_env()?);
     let vector_database_client = Arc::new(VectorDatabaseClient::from_env()?);
     let brokerage_client = Arc::new(BrokerageClient::from_env()?);
+    let snaptrade_oauth_config = SnapTradeOAuthConfig::from_env()?;
     let snaptrade_webhook_config = routes::snaptrade_webhook::SnapTradeWebhookConfig::from_env()?;
     let redis_client = match RedisClient::from_env().await {
         Ok(c) => {
@@ -138,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Clerk authentication configured");
     let schema = graphql::build_schema(
         brokerage_client.clone(),
+        snaptrade_oauth_config.clone(),
         checkpoint_saver.clone(),
         memory_store.clone(),
         redis_client.clone(),
@@ -338,6 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .app_data(web::Data::new(vector_database_client.clone()))
             .app_data(web::Data::new(brokerage_client.clone()))
             .app_data(web::Data::new(snaptrade_webhook_config.clone()))
+            .app_data(web::Data::new(snaptrade_oauth_config.clone()))
             .app_data(web::Data::new(ai_events_tx.clone()))
             .app_data(web::Data::new(chat_jobs.clone()))
             .app_data(web::Data::new(chat_session_store.clone()))

@@ -37,6 +37,9 @@ import {
 	useExpandBrokerageTransactionHistory,
 	useFinalizeBrokerageSetup,
 	useInitiateConnection,
+	useInitiateSnapTradeOAuth,
+	useRevokeSnapTradeOAuth,
+	useSnapTradeOAuthAvailable,
 	useSyncBrokerageData,
 } from "@tradstry/app-ui/hooks/brokerage";
 import type {
@@ -284,8 +287,10 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 		!workspace.snaptradeConnectionDisabled,
 	);
 	const disconnect = useDisconnectBrokerage();
+	const revokeOAuth = useRevokeSnapTradeOAuth();
 	const sync = useSyncBrokerageData();
 	const initiate = useInitiateConnection();
+	const initiateOAuth = useInitiateSnapTradeOAuth();
 	const importPolicy = useBrokerageTransactionImportPolicy(workspace.id);
 	const expandHistory = useExpandBrokerageTransactionHistory();
 	const [reconnecting, setReconnecting] = useState(false);
@@ -338,6 +343,14 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 	async function handleReconnect() {
 		setReconnecting(true);
 		try {
+			if (workspace.snaptradeAuthMode === "oauth") {
+				const started = await initiateOAuth.mutateAsync({
+					workspaceId: workspace.id,
+					platform: platform.kind,
+				});
+				await platform.openExternal(started.authorizationUrl);
+				return;
+			}
 			const callbackUrl = platformUrl(
 				platform,
 				`/dashboard/brokerage/callback?workspaceId=${workspace.id}`,
@@ -387,6 +400,25 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 			toast.success("Brokerage disconnected");
 		} catch {
 			toast.error("Failed to disconnect");
+		}
+	}
+
+	async function handleRevokeOAuth() {
+		if (
+			!confirm(
+				"Revoke Tradstry's access to your SnapTrade Personal account? Every OAuth-linked workspace will stop syncing.",
+			)
+		)
+			return;
+		try {
+			await revokeOAuth.mutateAsync();
+			toast.success("SnapTrade access revoked");
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Failed to revoke SnapTrade access",
+			);
 		}
 	}
 
@@ -651,6 +683,25 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 						) : null}
 					</div>
 				) : null}
+				{workspace.snaptradeAuthMode === "oauth" ? (
+					<div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+						<div>
+							<p className="text-xs font-medium">SnapTrade Personal access</p>
+							<p className="mt-1 text-[0.625rem] text-muted-foreground">
+								Revoking removes Tradstry's access but keeps your brokerage
+								connections in SnapTrade.
+							</p>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => void handleRevokeOAuth()}
+							disabled={revokeOAuth.isPending}
+						>
+							{revokeOAuth.isPending ? "Revoking…" : "Revoke access"}
+						</Button>
+					</div>
+				) : null}
 				<AdditionalBrokerageAccounts workspace={workspace} />
 			</div>
 		</div>
@@ -668,6 +719,8 @@ export function BrokerageButton() {
 	const workspace = useActiveWorkspace();
 	const connected = !!workspace?.snaptradeConnectionId;
 	const initiate = useInitiateConnection();
+	const initiateOAuth = useInitiateSnapTradeOAuth();
+	const oauthAvailable = useSnapTradeOAuthAvailable();
 	const setupAccounts = useBrokerageConnectionAccounts(
 		workspace?.id ?? null,
 		connected && workspace?.brokerageSetupComplete === false,
@@ -717,6 +770,23 @@ export function BrokerageButton() {
 				`Failed to connect: ${err instanceof Error ? err.message : "Unknown error"}`,
 			);
 			setConnecting(false);
+		}
+	}
+
+	async function handleOAuthConnect() {
+		if (!workspace) return;
+		try {
+			const started = await initiateOAuth.mutateAsync({
+				workspaceId: workspace.id,
+				platform: platform.kind,
+			});
+			await platform.openExternal(started.authorizationUrl);
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Could not start SnapTrade authorization",
+			);
 		}
 	}
 
@@ -794,6 +864,24 @@ export function BrokerageButton() {
 										"Connect Brokerage"
 									)}
 								</Button>
+								{oauthAvailable.data ? (
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => void handleOAuthConnect()}
+										disabled={initiateOAuth.isPending || !workspace}
+									>
+										{initiateOAuth.isPending
+											? "Opening SnapTrade…"
+											: "Continue with SnapTrade"}
+									</Button>
+								) : null}
+								{oauthAvailable.data ? (
+									<p className="max-w-sm text-xs text-muted-foreground">
+										Use an existing SnapTrade Personal connection, or connect a
+										brokerage directly above.
+									</p>
+								) : null}
 							</div>
 						) : !workspace.brokerageSetupComplete ? (
 							setupAccounts.isLoading ? (

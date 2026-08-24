@@ -10,6 +10,7 @@ import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as brokerageService from "@tradstry/app-ui/lib/service/brokerage";
 import type {
+	BrokerageAccountImportInput,
 	BrokerageBalance,
 	BrokerageConnectionAccount,
 	BrokerageDataIssueReport,
@@ -21,6 +22,8 @@ import type {
 	ConnectionPortal,
 	PendingTrade,
 	ReportBrokerageDataIssueInput,
+	SnapTradeOAuthStart,
+	SnapTradeOAuthStatus,
 	SyncResult,
 	TransactionFilters,
 	TransactionImportPolicy,
@@ -152,7 +155,10 @@ export function useBrokerageTransactionImportPolicy(
 		queryKey: [...IMPORT_POLICY_KEY, workspaceId],
 		queryFn: () => {
 			if (!workspaceId) throw new Error("workspace id is required");
-			return brokerageService.fetchTransactionImportPolicy(fetcher, workspaceId);
+			return brokerageService.fetchTransactionImportPolicy(
+				fetcher,
+				workspaceId,
+			);
 		},
 		enabled: isLoaded && isSignedIn && !!workspaceId,
 	});
@@ -263,6 +269,88 @@ export function useInitiateConnection() {
 	});
 }
 
+export function useInitiateSnapTradeOAuth() {
+	const fetcher = useGraphQL();
+	return useMutation<
+		SnapTradeOAuthStart,
+		Error,
+		{ workspaceId: string; platform: "web" | "desktop" }
+	>({
+		mutationFn: ({ workspaceId, platform }) =>
+			brokerageService.initiateSnapTradeOAuth(fetcher, workspaceId, platform),
+	});
+}
+
+export function useSnapTradeOAuthAvailable() {
+	const { isLoaded, isSignedIn } = useAuth();
+	const fetcher = useGraphQL();
+	return useQuery({
+		queryKey: ["snaptrade-oauth-available"],
+		queryFn: () => brokerageService.fetchSnapTradeOAuthAvailable(fetcher),
+		enabled: isLoaded && isSignedIn,
+		staleTime: 60_000,
+	});
+}
+
+export function useSnapTradeOAuthStatus(attemptId: string | null) {
+	const { isLoaded, isSignedIn } = useAuth();
+	const fetcher = useGraphQL();
+	return useQuery<SnapTradeOAuthStatus | null>({
+		queryKey: ["snaptrade-oauth-status", attemptId],
+		queryFn: () => {
+			if (!attemptId) throw new Error("OAuth attempt ID is required");
+			return brokerageService.fetchSnapTradeOAuthStatus(fetcher, attemptId);
+		},
+		enabled: isLoaded && isSignedIn && !!attemptId,
+		refetchInterval: (query) => {
+			const status = query.state.data?.status;
+			return status === "authorized" ||
+				status === "denied" ||
+				status === "failed" ||
+				status === "expired"
+				? false
+				: 1000;
+		},
+	});
+}
+
+export function useSnapTradeOAuthAccounts(
+	attemptId: string | null,
+	enabled = true,
+) {
+	const { isLoaded, isSignedIn } = useAuth();
+	const fetcher = useGraphQL();
+	return useQuery<BrokerageConnectionAccount[]>({
+		queryKey: ["snaptrade-oauth-accounts", attemptId],
+		queryFn: () => {
+			if (!attemptId) throw new Error("OAuth attempt ID is required");
+			return brokerageService.fetchSnapTradeOAuthAccounts(fetcher, attemptId);
+		},
+		enabled: isLoaded && isSignedIn && enabled && !!attemptId,
+	});
+}
+
+export function useFinalizeSnapTradeOAuthSetup() {
+	const fetcher = useGraphQL();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			attemptId,
+			input,
+		}: {
+			attemptId: string;
+			input: {
+				workspaceId: string;
+				primarySnaptradeAccountId: string;
+				accounts: BrokerageAccountImportInput[];
+			};
+		}) =>
+			brokerageService.finalizeSnapTradeOAuthSetup(fetcher, attemptId, input),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
+	});
+}
+
 export function useCompleteConnection() {
 	const fetcher = useGraphQL();
 	const queryClient = useQueryClient();
@@ -282,6 +370,16 @@ export function useCompleteConnection() {
 			capture(EVENTS.brokerageConnected, { broker: broker ?? "unknown" });
 			queryClient.invalidateQueries({ queryKey: ["workspaces"] });
 		},
+	});
+}
+
+export function useRevokeSnapTradeOAuth() {
+	const fetcher = useGraphQL();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => brokerageService.revokeSnapTradeOAuth(fetcher),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
 	});
 }
 
