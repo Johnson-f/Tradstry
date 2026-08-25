@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GraphQLFetcher } from "@tradstry/app-ui/lib/client";
 import {
+	completeSnapTradeOAuthReauthorization,
 	createBrokerageAccountWorkspaces,
 	expandBrokerageTransactionHistory,
 	fetchBrokerageConnectionAccounts,
@@ -11,25 +12,87 @@ import {
 	initiateSnapTradeOAuth,
 	regroupBrokerageEpisode,
 	reportBrokerageDataIssue,
+	revokeSnapTradeOAuth,
 } from "./brokerage";
 
 describe("brokerage account workspace service", () => {
+	test("completes OAuth reauthorization without replaying account setup", async () => {
+		const fetcher = (async <T>(
+			query: string,
+			variables?: Record<string, unknown>,
+		) => {
+			expect(query).toContain("CompleteSnapTradeOauthReauthorization");
+			expect(variables).toEqual({ attemptId: "attempt" });
+			return {
+				completeSnaptradeOauthReauthorization: {
+					id: "workspace",
+					name: "Main",
+					snaptradeAccountId: "account",
+					brokerageSetupComplete: true,
+					brokerageSetupCompletedAt: "2026-08-25T00:00:00Z",
+				},
+			} as T;
+		}) as GraphQLFetcher;
+
+		const workspace = await completeSnapTradeOAuthReauthorization(
+			fetcher,
+			"attempt",
+		);
+		expect(workspace.id).toBe("workspace");
+	});
+
+	test("returns whether local and upstream OAuth revocation completed", async () => {
+		const fetcher = (async <T>(query: string) => {
+			expect(query).toContain("revoked upstreamConfirmed unlinkedWorkspaces");
+			return {
+				revokeSnaptradeOauth: {
+					revoked: true,
+					upstreamConfirmed: false,
+					unlinkedWorkspaces: 2,
+				},
+			} as T;
+		}) as GraphQLFetcher;
+
+		await expect(revokeSnapTradeOAuth(fetcher)).resolves.toEqual({
+			revoked: true,
+			upstreamConfirmed: false,
+			unlinkedWorkspaces: 2,
+		});
+	});
+
 	test("starts OAuth for a specific workspace and finalizes through the same history input", async () => {
-		const calls: Array<{ query: string; variables?: Record<string, unknown> }> = [];
-		const fetcher = (async <T>(query: string, variables?: Record<string, unknown>) => {
+		const calls: Array<{ query: string; variables?: Record<string, unknown> }> =
+			[];
+		const fetcher = (async <T>(
+			query: string,
+			variables?: Record<string, unknown>,
+		) => {
 			calls.push({ query, variables });
 			return query.includes("InitiateSnapTradeOauth")
-				? { initiateSnaptradeOauth: { attemptId: "attempt", authorizationUrl: "https://snaptrade.test/authorize" } }
-				: { finalizeSnaptradeOauthSetup: [] } as T;
+				? {
+						initiateSnaptradeOauth: {
+							attemptId: "attempt",
+							authorizationUrl: "https://snaptrade.test/authorize",
+						},
+					}
+				: ({ finalizeSnaptradeOauthSetup: [] } as T);
 		}) as GraphQLFetcher;
 		const started = await initiateSnapTradeOAuth(fetcher, "workspace", "web");
 		const input = {
 			workspaceId: "workspace",
 			primarySnaptradeAccountId: "account",
-			accounts: [{ snaptradeAccountId: "account", policy: { mode: "one_year" as const } }],
+			accounts: [
+				{
+					snaptradeAccountId: "account",
+					policy: { mode: "one_year" as const },
+				},
+			],
 		};
 		await finalizeSnapTradeOAuthSetup(fetcher, started.attemptId, input);
-		expect(calls[0]?.variables).toEqual({ workspaceId: "workspace", platform: "web" });
+		expect(calls[0]?.variables).toEqual({
+			workspaceId: "workspace",
+			platform: "web",
+		});
 		expect(calls[1]?.variables).toEqual({ attemptId: "attempt", input });
 	});
 

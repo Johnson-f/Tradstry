@@ -6,9 +6,7 @@ use log::{error, info, warn};
 use sqlx::Row;
 use tokio::time::{Duration, sleep};
 
-use super::auth::{
-    list_accounts_with_oauth_retry, mark_reauthorization_if_needed, resolve_workspace_auth,
-};
+use super::auth::resolve_workspace_session;
 use super::client::{BrokerageClient, ConnectionStatus};
 use super::transaction;
 use crate::service::countly::{Countly, clerk_id_for_user};
@@ -236,8 +234,8 @@ async fn sync_all_accounts(
                     continue;
                 }
             };
-        let auth = match resolve_workspace_auth(db.pool(), brokerage, &workspace).await {
-            Ok(auth) => auth,
+        let mut session = match resolve_workspace_session(db.pool(), brokerage, &workspace).await {
+            Ok(session) => session,
             Err(error) => {
                 error!(
                     "[sync] Failed to resolve brokerage authorization for {workspace_id}: {error}"
@@ -251,11 +249,8 @@ async fn sync_all_accounts(
         // flag it and skip the pulls (last-known data stays in the DB). Clearing
         // the flag on a healthy connection makes reconnection auto-recover.
         if !connection_id.is_empty() {
-            match tokio::time::timeout(
-                ACCOUNT_SYNC_TIMEOUT,
-                auth.get_connection(brokerage, connection_id),
-            )
-            .await
+            match tokio::time::timeout(ACCOUNT_SYNC_TIMEOUT, session.get_connection(connection_id))
+                .await
             {
                 Ok(Ok(status)) => {
                     freshness_mode = status.data_freshness_mode.clone();
@@ -341,7 +336,23 @@ async fn sync_all_accounts(
                     }
                 }
                 Ok(Err(e)) => {
-                    let _ = mark_reauthorization_if_needed(db.pool(), &auth, &e).await;
+                    if e.downcast_ref::<crate::service::brokerage::client::SnapTradeError>()
+                        .is_some_and(|error| error.requires_reauthorization())
+                    {
+                        let _ = workspaces_table::set_connection_disabled(
+                            db.pool(),
+                            workspace_id,
+                            user_id,
+                            true,
+                            None,
+                        )
+                        .await;
+                        warn!(
+                            "[sync] Brokerage authorization requires reconnection for {}; skipping sync",
+                            workspace_id
+                        );
+                        continue;
+                    }
                     // Fail-open: a status hiccup must not block data sync.
                     warn!(
                         "[sync] Connection status check failed for {} ({e}); proceeding with sync",
@@ -358,28 +369,16 @@ async fn sync_all_accounts(
         }
 
         // Discover SnapTrade accounts
-        let st_accounts = match tokio::time::timeout(
-            ACCOUNT_SYNC_TIMEOUT,
-            list_accounts_with_oauth_retry(db.pool(), brokerage, user_id, &auth),
-        )
-        .await
+        let st_accounts = match tokio::time::timeout(ACCOUNT_SYNC_TIMEOUT, session.list_accounts())
+            .await
         {
             Ok(Ok(accs)) => accs,
             Ok(Err(e)) => {
-                let oauth_reauthorization = mark_reauthorization_if_needed(db.pool(), &auth, &e)
-                    .await
-                    .unwrap_or(false);
                 // Stale credentials never resolve on their own, so retrying every
                 // half hour just burns requests. Flag the connection instead; the
                 // user-driven reconnect path re-registers.
-                if oauth_reauthorization
-                    || e.downcast_ref::<crate::service::brokerage::client::SnapTradeError>()
-                        .is_some_and(|err| {
-                            matches!(
-                                err,
-                                crate::service::brokerage::client::SnapTradeError::StaleCredentials
-                            )
-                        })
+                if e.downcast_ref::<crate::service::brokerage::client::SnapTradeError>()
+                    .is_some_and(|err| err.requires_reauthorization())
                 {
                     warn!(
                         "[sync] SnapTrade rejected stored credentials for {} — flagging \
@@ -504,13 +503,15 @@ async fn sync_all_accounts(
             continue;
         };
 
+        let mut transaction_session = session.fork();
+        let mut holdings_session = session.fork();
         let (txn_res, hold_res) = tokio::join!(
             tokio::time::timeout(
                 ACCOUNT_SYNC_TIMEOUT,
                 transaction::sync_transactions_if_advanced(
                     brokerage,
                     db.pool(),
-                    &auth,
+                    &mut transaction_session,
                     &snaptrade_account_id,
                     user_id,
                     workspace_id,
@@ -527,7 +528,7 @@ async fn sync_all_accounts(
                 transaction::sync_holdings_if_advanced(
                     brokerage,
                     db.pool(),
-                    &auth,
+                    &mut holdings_session,
                     &snaptrade_account_id,
                     user_id,
                     workspace_id,

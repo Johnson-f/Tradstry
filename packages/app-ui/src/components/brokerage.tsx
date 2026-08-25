@@ -37,9 +37,9 @@ import {
 	useExpandBrokerageTransactionHistory,
 	useFinalizeBrokerageSetup,
 	useInitiateConnection,
-	useInitiateSnapTradeOAuth,
 	useRevokeSnapTradeOAuth,
 	useSnapTradeOAuthAvailable,
+	useSnapTradeOAuthFlow,
 	useSyncBrokerageData,
 } from "@tradstry/app-ui/hooks/brokerage";
 import type {
@@ -290,7 +290,7 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 	const revokeOAuth = useRevokeSnapTradeOAuth();
 	const sync = useSyncBrokerageData();
 	const initiate = useInitiateConnection();
-	const initiateOAuth = useInitiateSnapTradeOAuth();
+	const oauth = useSnapTradeOAuthFlow();
 	const importPolicy = useBrokerageTransactionImportPolicy(workspace.id);
 	const expandHistory = useExpandBrokerageTransactionHistory();
 	const [reconnecting, setReconnecting] = useState(false);
@@ -341,16 +341,12 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 	}, [refreshQueued, syncOutcome]);
 
 	async function handleReconnect() {
-		setReconnecting(true);
 		try {
 			if (workspace.snaptradeAuthMode === "oauth") {
-				const started = await initiateOAuth.mutateAsync({
-					workspaceId: workspace.id,
-					platform: platform.kind,
-				});
-				await platform.openExternal(started.authorizationUrl);
+				await oauth.start(workspace.id);
 				return;
 			}
+			setReconnecting(true);
 			const callbackUrl = platformUrl(
 				platform,
 				`/dashboard/brokerage/callback?workspaceId=${workspace.id}`,
@@ -368,6 +364,12 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 			setReconnecting(false);
 		}
 	}
+
+	useEffect(() => {
+		if (oauth.phase !== "error") return;
+		toast.error("SnapTrade authorization did not finish. Please try again.");
+		oauth.cancel();
+	}, [oauth]);
 
 	async function handleSync() {
 		outcomeBaseline.current = syncOutcome?.finishedAt ?? null;
@@ -411,8 +413,16 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 		)
 			return;
 		try {
-			await revokeOAuth.mutateAsync();
-			toast.success("SnapTrade access revoked");
+			const result = await revokeOAuth.mutateAsync();
+			if (!result.revoked) {
+				toast.info("SnapTrade access was already removed");
+			} else if (!result.upstreamConfirmed) {
+				toast.warning(
+					"Tradstry access was removed locally. Confirm removal in SnapTrade Connected Apps.",
+				);
+			} else {
+				toast.success("SnapTrade access revoked");
+			}
 		} catch (error) {
 			toast.error(
 				error instanceof Error
@@ -458,7 +468,10 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 					</div>
 				</div>
 				<div className="flex items-center gap-1">
-					{reconnecting ? (
+					{reconnecting ||
+					oauth.isStarting ||
+					oauth.phase === "waiting" ||
+					oauth.phase === "reauthorizing" ? (
 						<output
 							aria-label="Reconnecting brokerage"
 							className="flex size-8 items-center justify-center text-muted-foreground"
@@ -598,7 +611,12 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 						connectionDisabled={workspace.snaptradeConnectionDisabled}
 						isRefreshing={refreshActive}
 						isSyncing={sync.isPending}
-						isReconnecting={reconnecting}
+						isReconnecting={
+							reconnecting ||
+							oauth.isStarting ||
+							oauth.phase === "waiting" ||
+							oauth.phase === "reauthorizing"
+						}
 						onSync={() => void handleSync()}
 						onReconnect={() => void handleReconnect()}
 					/>
@@ -719,7 +737,7 @@ export function BrokerageButton() {
 	const workspace = useActiveWorkspace();
 	const connected = !!workspace?.snaptradeConnectionId;
 	const initiate = useInitiateConnection();
-	const initiateOAuth = useInitiateSnapTradeOAuth();
+	const oauth = useSnapTradeOAuthFlow();
 	const oauthAvailable = useSnapTradeOAuthAvailable();
 	const setupAccounts = useBrokerageConnectionAccounts(
 		workspace?.id ?? null,
@@ -776,11 +794,7 @@ export function BrokerageButton() {
 	async function handleOAuthConnect() {
 		if (!workspace) return;
 		try {
-			const started = await initiateOAuth.mutateAsync({
-				workspaceId: workspace.id,
-				platform: platform.kind,
-			});
-			await platform.openExternal(started.authorizationUrl);
+			await oauth.start(workspace.id);
 		} catch (error) {
 			toast.error(
 				error instanceof Error
@@ -829,7 +843,25 @@ export function BrokerageButton() {
 
 				<ScrollArea className="-mx-4 min-h-0 px-4 [&>[data-radix-scroll-area-viewport]]:max-h-[calc(100svh-9rem)]">
 					<div className="flex flex-col gap-3">
-						{!connected || !workspace ? (
+						{oauth.phase === "setup" && workspace && oauth.accounts.data ? (
+							<BrokerageHistorySetup
+								accounts={oauth.accounts.data}
+								workspaceName={workspace.name}
+								onSubmit={(value) => {
+									void oauth
+										.finishConnect(workspace.id, value)
+										.then(() => toast.success("Brokerage import started"))
+										.catch((error) =>
+											toast.error(
+												error instanceof Error
+													? error.message
+													: "Could not finish SnapTrade setup",
+											),
+										);
+								}}
+								isSubmitting={oauth.isSubmitting}
+							/>
+						) : !connected || !workspace ? (
 							<div className="flex flex-col items-center gap-3 py-6 text-center">
 								<div className="rounded-full bg-muted p-3">
 									<HugeiconsIcon
@@ -869,9 +901,13 @@ export function BrokerageButton() {
 										variant="outline"
 										size="sm"
 										onClick={() => void handleOAuthConnect()}
-										disabled={initiateOAuth.isPending || !workspace}
+										disabled={
+											oauth.isStarting ||
+											oauth.phase === "waiting" ||
+											!workspace
+										}
 									>
-										{initiateOAuth.isPending
+										{oauth.isStarting || oauth.phase === "waiting"
 											? "Opening SnapTrade…"
 											: "Continue with SnapTrade"}
 									</Button>
@@ -880,6 +916,11 @@ export function BrokerageButton() {
 									<p className="max-w-sm text-xs text-muted-foreground">
 										Use an existing SnapTrade Personal connection, or connect a
 										brokerage directly above.
+									</p>
+								) : null}
+								{oauth.phase === "error" ? (
+									<p role="alert" className="text-xs text-destructive">
+										SnapTrade authorization did not finish. You can try again.
 									</p>
 								) : null}
 							</div>

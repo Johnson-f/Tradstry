@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::auth::BrokerageAuth;
+use super::auth::BrokerageAuthSession;
 use super::client::{
     BrokerageClient, HoldingsSyncStatus, SnapTradeActivity, SnapTradePosition,
     TransactionsSyncStatus,
@@ -223,7 +223,7 @@ fn should_advance_watermark(synced: u64, stored: i64) -> bool {
 pub async fn sync_transactions_if_advanced(
     client: &BrokerageClient,
     pool: &PgPool,
-    auth: &BrokerageAuth,
+    auth: &mut BrokerageAuthSession<'_>,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
@@ -366,9 +366,9 @@ pub async fn sync_transactions_if_advanced(
 /// namespaces are not guaranteed to match.
 #[allow(clippy::too_many_arguments)]
 pub async fn sync_transactions(
-    client: &BrokerageClient,
+    _client: &BrokerageClient,
     pool: &PgPool,
-    auth: &BrokerageAuth,
+    auth: &mut BrokerageAuthSession<'_>,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
@@ -397,7 +397,6 @@ pub async fn sync_transactions(
     loop {
         let response = match auth
             .fetch_transactions(
-                client,
                 snaptrade_account_id,
                 import_start_date,
                 None,
@@ -592,15 +591,15 @@ pub async fn sync_transactions(
     fields(st_account = %snaptrade_account_id, account = %internal_account_id)
 )]
 pub async fn sync_holdings(
-    client: &BrokerageClient,
+    _client: &BrokerageClient,
     pool: &PgPool,
-    auth: &BrokerageAuth,
+    auth: &mut BrokerageAuthSession<'_>,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,
 ) -> Result<PortfolioSyncReport> {
     let response = match auth
-        .fetch_holdings(client, snaptrade_account_id)
+        .fetch_holdings(snaptrade_account_id)
         .await
         .context("Failed to fetch holdings")
     {
@@ -831,7 +830,7 @@ pub async fn sync_holdings(
 pub async fn sync_holdings_if_advanced(
     client: &BrokerageClient,
     pool: &PgPool,
-    auth: &BrokerageAuth,
+    auth: &mut BrokerageAuthSession<'_>,
     snaptrade_account_id: &str,
     internal_user_id: &str,
     internal_account_id: &str,

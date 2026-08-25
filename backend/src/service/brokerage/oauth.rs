@@ -72,6 +72,8 @@ pub struct OAuthStart {
 pub struct OAuthCallbackResult {
     pub attempt_id: String,
     pub status: String,
+    pub platform: String,
+    pub intent: String,
 }
 
 pub async fn start(
@@ -81,12 +83,17 @@ pub async fn start(
     user_id: &str,
     workspace_id: &str,
     platform: &str,
+    intent: &str,
 ) -> Result<OAuthStart> {
     config.require_enabled()?;
     oauth_table::cleanup_attempts(pool).await?;
     anyhow::ensure!(
         matches!(platform, "web" | "desktop"),
         "invalid OAuth platform"
+    );
+    anyhow::ensure!(
+        matches!(intent, "connect" | "reauthorize"),
+        "invalid OAuth intent"
     );
     let state = random_base64url(32);
     let verifier = random_base64url(64);
@@ -107,6 +114,7 @@ pub async fn start(
             code_verifier_encrypted: &encrypt_secret(&verifier)?,
             requested_scopes: &scopes,
             platform,
+            intent,
             expires_at: Utc::now() + Duration::minutes(ATTEMPT_TTL_MINUTES),
         },
     )
@@ -134,18 +142,22 @@ pub async fn callback(
         return Ok(OAuthCallbackResult {
             attempt_id: attempt.id,
             status: "denied".to_string(),
+            platform: attempt.platform,
+            intent: attempt.intent,
         });
     }
     let code = code
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("OAuth code is required"));
     let tokens = match code {
-        Ok(code) => {
-            let verifier = decrypt_secret(&attempt.code_verifier_encrypted)?;
-            brokerage
-                .exchange_oauth_code(code, &verifier, &config.redirect_uri)
-                .await
-        }
+        Ok(code) => match decrypt_secret(&attempt.code_verifier_encrypted) {
+            Ok(verifier) => {
+                brokerage
+                    .exchange_oauth_code(code, &verifier, &config.redirect_uri)
+                    .await
+            }
+            Err(error) => Err(error),
+        },
         Err(error) => Err(error),
     };
     let tokens = match tokens {
@@ -166,30 +178,72 @@ pub async fn callback(
             return Ok(OAuthCallbackResult {
                 attempt_id: attempt.id,
                 status: "failed".to_string(),
+                platform: attempt.platform,
+                intent: attempt.intent,
             });
         }
     };
-    anyhow::ensure!(
-        !tokens.snaptrade_user_id.is_empty(),
-        "SnapTrade OAuth token response omitted the Personal user ID"
-    );
-    let grant = oauth_table::store_grant(
-        pool,
-        oauth_table::StoreGrant {
-            user_id: &attempt.user_id,
-            oauth_client_id: &tokens.oauth_client_id,
-            snaptrade_user_id: &tokens.snaptrade_user_id,
-            access_token_encrypted: &encrypt_secret(&tokens.access_token)?,
-            refresh_token_encrypted: &encrypt_secret(&tokens.refresh_token)?,
-            access_token_expires_at: Utc::now() + Duration::seconds(tokens.expires_in),
-            scopes: &tokens.scopes,
-        },
-    )
-    .await?;
+    if tokens.snaptrade_user_id.is_empty() || !tokens.scopes.iter().any(|scope| scope == "read") {
+        let _ = brokerage.revoke_oauth_token(&tokens.refresh_token).await;
+        oauth_table::finish_attempt(
+            pool,
+            &attempt.id,
+            "failed",
+            Some("invalid_token_response"),
+            None,
+        )
+        .await?;
+        return Ok(OAuthCallbackResult {
+            attempt_id: attempt.id,
+            status: "failed".to_string(),
+            platform: attempt.platform,
+            intent: attempt.intent,
+        });
+    }
+    let encrypted_access = encrypt_secret(&tokens.access_token);
+    let encrypted_refresh = encrypt_secret(&tokens.refresh_token);
+    let grant = match (encrypted_access, encrypted_refresh) {
+        (Ok(encrypted_access), Ok(encrypted_refresh)) => {
+            oauth_table::store_grant(
+                pool,
+                oauth_table::StoreGrant {
+                    user_id: &attempt.user_id,
+                    oauth_client_id: &tokens.oauth_client_id,
+                    snaptrade_user_id: &tokens.snaptrade_user_id,
+                    access_token_encrypted: &encrypted_access,
+                    refresh_token_encrypted: &encrypted_refresh,
+                    access_token_expires_at: Utc::now() + Duration::seconds(tokens.expires_in),
+                    scopes: &tokens.scopes,
+                },
+            )
+            .await
+        }
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    };
+    let grant = match grant {
+        Ok(grant) => grant,
+        Err(error) => {
+            let _ = brokerage.revoke_oauth_token(&tokens.refresh_token).await;
+            oauth_table::finish_attempt(pool, &attempt.id, "failed", Some("grant_rejected"), None)
+                .await?;
+            log::warn!(
+                "SnapTrade OAuth grant rejected for attempt {}: {error}",
+                attempt.id
+            );
+            return Ok(OAuthCallbackResult {
+                attempt_id: attempt.id,
+                status: "failed".to_string(),
+                platform: attempt.platform,
+                intent: attempt.intent,
+            });
+        }
+    };
     oauth_table::finish_attempt(pool, &attempt.id, "authorized", None, Some(&grant.id)).await?;
     Ok(OAuthCallbackResult {
         attempt_id: attempt.id,
         status: "authorized".to_string(),
+        platform: attempt.platform,
+        intent: attempt.intent,
     })
 }
 

@@ -90,15 +90,23 @@ impl std::fmt::Display for SnapTradeError {
 impl std::error::Error for SnapTradeError {}
 
 impl SnapTradeError {
-    pub fn requires_reauthorization(&self) -> bool {
-        matches!(self, Self::StaleCredentials)
+    pub fn is_oauth_authentication_failure(&self) -> bool {
+        matches!(self, Self::Upstream { status: 401, .. })
+    }
+
+    pub fn is_terminal_oauth_refresh_failure(&self) -> bool {
+        matches!(self, Self::Upstream { status: 401, .. })
             || matches!(
                 self,
                 Self::Upstream {
-                    status: 400 | 401,
+                    upstream_code: Some(code),
                     ..
-                }
+                } if matches!(code.as_str(), "invalid_grant" | "invalid_token")
             )
+    }
+
+    pub fn requires_reauthorization(&self) -> bool {
+        matches!(self, Self::StaleCredentials) || self.is_terminal_oauth_refresh_failure()
     }
 }
 
@@ -1149,17 +1157,35 @@ mod tests {
     }
 
     #[test]
-    fn oauth_unauthorized_and_invalid_grant_errors_require_reauthorization() {
-        for status in [400, 401] {
-            let error = SnapTradeError::Upstream {
-                code: "SNAPTRADE_REJECTED".into(),
-                message: "OAuth request rejected".into(),
-                retryable: false,
-                status,
-                upstream_code: None,
-            };
-            assert!(error.requires_reauthorization());
-        }
+    fn only_oauth_authentication_failures_are_refreshable() {
+        let unauthorized = SnapTradeError::Upstream {
+            code: "SNAPTRADE_REJECTED".into(),
+            message: "OAuth request rejected".into(),
+            retryable: false,
+            status: 401,
+            upstream_code: Some("invalid_token".into()),
+        };
+        assert!(unauthorized.is_oauth_authentication_failure());
+
+        let bad_request = SnapTradeError::Upstream {
+            code: "SNAPTRADE_REJECTED".into(),
+            message: "bad account id".into(),
+            retryable: false,
+            status: 400,
+            upstream_code: None,
+        };
+        assert!(!bad_request.is_oauth_authentication_failure());
+        assert!(!bad_request.is_terminal_oauth_refresh_failure());
+
+        let invalid_grant = SnapTradeError::Upstream {
+            code: "SNAPTRADE_REJECTED".into(),
+            message: "refresh token rejected".into(),
+            retryable: false,
+            status: 400,
+            upstream_code: Some("invalid_grant".into()),
+        };
+        assert!(invalid_grant.is_terminal_oauth_refresh_failure());
+
         let outage = SnapTradeError::Upstream {
             code: "UPSTREAM_UNAVAILABLE".into(),
             message: "unavailable".into(),
@@ -1167,7 +1193,8 @@ mod tests {
             status: 503,
             upstream_code: None,
         };
-        assert!(!outage.requires_reauthorization());
+        assert!(!outage.is_oauth_authentication_failure());
+        assert!(!outage.is_terminal_oauth_refresh_failure());
     }
 
     #[test]

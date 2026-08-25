@@ -10,8 +10,7 @@ use uuid::Uuid;
 
 use crate::graphql::analytics::{AnalyticsRange, AnalyticsTimeFilterInput, map_time_filter};
 use crate::service::brokerage::auth::{
-    BrokerageAuth, list_accounts_with_oauth_retry, mark_reauthorization_if_needed,
-    resolve_oauth_grant_auth, resolve_workspace_auth,
+    BrokerageAuth, BrokerageAuthSession, resolve_oauth_grant_session, resolve_workspace_session,
 };
 use crate::service::brokerage::client::{BrokerageClient, SnapTradeAccount, SnapTradeError};
 use crate::service::brokerage::db::decrypt_secret;
@@ -138,6 +137,8 @@ async fn run_delayed_refresh_follow_up(task: &DelayedRefreshTask) -> anyhow::Res
         snaptrade_user_id: task.snaptrade_user_id.clone(),
         user_secret: task.user_secret.clone(),
     };
+    let session =
+        BrokerageAuthSession::new(&task.pool, task.brokerage.as_ref(), &task.user_id, auth);
     for delay in DELAYED_REFRESH_POLL_DELAYS {
         sleep(delay).await;
         let accounts = match task
@@ -176,11 +177,13 @@ async fn run_delayed_refresh_follow_up(task: &DelayedRefreshTask) -> anyhow::Res
             .sync_status
             .as_ref()
             .and_then(|status| status.holdings.as_ref());
+        let mut transaction_session = session.fork();
+        let mut holdings_session = session.fork();
         let (transactions, portfolio) = tokio::join!(
             transaction::sync_transactions_if_advanced(
                 task.brokerage.as_ref(),
                 &task.pool,
-                &auth,
+                &mut transaction_session,
                 &task.snaptrade_account_id,
                 &task.user_id,
                 &task.workspace_id,
@@ -191,7 +194,7 @@ async fn run_delayed_refresh_follow_up(task: &DelayedRefreshTask) -> anyhow::Res
             transaction::sync_holdings_if_advanced(
                 task.brokerage.as_ref(),
                 &task.pool,
-                &auth,
+                &mut holdings_session,
                 &task.snaptrade_account_id,
                 &task.user_id,
                 &task.workspace_id,
@@ -297,6 +300,16 @@ pub struct SnapTradeOAuthStatus {
     pub status: String,
     pub error_code: Option<String>,
     pub workspace_id: String,
+    pub platform: String,
+    pub intent: String,
+}
+
+#[derive(SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct SnapTradeOAuthRevocation {
+    pub revoked: bool,
+    pub upstream_confirmed: bool,
+    pub unlinked_workspaces: i32,
 }
 
 #[derive(SimpleObject)]
@@ -498,10 +511,12 @@ impl BrokerageQuery {
         Ok(
             snaptrade_oauth_table::attempt_status(user_db.pool(), user_db.user_id(), &attempt_id)
                 .await?
-                .map(|(status, error_code, workspace_id)| SnapTradeOAuthStatus {
-                    status,
-                    error_code,
-                    workspace_id,
+                .map(|attempt| SnapTradeOAuthStatus {
+                    status: attempt.status,
+                    error_code: attempt.error_code,
+                    workspace_id: attempt.workspace_id,
+                    platform: attempt.platform,
+                    intent: attempt.intent,
                 }),
         )
     }
@@ -513,19 +528,23 @@ impl BrokerageQuery {
     ) -> Result<Vec<BrokerageConnectionAccount>> {
         let user_db = get_user_db(ctx).await?;
         let brokerage = ctx.data::<Arc<BrokerageClient>>()?;
-        let grant_id = snaptrade_oauth_table::authorized_grant_for_attempt(
+        let attempt = snaptrade_oauth_table::authorized_attempt(
             user_db.pool(),
             user_db.user_id(),
             &attempt_id,
         )
         .await?
         .ok_or_else(|| async_graphql::Error::new("SnapTrade authorization is not complete"))?;
-        let auth =
-            resolve_oauth_grant_auth(user_db.pool(), brokerage, user_db.user_id(), &grant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let mut session = resolve_oauth_grant_session(
+            user_db.pool(),
+            brokerage,
+            user_db.user_id(),
+            &attempt.grant_id,
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         let (accounts, workspaces) = tokio::try_join!(
-            auth.list_accounts(brokerage),
+            session.list_accounts(),
             workspaces_table::list_workspaces(user_db.pool(), user_db.user_id()),
         )?;
         Ok(accounts
@@ -835,11 +854,11 @@ impl BrokerageQuery {
             .as_deref()
             .ok_or_else(|| async_graphql::Error::new("Workspace has no brokerage connection"))?;
 
-        let auth = resolve_workspace_auth(user_db.pool(), brokerage_client, &workspace)
+        let mut session = resolve_workspace_session(user_db.pool(), brokerage_client, &workspace)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         let (accounts, workspaces) = tokio::try_join!(
-            auth.list_accounts(brokerage_client),
+            session.list_accounts(),
             workspaces_table::list_workspaces(user_db.pool(), user_db.user_id()),
         )?;
 
@@ -889,9 +908,17 @@ impl BrokerageMutation {
         let user_db = get_user_db(ctx).await?;
         let brokerage = ctx.data::<Arc<BrokerageClient>>()?;
         let config = ctx.data::<SnapTradeOAuthConfig>()?;
-        workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
-            .await?
-            .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        let workspace =
+            workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
+                .await?
+                .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        let intent = if workspace.snaptrade_auth_mode == "oauth"
+            && workspace.snaptrade_oauth_grant_id.is_some()
+        {
+            "reauthorize"
+        } else {
+            "connect"
+        };
         let started = oauth::start(
             user_db.pool(),
             brokerage,
@@ -899,6 +926,7 @@ impl BrokerageMutation {
             user_db.user_id(),
             &workspace_id,
             &platform,
+            intent,
         )
         .await
         .map_err(|error| async_graphql::Error::new(error.to_string()))?;
@@ -916,18 +944,32 @@ impl BrokerageMutation {
     ) -> Result<Vec<workspaces_table::Workspace>> {
         let user_db = get_user_db(ctx).await?;
         let brokerage = ctx.data::<Arc<BrokerageClient>>()?;
-        let grant_id = snaptrade_oauth_table::authorized_grant_for_attempt(
+        let attempt = snaptrade_oauth_table::authorized_attempt(
             user_db.pool(),
             user_db.user_id(),
             &attempt_id,
         )
         .await?
         .ok_or_else(|| async_graphql::Error::new("SnapTrade authorization is not complete"))?;
-        let auth =
-            resolve_oauth_grant_auth(user_db.pool(), brokerage, user_db.user_id(), &grant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let accounts = auth.list_accounts(brokerage).await?;
+        if attempt.workspace_id != input.workspace_id {
+            return Err(async_graphql::Error::new(
+                "SnapTrade authorization belongs to a different workspace",
+            ));
+        }
+        if attempt.intent != "connect" {
+            return Err(async_graphql::Error::new(
+                "SnapTrade reauthorization must use the reauthorization completion flow",
+            ));
+        }
+        let mut session = resolve_oauth_grant_session(
+            user_db.pool(),
+            brokerage,
+            user_db.user_id(),
+            &attempt.grant_id,
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let accounts = session.list_accounts().await?;
         let primary = accounts
             .iter()
             .find(|account| {
@@ -943,11 +985,11 @@ impl BrokerageMutation {
             user_db.pool(),
             &input.workspace_id,
             user_db.user_id(),
-            &grant_id,
+            &attempt.grant_id,
             connection_id,
         )
         .await?;
-        if let Ok(connection) = auth.get_connection(brokerage, connection_id).await {
+        if let Ok(connection) = session.get_connection(connection_id).await {
             workspaces_table::set_connection_freshness_mode(
                 user_db.pool(),
                 &input.workspace_id,
@@ -959,29 +1001,94 @@ impl BrokerageMutation {
         self.finalize_brokerage_setup(ctx, input).await
     }
 
-    async fn revoke_snaptrade_oauth(&self, ctx: &Context<'_>) -> Result<bool> {
+    async fn complete_snaptrade_oauth_reauthorization(
+        &self,
+        ctx: &Context<'_>,
+        attempt_id: String,
+    ) -> Result<workspaces_table::Workspace> {
+        let user_db = get_user_db(ctx).await?;
+        let attempt = snaptrade_oauth_table::authorized_attempt(
+            user_db.pool(),
+            user_db.user_id(),
+            &attempt_id,
+        )
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("SnapTrade authorization is not complete"))?;
+        if attempt.intent != "reauthorize" {
+            return Err(async_graphql::Error::new(
+                "SnapTrade authorization is not a reauthorization attempt",
+            ));
+        }
+        let workspace = workspaces_table::find_workspace(
+            user_db.pool(),
+            &attempt.workspace_id,
+            user_db.user_id(),
+        )
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
+        if workspace.snaptrade_oauth_grant_id.as_deref() != Some(&attempt.grant_id) {
+            return Err(async_graphql::Error::new(
+                "SnapTrade authorization does not match this workspace",
+            ));
+        }
+        workspaces_table::set_connection_disabled(
+            user_db.pool(),
+            &attempt.workspace_id,
+            user_db.user_id(),
+            false,
+            None,
+        )
+        .await?;
+        workspaces_table::find_workspace(user_db.pool(), &attempt.workspace_id, user_db.user_id())
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Workspace not found"))
+    }
+
+    async fn revoke_snaptrade_oauth(&self, ctx: &Context<'_>) -> Result<SnapTradeOAuthRevocation> {
         let user_db = get_user_db(ctx).await?;
         let brokerage = ctx.data::<Arc<BrokerageClient>>()?;
         let Some(grant) =
             snaptrade_oauth_table::find_grant_for_user(user_db.pool(), user_db.user_id()).await?
         else {
-            return Ok(false);
+            return Ok(SnapTradeOAuthRevocation {
+                revoked: false,
+                upstream_confirmed: true,
+                unlinked_workspaces: 0,
+            });
         };
-        brokerage
-            .revoke_oauth_token(&decrypt_secret(&grant.refresh_token_encrypted)?)
-            .await
-            .map_err(|error| {
-                async_graphql::Error::new(format!("Failed to revoke SnapTrade access: {error}"))
-            })?;
-        snaptrade_oauth_table::set_grant_status(user_db.pool(), &grant.id, "revoked").await?;
-        sqlx::query(
-            "DELETE FROM brokerage_connections WHERE user_id=$1 AND auth_mode='oauth' AND oauth_grant_id=$2",
+        let upstream_confirmed = match grant.refresh_token_encrypted.as_deref() {
+            Some(encrypted) => match decrypt_secret(encrypted) {
+                Ok(refresh_token) => match brokerage.revoke_oauth_token(&refresh_token).await {
+                    Ok(()) => true,
+                    Err(error) => {
+                        log::warn!(
+                            "SnapTrade OAuth upstream revocation was not confirmed for grant {}: {error}",
+                            grant.id
+                        );
+                        false
+                    }
+                },
+                Err(error) => {
+                    log::warn!(
+                        "SnapTrade OAuth refresh token could not be decrypted for grant {}: {error}",
+                        grant.id
+                    );
+                    false
+                }
+            },
+            None => true,
+        };
+        let unlinked = snaptrade_oauth_table::revoke_grant_locally(
+            user_db.pool(),
+            user_db.user_id(),
+            &grant.id,
         )
-        .bind(user_db.user_id())
-        .bind(&grant.id)
-        .execute(user_db.pool())
         .await?;
-        Ok(true)
+        Ok(SnapTradeOAuthRevocation {
+            revoked: true,
+            upstream_confirmed,
+            unlinked_workspaces: i32::try_from(unlinked).unwrap_or(i32::MAX),
+        })
     }
 
     /// Records a user-confirmed data issue with a server-built, sanitized
@@ -1357,10 +1464,10 @@ impl BrokerageMutation {
         )
         .await?
         .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
-        let auth = resolve_workspace_auth(user_db.pool(), brokerage_client, &workspace)
+        let mut session = resolve_workspace_session(user_db.pool(), brokerage_client, &workspace)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let accounts = auth.list_accounts(brokerage_client).await?;
+        let accounts = session.list_accounts().await?;
         let today = history_policy::eastern_today();
         let mut resolved = Vec::with_capacity(input.accounts.len());
         for account in &input.accounts {
@@ -1482,10 +1589,10 @@ impl BrokerageMutation {
             ));
         }
 
-        let auth = resolve_workspace_auth(user_db.pool(), brokerage_client, &workspace)
+        let mut session = resolve_workspace_session(user_db.pool(), brokerage_client, &workspace)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let accounts = auth.list_accounts(brokerage_client).await?;
+        let accounts = session.list_accounts().await?;
         let created =
             crate::service::brokerage::workspaces::create_workspaces_for_connection_accounts(
                 user_db.pool(),
@@ -1630,14 +1737,19 @@ impl BrokerageMutation {
             .clone()
             .unwrap_or_else(|| "your brokerage".to_string());
 
-        let auth = resolve_workspace_auth(user_db.pool(), brokerage_client, &account)
+        let mut session = resolve_workspace_session(user_db.pool(), brokerage_client, &account)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let snaptrade_user_id = auth.snaptrade_user_id().to_string();
+        let snaptrade_user_id = session.snaptrade_user_id().to_string();
 
-        let connection = match auth.get_connection(brokerage_client, &connection_id).await {
+        let connection = match session.get_connection(&connection_id).await {
             Ok(connection) => connection,
-            Err(error) if is_stale_credentials(&error) => {
+            Err(error)
+                if is_stale_credentials(&error)
+                    || error
+                        .downcast_ref::<SnapTradeError>()
+                        .is_some_and(SnapTradeError::requires_reauthorization) =>
+            {
                 workspaces_table::set_connection_disabled(
                     user_db.pool(),
                     &workspace_id,
@@ -1670,30 +1782,19 @@ impl BrokerageMutation {
             ));
         }
         // Discover SnapTrade account IDs (they differ from our internal workspace_id)
-        let snaptrade_accounts = match list_accounts_with_oauth_retry(
-            user_db.pool(),
-            brokerage_client,
-            user_db.user_id(),
-            &auth,
-        )
-        .await
-        {
+        let snaptrade_accounts = match session.list_accounts().await {
             Ok(accounts) => accounts,
             Err(e) => {
-                let oauth_reauthorization = mark_reauthorization_if_needed(
-                    user_db.pool(),
-                    &auth,
-                    &e,
-                )
-                .await
-                .unwrap_or(false);
                 // Recovery here deliberately stops at flagging the account rather
                 // than re-registering. Re-registration deletes the SnapTrade user
                 // and with it the brokerage authorization, which is not something
                 // a sync — often a background one — should do unprompted. Marking
                 // the connection disabled surfaces the existing "reconnect" path,
                 // which re-registers with the user's knowledge.
-                if oauth_reauthorization || is_stale_credentials(&e) {
+                if is_stale_credentials(&e)
+                    || e.downcast_ref::<SnapTradeError>()
+                        .is_some_and(SnapTradeError::requires_reauthorization)
+                {
                     log::warn!(
                         "SnapTrade rejected stored credentials for account={} — flagging the \
                          connection as disabled so the user is prompted to reconnect",
@@ -1787,10 +1888,10 @@ impl BrokerageMutation {
         }
 
         if connection.data_freshness_mode == "delayed"
-            && let BrokerageAuth::Commercial { user_secret, .. } = &auth
+            && let Some(user_secret) = session.commercial_secret().map(str::to_string)
         {
             if let Err(error) = brokerage_client
-                .refresh_connection(&snaptrade_user_id, user_secret, &connection_id)
+                .refresh_connection(&snaptrade_user_id, &user_secret, &connection_id)
                 .await
             {
                 return Err(async_graphql::Error::new(format!(
@@ -1807,7 +1908,7 @@ impl BrokerageMutation {
                 user_id: user_db.user_id().to_string(),
                 workspace_id: workspace_id.clone(),
                 snaptrade_user_id: snaptrade_user_id.clone(),
-                user_secret: user_secret.clone(),
+                user_secret,
                 snaptrade_account_id: snaptrade_account_id.clone(),
                 broker: broker.clone(),
                 baseline_holdings_mark: holdings_sync_mark(st_account),
@@ -1830,7 +1931,7 @@ impl BrokerageMutation {
         let total_tx = transaction::sync_transactions_if_advanced(
             brokerage_client.as_ref(),
             user_db.pool(),
-            &auth,
+            &mut session,
             &snaptrade_account_id,
             user_db.user_id(),
             &workspace_id,
@@ -1852,7 +1953,7 @@ impl BrokerageMutation {
         let portfolio = transaction::sync_holdings(
             brokerage_client.as_ref(),
             user_db.pool(),
-            &auth,
+            &mut session,
             &snaptrade_account_id,
             user_db.user_id(),
             &workspace_id,

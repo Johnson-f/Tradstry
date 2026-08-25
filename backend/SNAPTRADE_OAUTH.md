@@ -33,6 +33,17 @@ webhooks, a rotated refresh token, reconnect-required state, workspace unlink,
 and full grant revocation. Revocation must remove Tradstry access while leaving
 the Personal brokerage connection visible in SnapTrade.
 
+Also force an early `401` for connection, account, transaction, and holdings
+reads. Tradstry must refresh once, retry the same operation with the rotated
+token, and stop after a second authentication failure. A normal upstream `400`
+must not disable the grant.
+
+A Tradstry user may reauthorize the same SnapTrade Personal identity. Switching
+to a different Personal identity is rejected until the existing OAuth access is
+revoked and its workspace bindings are removed. Revocation clears all locally
+stored access and refresh tokens even when SnapTrade cannot confirm the upstream
+revocation; in that case, direct the user to SnapTrade Connected Apps.
+
 ## Rollout and rollback
 
 Enable OAuth first for Test and internal users. Keep Commercial available. To
@@ -40,6 +51,10 @@ disable new OAuth attempts, remove both backend OAuth URL variables and restart
 the backend. Existing grants remain encrypted and inactive from the UI; do not
 delete them during rollback. Restore the variables to resume, or let users
 explicitly revoke access.
+
+Do not configure the four Production OAuth variables until the hardened OAuth
+test suite, web walkthrough, desktop external-browser walkthrough, forced-401
+test, webhook test, and revocation test all pass against the release candidate.
 
 Never log or export client secrets, authorization codes, access tokens, refresh
 tokens, raw state, or PKCE verifiers.

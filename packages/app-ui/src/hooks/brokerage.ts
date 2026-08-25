@@ -9,6 +9,7 @@ import {
 import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as brokerageService from "@tradstry/app-ui/lib/service/brokerage";
+import { snapTradeOAuthPhase } from "@tradstry/app-ui/lib/snaptrade-oauth-flow";
 import type {
 	BrokerageAccountImportInput,
 	BrokerageBalance,
@@ -30,7 +31,7 @@ import type {
 	TransactionImportPolicyInput,
 } from "@tradstry/app-ui/lib/types/brokerage";
 import type { Workspace } from "@tradstry/app-ui/lib/types/workspaces";
-import { useAuth } from "@tradstry/app-ui/platform";
+import { useAuth, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -349,6 +350,105 @@ export function useFinalizeSnapTradeOAuthSetup() {
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
 	});
+}
+
+export function useCompleteSnapTradeOAuthReauthorization() {
+	const fetcher = useGraphQL();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (attemptId: string) =>
+			brokerageService.completeSnapTradeOAuthReauthorization(
+				fetcher,
+				attemptId,
+			),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
+	});
+}
+
+export function useSnapTradeOAuthFlow() {
+	const platform = useTradstryPlatform();
+	const [attemptId, setAttemptId] = useState<string | null>(null);
+	const completedReauthorization = useRef<string | null>(null);
+	const initiate = useInitiateSnapTradeOAuth();
+	const status = useSnapTradeOAuthStatus(attemptId);
+	const phase = snapTradeOAuthPhase(status.data);
+	const accounts = useSnapTradeOAuthAccounts(attemptId, phase === "setup");
+	const finalize = useFinalizeSnapTradeOAuthSetup();
+	const completeReauthorization = useCompleteSnapTradeOAuthReauthorization();
+	const sync = useSyncBrokerageData();
+
+	useEffect(() => {
+		if (
+			!attemptId ||
+			phase !== "reauthorizing" ||
+			completedReauthorization.current === attemptId
+		) {
+			return;
+		}
+		completedReauthorization.current = attemptId;
+		void (async () => {
+			try {
+				const workspace = await completeReauthorization.mutateAsync(attemptId);
+				await sync.mutateAsync(workspace.id);
+				toast.success("SnapTrade access reauthorized");
+				setAttemptId(null);
+			} catch (error) {
+				completedReauthorization.current = null;
+				setAttemptId(null);
+				toast.error(
+					error instanceof Error
+						? error.message
+						: "Could not finish SnapTrade reauthorization",
+				);
+			}
+		})();
+	}, [attemptId, completeReauthorization, phase, sync]);
+
+	async function start(workspaceId: string) {
+		const started = await initiate.mutateAsync({
+			workspaceId,
+			platform: platform.kind,
+		});
+		setAttemptId(started.attemptId);
+		try {
+			await platform.openExternal(started.authorizationUrl);
+		} catch (error) {
+			setAttemptId(null);
+			throw error;
+		}
+		return started;
+	}
+
+	async function finishConnect(
+		workspaceId: string,
+		value: {
+			primarySnaptradeAccountId: string;
+			accounts: BrokerageAccountImportInput[];
+		},
+	) {
+		if (!attemptId) throw new Error("OAuth attempt ID is required");
+		const configured = await finalize.mutateAsync({
+			attemptId,
+			input: { workspaceId, ...value },
+		});
+		for (const workspace of configured) await sync.mutateAsync(workspace.id);
+		setAttemptId(null);
+		return configured;
+	}
+
+	return {
+		attemptId,
+		status,
+		phase,
+		accounts,
+		start,
+		finishConnect,
+		cancel: () => setAttemptId(null),
+		isStarting: initiate.isPending,
+		isSubmitting:
+			finalize.isPending || completeReauthorization.isPending || sync.isPending,
+	};
 }
 
 export function useCompleteConnection() {

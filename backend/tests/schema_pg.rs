@@ -71,6 +71,9 @@ async fn migrate_creates_all_tables_idempotently() {
         "brokerage_episode_publications",
         "manual_execution_claims",
         "snaptrade_webhook_events",
+        "snaptrade_oauth_attempts",
+        "snaptrade_oauth_grants",
+        "founder_grants",
         "trade_episodes",
         "trade_episode_fills",
         "trade_episode_matches",
@@ -95,8 +98,8 @@ async fn migrate_creates_all_tables_idempotently() {
     }
     assert_eq!(
         tables.len(),
-        62,
-        "expected exactly 62 tables, got {tables:?}"
+        65,
+        "expected exactly 65 tables, got {tables:?}"
     );
 
     let indexes: Vec<String> = sqlx::query_scalar(

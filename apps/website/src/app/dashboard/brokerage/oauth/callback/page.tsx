@@ -54,6 +54,20 @@ function OAuthCallback() {
           });
           return;
         }
+        if (status.intent === "reauthorize") {
+          const workspace =
+            await brokerageService.completeSnapTradeOAuthReauthorization(
+              fetcher,
+              attemptId,
+            );
+          await brokerageService.syncBrokerageData(fetcher, workspace.id);
+          setState({ kind: "success" });
+          window.setTimeout(
+            () => router.replace("/dashboard/brokerage"),
+            1200,
+          );
+          return;
+        }
         const accounts = await brokerageService.fetchSnapTradeOAuthAccounts(
           fetcher,
           attemptId,

@@ -12,6 +12,7 @@ import type {
 	ConnectionPortal,
 	PendingTrade,
 	ReportBrokerageDataIssueInput,
+	SnapTradeOAuthRevocation,
 	SnapTradeOAuthStart,
 	SnapTradeOAuthStatus,
 	SyncResult,
@@ -235,7 +236,7 @@ const INITIATE_SNAPTRADE_OAUTH_MUTATION = `
 
 const SNAPTRADE_OAUTH_STATUS_QUERY = `
   query SnapTradeOauthStatus($attemptId: String!) {
-    snaptradeOauthStatus(attemptId: $attemptId) { status errorCode workspaceId }
+    snaptradeOauthStatus(attemptId: $attemptId) { status errorCode workspaceId platform intent }
   }
 `;
 
@@ -254,6 +255,14 @@ const SNAPTRADE_OAUTH_ACCOUNTS_QUERY = `
 const FINALIZE_SNAPTRADE_OAUTH_SETUP_MUTATION = `
   mutation FinalizeSnapTradeOauthSetup($attemptId: String!, $input: FinalizeBrokerageSetupInput!) {
     finalizeSnaptradeOauthSetup(attemptId: $attemptId, input: $input) {
+      id name snaptradeAccountId brokerageSetupComplete brokerageSetupCompletedAt
+    }
+  }
+`;
+
+const COMPLETE_SNAPTRADE_OAUTH_REAUTHORIZATION_MUTATION = `
+  mutation CompleteSnapTradeOauthReauthorization($attemptId: String!) {
+    completeSnaptradeOauthReauthorization(attemptId: $attemptId) {
       id name snaptradeAccountId brokerageSetupComplete brokerageSetupCompletedAt
     }
   }
@@ -321,7 +330,9 @@ const DISCONNECT_BROKERAGE_MUTATION = `
 `;
 
 const REVOKE_SNAPTRADE_OAUTH_MUTATION = `
-  mutation RevokeSnapTradeOauth { revokeSnaptradeOauth }
+  mutation RevokeSnapTradeOauth {
+    revokeSnaptradeOauth { revoked upstreamConfirmed unlinkedWorkspaces }
+  }
 `;
 
 const SYNC_BROKERAGE_DATA_MUTATION = `
@@ -473,6 +484,16 @@ export async function finalizeSnapTradeOAuthSetup(
 	return data.finalizeSnaptradeOauthSetup;
 }
 
+export async function completeSnapTradeOAuthReauthorization(
+	fetcher: GraphQLFetcher,
+	attemptId: string,
+): Promise<Workspace> {
+	const data = await fetcher<{
+		completeSnaptradeOauthReauthorization: Workspace;
+	}>(COMPLETE_SNAPTRADE_OAUTH_REAUTHORIZATION_MUTATION, { attemptId });
+	return data.completeSnaptradeOauthReauthorization;
+}
+
 export async function completeConnection(
 	fetcher: GraphQLFetcher,
 	workspaceId: string,
@@ -566,10 +587,10 @@ export async function disconnectBrokerage(
 
 export async function revokeSnapTradeOAuth(
 	fetcher: GraphQLFetcher,
-): Promise<boolean> {
-	const data = await fetcher<{ revokeSnaptradeOauth: boolean }>(
-		REVOKE_SNAPTRADE_OAUTH_MUTATION,
-	);
+): Promise<SnapTradeOAuthRevocation> {
+	const data = await fetcher<{
+		revokeSnaptradeOauth: SnapTradeOAuthRevocation;
+	}>(REVOKE_SNAPTRADE_OAUTH_MUTATION);
 	return data.revokeSnaptradeOauth;
 }
 

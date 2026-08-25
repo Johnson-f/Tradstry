@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use tokio::time::{Duration, sleep};
 
-use super::auth::resolve_workspace_auth;
+use super::auth::resolve_workspace_session;
 use super::client::BrokerageClient;
 use super::transaction;
 use crate::service::db::Db;
@@ -287,9 +287,9 @@ async fn process_target(
         workspaces_table::find_workspace(db.pool(), &target.workspace_id, &target.user_id)
             .await?
             .context("webhook workspace no longer exists")?;
-    let auth = resolve_workspace_auth(db.pool(), brokerage, &workspace).await?;
-    let connection = auth
-        .get_connection(brokerage, &target.connection_id)
+    let mut session = resolve_workspace_session(db.pool(), brokerage, &workspace).await?;
+    let connection = session
+        .get_connection(&target.connection_id)
         .await
         .context("read webhook connection status")?;
     workspaces_table::set_connection_disabled(
@@ -315,8 +315,8 @@ async fn process_target(
         return Ok(());
     }
 
-    let accounts = auth
-        .list_accounts(brokerage)
+    let accounts = session
+        .list_accounts()
         .await
         .context("list webhook brokerage accounts")?;
     let requested_account = event.account_id.as_deref().or(target.account_id.as_deref());
@@ -340,7 +340,7 @@ async fn process_target(
             transaction::sync_holdings_if_advanced(
                 brokerage,
                 db.pool(),
-                &auth,
+                &mut session,
                 account_id,
                 &target.user_id,
                 &target.workspace_id,
@@ -357,7 +357,7 @@ async fn process_target(
             transaction::sync_transactions_if_advanced(
                 brokerage,
                 db.pool(),
-                &auth,
+                &mut session,
                 account_id,
                 &target.user_id,
                 &target.workspace_id,

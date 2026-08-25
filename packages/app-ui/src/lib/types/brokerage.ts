@@ -225,6 +225,14 @@ export interface SnapTradeOAuthStatus {
 		| "expired";
 	errorCode: string | null;
 	workspaceId: string;
+	platform: "web" | "desktop";
+	intent: "connect" | "reauthorize";
+}
+
+export interface SnapTradeOAuthRevocation {
+	revoked: boolean;
+	upstreamConfirmed: boolean;
+	unlinkedWorkspaces: number;
 }
 
 export interface BrokerageConnectionAccount {

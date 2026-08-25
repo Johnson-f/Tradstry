@@ -14,13 +14,9 @@ import {
 } from "@tradstry/app-ui/components/ui/empty";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import {
-	useFinalizeSnapTradeOAuthSetup,
 	useInitiateConnection,
-	useInitiateSnapTradeOAuth,
-	useSnapTradeOAuthAccounts,
 	useSnapTradeOAuthAvailable,
-	useSnapTradeOAuthStatus,
-	useSyncBrokerageData,
+	useSnapTradeOAuthFlow,
 } from "@tradstry/app-ui/hooks/brokerage";
 import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { platformUrl, useTradstryPlatform } from "@tradstry/app-ui/platform";
@@ -31,17 +27,9 @@ export function BrokerageEmptyState() {
 	const workspace = useActiveWorkspace();
 	const initiate = useInitiateConnection();
 	const [connecting, setConnecting] = useState(false);
-	const [oauthAttemptId, setOauthAttemptId] = useState<string | null>(null);
 	const platform = useTradstryPlatform();
-	const initiateOAuth = useInitiateSnapTradeOAuth();
 	const oauthAvailable = useSnapTradeOAuthAvailable();
-	const oauthStatus = useSnapTradeOAuthStatus(oauthAttemptId);
-	const oauthAccounts = useSnapTradeOAuthAccounts(
-		oauthAttemptId,
-		oauthStatus.data?.status === "authorized",
-	);
-	const finalizeOAuth = useFinalizeSnapTradeOAuthSetup();
-	const sync = useSyncBrokerageData();
+	const oauth = useSnapTradeOAuthFlow();
 
 	async function handleConnect() {
 		if (!workspace) return;
@@ -74,12 +62,7 @@ export function BrokerageEmptyState() {
 	async function handleOAuthConnect() {
 		if (!workspace) return;
 		try {
-			const started = await initiateOAuth.mutateAsync({
-				workspaceId: workspace.id,
-				platform: platform.kind,
-			});
-			setOauthAttemptId(started.attemptId);
-			await platform.openExternal(started.authorizationUrl);
+			await oauth.start(workspace.id);
 		} catch (error) {
 			toast.error(
 				error instanceof Error
@@ -89,26 +72,17 @@ export function BrokerageEmptyState() {
 		}
 	}
 
-	if (
-		workspace &&
-		oauthAttemptId &&
-		oauthStatus.data?.status === "authorized" &&
-		oauthAccounts.data
-	) {
+	if (workspace && oauth.phase === "setup" && oauth.accounts.data) {
 		return (
 			<div className="flex flex-1 items-center justify-center p-6">
 				<BrokerageHistorySetup
-					accounts={oauthAccounts.data}
+					accounts={oauth.accounts.data}
 					workspaceName={workspace.name}
-					isSubmitting={finalizeOAuth.isPending || sync.isPending}
+					isSubmitting={oauth.isSubmitting}
 					onSubmit={(value) => {
 						void (async () => {
 							try {
-								const configured = await finalizeOAuth.mutateAsync({
-									attemptId: oauthAttemptId,
-									input: { workspaceId: workspace.id, ...value },
-								});
-								for (const item of configured) await sync.mutateAsync(item.id);
+								await oauth.finishConnect(workspace.id, value);
 								toast.success("SnapTrade accounts connected");
 							} catch (error) {
 								toast.error(
@@ -146,21 +120,14 @@ export function BrokerageEmptyState() {
 							size="sm"
 							variant="outline"
 							onClick={() => void handleOAuthConnect()}
-							disabled={
-								initiateOAuth.isPending ||
-								oauthStatus.data?.status === "pending" ||
-								oauthStatus.data?.status === "processing"
-							}
+							disabled={oauth.isStarting || oauth.phase === "waiting"}
 						>
-							{oauthStatus.data?.status === "pending" ||
-							oauthStatus.data?.status === "processing"
+							{oauth.phase === "waiting" || oauth.phase === "reauthorizing"
 								? "Waiting for SnapTrade…"
 								: "Continue with SnapTrade"}
 						</Button>
 					) : null}
-					{oauthStatus.data?.status === "denied" ||
-					oauthStatus.data?.status === "failed" ||
-					oauthStatus.data?.status === "expired" ? (
+					{oauth.phase === "error" ? (
 						<p role="alert" className="text-xs text-destructive">
 							SnapTrade authorization did not finish. You can try again.
 						</p>

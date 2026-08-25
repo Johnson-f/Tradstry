@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 
 #[derive(Debug, Clone)]
 pub struct OAuthAttempt {
@@ -10,6 +10,7 @@ pub struct OAuthAttempt {
     pub code_verifier_encrypted: String,
     pub requested_scopes: Vec<String>,
     pub platform: String,
+    pub intent: String,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -19,9 +20,9 @@ pub struct OAuthGrant {
     pub user_id: String,
     pub oauth_client_id: String,
     pub snaptrade_user_id: String,
-    pub access_token_encrypted: String,
-    pub refresh_token_encrypted: String,
-    pub access_token_expires_at: DateTime<Utc>,
+    pub access_token_encrypted: Option<String>,
+    pub refresh_token_encrypted: Option<String>,
+    pub access_token_expires_at: Option<DateTime<Utc>>,
     pub scopes: Vec<String>,
     pub status: String,
 }
@@ -33,14 +34,31 @@ pub struct CreateAttempt<'a> {
     pub code_verifier_encrypted: &'a str,
     pub requested_scopes: &'a [String],
     pub platform: &'a str,
+    pub intent: &'a str,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthorizedAttempt {
+    pub grant_id: String,
+    pub workspace_id: String,
+    pub intent: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct OAuthAttemptStatus {
+    pub status: String,
+    pub error_code: Option<String>,
+    pub workspace_id: String,
+    pub platform: String,
+    pub intent: String,
 }
 
 pub async fn create_attempt(pool: &PgPool, input: CreateAttempt<'_>) -> Result<String> {
     sqlx::query_scalar(
         "INSERT INTO snaptrade_oauth_attempts \
-         (user_id,workspace_id,state_hash,code_verifier_encrypted,requested_scopes,platform,expires_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+         (user_id,workspace_id,state_hash,code_verifier_encrypted,requested_scopes,platform,intent,expires_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
     )
     .bind(input.user_id)
     .bind(input.workspace_id)
@@ -48,6 +66,7 @@ pub async fn create_attempt(pool: &PgPool, input: CreateAttempt<'_>) -> Result<S
     .bind(input.code_verifier_encrypted)
     .bind(input.requested_scopes)
     .bind(input.platform)
+    .bind(input.intent)
     .bind(input.expires_at)
     .fetch_one(pool)
     .await
@@ -77,7 +96,7 @@ pub async fn claim_attempt(pool: &PgPool, state_hash: &str) -> Result<OAuthAttem
     let row = sqlx::query(
         "UPDATE snaptrade_oauth_attempts SET status='processing', consumed_at=now() \
          WHERE state_hash=$1 AND status='pending' AND consumed_at IS NULL AND expires_at>now() \
-         RETURNING id,user_id,workspace_id,code_verifier_encrypted,requested_scopes,platform,expires_at",
+         RETURNING id,user_id,workspace_id,code_verifier_encrypted,requested_scopes,platform,intent,expires_at",
     )
     .bind(state_hash)
     .fetch_optional(pool)
@@ -91,7 +110,8 @@ pub async fn claim_attempt(pool: &PgPool, state_hash: &str) -> Result<OAuthAttem
         code_verifier_encrypted: row.try_get(3)?,
         requested_scopes: row.try_get(4)?,
         platform: row.try_get(5)?,
-        expires_at: row.try_get(6)?,
+        intent: row.try_get(6)?,
+        expires_at: row.try_get(7)?,
     })
 }
 
@@ -117,6 +137,11 @@ pub async fn store_grant(pool: &PgPool, input: StoreGrant<'_>) -> Result<OAuthGr
           refresh_token_encrypted=EXCLUDED.refresh_token_encrypted, \
           access_token_expires_at=EXCLUDED.access_token_expires_at, \
           scopes=EXCLUDED.scopes,status='active',authorized_at=now(),revoked_at=NULL \
+         WHERE snaptrade_oauth_grants.snaptrade_user_id=EXCLUDED.snaptrade_user_id \
+            OR (snaptrade_oauth_grants.status='revoked' AND NOT EXISTS ( \
+                SELECT 1 FROM brokerage_connections \
+                WHERE oauth_grant_id=snaptrade_oauth_grants.id \
+            )) \
          RETURNING id,user_id,oauth_client_id,snaptrade_user_id,access_token_encrypted, \
           refresh_token_encrypted,access_token_expires_at,scopes,status",
     )
@@ -127,9 +152,14 @@ pub async fn store_grant(pool: &PgPool, input: StoreGrant<'_>) -> Result<OAuthGr
     .bind(input.refresh_token_encrypted)
     .bind(input.access_token_expires_at)
     .bind(input.scopes)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
-    .context("store SnapTrade OAuth grant")?;
+    .context("store SnapTrade OAuth grant")?
+    .ok_or_else(|| {
+        anyhow!(
+            "Authorize the same SnapTrade Personal account, or revoke the existing connection before switching to a different SnapTrade Personal account"
+        )
+    })?;
     grant_from_row(&row)
 }
 
@@ -140,7 +170,7 @@ pub async fn finish_attempt(
     error_code: Option<&str>,
     grant_id: Option<&str>,
 ) -> Result<()> {
-    sqlx::query(
+    let affected = sqlx::query(
         "UPDATE snaptrade_oauth_attempts SET status=$2,error_code=$3,grant_id=$4 \
          WHERE id=$1 AND status='processing'",
     )
@@ -150,7 +180,9 @@ pub async fn finish_attempt(
     .bind(grant_id)
     .execute(pool)
     .await
-    .context("finish SnapTrade OAuth attempt")?;
+    .context("finish SnapTrade OAuth attempt")?
+    .rows_affected();
+    anyhow::ensure!(affected == 1, "OAuth attempt is not processing");
     Ok(())
 }
 
@@ -158,7 +190,7 @@ pub async fn attempt_status(
     pool: &PgPool,
     user_id: &str,
     attempt_id: &str,
-) -> Result<Option<(String, Option<String>, String)>> {
+) -> Result<Option<OAuthAttemptStatus>> {
     sqlx::query(
         "UPDATE snaptrade_oauth_attempts SET status='expired',consumed_at=now(),error_code='expired' \
          WHERE id=$1 AND user_id=$2 AND status='pending' AND expires_at<=now()",
@@ -168,30 +200,46 @@ pub async fn attempt_status(
     .execute(pool)
     .await
     .context("expire SnapTrade OAuth attempt")?;
-    sqlx::query_as(
-        "SELECT status,error_code,workspace_id FROM snaptrade_oauth_attempts WHERE id=$1 AND user_id=$2",
+    let row = sqlx::query_as::<_, (String, Option<String>, String, String, String)>(
+        "SELECT status,error_code,workspace_id,platform,intent FROM snaptrade_oauth_attempts WHERE id=$1 AND user_id=$2",
     )
     .bind(attempt_id)
     .bind(user_id)
     .fetch_optional(pool)
     .await
-    .context("read SnapTrade OAuth attempt status")
+    .context("read SnapTrade OAuth attempt status")?;
+    Ok(row.map(
+        |(status, error_code, workspace_id, platform, intent)| OAuthAttemptStatus {
+            status,
+            error_code,
+            workspace_id,
+            platform,
+            intent,
+        },
+    ))
 }
 
-pub async fn authorized_grant_for_attempt(
+pub async fn authorized_attempt(
     pool: &PgPool,
     user_id: &str,
     attempt_id: &str,
-) -> Result<Option<String>> {
-    sqlx::query_scalar(
-        "SELECT grant_id FROM snaptrade_oauth_attempts \
+) -> Result<Option<AuthorizedAttempt>> {
+    let row = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT grant_id,workspace_id,intent FROM snaptrade_oauth_attempts \
          WHERE id=$1 AND user_id=$2 AND status='authorized' AND grant_id IS NOT NULL",
     )
     .bind(attempt_id)
     .bind(user_id)
     .fetch_optional(pool)
     .await
-    .context("find OAuth grant for authorized attempt")
+    .context("find authorized OAuth attempt")?;
+    Ok(
+        row.map(|(grant_id, workspace_id, intent)| AuthorizedAttempt {
+            grant_id,
+            workspace_id,
+            intent,
+        }),
+    )
 }
 
 pub async fn find_grant_for_user(pool: &PgPool, user_id: &str) -> Result<Option<OAuthGrant>> {
@@ -226,8 +274,26 @@ pub async fn find_grant(
     row.as_ref().map(grant_from_row).transpose()
 }
 
-pub async fn replace_tokens(
-    pool: &PgPool,
+pub async fn find_grant_on(
+    connection: &mut PgConnection,
+    user_id: &str,
+    grant_id: &str,
+) -> Result<Option<OAuthGrant>> {
+    let row = sqlx::query(
+        "SELECT id,user_id,oauth_client_id,snaptrade_user_id,access_token_encrypted, \
+         refresh_token_encrypted,access_token_expires_at,scopes,status \
+         FROM snaptrade_oauth_grants WHERE id=$1 AND user_id=$2",
+    )
+    .bind(grant_id)
+    .bind(user_id)
+    .fetch_optional(connection)
+    .await
+    .context("find SnapTrade OAuth grant on locked connection")?;
+    row.as_ref().map(grant_from_row).transpose()
+}
+
+pub async fn replace_tokens_on(
+    connection: &mut PgConnection,
     grant_id: &str,
     access_token_encrypted: &str,
     refresh_token_encrypted: &str,
@@ -244,26 +310,73 @@ pub async fn replace_tokens(
     .bind(refresh_token_encrypted)
     .bind(access_token_expires_at)
     .bind(scopes)
-    .execute(pool)
+    .execute(connection)
     .await
-    .context("replace rotated SnapTrade OAuth tokens")?
+    .context("replace rotated SnapTrade OAuth tokens on locked connection")?
     .rows_affected();
     anyhow::ensure!(affected == 1, "SnapTrade OAuth grant is not active");
     Ok(())
 }
 
-pub async fn set_grant_status(pool: &PgPool, grant_id: &str, status: &str) -> Result<()> {
-    sqlx::query(
+pub async fn clear_grant_credentials(pool: &PgPool, grant_id: &str, status: &str) -> Result<()> {
+    anyhow::ensure!(
+        matches!(status, "reauthorization_required" | "revoked"),
+        "invalid inactive OAuth grant status"
+    );
+    let affected = sqlx::query(
         "UPDATE snaptrade_oauth_grants SET status=$2, \
-         revoked_at=CASE WHEN $2='revoked' THEN now() ELSE revoked_at END \
-         WHERE id=$1",
+         access_token_encrypted=NULL,refresh_token_encrypted=NULL,access_token_expires_at=NULL, \
+         revoked_at=CASE WHEN $2='revoked' THEN now() ELSE revoked_at END WHERE id=$1",
     )
     .bind(grant_id)
     .bind(status)
     .execute(pool)
     .await
-    .context("update SnapTrade OAuth grant status")?;
+    .context("clear SnapTrade OAuth grant credentials")?
+    .rows_affected();
+    anyhow::ensure!(affected == 1, "SnapTrade OAuth grant not found");
     Ok(())
+}
+
+pub async fn clear_grant_credentials_on(
+    connection: &mut PgConnection,
+    grant_id: &str,
+    status: &str,
+) -> Result<()> {
+    anyhow::ensure!(
+        matches!(status, "reauthorization_required" | "revoked"),
+        "invalid inactive OAuth grant status"
+    );
+    let affected = sqlx::query(
+        "UPDATE snaptrade_oauth_grants SET status=$2, \
+         access_token_encrypted=NULL,refresh_token_encrypted=NULL,access_token_expires_at=NULL, \
+         revoked_at=CASE WHEN $2='revoked' THEN now() ELSE revoked_at END WHERE id=$1",
+    )
+    .bind(grant_id)
+    .bind(status)
+    .execute(connection)
+    .await
+    .context("clear SnapTrade OAuth grant credentials on locked connection")?
+    .rows_affected();
+    anyhow::ensure!(affected == 1, "SnapTrade OAuth grant not found");
+    Ok(())
+}
+
+pub async fn revoke_grant_locally(pool: &PgPool, user_id: &str, grant_id: &str) -> Result<u64> {
+    let mut transaction = pool.begin().await?;
+    let unlinked = sqlx::query(
+        "DELETE FROM brokerage_connections \
+         WHERE user_id=$1 AND auth_mode='oauth' AND oauth_grant_id=$2",
+    )
+    .bind(user_id)
+    .bind(grant_id)
+    .execute(&mut *transaction)
+    .await
+    .context("unlink OAuth brokerage workspaces")?
+    .rows_affected();
+    clear_grant_credentials_on(&mut transaction, grant_id, "revoked").await?;
+    transaction.commit().await?;
+    Ok(unlinked)
 }
 
 fn grant_from_row(row: &sqlx::postgres::PgRow) -> Result<OAuthGrant> {
