@@ -1,6 +1,5 @@
 pub mod clerk_webhook;
 mod graphql;
-mod notebook_assistance;
 mod notebook_images;
 pub mod notebook_media;
 pub mod snaptrade_oauth;
@@ -55,17 +54,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route(
                     "/{hash}",
                     web::delete().to(notebook_media::delete_notebook_media),
-                ),
-        )
-        .service(
-            web::scope("/notebook/assist")
-                .route(
-                    "/autocomplete",
-                    web::post().to(notebook_assistance::autocomplete_handler),
-                )
-                .route(
-                    "/transform",
-                    web::post().to(notebook_assistance::transform_handler),
                 ),
         );
 }

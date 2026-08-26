@@ -1,12 +1,10 @@
 use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
-use std::sync::Arc;
 
 use crate::service::db::schema::tables::notebook::sync as notebook_sync;
 use crate::service::db::schema::tables::playbook_table::{
     self, CreatePlaybookInput, PlaybookDelta, UpdatePlaybookInput,
 };
 use crate::service::read_service::playbook as playbook_service;
-use crate::service::{ai::jobs as ai_jobs, db::Db};
 
 #[derive(SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -61,30 +59,6 @@ pub struct PlaybookPullResult {
 
 async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db::client::UserDb> {
     crate::graphql::auth::user_db(ctx).await
-}
-
-async fn reindex_playbook_library(
-    ctx: &Context<'_>,
-    user_db: &crate::service::db::client::UserDb,
-    playbook_id: &str,
-) -> Result<()> {
-    let workspace_ids: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM workspaces WHERE user_id=$1 ORDER BY created_at,id")
-            .bind(user_db.user_id())
-            .fetch_all(user_db.pool())
-            .await?;
-    let db = ctx.data::<Arc<Db>>()?;
-    for workspace_id in workspace_ids {
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &workspace_id,
-            "playbook",
-            playbook_id,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 #[derive(Default)]
@@ -170,7 +144,6 @@ impl PlaybookMutation {
     ) -> Result<playbook_service::PlaybookWithStats> {
         let user_db = get_user_db(ctx).await?;
         let playbook = playbook_service::create_playbook(&user_db, input).await?;
-        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         Ok(playbook)
     }
 
@@ -182,7 +155,6 @@ impl PlaybookMutation {
     ) -> Result<playbook_service::PlaybookWithStats> {
         let user_db = get_user_db(ctx).await?;
         let playbook = playbook_service::update_playbook(&user_db, &id, input).await?;
-        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         Ok(playbook)
     }
 
@@ -200,17 +172,12 @@ impl PlaybookMutation {
             &input.workspace_ids,
         )
         .await?;
-        reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
         Ok(playbook)
     }
 
     async fn delete_playbook(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let existing = playbook_service::get_playbook(&user_db, &id).await?;
         let deleted = playbook_service::delete_playbook(&user_db, &id).await?;
-        if deleted && let Some(playbook) = existing {
-            reindex_playbook_library(ctx, &user_db, &playbook.id).await?;
-        }
         Ok(deleted)
     }
 }

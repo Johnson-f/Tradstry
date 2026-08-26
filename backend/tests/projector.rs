@@ -1,4 +1,4 @@
-use tradstry_backend::service::ai::projector::{project, seed};
+use tradstry_backend::service::notebook::projector::{project, seed};
 
 const PARAGRAPH_JSON: &str = r#"{"root":{"children":[{"type":"paragraph","children":[{"type":"text","text":"hello","format":0,"detail":0,"mode":"normal","style":"","version":1}],"direction":null,"format":"","indent":0,"version":1}],"direction":null,"format":"","indent":0,"type":"root","version":1}}"#;
 

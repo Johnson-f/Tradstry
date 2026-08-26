@@ -22,11 +22,11 @@ use serde::{Deserialize, Serialize};
 
 use tradstry_backend::graphql::notebook::crdt as crdt_api;
 use tradstry_backend::graphql::notebook::sync;
-use tradstry_backend::service::ai::projector::{self, EditMode};
 use tradstry_backend::service::db::schema::tables::notebook::{
     crdt, folders,
     notes::{self, CreateNotebookNoteInput, UpdateNotebookNoteInput},
 };
+use tradstry_backend::service::notebook::projector::{self, EditMode};
 
 use crate::server::TradstryMcp;
 use crate::tools::write::{internal, ok};

@@ -27,7 +27,6 @@ import {
   TabsTrigger,
 } from "@tradstry/app-ui/components/ui/tabs";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
-import { useChatStore } from "@tradstry/app-ui/hooks/chat";
 import {
   useAddMarketWatchlistSymbol,
   useCreateMarketMonitor,
@@ -817,19 +816,6 @@ export function Markets() {
   const selectedQuote = quotes.data?.quotes.find(
     (quote) => quote.symbol === selectedSymbol,
   );
-  const chat = useChatStore();
-  React.useEffect(
-    () => () => {
-      const state = useChatStore.getState();
-      if (state.pinnedContext.marketSymbol === selectedSymbol) {
-        state.setPinnedContext({
-          ...state.pinnedContext,
-          marketSymbol: undefined,
-        });
-      }
-    },
-    [selectedSymbol],
-  );
   const ensuredWatchlist = React.useRef(false);
   React.useEffect(() => {
     if (
@@ -842,14 +828,6 @@ export function Markets() {
     }
   }, [watchlists.data, createWatchlist]);
   const activeWatchlist = watchlists.data?.[0];
-
-  function askAi() {
-    chat.setPinnedContext({
-      ...chat.pinnedContext,
-      marketSymbol: selectedSymbol,
-    });
-    chat.setOpen(true);
-  }
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1056,10 +1034,6 @@ export function Markets() {
                       : ""}
                   </p>
                 </div>
-                <Button size="sm" onClick={askAi}>
-                  <HugeiconsIcon icon={SparklesIcon} className="size-4" />
-                  Ask AI
-                </Button>
               </div>
               <div className="mb-2 flex gap-1.5 overflow-x-auto lg:hidden">
                 <Button

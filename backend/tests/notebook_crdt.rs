@@ -1,13 +1,8 @@
 mod pg_support;
 use pg_support::{seed_user_workspace, test_pool};
 use tradstry_backend::graphql::notebook::crdt as notebook_crdt;
-use tradstry_backend::service::ai::db as ai_db;
-use tradstry_backend::service::ai::jobs;
-use tradstry_backend::service::ai::projector;
-use tradstry_backend::service::ai::types::AiSourceDocument;
-use tradstry_backend::service::db::client::Db;
 use tradstry_backend::service::db::schema::tables::{notebook::crdt, notebook::notes};
-use uuid::Uuid;
+use tradstry_backend::service::notebook::projector;
 
 /// A one-paragraph Lexical document with a distinctive marker word, so a
 /// duplicated projection is trivially detectable by counting occurrences.
@@ -248,15 +243,6 @@ async fn migration_adds_crdt_tables() {
         .unwrap();
         assert!(exists, "{table} missing");
     }
-
-    let (exists,): (bool,) = sqlx::query_as(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns
-         WHERE table_name='ai_source_documents' AND column_name='body_version')",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert!(exists, "ai_source_documents.body_version missing");
 }
 
 #[tokio::test]
@@ -428,99 +414,6 @@ async fn seed_note_round_trips_a_realistic_document() {
         projected.matches("Waited for the reclaim.").count(),
         1,
         "content duplicated"
-    );
-}
-
-/// Defense 1 (catch-up). A crdt note whose projection lags must be projected
-/// inline by the reindex before its blocks are embedded, so the index never
-/// carries text the user already changed. Fails before the catch-up is wired in.
-#[tokio::test]
-async fn reindex_catches_up_stale_crdt_projection() {
-    let pool = migrated_pool().await;
-    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let note_id = make_note(&pool, &user_id, workspace_id.clone(), SEED_DOC).await;
-
-    // seed -> update seq 1, projected_seq 0, document_json still "seedmarker".
-    crdt::seed_note(&pool, &note_id).await.unwrap();
-
-    // Append a content-changing update but do NOT project. The projection now
-    // contains "freshmarker"; the stale document_json does not.
-    let extra = projector::seed(FRESH_DOC).await.unwrap().update;
-    append_update(&pool, &note_id, &extra).await;
-
-    let db = Db::from_pool(pool.clone());
-    let docs = jobs::build_indexable_sources(&db, &user_id, &workspace_id)
-        .await
-        .unwrap();
-    let (doc, _, _) = docs
-        .iter()
-        .find(|(d, _, _)| d.source_id == note_id)
-        .expect("the note must be indexable");
-
-    assert!(
-        doc.body_text.contains("freshmarker"),
-        "reindex must project the crdt note inline before indexing; got: {}",
-        doc.body_text
-    );
-
-    // seq is a global BIGSERIAL, so body_version carries the note's max update seq
-    // (projected_seq), not a per-note count. It must equal that max and be > 0.
-    let (max_seq,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(MAX(seq), 0) FROM notebook_note_updates WHERE note_id = $1",
-    )
-    .bind(&note_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert!(max_seq > 0);
-    assert_eq!(
-        doc.body_version, max_seq,
-        "body_version must be stamped with projected_seq (the note's max update seq)"
-    );
-}
-
-/// Defense 2 (version guard). Leases + retries make out-of-order completion
-/// inevitable: a slow job carrying older blocks must not overwrite a newer
-/// vector. The source-doc upsert rejects a lower body_version.
-#[tokio::test]
-async fn source_document_upsert_rejects_older_body_version() {
-    let pool = migrated_pool().await;
-    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let db = Db::from_pool(pool.clone());
-    let source_id = Uuid::new_v4().to_string();
-
-    let mk = |body: &str, version: i64| AiSourceDocument {
-        id: Uuid::new_v4().to_string(),
-        user_id: user_id.clone(),
-        workspace_id: workspace_id.clone(),
-        source_type: "notebook_note".into(),
-        source_id: source_id.clone(),
-        title: "t".into(),
-        body_text: body.into(),
-        metadata_json: "{}".into(),
-        content_hash: format!("hash-{version}"),
-        body_version: version,
-    };
-
-    ai_db::replace_source_documents_for_account(&db, &user_id, &workspace_id, &[mk("v5-text", 5)])
-        .await
-        .unwrap();
-    ai_db::replace_source_documents_for_account(&db, &user_id, &workspace_id, &[mk("v3-text", 3)])
-        .await
-        .unwrap();
-
-    let (body,): (String,) = sqlx::query_as(
-        "SELECT body_text FROM ai_source_documents WHERE user_id=$1 AND workspace_id=$2 AND source_id=$3",
-    )
-    .bind(&user_id)
-    .bind(&workspace_id)
-    .bind(&source_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        body, "v5-text",
-        "an older body_version must not overwrite a newer vector's source doc"
     );
 }
 

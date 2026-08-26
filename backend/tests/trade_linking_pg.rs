@@ -149,6 +149,15 @@ async fn a_tag_cannot_cross_workspace_boundaries() {
         .await
         .unwrap()[0]
         .clone();
+    tags_table::set_category_applicability(
+        &pool,
+        &user_id,
+        &category.id,
+        "selected",
+        std::slice::from_ref(&workspace_a),
+    )
+    .await
+    .unwrap();
     let tag = tags_table::create_tag(
         &pool,
         &user_id,
@@ -164,7 +173,7 @@ async fn a_tag_cannot_cross_workspace_boundaries() {
         .await
         .expect_err("a tag from workspace A must not attach to workspace B");
     assert!(
-        err.to_string().contains("different workspace"),
+        err.to_string().contains("not found"),
         "cross-workspace tag link must be refused, got: {err}"
     );
 }

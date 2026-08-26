@@ -239,10 +239,17 @@ async fn workspace_migration_preserves_legacy_production_data() {
     assert_eq!(table_count(&pool, "accounts").await, 2);
     assert_eq!(table_count(&pool, "playbooks").await, 2);
 
-    all_migrations
+    let workspace_era_migrations = Migrator::with_migrations(
+        all_migrations
+            .iter()
+            .filter(|migration| migration.version <= 47)
+            .cloned()
+            .collect(),
+    );
+    workspace_era_migrations
         .run(&pool)
         .await
-        .expect("apply workspace migration 0033");
+        .expect("apply workspace-era migrations before the universal library transition");
 
     for (&table, &count) in &before {
         assert_eq!(

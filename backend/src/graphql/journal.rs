@@ -1,5 +1,4 @@
 use async_graphql::{ComplexObject, Context, InputObject, Object, Result, SimpleObject};
-use std::sync::Arc;
 
 use crate::graphql::tags::TagGql;
 use crate::service::db::schema::tables::journal_table::{
@@ -11,7 +10,6 @@ use crate::service::db::schema::tables::trade_review_table;
 use crate::service::read_service::journal::{self as journal_service, JournalFilter};
 use crate::service::read_service::principle as principle_service;
 use crate::service::read_service::tags as tags_service;
-use crate::service::{ai::jobs as ai_jobs, db::Db};
 
 #[derive(SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -258,21 +256,6 @@ impl JournalMutation {
             },
         )
         .await?;
-        let entry =
-            journal_table::find_journal_entry(user_db.pool(), &journal_id, user_db.user_id())
-                .await?
-                .ok_or_else(|| {
-                    async_graphql::Error::new("published journal entry was not found")
-                })?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &entry.workspace_id,
-            "journal_entry",
-            &entry.id,
-        )
-        .await?;
         Ok(journal_id)
     }
 
@@ -290,15 +273,6 @@ impl JournalMutation {
             &user_db,
             &entry.id,
             &violated_principle_ids,
-        )
-        .await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &entry.workspace_id,
-            "journal_entry",
-            &entry.id,
         )
         .await?;
         Ok(entry)
@@ -320,33 +294,12 @@ impl JournalMutation {
         if let Some(ids) = violated_principle_ids {
             principle_service::set_trade_principle_violations(&user_db, &entry.id, &ids).await?;
         }
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &entry.workspace_id,
-            "journal_entry",
-            &entry.id,
-        )
-        .await?;
         Ok(entry)
     }
 
     async fn delete_journal_entry(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let existing = journal_service::get_journal_entry(&user_db, &id).await?;
         let deleted = journal_service::delete_journal_entry(&user_db, &id).await?;
-        if deleted && let Some(entry) = existing {
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_source_reindex(
-                db.as_ref(),
-                user_db.user_id(),
-                &entry.workspace_id,
-                "journal_entry",
-                &entry.id,
-            )
-            .await?;
-        }
         Ok(deleted)
     }
 }

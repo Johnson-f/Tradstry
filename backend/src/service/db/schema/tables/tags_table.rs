@@ -803,6 +803,65 @@ pub async fn set_trade_tags(
     Ok(())
 }
 
+/// Add or remove one trade tag under an expected journal version inside the
+/// caller's transaction. Used by confirmed non-model agent execution.
+pub async fn set_trade_tag_membership_if_version_tx(
+    conn: &mut sqlx::PgConnection,
+    user_id: &str,
+    workspace_id: &str,
+    journal_entry_id: &str,
+    tag_id: &str,
+    expected_version: &str,
+    add: bool,
+) -> Result<()> {
+    let trade_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM journal_entries WHERE id=$1 AND user_id=$2
+         AND workspace_id=$3 AND deleted_at IS NULL
+         AND COALESCE(NULLIF(hlc,''),updated_at::text)=$4 FOR UPDATE)",
+    )
+    .bind(journal_entry_id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .bind(expected_version)
+    .fetch_one(&mut *conn)
+    .await?;
+    ensure!(trade_exists, "record_changed");
+    let tag_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tags t JOIN tag_categories c ON c.id=t.category_id
+         WHERE t.id=$1 AND t.user_id=$2 AND t.deleted_at IS NULL
+           AND (c.availability='all' OR EXISTS(SELECT 1 FROM tag_category_workspace_applicability a
+                WHERE a.category_id=c.id AND a.workspace_id=$3)))",
+    )
+    .bind(tag_id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    ensure!(tag_exists, "tag_not_found");
+    if add {
+        sqlx::query(
+            "INSERT INTO trade_tags(journal_entry_id,tag_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        )
+        .bind(journal_entry_id)
+        .bind(tag_id)
+        .execute(&mut *conn)
+        .await?;
+    } else {
+        sqlx::query("DELETE FROM trade_tags WHERE journal_entry_id=$1 AND tag_id=$2")
+            .bind(journal_entry_id)
+            .bind(tag_id)
+            .execute(&mut *conn)
+            .await?;
+    }
+    sqlx::query("UPDATE journal_entries SET updated_at=now(),hlc=$1 WHERE id=$2 AND user_id=$3")
+        .bind(crate::service::hlc::stamp())
+        .bind(journal_entry_id)
+        .bind(user_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 /// All tags attached to a single trade. Scoped to `user_id` as belt-and-suspenders
 /// (a trade's tags all belong to its user).
 pub async fn tags_for_trade(

@@ -9,11 +9,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::graphql::AppSchema;
-use crate::service::ai::chat::sessions::ChatSessionStore;
-use crate::service::ai::chat::types::ChatJobRegistry;
-use crate::service::ai::client::AgentsClient;
-use crate::service::ai::types::AiEventBus;
-use crate::service::ai::vector_database::client::VectorDatabaseClient;
 use crate::service::countly::Countly;
 use crate::service::db::Db;
 use crate::service::r2::R2Client;
@@ -30,16 +25,10 @@ fn infer_operation_name(query: &str) -> &str {
         .unwrap_or("anonymous")
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn graphql_handler(
     schema: web::Data<AppSchema>,
     http_req: HttpRequest,
     db: web::Data<Arc<Db>>,
-    agents: web::Data<Arc<AgentsClient>>,
-    vector_db: web::Data<Arc<VectorDatabaseClient>>,
-    events: web::Data<AiEventBus>,
-    chat_jobs: web::Data<ChatJobRegistry>,
-    chat_session_store: web::Data<Arc<ChatSessionStore>>,
     r2: web::Data<Arc<R2Client>>,
     countly: web::Data<Option<Arc<Countly>>>,
     req: GraphQLRequest,
@@ -76,11 +65,6 @@ pub async fn graphql_handler(
         request = request.data(jwt);
     }
     request = request.data(db.get_ref().clone());
-    request = request.data(agents.get_ref().clone());
-    request = request.data(vector_db.get_ref().clone());
-    request = request.data(events.get_ref().clone());
-    request = request.data(chat_jobs.get_ref().clone());
-    request = request.data(chat_session_store.get_ref().clone());
     request = request.data(r2.get_ref().clone());
     if let Some(countly) = countly.get_ref().clone() {
         request = request.data(countly);
@@ -122,11 +106,6 @@ pub async fn graphql_ws_handler(
     schema: web::Data<AppSchema>,
     http_req: HttpRequest,
     db: web::Data<Arc<Db>>,
-    agents: web::Data<Arc<AgentsClient>>,
-    vector_db: web::Data<Arc<VectorDatabaseClient>>,
-    events: web::Data<AiEventBus>,
-    chat_jobs: web::Data<ChatJobRegistry>,
-    chat_session_store: web::Data<Arc<ChatSessionStore>>,
     r2: web::Data<Arc<R2Client>>,
     countly: web::Data<Option<Arc<Countly>>>,
     jwks: web::Data<Arc<MemoryCacheJwksProvider>>,
@@ -138,11 +117,6 @@ pub async fn graphql_ws_handler(
         data.insert(jwt);
     }
     data.insert(db.get_ref().clone());
-    data.insert(agents.get_ref().clone());
-    data.insert(vector_db.get_ref().clone());
-    data.insert(events.get_ref().clone());
-    data.insert(chat_jobs.get_ref().clone());
-    data.insert(chat_session_store.get_ref().clone());
     data.insert(r2.get_ref().clone());
     if let Some(countly) = countly.get_ref().clone() {
         data.insert(countly);

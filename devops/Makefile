@@ -19,7 +19,7 @@ SERVER     := myserver
 REMOTE_DIR := /opt/tradstry
 export SERVER REMOTE_DIR
 
-.PHONY: help backend postgres frontend desktop micro cleanup deploy tag sync-oauth-env test-oauth-env-sync
+.PHONY: help backend postgres frontend desktop micro cleanup deploy tag sync-oauth-env test-oauth-env-sync sync-agent-env test-agent-env-sync
 
 help:
 	@echo "Tradstry"
@@ -34,6 +34,8 @@ help:
 	@echo "  make tag        Create a release tag (not required for deployment)"
 	@echo "  make sync-oauth-env  Safely sync OAuth settings to production"
 	@echo "  make test-oauth-env-sync  Test OAuth env sync and rollback behavior"
+	@echo "  make sync-agent-env  Safely sync agent runtime settings to production"
+	@echo "  make test-agent-env-sync  Test agent env allowlisting"
 
 # ---------------------------------------------------------------------------
 # Local Postgres (pgvector + pg_search) — brought up if it isn't already
@@ -318,6 +320,12 @@ test-oauth-env-sync:
 	@bash "$(DEVOPS)/scripts/merge-env-file.test.sh"
 	@bash "$(DEVOPS)/scripts/sync-oauth-env.test.sh"
 	@bash "$(DEVOPS)/scripts/apply-oauth-env-remote.test.sh"
+
+sync-agent-env:
+	@bash "$(DEVOPS)/scripts/sync-agent-env.sh"
+
+test-agent-env-sync:
+	@bash "$(DEVOPS)/scripts/sync-agent-env.test.sh"
 
 cleanup:
 	@bash -c "$$CLEANUP_SCRIPT"

@@ -4,7 +4,7 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 
-use crate::service::ai::projector;
+use crate::service::notebook::projector;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NoteState {
@@ -184,8 +184,8 @@ const SEED_STALE_AFTER_SECS: i64 = 300;
 /// migration must call it before it begins, so any note orphaned by a previous
 /// crashed run is healed before seeding resumes. Because it runs once per
 /// invocation rather than in a tight loop, a genuinely unseedable note is retried
-/// at most once per batch — it cannot hot-spin — so unlike the `ai_jobs` worker
-/// loop it needs no attempt cap. A per-note failure is logged and skipped so one
+/// at most once per batch — it cannot hot-spin — so it needs no attempt cap. A
+/// per-note failure is logged and skipped so one
 /// bad note never aborts the sweep.
 pub async fn sweep_stale_seeding(pool: &PgPool) -> Result<usize> {
     let stale_before = Utc::now() - Duration::seconds(SEED_STALE_AFTER_SECS);

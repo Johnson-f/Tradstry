@@ -7,7 +7,6 @@
     ".": "./src/index.ts",
     "./components/analytics": "./src/components/analytics/index.ts",
     "./components/brokerage": "./src/components/brokerage/index.ts",
-    "./components/chat": "./src/components/chat.tsx",
     "./components/dashboard": "./src/components/dashboard/index.ts",
     "./components/journal": "./src/components/journal/index.ts",
     "./components/markets": "./src/components/markets/index.ts",

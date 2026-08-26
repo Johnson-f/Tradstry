@@ -157,6 +157,13 @@ pub fn render(event: &NotificationEvent, group_count: i64) -> Rendered {
                 "/dashboard/markets?workspace={workspace_id}&symbol={symbol}"
             )),
         },
+        NotificationEvent::AgentRunReady {
+            conversation_id, ..
+        } => Rendered {
+            title: "Tradstry AI finished your analysis".to_string(),
+            body: "Open the conversation to review the evidence-backed answer.".to_string(),
+            deep_link: Some(format!("/dashboard?agentConversation={conversation_id}")),
+        },
     }
 }
 

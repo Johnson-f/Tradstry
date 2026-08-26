@@ -7,9 +7,7 @@ use tokio::sync::broadcast;
 use tracing_actix_web::TracingLogger;
 use tradstry_backend::graphql;
 use tradstry_backend::routes;
-use tradstry_backend::service::ai::client::AgentsClient;
-use tradstry_backend::service::ai::run_worker_loop;
-use tradstry_backend::service::ai::vector_database::client::VectorDatabaseClient;
+use tradstry_backend::service::agents::knowledge::VoyageClient;
 use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::brokerage::client::BrokerageClient;
 use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
@@ -36,11 +34,7 @@ fn cors_allowed_origins() -> Vec<String> {
         .filter(|origins| !origins.is_empty())
         .unwrap_or_else(|| defaults.into_iter().map(str::to_owned).collect())
 }
-// Multi-threaded tokio runtime (not actix-rt's single-threaded `#[actix_web::main]`):
-// Multi-threaded tokio runtime (not actix-rt's single-threaded `#[actix_web::main]`):
-// some dependencies (e.g. the blocking LangGraph Postgres saver via
-// `spawn_blocking`) need a multi-thread runtime. The codebase uses no
-// `spawn_local`/`System`, so running actix-web under it is safe.
+// Multi-threaded Tokio runs the HTTP server and durable background workers.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     rustls::crypto::ring::default_provider()
@@ -52,11 +46,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting backend...");
 
     let db = Arc::new(Db::new().await?);
-    tradstry_backend::service::ai::projector::ensure_ready().await?;
+    tradstry_backend::service::notebook::projector::ensure_ready().await?;
     info!("Projector bundles ready");
     let r2_client = Arc::new(R2Client::from_env()?);
-    let agents_client = Arc::new(AgentsClient::from_env()?);
-    let vector_database_client = Arc::new(VectorDatabaseClient::from_env()?);
+    let mut agent_service_value =
+        tradstry_backend::service::agents::AgentService::from_env(db.as_ref())?
+            .with_r2(r2_client.clone());
+    let agent_embedding_provider = if agent_service_value.config().enabled {
+        let voyage_client = Arc::new(VoyageClient::from_env()?);
+        let embedding = Arc::new(
+            tradstry_backend::service::agents::knowledge::VoyageEmbeddingProvider::new(
+                voyage_client.clone(),
+            ),
+        );
+        let knowledge = Arc::new(
+            tradstry_backend::service::agents::knowledge::KnowledgeService::new(
+                db.pool().clone(),
+                embedding.clone(),
+                Arc::new(
+                    tradstry_backend::service::agents::knowledge::VoyageReranker::new(
+                        voyage_client.clone(),
+                    ),
+                ),
+            )?,
+        );
+        info!(
+            "Voyage client configured with embedding model {}",
+            voyage_client.config().embedding_model
+        );
+        agent_service_value = agent_service_value.with_knowledge(knowledge);
+        Some(embedding)
+    } else {
+        None
+    };
+    let agent_service = Arc::new(agent_service_value);
     let brokerage_client = Arc::new(BrokerageClient::from_env()?);
     let snaptrade_oauth_config = SnapTradeOAuthConfig::from_env()?;
     let snaptrade_webhook_config = routes::snaptrade_webhook::SnapTradeWebhookConfig::from_env()?;
@@ -103,46 +126,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (notification_events_tx, _) =
         broadcast::channel::<tradstry_backend::graphql::notifications::NotificationPushed>(256);
 
-    let checkpoint_saver =
-        tradstry_backend::service::ai::chat::checkpoint::init_checkpoint_saver().await;
-    // Warm the checkpoint saver's Postgres connection now so the first chat
-    // message doesn't pay connection-setup latency. The saver is a separate
-    // synchronous postgres connection from the sqlx pools health-checked below.
-    {
-        let saver = checkpoint_saver.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            saver.get(&langgraph::prelude::CheckpointConfig::new("__warmup__"))
-        })
-        .await;
-        info!("Checkpoint saver connection warmed");
-    }
-    let memory_store = tradstry_backend::service::ai::chat::memory_store::init_memory_store().await;
-    let chat_session_store =
-        Arc::new(tradstry_backend::service::ai::chat::sessions::ChatSessionStore::from_env()?);
     db.health_check().await?;
-    vector_database_client.health_check().await?;
-    vector_database_client.ensure_schema().await?;
-    chat_session_store.ensure_table().await?;
     info!("Database healthy and migrations applied");
-    info!(
-        "Gemini client configured with model [{}]",
-        agents_client.models_display()
-    );
-    info!(
-        "Vector database client configured with embedding model {}",
-        vector_database_client.config().voyage.embedding_model
-    );
     let clerk_secret = std::env::var("CLERK_SECRET_KEY")?;
     let jwks_provider_data = Arc::new(create_jwks_provider(&clerk_secret));
-    let (ai_events_tx, _) = broadcast::channel(256);
-    let chat_jobs: tradstry_backend::service::ai::chat::types::ChatJobRegistry =
-        Arc::new(std::sync::Mutex::new(Default::default()));
     info!("Clerk authentication configured");
     let schema = graphql::build_schema(
+        agent_service.clone(),
         brokerage_client.clone(),
         snaptrade_oauth_config.clone(),
-        checkpoint_saver.clone(),
-        memory_store.clone(),
         redis_client.clone(),
         notification_events_tx.clone(),
     );
@@ -153,33 +145,93 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // never mid-write) so a clean exit can't tear the local replica.
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    let ai_worker_count = std::env::var("AI_WORKER_CONCURRENCY")
-        .ok()
-        .map(|value| value.parse::<usize>())
-        .transpose()?
-        .unwrap_or(2)
-        .clamp(1, 8);
-    info!("Starting {ai_worker_count} AI job workers");
-    let mut worker_handles = Vec::with_capacity(ai_worker_count);
-    for _ in 0..ai_worker_count {
-        let db = db.clone();
-        let agents_client = agents_client.clone();
-        let vector_database_client = vector_database_client.clone();
-        let ai_events_tx = ai_events_tx.clone();
-        let shutdown_rx = shutdown_rx.clone();
-        worker_handles.push(tokio::spawn(async move {
-            if let Err(error) = run_worker_loop(
-                db,
-                agents_client,
-                vector_database_client,
-                ai_events_tx,
-                shutdown_rx,
-            )
-            .await
-            {
-                log::error!("AI worker stopped: {}", error);
-            }
-        }));
+    let mut agent_worker_handles = Vec::new();
+    let mut knowledge_worker_handles = Vec::new();
+    let mut memory_worker_handles = Vec::new();
+    let mut action_worker_handles = Vec::new();
+    let mut summary_worker_handles = Vec::new();
+    if agent_service.config().enabled {
+        info!(
+            "Starting {} TinyAgents workers",
+            agent_service.config().worker_concurrency
+        );
+        for worker_index in 0..agent_service.config().worker_concurrency {
+            let service = agent_service.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            agent_worker_handles.push(tokio::spawn(async move {
+                tradstry_backend::service::agents::execution::run_agent_worker(
+                    service,
+                    worker_index,
+                    shutdown_rx,
+                )
+                .await;
+            }));
+        }
+        {
+            let service = agent_service.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            memory_worker_handles.push(tokio::spawn(async move {
+                tradstry_backend::service::agents::knowledge::run_memory_worker(
+                    service,
+                    0,
+                    shutdown_rx,
+                )
+                .await;
+            }));
+        }
+        {
+            let service = agent_service.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            summary_worker_handles.push(tokio::spawn(async move {
+                tradstry_backend::service::agents::knowledge::run_conversation_summary_worker(
+                    service,
+                    0,
+                    shutdown_rx,
+                )
+                .await;
+            }));
+        }
+        {
+            let service = agent_service.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            action_worker_handles.push(tokio::spawn(async move {
+                tradstry_backend::service::agents::actions::run_action_worker(
+                    service,
+                    0,
+                    shutdown_rx,
+                )
+                .await;
+            }));
+        }
+        let knowledge_indexer = Arc::new(
+            tradstry_backend::service::agents::knowledge::KnowledgeIndexer::new(
+                tradstry_backend::service::agents::knowledge::KnowledgeStore::new(
+                    db.pool().clone(),
+                ),
+                agent_embedding_provider
+                    .as_ref()
+                    .expect("enabled agents require an embedding provider")
+                    .clone(),
+            ),
+        );
+        info!(
+            "Starting {} agent knowledge index workers",
+            agent_service.config().index_worker_concurrency
+        );
+        for worker_index in 0..agent_service.config().index_worker_concurrency {
+            let indexer = knowledge_indexer.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            let lease_seconds = agent_service.config().run_lease_seconds;
+            knowledge_worker_handles.push(tokio::spawn(async move {
+                tradstry_backend::service::agents::knowledge::run_knowledge_worker(
+                    indexer,
+                    worker_index,
+                    lease_seconds,
+                    shutdown_rx,
+                )
+                .await;
+            }));
+        }
     }
 
     // Brokerage sync scheduler
@@ -328,8 +380,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "/notebook/media/upload".to_string(),
                     "/notebook/media/{hash}".to_string(),
                     "/notebook/media/{hash}/thumb".to_string(),
-                    "/notebook/assist/autocomplete".to_string(),
-                    "/notebook/assist/transform".to_string(),
                 ]),
                 true,
             ))
@@ -337,14 +387,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .app_data(web::Data::new(schema.clone()))
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(r2_client.clone()))
-            .app_data(web::Data::new(agents_client.clone()))
-            .app_data(web::Data::new(vector_database_client.clone()))
             .app_data(web::Data::new(brokerage_client.clone()))
             .app_data(web::Data::new(snaptrade_webhook_config.clone()))
             .app_data(web::Data::new(snaptrade_oauth_config.clone()))
-            .app_data(web::Data::new(ai_events_tx.clone()))
-            .app_data(web::Data::new(chat_jobs.clone()))
-            .app_data(web::Data::new(chat_session_store.clone()))
             .app_data(web::Data::new(jwks_provider_data.clone()))
             .app_data(web::Data::new(countly.clone()))
             .configure(routes::configure)
@@ -371,8 +416,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("HTTP server stopped; draining background tasks");
     let _ = shutdown_tx.send(true);
     if tokio::time::timeout(std::time::Duration::from_secs(20), async {
-        for worker_handle in worker_handles {
-            let _ = worker_handle.await;
+        for agent_worker_handle in agent_worker_handles {
+            let _ = agent_worker_handle.await;
+        }
+        for knowledge_worker_handle in knowledge_worker_handles {
+            let _ = knowledge_worker_handle.await;
+        }
+        for memory_worker_handle in memory_worker_handles {
+            let _ = memory_worker_handle.await;
+        }
+        for action_worker_handle in action_worker_handles {
+            let _ = action_worker_handle.await;
+        }
+        for summary_worker_handle in summary_worker_handles {
+            let _ = summary_worker_handle.await;
         }
         let _ = sync_handle.await;
         let _ = snaptrade_webhook_handle.await;

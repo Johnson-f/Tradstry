@@ -21,6 +21,28 @@ fn schema_builds_without_duplicate_type_names() {
         "the push mutation's input object must not collide with the mutation root"
     );
     assert!(sdl.contains("marketQuotes(symbols: [String!]!): MarketQuotesGql!"));
+    assert!(sdl.contains("agentCapabilities: AgentCapabilitiesGql!"));
+    assert!(sdl.contains(
+        "agentConversations(workspaceId: String!, limit: Int): [AgentConversationGql!]!"
+    ));
+    assert!(sdl.contains("sendAgentMessage(input: SendAgentMessageInput!): AgentRunHandleGql!"));
+    assert!(sdl.contains("agentRunEvents(runId: String!, afterSequence: Int!): AgentRunEventGql!"));
+    assert!(sdl.contains("sources: [AgentSourceGql!]!"));
+    assert!(sdl.contains(
+        "agentMemories(workspaceId: String, includeInactive: Boolean): [AgentMemoryGql!]!"
+    ));
+    assert!(sdl.contains("updateAgentMemory(id: String!, text: String!): AgentMemoryGql!"));
+    assert!(sdl.contains("setAgentMemoryPinned(id: String!, pinned: Boolean!): AgentMemoryGql!"));
+    assert!(sdl.contains("forgetAgentMemory(id: String!): Boolean!"));
+    assert!(sdl.contains("agentActionProposal(id: String!): AgentActionProposalGql!"));
+    assert!(sdl.contains(
+        "approveAgentAction(proposalId: String!, idempotencyKey: String!): AgentActionProposalGql!"
+    ));
+    assert!(sdl.contains("rejectAgentAction(proposalId: String!): AgentActionProposalGql!"));
+    assert!(sdl.contains("agentNotebookAutocomplete(title: String!, text: String!): String!"));
+    assert!(
+        sdl.contains("agentNotebookRewrite(action: AgentRewriteAction!, text: String!): String!")
+    );
     assert!(
         sdl.contains("marketPriceUpdates(symbols: [String!]!): MarketPriceUpdateGql!"),
         "the live market subscription must be present"

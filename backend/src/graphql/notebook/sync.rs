@@ -998,92 +998,6 @@ struct ReorderPrinciplesArgs {
 /// create/update carry `workspaceId` in their args; delete only carries the
 /// entry `id`, so its workspace is looked up from the (soft-deleted, still
 /// present) row.
-async fn journal_workspace_id_for_mutation(
-    pool: &PgPool,
-    user_id: &str,
-    m: &NotebookMutation,
-) -> Result<Option<String>> {
-    match m.name.as_str() {
-        "createJournalEntry" | "updateJournalEntry" => {
-            let a: JournalArgs = serde_json::from_str(&m.args)?;
-            Ok(Some(a.workspace_id))
-        }
-        "deleteJournalEntry" => {
-            let a: IdArgs = serde_json::from_str(&m.args)?;
-            let workspace_id: Option<String> = sqlx::query_scalar(
-                "SELECT workspace_id FROM journal_entries WHERE id = $1 AND user_id = $2",
-            )
-            .bind(&a.id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-            Ok(workspace_id)
-        }
-        _ => Ok(None),
-    }
-}
-
-async fn indexed_source_for_mutation(
-    pool: &PgPool,
-    user_id: &str,
-    mutation: &NotebookMutation,
-) -> Result<Option<(String, String, String)>> {
-    let source = match mutation.name.as_str() {
-        "createNote" => {
-            let args: CreateNoteArgs = serde_json::from_str(&mutation.args)?;
-            Some((args.workspace_id, "notebook_note".to_string(), args.id))
-        }
-        "appendNoteUpdate" => {
-            let args: AppendNoteUpdateArgs = serde_json::from_str(&mutation.args)?;
-            let workspace_id: Option<String> = sqlx::query_scalar(
-                "SELECT workspace_id FROM notebook_notes WHERE id=$1 AND user_id=$2",
-            )
-            .bind(&args.note_id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-            workspace_id
-                .map(|workspace_id| (workspace_id, "notebook_note".to_string(), args.note_id))
-        }
-        "deleteNote" => {
-            let args: IdArgs = serde_json::from_str(&mutation.args)?;
-            let workspace_id: Option<String> = sqlx::query_scalar(
-                "SELECT workspace_id FROM notebook_notes WHERE id=$1 AND user_id=$2",
-            )
-            .bind(&args.id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-            workspace_id.map(|workspace_id| (workspace_id, "notebook_note".to_string(), args.id))
-        }
-        "createPlaybook" | "updatePlaybook" => {
-            let args: PlaybookArgs = serde_json::from_str(&mutation.args)?;
-            Some((args.workspace_id, "playbook".to_string(), args.id))
-        }
-        "deletePlaybook" => {
-            let args: IdArgs = serde_json::from_str(&mutation.args)?;
-            let workspace_id: Option<String> =
-                sqlx::query_scalar("SELECT workspace_id FROM playbooks WHERE id=$1 AND user_id=$2")
-                    .bind(&args.id)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-            workspace_id.map(|workspace_id| (workspace_id, "playbook".to_string(), args.id))
-        }
-        "createJournalEntry" | "updateJournalEntry" | "deleteJournalEntry" => {
-            let workspace_id = journal_workspace_id_for_mutation(pool, user_id, mutation).await?;
-            let source_id = if mutation.name == "deleteJournalEntry" {
-                serde_json::from_str::<IdArgs>(&mutation.args)?.id
-            } else {
-                serde_json::from_str::<JournalArgs>(&mutation.args)?.id
-            };
-            workspace_id.map(|workspace_id| (workspace_id, "journal_entry".to_string(), source_id))
-        }
-        _ => None,
-    };
-    Ok(source)
-}
-
 #[derive(Default)]
 pub struct NotebookSyncMutation;
 
@@ -1101,49 +1015,8 @@ impl NotebookSyncMutation {
         let mut sorted = input.mutations.clone();
         sorted.sort_by_key(|m| m.id);
 
-        let (last, applied) =
+        let (last, _applied) =
             apply_mutation_batch(pool, user_id, &input.client_id, &sorted).await?;
-
-        let mut indexed_sources = std::collections::HashSet::new();
-        let mut requires_full_reindex = false;
-        for m in &applied {
-            if let Some(source) = indexed_source_for_mutation(pool, user_id, m).await? {
-                indexed_sources.insert(source);
-            }
-            if matches!(
-                m.name.as_str(),
-                "deleteFolder"
-                    | "renameTag"
-                    | "deleteTag"
-                    | "mergeTags"
-                    | "renameTagCategory"
-                    | "deleteTagCategory"
-            ) {
-                requires_full_reindex = true;
-            }
-        }
-
-        if let Ok(db) = ctx.data::<std::sync::Arc<crate::service::db::Db>>() {
-            if requires_full_reindex {
-                crate::service::ai::jobs::enqueue_account_reindex(
-                    db.as_ref(),
-                    user_id,
-                    &input.workspace_id,
-                )
-                .await?;
-            } else {
-                for (workspace_id, source_type, source_id) in indexed_sources {
-                    crate::service::ai::jobs::enqueue_source_reindex(
-                        db.as_ref(),
-                        user_id,
-                        &workspace_id,
-                        &source_type,
-                        &source_id,
-                    )
-                    .await?;
-                }
-            }
-        }
 
         Ok(NotebookPushResult {
             last_mutation_id: last,

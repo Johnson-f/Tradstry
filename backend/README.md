@@ -1,15 +1,15 @@
 # Tradstry Backend
 
-Rust backend built with Actix-Web and async-graphql. All data lives in a single Postgres database, namespaced per environment by schema. AI chat runs on a vendored Rust port of LangGraph (`crates/`) with Gemini for generation, Voyage for embeddings/reranking, and pgvector + ParadeDB (`pg_search`) for retrieval.
+Rust backend built with Actix-Web and async-graphql. All data lives in a single Postgres database, namespaced per environment by schema. Tradstry AI runs on TinyAgents with Gemini generation, Voyage embeddings/reranking, and PostgreSQL hybrid retrieval.
 
 ## Stack
 
 - **Runtime:** Rust (stable, edition 2024)
 - **Web framework:** Actix-Web 4
 - **API:** GraphQL (async-graphql) + WebSocket subscriptions
-- **Database:** Postgres — app data, chat sessions, LangGraph checkpoints, memory store, and vectors
-- **Vector search:** pgvector (halfvec) + ParadeDB `pg_search` for hybrid dense/sparse retrieval
-- **AI:** Gemini (`gemini-3.6-flash`), Voyage embeddings (`voyage-3.5`) + reranker (`rerank-2.5`)
+- **Database:** Postgres — canonical app data plus durable agent runs, evidence, memory, actions, and knowledge passages
+- **Vector search:** pgvector `halfvec` + PostgreSQL full-text search
+- **AI:** TinyAgents, Gemini model roles, Voyage embeddings (`voyage-3.5`) + reranker (`rerank-2.5`)
 - **Auth:** Clerk (JWT validation via JWKS)
 - **Media:** Cloudflare R2 (S3-compatible)
 - **Cache:** Redis (optional — the server runs without it)
@@ -31,7 +31,6 @@ This crate is a Cargo workspace producing two binaries plus a JS sidecar:
 |---|---|---|---|
 | `tradstry-backend` | `src/` | 7899 | The GraphQL API server and background workers |
 | `mcp-server` | `mcp-server/` | 7900 | Streamable-HTTP MCP server (rmcp), Clerk-authed, reuses this crate as a library |
-| `LangGraph` | `crates/` | — | Rust port of LangGraph: channels, scheduler, checkpoints (pg/sqlite/memory), store |
 | `projector` | `projector/` | — | Bun sidecar spawned per call for Yjs CRDT ops (project, seed, compact, markdown) |
 
 The projector is the only place Yjs updates are interpreted. Rust treats CRDT updates as opaque `Vec<u8>` end to end and only base64-encodes them at the GraphQL boundary — routing a Yjs update through any other `String` corrupts the document.
@@ -55,8 +54,7 @@ cargo build
 ### Environment Variables
 
 ```bash
-# Database — Postgres holds everything: trading tables, chat, checkpoints,
-# memory store, and pgvector embeddings.
+# Database — Postgres holds canonical trading data and durable agent state.
 POSTGRES_URL=postgres://user:pass@localhost:5432/postgres
 
 # Environment schema selector. All tables are namespaced under a per-environment
@@ -75,9 +73,21 @@ POLYGON_API_KEY=
 # Earnings call transcripts — Financial Modeling Prep.
 FMP_API_KEY=
 
-# AI — Gemini (model is pinned in code: gemini-3.6-flash)
+# AI — Gemini
 GEMINI_API_KEY=AI...
-GEMINI_PREAMBLE=                      # optional system preamble override
+
+# TinyAgents v2 runtime
+AGENTS_V2_ENABLED=false
+AGENT_FAST_MODEL=
+AGENT_REASONING_MODEL=
+AGENT_VISION_MODEL=
+AGENT_FAST_FALLBACK_MODEL=
+AGENT_REASONING_FALLBACK_MODEL=
+AGENT_VISION_FALLBACK_MODEL=
+AGENT_WORKER_CONCURRENCY=2
+AGENT_INDEX_WORKER_CONCURRENCY=2
+AGENT_RUN_LEASE_SECONDS=120
+AGENT_HEARTBEAT_SECONDS=15
 
 # Embeddings + reranking — Voyage
 VOYAGE_API_KEY=pa-...
@@ -208,9 +218,11 @@ Conflicts on synced rows resolve last-writer-wins on a Hybrid Logical Clock stri
 
 ## Background workers
 
-Six loops are spawned from `main.rs`, each stopping at a safe point on shutdown:
+Background loops are spawned from `main.rs`, each stopping at a safe point on shutdown:
 
-- **AI job worker** (`service/ai/jobs.rs`) — polls `ai_jobs` every 2s for insight, report, mindset-summary, and reindex jobs.
+- **Agent execution workers** (`service/agents/execution/worker.rs`) — claim durable runs and execute instant, fast, or deep lanes.
+- **Agent knowledge workers** (`service/agents/knowledge/worker.rs`) — project canonical source changes from `agent_index_outbox`.
+- **Agent memory, summary, and action workers** — process their dedicated durable queues with lease fencing.
 - **Brokerage sync** (`service/brokerage/sync.rs`) — ticks every 60s; syncs on the hour and half-hour 9:00–16:30 ET on weekdays, plus 01:00 ET Saturday. Transactions are fetched only when SnapTrade's `sync_status` has advanced past the stored watermark; holdings are fetched every run.
 - **Notebook maintenance** (`service/notebook/maintenance.rs`) — re-seeds notes stranded mid-seed and compacts overgrown update chains.
 - **Equity scheduler** (`service/equity/schedule.rs`) — refreshes curves that went stale on price movement alone.
@@ -225,32 +237,22 @@ Six loops are spawned from `main.rs`, each stopping at a safe point on shutdown:
 ```
 src/
   main.rs                    # Server setup, middleware, background workers, shutdown
-  routes/                    # REST handlers (GraphQL entry, images, media, assistance)
+  routes/                    # REST handlers (GraphQL entry, images, media)
   graphql/                   # Resolvers, merged into one Query/Mutation/Subscription root
-    notebook/                # base (CRUD), sync (push/pull), crdt (Yjs blobs), assistance
+    notebook/                # base (CRUD), sync (push/pull), crdt (Yjs blobs)
   service/
     db/
       client.rs              # Pooled Postgres client (Db, UserDb)
       config.rs              # POSTGRES_DATABASE -> per-env schema + search_path
       schema/tables/         # Typed query functions per table
-    ai/
-      chat/graph.rs          # LangGraph chat graph (LLM node, tool node, edges)
-      chat/tools/            # 16 tools: db_query, semantic_search, stock_quote, ...
-      chat/subgraphs/        # Research, report, comparison
-      chat/assistance/       # Notebook autocomplete + transform
-      chat/checkpoint.rs     # Postgres checkpoint saver wrapper
-      chat/memory_store.rs   # Postgres memory store wrapper
-      vector_database/       # Voyage embeddings, chunking, hybrid pgvector search
-      jobs.rs                # AI artifact worker (insights, reports, mindset)
-      projector.rs           # Spawns the Bun sidecar for Yjs operations
+    agents/                  # TinyAgents runtime, durable execution, evidence, memory, actions, knowledge
     brokerage/               # SnapTrade sync, transactions, holdings, pending trades
     equity/                  # Equity curve replay, rebuild, price history
-    notebook/                # Lexical document logic, maintenance loop
+    notebook/                # Lexical document logic, projector, block extraction, maintenance loop
     read_service/            # Shared read helpers and analytics
     auth/                    # Clerk JWKS provider
     hlc.rs                   # Server Hybrid Logical Clock
     telemetry.rs             # tracing subscriber + Sentry
-crates/                      # LangGraph Rust port
 mcp-server/                  # MCP binary (read + write tools over the same services)
 migrations/                  # Versioned SQL, applied by sqlx at boot
 projector/                   # Bun/Yjs sidecar

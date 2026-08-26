@@ -41,6 +41,11 @@ pub fn event_from_row(event_type: &str, payload: &Value) -> Result<NotificationE
             kind: field(payload, "kind")?.to_string(),
             artifact_id: field(payload, "artifact_id")?.to_string(),
         },
+        "AgentRunReady" => NotificationEvent::AgentRunReady {
+            workspace_id: field(payload, "workspace_id")?.to_string(),
+            conversation_id: field(payload, "conversation_id")?.to_string(),
+            run_id: field(payload, "run_id")?.to_string(),
+        },
         "PrincipleViolated" => NotificationEvent::PrincipleViolated {
             workspace_id: field(payload, "workspace_id")?.to_string(),
             trade_id: field(payload, "trade_id")?.to_string(),
@@ -202,6 +207,11 @@ mod tests {
                 workspace_id: "acc1".into(),
                 kind: "ai_report".into(),
                 artifact_id: "art1".into(),
+            },
+            NotificationEvent::AgentRunReady {
+                workspace_id: "acc1".into(),
+                conversation_id: "conversation-1".into(),
+                run_id: "run-1".into(),
             },
             NotificationEvent::PrincipleViolated {
                 workspace_id: "acc1".into(),

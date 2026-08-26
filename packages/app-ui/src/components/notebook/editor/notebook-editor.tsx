@@ -32,10 +32,8 @@ import type { NotebookImage } from "@tradstry/app-ui/lib/types/notebook";
 import { WEB_NODES } from "./nodes";
 import { LinkedTradeProvider } from "./nodes/linked-trade-node";
 import { NotebookImageActionsProvider } from "./nodes/notebook-image-node";
-import { AutocompletePlugin } from "./plugins/autocomplete-plugin";
 import { MediaRefreshPlugin } from "./plugins/media-refresh-plugin";
 import { PasteImagePlugin } from "./plugins/paste-image-plugin";
-import { SelectionToolbarPlugin } from "./plugins/selection-toolbar-plugin";
 import { SlashCommandPlugin } from "./plugins/slash-command-plugin";
 import { TitleHeadingPlugin } from "./plugins/title-heading-plugin";
 import { ToolbarPlugin } from "./plugins/toolbar-plugin";
@@ -344,8 +342,6 @@ export function NotebookEditor({
                     onLinkTrade={onLinkTrade}
                   />
                   <PasteImagePlugin onUploadMedia={onUploadMedia} />
-                  <AutocompletePlugin fetcher={fetcher} />
-                  <SelectionToolbarPlugin fetcher={fetcher} />
                 </div>
               </section>
             </ScrollArea>

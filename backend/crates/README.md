@@ -1,1 +1,0 @@
-# This folder will contain my proprietary crate implementing LangGraph in Rust.

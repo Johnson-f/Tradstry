@@ -1,5 +1,4 @@
 import { STANDARD_NODES } from "@tradstry/notebook-core";
-import { GhostTextNode } from "./ghost-text-node";
 import { LinkedTradeNode } from "./linked-trade-node";
 import { NotebookImageNode } from "./notebook-image-node";
 import { NotebookVideoNode } from "./notebook-video-node";
@@ -12,5 +11,4 @@ export const WEB_NODES = [
   NotebookVideoNode,
   LinkedTradeNode,
   TradeTableNode,
-  GhostTextNode,
 ];

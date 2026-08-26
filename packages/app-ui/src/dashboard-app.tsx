@@ -4,8 +4,6 @@ import { Analytics } from "@tradstry/app-ui/components/analytics";
 import { AppSidebar } from "@tradstry/app-ui/components/app-sidebar";
 import { BrokerageEmptyState } from "@tradstry/app-ui/components/brokerage/brokerage-empty-state";
 import { BrokerageTransactions } from "@tradstry/app-ui/components/brokerage/brokerage-transactions";
-import { ChatButton } from "@tradstry/app-ui/components/chat";
-import { ChatProvider } from "@tradstry/app-ui/components/chat/chat-panel";
 import {
 	DashboardCalendar,
 	DashboardCardError,
@@ -193,8 +191,7 @@ function PageCanvas({ children }: { children: React.ReactNode }) {
 
 export function DashboardApp({ pathname }: { pathname: string }) {
 	return (
-		<ChatProvider>
-			<SidebarProvider
+		<SidebarProvider
 				className="bg-[var(--app-chrome)]"
 				style={
 					{
@@ -208,10 +205,6 @@ export function DashboardApp({ pathname }: { pathname: string }) {
 				<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
 					<Screen pathname={pathname} />
 				</SidebarInset>
-				<div className="fixed bottom-1.5 right-3 z-40 hidden md:block">
-					<ChatButton showLabel />
-				</div>
-			</SidebarProvider>
-		</ChatProvider>
+		</SidebarProvider>
 	);
 }

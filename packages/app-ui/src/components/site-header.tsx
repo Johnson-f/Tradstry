@@ -1,7 +1,6 @@
 "use client";
 
 import { BrokerageButton } from "@tradstry/app-ui/components/brokerage";
-import { ChatButton } from "@tradstry/app-ui/components/chat";
 import { getDashboardRouteMeta } from "@tradstry/app-ui/components/dashboard-route-meta";
 import { NotificationsButton } from "@tradstry/app-ui/components/notifications";
 import { SidebarTrigger } from "@tradstry/app-ui/components/ui/sidebar";
@@ -48,9 +47,6 @@ export function SiteHeader({ actions }: { actions?: React.ReactNode }) {
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <BrokerageButton />
           <NotificationsButton />
-          <div className="md:hidden">
-            <ChatButton />
-          </div>
           {actions ? <div className="ml-1.5">{actions}</div> : null}
         </div>
       </div>

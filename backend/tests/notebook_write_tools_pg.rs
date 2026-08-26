@@ -9,11 +9,11 @@ mod pg_support;
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
 use sqlx::PgPool;
 use tradstry_backend::graphql::notebook::crdt as crdt_api;
-use tradstry_backend::service::ai::projector::{self, EditMode};
 use tradstry_backend::service::db::schema::tables::notebook::{
     crdt, folders,
     notes::{self, CreateNotebookNoteInput, UpdateNotebookNoteInput},
 };
+use tradstry_backend::service::notebook::projector::{self, EditMode};
 
 async fn migrate(pool: &PgPool) {
     tradstry_backend::service::db::schema::pg::migrate(pool)

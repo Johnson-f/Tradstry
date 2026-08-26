@@ -11,6 +11,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use base64::Engine as _;
+use tradstry_backend::service::agents::knowledge::KnowledgeSearchRequest;
+use tradstry_backend::service::agents::{AgentActor, AgentDateRange};
 use tradstry_backend::service::db::schema::tables::{tags_table, trading_principle_table};
 use tradstry_backend::service::read_service::journal as journal_service;
 
@@ -67,14 +69,13 @@ pub struct QueryTradesParams {
 pub struct SearchTradesParams {
     /// Natural-language query to semantically search the user's trades and notes.
     pub query: String,
-    /// Trading account id to scope the search to. Required: the vector index is
-    /// partitioned by account.
+    /// Workspace id to scope the authenticated PostgreSQL knowledge search.
     pub workspace_id: Option<String>,
     /// Optional inclusive lower bound on trade close date (ISO 8601) to scope the search.
     pub date_from: Option<String>,
     /// Optional inclusive upper bound on trade close date (ISO 8601) to scope the search.
     pub date_to: Option<String>,
-    /// Maximum number of results to return. Defaults to 10, capped at 100.
+    /// Maximum number of results to return. Defaults to 10, capped at 20.
     pub limit: Option<u32>,
 }
 
@@ -207,28 +208,34 @@ impl TradstryMcp {
     ) -> Result<CallToolResult, ErrorData> {
         let u = self.user(&ctx)?;
 
-        // The hybrid vector index is partitioned by account, so a scope account
-        // id is required (matches the in-app semantic_search tool).
         let workspace_id = params.workspace_id.ok_or_else(|| {
             ErrorData::invalid_params("workspace_id is required for semantic search", None)
         })?;
-
-        // date_from/date_to are intentionally not exposed: the backend translates
-        // them into Qdrant exact-match conditions (not a range), which would
-        // silently return zero results for any real date range query. Passing
-        // None skips those conditions entirely.
-        let top_k = params.limit.unwrap_or(10).min(100) as u64;
-
+        let date_range = match (params.date_from, params.date_to) {
+            (Some(from), Some(to)) => Some(AgentDateRange { from, to }),
+            (None, None) => None,
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "date_from and date_to must be supplied together",
+                    None,
+                ));
+            }
+        };
         let results = self
             .state
-            .vector_db
-            .hybrid_search(
-                &params.query,
-                &u.user_id,
-                &workspace_id,
-                params.date_from.as_deref(),
-                params.date_to.as_deref(),
-                top_k,
+            .knowledge
+            .search(
+                &AgentActor {
+                    user_id: u.user_id,
+                    clerk_id: String::new(),
+                },
+                KnowledgeSearchRequest {
+                    workspace_id,
+                    query: params.query,
+                    date_range,
+                    limit: params.limit.unwrap_or(10).min(20) as usize,
+                    ..Default::default()
+                },
             )
             .await
             .map_err(internal)?;

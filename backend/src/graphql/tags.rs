@@ -1,7 +1,6 @@
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
 use std::sync::Arc;
 
-use crate::service::ai::jobs as ai_jobs;
 use crate::service::db::Db;
 use crate::service::db::schema::tables::notebook::sync as notebook_sync;
 use crate::service::db::schema::tables::tags_table::{
@@ -11,22 +10,6 @@ use crate::service::read_service::tags as tags_service;
 
 async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db::client::UserDb> {
     crate::graphql::auth::user_db(ctx).await
-}
-
-async fn reindex_tag_library(
-    ctx: &Context<'_>,
-    user_db: &crate::service::db::client::UserDb,
-) -> Result<()> {
-    let workspace_ids: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM workspaces WHERE user_id=$1 ORDER BY created_at,id")
-            .bind(user_db.user_id())
-            .fetch_all(user_db.pool())
-            .await?;
-    let db = ctx.data::<Arc<Db>>()?;
-    for workspace_id in workspace_ids {
-        ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &workspace_id).await?;
-    }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -345,7 +328,6 @@ impl TagMutation {
     ) -> Result<TagCategoryGql> {
         let user_db = get_user_db(ctx).await?;
         let category = tags_service::rename_category(&user_db, &id, &name).await?;
-        reindex_tag_library(ctx, &user_db).await?;
         Ok(category.into())
     }
 
@@ -389,18 +371,12 @@ impl TagMutation {
             &input.workspace_ids,
         )
         .await?;
-        reindex_tag_library(ctx, &user_db).await?;
         Ok(category.into())
     }
 
     async fn delete_tag_category(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let existing = tags_service::get_category(&user_db, &id).await?;
-        let deleted = tags_service::delete_category(&user_db, &id).await?;
-        if deleted && existing.is_some() {
-            reindex_tag_library(ctx, &user_db).await?;
-        }
-        Ok(deleted)
+        Ok(tags_service::delete_category(&user_db, &id).await?)
     }
 
     async fn create_tag(
@@ -426,7 +402,6 @@ impl TagMutation {
     async fn rename_tag(&self, ctx: &Context<'_>, id: String, name: String) -> Result<TagGql> {
         let user_db = get_user_db(ctx).await?;
         let tag = tags_service::rename_tag(&user_db, &id, &name).await?;
-        reindex_tag_library(ctx, &user_db).await?;
         Ok(tag.into())
     }
 
@@ -444,12 +419,7 @@ impl TagMutation {
 
     async fn delete_tag(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let existing = tags_service::get_tag(&user_db, &id).await?;
-        let deleted = tags_service::delete_tag(&user_db, &id).await?;
-        if deleted && existing.is_some() {
-            reindex_tag_library(ctx, &user_db).await?;
-        }
-        Ok(deleted)
+        Ok(tags_service::delete_tag(&user_db, &id).await?)
     }
 
     async fn merge_tags(
@@ -459,11 +429,7 @@ impl TagMutation {
         into_id: String,
     ) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let source = tags_service::get_tag(&user_db, &from_id).await?;
         tags_service::merge_tags(&user_db, &from_id, &into_id).await?;
-        if source.is_some() {
-            reindex_tag_library(ctx, &user_db).await?;
-        }
         Ok(true)
     }
 }

@@ -341,6 +341,10 @@ mod tests {
             total_value_currency: Some("USD".into()),
             snaptrade_connection_disabled: false,
             snaptrade_connection_disabled_at: None,
+            brokerage_setup_complete: true,
+            brokerage_setup_completed_at: None,
+            snaptrade_auth_mode: "legacy".into(),
+            snaptrade_oauth_grant_id: None,
             created_at: "2026-05-14T06:12:09Z".into(),
             updated_at: "2026-07-11T05:00:07Z".into(),
         };

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 use super::metrics::WeeklyStats;
 
-pub const ALL_EVENT_TYPES: [&str; 7] = [
+pub const ALL_EVENT_TYPES: [&str; 8] = [
     "FillsLanded",
     "BrokerageConnectionDisabled",
     "ArtifactReady",
@@ -11,6 +11,7 @@ pub const ALL_EVENT_TYPES: [&str; 7] = [
     "DailyRecap",
     "WeeklyReview",
     "MarketMonitorTriggered",
+    "AgentRunReady",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +53,11 @@ pub enum NotificationEvent {
         monitor_name: String,
         price: f64,
     },
+    AgentRunReady {
+        workspace_id: String,
+        conversation_id: String,
+        run_id: String,
+    },
 }
 
 impl NotificationEvent {
@@ -64,6 +70,7 @@ impl NotificationEvent {
             Self::DailyRecap { .. } => "DailyRecap",
             Self::WeeklyReview { .. } => "WeeklyReview",
             Self::MarketMonitorTriggered { .. } => "MarketMonitorTriggered",
+            Self::AgentRunReady { .. } => "AgentRunReady",
         }
     }
 
@@ -88,6 +95,7 @@ impl NotificationEvent {
             } => Some(format!(
                 "market:{workspace_id}:{symbol}:{monitor_name}:{today}"
             )),
+            Self::AgentRunReady { run_id, .. } => Some(format!("agent-run:{run_id}")),
         }
     }
 
@@ -147,6 +155,15 @@ impl NotificationEvent {
                 "monitor_name": monitor_name,
                 "price": price
             }),
+            Self::AgentRunReady {
+                workspace_id,
+                conversation_id,
+                run_id,
+            } => json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "run_id": run_id
+            }),
         }
     }
 
@@ -159,6 +176,7 @@ impl NotificationEvent {
             | Self::DailyRecap { workspace_id, .. }
             | Self::WeeklyReview { workspace_id, .. } => workspace_id,
             Self::MarketMonitorTriggered { workspace_id, .. } => workspace_id,
+            Self::AgentRunReady { workspace_id, .. } => workspace_id,
         }
     }
 }
@@ -260,6 +278,11 @@ mod tests {
                 symbol: "AAPL".into(),
                 monitor_name: "Breakout".into(),
                 price: 210.5,
+            },
+            NotificationEvent::AgentRunReady {
+                workspace_id: "a".into(),
+                conversation_id: "c".into(),
+                run_id: "r".into(),
             },
         ];
         for v in &variants {

@@ -350,6 +350,51 @@ pub async fn update_playbook(
         .context("Playbook not found after update")
 }
 
+/// Canonical optimistic-concurrency update used by confirmed agent actions.
+/// The caller owns the transaction so mutation and action audit can commit together.
+pub struct PlaybookVersionedPatch<'a> {
+    pub name: Option<&'a str>,
+    pub entry_rules: Option<&'a str>,
+    pub exit_rules: Option<&'a str>,
+    pub position_sizing_rules: Option<&'a str>,
+    pub additional_rules: Option<&'a str>,
+}
+
+pub async fn update_playbook_if_version_tx(
+    conn: &mut PgConnection,
+    user_id: &str,
+    workspace_id: &str,
+    id: &str,
+    expected_version: &str,
+    patch: PlaybookVersionedPatch<'_>,
+) -> Result<String> {
+    let new_hlc = crate::service::hlc::stamp();
+    let row: Option<String> = sqlx::query_scalar(
+        "UPDATE playbooks SET
+           name=COALESCE($5,name),entry_rules=COALESCE($6,entry_rules),
+           exit_rules=COALESCE($7,exit_rules),
+           position_sizing_rules=COALESCE($8,position_sizing_rules),
+           additional_rules=COALESCE($9,additional_rules),hlc=$10,updated_at=now()
+         WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL
+           AND (workspace_id=$3 OR availability='universal')
+           AND COALESCE(NULLIF(hlc,''),updated_at::text)=$4
+         RETURNING COALESCE(NULLIF(hlc,''),updated_at::text)",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .bind(expected_version)
+    .bind(patch.name)
+    .bind(patch.entry_rules)
+    .bind(patch.exit_rules)
+    .bind(patch.position_sizing_rules)
+    .bind(patch.additional_rules)
+    .bind(&new_hlc)
+    .fetch_optional(&mut *conn)
+    .await?;
+    row.ok_or_else(|| anyhow::anyhow!("record_changed"))
+}
+
 /// `trading_principles.playbook_id` is `ON DELETE RESTRICT`, so Postgres would
 /// reject this with an opaque constraint error. Check first so the caller gets
 /// the blocking principle titles and can offer to reassign or remove them.

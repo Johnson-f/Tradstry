@@ -12,7 +12,6 @@ pub mod snaptrade_oauth_table;
 pub mod tags_table;
 pub mod trade_review_table;
 pub mod trading_principle_table;
-pub mod user_agents_table;
 pub mod user_prompts_table;
 pub mod users_table;
 pub mod workspaces_table;

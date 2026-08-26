@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clerk_rs::validators::jwks::MemoryCacheJwksProvider;
-use tradstry_backend::service::ai::vector_database::client::VectorDatabaseClient;
+use tradstry_backend::service::agents::knowledge::KnowledgeService;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::r2::R2Client;
 
@@ -17,10 +17,8 @@ pub struct AppState {
     /// Postgres database client. Call `db.get_user_db(user_id)` to obtain a
     /// per-request user-scoped DB handle.
     pub db: Arc<Db>,
-    /// Hybrid (dense + sparse) vector search client backing semantic search.
-    /// Constructed once at startup via `VectorDatabaseClient::from_env()`,
-    /// mirroring the main backend.
-    pub vector_db: Arc<VectorDatabaseClient>,
+    /// Shared authenticated PostgreSQL knowledge search used by both MCP and Tradstry AI.
+    pub knowledge: Arc<KnowledgeService>,
     /// Cloudflare R2 client for fetching raw media bytes on behalf of tools.
     /// Constructed once at startup via `R2Client::from_env()`.
     pub r2: Arc<R2Client>,

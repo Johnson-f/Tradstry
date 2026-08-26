@@ -44,7 +44,7 @@ use axum::{Router, middleware};
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use tradstry_backend::service::ai::vector_database::client::VectorDatabaseClient;
+use tradstry_backend::service::agents::knowledge::VoyageClient;
 use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::r2::R2Client;
@@ -93,9 +93,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db = Arc::new(Db::new().await?);
 
-    // Construct the vector search client exactly like the main backend
-    // (reads POSTGRES_* and VOYAGE_* env vars). `from_env` is synchronous.
-    let vector_db = Arc::new(VectorDatabaseClient::from_env()?);
+    let voyage = Arc::new(VoyageClient::from_env()?);
+    let knowledge = Arc::new(
+        tradstry_backend::service::agents::knowledge::KnowledgeService::new(
+            db.pool().clone(),
+            Arc::new(
+                tradstry_backend::service::agents::knowledge::VoyageEmbeddingProvider::new(
+                    voyage.clone(),
+                ),
+            ),
+            Arc::new(tradstry_backend::service::agents::knowledge::VoyageReranker::new(voyage)),
+        )?,
+    );
 
     // Construct the R2 client (reads R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
     // R2_SECRET_ACCESS_KEY, R2_BUCKET env vars — same vars as the main backend).
@@ -107,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(AppState {
         jwks,
         db,
-        vector_db,
+        knowledge,
         r2,
         public_url,
         clerk_issuer,

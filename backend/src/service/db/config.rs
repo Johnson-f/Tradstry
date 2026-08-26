@@ -38,7 +38,7 @@ pub fn search_path() -> Result<Option<String>> {
 }
 
 /// Append a libpq `options=-c search_path=...` parameter to a connection URL,
-/// for non-sqlx (`postgres`-crate) clients like the LangGraph savers. Returns the
+/// for non-sqlx clients and operational tools. Returns the
 /// URL unchanged when unpartitioned.
 pub fn url_with_search_path(base: &str) -> Result<String> {
     match env_schema()? {

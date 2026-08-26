@@ -38,6 +38,23 @@ async fn export_contains_a_key_for_every_user_table() {
         "notebook_images",
         "brokerage_transactions",
         "account_equity_history",
+        "agent_conversations",
+        "agent_messages",
+        "agent_runs",
+        "agent_run_events",
+        "agent_checkpoints",
+        "agent_tool_calls",
+        "agent_evidence",
+        "agent_claims",
+        "agent_claim_evidence",
+        "agent_conversation_summary_jobs",
+        "agent_memories",
+        "agent_memory_jobs",
+        "agent_knowledge_passages",
+        "agent_index_outbox",
+        "agent_action_proposals",
+        "agent_action_executions",
+        "agent_assistance_requests",
     ] {
         assert!(export.get(key).is_some(), "export is missing `{key}`");
     }

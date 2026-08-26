@@ -9,7 +9,6 @@ use crate::service::db::schema::tables::notebook::notes::{
 };
 use crate::service::r2::R2Client;
 use crate::service::read_service::notebook as notebook_service;
-use crate::service::{ai::jobs as ai_jobs, db::Db};
 
 /// GraphQL-facing mirror of the table-layer `NotebookNodeType` enum.
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -136,15 +135,6 @@ impl NotebookMutation {
         let user_db = get_user_db(ctx).await?;
         let note = notebook_service::create_notebook_note(&user_db, input).await?;
         super::sync::seed_new_note(user_db.pool(), &note.id).await;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &note.workspace_id,
-            "notebook_note",
-            &note.id,
-        )
-        .await?;
         Ok(note)
     }
 
@@ -156,15 +146,6 @@ impl NotebookMutation {
     ) -> Result<NotebookNote> {
         let user_db = get_user_db(ctx).await?;
         let note = notebook_service::update_notebook_note(&user_db, &id, input).await?;
-        let db = ctx.data::<Arc<Db>>()?;
-        ai_jobs::enqueue_source_reindex(
-            db.as_ref(),
-            user_db.user_id(),
-            &note.workspace_id,
-            "notebook_note",
-            &note.id,
-        )
-        .await?;
         Ok(note)
     }
 
@@ -207,16 +188,6 @@ impl NotebookMutation {
                     );
                 }
             }
-
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_source_reindex(
-                db.as_ref(),
-                user_db.user_id(),
-                &note.workspace_id,
-                "notebook_note",
-                &note.id,
-            )
-            .await?;
         }
         Ok(deleted)
     }
@@ -254,9 +225,6 @@ impl NotebookMutation {
     async fn delete_notebook_folder(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
 
-        // Look up the folder first so we can enqueue a reindex for its account.
-        let folder = folders::find_notebook_folder(user_db.pool(), &id).await?;
-
         // Read-service cascades the DB delete and hands back R2 object keys.
         let object_keys = notebook_service::delete_notebook_folder(&user_db, &id).await?;
 
@@ -268,13 +236,6 @@ impl NotebookMutation {
                     "Failed to delete notebook media '{object_key}' from R2 during folder delete: {error}"
                 );
             }
-        }
-
-        // Enqueue a single account reindex if we know which account this was.
-        if let Some(folder) = folder {
-            let db = ctx.data::<Arc<Db>>()?;
-            ai_jobs::enqueue_account_reindex(db.as_ref(), user_db.user_id(), &folder.workspace_id)
-                .await?;
         }
 
         Ok(true)

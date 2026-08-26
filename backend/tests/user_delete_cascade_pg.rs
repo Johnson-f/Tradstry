@@ -1,6 +1,11 @@
 mod pg_support;
 
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
+use serde_json::json;
+use tradstry_backend::service::agents::{
+    ActivateAgentMemory, AgentActor, AgentLane, AgentMemoryKind, AgentMemoryStatus, AgentScope,
+    AgentStore, CreateAgentRun,
+};
 
 async fn seed_tag(pool: &sqlx::PgPool, user_id: &str, workspace_id: &str) {
     sqlx::query(
@@ -57,6 +62,63 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
 
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_tag(&pool, &user_id, &workspace_id).await;
+    let actor = AgentActor {
+        user_id: user_id.clone(),
+        clerk_id: "delete-agent-test".into(),
+    };
+    let store = AgentStore::new(pool.clone());
+    let conversation = store
+        .create_conversation(
+            &actor,
+            &AgentScope {
+                workspace_id: workspace_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let message = store
+        .append_message(&actor, &conversation.id, "user", &json!({"text": "hello"}))
+        .await
+        .unwrap();
+    let run = store
+        .create_run(
+            &actor,
+            &CreateAgentRun {
+                conversation_id: conversation.id.clone(),
+                lane: AgentLane::Deep,
+                parent_run_id: None,
+                input_message_id: Some(message.id.clone()),
+                idempotency_key: "delete-agent-run".into(),
+            },
+        )
+        .await
+        .unwrap();
+    store
+        .activate_memory(
+            &actor,
+            &ActivateAgentMemory {
+                workspace_id: Some(workspace_id.clone()),
+                kind: AgentMemoryKind::Preference,
+                subject_key: "review_style".into(),
+                text: "I prefer concise reviews".into(),
+                source_conversation_id: conversation.id,
+                source_message_id: message.id,
+                provenance_excerpt: "I prefer concise reviews".into(),
+                confidence: 0.99,
+                extraction_version: "memory-v1".into(),
+                status: AgentMemoryStatus::Active,
+            },
+        )
+        .await
+        .unwrap();
+    store
+        .append_event(&run.id, "queued", &json!({}))
+        .await
+        .unwrap();
+    store
+        .save_checkpoint(&run.id, "queued", 1, &json!({}))
+        .await
+        .unwrap();
 
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(&user_id)
@@ -94,4 +156,26 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
         0,
         "usage_counters survived the user delete"
     );
+    for table in [
+        "agent_conversations",
+        "agent_messages",
+        "agent_runs",
+        "agent_run_events",
+        "agent_checkpoints",
+        "agent_memories",
+        "agent_memory_jobs",
+        "agent_knowledge_passages",
+        "agent_index_outbox",
+        "agent_action_proposals",
+        "agent_action_executions",
+        "agent_assistance_requests",
+    ] {
+        let sql = format!("SELECT count(*) FROM {table} WHERE user_id = $1");
+        let remaining: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
+            .bind(&user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, 0, "{table} survived the user delete");
+    }
 }

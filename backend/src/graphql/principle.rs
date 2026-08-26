@@ -122,7 +122,7 @@ impl PrincipleQuery {
 #[derive(Default)]
 pub struct PrincipleMutation;
 
-// No `ai_jobs::enqueue_all_account_reindex` here: principles are not indexed
+// Principle updates publish knowledge-index work through database triggers.
 // into the vector store, so a reindex would be pure cost.
 #[Object]
 impl PrincipleMutation {

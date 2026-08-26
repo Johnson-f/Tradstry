@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use async_graphql::{Context, Error, InputObject, Json, Object, Result, SimpleObject};
 use chrono::Utc;
+use clerk_rs::validators::authorizer::ClerkJwt;
 use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::service::ai::client::AgentsClient;
+use crate::service::agents::{AgentActor, AgentService};
 use crate::service::db::Db;
 use crate::service::market::research;
 use crate::service::notifications::{NotificationEvent, outbox};
@@ -469,7 +470,7 @@ impl MarketResearchMutation {
         let (db, user_id) = resolve_user(ctx).await?;
         require_workspace(&db, &user_id, &workspace_id).await?;
         let symbol = normalize_symbol(&symbol)?;
-        let agents = ctx.data::<Arc<AgentsClient>>()?;
+        let agent_service = ctx.data::<Arc<AgentService>>()?;
         let (news_result, financials_result, transcripts_result) = tokio::join!(
             research::news(&symbol),
             research::financials(&symbol),
@@ -536,7 +537,16 @@ impl MarketResearchMutation {
                 .unwrap_or("unavailable"),
             transcript_context,
         );
-        let body = agents.prompt_with("You are a rigorous equity research analyst. State uncertainty and distinguish facts from inference.", 12_000, &prompt).await?;
+        let body = agent_service
+            .synthesize_market_report(
+                &AgentActor {
+                    user_id: user_id.clone(),
+                    clerk_id: ctx.data::<ClerkJwt>()?.sub.clone(),
+                },
+                &prompt,
+            )
+            .await
+            .map_err(|error| Error::new(error.to_string()))?;
         let title = format!("{symbol} research brief");
         let id = Uuid::new_v4().to_string();
         sqlx::query("INSERT INTO market_reports (id, workspace_id, user_id, symbol, title, body, sources) VALUES ($1,$2,$3,$4,$5,$6,$7)")

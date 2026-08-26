@@ -82,12 +82,72 @@ const USER_SCOPED: &[(&str, &str)] = &[
         "SELECT to_jsonb(t) FROM position_calculator_plans t WHERE t.user_id = $1",
     ),
     (
-        "user_agents",
-        "SELECT to_jsonb(t) FROM user_agents t WHERE t.user_id = $1",
-    ),
-    (
         "user_prompts",
         "SELECT to_jsonb(t) FROM user_prompts t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_conversations",
+        "SELECT to_jsonb(t) FROM agent_conversations t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_messages",
+        "SELECT to_jsonb(t) FROM agent_messages t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_runs",
+        "SELECT to_jsonb(t) FROM agent_runs t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_run_events",
+        "SELECT to_jsonb(t) FROM agent_run_events t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_checkpoints",
+        "SELECT to_jsonb(t) FROM agent_checkpoints t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_tool_calls",
+        "SELECT to_jsonb(t) FROM agent_tool_calls t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_evidence",
+        "SELECT to_jsonb(t) - 'payload_json' FROM agent_evidence t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_claims",
+        "SELECT to_jsonb(t) FROM agent_claims t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_conversation_summary_jobs",
+        "SELECT to_jsonb(t) FROM agent_conversation_summary_jobs t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_memories",
+        "SELECT to_jsonb(t) - 'embedding' - 'search_vector' FROM agent_memories t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_memory_jobs",
+        "SELECT to_jsonb(t) FROM agent_memory_jobs t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_knowledge_passages",
+        "SELECT to_jsonb(t) - 'embedding' - 'search_vector' FROM agent_knowledge_passages t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_index_outbox",
+        "SELECT to_jsonb(t) FROM agent_index_outbox t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_action_proposals",
+        "SELECT to_jsonb(t) FROM agent_action_proposals t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_action_executions",
+        "SELECT to_jsonb(t) FROM agent_action_executions t WHERE t.user_id = $1",
+    ),
+    (
+        "agent_assistance_requests",
+        "SELECT to_jsonb(t) FROM agent_assistance_requests t WHERE t.user_id = $1",
     ),
 ];
 
@@ -122,6 +182,12 @@ const JOINED: &[(&str, &str)] = &[
          JOIN notebook_notes n ON n.id = nt.note_id
          WHERE n.user_id = $1",
     ),
+    (
+        "agent_claim_evidence",
+        "SELECT to_jsonb(ce) FROM agent_claim_evidence ce
+         JOIN agent_claims c ON c.id = ce.claim_id
+         WHERE c.user_id = $1",
+    ),
 ];
 
 async fn fetch(pool: &PgPool, sql: &'static str, user_id: &str) -> Result<Value> {
@@ -145,5 +211,69 @@ pub async fn build_export(pool: &PgPool, user_id: &str) -> Result<Value> {
         out.insert((*key).into(), fetch(pool, sql, user_id).await?);
     }
 
+    if let Some(checkpoints) = out
+        .get_mut("agent_checkpoints")
+        .and_then(Value::as_array_mut)
+    {
+        for checkpoint in checkpoints {
+            if let Some(state) = checkpoint.get_mut("state_json") {
+                sanitize_agent_checkpoint_for_export(state);
+            }
+        }
+    }
+
     Ok(Value::Object(out))
+}
+
+fn sanitize_agent_checkpoint_for_export(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for key in [
+                "thoughtSignature",
+                "thought_signature",
+                "signature",
+                "providerExtension",
+                "provider_extension",
+                "rawProviderPayload",
+                "raw_provider_payload",
+            ] {
+                object.remove(key);
+            }
+            for child in object.values_mut() {
+                sanitize_agent_checkpoint_for_export(child);
+            }
+        }
+        Value::Array(array) => {
+            for child in array {
+                sanitize_agent_checkpoint_for_export(child);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::sanitize_agent_checkpoint_for_export;
+
+    #[test]
+    fn checkpoint_export_removes_provider_opaque_fields_recursively() {
+        let mut value = json!({
+            "messages": [{
+                "text": "visible",
+                "thoughtSignature": "secret-signature",
+                "nested": {"provider_extension": {"opaque": true}}
+            }]
+        });
+        sanitize_agent_checkpoint_for_export(&mut value);
+        assert_eq!(value["messages"][0]["text"], "visible");
+        assert!(value["messages"][0].get("thoughtSignature").is_none());
+        assert!(
+            value["messages"][0]["nested"]
+                .get("provider_extension")
+                .is_none()
+        );
+    }
 }
