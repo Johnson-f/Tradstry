@@ -2,10 +2,18 @@ import { describe, expect, test } from "bun:test";
 import {
 	calculateRiskBudget,
 	calculateTrancheRisk,
+	resolveRuleAccountBalance,
 	summarizePlanRisk,
 } from "./position-calculator-risk";
 
 describe("position calculator plan risk", () => {
+	test("prefers synced workspace equity and falls back to the saved rule", () => {
+		expect(resolveRuleAccountBalance(24_500.25, 10_000)).toBe(24_500.25);
+		expect(resolveRuleAccountBalance(null, 10_000)).toBe(10_000);
+		expect(resolveRuleAccountBalance(0, 10_000)).toBe(10_000);
+		expect(resolveRuleAccountBalance(Number.NaN, 0)).toBeNull();
+	});
+
 	test("allocates a long plan by risk instead of by share count", () => {
 		const riskBudget = calculateRiskBudget(10_000, 1);
 		expect(riskBudget).toBe(100);

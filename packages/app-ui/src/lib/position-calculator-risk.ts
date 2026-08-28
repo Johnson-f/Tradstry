@@ -14,6 +14,16 @@ export type PlanRiskSummary = {
 	weightedEntry: number;
 };
 
+export function resolveRuleAccountBalance(
+	syncedBalance: number | null | undefined,
+	savedBalance: number | null | undefined,
+) {
+	for (const value of [syncedBalance, savedBalance]) {
+		if (value != null && Number.isFinite(value) && value > 0) return value;
+	}
+	return null;
+}
+
 function floorTo(value: number, decimals: number) {
 	const factor = 10 ** decimals;
 	return Math.floor((value + Number.EPSILON) * factor) / factor;

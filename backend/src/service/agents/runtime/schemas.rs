@@ -1,5 +1,8 @@
-use serde::Deserialize;
+use std::collections::HashSet;
+
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tinyagents::harness::model::ResponseFormat;
 
 use crate::service::agents::actions::{
@@ -11,16 +14,38 @@ use crate::service::agents::{
 
 pub enum AgentSchema {
     SpecialistFinding,
-    Answer { name: &'static str },
+    Answer,
     ActionProposal,
     MemoryCandidates,
+}
+
+pub const ANSWER_SCHEMA_NAME: &str = "tradstry_answer_v2";
+pub const ANSWER_SCHEMA_VERSION: &str = "2";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchemaIdentity {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub hash: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnswerValidationIssue {
+    pub code: &'static str,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnswerValidationError {
+    pub issues: Vec<AnswerValidationIssue>,
 }
 
 impl AgentSchema {
     pub fn response_format(&self) -> ResponseFormat {
         let (name, schema) = match self {
             Self::SpecialistFinding => ("specialist_finding", specialist_finding_schema()),
-            Self::Answer { name } => (*name, answer_schema()),
+            Self::Answer => (ANSWER_SCHEMA_NAME, answer_schema()),
             Self::ActionProposal => ("agent_action", action_schema()),
             Self::MemoryCandidates => ("memory_candidates", memory_candidates_schema()),
         };
@@ -33,20 +58,126 @@ impl AgentSchema {
             _ => unreachable!(),
         }
     }
+
+    pub fn identity(&self) -> AgentResult<SchemaIdentity> {
+        let (name, version) = match self {
+            Self::SpecialistFinding => ("specialist_finding", "1"),
+            Self::Answer => (ANSWER_SCHEMA_NAME, ANSWER_SCHEMA_VERSION),
+            Self::ActionProposal => ("agent_action", "1"),
+            Self::MemoryCandidates => ("memory_candidates", "1"),
+        };
+        let schema =
+            crate::service::agents::runtime::provider_contract::compile_schema(&self.schema())
+                .map_err(|_| AgentError::Internal)?;
+        let bytes = serde_json::to_vec(&schema).map_err(|_| AgentError::Internal)?;
+        Ok(SchemaIdentity {
+            name,
+            version,
+            hash: hex::encode(Sha256::digest(bytes)),
+        })
+    }
 }
 
-pub fn decode_answer(value: Value) -> AgentResult<AnswerDraft> {
-    let wire: WireAnswer = serde_json::from_value(value)
-        .map_err(|_| AgentError::Validation("invalid structured answer".into()))?;
-    let blocks = wire
-        .blocks
-        .into_iter()
-        .map(WireAnswerBlock::decode)
-        .collect::<AgentResult<Vec<_>>>()?;
+pub fn decode_answer(value: Value) -> Result<AnswerDraft, AnswerValidationError> {
+    let wire: WireAnswer =
+        serde_json::from_value(value).map_err(|_| validation_issue("answer_json_invalid", "/"))?;
+    if wire.schema_version != ANSWER_SCHEMA_VERSION {
+        return Err(validation_issue(
+            "answer_version_invalid",
+            "/schema_version",
+        ));
+    }
+    if wire.paragraphs.len() > 40
+        || wire.metrics.len() > 40
+        || wire.lists.len() > 40
+        || wire.warnings.len() > 40
+        || wire.action_proposals.len() > 20
+        || wire.claims.len() > 100
+    {
+        return Err(validation_issue("answer_collection_too_large", "/"));
+    }
+    let mut ordered = Vec::new();
+    for item in wire.paragraphs {
+        ordered.push((
+            item.order,
+            AnswerBlock::Paragraph {
+                text: non_blank(item.text, "/paragraphs/text")?,
+            },
+        ));
+    }
+    for item in wire.metrics {
+        ordered.push((
+            item.order,
+            AnswerBlock::Metric {
+                label: non_blank(item.label, "/metrics/label")?,
+                value: non_blank(item.value, "/metrics/value")?,
+            },
+        ));
+    }
+    for item in wire.lists {
+        if item.items.is_empty() || item.items.len() > 30 {
+            return Err(validation_issue("answer_list_size_invalid", "/lists/items"));
+        }
+        let items = item
+            .items
+            .into_iter()
+            .map(|value| non_blank(value, "/lists/items"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let title = item.title.trim().to_owned();
+        ordered.push((
+            item.order,
+            AnswerBlock::List {
+                title: (!title.is_empty()).then_some(title),
+                items,
+            },
+        ));
+    }
+    for item in wire.warnings {
+        ordered.push((
+            item.order,
+            AnswerBlock::Warning {
+                text: non_blank(item.text, "/warnings/text")?,
+            },
+        ));
+    }
+    for item in wire.action_proposals {
+        ordered.push((
+            item.order,
+            AnswerBlock::ActionProposal {
+                proposal_id: non_blank(item.proposal_id, "/action_proposals/proposal_id")?,
+            },
+        ));
+    }
+    if ordered.is_empty() || ordered.len() > 100 {
+        return Err(validation_issue("answer_block_count_invalid", "/"));
+    }
+    let mut seen = HashSet::with_capacity(ordered.len());
+    if ordered.iter().any(|(order, _)| !seen.insert(*order)) {
+        return Err(validation_issue("answer_order_duplicate", "/"));
+    }
+    ordered.sort_by_key(|(order, _)| *order);
     Ok(AnswerDraft {
-        blocks,
+        blocks: ordered.into_iter().map(|(_, block)| block).collect(),
         claims: wire.claims,
     })
+}
+
+fn validation_issue(code: &'static str, path: &str) -> AnswerValidationError {
+    AnswerValidationError {
+        issues: vec![AnswerValidationIssue {
+            code,
+            path: path.into(),
+        }],
+    }
+}
+
+fn non_blank(value: String, path: &str) -> Result<String, AnswerValidationError> {
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        Err(validation_issue("answer_text_blank", path))
+    } else {
+        Ok(value)
+    }
 }
 
 pub fn decode_action(value: Value) -> AgentResult<AgentActionPayload> {
@@ -115,69 +246,43 @@ fn required<T>(value: Option<T>, name: &str) -> AgentResult<T> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WireAnswer {
-    blocks: Vec<WireAnswerBlock>,
+    schema_version: String,
+    paragraphs: Vec<WireOrderedText>,
+    metrics: Vec<WireMetric>,
+    lists: Vec<WireList>,
+    warnings: Vec<WireOrderedText>,
+    action_proposals: Vec<WireActionProposal>,
     claims: Vec<AgentClaim>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WireAnswerBlock {
-    kind: String,
-    #[serde(default)]
+struct WireOrderedText {
+    order: u32,
     text: String,
-    #[serde(default)]
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireMetric {
+    order: u32,
     label: String,
-    #[serde(default)]
     value: String,
-    #[serde(default)]
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireList {
+    order: u32,
     title: String,
-    #[serde(default)]
     items: Vec<String>,
-    #[serde(default)]
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireActionProposal {
+    order: u32,
     proposal_id: String,
-}
-
-impl WireAnswerBlock {
-    fn decode(self) -> AgentResult<AnswerBlock> {
-        match self.kind.as_str() {
-            "paragraph" => Ok(AnswerBlock::Paragraph {
-                text: non_blank(self.text, "paragraph text")?,
-            }),
-            "warning" => Ok(AnswerBlock::Warning {
-                text: non_blank(self.text, "warning text")?,
-            }),
-            "metric" => Ok(AnswerBlock::Metric {
-                label: non_blank(self.label, "metric label")?,
-                value: non_blank(self.value, "metric value")?,
-            }),
-            "list" => Ok(AnswerBlock::List {
-                title: if !self.title.is_empty() {
-                    Some(self.title)
-                } else if !self.label.is_empty() {
-                    Some(self.label)
-                } else {
-                    None
-                },
-                items: self.items,
-            }),
-            "action_proposal" => Ok(AnswerBlock::ActionProposal {
-                proposal_id: non_blank(self.proposal_id, "proposal id")?,
-            }),
-            _ => Err(AgentError::Validation(
-                "answer block fields do not match the selected kind".into(),
-            )),
-        }
-    }
-}
-
-fn non_blank(value: String, name: &str) -> AgentResult<String> {
-    if value.trim().is_empty() {
-        Err(AgentError::Validation(format!(
-            "structured output is missing {name}"
-        )))
-    } else {
-        Ok(value)
-    }
 }
 
 #[derive(Deserialize)]
@@ -249,19 +354,40 @@ fn specialist_finding_schema() -> Value {
 fn answer_schema() -> Value {
     json!({
         "type":"object","properties":{
-            "blocks":{"type":"array","items":{
+            "schema_version":{"type":"string","enum":["2"]},
+            "paragraphs":{"type":"array","maxItems":40,"items":ordered_text_schema()},
+            "metrics":{"type":"array","maxItems":40,"items":{
                 "type":"object","properties":{
-                    "kind":{"type":"string","enum":["paragraph","metric","list","warning","action_proposal"]},
-                    "text":{"type":"string"},
-                    "label":{"type":"string"},
-                    "value":{"type":"string"},
-                    "title":{"type":"string"},
-                    "items":{"type":"array","items":{"type":"string"}},
-                    "proposal_id":{"type":"string"}
-                },"required":["kind","text","label","value","title","items","proposal_id"]
+                    "order":order_schema(),"label":{"type":"string","minLength":1,"maxLength":200},
+                    "value":{"type":"string","minLength":1,"maxLength":500}
+                },"required":["order","label","value"]
             }},
-            "claims":{"type":"array","items":claim_schema()}
-        },"required":["blocks","claims"]
+            "lists":{"type":"array","maxItems":40,"items":{
+                "type":"object","properties":{
+                    "order":order_schema(),"title":{"type":"string","maxLength":200},
+                    "items":{"type":"array","minItems":1,"maxItems":30,"items":{"type":"string","minLength":1,"maxLength":2000}}
+                },"required":["order","title","items"]
+            }},
+            "warnings":{"type":"array","maxItems":40,"items":ordered_text_schema()},
+            "action_proposals":{"type":"array","maxItems":20,"items":{
+                "type":"object","properties":{
+                    "order":order_schema(),"proposal_id":{"type":"string","minLength":1,"maxLength":200}
+                },"required":["order","proposal_id"]
+            }},
+            "claims":{"type":"array","maxItems":100,"items":claim_schema()}
+        },"required":["schema_version","paragraphs","metrics","lists","warnings","action_proposals","claims"]
+    })
+}
+
+fn order_schema() -> Value {
+    json!({"type":"integer","minimum":0,"maximum":999})
+}
+
+fn ordered_text_schema() -> Value {
+    json!({
+        "type":"object","properties":{
+            "order":order_schema(),"text":{"type":"string","minLength":1,"maxLength":8000}
+        },"required":["order","text"]
     })
 }
 
@@ -313,10 +439,7 @@ fn memory_candidates_schema() -> Value {
 pub fn contract_fixtures() -> Vec<(&'static str, Value)> {
     vec![
         ("specialist", AgentSchema::SpecialistFinding.schema()),
-        (
-            "answer_empty",
-            AgentSchema::Answer { name: "answer" }.schema(),
-        ),
+        ("answer_v2", AgentSchema::Answer.schema()),
         ("action", AgentSchema::ActionProposal.schema()),
         ("memory", AgentSchema::MemoryCandidates.schema()),
     ]
@@ -335,19 +458,84 @@ mod tests {
     }
 
     #[test]
-    fn semantic_answer_decoder_rejects_missing_variant_fields() {
-        assert!(
-            decode_answer(json!({
-                "blocks":[{"kind":"metric","label":"Win rate"}],"claims":[]
-            }))
-            .is_err()
+    fn answer_contract_identity_is_stable_and_versioned() {
+        let first = AgentSchema::Answer.identity().unwrap();
+        let second = AgentSchema::Answer.identity().unwrap();
+        assert_eq!(first.name, ANSWER_SCHEMA_NAME);
+        assert_eq!(first.version, ANSWER_SCHEMA_VERSION);
+        assert_eq!(first.hash, second.hash);
+        assert_eq!(first.hash.len(), 64);
+    }
+
+    #[test]
+    fn answer_v2_rejects_the_flattened_v1_shape() {
+        let error = decode_answer(json!({
+            "blocks":[{"kind":"metric","label":"Win rate","items":["20%"]}],"claims":[]
+        }))
+        .unwrap_err();
+        assert_eq!(error.issues[0].code, "answer_json_invalid");
+    }
+
+    #[test]
+    fn answer_v2_merges_typed_sections_by_order() {
+        let answer = decode_answer(json!({
+            "schema_version":"2",
+            "paragraphs":[{"order":2,"text":"Summary"}],
+            "metrics":[{"order":0,"label":"Win rate","value":"20%"}],
+            "lists":[{"order":1,"title":"Problems","items":["Loss concentration"]}],
+            "warnings":[],
+            "action_proposals":[],
+            "claims":[]
+        }))
+        .unwrap();
+        assert!(matches!(answer.blocks[0], AnswerBlock::Metric { .. }));
+        assert!(matches!(answer.blocks[1], AnswerBlock::List { .. }));
+        assert!(matches!(answer.blocks[2], AnswerBlock::Paragraph { .. }));
+    }
+
+    #[test]
+    fn answer_v2_rejects_duplicate_order_and_blank_content() {
+        for value in [
+            json!({
+                "schema_version":"2","paragraphs":[{"order":0,"text":"A"}],
+                "metrics":[{"order":0,"label":"Win rate","value":"20%"}],
+                "lists":[],"warnings":[],"action_proposals":[],"claims":[]
+            }),
+            json!({
+                "schema_version":"2","paragraphs":[{"order":0,"text":"  "}],
+                "metrics":[],"lists":[],"warnings":[],"action_proposals":[],"claims":[]
+            }),
+        ] {
+            assert!(decode_answer(value).is_err());
+        }
+    }
+
+    #[test]
+    fn answer_v2_rejects_unknown_fields_and_oversized_collections() {
+        let unknown = json!({
+            "schema_version":"2","paragraphs":[{"order":0,"text":"ok","kind":"paragraph"}],
+            "metrics":[],"lists":[],"warnings":[],"action_proposals":[],"claims":[]
+        });
+        assert!(decode_answer(unknown).is_err());
+
+        let paragraphs = (0..41)
+            .map(|order| json!({"order":order,"text":format!("item {order}")}))
+            .collect::<Vec<_>>();
+        let oversized = json!({
+            "schema_version":"2","paragraphs":paragraphs,"metrics":[],"lists":[],
+            "warnings":[],"action_proposals":[],"claims":[]
+        });
+        assert_eq!(
+            decode_answer(oversized).unwrap_err().issues[0].code,
+            "answer_collection_too_large"
         );
     }
 
     #[test]
     fn semantic_decoders_preserve_domain_shapes() {
         let answer = decode_answer(json!({
-            "blocks":[{"kind":"paragraph","text":"ok"}],"claims":[]
+            "schema_version":"2","paragraphs":[{"order":0,"text":"ok"}],
+            "metrics":[],"lists":[],"warnings":[],"action_proposals":[],"claims":[]
         }))
         .unwrap();
         assert!(matches!(answer.blocks[0], AnswerBlock::Paragraph { .. }));

@@ -4,6 +4,7 @@ use std::time::Duration;
 use log::{error, info};
 
 use crate::service::agents::AgentService;
+use crate::service::agents::runtime::resilience::{CircuitTransition, ProviderOutcome};
 use crate::service::agents::turn::AgentTurnRunner;
 
 pub async fn run_agent_worker(
@@ -38,6 +39,12 @@ pub async fn run_agent_worker(
                             service
                                 .store()
                                 .fail_claimed_run(&run.id, &owner, "answer_grounding_invalid")
+                                .await
+                        }
+                        crate::service::agents::AgentError::AnswerRepairExhausted => {
+                            service
+                                .store()
+                                .fail_claimed_run(&run.id, &owner, "answer_repair_exhausted")
                                 .await
                         }
                         _ => {
@@ -77,7 +84,7 @@ async fn execute_with_lease(
     owner: &str,
 ) -> crate::service::agents::AgentResult<()> {
     let cancellation = tinyagents::CancellationToken::new();
-    let execution = execute_claimed_run(service, run, owner, cancellation.clone());
+    let execution = execute_resilient_claimed_run(service, run, owner, cancellation.clone());
     tokio::pin!(execution);
     let mut heartbeat =
         tokio::time::interval(Duration::from_secs(service.config().heartbeat_seconds));
@@ -98,6 +105,51 @@ async fn execute_with_lease(
             }
         }
     }
+}
+
+async fn execute_resilient_claimed_run(
+    service: &AgentService,
+    run: &crate::service::agents::AgentRun,
+    owner: &str,
+    cancellation: tinyagents::CancellationToken,
+) -> crate::service::agents::AgentResult<()> {
+    let circuit_lease = service.provider_circuit().acquire().await;
+    if circuit_lease.probe {
+        service
+            .store()
+            .append_event(
+                &run.id,
+                "provider_circuit_probe_started",
+                &serde_json::json!({}),
+            )
+            .await?;
+    }
+    let result = execute_claimed_run(service, run, owner, cancellation).await;
+    let outcome = match &result {
+        Ok(()) => ProviderOutcome::Success,
+        Err(crate::service::agents::AgentError::Provider(failure)) if failure.retryable => {
+            ProviderOutcome::RetryableFailure
+        }
+        _ => ProviderOutcome::Neutral,
+    };
+    let transition = service.provider_circuit().complete(circuit_lease, outcome);
+    let event_kind = match transition {
+        Some(CircuitTransition::Opened) => Some("provider_circuit_opened"),
+        Some(CircuitTransition::Closed) => Some("provider_circuit_closed"),
+        None => None,
+    };
+    if let Some(kind) = event_kind
+        && let Err(error) = service
+            .store()
+            .append_event(&run.id, kind, &serde_json::json!({}))
+            .await
+    {
+        log::warn!(
+            "[agents] could not persist {kind} for run {}: {error}",
+            run.id
+        );
+    }
+    result
 }
 
 async fn execute_claimed_run(

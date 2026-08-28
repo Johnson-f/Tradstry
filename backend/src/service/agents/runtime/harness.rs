@@ -13,6 +13,7 @@ pub fn build_specialist_harness(
     definition: &SpecialistDefinition,
 ) -> AgentResult<AgentHarness<AgentRuntimeState>> {
     let mut harness = AgentHarness::new();
+    harness.push_model_middleware(models.rate_limit_middleware());
     harness
         .register_model("specialist-primary", models.primary(definition.model_role))
         .set_default_model("specialist-primary");

@@ -48,7 +48,9 @@ export function SiteHeader({ actions }: { actions?: React.ReactNode }) {
 				<div className="ml-auto flex shrink-0 items-center gap-0.5">
 					<BrokerageButton />
 					<NotificationsButton />
-					<AgentPanelTrigger />
+					<div className="md:hidden">
+						<AgentPanelTrigger />
+					</div>
 					{actions ? <div className="ml-1.5">{actions}</div> : null}
 				</div>
 			</div>

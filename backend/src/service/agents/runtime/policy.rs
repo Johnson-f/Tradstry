@@ -16,6 +16,8 @@ pub fn build_run_policy() -> RunPolicy {
         retry: RetryPolicy::default()
             .with_default_retry_on()
             .with_max_attempts(3)
+            .with_jitter(true)
+            .with_max_retry_after_ms(30_000)
             .with_backoff_sleep(true),
         fallback: None,
         default_response_format: None,
@@ -42,5 +44,8 @@ mod tests {
         assert!(policy.capture.is_disabled());
         assert!(!policy.cache.response_cache_enabled);
         assert!(policy.error_on_empty_response);
+        assert!(policy.retry.jitter);
+        assert_eq!(policy.retry.max_attempts, 3);
+        assert_eq!(policy.retry.max_retry_after_ms, 30_000);
     }
 }

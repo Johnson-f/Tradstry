@@ -25,6 +25,7 @@ pub struct AgentService {
     knowledge: Option<Arc<KnowledgeService>>,
     r2: Option<Arc<crate::service::r2::R2Client>>,
     wake: Arc<Notify>,
+    provider_circuit: super::runtime::resilience::ProviderCircuit,
 }
 
 impl AgentService {
@@ -33,6 +34,10 @@ impl AgentService {
         store: AgentStore,
         models: Option<AgentModelRegistry>,
     ) -> Self {
+        let provider_circuit = super::runtime::resilience::ProviderCircuit::new(
+            config.provider_circuit_failures,
+            std::time::Duration::from_secs(config.provider_circuit_cooldown_seconds),
+        );
         Self {
             budget: AgentBudget::new(store.pool().clone()),
             config,
@@ -41,6 +46,7 @@ impl AgentService {
             knowledge: None,
             r2: None,
             wake: Arc::new(Notify::new()),
+            provider_circuit,
         }
     }
 
@@ -94,6 +100,10 @@ impl AgentService {
 
     pub fn wake_handle(&self) -> Arc<Notify> {
         Arc::clone(&self.wake)
+    }
+
+    pub fn provider_circuit(&self) -> &super::runtime::resilience::ProviderCircuit {
+        &self.provider_circuit
     }
 
     pub fn capabilities(&self) -> AgentCapabilities {
@@ -200,6 +210,7 @@ impl AgentService {
                 &input.conversation_id,
                 &json!({ "text": content, "context": input.context }),
                 &input.idempotency_key,
+                self.config.max_active_runs_per_user,
             )
             .await?;
         if enqueued.created {

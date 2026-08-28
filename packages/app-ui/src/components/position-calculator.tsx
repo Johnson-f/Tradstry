@@ -46,14 +46,15 @@ import {
 } from "@tradstry/app-ui/hooks/position-calculator";
 import { usePrinciples } from "@tradstry/app-ui/hooks/principle";
 import {
-  calculateRiskBudget,
-  calculateTrancheRisk,
-  summarizePlanRisk,
-} from "@tradstry/app-ui/lib/position-calculator-risk";
-import {
   resolveHistoryTranches,
   trancheRisk,
 } from "@tradstry/app-ui/lib/position-calculator-history";
+import {
+  calculateRiskBudget,
+  calculateTrancheRisk,
+  resolveRuleAccountBalance,
+  summarizePlanRisk,
+} from "@tradstry/app-ui/lib/position-calculator-risk";
 import type {
   ManualExecutionClaim,
   PositionCalculatorHistoryEntry,
@@ -898,12 +899,14 @@ function HistoryMetric({ label, value }: { label: string; value: string }) {
 function RuleTab() {
   const activeWorkspace = useActiveWorkspace();
   const workspaceId = activeWorkspace?.id ?? null;
+  const syncedBalance = activeWorkspace?.totalValue ?? null;
   const ruleQuery = usePositionCalculatorRule(workspaceId);
   const upsertRule = useUpsertPositionCalculatorRule(workspaceId ?? "");
 
   const [accountBalance, setAccountBalance] = React.useState("");
   const [accountRisk, setAccountRisk] = React.useState("");
   const [maxStopLossPct, setMaxStopLossPct] = React.useState("");
+  const [balanceEdited, setBalanceEdited] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
 
   // Clear the previous workspace's rule before the new one loads, so it never
@@ -912,19 +915,29 @@ function RuleTab() {
   // win over a loaded rule.
   // biome-ignore lint/correctness/useExhaustiveDependencies: clear only on account change
   React.useEffect(() => {
+    setBalanceEdited(false);
     setAccountBalance("");
     setAccountRisk("");
     setMaxStopLossPct("");
   }, [workspaceId]);
 
-  // Pre-fill form when existing rule loads
+  // Prefer live brokerage equity, then fall back to the saved rule. A manual
+  // edit remains stable until the user changes workspaces.
   React.useEffect(() => {
-    if (ruleQuery.data) {
-      setAccountBalance(ruleQuery.data.accountBalance.toString());
-      setAccountRisk(ruleQuery.data.accountRisk.toString());
-      setMaxStopLossPct(ruleQuery.data.maxStopLossPct.toString());
+    const rule =
+      ruleQuery.data?.workspaceId === workspaceId ? ruleQuery.data : null;
+    if (!balanceEdited) {
+      const balance = resolveRuleAccountBalance(
+        syncedBalance,
+        rule?.accountBalance,
+      );
+      setAccountBalance(balance?.toString() ?? "");
     }
-  }, [ruleQuery.data]);
+    if (rule) {
+      setAccountRisk(rule.accountRisk.toString());
+      setMaxStopLossPct(rule.maxStopLossPct.toString());
+    }
+  }, [balanceEdited, ruleQuery.data, syncedBalance, workspaceId]);
 
   if (!workspaceId) {
     return (
@@ -975,8 +988,8 @@ function RuleTab() {
           Auto-fill · {activeWorkspace?.name}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Workspace balance and risk will be pre-filled in the calculator each
-          time you open it.
+          Synced workspace equity is used automatically. You can override it
+          before saving this rule.
         </p>
       </div>
 
@@ -998,9 +1011,18 @@ function RuleTab() {
             step="0.01"
             min="0"
             value={accountBalance}
-            onChange={(e) => setAccountBalance(e.target.value)}
+            onChange={(e) => {
+              setBalanceEdited(true);
+              setAccountBalance(e.target.value);
+            }}
             placeholder="10000.00"
           />
+          {resolveRuleAccountBalance(syncedBalance, null) != null &&
+          !balanceEdited ? (
+            <p className="text-xs text-muted-foreground">
+              Synced from {activeWorkspace?.name}
+            </p>
+          ) : null}
         </Field>
 
         <Field label="Default Workspace Risk (%)" htmlFor="rule-risk">

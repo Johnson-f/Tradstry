@@ -98,27 +98,44 @@ import { useAgentPanelStore } from "./store";
 const TERMINAL_RUN_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
 const QUICK_EASE = [0.23, 1, 0.32, 1] as const;
 
-export function AgentPanelTrigger() {
+export function AgentPanelTrigger({
+	placement = "header",
+}: {
+	placement?: "header" | "dock";
+}) {
 	const open = useAgentPanelStore((state) => state.open);
 	const toggleOpen = useAgentPanelStore((state) => state.toggleOpen);
+	const button = (
+		<Button
+			type="button"
+			variant="ghost"
+			size={placement === "dock" ? "default" : "icon-lg"}
+			aria-label={open ? "Close Tradstry AI" : "Open Tradstry AI"}
+			aria-keyshortcuts="Alt+T"
+			aria-pressed={open}
+			onClick={toggleOpen}
+			className={cn(
+				placement === "dock"
+					? "h-10 gap-2 rounded-none px-4 text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8"
+					: "rounded-lg text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8",
+			)}
+		>
+			<HugeiconsIcon icon={ChatSparkIcon} strokeWidth={1.8} />
+			{placement === "dock" ? <span>Tradstry AI</span> : null}
+		</Button>
+	);
 
 	return (
 		<Tooltip>
-			<TooltipTrigger asChild>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-lg"
-					aria-label={open ? "Close Ask Tradstry" : "Open Ask Tradstry"}
-					aria-pressed={open}
-					onClick={toggleOpen}
-					className="rounded-lg text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8"
-				>
-					<HugeiconsIcon icon={ChatSparkIcon} strokeWidth={1.8} />
-				</Button>
-			</TooltipTrigger>
-			<TooltipContent side="bottom">
-				{open ? "Close Ask Tradstry" : "Ask Tradstry"}
+			<TooltipTrigger asChild>{button}</TooltipTrigger>
+			<TooltipContent
+				side={placement === "dock" ? "top" : "bottom"}
+				className="flex items-center gap-2"
+			>
+				<span>{open ? "Close Tradstry AI" : "Open Tradstry AI"}</span>
+				<kbd className="rounded bg-background/15 px-1.5 py-0.5 font-mono text-[0.6rem]">
+					⌥ T
+				</kbd>
 			</TooltipContent>
 		</Tooltip>
 	);
@@ -130,6 +147,7 @@ export function AgentPanel() {
 	const open = useAgentPanelStore((state) => state.open);
 	const historyOpen = useAgentPanelStore((state) => state.historyOpen);
 	const setOpen = useAgentPanelStore((state) => state.setOpen);
+	const toggleOpen = useAgentPanelStore((state) => state.toggleOpen);
 	const setHistoryOpen = useAgentPanelStore((state) => state.setHistoryOpen);
 	const selectedByWorkspace = useAgentPanelStore(
 		(state) => state.selectedByWorkspace,
@@ -326,6 +344,23 @@ export function AgentPanel() {
 	}, [open, shouldReduceMotion]);
 
 	React.useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				!event.altKey ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.shiftKey ||
+				event.code !== "KeyT"
+			)
+				return;
+			event.preventDefault();
+			toggleOpen();
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [toggleOpen]);
+
+	React.useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;
@@ -463,9 +498,9 @@ export function AgentPanel() {
 			aria-hidden={!open}
 			inert={!open}
 			className={cn(
-				"relative z-40 h-svh shrink-0 overflow-hidden bg-transparent",
+				"fixed inset-y-0 right-0 z-40 h-svh shrink-0 overflow-hidden bg-transparent min-[1700px]:relative min-[1700px]:inset-auto",
 				panelPresent &&
-					"w-[min(26rem,42vw)] max-md:fixed max-md:inset-0 max-md:z-50 max-md:w-full",
+					"w-[min(26rem,42vw)] max-md:inset-0 max-md:z-50 max-md:w-full",
 				!panelPresent && "w-0 pointer-events-none max-md:w-0",
 			)}
 		>
@@ -545,7 +580,7 @@ export function AgentPanel() {
 									type="button"
 									variant="ghost"
 									size="icon-sm"
-									aria-label="About Ask Tradstry"
+									aria-label="About Tradstry AI"
 									className="rounded-md text-muted-foreground"
 								>
 									<HugeiconsIcon
@@ -562,23 +597,27 @@ export function AgentPanel() {
 							type="button"
 							variant="ghost"
 							size="icon-sm"
-							aria-label="Close Ask Tradstry"
+							aria-label="Close Tradstry AI"
 							onClick={() => setOpen(false)}
 							className="rounded-md text-muted-foreground"
 						>
-							<HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
+							<HugeiconsIcon
+								icon={Cancel01Icon}
+								strokeWidth={1.8}
+								className="size-4.5"
+							/>
 						</Button>
 					</header>
 
 					<ScrollArea
 						viewportRef={threadViewportRef}
-						className="min-h-0 flex-1"
+						className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!h-full"
 					>
-						<div className="min-h-full px-4 py-5">
+						<div className="h-full px-4 py-5">
 							<AnimatePresence initial={false} mode="wait">
 								<motion.div
 									key={threadKey}
-									className="min-h-full"
+									className="h-full"
 									initial={{
 										opacity: 0,
 										filter: shouldReduceMotion ? "blur(0px)" : "blur(2px)",
@@ -738,9 +777,9 @@ export function AgentPanel() {
 											? "Select a workspace first"
 											: agentReady
 												? "Ask about your trading…"
-												: "Ask Tradstry is unavailable"
+												: "Tradstry AI is unavailable"
 									}
-									aria-label="Message Ask Tradstry"
+									aria-label="Message Tradstry AI"
 									className="min-h-14 w-full resize-none overflow-hidden bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed"
 								/>
 							</ScrollArea>
@@ -1187,11 +1226,11 @@ function PanelBody({
 	shouldReduceMotion: boolean;
 }) {
 	if (capabilitiesLoading)
-		return <CenteredLoading label="Loading Ask Tradstry…" />;
+		return <CenteredLoading label="Loading Tradstry AI…" />;
 	if (capabilitiesError) {
 		return (
 			<CenteredState
-				title="Couldn’t open Ask Tradstry"
+				title="Couldn’t open Tradstry AI"
 				detail="Try again in a moment."
 			/>
 		);
@@ -1199,7 +1238,7 @@ function PanelBody({
 	if (!enabled) {
 		return (
 			<CenteredState
-				title="Ask Tradstry is turned off"
+				title="Tradstry AI is turned off"
 				detail="Enable the agent service to start a conversation."
 			/>
 		);
@@ -1208,7 +1247,7 @@ function PanelBody({
 		return (
 			<CenteredState
 				title="Choose a workspace"
-				detail="Ask Tradstry answers from one workspace at a time."
+				detail="Tradstry AI answers from one workspace at a time."
 			/>
 		);
 	}
@@ -1229,7 +1268,7 @@ function PanelBody({
 					<TradstryMark className="size-6" />
 				</span>
 				<h3 className="text-base font-semibold tracking-[-0.02em]">
-					Ask Tradstry
+					Tradstry AI
 				</h3>
 				<p className="mt-2 max-w-64 text-xs leading-5 text-muted-foreground">
 					Review trades, explain performance, or connect patterns across{" "}
@@ -1666,7 +1705,7 @@ function CenteredLoading({ label }: { label: string }) {
 
 function CenteredState({ title, detail }: { title: string; detail: string }) {
 	return (
-		<div className="flex min-h-full flex-col items-center justify-center px-6 pb-20 text-center">
+		<div className="flex h-full flex-col items-center justify-center px-6 text-center">
 			<span className="mb-3 flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
 				<HugeiconsIcon
 					icon={ChatSparkIcon}

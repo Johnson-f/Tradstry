@@ -102,6 +102,8 @@ async fn process(
                     stage: "conversation_summary",
                     role: "fast",
                     schema_name: None,
+                    schema_version: None,
+                    schema_hash: None,
                 },
             )
         })?;

@@ -1,6 +1,9 @@
 "use client";
 
-import { AgentPanel } from "@tradstry/app-ui/components/agents";
+import {
+	AgentPanel,
+	AgentPanelTrigger,
+} from "@tradstry/app-ui/components/agents";
 import { Analytics } from "@tradstry/app-ui/components/analytics";
 import { AppSidebar } from "@tradstry/app-ui/components/app-sidebar";
 import { BrokerageEmptyState } from "@tradstry/app-ui/components/brokerage/brokerage-empty-state";
@@ -205,6 +208,9 @@ export function DashboardApp({ pathname }: { pathname: string }) {
 			<AppSidebar />
 			<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
 				<Screen pathname={pathname} />
+				<div className="absolute bottom-0 right-0 z-30 hidden h-10 items-center md:flex">
+					<AgentPanelTrigger placement="dock" />
+				</div>
 			</SidebarInset>
 			<AgentPanel />
 		</SidebarProvider>

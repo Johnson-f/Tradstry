@@ -98,6 +98,8 @@ async fn invoke_text(
                     stage: invocation.workload,
                     role: invocation.role.as_str(),
                     schema_name: None,
+                    schema_version: None,
+                    schema_hash: None,
                 },
             );
             let error_code = match &error {

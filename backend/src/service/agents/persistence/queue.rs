@@ -25,6 +25,7 @@ impl AgentStore {
         conversation_id: &str,
         content: &Value,
         idempotency_key: &str,
+        max_active_runs_per_user: usize,
     ) -> AgentResult<EnqueuedAgentRun> {
         let idempotency_key = idempotency_key.trim();
         if idempotency_key.is_empty() || idempotency_key.len() > 200 {
@@ -33,6 +34,10 @@ impl AgentStore {
             ));
         }
         let mut tx = self.pool().begin().await?;
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+            .bind(&actor.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
         let conversation = sqlx::query(
             "SELECT workspace_id FROM agent_conversations
              WHERE id = $1 AND user_id = $2 FOR UPDATE",
@@ -77,6 +82,17 @@ impl AgentStore {
                 event: event_from_row(&event)?,
                 created: false,
             });
+        }
+
+        let active_runs: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM agent_runs
+             WHERE user_id = $1 AND status IN ('queued', 'running')",
+        )
+        .bind(&actor.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if active_runs >= max_active_runs_per_user as i64 {
+            return Err(AgentError::Capacity);
         }
 
         let message_sequence: i64 = sqlx::query_scalar(

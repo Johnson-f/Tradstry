@@ -6,6 +6,11 @@ const DEFAULT_WORKER_CONCURRENCY: usize = 2;
 const DEFAULT_INDEX_WORKER_CONCURRENCY: usize = 2;
 const DEFAULT_RUN_LEASE_SECONDS: u64 = 120;
 const DEFAULT_HEARTBEAT_SECONDS: u64 = 15;
+const DEFAULT_MAX_ACTIVE_RUNS_PER_USER: usize = 4;
+const DEFAULT_PROVIDER_BURST: u64 = 8;
+const DEFAULT_PROVIDER_CALLS_PER_MINUTE: u64 = 120;
+const DEFAULT_PROVIDER_CIRCUIT_FAILURES: u32 = 5;
+const DEFAULT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS: u64 = 30;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelProvider {
@@ -46,6 +51,11 @@ pub struct AgentConfig {
     pub index_worker_concurrency: usize,
     pub run_lease_seconds: u64,
     pub heartbeat_seconds: u64,
+    pub max_active_runs_per_user: usize,
+    pub provider_burst: u64,
+    pub provider_calls_per_minute: u64,
+    pub provider_circuit_failures: u32,
+    pub provider_circuit_cooldown_seconds: u64,
 }
 
 impl AgentConfig {
@@ -70,6 +80,11 @@ impl AgentConfig {
             "AGENT_INDEX_WORKER_CONCURRENCY",
             "AGENT_RUN_LEASE_SECONDS",
             "AGENT_HEARTBEAT_SECONDS",
+            "AGENT_MAX_ACTIVE_RUNS_PER_USER",
+            "AGENT_PROVIDER_BURST",
+            "AGENT_PROVIDER_CALLS_PER_MINUTE",
+            "AGENT_PROVIDER_CIRCUIT_FAILURES",
+            "AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS",
         ]
         .into_iter()
         .filter_map(|name| lookup(name).map(|value| (name, value)))
@@ -140,6 +155,42 @@ impl AgentConfig {
                     .into(),
             ));
         }
+        let max_active_runs_per_user = parse_usize(
+            "AGENT_MAX_ACTIVE_RUNS_PER_USER",
+            values.get("AGENT_MAX_ACTIVE_RUNS_PER_USER"),
+            DEFAULT_MAX_ACTIVE_RUNS_PER_USER,
+        )?
+        .clamp(1, 20);
+        let provider_burst = parse_u64(
+            "AGENT_PROVIDER_BURST",
+            values.get("AGENT_PROVIDER_BURST"),
+            DEFAULT_PROVIDER_BURST,
+        )?
+        .clamp(1, 1_000);
+        let provider_calls_per_minute = parse_u64(
+            "AGENT_PROVIDER_CALLS_PER_MINUTE",
+            values.get("AGENT_PROVIDER_CALLS_PER_MINUTE"),
+            DEFAULT_PROVIDER_CALLS_PER_MINUTE,
+        )?
+        .clamp(1, 100_000);
+        let provider_circuit_failures = parse_u64(
+            "AGENT_PROVIDER_CIRCUIT_FAILURES",
+            values.get("AGENT_PROVIDER_CIRCUIT_FAILURES"),
+            u64::from(DEFAULT_PROVIDER_CIRCUIT_FAILURES),
+        )?
+        .clamp(1, 100) as u32;
+        let provider_circuit_cooldown_seconds = parse_u64(
+            "AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS",
+            values.get("AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS"),
+            DEFAULT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS,
+        )?
+        .clamp(1, 300);
+        if provider_circuit_cooldown_seconds >= run_lease_seconds {
+            return Err(AgentError::Validation(
+                "AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS must be smaller than AGENT_RUN_LEASE_SECONDS"
+                    .into(),
+            ));
+        }
 
         Ok(Self {
             enabled,
@@ -156,6 +207,11 @@ impl AgentConfig {
             index_worker_concurrency,
             run_lease_seconds,
             heartbeat_seconds,
+            max_active_runs_per_user,
+            provider_burst,
+            provider_calls_per_minute,
+            provider_circuit_failures,
+            provider_circuit_cooldown_seconds,
         })
     }
 }
@@ -217,6 +273,8 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.worker_concurrency, 2);
         assert_eq!(config.index_worker_concurrency, 2);
+        assert_eq!(config.max_active_runs_per_user, 4);
+        assert_eq!(config.provider_calls_per_minute, 120);
     }
 
     #[test]
@@ -259,9 +317,15 @@ mod tests {
 
     #[test]
     fn concurrency_is_clamped() {
-        let values = enabled_values(&[("AGENT_WORKER_CONCURRENCY", "99")]);
+        let values = enabled_values(&[
+            ("AGENT_WORKER_CONCURRENCY", "99"),
+            ("AGENT_MAX_ACTIVE_RUNS_PER_USER", "99"),
+            ("AGENT_PROVIDER_CIRCUIT_FAILURES", "999"),
+        ]);
         let config = AgentConfig::from_values(&values).unwrap();
         assert_eq!(config.worker_concurrency, 8);
+        assert_eq!(config.max_active_runs_per_user, 20);
+        assert_eq!(config.provider_circuit_failures, 100);
     }
 
     #[test]

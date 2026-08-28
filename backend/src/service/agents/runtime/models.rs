@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use tinyagents::harness::middleware::library::RateLimitMiddleware;
 use tinyagents::harness::model::ChatModel;
+use tinyagents::harness::retry::RateLimiter;
 
 use super::{AgentRuntimeState, GeminiModel, PerplexityProvider};
 use crate::service::agents::{AgentConfig, AgentError, AgentResult, ModelProvider};
@@ -33,6 +35,7 @@ pub struct AgentModelRegistry {
     fast: RoleModels,
     reasoning: RoleModels,
     vision: RoleModels,
+    rate_limiter: Arc<RateLimiter>,
 }
 
 impl AgentModelRegistry {
@@ -54,6 +57,7 @@ impl AgentModelRegistry {
                 primary: vision,
                 fallback: None,
             },
+            rate_limiter: Arc::new(RateLimiter::new(8, 2.0)),
         }
     }
 
@@ -105,6 +109,13 @@ impl AgentModelRegistry {
         self.role(role).fallback.clone()
     }
 
+    pub fn rate_limit_middleware(&self) -> Arc<RateLimitMiddleware> {
+        Arc::new(
+            RateLimitMiddleware::new(Arc::clone(&self.rate_limiter))
+                .waiting(std::time::Duration::from_millis(50)),
+        )
+    }
+
     fn role(&self, role: ModelRole) -> &RoleModels {
         match role {
             ModelRole::Fast => &self.fast,
@@ -117,7 +128,8 @@ impl AgentModelRegistry {
         config: &AgentConfig,
         build: impl Fn(&str) -> AgentResult<Arc<dyn ChatModel<AgentRuntimeState>>>,
     ) -> AgentResult<Self> {
-        Ok(Self {
+        let calls_per_second = config.provider_calls_per_minute as f64 / 60.0;
+        let registry = Self {
             fast: build_role(
                 config.fast_model.as_deref(),
                 config.fast_fallback_model.as_deref(),
@@ -133,7 +145,39 @@ impl AgentModelRegistry {
                 config.vision_fallback_model.as_deref(),
                 &build,
             )?,
-        })
+            rate_limiter: Arc::new(RateLimiter::new(config.provider_burst, calls_per_second)),
+        };
+        registry.validate_profiles()?;
+        Ok(registry)
+    }
+
+    fn validate_profiles(&self) -> AgentResult<()> {
+        for (role, models) in [
+            (ModelRole::Fast, &self.fast),
+            (ModelRole::Reasoning, &self.reasoning),
+            (ModelRole::Vision, &self.vision),
+        ] {
+            for model in std::iter::once(&models.primary).chain(models.fallback.iter()) {
+                let Some(profile) = model.profile() else {
+                    return Err(AgentError::Validation(format!(
+                        "{} model is missing a capability profile",
+                        role.as_str()
+                    )));
+                };
+                if !profile.tool_calling
+                    || !profile.streaming
+                    || !profile.native_structured_output
+                    || !profile.json_schema
+                    || (role == ModelRole::Vision && !profile.modalities.image_in)
+                {
+                    return Err(AgentError::Validation(format!(
+                        "{} model does not support the required agent capabilities",
+                        role.as_str()
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

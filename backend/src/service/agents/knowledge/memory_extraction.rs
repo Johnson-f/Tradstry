@@ -195,6 +195,8 @@ fn model_error(error: tinyagents::TinyAgentsError) -> AgentError {
             stage: "memory_extraction",
             role: "fast",
             schema_name: Some("memory_candidates"),
+            schema_version: Some("1"),
+            schema_hash: None,
         },
     )
 }

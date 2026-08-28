@@ -19,7 +19,9 @@ async fn provider_failure_is_stored_with_safe_diagnostic_fields() {
         code: Some("invalid_request".into()),
         retryable: false,
         retry_after_ms: None,
-        schema_name: Some("tradstry_answer".into()),
+        schema_name: Some("tradstry_answer_v2".into()),
+        schema_version: Some("2".into()),
+        schema_hash: Some("safe-hash".into()),
         error_code: "provider_request_rejected".into(),
     };
     assert!(
@@ -48,7 +50,9 @@ async fn provider_failure_is_stored_with_safe_diagnostic_fields() {
     assert_eq!(payload["provider"], "perplexity");
     assert_eq!(payload["stage"], "turn");
     assert_eq!(payload["status"], 400);
-    assert_eq!(payload["schemaName"], "tradstry_answer");
+    assert_eq!(payload["schemaName"], "tradstry_answer_v2");
+    assert_eq!(payload["schemaVersion"], "2");
+    assert_eq!(payload["schemaHash"], "safe-hash");
     let serialized = payload.to_string();
     assert!(!serialized.contains("message"));
     assert!(!serialized.contains("raw"));

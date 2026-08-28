@@ -6,6 +6,7 @@ pub mod perplexity;
 pub mod policy;
 pub mod provider_contract;
 pub mod provider_failure;
+pub mod resilience;
 pub mod schemas;
 pub mod state;
 

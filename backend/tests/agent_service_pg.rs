@@ -156,6 +156,65 @@ async fn retrying_idempotency_key_does_not_append_a_second_message() {
 }
 
 #[tokio::test]
+async fn active_run_cap_replays_duplicates_but_rejects_new_work_without_a_message() {
+    let fixture = AgentPgFixture::new().await;
+    let config = AgentConfig::from_lookup(|name| match name {
+        "AGENTS_V2_ENABLED" => Some("true".into()),
+        "AGENT_MODEL_PROVIDER" => Some("gemini".into()),
+        "AGENT_FAST_MODEL" => Some("fast".into()),
+        "AGENT_REASONING_MODEL" => Some("reasoning".into()),
+        "AGENT_VISION_MODEL" => Some("vision".into()),
+        "AGENT_MAX_ACTIVE_RUNS_PER_USER" => Some("1".into()),
+        _ => None,
+    })
+    .unwrap();
+    let service = AgentService::from_parts(config, AgentStore::new(fixture.pool.clone()), None);
+    let first_conversation = service
+        .create_conversation(&fixture.actor, &fixture.scope)
+        .await
+        .unwrap();
+    let second_conversation = service
+        .create_conversation(&fixture.actor, &fixture.scope)
+        .await
+        .unwrap();
+    let first_input = SendAgentMessage {
+        conversation_id: first_conversation.id.clone(),
+        content: "First request".into(),
+        context: AgentMessageContext::default(),
+        idempotency_key: "bounded-first".into(),
+    };
+    let first = service
+        .send_message(&fixture.actor, first_input.clone())
+        .await
+        .unwrap();
+    let replay = service
+        .send_message(&fixture.actor, first_input)
+        .await
+        .unwrap();
+    assert_eq!(replay.run_id, first.run_id);
+
+    let result = service
+        .send_message(
+            &fixture.actor,
+            SendAgentMessage {
+                conversation_id: second_conversation.id.clone(),
+                content: "Second request".into(),
+                context: AgentMessageContext::default(),
+                idempotency_key: "bounded-second".into(),
+            },
+        )
+        .await;
+    assert!(matches!(result, Err(AgentError::Capacity)));
+    assert!(
+        service
+            .list_messages(&fixture.actor, &second_conversation.id, 20)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn send_message_rejects_blank_and_oversized_input() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);

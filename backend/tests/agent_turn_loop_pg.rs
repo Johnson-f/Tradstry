@@ -38,6 +38,7 @@ impl ChatModel<AgentRuntimeState> for TurnModel {
             Some(ResponseFormat::JsonSchema { name, .. }) => name.as_str(),
             _ => "",
         };
+        let repair_requested = transcript.contains("previous structured answer failed validation");
         if format_name == "specialist_finding" {
             return Ok(text_response(
                 serde_json::json!({
@@ -64,27 +65,61 @@ impl ChatModel<AgentRuntimeState> for TurnModel {
         if transcript.contains("delegated performance analysis completed") {
             return Ok(text_response(
                 serde_json::json!({
-                    "blocks":[{"kind":"paragraph","text":"The delegated analysis completed."}],
+                    "schema_version":"2",
+                    "paragraphs":[{"order":0,"text":"The delegated analysis completed."}],
+                    "metrics":[],"lists":[],"warnings":[],"action_proposals":[],
                     "claims":[]
                 })
                 .to_string(),
             ));
         }
-        if transcript.contains("Use an invalid citation")
-            && !transcript.contains("previous answer contained an invalid")
-        {
+        if transcript.contains("Use a malformed block") && !repair_requested {
             return Ok(text_response(
                 serde_json::json!({
-                    "blocks":[{"kind":"paragraph","text":"Unsupported claim."}],
+                    "blocks":[{"kind":"metric","label":"Missing value"}],
+                    "claims":[]
+                })
+                .to_string(),
+            ));
+        }
+        if transcript.contains("Never repair this answer") {
+            return Ok(text_response(
+                serde_json::json!({
+                    "schema_version":"2","paragraphs":[],"metrics":[],"lists":[],
+                    "warnings":[],"action_proposals":[],"claims":[]
+                })
+                .to_string(),
+            ));
+        }
+        if transcript.contains("Use a malformed block") && repair_requested {
+            return Ok(text_response(
+                serde_json::json!({
+                    "schema_version":"2",
+                    "paragraphs":[{"order":0,"text":"The malformed answer was repaired."}],
+                    "metrics":[],"lists":[],"warnings":[],"action_proposals":[],
+                    "claims":[]
+                })
+                .to_string(),
+            ));
+        }
+        if transcript.contains("Use an invalid citation") && !repair_requested {
+            return Ok(text_response(
+                serde_json::json!({
+                    "schema_version":"2",
+                    "paragraphs":[{"order":0,"text":"Unsupported claim."}],
+                    "metrics":[],"lists":[],"warnings":[],"action_proposals":[],
                     "claims":[{"claim_id":"bad","text":"Unsupported claim.","evidence_ids":["foreign"]}]
                 })
                 .to_string(),
             ));
         }
-        if transcript.contains("previous answer contained an invalid") {
+        if transcript.contains("Use an invalid citation") && repair_requested {
             return Ok(text_response(
                 serde_json::json!({
-                    "blocks":[{"kind":"warning","text":"I do not have verified evidence for that claim."}],
+                    "schema_version":"2",
+                    "paragraphs":[],"metrics":[],"lists":[],
+                    "warnings":[{"order":0,"text":"I do not have verified evidence for that claim."}],
+                    "action_proposals":[],
                     "claims":[]
                 })
                 .to_string(),
@@ -111,10 +146,10 @@ impl ChatModel<AgentRuntimeState> for TurnModel {
                 .expect("proposal tool result contains proposal id");
             return Ok(text_response(
                 serde_json::json!({
-                    "blocks":[
-                        {"kind":"paragraph","text":"I prepared the note for your approval."},
-                        {"kind":"action_proposal","proposal_id":proposal_id}
-                    ],
+                    "schema_version":"2",
+                    "paragraphs":[{"order":0,"text":"I prepared the note for your approval."}],
+                    "metrics":[],"lists":[],"warnings":[],
+                    "action_proposals":[{"order":1,"proposal_id":proposal_id}],
                     "claims":[]
                 })
                 .to_string(),
@@ -138,7 +173,9 @@ impl ChatModel<AgentRuntimeState> for TurnModel {
                 .expect("tool result contains evidence id");
             return Ok(text_response(
                 serde_json::json!({
-                    "blocks":[{"kind":"paragraph","text":"I checked your canonical trading performance."}],
+                    "schema_version":"2",
+                    "paragraphs":[{"order":0,"text":"I checked your canonical trading performance."}],
+                    "metrics":[],"lists":[],"warnings":[],"action_proposals":[],
                     "claims":[{"claim_id":"performance","text":"Canonical performance was checked.","evidence_ids":[evidence_id]}]
                 })
                 .to_string(),
@@ -146,7 +183,9 @@ impl ChatModel<AgentRuntimeState> for TurnModel {
         }
         Ok(text_response(
             serde_json::json!({
-                "blocks":[{"kind":"paragraph","text":"Hey! How can I help with your trading today?"}],
+                "schema_version":"2",
+                "paragraphs":[{"order":0,"text":"Hey! How can I help with your trading today?"}],
+                "metrics":[],"lists":[],"warnings":[],"action_proposals":[],
                 "claims":[]
             })
             .to_string(),
@@ -177,22 +216,7 @@ fn response(content: Vec<ContentBlock>, tool_calls: Vec<ToolCall>) -> ModelRespo
 }
 
 fn text_response(text: String) -> ModelResponse {
-    let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
-    if let Some(blocks) = value
-        .get_mut("blocks")
-        .and_then(serde_json::Value::as_array_mut)
-    {
-        for block in blocks {
-            let block = block.as_object_mut().unwrap();
-            for field in ["text", "label", "value", "title", "proposal_id"] {
-                block.entry(field).or_insert_with(|| serde_json::json!(""));
-            }
-            block
-                .entry("items")
-                .or_insert_with(|| serde_json::json!([]));
-        }
-    }
-    response(vec![ContentBlock::Text(value.to_string())], Vec::new())
+    response(vec![ContentBlock::Text(text)], Vec::new())
 }
 
 fn enabled_config() -> AgentConfig {
@@ -380,6 +404,69 @@ async fn invalid_citation_gets_one_repair_turn() {
     .await
     .unwrap();
     assert_eq!(repairs, 1);
+}
+
+#[tokio::test]
+async fn malformed_structured_answer_gets_one_repair_turn() {
+    let fixture = AgentPgFixture::new().await;
+    let service = service(&fixture);
+    let run = send_and_wait(&service, &fixture, "Use a malformed block").await;
+    assert_eq!(
+        run.status,
+        AgentRunStatus::Completed,
+        "{:?}",
+        run.error_code
+    );
+    assert_eq!(run.model_calls, 2);
+    let issue_code: String = sqlx::query_scalar(
+        "SELECT payload_json#>>'{issues,0,code}' FROM agent_run_events
+         WHERE run_id=$1 AND kind='answer_repair_started'",
+    )
+    .bind(&run.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(issue_code, "answer_schema_invalid");
+    let contract: (String, String, String) = sqlx::query_as(
+        "SELECT payload_json->>'schemaName', payload_json->>'schemaVersion',
+                payload_json->>'schemaHash'
+         FROM agent_run_events WHERE run_id=$1 AND kind='answer_contract_selected'",
+    )
+    .bind(&run.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(contract.0, "tradstry_answer_v2");
+    assert_eq!(contract.1, "2");
+    assert_eq!(contract.2.len(), 64);
+    let repaired: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM agent_run_events
+         WHERE run_id=$1 AND kind='answer_repair_completed'",
+    )
+    .bind(&run.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(repaired, 1);
+}
+
+#[tokio::test]
+async fn invalid_repair_fails_once_with_a_specific_terminal_code() {
+    let fixture = AgentPgFixture::new().await;
+    let service = service(&fixture);
+    let run = send_and_wait(&service, &fixture, "Never repair this answer").await;
+    assert_eq!(run.status, AgentRunStatus::Failed);
+    assert_eq!(run.error_code.as_deref(), Some("answer_repair_exhausted"));
+    assert_eq!(run.model_calls, 2);
+    let exhausted: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM agent_run_events
+         WHERE run_id=$1 AND kind='answer_repair_exhausted'",
+    )
+    .bind(&run.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(exhausted, 1);
 }
 
 #[tokio::test]

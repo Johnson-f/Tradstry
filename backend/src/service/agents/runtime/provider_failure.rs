@@ -9,6 +9,8 @@ pub struct ModelCallContext<'a> {
     pub stage: &'a str,
     pub role: &'a str,
     pub schema_name: Option<&'a str>,
+    pub schema_version: Option<&'a str>,
+    pub schema_hash: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -23,6 +25,8 @@ pub struct ProviderFailure {
     pub retryable: bool,
     pub retry_after_ms: Option<u64>,
     pub schema_name: Option<String>,
+    pub schema_version: Option<String>,
+    pub schema_hash: Option<String>,
     pub error_code: String,
 }
 
@@ -39,6 +43,8 @@ impl ProviderFailure {
             "retryable": self.retryable,
             "retryAfterMs": self.retry_after_ms,
             "schemaName": self.schema_name,
+            "schemaVersion": self.schema_version,
+            "schemaHash": self.schema_hash,
         })
     }
 }
@@ -58,21 +64,27 @@ pub fn model_error(error: TinyAgentsError, context: ModelCallContext<'_>) -> Age
                 retryable: error.retryable,
                 retry_after_ms: error.retry_after_ms,
                 schema_name: context.schema_name.map(str::to_owned),
+                schema_version: context.schema_version.map(str::to_owned),
+                schema_hash: context.schema_hash.map(str::to_owned),
                 error_code: error_code.into(),
             }))
         }
-        TinyAgentsError::Model(_) => AgentError::Provider(Box::new(ProviderFailure {
-            provider: "unknown".into(),
-            model: None,
-            stage: context.stage.into(),
-            role: context.role.into(),
-            status: None,
-            code: None,
-            retryable: false,
-            retry_after_ms: None,
-            schema_name: context.schema_name.map(str::to_owned),
-            error_code: "provider_response_invalid".into(),
-        })),
+        TinyAgentsError::Model(_) | TinyAgentsError::StructuredOutput(_) => {
+            AgentError::Provider(Box::new(ProviderFailure {
+                provider: "unknown".into(),
+                model: None,
+                stage: context.stage.into(),
+                role: context.role.into(),
+                status: None,
+                code: None,
+                retryable: false,
+                retry_after_ms: None,
+                schema_name: context.schema_name.map(str::to_owned),
+                schema_version: context.schema_version.map(str::to_owned),
+                schema_hash: context.schema_hash.map(str::to_owned),
+                error_code: "provider_response_invalid".into(),
+            }))
+        }
         TinyAgentsError::Validation(message)
             if message.starts_with("provider contract rejected schema") =>
         {
@@ -86,6 +98,8 @@ pub fn model_error(error: TinyAgentsError, context: ModelCallContext<'_>) -> Age
                 retryable: false,
                 retry_after_ms: None,
                 schema_name: context.schema_name.map(str::to_owned),
+                schema_version: context.schema_version.map(str::to_owned),
+                schema_hash: context.schema_hash.map(str::to_owned),
                 error_code: "provider_contract_invalid".into(),
             }))
         }
@@ -97,7 +111,7 @@ fn classify(status: Option<u16>, code: Option<&str>, retryable: bool) -> &'stati
     match status {
         Some(401 | 403) => "provider_auth_failed",
         Some(429) => "provider_rate_limited",
-        Some(400 | 422) => "provider_request_rejected",
+        Some(400 | 404 | 422) => "provider_request_rejected",
         Some(408) => "provider_timeout",
         Some(500..=599) => "provider_unavailable",
         _ if code.is_some_and(|code| code.to_ascii_lowercase().contains("timeout")) => {
@@ -130,7 +144,9 @@ mod tests {
             ModelCallContext {
                 stage: "turn",
                 role: "reasoning",
-                schema_name: Some("tradstry_answer"),
+                schema_name: Some("tradstry_answer_v2"),
+                schema_version: Some("2"),
+                schema_hash: Some("safe-hash"),
             },
         );
         let AgentError::Provider(failure) = error else {
@@ -148,6 +164,7 @@ mod tests {
             (401, false, "provider_auth_failed"),
             (429, true, "provider_rate_limited"),
             (422, false, "provider_request_rejected"),
+            (404, false, "provider_request_rejected"),
             (408, true, "provider_timeout"),
             (503, true, "provider_unavailable"),
         ] {
