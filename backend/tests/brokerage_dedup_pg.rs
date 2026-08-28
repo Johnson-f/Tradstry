@@ -513,7 +513,7 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
     let mut tx = pool.begin().await.unwrap();
     // Migration 0033 renamed the app-owned account_id column. Replaying the
     // older repair against today's schema needs the same mechanical rename.
-    let migration_sql = include_str!("../migrations/0027_brokerage_ref_dedup_key.sql")
+    let migration_sql = include_str!("../schema/archive/sqlx/0027_brokerage_ref_dedup_key.sql")
         .replace("account_id", "workspace_id");
     sqlx::raw_sql(sqlx::AssertSqlSafe(migration_sql))
         .execute(&mut *tx)

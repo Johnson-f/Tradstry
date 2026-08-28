@@ -1,8 +1,12 @@
 use anyhow::{Context, Result, ensure};
 use async_graphql::{InputObject, SimpleObject};
+use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
+
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::trading::playbooks;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -296,20 +300,21 @@ pub async fn create_playbook(
     let prepared = prepare_new_playbook(input).await?;
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query(
-        "INSERT INTO playbooks (id, user_id, workspace_id, name, edge_name, entry_rules, exit_rules, position_sizing_rules, additional_rules, hlc) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-    )
-    .bind(id.as_str())
-    .bind(user_id)
-    .bind(workspace_id)
-    .bind(prepared.name.as_str())
-    .bind(prepared.edge_name.as_str())
-    .bind(prepared.entry_rules.as_str())
-    .bind(prepared.exit_rules.as_str())
-    .bind(prepared.position_sizing_rules.as_str())
-    .bind(prepared.additional_rules.as_deref())
-    .bind(crate::service::hlc::stamp())
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    playbooks::ActiveModel {
+        id: Set(id.clone()),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(workspace_id),
+        name: Set(prepared.name),
+        edge_name: Set(prepared.edge_name),
+        entry_rules: Set(prepared.entry_rules),
+        exit_rules: Set(prepared.exit_rules),
+        position_sizing_rules: Set(prepared.position_sizing_rules),
+        additional_rules: Set(prepared.additional_rules),
+        hlc: Set(crate::service::hlc::stamp()),
+        ..Default::default()
+    }
+    .insert(&db)
     .await
     .context("Failed to insert playbook")?;
 
@@ -329,19 +334,19 @@ pub async fn update_playbook(
         .context("Playbook not found")?;
     let prepared = prepare_updated_playbook(&current, input).await?;
 
-    sqlx::query(
-        "UPDATE playbooks SET name = $1, edge_name = $2, entry_rules = $3, exit_rules = $4, position_sizing_rules = $5, additional_rules = $6, hlc = $7, updated_at = now() WHERE id = $8 AND user_id = $9",
-    )
-    .bind(prepared.name.as_str())
-    .bind(prepared.edge_name.as_str())
-    .bind(prepared.entry_rules.as_str())
-    .bind(prepared.exit_rules.as_str())
-    .bind(prepared.position_sizing_rules.as_str())
-    .bind(prepared.additional_rules.as_deref())
-    .bind(crate::service::hlc::stamp())
-    .bind(id)
-    .bind(user_id)
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    playbooks::ActiveModel {
+        id: Set(id.to_owned()),
+        name: Set(prepared.name),
+        edge_name: Set(prepared.edge_name),
+        entry_rules: Set(prepared.entry_rules),
+        exit_rules: Set(prepared.exit_rules),
+        position_sizing_rules: Set(prepared.position_sizing_rules),
+        additional_rules: Set(prepared.additional_rules),
+        hlc: Set(crate::service::hlc::stamp()),
+        ..Default::default()
+    }
+    .update(&db)
     .await
     .context("Failed to update playbook")?;
 

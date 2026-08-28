@@ -20,7 +20,11 @@ impl Tool<AgentRuntimeState> for NotebookMediaTool {
         "Returns authenticated metadata for notebook images or videos explicitly attached to this request."
     }
     fn schema(&self) -> ToolSchema {
-        ToolSchema::new(self.name(), self.description(), json!({"type":"object"}))
+        ToolSchema::new(
+            self.name(),
+            self.description(),
+            json!({"type":"object","properties":{}}),
+        )
     }
     fn policy(&self) -> ToolPolicy {
         ToolPolicy::read_only()

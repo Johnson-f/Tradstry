@@ -3,8 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 #[test]
-fn migration_versions_do_not_have_gaps() {
-    let migrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+fn archived_migration_versions_do_not_have_gaps() {
+    let migrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let versions = fs::read_dir(migrations)
         .expect("read migration directory")
         .map(|entry| {

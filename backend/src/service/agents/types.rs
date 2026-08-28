@@ -3,28 +3,9 @@ use serde_json::Value;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum AgentLane {
-    Instant,
-    FastAi,
-    Deep,
-}
-
-impl AgentLane {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Instant => "instant",
-            Self::FastAi => "fast_ai",
-            Self::Deep => "deep",
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 pub enum AgentRunStatus {
     Queued,
     Running,
-    WaitingForApproval,
     Completed,
     Failed,
     Cancelled,
@@ -35,7 +16,6 @@ impl AgentRunStatus {
         match self {
             Self::Queued => "queued",
             Self::Running => "running",
-            Self::WaitingForApproval => "waiting_for_approval",
             Self::Completed => "completed",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
@@ -77,9 +57,11 @@ pub struct AgentMessageContext {
     pub explicit_intent: Option<AgentIntent>,
     pub trade_ids: Vec<String>,
     pub playbook_ids: Vec<String>,
+    pub note_ids: Vec<String>,
     pub date_range: Option<AgentDateRange>,
     pub market_symbol: Option<String>,
     pub media_ids: Vec<String>,
+    pub references: Vec<AgentContextReference>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -89,6 +71,51 @@ pub struct SendAgentMessage {
     pub content: String,
     pub context: AgentMessageContext,
     pub idempotency_key: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentContextKind {
+    Trade,
+    Playbook,
+    Note,
+    Media,
+    Market,
+    DateRange,
+}
+
+impl AgentContextKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Trade => "trade",
+            Self::Playbook => "playbook",
+            Self::Note => "note",
+            Self::Media => "media",
+            Self::Market => "market",
+            Self::DateRange => "date_range",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentContextSearchResult {
+    pub key: String,
+    pub kind: AgentContextKind,
+    pub id: Option<String>,
+    pub title: String,
+    pub subtitle: String,
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentContextReference {
+    pub key: String,
+    pub kind: AgentContextKind,
+    pub id: Option<String>,
+    pub title: String,
+    pub subtitle: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,9 +151,8 @@ pub struct AgentRun {
     pub workspace_id: String,
     pub parent_run_id: Option<String>,
     pub input_message_id: Option<String>,
-    pub lane: AgentLane,
+    pub output_message_id: Option<String>,
     pub status: AgentRunStatus,
-    pub stage: String,
     pub model_calls: i64,
     pub tool_calls: i64,
     pub input_tokens: i64,
@@ -203,7 +229,7 @@ pub struct AnswerDraft {
 pub struct AgentCapabilities {
     pub enabled: bool,
     pub runtime_version: String,
-    pub lanes: Vec<AgentLane>,
+    pub turn_runtime: bool,
     pub model_roles_ready: bool,
     pub memory: bool,
     pub actions: bool,

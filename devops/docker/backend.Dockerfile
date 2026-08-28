@@ -11,8 +11,9 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 COPY proto ./proto
 COPY src ./src
-COPY crates ./crates
+COPY database ./database
 COPY mcp-server ./mcp-server
+COPY migration ./migration
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
@@ -22,9 +23,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 COPY proto ./proto
 COPY src ./src
-COPY crates ./crates
+COPY database ./database
 COPY mcp-server ./mcp-server
-COPY migrations ./migrations
+COPY migration ./migration
+COPY schema ./schema
 RUN cargo build --release -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
 
 # Projector: Build JS projection (needs bun, node_modules, shared schema).

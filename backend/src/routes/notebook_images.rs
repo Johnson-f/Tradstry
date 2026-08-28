@@ -93,8 +93,6 @@ async fn get_user_db(
         .get::<ClerkJwt>()
         .cloned()
         .ok_or_else(|| anyhow!("Unauthorized"))?;
-    let pool = db.pool();
-
     let full_name = jwt
         .other
         .get("full_name")
@@ -106,7 +104,7 @@ async fn get_user_db(
         .and_then(|value| value.as_str())
         .unwrap_or("");
 
-    let user = ensure_user(pool, &jwt.sub, full_name, email).await?;
+    let user = ensure_user(db, &jwt.sub, full_name, email).await?;
 
     Ok(db.get_user_db(&user.id))
 }

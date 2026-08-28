@@ -4,11 +4,7 @@ use std::time::Duration;
 use log::{error, info};
 
 use crate::service::agents::AgentService;
-use crate::service::agents::routing::{FastRoute, route_message};
-
-use super::execute_deep;
-use super::fast_ai::execute_fast_ai;
-use super::instant::execute_instant;
+use crate::service::agents::turn::AgentTurnRunner;
 
 pub async fn run_agent_worker(
     service: Arc<AgentService>,
@@ -31,11 +27,27 @@ pub async fn run_agent_worker(
             Ok(Some(run)) => {
                 if let Err(error) = execute_with_lease(&service, &run, &owner).await {
                     error!("[agents] run {} failed: {error}", run.id);
-                    if let Err(close_error) = service
-                        .store()
-                        .fail_claimed_run(&run.id, &owner, "agent_execution_failed")
-                        .await
-                    {
+                    let close_result = match &error {
+                        crate::service::agents::AgentError::Provider(failure) => {
+                            service
+                                .store()
+                                .fail_claimed_run_with_provider_failure(&run.id, &owner, failure)
+                                .await
+                        }
+                        crate::service::agents::AgentError::GroundingInvalid => {
+                            service
+                                .store()
+                                .fail_claimed_run(&run.id, &owner, "answer_grounding_invalid")
+                                .await
+                        }
+                        _ => {
+                            service
+                                .store()
+                                .fail_claimed_run(&run.id, &owner, "agent_execution_failed")
+                                .await
+                        }
+                    };
+                    if let Err(close_error) = close_result {
                         error!("[agents] failed to close run {}: {close_error}", run.id);
                     }
                 }
@@ -64,7 +76,8 @@ async fn execute_with_lease(
     run: &crate::service::agents::AgentRun,
     owner: &str,
 ) -> crate::service::agents::AgentResult<()> {
-    let execution = execute_claimed_run(service, run, owner);
+    let cancellation = tinyagents::CancellationToken::new();
+    let execution = execute_claimed_run(service, run, owner, cancellation.clone());
     tokio::pin!(execution);
     let mut heartbeat =
         tokio::time::interval(Duration::from_secs(service.config().heartbeat_seconds));
@@ -75,6 +88,7 @@ async fn execute_with_lease(
             result = &mut execution => return result,
             _ = heartbeat.tick() => {
                 if service.store().claimed_run_cancel_requested(&run.id, owner).await? {
+                    cancellation.cancel();
                     service.store().cancel_claimed_run(&run.id, owner).await?;
                     return Ok(());
                 }
@@ -90,6 +104,7 @@ async fn execute_claimed_run(
     service: &AgentService,
     run: &crate::service::agents::AgentRun,
     owner: &str,
+    cancellation: tinyagents::CancellationToken,
 ) -> crate::service::agents::AgentResult<()> {
     let message_id = run
         .input_message_id
@@ -113,25 +128,7 @@ async fn execute_claimed_run(
         .transpose()
         .map_err(|_| crate::service::agents::AgentError::Internal)?
         .unwrap_or_default();
-    let route = route_message(content, &context);
-    let lane = match route {
-        FastRoute::Instant(_) => crate::service::agents::AgentLane::Instant,
-        FastRoute::FastAi(_) => crate::service::agents::AgentLane::FastAi,
-        FastRoute::Deep => crate::service::agents::AgentLane::Deep,
-    };
-    if run.stage == "queued"
-        && !service
-            .store()
-            .route_claimed_run(&run.id, owner, lane.clone())
-            .await?
-    {
-        return Err(crate::service::agents::AgentError::Conflict);
-    }
-    match route {
-        FastRoute::Instant(intent) => execute_instant(service, run, owner, context, intent).await,
-        FastRoute::FastAi(intent) => {
-            execute_fast_ai(service, run, owner, content, context, intent).await
-        }
-        FastRoute::Deep => execute_deep(service, run, owner, content, context).await,
-    }
+    AgentTurnRunner::new(service)
+        .execute_claimed(run, owner, content, context, cancellation)
+        .await
 }

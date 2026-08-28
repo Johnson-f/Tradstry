@@ -1,6 +1,4 @@
-pub mod client;
-pub mod config;
 pub mod schema;
 pub mod util;
 
-pub use client::{Db, UserDb};
+pub use tradstry_database::{Db, UserDb, client, config, entities, error, raw};

@@ -1,4 +1,4 @@
-export * from "./workspaces";
+export * from "./agents";
 export * from "./ai";
 export * from "./analytics";
 export * from "./brokerage";
@@ -8,3 +8,4 @@ export * from "./notifications";
 export * from "./playbook";
 export * from "./position-calculator";
 export * from "./tags";
+export * from "./workspaces";

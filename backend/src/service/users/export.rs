@@ -1,9 +1,8 @@
+use crate::service::db::raw::{PgPool, query_scalar};
 use anyhow::Result;
 use serde_json::{Map, Value};
-use sqlx::PgPool;
 
-/// `(key, sql)` pairs rather than interpolated table names: sqlx 0.9 only accepts
-/// `&'static str` queries, which also makes the table list injection-proof by construction.
+/// Static `(key, sql)` pairs keep the table list injection-proof.
 const USER_SCOPED: &[(&str, &str)] = &[
     (
         "workspaces",
@@ -102,8 +101,8 @@ const USER_SCOPED: &[(&str, &str)] = &[
         "SELECT to_jsonb(t) FROM agent_run_events t WHERE t.user_id = $1",
     ),
     (
-        "agent_checkpoints",
-        "SELECT to_jsonb(t) FROM agent_checkpoints t WHERE t.user_id = $1",
+        "agent_run_items",
+        "SELECT to_jsonb(t) FROM agent_run_items t WHERE t.user_id = $1",
     ),
     (
         "agent_tool_calls",
@@ -191,7 +190,7 @@ const JOINED: &[(&str, &str)] = &[
 ];
 
 async fn fetch(pool: &PgPool, sql: &'static str, user_id: &str) -> Result<Value> {
-    let rows = sqlx::query_scalar::<_, Value>(sql)
+    let rows = query_scalar::<Value>(sql)
         .bind(user_id)
         .fetch_all(pool)
         .await?;
@@ -201,7 +200,7 @@ async fn fetch(pool: &PgPool, sql: &'static str, user_id: &str) -> Result<Value>
 pub async fn build_export(pool: &PgPool, user_id: &str) -> Result<Value> {
     let mut out = Map::new();
 
-    let user = sqlx::query_scalar::<_, Value>("SELECT to_jsonb(u) FROM users u WHERE u.id = $1")
+    let user = query_scalar::<Value>("SELECT to_jsonb(u) FROM users u WHERE u.id = $1")
         .bind(user_id)
         .fetch_optional(pool)
         .await?;
@@ -211,13 +210,20 @@ pub async fn build_export(pool: &PgPool, user_id: &str) -> Result<Value> {
         out.insert((*key).into(), fetch(pool, sql, user_id).await?);
     }
 
-    if let Some(checkpoints) = out
-        .get_mut("agent_checkpoints")
+    if let Some(run_items) = out.get_mut("agent_run_items").and_then(Value::as_array_mut) {
+        for run_item in run_items {
+            if let Some(message) = run_item.get_mut("message_json") {
+                sanitize_agent_runtime_value(message);
+            }
+        }
+    }
+    if let Some(run_events) = out
+        .get_mut("agent_run_events")
         .and_then(Value::as_array_mut)
     {
-        for checkpoint in checkpoints {
-            if let Some(state) = checkpoint.get_mut("state_json") {
-                sanitize_agent_checkpoint_for_export(state);
+        for run_event in run_events {
+            if let Some(payload) = run_event.get_mut("payload_json") {
+                sanitize_agent_runtime_value(payload);
             }
         }
     }
@@ -225,7 +231,7 @@ pub async fn build_export(pool: &PgPool, user_id: &str) -> Result<Value> {
     Ok(Value::Object(out))
 }
 
-fn sanitize_agent_checkpoint_for_export(value: &mut Value) {
+fn sanitize_agent_runtime_value(value: &mut Value) {
     match value {
         Value::Object(object) => {
             for key in [
@@ -236,16 +242,27 @@ fn sanitize_agent_checkpoint_for_export(value: &mut Value) {
                 "provider_extension",
                 "rawProviderPayload",
                 "raw_provider_payload",
+                "prompt",
+                "input",
+                "output",
+                "arguments",
+                "headers",
+                "authorization",
+                "apiKey",
+                "api_key",
+                "token",
+                "reasoning",
+                "thought",
             ] {
                 object.remove(key);
             }
             for child in object.values_mut() {
-                sanitize_agent_checkpoint_for_export(child);
+                sanitize_agent_runtime_value(child);
             }
         }
         Value::Array(array) => {
             for child in array {
-                sanitize_agent_checkpoint_for_export(child);
+                sanitize_agent_runtime_value(child);
             }
         }
         _ => {}
@@ -256,10 +273,10 @@ fn sanitize_agent_checkpoint_for_export(value: &mut Value) {
 mod tests {
     use serde_json::json;
 
-    use super::sanitize_agent_checkpoint_for_export;
+    use super::sanitize_agent_runtime_value;
 
     #[test]
-    fn checkpoint_export_removes_provider_opaque_fields_recursively() {
+    fn run_item_export_removes_provider_opaque_fields_recursively() {
         let mut value = json!({
             "messages": [{
                 "text": "visible",
@@ -267,7 +284,7 @@ mod tests {
                 "nested": {"provider_extension": {"opaque": true}}
             }]
         });
-        sanitize_agent_checkpoint_for_export(&mut value);
+        sanitize_agent_runtime_value(&mut value);
         assert_eq!(value["messages"][0]["text"], "visible");
         assert!(value["messages"][0].get("thoughtSignature").is_none());
         assert!(
@@ -275,5 +292,23 @@ mod tests {
                 .get("provider_extension")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn activity_export_removes_model_and_tool_payloads() {
+        let mut value = json!({
+            "kind":"tool_completed",
+            "label":"Checked market context",
+            "symbol":"CBRS",
+            "input":{"apiKey":"secret"},
+            "output":{"raw":"secret"},
+            "reasoning":"private"
+        });
+        sanitize_agent_runtime_value(&mut value);
+        assert_eq!(value["label"], "Checked market context");
+        assert_eq!(value["symbol"], "CBRS");
+        assert!(value.get("input").is_none());
+        assert!(value.get("output").is_none());
+        assert!(value.get("reasoning").is_none());
     }
 }

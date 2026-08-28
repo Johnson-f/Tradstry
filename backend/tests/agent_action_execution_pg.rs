@@ -11,6 +11,7 @@ use tradstry_backend::service::agents::{
 fn enabled_config() -> AgentConfig {
     AgentConfig::from_lookup(|name| match name {
         "AGENTS_V2_ENABLED" => Some("true".into()),
+        "AGENT_MODEL_PROVIDER" => Some("gemini".into()),
         "AGENT_FAST_MODEL" => Some("fast".into()),
         "AGENT_REASONING_MODEL" => Some("reasoning".into()),
         "AGENT_VISION_MODEL" => Some("vision".into()),

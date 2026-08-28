@@ -167,7 +167,7 @@ pub async fn require_auth(
         .unwrap_or("");
 
     // 4. Resolve (or create) the internal Tradstry user.
-    let user = match ensure_user(state.db.pool(), &sub, full_name, email).await {
+    let user = match ensure_user(&state.db, &sub, full_name, email).await {
         Ok(u) => u,
         Err(e) => {
             tracing::error!("ensure_user failed for sub={sub}: {e}");

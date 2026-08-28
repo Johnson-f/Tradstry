@@ -1,11 +1,15 @@
 use anyhow::{Context, Result, ensure};
 use async_graphql::{InputObject, SimpleObject};
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::playbook_table;
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::trading::trading_principles;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -68,10 +72,6 @@ struct PreparedPrinciple {
     is_active: bool,
 }
 
-const SELECT_COLS: &str = "id, user_id, workspace_id, playbook_id, evidence_note_id, title, the_rule, why, intervention, priority, is_active, \
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
-    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
-
 fn normalize_required_text(value: &str, field: &str) -> Result<String> {
     let trimmed = value.trim();
     ensure!(!trimmed.is_empty(), "{field} cannot be empty");
@@ -97,22 +97,32 @@ fn validate_title_length(title: &str) -> Result<()> {
     Ok(())
 }
 
-fn row_to_principle(row: &sqlx::postgres::PgRow) -> Result<TradingPrinciple> {
-    Ok(TradingPrinciple {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        workspace_id: row.try_get::<String, _>(2)?,
-        playbook_id: row.try_get::<Option<String>, _>(3)?,
-        evidence_note_id: row.try_get::<Option<String>, _>(4)?,
-        title: row.try_get::<String, _>(5)?,
-        the_rule: row.try_get::<String, _>(6)?,
-        why: row.try_get::<String, _>(7)?,
-        intervention: row.try_get::<Option<String>, _>(8)?,
-        priority: row.try_get::<i64, _>(9)?,
-        is_active: row.try_get::<bool, _>(10)?,
-        created_at: row.try_get::<String, _>(11)?,
-        updated_at: row.try_get::<String, _>(12)?,
-    })
+impl From<trading_principles::Model> for TradingPrinciple {
+    fn from(model: trading_principles::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            playbook_id: model.playbook_id,
+            evidence_note_id: model.evidence_note_id,
+            title: model.title,
+            the_rule: model.the_rule,
+            why: model.why,
+            intervention: model.intervention,
+            priority: model.priority,
+            is_active: model.is_active,
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            updated_at: model
+                .updated_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        }
+    }
 }
 
 /// A referenced playbook must belong to the same user and workspace.
@@ -239,23 +249,19 @@ pub async fn list_principles(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<TradingPrinciple>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM trading_principles \
-         WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL \
-         ORDER BY priority DESC, created_at ASC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(trading_principles::Entity::find()
+        .filter(trading_principles::Column::UserId.eq(user_id))
+        .filter(trading_principles::Column::WorkspaceId.eq(workspace_id))
+        .filter(trading_principles::Column::DeletedAt.is_null())
+        .order_by_desc(trading_principles::Column::Priority)
+        .order_by_asc(trading_principles::Column::CreatedAt)
+        .all(&db)
         .await
-        .context("Failed to list principles")?;
-
-    let mut principles = Vec::new();
-    for row in &rows {
-        principles.push(row_to_principle(row)?);
-    }
-    Ok(principles)
+        .context("Failed to list principles")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn find_principle(
@@ -263,20 +269,14 @@ pub async fn find_principle(
     id: &str,
     user_id: &str,
 ) -> Result<Option<TradingPrinciple>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM trading_principles WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(trading_principles::Entity::find_by_id(id)
+        .filter(trading_principles::Column::UserId.eq(user_id))
+        .filter(trading_principles::Column::DeletedAt.is_null())
+        .one(&db)
         .await
-        .context("Failed to find principle")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_principle(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find principle")?
+        .map(Into::into))
 }
 
 pub async fn create_principle(
@@ -304,29 +304,25 @@ pub async fn create_principle(
 
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query(
-        "INSERT INTO trading_principles \
-         (id, user_id, workspace_id, playbook_id, evidence_note_id, title, the_rule, why, intervention, is_active, hlc) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
-    )
-    .bind(id.as_str())
-    .bind(user_id)
-    .bind(workspace_id.as_str())
-    .bind(prepared.playbook_id.as_deref())
-    .bind(prepared.evidence_note_id.as_deref())
-    .bind(prepared.title.as_str())
-    .bind(prepared.the_rule.as_str())
-    .bind(prepared.why.as_str())
-    .bind(prepared.intervention.as_deref())
-    .bind(prepared.is_active)
-    .bind(crate::service::hlc::stamp())
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    Ok(trading_principles::ActiveModel {
+        id: Set(id),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(workspace_id),
+        playbook_id: Set(prepared.playbook_id),
+        evidence_note_id: Set(prepared.evidence_note_id),
+        title: Set(prepared.title),
+        the_rule: Set(prepared.the_rule),
+        why: Set(prepared.why),
+        intervention: Set(prepared.intervention),
+        is_active: Set(prepared.is_active),
+        hlc: Set(crate::service::hlc::stamp()),
+        ..Default::default()
+    }
+    .insert(&db)
     .await
-    .context("Failed to insert principle")?;
-
-    find_principle(pool, &id, user_id)
-        .await?
-        .context("Principle not found after insert")
+    .context("Failed to insert principle")?
+    .into())
 }
 
 pub async fn update_principle(
@@ -355,28 +351,23 @@ pub async fn update_principle(
     )
     .await?;
 
-    sqlx::query(
-        "UPDATE trading_principles SET title = $1, the_rule = $2, why = $3, intervention = $4, \
-         playbook_id = $5, evidence_note_id = $6, is_active = $7, hlc = $8, updated_at = now() \
-         WHERE id = $9 AND user_id = $10",
-    )
-    .bind(prepared.title.as_str())
-    .bind(prepared.the_rule.as_str())
-    .bind(prepared.why.as_str())
-    .bind(prepared.intervention.as_deref())
-    .bind(prepared.playbook_id.as_deref())
-    .bind(prepared.evidence_note_id.as_deref())
-    .bind(prepared.is_active)
-    .bind(crate::service::hlc::stamp())
-    .bind(id)
-    .bind(user_id)
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    Ok(trading_principles::ActiveModel {
+        id: Set(id.to_owned()),
+        title: Set(prepared.title),
+        the_rule: Set(prepared.the_rule),
+        why: Set(prepared.why),
+        intervention: Set(prepared.intervention),
+        playbook_id: Set(prepared.playbook_id),
+        evidence_note_id: Set(prepared.evidence_note_id),
+        is_active: Set(prepared.is_active),
+        hlc: Set(crate::service::hlc::stamp()),
+        ..Default::default()
+    }
+    .update(&db)
     .await
-    .context("Failed to update principle")?;
-
-    find_principle(pool, id, user_id)
-        .await?
-        .context("Principle not found after update")
+    .context("Failed to update principle")?
+    .into())
 }
 
 pub async fn delete_principle(pool: &PgPool, id: &str, user_id: &str) -> Result<bool> {

@@ -25,8 +25,23 @@ fn schema_builds_without_duplicate_type_names() {
     assert!(sdl.contains(
         "agentConversations(workspaceId: String!, limit: Int): [AgentConversationGql!]!"
     ));
+    assert!(sdl.contains(
+        "agentContextSearch(workspaceId: String!, query: String!, limit: Int): [AgentContextSearchResultGql!]!"
+    ));
+    assert!(sdl.contains("enum AgentContextKindGql"));
+    assert!(sdl.contains("noteIds: [String!]"));
+    assert!(sdl.contains("references: [AgentContextReferenceInput!]!"));
     assert!(sdl.contains("sendAgentMessage(input: SendAgentMessageInput!): AgentRunHandleGql!"));
-    assert!(sdl.contains("agentRunEvents(runId: String!, afterSequence: Int!): AgentRunEventGql!"));
+    assert!(
+        sdl.contains(
+            "agentRunActivity(runId: String!, afterSequence: Int!): AgentActivityEntryGql!"
+        )
+    );
+    assert!(sdl.contains("agentMessageActivity(messageId: String!): AgentMessageActivityGql"));
+    assert!(sdl.contains(
+        "agentMessageActivitySummaries(messageIds: [String!]!): [AgentActivitySummaryGql!]!"
+    ));
+    assert!(!sdl.contains("AgentRunEventGql"));
     assert!(sdl.contains("sources: [AgentSourceGql!]!"));
     assert!(sdl.contains(
         "agentMemories(workspaceId: String, includeInactive: Boolean): [AgentMemoryGql!]!"

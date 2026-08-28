@@ -31,7 +31,7 @@ async fn load_user(ctx: &Context<'_>) -> Result<AuthenticatedUser> {
         .get("email")
         .and_then(|value| value.as_str())
         .unwrap_or("");
-    let user = ensure_user(db.pool(), &jwt.sub, full_name, email).await?;
+    let user = ensure_user(db, &jwt.sub, full_name, email).await?;
 
     let user_db = db.get_user_db(&user.id);
     Ok(AuthenticatedUser { user, db: user_db })

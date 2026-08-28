@@ -16,6 +16,4 @@ pub mod user_prompts_table;
 pub mod users_table;
 pub mod workspaces_table;
 
-// The schema itself now lives in versioned SQL migrations under
-// `backend/migrations/` (applied by `super::pg::migrate`). These modules hold
-// only the typed query functions for each table.
+// These modules hold only the typed query functions for each table.

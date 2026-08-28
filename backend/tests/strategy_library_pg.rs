@@ -145,7 +145,7 @@ async fn tag_categories_are_universal_by_default_and_tags_inherit_applicability(
 async fn migration_deduplicates_workspace_clones_and_preserves_trade_links() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
-    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all = Migrator::new(migrations_path.as_path()).await.unwrap();
     Migrator::with_migrations(
         all.iter()

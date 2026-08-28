@@ -35,7 +35,7 @@ async fn get_user_db(req: &HttpRequest, db: &Arc<Db>) -> anyhow::Result<(UserDb,
         .and_then(|value| value.as_str())
         .unwrap_or("");
 
-    let user = ensure_user(db.pool(), &jwt.sub, full_name, email).await?;
+    let user = ensure_user(db, &jwt.sub, full_name, email).await?;
 
     Ok((db.get_user_db(&user.id), jwt.sub))
 }
@@ -50,7 +50,7 @@ pub async fn export_user_data(
         return HttpResponse::Unauthorized().finish();
     };
 
-    let mut export = match build_export(user_db.pool(), user_db.user_id()).await {
+    let mut export = match build_export(user_db.connection(), user_db.user_id()).await {
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to build the user export");

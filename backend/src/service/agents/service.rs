@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::json;
@@ -6,12 +7,14 @@ use tokio::sync::Notify;
 use super::knowledge::KnowledgeService;
 use super::runtime::AgentModelRegistry;
 use super::{
-    AgentActor, AgentBudget, AgentCapabilities, AgentConfig, AgentConversation, AgentError,
-    AgentLane, AgentMessage, AgentResult, AgentRun, AgentRunEvent, AgentRunHandle, AgentScope,
-    AgentStore, SendAgentMessage,
+    AgentActor, AgentBudget, AgentCapabilities, AgentConfig, AgentContextKind,
+    AgentContextSearchResult, AgentConversation, AgentError, AgentMessage, AgentMessageContext,
+    AgentResult, AgentRun, AgentRunEvent, AgentRunHandle, AgentScope, AgentStore, ModelProvider,
+    SendAgentMessage,
 };
 
 const MAX_MESSAGE_CHARS: usize = 32_000;
+const MAX_CONTEXT_REFERENCES: usize = 30;
 
 #[derive(Clone)]
 pub struct AgentService {
@@ -41,10 +44,10 @@ impl AgentService {
         }
     }
 
-    pub fn from_env(db: &crate::service::db::Db) -> AgentResult<Self> {
+    pub async fn from_env(db: &crate::service::db::Db) -> AgentResult<Self> {
         let config = AgentConfig::from_env()?;
         let models = if config.enabled {
-            Some(AgentModelRegistry::from_config(&config)?)
+            Some(AgentModelRegistry::from_config(&config).await?)
         } else {
             None
         };
@@ -97,7 +100,7 @@ impl AgentService {
         AgentCapabilities {
             enabled: self.config.enabled,
             runtime_version: env!("CARGO_PKG_VERSION").into(),
-            lanes: vec![AgentLane::Instant, AgentLane::FastAi, AgentLane::Deep],
+            turn_runtime: true,
             model_roles_ready: self.models.is_some(),
             memory: true,
             actions: true,
@@ -130,6 +133,17 @@ impl AgentService {
     ) -> AgentResult<Vec<AgentConversation>> {
         self.ensure_enabled()?;
         self.store.list_conversations(actor, scope, limit).await
+    }
+
+    pub async fn search_context(
+        &self,
+        actor: &AgentActor,
+        workspace_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> AgentResult<Vec<AgentContextSearchResult>> {
+        self.ensure_enabled()?;
+        super::context::search(self.store.pool(), actor, workspace_id, query, limit).await
     }
 
     pub async fn rename_conversation(
@@ -177,13 +191,14 @@ impl AgentService {
                 "message must contain 1 to {MAX_MESSAGE_CHARS} characters"
             )));
         }
+        validate_context_references(&input.context)?;
+        self.validate_provider_media_context(actor, &input).await?;
         let enqueued = self
             .store
             .enqueue_message_run(
                 actor,
                 &input.conversation_id,
                 &json!({ "text": content, "context": input.context }),
-                AgentLane::Deep,
                 &input.idempotency_key,
             )
             .await?;
@@ -195,6 +210,42 @@ impl AgentService {
             conversation_id: enqueued.run.conversation_id,
             status: enqueued.run.status,
         })
+    }
+
+    async fn validate_provider_media_context(
+        &self,
+        actor: &AgentActor,
+        input: &SendAgentMessage,
+    ) -> AgentResult<()> {
+        if self.config.model_provider != Some(ModelProvider::Perplexity)
+            || input.context.media_ids.is_empty()
+        {
+            return Ok(());
+        }
+        let conversation = self
+            .store
+            .get_conversation(actor, &input.conversation_id)
+            .await?;
+        for id in input.context.media_ids.iter().take(5) {
+            let media = crate::service::db::schema::tables::notebook::images::find_notebook_image(
+                self.store.pool(),
+                id,
+                &actor.user_id,
+            )
+            .await
+            .map_err(|error| {
+                log::error!("agent media preflight failed: {error:#}");
+                AgentError::Internal
+            })?
+            .filter(|media| media.workspace_id == conversation.workspace_id)
+            .ok_or(AgentError::NotFound)?;
+            if media.media_type == "video" {
+                return Err(AgentError::Validation(
+                    "Perplexity does not support video attachments".into(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub async fn get_run(&self, actor: &AgentActor, run_id: &str) -> AgentResult<AgentRun> {
@@ -217,6 +268,40 @@ impl AgentService {
     ) -> AgentResult<Vec<AgentRunEvent>> {
         self.ensure_enabled()?;
         self.store.events_after(actor, run_id, after_sequence).await
+    }
+
+    pub async fn message_activity(
+        &self,
+        actor: &AgentActor,
+        message_id: &str,
+    ) -> AgentResult<Option<super::AgentMessageActivity>> {
+        self.ensure_enabled()?;
+        self.store.activity_for_message(actor, message_id).await
+    }
+
+    pub async fn message_activity_summaries(
+        &self,
+        actor: &AgentActor,
+        message_ids: &[String],
+    ) -> AgentResult<Vec<super::AgentActivitySummary>> {
+        self.ensure_enabled()?;
+        self.store.activity_summaries(actor, message_ids).await
+    }
+
+    pub async fn replay_activity(
+        &self,
+        actor: &AgentActor,
+        run_id: &str,
+        after_sequence: i64,
+    ) -> AgentResult<Vec<super::AgentActivityEntry>> {
+        self.ensure_enabled()?;
+        Ok(self
+            .store
+            .events_after(actor, run_id, after_sequence)
+            .await?
+            .iter()
+            .filter_map(super::project_event)
+            .collect())
     }
 
     pub async fn list_memories(
@@ -344,4 +429,52 @@ impl AgentService {
         self.ensure_enabled()?;
         super::assistance::synthesize_market_report(self, actor, prompt).await
     }
+}
+
+fn validate_context_references(context: &AgentMessageContext) -> AgentResult<()> {
+    if context.references.len() > MAX_CONTEXT_REFERENCES {
+        return Err(AgentError::Validation(format!(
+            "message context cannot contain more than {MAX_CONTEXT_REFERENCES} references"
+        )));
+    }
+    let mut keys = HashSet::new();
+    for reference in &context.references {
+        let valid_text = !reference.key.trim().is_empty()
+            && reference.key.chars().count() <= 180
+            && !reference.title.trim().is_empty()
+            && reference.title.chars().count() <= 120
+            && reference.subtitle.chars().count() <= 240;
+        let valid_target = match reference.kind {
+            AgentContextKind::Trade => reference
+                .id
+                .as_ref()
+                .is_some_and(|id| context.trade_ids.contains(id)),
+            AgentContextKind::Playbook => reference
+                .id
+                .as_ref()
+                .is_some_and(|id| context.playbook_ids.contains(id)),
+            AgentContextKind::Note => reference
+                .id
+                .as_ref()
+                .is_some_and(|id| context.note_ids.contains(id)),
+            AgentContextKind::Media => reference
+                .id
+                .as_ref()
+                .is_some_and(|id| context.media_ids.contains(id)),
+            AgentContextKind::Market => {
+                reference.id.is_none()
+                    && context
+                        .market_symbol
+                        .as_deref()
+                        .is_some_and(|symbol| symbol.eq_ignore_ascii_case(&reference.title))
+            }
+            AgentContextKind::DateRange => reference.id.is_none() && context.date_range.is_some(),
+        };
+        if !valid_text || !valid_target || !keys.insert(reference.key.as_str()) {
+            return Err(AgentError::Validation(
+                "message context contains an invalid reference".into(),
+            ));
+        }
+    }
+    Ok(())
 }

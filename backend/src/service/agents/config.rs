@@ -7,9 +7,35 @@ const DEFAULT_INDEX_WORKER_CONCURRENCY: usize = 2;
 const DEFAULT_RUN_LEASE_SECONDS: u64 = 120;
 const DEFAULT_HEARTBEAT_SECONDS: u64 = 15;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelProvider {
+    Gemini,
+    Perplexity,
+}
+
+impl ModelProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gemini => "gemini",
+            Self::Perplexity => "perplexity",
+        }
+    }
+
+    fn parse(value: &str) -> AgentResult<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "gemini" => Ok(Self::Gemini),
+            "perplexity" => Ok(Self::Perplexity),
+            _ => Err(AgentError::Validation(
+                "AGENT_MODEL_PROVIDER must be gemini or perplexity".into(),
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentConfig {
     pub enabled: bool,
+    pub model_provider: Option<ModelProvider>,
     pub fast_model: Option<String>,
     pub reasoning_model: Option<String>,
     pub vision_model: Option<String>,
@@ -33,6 +59,7 @@ impl AgentConfig {
     {
         let values = [
             "AGENTS_V2_ENABLED",
+            "AGENT_MODEL_PROVIDER",
             "AGENT_FAST_MODEL",
             "AGENT_REASONING_MODEL",
             "AGENT_VISION_MODEL",
@@ -53,11 +80,20 @@ impl AgentConfig {
 
     fn from_values(values: &HashMap<&str, String>) -> AgentResult<Self> {
         let enabled = parse_bool(values.get("AGENTS_V2_ENABLED"), false)?;
+        let model_provider = values
+            .get("AGENT_MODEL_PROVIDER")
+            .map(|value| ModelProvider::parse(value))
+            .transpose()?;
         let fast_model = optional_non_blank(values.get("AGENT_FAST_MODEL"));
         let reasoning_model = optional_non_blank(values.get("AGENT_REASONING_MODEL"));
         let vision_model = optional_non_blank(values.get("AGENT_VISION_MODEL"));
 
         if enabled {
+            if model_provider.is_none() {
+                return Err(AgentError::Validation(
+                    "AGENT_MODEL_PROVIDER is required when AGENTS_V2_ENABLED=true".into(),
+                ));
+            }
             for (name, value) in [
                 ("AGENT_FAST_MODEL", &fast_model),
                 ("AGENT_REASONING_MODEL", &reasoning_model),
@@ -107,6 +143,7 @@ impl AgentConfig {
 
         Ok(Self {
             enabled,
+            model_provider,
             fast_model,
             reasoning_model,
             vision_model,
@@ -165,6 +202,7 @@ mod tests {
     fn enabled_values(extra: &[(&'static str, &str)]) -> HashMap<&'static str, String> {
         let mut values = HashMap::from([
             ("AGENTS_V2_ENABLED", "true".into()),
+            ("AGENT_MODEL_PROVIDER", "gemini".into()),
             ("AGENT_FAST_MODEL", "gemini-fast".into()),
             ("AGENT_REASONING_MODEL", "gemini-reasoning".into()),
             ("AGENT_VISION_MODEL", "gemini-vision".into()),
@@ -185,10 +223,38 @@ mod tests {
     fn enabled_config_requires_all_model_roles() {
         let values = HashMap::from([
             ("AGENTS_V2_ENABLED", "true".into()),
+            ("AGENT_MODEL_PROVIDER", "gemini".into()),
             ("AGENT_FAST_MODEL", "gemini-fast".into()),
         ]);
         let error = AgentConfig::from_values(&values).unwrap_err();
         assert!(error.to_string().contains("AGENT_REASONING_MODEL"));
+    }
+
+    #[test]
+    fn enabled_config_requires_a_known_model_provider() {
+        let missing = HashMap::from([
+            ("AGENTS_V2_ENABLED", "true".into()),
+            ("AGENT_FAST_MODEL", "fast".into()),
+            ("AGENT_REASONING_MODEL", "reasoning".into()),
+            ("AGENT_VISION_MODEL", "vision".into()),
+        ]);
+        assert!(
+            AgentConfig::from_values(&missing)
+                .unwrap_err()
+                .to_string()
+                .contains("AGENT_MODEL_PROVIDER")
+        );
+
+        let perplexity = enabled_values(&[("AGENT_MODEL_PROVIDER", "perplexity")]);
+        assert_eq!(
+            AgentConfig::from_values(&perplexity)
+                .unwrap()
+                .model_provider,
+            Some(ModelProvider::Perplexity)
+        );
+
+        let invalid = enabled_values(&[("AGENT_MODEL_PROVIDER", "other")]);
+        assert!(AgentConfig::from_values(&invalid).is_err());
     }
 
     #[test]

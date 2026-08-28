@@ -218,7 +218,7 @@ async fn workspace_migration_preserves_legacy_production_data() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
 
-    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all_migrations = Migrator::new(migrations_path.as_path())
         .await
         .expect("load migrations");
@@ -375,7 +375,7 @@ async fn partial_brokerage_subaccount_connections_are_backfilled_from_sync_state
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
 
-    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all_migrations = Migrator::new(migrations_path.as_path())
         .await
         .expect("load migrations");

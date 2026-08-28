@@ -7,7 +7,7 @@ use super::conversations::message_from_row;
 use super::events::event_from_row;
 use super::runs::run_from_row;
 use crate::service::agents::{
-    AgentActor, AgentError, AgentLane, AgentMessage, AgentResult, AgentRun, AgentRunEvent,
+    AgentActor, AgentError, AgentMessage, AgentResult, AgentRun, AgentRunEvent,
 };
 
 #[derive(Clone, Debug)]
@@ -24,7 +24,6 @@ impl AgentStore {
         actor: &AgentActor,
         conversation_id: &str,
         content: &Value,
-        lane: AgentLane,
         idempotency_key: &str,
     ) -> AgentResult<EnqueuedAgentRun> {
         let idempotency_key = idempotency_key.trim();
@@ -105,8 +104,8 @@ impl AgentStore {
         let run = sqlx::query(
             "INSERT INTO agent_runs
              (id, conversation_id, user_id, workspace_id, input_message_id,
-              lane, status, stage, idempotency_key, next_event_sequence)
-             VALUES ($1, $2, $3, $4, $5, $6, 'queued', 'queued', $7, 2)
+              status, idempotency_key, next_event_sequence)
+             VALUES ($1, $2, $3, $4, $5, 'queued', $6, 2)
              RETURNING *",
         )
         .bind(&run_id)
@@ -114,7 +113,6 @@ impl AgentStore {
         .bind(&actor.user_id)
         .bind(&workspace_id)
         .bind(&message_id)
-        .bind(lane.as_str())
         .bind(idempotency_key)
         .fetch_one(&mut *tx)
         .await?;
@@ -127,7 +125,7 @@ impl AgentStore {
         .bind(&run_id)
         .bind(&actor.user_id)
         .bind(&workspace_id)
-        .bind(json!({ "lane": lane.as_str() }))
+        .bind(json!({}))
         .fetch_one(&mut *tx)
         .await?;
         let title = content

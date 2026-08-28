@@ -7,9 +7,11 @@ use clerk_rs::validators::authorizer::ClerkJwt;
 use futures_util::stream;
 
 use crate::service::agents::{
-    AgentActionProposal, AgentActor, AgentConversation, AgentDateRange, AgentIntent, AgentLane,
-    AgentMemoryRecord, AgentMessage, AgentMessageContext, AgentRun, AgentRunEvent, AgentRunHandle,
-    AgentRunStatus, AgentScope, AgentService, SendAgentMessage,
+    AgentActionProposal, AgentActivityCategory, AgentActivityEntry, AgentActivityStatus,
+    AgentActivitySummary, AgentActor, AgentContextKind, AgentContextReference,
+    AgentContextSearchResult, AgentConversation, AgentDateRange, AgentIntent, AgentMemoryRecord,
+    AgentMessage, AgentMessageActivity, AgentMessageContext, AgentRun, AgentRunEvent,
+    AgentRunHandle, AgentRunStatus, AgentScope, AgentService, SendAgentMessage,
 };
 
 async fn actor_and_service(ctx: &Context<'_>) -> Result<(AgentActor, Arc<AgentService>)> {
@@ -27,28 +29,9 @@ fn gql_error(error: crate::service::agents::AgentError) -> async_graphql::Error 
 
 #[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
 #[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
-pub enum AgentLaneGql {
-    Instant,
-    FastAi,
-    Deep,
-}
-
-impl From<AgentLane> for AgentLaneGql {
-    fn from(value: AgentLane) -> Self {
-        match value {
-            AgentLane::Instant => Self::Instant,
-            AgentLane::FastAi => Self::FastAi,
-            AgentLane::Deep => Self::Deep,
-        }
-    }
-}
-
-#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum AgentRunStatusGql {
     Queued,
     Running,
-    WaitingForApproval,
     Completed,
     Failed,
     Cancelled,
@@ -79,10 +62,33 @@ impl From<AgentRunStatus> for AgentRunStatusGql {
         match value {
             AgentRunStatus::Queued => Self::Queued,
             AgentRunStatus::Running => Self::Running,
-            AgentRunStatus::WaitingForApproval => Self::WaitingForApproval,
             AgentRunStatus::Completed => Self::Completed,
             AgentRunStatus::Failed => Self::Failed,
             AgentRunStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum AgentContextKindGql {
+    Trade,
+    Playbook,
+    Note,
+    Media,
+    Market,
+    DateRange,
+}
+
+impl From<AgentContextKind> for AgentContextKindGql {
+    fn from(value: AgentContextKind) -> Self {
+        match value {
+            AgentContextKind::Trade => Self::Trade,
+            AgentContextKind::Playbook => Self::Playbook,
+            AgentContextKind::Note => Self::Note,
+            AgentContextKind::Media => Self::Media,
+            AgentContextKind::Market => Self::Market,
+            AgentContextKind::DateRange => Self::DateRange,
         }
     }
 }
@@ -122,9 +128,40 @@ pub struct AgentMessageContextInput {
     pub explicit_intent: Option<AgentIntentInput>,
     pub trade_ids: Option<Vec<String>>,
     pub playbook_ids: Option<Vec<String>>,
+    pub note_ids: Option<Vec<String>>,
     pub date_range: Option<AgentDateRangeInput>,
     pub market_symbol: Option<String>,
     pub media_ids: Option<Vec<String>>,
+    pub references: Vec<AgentContextReferenceInput>,
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct AgentContextReferenceInput {
+    pub key: String,
+    pub kind: AgentContextKindGql,
+    pub id: Option<String>,
+    pub title: String,
+    pub subtitle: String,
+}
+
+impl From<AgentContextReferenceInput> for AgentContextReference {
+    fn from(value: AgentContextReferenceInput) -> Self {
+        Self {
+            key: value.key,
+            kind: match value.kind {
+                AgentContextKindGql::Trade => AgentContextKind::Trade,
+                AgentContextKindGql::Playbook => AgentContextKind::Playbook,
+                AgentContextKindGql::Note => AgentContextKind::Note,
+                AgentContextKindGql::Media => AgentContextKind::Media,
+                AgentContextKindGql::Market => AgentContextKind::Market,
+                AgentContextKindGql::DateRange => AgentContextKind::DateRange,
+            },
+            id: value.id,
+            title: value.title,
+            subtitle: value.subtitle,
+        }
+    }
 }
 
 impl From<AgentMessageContextInput> for AgentMessageContext {
@@ -133,12 +170,14 @@ impl From<AgentMessageContextInput> for AgentMessageContext {
             explicit_intent: value.explicit_intent.map(Into::into),
             trade_ids: value.trade_ids.unwrap_or_default(),
             playbook_ids: value.playbook_ids.unwrap_or_default(),
+            note_ids: value.note_ids.unwrap_or_default(),
             date_range: value.date_range.map(|range| AgentDateRange {
                 from: range.from,
                 to: range.to,
             }),
             market_symbol: value.market_symbol,
             media_ids: value.media_ids.unwrap_or_default(),
+            references: value.references.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -160,6 +199,30 @@ pub struct AgentConversationGql {
     pub title: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct AgentContextSearchResultGql {
+    pub key: String,
+    pub kind: AgentContextKindGql,
+    pub id: Option<String>,
+    pub title: String,
+    pub subtitle: String,
+    pub metadata_json: String,
+}
+
+impl From<AgentContextSearchResult> for AgentContextSearchResultGql {
+    fn from(value: AgentContextSearchResult) -> Self {
+        Self {
+            key: value.key,
+            kind: value.kind.into(),
+            id: value.id,
+            title: value.title,
+            subtitle: value.subtitle,
+            metadata_json: value.metadata.to_string(),
+        }
+    }
 }
 
 impl From<AgentConversation> for AgentConversationGql {
@@ -215,9 +278,7 @@ impl From<AgentMessage> for AgentMessageGql {
 pub struct AgentRunGql {
     pub id: String,
     pub conversation_id: String,
-    pub lane: AgentLaneGql,
     pub status: AgentRunStatusGql,
-    pub stage: String,
     pub model_calls: i64,
     pub tool_calls: i64,
     pub error_code: Option<String>,
@@ -231,9 +292,7 @@ impl From<AgentRun> for AgentRunGql {
         Self {
             id: value.id,
             conversation_id: value.conversation_id,
-            lane: value.lane.into(),
             status: value.status.into(),
-            stage: value.stage,
             model_calls: value.model_calls,
             tool_calls: value.tool_calls,
             error_code: value.error_code,
@@ -262,24 +321,136 @@ impl From<AgentRunHandle> for AgentRunHandleGql {
     }
 }
 
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum AgentActivityCategoryGql {
+    Model,
+    Tool,
+    Subagent,
+    System,
+}
+
+impl From<AgentActivityCategory> for AgentActivityCategoryGql {
+    fn from(value: AgentActivityCategory) -> Self {
+        match value {
+            AgentActivityCategory::Model => Self::Model,
+            AgentActivityCategory::Tool => Self::Tool,
+            AgentActivityCategory::Subagent => Self::Subagent,
+            AgentActivityCategory::System => Self::System,
+        }
+    }
+}
+
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum AgentActivityStatusGql {
+    Started,
+    Completed,
+    Failed,
+    Cancelled,
+    Interrupted,
+}
+
+impl From<AgentActivityStatus> for AgentActivityStatusGql {
+    fn from(value: AgentActivityStatus) -> Self {
+        match value {
+            AgentActivityStatus::Started => Self::Started,
+            AgentActivityStatus::Completed => Self::Completed,
+            AgentActivityStatus::Failed => Self::Failed,
+            AgentActivityStatus::Cancelled => Self::Cancelled,
+            AgentActivityStatus::Interrupted => Self::Interrupted,
+        }
+    }
+}
+
 #[derive(SimpleObject, Clone)]
 #[graphql(rename_fields = "camelCase")]
-pub struct AgentRunEventGql {
-    pub run_id: String,
+pub struct AgentActivityMetadataGql {
+    pub symbol: Option<String>,
+    pub record_count: Option<i64>,
+    pub date_range_label: Option<String>,
+    pub source_count: Option<i64>,
+    pub retryable: Option<bool>,
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct AgentActivityEntryGql {
     pub sequence: i64,
-    pub kind: String,
-    pub payload_json: String,
+    pub activity_id: String,
+    pub parent_activity_id: Option<String>,
+    pub category: AgentActivityCategoryGql,
+    pub status: AgentActivityStatusGql,
+    pub label: String,
+    pub detail: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub metadata: AgentActivityMetadataGql,
     pub created_at: String,
 }
 
-impl From<AgentRunEvent> for AgentRunEventGql {
-    fn from(value: AgentRunEvent) -> Self {
+impl From<AgentActivityEntry> for AgentActivityEntryGql {
+    fn from(value: AgentActivityEntry) -> Self {
         Self {
-            run_id: value.run_id,
             sequence: value.sequence,
-            kind: value.kind,
-            payload_json: value.payload.to_string(),
+            activity_id: value.activity_id,
+            parent_activity_id: value.parent_activity_id,
+            category: value.category.into(),
+            status: value.status.into(),
+            label: value.label,
+            detail: value.detail,
+            duration_ms: value.duration_ms,
+            metadata: AgentActivityMetadataGql {
+                symbol: value.metadata.symbol,
+                record_count: value.metadata.record_count,
+                date_range_label: value.metadata.date_range_label,
+                source_count: value.metadata.source_count,
+                retryable: value.metadata.retryable,
+            },
             created_at: value.created_at,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct AgentActivitySummaryGql {
+    pub message_id: String,
+    pub status: AgentRunStatusGql,
+    pub duration_ms: Option<i64>,
+    pub model_calls: i64,
+    pub tool_calls: i64,
+    pub subagent_count: i64,
+    pub source_count: i64,
+    pub has_failures: bool,
+}
+
+impl From<AgentActivitySummary> for AgentActivitySummaryGql {
+    fn from(value: AgentActivitySummary) -> Self {
+        Self {
+            message_id: value.message_id,
+            status: value.status.into(),
+            duration_ms: value.duration_ms,
+            model_calls: value.model_calls,
+            tool_calls: value.tool_calls,
+            subagent_count: value.subagent_count,
+            source_count: value.source_count,
+            has_failures: value.has_failures,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+pub struct AgentMessageActivityGql {
+    pub summary: AgentActivitySummaryGql,
+    pub entries: Vec<AgentActivityEntryGql>,
+}
+
+impl From<AgentMessageActivity> for AgentMessageActivityGql {
+    fn from(value: AgentMessageActivity) -> Self {
+        Self {
+            summary: value.summary.into(),
+            entries: value.entries.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -289,7 +460,7 @@ impl From<AgentRunEvent> for AgentRunEventGql {
 pub struct AgentCapabilitiesGql {
     pub enabled: bool,
     pub runtime_version: String,
-    pub lanes: Vec<AgentLaneGql>,
+    pub turn_runtime: bool,
     pub model_roles_ready: bool,
     pub memory: bool,
     pub actions: bool,
@@ -375,7 +546,7 @@ impl AgentQuery {
         Ok(AgentCapabilitiesGql {
             enabled: value.enabled,
             runtime_version: value.runtime_version,
-            lanes: value.lanes.into_iter().map(Into::into).collect(),
+            turn_runtime: value.turn_runtime,
             model_roles_ready: value.model_roles_ready,
             memory: value.memory,
             actions: value.actions,
@@ -395,6 +566,26 @@ impl AgentQuery {
                 &actor,
                 &AgentScope { workspace_id },
                 i64::from(limit.unwrap_or(50)),
+            )
+            .await
+            .map(|values| values.into_iter().map(Into::into).collect())
+            .map_err(gql_error)
+    }
+
+    async fn agent_context_search(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        query: String,
+        limit: Option<i32>,
+    ) -> Result<Vec<AgentContextSearchResultGql>> {
+        let (actor, service) = actor_and_service(ctx).await?;
+        service
+            .search_context(
+                &actor,
+                &workspace_id,
+                &query,
+                i64::from(limit.unwrap_or(30)),
             )
             .await
             .map(|values| values.into_iter().map(Into::into).collect())
@@ -438,6 +629,32 @@ impl AgentQuery {
             .get_run(&actor, &run_id)
             .await
             .map(Into::into)
+            .map_err(gql_error)
+    }
+
+    async fn agent_message_activity(
+        &self,
+        ctx: &Context<'_>,
+        message_id: String,
+    ) -> Result<Option<AgentMessageActivityGql>> {
+        let (actor, service) = actor_and_service(ctx).await?;
+        service
+            .message_activity(&actor, &message_id)
+            .await
+            .map(|activity| activity.map(Into::into))
+            .map_err(gql_error)
+    }
+
+    async fn agent_message_activity_summaries(
+        &self,
+        ctx: &Context<'_>,
+        message_ids: Vec<String>,
+    ) -> Result<Vec<AgentActivitySummaryGql>> {
+        let (actor, service) = actor_and_service(ctx).await?;
+        service
+            .message_activity_summaries(&actor, &message_ids)
+            .await
+            .map(|summaries| summaries.into_iter().map(Into::into).collect())
             .map_err(gql_error)
     }
 
@@ -633,7 +850,7 @@ impl AgentMutation {
 #[derive(Default)]
 pub struct AgentSubscription;
 
-struct EventStreamState {
+struct ActivityStreamState {
     actor: AgentActor,
     service: Arc<AgentService>,
     run_id: String,
@@ -643,12 +860,12 @@ struct EventStreamState {
 
 #[Subscription]
 impl AgentSubscription {
-    async fn agent_run_events(
+    async fn agent_run_activity(
         &self,
         ctx: &Context<'_>,
         run_id: String,
         after_sequence: i32,
-    ) -> Result<impl futures_util::Stream<Item = AgentRunEventGql>> {
+    ) -> Result<impl futures_util::Stream<Item = AgentActivityEntryGql>> {
         if after_sequence < 0 {
             return Err(async_graphql::Error::new(
                 "event sequence cannot be negative",
@@ -657,7 +874,7 @@ impl AgentSubscription {
         let (actor, service) = actor_and_service(ctx).await?;
         service.get_run(&actor, &run_id).await.map_err(gql_error)?;
         Ok(stream::unfold(
-            EventStreamState {
+            ActivityStreamState {
                 actor,
                 service,
                 run_id,
@@ -668,7 +885,10 @@ impl AgentSubscription {
                 loop {
                     if let Some(event) = state.buffered.pop_front() {
                         state.last_sequence = event.sequence;
-                        return Some((event.into(), state));
+                        if let Some(activity) = crate::service::agents::project_event(&event) {
+                            return Some((activity.into(), state));
+                        }
+                        continue;
                     }
                     match state
                         .service

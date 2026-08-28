@@ -21,11 +21,14 @@ pub async fn run_knowledge_worker(
             Ok(Some(record)) => {
                 if let Err(failure) = indexer.process(&record, &owner).await {
                     error!("[agents] knowledge job {} failed: {failure}", record.id);
-                    let retryable = matches!(
-                        failure,
+                    let retryable = match &failure {
+                        crate::service::agents::AgentError::Provider(provider) => {
+                            provider.retryable
+                        }
                         crate::service::agents::AgentError::ProviderUnavailable
-                            | crate::service::agents::AgentError::Internal
-                    );
+                        | crate::service::agents::AgentError::Internal => true,
+                        _ => false,
+                    };
                     let _ = indexer
                         .store()
                         .fail(record.id, &owner, "knowledge_index_failed", retryable)

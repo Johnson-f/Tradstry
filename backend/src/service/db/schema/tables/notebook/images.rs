@@ -1,15 +1,16 @@
 use anyhow::{Context, Result, anyhow, ensure};
 use async_graphql::SimpleObject;
+use chrono::Utc;
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 
 use super::notes;
-
-// NOTE: `cloudinary_public_id` now holds the R2 object key (the column name is
-// kept to avoid a schema rebuild). `secure_url` is no longer the serving URL —
-// the read path overwrites it with a freshly presigned R2 GET URL before
-// returning records to clients.
-const SELECT_COLS: &str = "id, note_id, user_id, workspace_id, cloudinary_asset_id, cloudinary_public_id, secure_url, width, height, format, bytes, original_filename, media_type, content_type, duration_seconds, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, content_hash";
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::notebook::notebook_images;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -52,26 +53,32 @@ pub struct CreateNotebookImageInput {
     pub content_hash: String,
 }
 
-fn row_to_notebook_image(row: &sqlx::postgres::PgRow) -> Result<NotebookImage> {
-    Ok(NotebookImage {
-        id: row.try_get::<String, _>(0)?,
-        note_id: row.try_get::<String, _>(1)?,
-        user_id: row.try_get::<String, _>(2)?,
-        workspace_id: row.try_get::<String, _>(3)?,
-        cloudinary_asset_id: row.try_get::<String, _>(4)?,
-        cloudinary_public_id: row.try_get::<String, _>(5)?,
-        secure_url: row.try_get::<String, _>(6)?,
-        width: row.try_get::<i64, _>(7)?,
-        height: row.try_get::<i64, _>(8)?,
-        format: row.try_get::<String, _>(9)?,
-        bytes: row.try_get::<i64, _>(10)?,
-        original_filename: row.try_get::<String, _>(11)?,
-        media_type: row.try_get::<String, _>(12)?,
-        content_type: row.try_get::<String, _>(13)?,
-        duration_seconds: row.try_get::<f64, _>(14)?,
-        created_at: row.try_get::<String, _>(15)?,
-        content_hash: row.try_get::<String, _>(16)?,
-    })
+impl From<notebook_images::Model> for NotebookImage {
+    fn from(model: notebook_images::Model) -> Self {
+        Self {
+            id: model.id,
+            note_id: model.note_id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            cloudinary_asset_id: model.cloudinary_asset_id,
+            cloudinary_public_id: model.cloudinary_public_id,
+            secure_url: model.secure_url,
+            width: model.width,
+            height: model.height,
+            format: model.format,
+            bytes: model.bytes,
+            original_filename: model.original_filename,
+            media_type: model.media_type,
+            content_type: model.content_type,
+            duration_seconds: model.duration_seconds,
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            content_hash: model.content_hash,
+        }
+    }
 }
 
 pub async fn list_notebook_images_for_note(
@@ -79,22 +86,18 @@ pub async fn list_notebook_images_for_note(
     note_id: &str,
     user_id: &str,
 ) -> Result<Vec<NotebookImage>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM notebook_images WHERE note_id = $1 AND user_id = $2 ORDER BY created_at ASC, id ASC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(note_id)
-        .bind(user_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::Entity::find()
+        .filter(notebook_images::Column::NoteId.eq(note_id))
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .order_by_asc(notebook_images::Column::CreatedAt)
+        .order_by_asc(notebook_images::Column::Id)
+        .all(&db)
         .await
-        .context("Failed to list notebook images")?;
-
-    let mut images = Vec::new();
-    for row in &rows {
-        images.push(row_to_notebook_image(row)?);
-    }
-
-    Ok(images)
+        .context("Failed to list notebook images")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 /// Batched sibling of `list_notebook_images_for_note`: fetches every image for a
@@ -111,24 +114,19 @@ pub async fn list_notebook_images_for_notes(
     note_ids: &[String],
     user_id: &str,
 ) -> Result<Vec<(String, NotebookImage)>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS}, note_id FROM notebook_images WHERE note_id = ANY($1) AND user_id = $2 ORDER BY note_id, created_at ASC, id ASC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(note_ids)
-        .bind(user_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::Entity::find()
+        .filter(notebook_images::Column::NoteId.is_in(note_ids.iter().cloned()))
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .order_by_asc(notebook_images::Column::NoteId)
+        .order_by_asc(notebook_images::Column::CreatedAt)
+        .order_by_asc(notebook_images::Column::Id)
+        .all(&db)
         .await
-        .context("Failed to list notebook images for notes")?;
-
-    let mut images = Vec::new();
-    for row in &rows {
-        let image = row_to_notebook_image(row)?;
-        let note_id = row.try_get::<String, _>(17)?;
-        images.push((note_id, image));
-    }
-
-    Ok(images)
+        .context("Failed to list notebook images for notes")?
+        .into_iter()
+        .map(|model| (model.note_id.clone(), model.into()))
+        .collect())
 }
 
 pub async fn find_notebook_image(
@@ -136,18 +134,13 @@ pub async fn find_notebook_image(
     id: &str,
     user_id: &str,
 ) -> Result<Option<NotebookImage>> {
-    let sql = format!("SELECT {SELECT_COLS} FROM notebook_images WHERE id = $1 AND user_id = $2");
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::Entity::find_by_id(id)
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .one(&db)
         .await
-        .context("Failed to find notebook image")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_notebook_image(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find notebook image")?
+        .map(Into::into))
 }
 
 /// Any image the user owns whose bytes hash to `content_hash`, regardless of note.
@@ -158,20 +151,16 @@ pub async fn find_notebook_image_by_hash(
     user_id: &str,
     content_hash: &str,
 ) -> Result<Option<NotebookImage>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM notebook_images WHERE user_id = $1 AND content_hash = $2 ORDER BY created_at ASC, id ASC LIMIT 1"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(content_hash)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::Entity::find()
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .filter(notebook_images::Column::ContentHash.eq(content_hash))
+        .order_by_asc(notebook_images::Column::CreatedAt)
+        .order_by_asc(notebook_images::Column::Id)
+        .one(&db)
         .await
-        .context("Failed to find notebook image by hash")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_notebook_image(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find notebook image by hash")?
+        .map(Into::into))
 }
 
 /// The row for one specific `(note, hash)` pair. Upload is idempotent on this:
@@ -182,21 +171,15 @@ pub async fn find_notebook_image_for_note_hash(
     note_id: &str,
     content_hash: &str,
 ) -> Result<Option<NotebookImage>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM notebook_images WHERE user_id = $1 AND note_id = $2 AND content_hash = $3 LIMIT 1"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(note_id)
-        .bind(content_hash)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::Entity::find()
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .filter(notebook_images::Column::NoteId.eq(note_id))
+        .filter(notebook_images::Column::ContentHash.eq(content_hash))
+        .one(&db)
         .await
-        .context("Failed to find notebook image for note+hash")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_notebook_image(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find notebook image for note+hash")?
+        .map(Into::into))
 }
 
 /// How many rows the user still has pointing at these bytes. The R2 object is only
@@ -206,22 +189,22 @@ pub async fn count_images_with_hash(
     user_id: &str,
     content_hash: &str,
 ) -> Result<i64> {
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM notebook_images WHERE user_id = $1 AND content_hash = $2",
-    )
-    .bind(user_id)
-    .bind(content_hash)
-    .fetch_one(pool)
-    .await
-    .context("Failed to count images with hash")?;
-    Ok(n)
+    let db = sea_orm_connection(pool);
+    let count = notebook_images::Entity::find()
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .filter(notebook_images::Column::ContentHash.eq(content_hash))
+        .count(&db)
+        .await
+        .context("Failed to count images with hash")?;
+    i64::try_from(count).context("Notebook image count exceeds i64")
 }
 
 pub async fn delete_notebook_image(pool: &PgPool, id: &str, user_id: &str) -> Result<()> {
-    sqlx::query("DELETE FROM notebook_images WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
+    let db = sea_orm_connection(pool);
+    notebook_images::Entity::delete_many()
+        .filter(notebook_images::Column::Id.eq(id))
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .exec(&db)
         .await
         .context("Failed to delete notebook image")?;
 
@@ -244,52 +227,30 @@ pub async fn create_notebook_image(
         input.workspace_id
     );
 
-    sqlx::query(
-        r#"
-        INSERT INTO notebook_images (
-            id,
-            note_id,
-            user_id,
-            workspace_id,
-            cloudinary_asset_id,
-            cloudinary_public_id,
-            secure_url,
-            width,
-            height,
-            format,
-            bytes,
-            original_filename,
-            media_type,
-            content_type,
-            duration_seconds,
-            content_hash
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-        "#,
-    )
-    .bind(input.id.as_str())
-    .bind(input.note_id.as_str())
-    .bind(user_id)
-    .bind(input.workspace_id.as_str())
-    .bind(input.cloudinary_asset_id.as_str())
-    .bind(input.cloudinary_public_id.as_str())
-    .bind(input.secure_url.as_str())
-    .bind(input.width)
-    .bind(input.height)
-    .bind(input.format.as_str())
-    .bind(input.bytes)
-    .bind(input.original_filename.as_str())
-    .bind(input.media_type.as_str())
-    .bind(input.content_type.as_str())
-    .bind(input.duration_seconds)
-    .bind(input.content_hash.as_str())
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_images::ActiveModel {
+        id: Set(input.id),
+        note_id: Set(input.note_id),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(input.workspace_id),
+        cloudinary_asset_id: Set(input.cloudinary_asset_id),
+        cloudinary_public_id: Set(input.cloudinary_public_id),
+        secure_url: Set(input.secure_url),
+        width: Set(input.width),
+        height: Set(input.height),
+        format: Set(input.format),
+        bytes: Set(input.bytes),
+        original_filename: Set(input.original_filename),
+        media_type: Set(input.media_type),
+        content_type: Set(input.content_type),
+        duration_seconds: Set(input.duration_seconds),
+        content_hash: Set(input.content_hash),
+        ..Default::default()
+    }
+    .insert(&db)
     .await
-    .context("Failed to insert notebook image")?;
-
-    find_notebook_image(pool, &input.id, user_id)
-        .await?
-        .context("Notebook image not found after insert")
+    .context("Failed to insert notebook image")?
+    .into())
 }
 
 pub async fn sync_note_image_workspace_id(
@@ -298,11 +259,15 @@ pub async fn sync_note_image_workspace_id(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<()> {
-    sqlx::query("UPDATE notebook_images SET workspace_id = $1 WHERE note_id = $2 AND user_id = $3")
-        .bind(workspace_id)
-        .bind(note_id)
-        .bind(user_id)
-        .execute(pool)
+    let db = sea_orm_connection(pool);
+    notebook_images::Entity::update_many()
+        .col_expr(
+            notebook_images::Column::WorkspaceId,
+            Expr::value(workspace_id.to_owned()),
+        )
+        .filter(notebook_images::Column::NoteId.eq(note_id))
+        .filter(notebook_images::Column::UserId.eq(user_id))
+        .exec(&db)
         .await
         .context("Failed to sync notebook image account ids")?;
 

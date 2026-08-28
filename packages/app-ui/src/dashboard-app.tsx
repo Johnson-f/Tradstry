@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentPanel } from "@tradstry/app-ui/components/agents";
 import { Analytics } from "@tradstry/app-ui/components/analytics";
 import { AppSidebar } from "@tradstry/app-ui/components/app-sidebar";
 import { BrokerageEmptyState } from "@tradstry/app-ui/components/brokerage/brokerage-empty-state";
@@ -192,19 +193,20 @@ function PageCanvas({ children }: { children: React.ReactNode }) {
 export function DashboardApp({ pathname }: { pathname: string }) {
 	return (
 		<SidebarProvider
-				className="bg-[var(--app-chrome)]"
-				style={
-					{
-						"--sidebar-width": "13.5rem",
-						"--sidebar-width-icon": "3.25rem",
-						"--header-height": "2.75rem",
-					} as React.CSSProperties
-				}
-			>
-				<AppSidebar />
-				<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
-					<Screen pathname={pathname} />
-				</SidebarInset>
+			className="bg-[var(--app-chrome)]"
+			style={
+				{
+					"--sidebar-width": "13.5rem",
+					"--sidebar-width-icon": "3.25rem",
+					"--header-height": "2.75rem",
+				} as React.CSSProperties
+			}
+		>
+			<AppSidebar />
+			<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
+				<Screen pathname={pathname} />
+			</SidebarInset>
+			<AgentPanel />
 		</SidebarProvider>
 	);
 }

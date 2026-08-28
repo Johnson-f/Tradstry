@@ -1,11 +1,13 @@
 mod pg_support;
 
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
+use sea_orm::SqlxPostgresConnector;
 use serde_json::json;
 use tradstry_backend::service::agents::{
-    ActivateAgentMemory, AgentActor, AgentLane, AgentMemoryKind, AgentMemoryStatus, AgentScope,
-    AgentStore, CreateAgentRun,
+    ActivateAgentMemory, AgentActor, AgentMemoryKind, AgentMemoryStatus, AgentScope, AgentStore,
+    CreateAgentRun,
 };
+use tradstry_migration::{Migrator, MigratorTrait};
 
 async fn seed_tag(pool: &sqlx::PgPool, user_id: &str, workspace_id: &str) {
     sqlx::query(
@@ -59,6 +61,10 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, None)
+        .await
+        .expect("migrate agent runtime");
 
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_tag(&pool, &user_id, &workspace_id).await;
@@ -85,7 +91,6 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
             &actor,
             &CreateAgentRun {
                 conversation_id: conversation.id.clone(),
-                lane: AgentLane::Deep,
                 parent_run_id: None,
                 input_message_id: Some(message.id.clone()),
                 idempotency_key: "delete-agent-run".into(),
@@ -116,7 +121,10 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
         .await
         .unwrap();
     store
-        .save_checkpoint(&run.id, "queued", 1, &json!({}))
+        .append_run_item(
+            &run.id,
+            &tinyagents::harness::message::Message::assistant("queued"),
+        )
         .await
         .unwrap();
 
@@ -161,7 +169,7 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
         "agent_messages",
         "agent_runs",
         "agent_run_events",
-        "agent_checkpoints",
+        "agent_run_items",
         "agent_memories",
         "agent_memory_jobs",
         "agent_knowledge_passages",

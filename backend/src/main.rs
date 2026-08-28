@@ -50,7 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Projector bundles ready");
     let r2_client = Arc::new(R2Client::from_env()?);
     let mut agent_service_value =
-        tradstry_backend::service::agents::AgentService::from_env(db.as_ref())?
+        tradstry_backend::service::agents::AgentService::from_env(db.as_ref())
+            .await?
             .with_r2(r2_client.clone());
     let agent_embedding_provider = if agent_service_value.config().enabled {
         let voyage_client = Arc::new(VoyageClient::from_env()?);
@@ -127,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         broadcast::channel::<tradstry_backend::graphql::notifications::NotificationPushed>(256);
 
     db.health_check().await?;
-    info!("Database healthy and migrations applied");
+    info!("Database healthy and SeaORM schema contract verified");
     let clerk_secret = std::env::var("CLERK_SECRET_KEY")?;
     let jwks_provider_data = Arc::new(create_jwks_provider(&clerk_secret));
     info!("Clerk authentication configured");
@@ -394,7 +395,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .app_data(web::Data::new(countly.clone()))
             .configure(routes::configure)
     })
-    .workers(5) // number of workers
     .bind("0.0.0.0:7899")?
     .run();
 

@@ -1,10 +1,14 @@
 use anyhow::{Context, Result};
 use async_graphql::{InputObject, SimpleObject};
+use chrono::Utc;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
 use super::workspaces_table;
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::calculator::position_calculator_rules;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -28,21 +32,27 @@ pub struct UpsertPositionCalculatorRuleInput {
     pub max_stop_loss_pct: f64,
 }
 
-const SELECT_COLS: &str = "id, user_id, workspace_id, account_balance, account_risk, max_stop_loss_pct, \
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
-    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
-
-fn row_to_rule(row: &sqlx::postgres::PgRow) -> Result<PositionCalculatorRule> {
-    Ok(PositionCalculatorRule {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        workspace_id: row.try_get::<String, _>(2)?,
-        account_balance: row.try_get::<f64, _>(3)?,
-        account_risk: row.try_get::<f64, _>(4)?,
-        max_stop_loss_pct: row.try_get::<f64, _>(5)?,
-        created_at: row.try_get::<String, _>(6)?,
-        updated_at: row.try_get::<String, _>(7)?,
-    })
+impl From<position_calculator_rules::Model> for PositionCalculatorRule {
+    fn from(model: position_calculator_rules::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            account_balance: model.account_balance,
+            account_risk: model.account_risk,
+            max_stop_loss_pct: model.max_stop_loss_pct,
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            updated_at: model
+                .updated_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        }
+    }
 }
 
 pub async fn get_rule(
@@ -50,21 +60,14 @@ pub async fn get_rule(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Option<PositionCalculatorRule>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM position_calculator_rules \
-         WHERE user_id = $1 AND workspace_id = $2"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_rules::Entity::find()
+        .filter(position_calculator_rules::Column::UserId.eq(user_id))
+        .filter(position_calculator_rules::Column::WorkspaceId.eq(workspace_id))
+        .one(&db)
         .await
-        .context("Failed to get position calculator rule")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_rule(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to get position calculator rule")?
+        .map(Into::into))
 }
 
 pub async fn upsert_rule(

@@ -3,8 +3,9 @@ mod pg_support;
 
 use agent_support::AgentPgFixture;
 use serde_json::json;
+use tinyagents::harness::message::Message;
 use tradstry_backend::service::agents::{
-    AgentActor, AgentError, AgentLane, AgentRunStatus, AgentScope, CreateAgentRun,
+    AgentActor, AgentError, AgentRunStatus, AgentScope, CreateAgentRun,
 };
 
 #[tokio::test]
@@ -57,7 +58,6 @@ async fn run_idempotency_returns_the_original_run() {
     let conversation = fixture.create_conversation().await;
     let input = CreateAgentRun {
         conversation_id: conversation.id,
-        lane: AgentLane::Deep,
         parent_run_id: None,
         input_message_id: None,
         idempotency_key: "same-request".into(),
@@ -125,26 +125,27 @@ async fn another_user_cannot_read_run_events() {
 }
 
 #[tokio::test]
-async fn checkpoint_rejects_an_older_sequence() {
+async fn run_items_are_idempotent() {
     let fixture = AgentPgFixture::new().await;
-    let run = fixture.create_run("checkpoint-order").await;
-    fixture
+    let run = fixture.create_run("run-item-order").await;
+    let message = Message::assistant("done");
+    let first = fixture
         .store
-        .save_checkpoint(&run.id, "routed", 2, &json!({"v": 2}))
+        .append_run_item(&run.id, &message)
         .await
         .unwrap();
-    let stale = fixture
+    let second = fixture
         .store
-        .save_checkpoint(&run.id, "routed", 1, &json!({"v": 1}))
-        .await;
-    assert!(matches!(stale, Err(AgentError::Conflict)));
-    let latest = fixture
-        .store
-        .latest_checkpoint(&fixture.actor, &run.id)
+        .append_run_item(&run.id, &message)
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(latest.state["v"], 2);
+    assert_eq!(first, second);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM agent_run_items WHERE run_id=$1")
+        .bind(&run.id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
 }
 
 #[tokio::test]
@@ -161,6 +162,43 @@ async fn lease_heartbeat_is_fenced_by_owner() {
     assert_eq!(claimed.status, AgentRunStatus::Running);
     assert!(!fixture.store.heartbeat(&run.id, "worker-b").await.unwrap());
     assert!(fixture.store.heartbeat(&run.id, "worker-a").await.unwrap());
+}
+
+#[tokio::test]
+async fn reclaiming_expired_root_terminalizes_orphaned_children() {
+    let fixture = AgentPgFixture::new().await;
+    let run = fixture.create_run("expired-root").await;
+    fixture
+        .store
+        .claim_run("old-worker", 120)
+        .await
+        .unwrap()
+        .unwrap();
+    fixture
+        .store
+        .create_subagent_run(&run.id, "child-run", "delegate_trade_review", "call-1")
+        .await
+        .unwrap();
+    sqlx::query("UPDATE agent_runs SET heartbeat_at=now()-interval '10 minutes' WHERE id=$1")
+        .bind(&run.id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+
+    let reclaimed = fixture
+        .store
+        .claim_run("new-worker", 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reclaimed.id, run.id);
+    let child: (String, Option<String>) =
+        sqlx::query_as("SELECT status,error_code FROM agent_runs WHERE id='child-run'")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(child.0, "failed");
+    assert_eq!(child.1.as_deref(), Some("parent_lease_expired"));
 }
 
 #[tokio::test]

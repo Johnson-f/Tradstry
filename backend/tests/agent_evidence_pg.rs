@@ -3,9 +3,7 @@ mod pg_support;
 
 use agent_support::AgentPgFixture;
 use serde_json::json;
-use tradstry_backend::service::agents::{
-    AgentClaim, AgentError, AgentLane, CreateAgentRun, NewAgentEvidence,
-};
+use tradstry_backend::service::agents::{AgentClaim, AgentError, CreateAgentRun, NewAgentEvidence};
 
 async fn run_with_message(
     fixture: &AgentPgFixture,
@@ -31,7 +29,6 @@ async fn run_with_message(
             &fixture.actor,
             &CreateAgentRun {
                 conversation_id: conversation.id,
-                lane: AgentLane::FastAi,
                 parent_run_id: None,
                 input_message_id: Some(message.id.clone()),
                 idempotency_key: key.into(),

@@ -2,12 +2,14 @@
 
 use std::sync::Arc;
 
+use sea_orm::SqlxPostgresConnector;
 use serde_json::json;
 use tokio::sync::OwnedMutexGuard;
 use tradstry_backend::service::agents::{
-    AgentActor, AgentConversation, AgentLane, AgentRun, AgentScope, AgentStore, CreateAgentRun,
+    AgentActor, AgentConversation, AgentRun, AgentScope, AgentStore, CreateAgentRun,
 };
 use tradstry_backend::service::db::Db;
+use tradstry_migration::{Migrator, MigratorTrait};
 
 use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
 
@@ -26,7 +28,11 @@ impl AgentPgFixture {
         let schema_guard = reset_schema(&pool).await;
         tradstry_backend::service::db::schema::pg::migrate(&pool)
             .await
-            .expect("migrate agent test schema");
+            .expect("migrate archived agent test schema");
+        let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+        Migrator::up(&db, None)
+            .await
+            .expect("migrate agent test runtime");
         let (user_id, workspace_id) = seed_user_workspace(&pool).await;
         let db = Arc::new(Db::from_pool(pool.clone()));
         let store = AgentStore::new(pool.clone());
@@ -57,7 +63,6 @@ impl AgentPgFixture {
                 &self.actor,
                 &CreateAgentRun {
                     conversation_id: conversation.id,
-                    lane: AgentLane::Deep,
                     parent_run_id: None,
                     input_message_id: None,
                     idempotency_key: idempotency_key.into(),
@@ -83,7 +88,6 @@ impl AgentPgFixture {
                 &self.actor,
                 &CreateAgentRun {
                     conversation_id: conversation_id.into(),
-                    lane: AgentLane::FastAi,
                     parent_run_id: None,
                     input_message_id: None,
                     idempotency_key: format!("seed-{conversation_id}"),
@@ -95,10 +99,6 @@ impl AgentPgFixture {
             .append_event(&run.id, "run_queued", &json!({}))
             .await
             .expect("append queued event");
-        self.store
-            .save_checkpoint(&run.id, "queued", 1, &json!({"stage": "queued"}))
-            .await
-            .expect("save checkpoint");
         run
     }
 
@@ -110,7 +110,7 @@ impl AgentPgFixture {
                 (SELECT count(*) FROM agent_runs WHERE conversation_id = $1) +
                 (SELECT count(*) FROM agent_run_events WHERE run_id IN
                     (SELECT id FROM agent_runs WHERE conversation_id = $1)) +
-                (SELECT count(*) FROM agent_checkpoints WHERE run_id IN
+                (SELECT count(*) FROM agent_run_items WHERE run_id IN
                     (SELECT id FROM agent_runs WHERE conversation_id = $1))",
         )
         .bind(conversation_id)

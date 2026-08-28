@@ -1,4 +1,4 @@
-//! Live, non-mutating smoke check for the TinyAgents Gemini model and Voyage provider.
+//! Live, non-mutating smoke check for the selected TinyAgents model provider and Voyage.
 
 use std::sync::Arc;
 
@@ -20,7 +20,10 @@ use tradstry_backend::service::db::Db;
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let config = AgentConfig::from_env()?;
-    let models = AgentModelRegistry::from_config(&config)?;
+    let provider = config
+        .model_provider
+        .context("AGENT_MODEL_PROVIDER is required")?;
+    let models = AgentModelRegistry::from_config(&config).await?;
     let voyage = VoyageClient::from_env()?;
     let vectors = voyage
         .embed_texts(
@@ -93,13 +96,17 @@ async fn main() -> Result<()> {
             ],
         )
         .await
-        .context("TinyAgents Gemini smoke failed")?;
+        .with_context(|| format!("TinyAgents {} smoke failed", provider.as_str()))?;
     ensure!(
         result
             .text()
             .is_some_and(|text| text.trim() == "LIVE_TINYAGENTS_OK_73"),
-        "Gemini did not preserve the exact smoke token"
+        "{} did not preserve the exact smoke token",
+        provider.as_str()
     );
-    println!("TinyAgents Gemini and Voyage smoke checks passed");
+    println!(
+        "TinyAgents {} and Voyage smoke checks passed",
+        provider.as_str()
+    );
     Ok(())
 }

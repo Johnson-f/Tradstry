@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
 use async_graphql::SimpleObject;
+use chrono::Utc;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
-const SELECT_COLS: &str = "id, user_id, workspace_id, parent_folder_id, name, sort_order, is_system, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::notebook::notebook_folders;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[serde(rename_all = "camelCase")]
@@ -45,61 +48,56 @@ pub struct MoveNotebookNodeInput {
     pub new_sort_order: i64,
 }
 
-fn opt_text(row: &sqlx::postgres::PgRow, idx: usize) -> Option<String> {
-    row.try_get::<Option<String>, _>(idx)
-        .ok()
-        .flatten()
-        .filter(|s| !s.is_empty())
-}
-
-fn row_to_notebook_folder(row: &sqlx::postgres::PgRow) -> Result<NotebookFolder> {
-    Ok(NotebookFolder {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        workspace_id: row.try_get::<String, _>(2)?,
-        parent_folder_id: opt_text(row, 3),
-        name: row.try_get::<String, _>(4)?,
-        sort_order: row.try_get::<i64, _>(5)?,
-        is_system: row.try_get::<bool, _>(6)?,
-        created_at: row.try_get::<String, _>(7)?,
-        updated_at: row.try_get::<String, _>(8)?,
-    })
+impl From<notebook_folders::Model> for NotebookFolder {
+    fn from(model: notebook_folders::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            parent_folder_id: model.parent_folder_id.filter(|value| !value.is_empty()),
+            name: model.name,
+            sort_order: model.sort_order,
+            is_system: model.is_system,
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            updated_at: model
+                .updated_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        }
+    }
 }
 
 pub async fn list_notebook_folders(
     pool: &PgPool,
     workspace_id: &str,
 ) -> Result<Vec<NotebookFolder>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM notebook_folders WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(workspace_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_folders::Entity::find()
+        .filter(notebook_folders::Column::WorkspaceId.eq(workspace_id))
+        .filter(notebook_folders::Column::DeletedAt.is_null())
+        .order_by_asc(notebook_folders::Column::SortOrder)
+        .order_by_asc(notebook_folders::Column::Name)
+        .all(&db)
         .await
-        .context("Failed to list notebook folders")?;
-
-    let mut folders = Vec::new();
-    for row in &rows {
-        folders.push(row_to_notebook_folder(row)?);
-    }
-
-    Ok(folders)
+        .context("Failed to list notebook folders")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn find_notebook_folder(pool: &PgPool, id: &str) -> Result<Option<NotebookFolder>> {
-    let sql =
-        format!("SELECT {SELECT_COLS} FROM notebook_folders WHERE id = $1 AND deleted_at IS NULL");
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(notebook_folders::Entity::find_by_id(id)
+        .filter(notebook_folders::Column::DeletedAt.is_null())
+        .one(&db)
         .await
-        .context("Failed to find notebook folder")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_notebook_folder(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find notebook folder")?
+        .map(Into::into))
 }
 
 async fn next_folder_sort_order(

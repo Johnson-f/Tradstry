@@ -1,8 +1,8 @@
 use tinyagents::harness::limits::RunLimits;
-use tinyagents::harness::model::ResponseFormat;
 use tinyagents::harness::retry::FallbackPolicy;
 use tinyagents::harness::runtime::AgentHarness;
 
+use super::schemas::AgentSchema;
 use super::{AgentModelRegistry, AgentRuntimeState};
 use crate::service::agents::AgentResult;
 use crate::service::agents::specialists::SpecialistDefinition;
@@ -31,34 +31,8 @@ pub fn build_specialist_harness(
         .with_max_wall_clock_ms(Some(definition.timeout_ms))
         .with_max_depth(1);
     policy.fallback = (fallback_names.len() > 1).then(|| FallbackPolicy::new(fallback_names));
-    policy.default_response_format = Some(ResponseFormat::json_schema(
-        "specialist_finding",
-        specialist_finding_schema(),
-    ));
+    policy.default_response_format = Some(AgentSchema::SpecialistFinding.response_format());
     policy.error_on_empty_response = true;
     harness.with_policy(policy);
     Ok(harness)
-}
-
-fn specialist_finding_schema() -> serde_json::Value {
-    serde_json::json!({
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-            "specialist": {"type": "string", "enum": ["performance", "trade_review", "market_research", "knowledge"]},
-            "summary": {"type": "string"},
-            "claims": {"type": "array", "items": {
-                "type": "object", "additionalProperties": false,
-                "properties": {
-                    "claim_id": {"type": "string"},
-                    "text": {"type": "string"},
-                    "evidence_ids": {"type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true, "items": {"type": "string"}}
-                },
-                "required": ["claim_id", "text", "evidence_ids"]
-            }},
-            "warnings": {"type": "array", "items": {"type": "string"}},
-            "missing_information": {"type": "array", "items": {"type": "string"}}
-        },
-        "required": ["specialist", "summary", "claims", "warnings", "missing_information"]
-    })
 }

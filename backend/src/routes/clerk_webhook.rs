@@ -6,6 +6,7 @@ use tracing::{error, info, warn};
 
 use crate::service::countly::Countly;
 use crate::service::db::client::Db;
+use crate::service::db::schema::tables::users_table;
 use crate::service::r2::R2Client;
 use crate::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
 use crate::service::webhooks::svix::verify_svix_signature;
@@ -71,26 +72,19 @@ pub async fn clerk_webhook(
         return HttpResponse::Ok().finish();
     };
 
-    let pool = db.pool();
-
-    let user_id =
-        match sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE clerk_uuid = $1")
-            .bind(clerk_uuid)
-            .fetch_optional(pool)
-            .await
-        {
-            Ok(Some(id)) => id,
-            Ok(None) => return HttpResponse::Ok().finish(),
-            Err(err) => {
-                error!(error = %err, "failed to look up the deleted user");
-                return HttpResponse::InternalServerError().finish();
-            }
-        };
+    let user_id = match users_table::find_by_clerk_uuid(db.connection(), clerk_uuid).await {
+        Ok(Some(user)) => user.id,
+        Ok(None) => return HttpResponse::Ok().finish(),
+        Err(err) => {
+            error!(error = %err, "failed to look up the deleted user");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
 
     // The keys are only reachable through rows the delete is about to remove, so the
     // objects go first; a failure here returns 500 so Clerk retries rather than
     // silently leaking blobs.
-    match collect_r2_keys(pool, &user_id).await {
+    match collect_r2_keys(db.connection(), &user_id).await {
         Ok(keys) => {
             for key in keys {
                 if let Err(err) = r2.delete_object(&key).await {
@@ -105,7 +99,7 @@ pub async fn clerk_webhook(
         }
     }
 
-    match delete_user_by_clerk_uuid(pool, clerk_uuid).await {
+    match delete_user_by_clerk_uuid(db.connection(), clerk_uuid).await {
         Ok(Some(id)) => {
             info!(user_id = %id, "purged a deleted clerk user");
             HttpResponse::Ok().finish()

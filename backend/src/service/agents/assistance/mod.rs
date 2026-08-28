@@ -92,17 +92,29 @@ async fn invoke_text(
             Ok(result.text().unwrap_or_default().to_string())
         }
         Err(error) => {
-            log::warn!("agent notebook assistance failed: {error}");
+            let error = crate::service::agents::runtime::provider_failure::model_error(
+                error,
+                crate::service::agents::runtime::provider_failure::ModelCallContext {
+                    stage: invocation.workload,
+                    role: invocation.role.as_str(),
+                    schema_name: None,
+                },
+            );
+            let error_code = match &error {
+                AgentError::Provider(failure) => failure.error_code.as_str(),
+                AgentError::Cancelled => "cancelled",
+                _ => "assistance_failed",
+            };
             service
                 .budget()
                 .finish_assistance_action(
                     actor,
                     &request_id,
                     tinyagents::harness::usage::UsageTotals::default(),
-                    Some("provider_unavailable"),
+                    Some(error_code),
                 )
                 .await?;
-            Err(AgentError::ProviderUnavailable)
+            Err(error)
         }
     }
 }

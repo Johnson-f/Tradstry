@@ -1,9 +1,13 @@
 use anyhow::{Context, Result, ensure};
 use async_graphql::{InputObject, SimpleObject};
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::calculator::position_calculator_plans;
 use crate::service::trade_review::types::ExecutionInstrument;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
@@ -86,38 +90,43 @@ pub struct UpdatePositionCalculatorPlanInput {
     pub clear_notes: bool,
 }
 
-const SELECT_COLS: &str = "id, user_id, workspace_id, symbol, position_type, entry_price, stop_loss, account_balance, account_risk, total_shares, position_value, status, tranches_json, notes, \
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
-    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at, \
-    instrument_json::text AS instrument_json";
-
 fn nullable_text(value: Option<String>) -> Option<String> {
     value.filter(|text| !text.is_empty())
 }
 
-fn row_to_plan(row: &sqlx::postgres::PgRow) -> Result<PositionCalculatorPlan> {
-    let tranches_json = row.try_get::<String, _>(12)?;
-    let tranches: Vec<Tranche> = serde_json::from_str(&tranches_json).unwrap_or_default();
-
-    Ok(PositionCalculatorPlan {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        workspace_id: row.try_get::<String, _>(2)?,
-        symbol: row.try_get::<String, _>(3)?,
-        position_type: row.try_get::<String, _>(4)?,
-        entry_price: row.try_get::<f64, _>(5)?,
-        stop_loss: row.try_get::<f64, _>(6)?,
-        account_balance: row.try_get::<f64, _>(7)?,
-        account_risk: row.try_get::<f64, _>(8)?,
-        total_shares: row.try_get::<f64, _>(9)?,
-        position_value: row.try_get::<f64, _>(10)?,
-        status: row.try_get::<String, _>(11)?,
-        tranches,
-        notes: nullable_text(row.try_get::<Option<String>, _>(13)?),
-        created_at: row.try_get::<String, _>(14)?,
-        updated_at: row.try_get::<String, _>(15)?,
-        instrument_json: nullable_text(row.try_get::<Option<String>, _>(16)?),
-    })
+impl From<position_calculator_plans::Model> for PositionCalculatorPlan {
+    fn from(model: position_calculator_plans::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            symbol: model.symbol,
+            position_type: model.position_type,
+            entry_price: model.entry_price,
+            stop_loss: model.stop_loss,
+            account_balance: model.account_balance,
+            account_risk: model.account_risk,
+            total_shares: model.total_shares,
+            position_value: model.position_value,
+            status: model.status,
+            tranches: serde_json::from_str(&model.tranches_json).unwrap_or_default(),
+            notes: nullable_text(model.notes),
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            updated_at: model
+                .updated_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            instrument_json: model
+                .instrument_json
+                .and_then(|value| serde_json::to_string(&value).ok())
+                .and_then(|value| nullable_text(Some(value))),
+        }
+    }
 }
 
 pub async fn list_plans(
@@ -125,22 +134,17 @@ pub async fn list_plans(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<PositionCalculatorPlan>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM position_calculator_plans WHERE user_id = $1 AND workspace_id = $2 ORDER BY created_at DESC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_plans::Entity::find()
+        .filter(position_calculator_plans::Column::UserId.eq(user_id))
+        .filter(position_calculator_plans::Column::WorkspaceId.eq(workspace_id))
+        .order_by_desc(position_calculator_plans::Column::CreatedAt)
+        .all(&db)
         .await
-        .context("Failed to list position calculator plans")?;
-
-    let mut plans = Vec::new();
-    for row in &rows {
-        plans.push(row_to_plan(row)?);
-    }
-
-    Ok(plans)
+        .context("Failed to list position calculator plans")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn find_plan(
@@ -148,20 +152,13 @@ pub async fn find_plan(
     id: &str,
     user_id: &str,
 ) -> Result<Option<PositionCalculatorPlan>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM position_calculator_plans WHERE id = $1 AND user_id = $2"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_plans::Entity::find_by_id(id)
+        .filter(position_calculator_plans::Column::UserId.eq(user_id))
+        .one(&db)
         .await
-        .context("Failed to find position calculator plan")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_plan(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find position calculator plan")?
+        .map(Into::into))
 }
 
 pub async fn create_plan(
@@ -173,7 +170,7 @@ pub async fn create_plan(
     let instrument_json = input
         .instrument_json
         .as_deref()
-        .map(|value| -> Result<String> {
+        .map(|value| -> Result<serde_json::Value> {
             let instrument: ExecutionInstrument =
                 serde_json::from_str(value).context("Invalid plan instrument")?;
             let instrument = instrument.normalized();
@@ -183,7 +180,7 @@ pub async fn create_plan(
                     "Option underlying must match the plan symbol"
                 );
             }
-            Ok(serde_json::to_string(&instrument)?)
+            Ok(serde_json::to_value(&instrument)?)
         })
         .transpose()?;
 
@@ -202,30 +199,28 @@ pub async fn create_plan(
 
     let tranches_json = serde_json::to_string(&tranches)?;
 
-    sqlx::query(
-        "INSERT INTO position_calculator_plans (id, user_id, workspace_id, symbol, position_type, entry_price, stop_loss, account_balance, account_risk, total_shares, position_value, tranches_json, notes, instrument_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)",
-    )
-    .bind(id.as_str())
-    .bind(user_id)
-    .bind(&input.workspace_id)
-    .bind(input.symbol.trim())
-    .bind(input.position_type.as_str())
-    .bind(input.entry_price)
-    .bind(input.stop_loss)
-    .bind(input.account_balance)
-    .bind(input.account_risk)
-    .bind(input.total_shares)
-    .bind(input.position_value)
-    .bind(tranches_json.as_str())
-    .bind(input.notes.as_deref())
-    .bind(instrument_json.as_deref())
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_plans::ActiveModel {
+        id: Set(id),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(input.workspace_id),
+        symbol: Set(input.symbol.trim().to_owned()),
+        position_type: Set(input.position_type),
+        entry_price: Set(input.entry_price),
+        stop_loss: Set(input.stop_loss),
+        account_balance: Set(input.account_balance),
+        account_risk: Set(input.account_risk),
+        total_shares: Set(input.total_shares),
+        position_value: Set(input.position_value),
+        tranches_json: Set(tranches_json),
+        notes: Set(input.notes),
+        instrument_json: Set(instrument_json),
+        ..Default::default()
+    }
+    .insert(&db)
     .await
-    .context("Failed to insert position calculator plan")?;
-
-    find_plan(pool, &id, user_id)
-        .await?
-        .context("Plan not found after insert")
+    .context("Failed to insert position calculator plan")?
+    .into())
 }
 
 pub async fn update_plan(
@@ -277,34 +272,30 @@ pub async fn update_plan(
 
     let tranches_json = serde_json::to_string(&tranches)?;
 
-    sqlx::query(
-        "UPDATE position_calculator_plans SET status = $1, tranches_json = $2, notes = $3 WHERE id = $4 AND user_id = $5",
-    )
-    .bind(status.as_str())
-    .bind(tranches_json.as_str())
-    .bind(notes.as_deref())
-    .bind(id)
-    .bind(user_id)
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_plans::ActiveModel {
+        id: Set(id.to_owned()),
+        status: Set(status),
+        tranches_json: Set(tranches_json),
+        notes: Set(notes),
+        ..Default::default()
+    }
+    .update(&db)
     .await
-    .context("Failed to update position calculator plan")?;
-
-    find_plan(pool, id, user_id)
-        .await?
-        .context("Plan not found after update")
+    .context("Failed to update position calculator plan")?
+    .into())
 }
 
 pub async fn delete_plan(pool: &PgPool, id: &str, user_id: &str) -> Result<bool> {
-    let rows_affected =
-        sqlx::query("DELETE FROM position_calculator_plans WHERE id = $1 AND user_id = $2")
-            .bind(id)
-            .bind(user_id)
-            .execute(pool)
-            .await
-            .context("Failed to delete position calculator plan")?
-            .rows_affected();
-
-    Ok(rows_affected > 0)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_plans::Entity::delete_many()
+        .filter(position_calculator_plans::Column::Id.eq(id))
+        .filter(position_calculator_plans::Column::UserId.eq(user_id))
+        .exec(&db)
+        .await
+        .context("Failed to delete position calculator plan")?
+        .rows_affected
+        > 0)
 }
 
 // ---- Offline-first sync (whole-row LWW + soft-delete) --------------------

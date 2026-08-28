@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -76,18 +77,38 @@ impl AgentStore {
         ) {
             return Err(AgentError::Validation("invalid evidence freshness".into()));
         }
+        let idempotency_key = input.tool_call_id.as_ref().map(|tool_call_id| {
+            evidence_idempotency_key(
+                tool_call_id,
+                &input.source_type,
+                &input.source_id,
+                &input.source_version,
+            )
+        });
+        let id = idempotency_key.as_ref().map_or_else(
+            || Uuid::new_v4().to_string(),
+            |key| {
+                Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{run_id}:{key}").as_bytes()).to_string()
+            },
+        );
         let row = sqlx::query(
             "INSERT INTO agent_evidence
              (id, run_id, tool_call_id, user_id, workspace_id, source_type, source_id,
-              source_version, title, excerpt, source_url, freshness, payload_json)
-             SELECT $1, r.id, $3, r.user_id, r.workspace_id, $4, $5, $6, $7, $8, $9, $10, $11
+              source_version, title, excerpt, source_url, freshness, payload_json, idempotency_key)
+             SELECT $1, r.id, $3, r.user_id, r.workspace_id, $4, $5, $6, $7, $8, $9, $10, $11, $12
              FROM agent_runs r WHERE r.id = $2
                AND ($3::text IS NULL OR EXISTS (
                     SELECT 1 FROM agent_tool_calls t WHERE t.id = $3 AND t.run_id = r.id
                ))
+             ON CONFLICT (run_id, idempotency_key) DO UPDATE SET
+                title = EXCLUDED.title,
+                excerpt = EXCLUDED.excerpt,
+                source_url = EXCLUDED.source_url,
+                freshness = EXCLUDED.freshness,
+                payload_json = EXCLUDED.payload_json
              RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(id)
         .bind(run_id)
         .bind(&input.tool_call_id)
         .bind(input.source_type.trim())
@@ -98,6 +119,7 @@ impl AgentStore {
         .bind(&input.source_url)
         .bind(&input.freshness)
         .bind(&input.payload)
+        .bind(idempotency_key)
         .fetch_optional(self.pool())
         .await?;
         match row {
@@ -106,6 +128,90 @@ impl AgentStore {
                 "tool evidence must belong to the same run".into(),
             )),
         }
+    }
+
+    pub async fn complete_tool_call_with_evidence(
+        &self,
+        run_id: &str,
+        tool_call_id: &str,
+        evidence: &[NewAgentEvidence],
+        summary: &str,
+    ) -> AgentResult<Vec<AgentEvidence>> {
+        let mut tx = self.pool().begin().await?;
+        let tool = sqlx::query(
+            "SELECT user_id, workspace_id FROM agent_tool_calls
+             WHERE id = $1 AND run_id = $2 AND status = 'running' FOR UPDATE",
+        )
+        .bind(tool_call_id)
+        .bind(run_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(tool) = tool else {
+            return Err(AgentError::Conflict);
+        };
+        let user_id: String = tool.try_get("user_id")?;
+        let workspace_id: String = tool.try_get("workspace_id")?;
+        let mut stored = Vec::with_capacity(evidence.len());
+        for input in evidence {
+            validate_evidence(input)?;
+            let key = evidence_idempotency_key(
+                tool_call_id,
+                &input.source_type,
+                &input.source_id,
+                &input.source_version,
+            );
+            let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{run_id}:{key}").as_bytes())
+                .to_string();
+            let row = sqlx::query(
+                "INSERT INTO agent_evidence
+                 (id, run_id, tool_call_id, user_id, workspace_id, source_type, source_id,
+                  source_version, title, excerpt, source_url, freshness, payload_json, idempotency_key)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                 ON CONFLICT (run_id, idempotency_key) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    excerpt = EXCLUDED.excerpt,
+                    source_url = EXCLUDED.source_url,
+                    freshness = EXCLUDED.freshness,
+                    payload_json = EXCLUDED.payload_json
+                 RETURNING *",
+            )
+            .bind(id)
+            .bind(run_id)
+            .bind(tool_call_id)
+            .bind(&user_id)
+            .bind(&workspace_id)
+            .bind(input.source_type.trim())
+            .bind(input.source_id.trim())
+            .bind(input.source_version.trim())
+            .bind(input.title.trim())
+            .bind(input.excerpt.chars().take(2_000).collect::<String>())
+            .bind(&input.source_url)
+            .bind(&input.freshness)
+            .bind(&input.payload)
+            .bind(key)
+            .fetch_one(&mut *tx)
+            .await?;
+            stored.push(evidence_from_row(&row)?);
+        }
+        let updated = sqlx::query(
+            "UPDATE agent_tool_calls SET status = 'completed', result_summary = $1,
+             completed_at = now() WHERE id = $2 AND status = 'running'",
+        )
+        .bind(summary.chars().take(1_000).collect::<String>())
+        .bind(tool_call_id)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(AgentError::Conflict);
+        }
+        sqlx::query(
+            "UPDATE agent_runs SET tool_calls = tool_calls + 1, updated_at = now() WHERE id = $1",
+        )
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(stored)
     }
 
     pub async fn record_answer_claims(
@@ -240,4 +346,43 @@ impl AgentStore {
         .await?;
         rows.iter().map(evidence_from_row).collect()
     }
+}
+
+fn validate_evidence(input: &NewAgentEvidence) -> AgentResult<()> {
+    if input.source_type.trim().is_empty()
+        || input.source_id.trim().is_empty()
+        || input.source_version.trim().is_empty()
+        || input.title.trim().is_empty()
+    {
+        return Err(AgentError::Validation(
+            "evidence source identity and title cannot be blank".into(),
+        ));
+    }
+    if !matches!(
+        input.freshness.as_str(),
+        "canonical" | "fresh" | "stale" | "external"
+    ) {
+        return Err(AgentError::Validation("invalid evidence freshness".into()));
+    }
+    Ok(())
+}
+
+fn evidence_idempotency_key(
+    tool_call_id: &str,
+    source_type: &str,
+    source_id: &str,
+    source_version: &str,
+) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            format!(
+                "{tool_call_id}\0{}\0{}\0{}",
+                source_type.trim(),
+                source_id.trim(),
+                source_version.trim()
+            )
+            .as_bytes()
+        )
+    )
 }

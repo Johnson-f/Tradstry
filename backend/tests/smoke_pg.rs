@@ -1,13 +1,14 @@
-//! End-to-end smoke test: runs the converted sqlx/Postgres queries against a
+//! End-to-end smoke test: runs the database queries against a
 //! real Postgres (docker-compose.test.yml) to catch SQL-level errors the Rust
 //! compiler can't see — to_char timestamp formatting, ON CONFLICT targets,
 //! $N bind counts, COUNT/SUM type decoding, and the bool/timestamptz columns.
 
 mod pg_support;
 use pg_support::{reset_schema, test_pool};
+use sea_orm::SqlxPostgresConnector;
 
 use tradstry_backend::service::db::schema::tables::{
-    journal_table, tags_table, users_table, workspaces_table,
+    journal_table, tags_table, user_prompts_table, users_table, workspaces_table,
 };
 
 #[tokio::test]
@@ -17,17 +18,52 @@ async fn end_to_end_user_account_journal_tags() {
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
 
     // --- users: upsert path (ON CONFLICT clerk_uuid) ---
-    let (user, created) = users_table::find_or_create_user(&pool, "clerk-smoke", "Jo", "jo@x.com")
+    let (user, created) = users_table::find_or_create_user(&db, "clerk-smoke", "Jo", "jo@x.com")
         .await
         .expect("find_or_create_user");
     assert!(created, "first call creates the user");
-    let (_again, created2) =
-        users_table::find_or_create_user(&pool, "clerk-smoke", "Jo", "jo@x.com")
-            .await
-            .expect("find_or_create_user idempotent");
+    let (_again, created2) = users_table::find_or_create_user(&db, "clerk-smoke", "Jo", "jo@x.com")
+        .await
+        .expect("find_or_create_user idempotent");
     assert!(!created2, "second call finds the existing user");
+
+    let (left, right) = tokio::join!(
+        users_table::find_or_create_user(&db, "clerk-race", "Race", "race@x.com"),
+        users_table::find_or_create_user(&db, "clerk-race", "Race", "race@x.com")
+    );
+    let (left, left_created) = left.expect("first concurrent user lookup");
+    let (right, right_created) = right.expect("second concurrent user lookup");
+    assert_eq!(left.id, right.id);
+    assert_ne!(left_created, right_created);
+
+    let prompt = user_prompts_table::create_user_prompt(&db, &user.id, "Review", "Check risk")
+        .await
+        .expect("create prompt");
+    let prompt = user_prompts_table::update_user_prompt(
+        &db,
+        &prompt.id,
+        &user.id,
+        Some("Daily review"),
+        None,
+    )
+    .await
+    .expect("update prompt");
+    assert_eq!(prompt.name, "Daily review");
+    assert_eq!(
+        user_prompts_table::list_user_prompts(&db, &user.id)
+            .await
+            .expect("list prompts")
+            .len(),
+        1
+    );
+    assert!(
+        user_prompts_table::delete_user_prompt(&db, &prompt.id, &user.id)
+            .await
+            .expect("delete prompt")
+    );
 
     // --- workspaces: create + read back the BOOLEAN + timestamptz columns ---
     let workspace = workspaces_table::create_default_workspace(&pool, &user.id)

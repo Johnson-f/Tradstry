@@ -1,8 +1,13 @@
 use anyhow::{Context, Result};
 use async_graphql::{InputObject, SimpleObject};
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
+
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::calculator::position_calculator_history;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -65,32 +70,31 @@ pub struct CreatePositionCalculatorHistoryInput {
     pub tranches: Option<Vec<CreateHistoryTrancheInput>>,
 }
 
-const SELECT_COLS: &str = "id, user_id, workspace_id, symbol, position_type, entry_price, stop_loss, account_balance, account_risk, shares, position_value, account_pct, stop_loss_pct, \
-    plan_id, tranches_json, \
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
-
-fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<PositionCalculatorHistoryEntry> {
-    let tranches_json = row.try_get::<String, _>(14)?;
-    let tranches = serde_json::from_str(&tranches_json).unwrap_or_default();
-
-    Ok(PositionCalculatorHistoryEntry {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        workspace_id: row.try_get::<String, _>(2)?,
-        symbol: row.try_get::<String, _>(3)?,
-        position_type: row.try_get::<String, _>(4)?,
-        entry_price: row.try_get::<f64, _>(5)?,
-        stop_loss: row.try_get::<f64, _>(6)?,
-        account_balance: row.try_get::<f64, _>(7)?,
-        account_risk: row.try_get::<f64, _>(8)?,
-        shares: row.try_get::<f64, _>(9)?,
-        position_value: row.try_get::<f64, _>(10)?,
-        account_pct: row.try_get::<f64, _>(11)?,
-        stop_loss_pct: row.try_get::<f64, _>(12)?,
-        plan_id: row.try_get::<Option<String>, _>(13)?,
-        tranches,
-        created_at: row.try_get::<String, _>(15)?,
-    })
+impl From<position_calculator_history::Model> for PositionCalculatorHistoryEntry {
+    fn from(model: position_calculator_history::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            symbol: model.symbol,
+            position_type: model.position_type,
+            entry_price: model.entry_price,
+            stop_loss: model.stop_loss,
+            account_balance: model.account_balance,
+            account_risk: model.account_risk,
+            shares: model.shares,
+            position_value: model.position_value,
+            account_pct: model.account_pct,
+            stop_loss_pct: model.stop_loss_pct,
+            plan_id: model.plan_id,
+            tranches: serde_json::from_str(&model.tranches_json).unwrap_or_default(),
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        }
+    }
 }
 
 pub async fn list_history(
@@ -98,22 +102,17 @@ pub async fn list_history(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<PositionCalculatorHistoryEntry>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM position_calculator_history WHERE user_id = $1 AND workspace_id = $2 ORDER BY created_at DESC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_history::Entity::find()
+        .filter(position_calculator_history::Column::UserId.eq(user_id))
+        .filter(position_calculator_history::Column::WorkspaceId.eq(workspace_id))
+        .order_by_desc(position_calculator_history::Column::CreatedAt)
+        .all(&db)
         .await
-        .context("Failed to list position calculator history")?;
-
-    let mut entries = Vec::new();
-    for row in &rows {
-        entries.push(row_to_entry(row)?);
-    }
-
-    Ok(entries)
+        .context("Failed to list position calculator history")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn create_history_entry(
@@ -137,55 +136,41 @@ pub async fn create_history_entry(
         .collect();
     let tranches_json = serde_json::to_string(&tranches)?;
 
-    sqlx::query(
-        "INSERT INTO position_calculator_history (id, user_id, workspace_id, symbol, position_type, entry_price, stop_loss, account_balance, account_risk, shares, position_value, account_pct, stop_loss_pct, plan_id, tranches_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
-    )
-    .bind(id.as_str())
-    .bind(user_id)
-    .bind(&input.workspace_id)
-    .bind(input.symbol.trim())
-    .bind(input.position_type.as_str())
-    .bind(input.entry_price)
-    .bind(input.stop_loss)
-    .bind(input.account_balance)
-    .bind(input.account_risk)
-    .bind(input.shares)
-    .bind(input.position_value)
-    .bind(input.account_pct)
-    .bind(input.stop_loss_pct)
-    .bind(input.plan_id.as_deref())
-    .bind(tranches_json.as_str())
-    .execute(pool)
-    .await
-    .context("Failed to insert position calculator history entry")?;
-
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM position_calculator_history WHERE id = $1 AND user_id = $2"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id.as_str())
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to fetch history entry after insert")?;
-
-    match row {
-        Some(row) => Ok(row_to_entry(&row)?),
-        None => anyhow::bail!("History entry not found after insert"),
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_history::ActiveModel {
+        id: Set(id),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(input.workspace_id),
+        symbol: Set(input.symbol.trim().to_owned()),
+        position_type: Set(input.position_type),
+        entry_price: Set(input.entry_price),
+        stop_loss: Set(input.stop_loss),
+        account_balance: Set(input.account_balance),
+        account_risk: Set(input.account_risk),
+        shares: Set(input.shares),
+        position_value: Set(input.position_value),
+        account_pct: Set(input.account_pct),
+        stop_loss_pct: Set(input.stop_loss_pct),
+        plan_id: Set(input.plan_id),
+        tranches_json: Set(tranches_json),
+        ..Default::default()
     }
+    .insert(&db)
+    .await
+    .context("Failed to insert position calculator history entry")?
+    .into())
 }
 
 pub async fn delete_history_entry(pool: &PgPool, id: &str, user_id: &str) -> Result<bool> {
-    let rows_affected =
-        sqlx::query("DELETE FROM position_calculator_history WHERE id = $1 AND user_id = $2")
-            .bind(id)
-            .bind(user_id)
-            .execute(pool)
-            .await
-            .context("Failed to delete position calculator history entry")?
-            .rows_affected();
-
-    Ok(rows_affected > 0)
+    let db = sea_orm_connection(pool);
+    Ok(position_calculator_history::Entity::delete_many()
+        .filter(position_calculator_history::Column::Id.eq(id))
+        .filter(position_calculator_history::Column::UserId.eq(user_id))
+        .exec(&db)
+        .await
+        .context("Failed to delete position calculator history entry")?
+        .rows_affected
+        > 0)
 }
 
 // ---- Offline-first sync (append + soft-delete only, never updated) -------

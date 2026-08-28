@@ -28,6 +28,44 @@ async fn seed_journal_entry(pool: &PgPool, id: &str, user_id: &str, workspace_id
 }
 
 #[tokio::test]
+async fn seaorm_tag_edits_advance_the_sync_cursor() {
+    let pool = test_pool().await;
+    let _g = reset_schema(&pool).await;
+    migrate(&pool).await;
+    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let category = t::create_category(&pool, &user_id, &workspace_id, "Setups", None)
+        .await
+        .unwrap();
+    let tag = t::create_tag(
+        &pool,
+        &user_id,
+        &workspace_id,
+        &category.id,
+        "Breakout",
+        None,
+    )
+    .await
+    .unwrap();
+    let before: chrono::DateTime<chrono::Utc> = sqlx::query_scalar(
+        "UPDATE tags SET updated_at=now()-interval '1 day' WHERE id=$1 RETURNING updated_at",
+    )
+    .bind(&tag.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let cookie = (before + chrono::Duration::hours(1)).to_rfc3339();
+
+    t::rename_tag(&pool, &user_id, &tag.id, "Breakout v2")
+        .await
+        .unwrap();
+    let deltas = t::tags_since(&pool, &user_id, &workspace_id, Some(&cookie))
+        .await
+        .unwrap();
+    assert_eq!(deltas.len(), 1);
+    assert_eq!(deltas[0].name, "Breakout v2");
+}
+
+#[tokio::test]
 async fn category_create_rename_delete_flow_and_since() {
     let pool = test_pool().await;
     let _g = reset_schema(&pool).await;

@@ -1,6 +1,7 @@
 mod pg_support;
 
 use pg_support::{reset_schema, test_pool};
+use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
 use uuid::Uuid;
 
@@ -78,9 +79,8 @@ async fn collects_every_r2_key_for_the_user() {
 
     let (user_id, _clerk_uuid, key) = seed_user_with_image(&pool).await;
 
-    let keys = collect_r2_keys(&pool, &user_id)
-        .await
-        .expect("collect keys");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let keys = collect_r2_keys(&db, &user_id).await.expect("collect keys");
 
     assert_eq!(keys, vec![key]);
 }
@@ -93,7 +93,8 @@ async fn deletes_the_user_and_returns_the_internal_id() {
 
     let (user_id, clerk_uuid, _key) = seed_user_with_image(&pool).await;
 
-    let deleted = delete_user_by_clerk_uuid(&pool, &clerk_uuid)
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let deleted = delete_user_by_clerk_uuid(&db, &clerk_uuid)
         .await
         .expect("delete user");
 
@@ -114,7 +115,8 @@ async fn returns_none_for_an_unknown_clerk_uuid() {
     let _guard = reset_schema(&pool).await;
     let pool = migrated_pool().await;
 
-    let deleted = delete_user_by_clerk_uuid(&pool, "user_does_not_exist")
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let deleted = delete_user_by_clerk_uuid(&db, "user_does_not_exist")
         .await
         .expect("delete user");
 

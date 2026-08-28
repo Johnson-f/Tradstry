@@ -10,6 +10,44 @@ use crate::service::agents::{
 };
 
 impl AgentStore {
+    pub async fn create_action_proposal_from_tool(
+        &self,
+        actor: &AgentActor,
+        run_id: &str,
+        tool_call_id: &str,
+        payload: &AgentActionPayload,
+        preview: &AgentActionPreview,
+        ttl_minutes: i64,
+    ) -> AgentResult<AgentActionProposal> {
+        let ttl_minutes = ttl_minutes.clamp(1, 60);
+        let row = sqlx::query(
+            "INSERT INTO agent_action_proposals
+             (id,run_id,tool_call_id,conversation_id,user_id,workspace_id,kind,payload_json,
+              preview_json,expected_versions_json,expires_at)
+             SELECT $1,r.id,$3,r.conversation_id,r.user_id,r.workspace_id,$4,$5,$6,$7,$8
+             FROM agent_runs r
+             WHERE r.id=$2 AND r.user_id=$9
+               AND EXISTS(SELECT 1 FROM agent_tool_calls t WHERE t.id=$3 AND t.run_id=r.id)
+             ON CONFLICT (run_id,tool_call_id) DO UPDATE SET tool_call_id=EXCLUDED.tool_call_id
+             RETURNING *",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(run_id)
+        .bind(tool_call_id)
+        .bind(payload.kind())
+        .bind(serde_json::to_value(payload).map_err(|_| AgentError::Internal)?)
+        .bind(serde_json::to_value(preview).map_err(|_| AgentError::Internal)?)
+        .bind(expected_versions(payload))
+        .bind(Utc::now() + Duration::minutes(ttl_minutes))
+        .bind(&actor.user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.as_ref()
+            .map(proposal_from_row)
+            .transpose()?
+            .ok_or(AgentError::NotFound)
+    }
+
     pub async fn claim_action_execution(
         &self,
         lease_owner: &str,

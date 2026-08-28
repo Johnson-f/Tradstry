@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tradstry SeaORM Schema Change"
+  short_description: "Change Tradstry database schemas safely"
+  default_prompt: "Use $seaorm-schema-change to implement and verify this Tradstry database schema change."

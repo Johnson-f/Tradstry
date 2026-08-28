@@ -1,9 +1,14 @@
 use anyhow::{Context, Result, bail, ensure};
 use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::Serialize;
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
+
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::trading::tags;
+use crate::service::db::error::is_unique_violation as is_sea_unique_violation;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,11 +122,39 @@ fn row_to_tag(row: &sqlx::postgres::PgRow) -> Result<Tag> {
     })
 }
 
+impl From<tags::Model> for Tag {
+    fn from(model: tags::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            workspace_id: model.workspace_id,
+            category_id: model.category_id,
+            name: model.name,
+            color: model.color,
+            created_at: model
+                .created_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            updated_at: model
+                .updated_at
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        }
+    }
+}
+
 fn new_id() -> String {
     Uuid::new_v4().to_string()
 }
 
 fn is_unique_violation(err: &anyhow::Error) -> bool {
+    if let Some(error) = err.downcast_ref::<DbErr>()
+        && is_sea_unique_violation(error)
+    {
+        return true;
+    }
     // Prefer the SQLSTATE code (23505 = unique_violation) when this is a sqlx
     // database error; fall back to a substring match on the message.
     if let Some(sqlx::Error::Database(db_err)) = err.downcast_ref::<sqlx::Error>()
@@ -515,39 +548,32 @@ pub async fn list_strategy_library_tags(
     user_id: &str,
     category_id: Option<&str>,
 ) -> Result<Vec<Tag>> {
-    let rows = match category_id {
-        Some(category_id) => sqlx::query(sqlx::AssertSqlSafe(format!(
-            "SELECT {TAG_COLS} FROM tags WHERE tags.user_id=$1 AND tags.category_id=$2 AND tags.deleted_at IS NULL ORDER BY tags.name"
-        )))
-        .bind(user_id)
-        .bind(category_id)
-        .fetch_all(pool)
-        .await,
-        None => sqlx::query(sqlx::AssertSqlSafe(format!(
-            "SELECT {TAG_COLS} FROM tags WHERE tags.user_id=$1 AND tags.deleted_at IS NULL ORDER BY tags.name"
-        )))
-        .bind(user_id)
-        .fetch_all(pool)
-        .await,
+    let db = sea_orm_connection(pool);
+    let mut query = tags::Entity::find()
+        .filter(tags::Column::UserId.eq(user_id))
+        .filter(tags::Column::DeletedAt.is_null());
+    if let Some(category_id) = category_id {
+        query = query.filter(tags::Column::CategoryId.eq(category_id));
     }
-    .context("Failed to list strategy library tags")?;
-    rows.iter().map(row_to_tag).collect()
+    Ok(query
+        .order_by_asc(tags::Column::Name)
+        .all(&db)
+        .await
+        .context("Failed to list strategy library tags")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn find_tag(pool: &PgPool, user_id: &str, id: &str) -> Result<Option<Tag>> {
-    let row = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "SELECT {TAG_COLS} FROM tags WHERE tags.id = $1 AND tags.user_id = $2 AND tags.deleted_at IS NULL"
-    )))
-    .bind(id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .context("Failed to find tag")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_tag(&row)?)),
-        None => Ok(None),
-    }
+    let db = sea_orm_connection(pool);
+    Ok(tags::Entity::find_by_id(id)
+        .filter(tags::Column::UserId.eq(user_id))
+        .filter(tags::Column::DeletedAt.is_null())
+        .one(&db)
+        .await
+        .context("Failed to find tag")?
+        .map(Into::into))
 }
 
 pub async fn create_tag(
@@ -566,61 +592,62 @@ pub async fn create_tag(
         .await?
         .context("category not found")?;
 
-    let id = new_id();
-    let now = Utc::now();
-
-    let result = sqlx::query(
-        "INSERT INTO tags (id, user_id, workspace_id, category_id, name, color, created_at, updated_at, hlc) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8)",
-    )
-    .bind(id.as_str())
-    .bind(user_id)
-    .bind(workspace_id)
-    .bind(category_id)
-    .bind(name)
-    .bind(color)
-    .bind(now)
-    .bind(crate::service::hlc::stamp())
-    .execute(pool)
+    let db = sea_orm_connection(pool);
+    let now = Utc::now().fixed_offset();
+    let result = tags::ActiveModel {
+        id: Set(new_id()),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(workspace_id.to_owned()),
+        category_id: Set(category_id.to_owned()),
+        name: Set(name.to_owned()),
+        color: Set(color.map(str::to_owned)),
+        created_at: Set(now),
+        updated_at: Set(now),
+        hlc: Set(crate::service::hlc::stamp()),
+        ..Default::default()
+    }
+    .insert(&db)
     .await
     .map_err(anyhow::Error::from);
 
-    if let Err(err) = result {
-        if is_unique_violation(&err) {
-            bail!("a tag named \"{name}\" already exists in this category");
+    match result {
+        Ok(model) => Ok(model.into()),
+        Err(error) => {
+            if is_unique_violation(&error) {
+                bail!("a tag named \"{name}\" already exists in this category");
+            }
+            Err(error).context("Failed to insert tag")
         }
-        return Err(err).context("Failed to insert tag");
     }
-
-    find_tag(pool, user_id, &id)
-        .await?
-        .context("Tag not found after insert")
 }
 
 pub async fn rename_tag(pool: &PgPool, user_id: &str, id: &str, name: &str) -> Result<Tag> {
     let name = name.trim();
     ensure!(!name.is_empty(), "tag name cannot be empty");
 
-    let result =
-        sqlx::query("UPDATE tags SET name = $1, updated_at = $2 WHERE id = $3 AND user_id = $4")
-            .bind(name)
-            .bind(Utc::now())
-            .bind(id)
-            .bind(user_id)
-            .execute(pool)
-            .await
-            .map_err(anyhow::Error::from);
-
-    if let Err(err) = result {
-        if is_unique_violation(&err) {
-            bail!("a tag named \"{name}\" already exists in this category");
-        }
-        return Err(err).context("Failed to rename tag");
-    }
-
     find_tag(pool, user_id, id)
         .await?
-        .context("Tag not found after rename")
+        .context("Tag not found")?;
+    let db = sea_orm_connection(pool);
+    let result = tags::ActiveModel {
+        id: Set(id.to_owned()),
+        name: Set(name.to_owned()),
+        updated_at: Set(Utc::now().fixed_offset()),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .map_err(anyhow::Error::from);
+
+    match result {
+        Ok(model) => Ok(model.into()),
+        Err(error) => {
+            if is_unique_violation(&error) {
+                bail!("a tag named \"{name}\" already exists in this category");
+            }
+            Err(error).context("Failed to rename tag")
+        }
+    }
 }
 
 pub async fn set_tag_color(
@@ -629,18 +656,20 @@ pub async fn set_tag_color(
     id: &str,
     color: Option<&str>,
 ) -> Result<Tag> {
-    sqlx::query("UPDATE tags SET color = $1, updated_at = $2 WHERE id = $3 AND user_id = $4")
-        .bind(color)
-        .bind(Utc::now())
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
-        .await
-        .context("Failed to set tag color")?;
-
     find_tag(pool, user_id, id)
         .await?
-        .context("Tag not found after color update")
+        .context("Tag not found")?;
+    let db = sea_orm_connection(pool);
+    Ok(tags::ActiveModel {
+        id: Set(id.to_owned()),
+        color: Set(color.map(str::to_owned)),
+        updated_at: Set(Utc::now().fixed_offset()),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .context("Failed to set tag color")?
+    .into())
 }
 
 pub async fn delete_tag(pool: &PgPool, user_id: &str, id: &str) -> Result<bool> {

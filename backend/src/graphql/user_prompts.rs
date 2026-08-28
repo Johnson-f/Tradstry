@@ -13,7 +13,7 @@ pub struct UserPromptQuery;
 impl UserPromptQuery {
     async fn user_prompts(&self, ctx: &Context<'_>) -> Result<Vec<UserPrompt>> {
         let user_db = get_user_db(ctx).await?;
-        Ok(user_prompts_table::list_user_prompts(user_db.pool(), user_db.user_id()).await?)
+        Ok(user_prompts_table::list_user_prompts(user_db.connection(), user_db.user_id()).await?)
     }
 }
 
@@ -30,7 +30,7 @@ impl UserPromptMutation {
     ) -> Result<UserPrompt> {
         let user_db = get_user_db(ctx).await?;
         Ok(user_prompts_table::create_user_prompt(
-            user_db.pool(),
+            user_db.connection(),
             user_db.user_id(),
             &name,
             &content,
@@ -47,7 +47,7 @@ impl UserPromptMutation {
     ) -> Result<UserPrompt> {
         let user_db = get_user_db(ctx).await?;
         Ok(user_prompts_table::update_user_prompt(
-            user_db.pool(),
+            user_db.connection(),
             &id,
             user_db.user_id(),
             name.as_deref(),
@@ -58,6 +58,9 @@ impl UserPromptMutation {
 
     async fn delete_user_prompt(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        Ok(user_prompts_table::delete_user_prompt(user_db.pool(), &id, user_db.user_id()).await?)
+        Ok(
+            user_prompts_table::delete_user_prompt(user_db.connection(), &id, user_db.user_id())
+                .await?,
+        )
     }
 }

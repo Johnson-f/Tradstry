@@ -1,4 +1,3 @@
-pub mod pg;
 pub mod tables;
 
-pub use pg::migrate;
+pub use tradstry_database::schema::{bootstrap, contract, pg};

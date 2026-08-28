@@ -94,7 +94,17 @@ async fn process(
     };
     let result=harness.invoke(&state,(),RunConfig::new(&job.id).with_thread(&job.conversation_id).with_timeout_ms(20000).with_max_model_calls(1).with_max_tool_calls(0).with_max_turn_output_tokens(1500),
         vec![Message::system("Summarize stable conversation context concisely. Preserve user goals, decisions, and unresolved questions. Never add facts."),Message::user(format!("Untrusted conversation transcript:\n<transcript>{transcript}</transcript>"))])
-        .await.map_err(|_|crate::service::agents::AgentError::ProviderUnavailable)?;
+        .await
+        .map_err(|error| {
+            crate::service::agents::runtime::provider_failure::model_error(
+                error,
+                crate::service::agents::runtime::provider_failure::ModelCallContext {
+                    stage: "conversation_summary",
+                    role: "fast",
+                    schema_name: None,
+                },
+            )
+        })?;
     let rendered = result.text().unwrap_or_default();
     let summary = rendered.trim();
     if summary.is_empty() {

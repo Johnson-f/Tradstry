@@ -6,11 +6,12 @@ use serde::Deserialize;
 use tinyagents::harness::context::RunConfig;
 use tinyagents::harness::limits::RunLimits;
 use tinyagents::harness::message::Message;
-use tinyagents::harness::model::ResponseFormat;
 use tinyagents::harness::runtime::AgentHarness;
 
 use super::memory_policy::{MemoryCandidate, admit_user_candidate};
-use crate::service::agents::runtime::{AgentRuntimeState, ModelRole, build_run_policy};
+use crate::service::agents::runtime::{
+    AgentRuntimeState, ModelRole, build_run_policy, schemas::AgentSchema,
+};
 use crate::service::agents::{
     ActivateAgentMemory, AgentActor, AgentError, AgentMessageContext, AgentResult, AgentScope,
     AgentService,
@@ -47,10 +48,11 @@ pub async fn run_memory_worker(
             Ok(Some(job)) => {
                 if let Err(error) = process_job(&service, &job, &owner).await {
                     log::warn!("[agents] memory extraction job {} failed: {error}", job.id);
-                    let retryable = matches!(
-                        error,
-                        AgentError::ProviderUnavailable | AgentError::Internal
-                    );
+                    let retryable = match &error {
+                        AgentError::Provider(failure) => failure.retryable,
+                        AgentError::ProviderUnavailable | AgentError::Internal => true,
+                        _ => false,
+                    };
                     let _ = service
                         .store()
                         .fail_memory_job(&job.id, &owner, "memory_extraction_failed", retryable)
@@ -102,10 +104,7 @@ async fn process_job(
         .with_max_tool_calls(0)
         .with_max_wall_clock_ms(Some(20_000))
         .with_max_depth(0);
-    policy.default_response_format = Some(ResponseFormat::json_schema(
-        "memory_candidates",
-        extraction_schema(),
-    ));
+    policy.default_response_format = Some(AgentSchema::MemoryCandidates.response_format());
     policy.truncated_empty_retries = 0;
     harness.with_policy(policy);
     let state = AgentRuntimeState {
@@ -189,29 +188,13 @@ async fn process_job(
     }
 }
 
-fn extraction_schema() -> serde_json::Value {
-    serde_json::json!({
-        "type":"object","additionalProperties":false,
-        "properties":{"candidates":{"type":"array","maxItems":4,"items":{
-            "type":"object","additionalProperties":false,
-            "properties":{
-                "kind":{"type":"string","enum":["preference","goal","routine","instruction"]},
-                "subject":{"type":"string","minLength":1,"maxLength":120},
-                "statement":{"type":"string","minLength":1,"maxLength":2000},
-                "provenance_excerpt":{"type":"string","minLength":1,"maxLength":500},
-                "confidence":{"type":"number","minimum":0,"maximum":1}
-            },"required":["kind","subject","statement","provenance_excerpt","confidence"]
-        }}},"required":["candidates"]
-    })
-}
-
 fn model_error(error: tinyagents::TinyAgentsError) -> AgentError {
-    log::error!("memory extraction model failed: {error}");
-    match error {
-        tinyagents::TinyAgentsError::Cancelled => AgentError::Cancelled,
-        tinyagents::TinyAgentsError::Provider(_) | tinyagents::TinyAgentsError::Model(_) => {
-            AgentError::ProviderUnavailable
-        }
-        _ => AgentError::Internal,
-    }
+    crate::service::agents::runtime::provider_failure::model_error(
+        error,
+        crate::service::agents::runtime::provider_failure::ModelCallContext {
+            stage: "memory_extraction",
+            role: "fast",
+            schema_name: Some("memory_candidates"),
+        },
+    )
 }

@@ -1,6 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use sqlx::{PgConnection, PgPool, Row};
+
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::brokerage::{snaptrade_oauth_attempts, snaptrade_oauth_grants};
 
 #[derive(Debug, Clone)]
 pub struct OAuthAttempt {
@@ -52,6 +56,24 @@ pub struct OAuthAttemptStatus {
     pub workspace_id: String,
     pub platform: String,
     pub intent: String,
+}
+
+fn grant_from_model(model: snaptrade_oauth_grants::Model) -> Result<OAuthGrant> {
+    Ok(OAuthGrant {
+        id: model.id,
+        user_id: model.user_id,
+        oauth_client_id: model.oauth_client_id,
+        snaptrade_user_id: model
+            .snaptrade_user_id
+            .context("SnapTrade OAuth grant has no user ID")?,
+        access_token_encrypted: model.access_token_encrypted,
+        refresh_token_encrypted: model.refresh_token_encrypted,
+        access_token_expires_at: model
+            .access_token_expires_at
+            .map(|value| value.with_timezone(&Utc)),
+        scopes: model.scopes,
+        status: model.status,
+    })
 }
 
 pub async fn create_attempt(pool: &PgPool, input: CreateAttempt<'_>) -> Result<String> {
@@ -224,36 +246,34 @@ pub async fn authorized_attempt(
     user_id: &str,
     attempt_id: &str,
 ) -> Result<Option<AuthorizedAttempt>> {
-    let row = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT grant_id,workspace_id,intent FROM snaptrade_oauth_attempts \
-         WHERE id=$1 AND user_id=$2 AND status='authorized' AND grant_id IS NOT NULL",
-    )
-    .bind(attempt_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .context("find authorized OAuth attempt")?;
-    Ok(
-        row.map(|(grant_id, workspace_id, intent)| AuthorizedAttempt {
-            grant_id,
-            workspace_id,
-            intent,
-        }),
-    )
+    let db = sea_orm_connection(pool);
+    Ok(snaptrade_oauth_attempts::Entity::find_by_id(attempt_id)
+        .filter(snaptrade_oauth_attempts::Column::UserId.eq(user_id))
+        .filter(snaptrade_oauth_attempts::Column::Status.eq("authorized"))
+        .filter(snaptrade_oauth_attempts::Column::GrantId.is_not_null())
+        .one(&db)
+        .await
+        .context("find authorized OAuth attempt")?
+        .and_then(|model| {
+            model.grant_id.map(|grant_id| AuthorizedAttempt {
+                grant_id,
+                workspace_id: model.workspace_id,
+                intent: model.intent,
+            })
+        }))
 }
 
 pub async fn find_grant_for_user(pool: &PgPool, user_id: &str) -> Result<Option<OAuthGrant>> {
-    let row = sqlx::query(
-        "SELECT id,user_id,oauth_client_id,snaptrade_user_id,access_token_encrypted, \
-         refresh_token_encrypted,access_token_expires_at,scopes,status \
-         FROM snaptrade_oauth_grants WHERE user_id=$1 AND status<>'revoked' \
-         ORDER BY authorized_at DESC LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .context("find SnapTrade OAuth grant")?;
-    row.as_ref().map(grant_from_row).transpose()
+    let db = sea_orm_connection(pool);
+    snaptrade_oauth_grants::Entity::find()
+        .filter(snaptrade_oauth_grants::Column::UserId.eq(user_id))
+        .filter(snaptrade_oauth_grants::Column::Status.ne("revoked"))
+        .order_by_desc(snaptrade_oauth_grants::Column::AuthorizedAt)
+        .one(&db)
+        .await
+        .context("find SnapTrade OAuth grant")?
+        .map(grant_from_model)
+        .transpose()
 }
 
 pub async fn find_grant(
@@ -261,17 +281,14 @@ pub async fn find_grant(
     user_id: &str,
     grant_id: &str,
 ) -> Result<Option<OAuthGrant>> {
-    let row = sqlx::query(
-        "SELECT id,user_id,oauth_client_id,snaptrade_user_id,access_token_encrypted, \
-         refresh_token_encrypted,access_token_expires_at,scopes,status \
-         FROM snaptrade_oauth_grants WHERE id=$1 AND user_id=$2",
-    )
-    .bind(grant_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .context("find SnapTrade OAuth grant by ID")?;
-    row.as_ref().map(grant_from_row).transpose()
+    let db = sea_orm_connection(pool);
+    snaptrade_oauth_grants::Entity::find_by_id(grant_id)
+        .filter(snaptrade_oauth_grants::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .context("find SnapTrade OAuth grant by ID")?
+        .map(grant_from_model)
+        .transpose()
 }
 
 pub async fn find_grant_on(

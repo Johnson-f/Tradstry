@@ -1,4 +1,4 @@
-export * as workspaceService from "./workspaces";
+export * as agentService from "./agents";
 export * as aiService from "./ai";
 export * as analyticsService from "./analytics";
 export * as brokerageService from "./brokerage";
@@ -8,3 +8,4 @@ export * as notificationService from "./notifications";
 export * as playbookService from "./playbook";
 export * as positionCalculatorService from "./position-calculator";
 export * as tagsService from "./tags";
+export * as workspaceService from "./workspaces";

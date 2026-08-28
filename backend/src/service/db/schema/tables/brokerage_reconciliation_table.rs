@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row};
+use sea_orm::EntityTrait;
+use sqlx::PgPool;
+
+use crate::service::db::client::sea_orm_connection;
+use crate::service::db::entities::brokerage::brokerage_reconciliation_state;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TransactionReconciliation {
@@ -57,6 +60,39 @@ pub struct BrokerageReconciliationState {
     pub transaction_error: Option<String>,
     pub portfolio_error: Option<String>,
     pub transaction_import_start_date: Option<String>,
+}
+
+impl From<brokerage_reconciliation_state::Model> for BrokerageReconciliationState {
+    fn from(model: brokerage_reconciliation_state::Model) -> Self {
+        Self {
+            diagnostic_id: model.diagnostic_id,
+            transaction_status: model.transaction_status,
+            transaction_checked_at: model.transaction_checked_at.map(|value| value.to_rfc3339()),
+            broker_transaction_count: model.broker_transaction_count,
+            mapped_transaction_count: model.mapped_transaction_count,
+            imported_transaction_count: model.imported_transaction_count,
+            duplicate_transaction_count: model.duplicate_transaction_count,
+            skipped_transaction_count: model.skipped_transaction_count,
+            pending_transaction_count: model.pending_transaction_count,
+            failed_transaction_count: model.failed_transaction_count,
+            local_transaction_count: model.local_transaction_count,
+            missing_transaction_count: model.missing_transaction_count,
+            extra_transaction_count: model.extra_transaction_count,
+            portfolio_status: model.portfolio_status,
+            portfolio_checked_at: model.portfolio_checked_at.map(|value| value.to_rfc3339()),
+            broker_holding_count: model.broker_holding_count,
+            mapped_holding_count: model.mapped_holding_count,
+            local_holding_count: model.local_holding_count,
+            broker_balance_count: model.broker_balance_count,
+            local_balance_count: model.local_balance_count,
+            balance_discrepancy_count: model.balance_discrepancy_count,
+            transaction_error: model.transaction_error,
+            portfolio_error: model.portfolio_error,
+            transaction_import_start_date: model
+                .transaction_import_start_date
+                .map(|value| value.to_string()),
+        }
+    }
 }
 
 pub async fn record_transaction_reconciliation(
@@ -166,57 +202,14 @@ pub async fn get_for_workspace(
     workspace_id: &str,
     snaptrade_account_id: &str,
 ) -> Result<Option<BrokerageReconciliationState>> {
-    let row = sqlx::query(
-        "SELECT diagnostic_id, transaction_status, transaction_checked_at,
-                broker_transaction_count, mapped_transaction_count,
-                imported_transaction_count, duplicate_transaction_count,
-                skipped_transaction_count, pending_transaction_count,
-                failed_transaction_count, local_transaction_count,
-                missing_transaction_count, extra_transaction_count,
-                portfolio_status, portfolio_checked_at, broker_holding_count,
-                mapped_holding_count, local_holding_count, broker_balance_count,
-                local_balance_count, balance_discrepancy_count, transaction_error,
-                portfolio_error,
-                to_char(transaction_import_start_date, 'YYYY-MM-DD')
-         FROM brokerage_reconciliation_state
-         WHERE user_id=$1 AND workspace_id=$2 AND snaptrade_account_id=$3",
-    )
-    .bind(user_id)
-    .bind(workspace_id)
-    .bind(snaptrade_account_id)
-    .fetch_optional(pool)
+    let db = sea_orm_connection(pool);
+    Ok(brokerage_reconciliation_state::Entity::find_by_id((
+        user_id.to_owned(),
+        workspace_id.to_owned(),
+        snaptrade_account_id.to_owned(),
+    ))
+    .one(&db)
     .await
-    .context("Failed to read brokerage reconciliation")?;
-
-    row.map(|row| {
-        let transaction_checked_at: Option<DateTime<Utc>> = row.try_get(2)?;
-        let portfolio_checked_at: Option<DateTime<Utc>> = row.try_get(14)?;
-        Ok(BrokerageReconciliationState {
-            diagnostic_id: row.try_get(0)?,
-            transaction_status: row.try_get(1)?,
-            transaction_checked_at: transaction_checked_at.map(|value| value.to_rfc3339()),
-            broker_transaction_count: row.try_get(3)?,
-            mapped_transaction_count: row.try_get(4)?,
-            imported_transaction_count: row.try_get(5)?,
-            duplicate_transaction_count: row.try_get(6)?,
-            skipped_transaction_count: row.try_get(7)?,
-            pending_transaction_count: row.try_get(8)?,
-            failed_transaction_count: row.try_get(9)?,
-            local_transaction_count: row.try_get(10)?,
-            missing_transaction_count: row.try_get(11)?,
-            extra_transaction_count: row.try_get(12)?,
-            portfolio_status: row.try_get(13)?,
-            portfolio_checked_at: portfolio_checked_at.map(|value| value.to_rfc3339()),
-            broker_holding_count: row.try_get(15)?,
-            mapped_holding_count: row.try_get(16)?,
-            local_holding_count: row.try_get(17)?,
-            broker_balance_count: row.try_get(18)?,
-            local_balance_count: row.try_get(19)?,
-            balance_discrepancy_count: row.try_get(20)?,
-            transaction_error: row.try_get(21)?,
-            portfolio_error: row.try_get(22)?,
-            transaction_import_start_date: row.try_get(23)?,
-        })
-    })
-    .transpose()
+    .context("Failed to read brokerage reconciliation")?
+    .map(Into::into))
 }

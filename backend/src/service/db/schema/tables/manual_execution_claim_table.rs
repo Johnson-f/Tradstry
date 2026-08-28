@@ -1,10 +1,13 @@
 use anyhow::{Context, Result, anyhow, ensure};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::service::db::error::is_unique_violation;
 use crate::service::db::schema::tables::position_calculator_plans_table;
+use crate::service::db::{client::sea_orm_connection, entities::trading::manual_execution_claims};
 use crate::service::trade_review::reconcile_tranches;
 use crate::service::trade_review::types::{FillAllocation, FillRole, PlanTranche};
 
@@ -22,41 +25,41 @@ pub struct ManualExecutionClaim {
     pub created_at: String,
 }
 
-fn row_to_claim(row: &sqlx::postgres::PgRow) -> Result<ManualExecutionClaim> {
-    Ok(ManualExecutionClaim {
-        id: row.try_get(0)?,
-        workspace_id: row.try_get(1)?,
-        plan_id: row.try_get(2)?,
-        tranche_id: row.try_get(3)?,
-        quantity: row.try_get::<Decimal, _>(4)?.normalize().to_string(),
-        price: row.try_get::<Decimal, _>(5)?.normalize().to_string(),
-        executed_at: row.try_get::<DateTime<Utc>, _>(6)?.to_rfc3339(),
-        status: row.try_get(7)?,
-        reconciled_match_id: row.try_get(8)?,
-        created_at: row.try_get::<DateTime<Utc>, _>(9)?.to_rfc3339(),
-    })
+impl From<manual_execution_claims::Model> for ManualExecutionClaim {
+    fn from(model: manual_execution_claims::Model) -> Self {
+        Self {
+            id: model.id,
+            workspace_id: model.workspace_id,
+            plan_id: model.plan_id,
+            tranche_id: model.tranche_id,
+            quantity: model.quantity.normalize().to_string(),
+            price: model.price.normalize().to_string(),
+            executed_at: model.executed_at.to_rfc3339(),
+            status: model.status,
+            reconciled_match_id: model.reconciled_match_id,
+            created_at: model.created_at.to_rfc3339(),
+        }
+    }
 }
-
-const SELECT_COLUMNS: &str = "id,workspace_id,plan_id,tranche_id,quantity,price,executed_at,status,reconciled_match_id,created_at";
 
 pub async fn list_claims(
     pool: &PgPool,
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<ManualExecutionClaim>> {
-    let sql = format!(
-        "SELECT {SELECT_COLUMNS} FROM manual_execution_claims
-         WHERE user_id=$1 AND workspace_id=$2 AND status <> 'dismissed'
-         ORDER BY executed_at,created_at,id"
-    );
-    sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(pool)
+    let db = sea_orm_connection(pool);
+    Ok(manual_execution_claims::Entity::find()
+        .filter(manual_execution_claims::Column::UserId.eq(user_id))
+        .filter(manual_execution_claims::Column::WorkspaceId.eq(workspace_id))
+        .filter(manual_execution_claims::Column::Status.ne("dismissed"))
+        .order_by_asc(manual_execution_claims::Column::ExecutedAt)
+        .order_by_asc(manual_execution_claims::Column::CreatedAt)
+        .order_by_asc(manual_execution_claims::Column::Id)
+        .all(&db)
         .await?
-        .iter()
-        .map(row_to_claim)
-        .collect()
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn create_claim(
@@ -110,33 +113,28 @@ pub async fn create_claim(
         .with_timezone(&Utc);
 
     let id = Uuid::new_v4().to_string();
-    let sql = format!(
-        "INSERT INTO manual_execution_claims
-         (id,user_id,workspace_id,plan_id,tranche_id,quantity,price,executed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         RETURNING {SELECT_COLUMNS}"
-    );
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(&id)
-        .bind(user_id)
-        .bind(&plan.workspace_id)
-        .bind(plan_id)
-        .bind(tranche_id)
-        .bind(quantity)
-        .bind(price)
-        .bind(executed_at)
-        .fetch_one(pool)
-        .await
-        .map_err(|error| {
-            if error.as_database_error().and_then(|db| db.constraint())
-                == Some("idx_manual_execution_claims_active_tranche")
-            {
-                anyhow!("this tranche already has a manual execution")
-            } else {
-                error.into()
-            }
-        })?;
-    row_to_claim(&row)
+    let db = sea_orm_connection(pool);
+    let model = manual_execution_claims::ActiveModel {
+        id: Set(id),
+        user_id: Set(user_id.to_owned()),
+        workspace_id: Set(plan.workspace_id),
+        plan_id: Set(plan_id.to_owned()),
+        tranche_id: Set(tranche_id.to_owned()),
+        quantity: Set(quantity),
+        price: Set(price),
+        executed_at: Set(executed_at.fixed_offset()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .map_err(|error| {
+        if is_unique_violation(&error) {
+            anyhow!("this tranche already has a manual execution")
+        } else {
+            error.into()
+        }
+    })?;
+    Ok(model.into())
 }
 
 pub async fn dismiss_claim(pool: &PgPool, user_id: &str, id: &str) -> Result<bool> {

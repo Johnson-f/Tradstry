@@ -1,14 +1,73 @@
 pub mod adapters;
 pub mod catalog;
+pub mod proposals;
 pub mod types;
 
-use tinyagents::harness::tool::{ToolCall, ToolResult};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use tinyagents::harness::tool::{
+    Tool, ToolCall, ToolErrorPolicy, ToolExecutionContext, ToolPolicy, ToolResult, ToolSchema,
+};
 
 use crate::service::agents::runtime::AgentRuntimeState;
 use crate::service::agents::{AgentEvidenceRef, NewAgentEvidence};
 
 pub use catalog::{AgentToolKind, ToolCatalog};
 pub use types::{ToolEnvelope, ToolScopeApplied, ToolUnavailable};
+
+pub struct ContextualTool {
+    inner: Arc<dyn Tool<AgentRuntimeState>>,
+}
+
+impl ContextualTool {
+    pub fn new(inner: Arc<dyn Tool<AgentRuntimeState>>) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl Tool<AgentRuntimeState> for ContextualTool {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn description(&self) -> &str {
+        self.inner.description()
+    }
+
+    fn schema(&self) -> ToolSchema {
+        self.inner.schema()
+    }
+
+    fn policy(&self) -> ToolPolicy {
+        self.inner.policy()
+    }
+
+    fn error_policy(&self) -> ToolErrorPolicy {
+        self.inner.error_policy()
+    }
+
+    async fn call(
+        &self,
+        state: &AgentRuntimeState,
+        call: ToolCall,
+    ) -> tinyagents::Result<ToolResult> {
+        self.inner.call(state, call).await
+    }
+
+    async fn call_with_context(
+        &self,
+        state: &AgentRuntimeState,
+        call: ToolCall,
+        context: ToolExecutionContext,
+    ) -> tinyagents::Result<ToolResult> {
+        let mut scoped = state.clone();
+        scoped.run_id = context.run_id.as_str().to_owned();
+        scoped.cancellation = context.cancellation;
+        self.inner.call(&scoped, call).await
+    }
+}
 
 pub async fn persist_tool_result<T: serde::Serialize>(
     state: &AgentRuntimeState,
@@ -24,26 +83,26 @@ pub async fn persist_tool_result<T: serde::Serialize>(
         .start_tool_call(&state.run_id, &call.id, &call.name, &call.arguments)
         .await
         .map_err(agent_error_as_tool)?;
-    let mut refs = Vec::with_capacity(evidence.len());
-    for mut item in evidence {
-        item.tool_call_id = Some(stored_call.id.clone());
-        let stored = state
-            .store
-            .record_evidence(&state.run_id, &item)
-            .await
-            .map_err(agent_error_as_tool)?;
-        refs.push(AgentEvidenceRef {
+    let evidence = evidence
+        .into_iter()
+        .map(|mut item| {
+            item.tool_call_id = Some(stored_call.id.clone());
+            item
+        })
+        .collect::<Vec<_>>();
+    let refs = state
+        .store
+        .complete_tool_call_with_evidence(&state.run_id, &stored_call.id, &evidence, &summary)
+        .await
+        .map_err(agent_error_as_tool)?
+        .into_iter()
+        .map(|stored| AgentEvidenceRef {
             evidence_id: stored.id,
             source_type: stored.source_type,
             source_id: stored.source_id,
             source_version: stored.source_version,
-        });
-    }
-    state
-        .store
-        .finish_tool_call(&stored_call.id, "completed", Some(&summary), None)
-        .await
-        .map_err(agent_error_as_tool)?;
+        })
+        .collect();
     let envelope = ToolEnvelope {
         ok: true,
         data: Some(data),

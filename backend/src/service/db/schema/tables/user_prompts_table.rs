@@ -1,8 +1,14 @@
 use anyhow::{Context, Result};
 use async_graphql::SimpleObject;
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    QueryOrder, Set,
+};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row};
 use uuid::Uuid;
+
+use crate::service::db::entities::core::user_prompts;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -15,138 +21,107 @@ pub struct UserPrompt {
     pub updated_at: String,
 }
 
-const SELECT_COLS: &str = "id, user_id, name, content, \
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, \
-    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
-
-fn row_to_user_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
-    Ok(UserPrompt {
-        id: row.try_get::<String, _>(0)?,
-        user_id: row.try_get::<String, _>(1)?,
-        name: row.try_get::<String, _>(2)?,
-        content: row.try_get::<String, _>(3)?,
-        created_at: row.try_get::<String, _>(4)?,
-        updated_at: row.try_get::<String, _>(5)?,
-    })
+impl From<user_prompts::Model> for UserPrompt {
+    fn from(model: user_prompts::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            name: model.name,
+            content: model.content,
+            created_at: format_timestamp(model.created_at),
+            updated_at: format_timestamp(model.updated_at),
+        }
+    }
 }
 
-pub async fn list_user_prompts(pool: &PgPool, user_id: &str) -> Result<Vec<UserPrompt>> {
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM user_prompts WHERE user_id = $1 ORDER BY created_at DESC"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
-        .context("Failed to list user prompts")?;
+fn format_timestamp(value: chrono::DateTime<chrono::FixedOffset>) -> String {
+    value
+        .with_timezone(&Utc)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
 
-    let mut prompts = Vec::new();
-    for row in &rows {
-        prompts.push(row_to_user_prompt(row)?);
-    }
-    Ok(prompts)
+pub async fn list_user_prompts(db: &DatabaseConnection, user_id: &str) -> Result<Vec<UserPrompt>> {
+    Ok(user_prompts::Entity::find()
+        .filter(user_prompts::Column::UserId.eq(user_id))
+        .order_by_desc(user_prompts::Column::CreatedAt)
+        .all(db)
+        .await
+        .context("Failed to list user prompts")?
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 pub async fn find_user_prompt(
-    pool: &PgPool,
+    db: &DatabaseConnection,
     id: &str,
     user_id: &str,
 ) -> Result<Option<UserPrompt>> {
-    let sql = format!("SELECT {SELECT_COLS} FROM user_prompts WHERE id = $1 AND user_id = $2");
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
+    Ok(user_prompts::Entity::find_by_id(id)
+        .filter(user_prompts::Column::UserId.eq(user_id))
+        .one(db)
         .await
-        .context("Failed to find user prompt")?;
-
-    match row {
-        Some(row) => Ok(Some(row_to_user_prompt(&row)?)),
-        None => Ok(None),
-    }
+        .context("Failed to find user prompt")?
+        .map(Into::into))
 }
 
 pub async fn create_user_prompt(
-    pool: &PgPool,
+    db: &DatabaseConnection,
     user_id: &str,
     name: &str,
     content: &str,
 ) -> Result<UserPrompt> {
-    let id = Uuid::new_v4().to_string();
-
-    sqlx::query("INSERT INTO user_prompts (id, user_id, name, content) VALUES ($1, $2, $3, $4)")
-        .bind(id.as_str())
-        .bind(user_id)
-        .bind(name)
-        .bind(content)
-        .execute(pool)
-        .await
-        .context("Failed to insert user prompt")?;
-
-    find_user_prompt(pool, &id, user_id)
-        .await?
-        .context("User prompt not found after insert")
+    Ok(user_prompts::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        user_id: Set(user_id.to_owned()),
+        name: Set(name.to_owned()),
+        content: Set(content.to_owned()),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .context("Failed to insert user prompt")?
+    .into())
 }
 
 pub async fn update_user_prompt(
-    pool: &PgPool,
+    db: &DatabaseConnection,
     id: &str,
     user_id: &str,
     name: Option<&str>,
     content: Option<&str>,
 ) -> Result<UserPrompt> {
-    let mut sets = Vec::new();
-    let mut params: Vec<String> = Vec::new();
-    let mut idx = 1;
+    let model = user_prompts::Entity::find_by_id(id)
+        .filter(user_prompts::Column::UserId.eq(user_id))
+        .one(db)
+        .await
+        .context("Failed to find user prompt")?
+        .context("User prompt not found")?;
+    if name.is_none() && content.is_none() {
+        return Ok(model.into());
+    }
 
+    let mut active = model.into_active_model();
     if let Some(name) = name {
-        sets.push(format!("name = ${idx}"));
-        params.push(name.to_string());
-        idx += 1;
+        active.name = Set(name.to_owned());
     }
     if let Some(content) = content {
-        sets.push(format!("content = ${idx}"));
-        params.push(content.to_string());
-        idx += 1;
+        active.content = Set(content.to_owned());
     }
-
-    if sets.is_empty() {
-        return find_user_prompt(pool, id, user_id)
-            .await?
-            .context("User prompt not found");
-    }
-
-    let sql = format!(
-        "UPDATE user_prompts SET {} WHERE id = ${} AND user_id = ${}",
-        sets.join(", "),
-        idx,
-        idx + 1
-    );
-
-    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
-    for param in &params {
-        query = query.bind(param);
-    }
-    query
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
+    Ok(active
+        .update(db)
         .await
-        .context("Failed to update user prompt")?;
-
-    find_user_prompt(pool, id, user_id)
-        .await?
-        .context("User prompt not found after update")
+        .context("Failed to update user prompt")?
+        .into())
 }
 
-pub async fn delete_user_prompt(pool: &PgPool, id: &str, user_id: &str) -> Result<bool> {
-    let rows_affected = sqlx::query("DELETE FROM user_prompts WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
+pub async fn delete_user_prompt(db: &DatabaseConnection, id: &str, user_id: &str) -> Result<bool> {
+    let result = user_prompts::Entity::delete_many()
+        .filter(user_prompts::Column::Id.eq(id))
+        .filter(user_prompts::Column::UserId.eq(user_id))
+        .exec(db)
         .await
-        .context("Failed to delete user prompt")?
-        .rows_affected();
-
-    Ok(rows_affected > 0)
+        .context("Failed to delete user prompt")?;
+    Ok(result.rows_affected > 0)
 }

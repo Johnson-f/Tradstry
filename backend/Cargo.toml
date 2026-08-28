@@ -4,7 +4,7 @@ version = "0.4.6"
 edition = "2024"
 
 [workspace]
-members = ["mcp-server"]
+members = ["database", "mcp-server", "migration"]
 
 [dependencies]
 tokio = { version = "1.50.0", features = ["full"] }
@@ -28,6 +28,8 @@ aes-gcm = "0.10"
 base64 = "0.22.1"
 futures-util = "0.3.31"
 sqlx = { version = "0.9", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "rust_decimal"] }
+sea-orm = { version = "=2.0.2", default-features = false, features = ["macros", "sqlx-postgres", "runtime-tokio-rustls", "schema-sync", "entity-registry", "with-chrono", "with-json", "with-rust_decimal", "postgres-array", "postgres-vector"] }
+tradstry-database = { path = "database" }
 rust_decimal = { version = "1.39", features = ["serde-with-str"] }
 pgvector = { version = "0.4", features = ["sqlx", "halfvec"] }
 rustls = { version = "0.23", features = ["ring"] }
@@ -59,6 +61,9 @@ sentry-actix = "0.48.5"
 web-push = { version = "0.11.0", default-features = false }
 tinyagents = { version = "=2.1.1", features = ["multimodal"] }
 unicode-normalization = "0.1"
+
+[dev-dependencies]
+tradstry-migration = { path = "migration" }
 
 [build-dependencies]
 prost-build = "0.14.3"

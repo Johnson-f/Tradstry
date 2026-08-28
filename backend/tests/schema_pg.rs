@@ -1,23 +1,30 @@
 mod pg_support;
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
+use sea_orm::SqlxPostgresConnector;
+use tradstry_migration::{Migrator, MigratorTrait};
+
+async fn migrate(pool: &sqlx::PgPool) {
+    tradstry_backend::service::db::schema::pg::migrate(pool)
+        .await
+        .expect("replay archived migrations");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, None)
+        .await
+        .expect("apply SeaORM migrations");
+}
 
 #[tokio::test]
 async fn migrate_creates_all_tables_idempotently() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
 
-    // First run creates everything.
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("first migrate");
-    // Second run must be a no-op (IF NOT EXISTS / CREATE OR REPLACE), not an error.
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("second migrate idempotent");
+    migrate(&pool).await;
+    migrate(&pool).await;
 
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name <> '_sqlx_migrations' \
+         WHERE table_schema = 'public' \
+           AND table_name NOT IN ('_sqlx_migrations', 'seaql_migrations') \
          ORDER BY table_name",
     )
     .fetch_all(&pool)
@@ -47,7 +54,7 @@ async fn migrate_creates_all_tables_idempotently() {
         "agent_messages",
         "agent_runs",
         "agent_run_events",
-        "agent_checkpoints",
+        "agent_run_items",
         "agent_tool_calls",
         "agent_evidence",
         "agent_claims",

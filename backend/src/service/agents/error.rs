@@ -16,6 +16,10 @@ pub enum AgentError {
     Capacity,
     #[error("agent provider is unavailable")]
     ProviderUnavailable,
+    #[error("agent provider request failed")]
+    Provider(Box<crate::service::agents::runtime::provider_failure::ProviderFailure>),
+    #[error("agent answer could not be grounded")]
+    GroundingInvalid,
     #[error("agent run cancelled")]
     Cancelled,
     #[error("internal agent failure")]

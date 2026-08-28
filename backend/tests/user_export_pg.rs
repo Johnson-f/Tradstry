@@ -1,13 +1,19 @@
 mod pg_support;
 
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
+use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::export::build_export;
+use tradstry_migration::{Migrator, MigratorTrait};
 
 async fn migrated_pool() -> sqlx::PgPool {
     let pool = test_pool().await;
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, None)
+        .await
+        .expect("apply SeaORM migrations");
     pool
 }
 
@@ -19,7 +25,8 @@ async fn export_contains_a_key_for_every_user_table() {
 
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
-    let export = build_export(&pool, &user_id).await.expect("build export");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let export = build_export(&db, &user_id).await.expect("build export");
 
     for key in [
         "user",
@@ -42,7 +49,7 @@ async fn export_contains_a_key_for_every_user_table() {
         "agent_messages",
         "agent_runs",
         "agent_run_events",
-        "agent_checkpoints",
+        "agent_run_items",
         "agent_tool_calls",
         "agent_evidence",
         "agent_claims",
@@ -75,7 +82,8 @@ async fn export_excludes_another_users_rows() {
     let (mine, _) = seed_user_workspace(&pool).await;
     let (_theirs, _) = seed_user_workspace(&pool).await;
 
-    let export = build_export(&pool, &mine).await.expect("build export");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let export = build_export(&db, &mine).await.expect("build export");
 
     let workspaces = export["workspaces"].as_array().expect("workspaces array");
     assert_eq!(
