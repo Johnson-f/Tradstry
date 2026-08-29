@@ -6,12 +6,9 @@ import {
   Header,
   Hero,
   Mcp,
-  Pillars,
   Pricing,
-  Proof,
-  SignalStrip,
+  ProductStories,
 } from "@/components/landing";
-import { LeakProvider, LeakSection } from "@/components/landing/leak";
 import { StructuredData } from "@/components/landing/structured-data";
 
 export const metadata: Metadata = {
@@ -22,23 +19,18 @@ export default function Home() {
   return (
     <div
       data-shell="marketing"
-      className="dark min-h-svh bg-[#070809] antialiased"
+      className="min-h-svh bg-white text-zinc-950 antialiased"
     >
       <StructuredData />
       <Header />
-      <LeakProvider>
-        <main>
-          <Hero />
-          <SignalStrip />
-          <LeakSection />
-          <Pillars />
-          <Mcp />
-          <Proof />
-          <Pricing />
-          <Faq />
-          <Cta />
-        </main>
-      </LeakProvider>
+      <main>
+        <Hero />
+        <ProductStories />
+        <Mcp />
+        <Pricing />
+        <Faq />
+        <Cta />
+      </main>
       <Footer />
     </div>
   );

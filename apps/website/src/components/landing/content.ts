@@ -63,6 +63,8 @@ export type Plan = {
   description: string;
   monthlyPrice: string;
   annualPrice: string;
+  monthlyBillingNote: string;
+  annualBillingNote: string;
   cta: string;
   features: readonly string[];
 };
@@ -70,11 +72,12 @@ export type Plan = {
 export const PLACEHOLDER = "TODO";
 
 export const LANDING_SECTIONS = [
-  "signal",
-  "leak",
-  "record",
+  "journal",
+  "analytics",
+  "playbooks",
+  "notebook",
+  "ai",
   "mcp",
-  "proof",
   "pricing",
   "faq",
 ] as const;
@@ -165,6 +168,8 @@ export const PLANS: Plan[] = [
     description: "Build the record before you pay for the analysis.",
     monthlyPrice: "$0",
     annualPrice: "$0",
+    monthlyBillingNote: "No payment details required.",
+    annualBillingNote: "No payment details required.",
     cta: "Start free",
     features: [
       "6 workspaces",
@@ -182,6 +187,9 @@ export const PLANS: Plan[] = [
     description: "The complete feedback loop for an active trading practice.",
     monthlyPrice: "$20",
     annualPrice: "$15",
+    monthlyBillingNote: "Billed $20 monthly. Renews monthly until canceled.",
+    annualBillingNote:
+      "Billed $180 once per year. Renews annually until canceled.",
     cta: "Upgrade to Pro",
     features: [
       "Unlimited workspaces and imported trades",
@@ -226,3 +234,46 @@ export const SCREENSHOTS = {
     ratio: "1782 / 1578",
   },
 } satisfies Record<string, { src: string | null; alt: string; ratio: string }>;
+
+export const PRODUCT_STORIES = [
+  {
+    id: "journal",
+    kicker: "Journal",
+    title: "Every fill, already there.",
+    body: "Connect a brokerage and Tradstry imports your executions, matches them into trades, and calculates P&L, holding time, and planned risk. Add the setup, note, tags, and chart when you review it.",
+    visual: "screenshot",
+    shot: SCREENSHOTS.journal,
+  },
+  {
+    id: "analytics",
+    kicker: "Analytics",
+    title: "Know what is working, and why.",
+    body: "Read expectancy, drawdown, win rate, payoff, and discipline from the same trading record. Break every result down by symbol, session, day, and playbook without predicting future returns.",
+    visual: "screenshot",
+    shot: SCREENSHOTS.workspace,
+  },
+  {
+    id: "playbooks",
+    kicker: "Playbooks",
+    title: "Put your rules next to the trades that tested them.",
+    body: "Write each setup as a repeatable checklist. Tradstry compares the trades that followed the plan with the trades that broke it, then shows the difference in dollars and in R.",
+    visual: "playbook",
+    shot: null,
+  },
+  {
+    id: "notebook",
+    kicker: "Notebook",
+    title: "Keep the lesson with the trade.",
+    body: "Capture ideas with images, code, slash commands, and autocomplete. Notes stay connected to the trades and playbooks they explain, and the desktop editor keeps working offline.",
+    visual: "screenshot",
+    shot: SCREENSHOTS.notebook,
+  },
+  {
+    id: "ai",
+    kicker: "Tradstry AI",
+    title: "Ask your record, not a blank model.",
+    body: "Ask a question about your performance and watch Tradstry inspect the relevant trades, reviews, playbooks, and market context. Every answer separates verified evidence from interpretation.",
+    visual: "ai",
+    shot: null,
+  },
+] as const;

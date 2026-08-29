@@ -34,25 +34,25 @@ export function SourcePage({ content }: { content: SourcePageContent }) {
   return (
     <div
       data-shell="marketing"
-      className="dark min-h-svh bg-[#070809] antialiased"
+      className="min-h-svh bg-white text-zinc-950 antialiased"
     >
       <Header />
       <main className="mx-auto max-w-6xl px-6 pb-20 pt-32 md:pb-24 md:pt-36">
         <header className="max-w-3xl">
-          <p className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-            <span aria-hidden="true" className="h-px w-6 bg-white/25" />
+          <p className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            <span aria-hidden="true" className="h-px w-6 bg-zinc-300" />
             {content.eyebrow}
           </p>
-          <h1 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.02em] text-zinc-50 md:text-5xl">
+          <h1 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.02em] text-zinc-950 md:text-5xl">
             {content.title}
           </h1>
-          <p className="mt-5 max-w-2xl text-[16px] leading-relaxed text-zinc-400">
+          <p className="mt-5 max-w-2xl text-[16px] leading-relaxed text-zinc-600">
             {content.summary}
           </p>
         </header>
 
-        <section className="mt-14 border-y border-white/[0.06] py-6">
-          <h2 className="text-sm font-medium uppercase tracking-[0.16em] text-zinc-500">
+        <section className="mt-14 border-y border-zinc-200 py-6">
+          <h2 className="text-sm font-medium uppercase tracking-[0.16em] text-zinc-400">
             Current facts
           </h2>
           <dl className="mt-5 grid gap-4 md:grid-cols-2">
@@ -60,10 +60,10 @@ export function SourcePage({ content }: { content: SourcePageContent }) {
               const [label, value] = fact.split(": ");
               return (
                 <div key={fact} className="space-y-1">
-                  <dt className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-600">
+                  <dt className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
                     {label}
                   </dt>
-                  <dd className="text-sm leading-relaxed text-zinc-300">
+                  <dd className="text-sm leading-relaxed text-zinc-700">
                     {value}
                   </dd>
                 </div>
@@ -75,13 +75,13 @@ export function SourcePage({ content }: { content: SourcePageContent }) {
         <article className="mt-14 max-w-[72ch] space-y-12">
           {content.sections.map((section, index) => (
             <section key={section.heading} className="scroll-mt-24">
-              <h2 className="flex items-baseline gap-3 text-xl font-semibold tracking-[-0.01em] text-zinc-50">
-                <span className="font-mono text-sm text-zinc-500 tabular-nums">
+              <h2 className="flex items-baseline gap-3 text-xl font-semibold tracking-[-0.01em] text-zinc-950">
+                <span className="font-mono text-sm text-zinc-400 tabular-nums">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 {section.heading}
               </h2>
-              <div className="mt-4 space-y-4 text-[15px] leading-[1.75] text-zinc-400 [&_strong]:font-medium [&_strong]:text-zinc-200">
+              <div className="mt-4 space-y-4 text-[15px] leading-[1.75] text-zinc-600 [&_strong]:font-medium [&_strong]:text-zinc-900">
                 {section.body.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
                 ))}

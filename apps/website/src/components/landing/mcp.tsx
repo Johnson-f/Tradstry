@@ -1,24 +1,8 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import {
-  EASE_OUT,
-  getEntranceDelays,
-  Reveal,
-} from "@/components/landing/motion";
-import {
-  Eyebrow,
-  Heading,
-  Lede,
-  Section,
-} from "@/components/landing/primitives";
-
-const PROMPTS = [
-  "Which setup has the best expectancy since April?",
-  "Show me every trade where I moved my stop.",
-  "What did my breakout playbook actually cost me?",
-  "Write tomorrow's plan from my last ten losers.",
-];
+import { motion } from "motion/react";
+import { EASE_OUT, Reveal } from "./motion";
+import { InteractiveSceneFrame } from "./threeui-scene";
 
 const CONFIG = `{
   "mcpServers": {
@@ -28,116 +12,101 @@ const CONFIG = `{
   }
 }`;
 
+const TOOLS = [
+  ["search_trades", "42 matching trades"],
+  ["get_playbook_performance", "Breakout continuation"],
+  ["calculate_rule_break_cost", "-$2,840 observed loss"],
+];
+
 export function Mcp() {
-  const reducedMotion = useReducedMotion() === true;
-  const toolDelays = getEntranceDelays(3, 0.09, reducedMotion);
-
   return (
-    <Section id="mcp" className="relative overflow-hidden bg-[#08090a]">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-[-10rem] top-1/2 size-[36rem] -translate-y-1/2 rounded-full bg-[#35d49a]/[0.07] blur-[130px]"
-      />
-
-      <div className="relative grid items-center gap-12 lg:grid-cols-[0.8fr_1.2fr]">
-        <Reveal>
-          <Eyebrow>Model Context Protocol</Eyebrow>
-          <Heading>Stop pasting trades into a chat box.</Heading>
-          <Lede>
-            Tradstry ships an MCP server. Point Claude at it once and your
-            journal, playbooks, principles and analytics become things it can
-            read and write — on the subscription you already have, with the
-            model you already trust.
-          </Lede>
-
-          <pre className="mt-8 overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-zinc-400">
-            <code>{CONFIG}</code>
-          </pre>
-
-          <ul className="mt-6 space-y-2.5">
-            {PROMPTS.map((prompt) => (
-              <li
-                key={prompt}
-                className="flex items-start gap-2.5 text-sm text-zinc-400"
-              >
-                <span className="mt-2 size-1 shrink-0 rounded-full bg-zinc-500" />
-                <span className="italic">“{prompt}”</span>
-              </li>
-            ))}
-          </ul>
+    <section
+      id="mcp"
+      className="scroll-mt-16 border-b border-zinc-200 px-5 py-24 sm:px-8 md:py-32"
+    >
+      <div className="mx-auto max-w-[68rem]">
+        <Reveal className="mb-8 grid gap-5 border-b border-zinc-200 pb-6 md:grid-cols-[0.72fr_1.28fr] md:gap-12">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+              06 · MCP
+            </p>
+            <h2 className="mt-3 max-w-md text-balance text-3xl font-semibold leading-[1.05] tracking-[-0.04em] text-zinc-950 md:text-4xl">
+              Take your trading record into the AI tools you already use.
+            </h2>
+          </div>
+          <p className="max-w-2xl text-[16px] leading-7 text-zinc-600 md:pt-6">
+            MCP is a standard way for AI software to call outside tools.
+            Tradstry exposes your journal, analytics, playbooks, and notebook
+            through 27 authenticated tools while keeping your record under your
+            control.
+          </p>
         </Reveal>
 
-        <Reveal className="overflow-hidden rounded-3xl border border-white/[0.09] bg-[#0c0e10] shadow-[0_35px_100px_rgba(0,0,0,0.4)]">
-          <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
-            <div className="flex items-center gap-2">
-              <span className="size-2 rounded-full bg-[#35d49a] shadow-[0_0_14px_rgba(53,212,154,0.75)]" />
-              <span className="font-mono text-[10px] tracking-[0.18em] text-zinc-500">
-                TRADSTRY MCP · CONNECTED
-              </span>
+        <InteractiveSceneFrame scene="mcp">
+          <div className="grid min-h-[34rem] overflow-hidden rounded-2xl border border-zinc-200 bg-[#f4f4f2] shadow-[0_24px_70px_rgba(24,24,27,0.08)] md:grid-cols-[0.82fr_1.18fr]">
+            <div className="relative z-20 min-w-0 border-b border-zinc-200 bg-white/72 p-6 backdrop-blur-[2px] sm:p-10 md:border-b-0 md:border-r">
+              <div className="flex items-center gap-2">
+                <span className="size-2 rounded-full bg-profit" />
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  Tradstry MCP connected
+                </span>
+              </div>
+              <pre className="mt-8 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-5 font-mono text-xs leading-6 text-zinc-600">
+                <code>{CONFIG}</code>
+              </pre>
+              <p className="mt-6 text-sm leading-6 text-zinc-500">
+                Connect once. Your compatible AI client can then use Tradstry's
+                authenticated tools without copied spreadsheets or pasted
+                trades.
+              </p>
             </div>
-            <span className="font-mono text-[9px] text-zinc-700">27 TOOLS</span>
-          </div>
-          <div className="space-y-4 p-5 sm:p-7">
-            <motion.div
-              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.8 }}
-              transition={{
-                duration: reducedMotion ? 0.15 : 0.36,
-                ease: EASE_OUT,
-              }}
-              className="ml-auto max-w-[82%] rounded-2xl rounded-br-md bg-zinc-100 px-4 py-3 text-sm leading-6 text-[#0a0b0d]"
-            >
-              Which setup has quietly cost me the most this quarter?
-            </motion.div>
-            {[
-              ["search_trades", "42 matching trades"],
-              ["get_playbook_performance", "Breakout continuation"],
-              ["calculate_rule_break_cost", "-$2,840 avoidable loss"],
-            ].map(([tool, result], index) => (
-              <motion.div
-                key={tool}
-                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.75 }}
-                transition={{
-                  duration: reducedMotion ? 0.15 : 0.36,
-                  delay: toolDelays[index] + (reducedMotion ? 0 : 0.12),
-                  ease: EASE_OUT,
-                }}
-                className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"
+
+            <div className="relative z-20 min-w-0 bg-white/58 p-6 backdrop-blur-[2px] sm:p-10">
+              <motion.p
+                whileHover={{ transform: "translateY(-3px) scale(1.01)" }}
+                transition={{ duration: 0.16, ease: EASE_OUT }}
+                className="ml-auto max-w-sm rounded-2xl bg-zinc-950 px-5 py-4 text-sm leading-6 text-white shadow-[0_14px_35px_rgba(24,24,27,0.16)]"
               >
-                <div className="flex items-center gap-3">
-                  <span className="grid size-6 place-items-center rounded-full border border-[#35d49a]/20 bg-[#35d49a]/10 font-mono text-[9px] text-[#6ce7b5]">
-                    0{index + 1}
-                  </span>
-                  <code className="font-mono text-[11px] text-zinc-300">
-                    {tool}
-                  </code>
-                </div>
-                <p className="mt-3 border-l border-white/10 pl-3 font-mono text-[10px] text-zinc-600">
-                  {result}
-                </p>
-              </motion.div>
-            ))}
-            <motion.p
-              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.8 }}
-              transition={{
-                duration: reducedMotion ? 0.15 : 0.36,
-                delay: reducedMotion ? 0 : 0.48,
-                ease: EASE_OUT,
-              }}
-              className="max-w-[92%] text-sm leading-6 text-zinc-300"
-            >
-              Your breakout-continuation setup produced positive expectancy when
-              the written entry rules were followed. Seven exceptions accounted
-              for most of the drawdown.
-            </motion.p>
+                Which setup has quietly cost me the most this quarter?
+              </motion.p>
+              <div className="mt-8 space-y-3">
+                {TOOLS.map(([tool, result], index) => (
+                  <motion.div
+                    key={tool}
+                    initial={{ opacity: 0.3, transform: "translateY(8px)" }}
+                    whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+                    whileHover={{ transform: "translateY(-3px) scale(1.01)" }}
+                    viewport={{ once: true, amount: 0.7 }}
+                    transition={{
+                      duration: 0.36,
+                      delay: index * 0.12,
+                      ease: EASE_OUT,
+                    }}
+                    className="rounded-xl border border-zinc-200 bg-white/90 p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-[10px] text-[#c65f19]">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <code className="font-mono text-[11px] text-zinc-800">
+                        {tool}
+                      </code>
+                    </div>
+                    <p className="mt-2 pl-7 font-mono text-[10px] text-zinc-400">
+                      {result}
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+              <p className="mt-6 max-w-lg text-sm leading-6 text-zinc-600">
+                Your breakout continuation setup was profitable when the written
+                entry rules were followed. Seven exceptions produced most of the
+                observed drawdown.
+              </p>
+            </div>
           </div>
-        </Reveal>
+        </InteractiveSceneFrame>
       </div>
-    </Section>
+    </section>
   );
 }

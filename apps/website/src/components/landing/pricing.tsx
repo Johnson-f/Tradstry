@@ -34,30 +34,26 @@ export function Pricing() {
   return (
     <div ref={sectionRef}>
       <Section id="pricing" className="relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-0 h-80 w-[48rem] -translate-x-1/2 rounded-full bg-[#ff8b3d]/[0.055] blur-[130px]"
-        />
-        <Reveal className="relative mx-auto max-w-2xl text-center">
-          <Eyebrow className="justify-center">Pricing</Eyebrow>
+        <Reveal className="relative max-w-3xl">
+          <Eyebrow>Pricing</Eyebrow>
           <Heading>Start the record free. Upgrade the feedback loop.</Heading>
-          <Lede className="mx-auto">
+          <Lede>
             No trade-count traps. Free gives you a real journal; Pro adds the
             scale, analysis, and AI context for an active practice.
           </Lede>
         </Reveal>
 
-        <fieldset className="relative mt-10 flex justify-center">
+        <fieldset className="relative mt-10 flex">
           <legend className="sr-only">Billing period</legend>
-          <div className="inline-flex rounded-xl border border-white/[0.09] bg-white/[0.025] p-1">
+          <div className="inline-flex rounded-xl border border-zinc-200 bg-zinc-100 p-1">
             {(["monthly", "annual"] as const).map((option) => (
               <label
                 key={option}
                 className={cn(
-                  "relative flex min-h-10 cursor-pointer items-center rounded-lg px-4 text-xs font-medium capitalize outline-none transition-colors has-focus-visible:ring-2 has-focus-visible:ring-white/60",
+                  "relative flex min-h-10 cursor-pointer items-center rounded-lg px-4 text-xs font-medium capitalize outline-none transition-colors has-focus-visible:ring-2 has-focus-visible:ring-[#ff7a21]/50",
                   cadence === option
-                    ? "text-[#070809]"
-                    : "text-zinc-400 hover:text-white",
+                    ? "text-white"
+                    : "text-zinc-500 hover:text-zinc-950",
                 )}
               >
                 <input
@@ -71,7 +67,7 @@ export function Pricing() {
                 {cadence === option ? (
                   <motion.span
                     layoutId="pricing-cadence-highlight"
-                    className="absolute inset-0 rounded-lg bg-zinc-100"
+                    className="absolute inset-0 rounded-lg bg-zinc-950"
                     transition={
                       reducedMotion
                         ? { duration: 0.12 }
@@ -82,7 +78,7 @@ export function Pricing() {
                 <span className="relative">{option}</span>
                 {option === "annual" ? (
                   <span className="relative ml-2 font-mono text-[9px] opacity-65">
-                    SAVE $60
+                    SAVE 25%
                   </span>
                 ) : null}
               </label>
@@ -90,32 +86,36 @@ export function Pricing() {
           </div>
         </fieldset>
 
-        <div className="relative mx-auto mt-10 grid max-w-4xl gap-4 md:grid-cols-2">
+        <div className="relative mt-8 grid max-w-5xl gap-5 md:grid-cols-2">
           {PLANS.map((plan) => {
             const price =
               cadence === "annual" ? plan.annualPrice : plan.monthlyPrice;
+            const billingNote =
+              cadence === "annual"
+                ? plan.annualBillingNote
+                : plan.monthlyBillingNote;
             const isPro = plan.id === "pro";
             return (
               <Reveal
                 key={plan.id}
                 as="article"
                 className={cn(
-                  "relative overflow-hidden rounded-2xl border p-7",
+                  "relative overflow-hidden rounded-2xl border p-6 sm:p-8",
                   isPro
-                    ? "border-[#ff8b3d]/30 bg-[linear-gradient(145deg,rgba(255,139,61,0.09),rgba(255,255,255,0.025)_45%)]"
-                    : "border-white/[0.09] bg-white/[0.02]",
+                    ? "border-[#ff7a21]/45 bg-[#fffaf6]"
+                    : "border-zinc-200 bg-white",
                 )}
               >
                 {isPro ? (
-                  <span className="absolute right-5 top-5 rounded-full border border-[#ff8b3d]/25 bg-[#ff8b3d]/10 px-2.5 py-1 font-mono text-[9px] tracking-[0.15em] text-[#ffb47a]">
-                    COMPLETE LOOP
+                  <span className="absolute right-5 top-5 rounded-full border border-[#ff7a21]/30 bg-white px-2.5 py-1 font-mono text-[9px] tracking-[0.15em] text-[#c65f19]">
+                    RECOMMENDED
                   </span>
                 ) : null}
-                <p className="font-mono text-[10px] tracking-[0.2em] text-zinc-500">
+                <p className="font-mono text-[10px] tracking-[0.2em] text-zinc-400">
                   {plan.name.toUpperCase()}
                 </p>
                 <p className="mt-6 flex items-end gap-2">
-                  <span className="relative inline-grid overflow-hidden text-5xl font-semibold tracking-[-0.055em] text-white">
+                  <span className="relative inline-grid overflow-hidden text-5xl font-semibold tracking-[-0.055em] text-zinc-950">
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.span
                         key={`${plan.id}-${cadence}`}
@@ -132,10 +132,13 @@ export function Pricing() {
                       </motion.span>
                     </AnimatePresence>
                   </span>
-                  <span className="pb-1 text-sm text-zinc-500">/ month</span>
+                  <span className="pb-1 text-sm text-zinc-400">/ month</span>
                 </p>
-                <p className="mt-3 min-h-12 text-sm leading-6 text-zinc-400">
+                <p className="mt-3 min-h-12 text-sm leading-6 text-zinc-600">
                   {plan.description}
+                </p>
+                <p className="mt-2 min-h-10 text-xs leading-5 text-zinc-400">
+                  {billingNote}
                 </p>
                 <SignUpButton>
                   <Button
@@ -146,16 +149,16 @@ export function Pricing() {
                       })
                     }
                     className={cn(
-                      "mt-6 h-11 w-full rounded-xl",
+                      "mt-5 h-11 w-full rounded-xl active:scale-[0.97]",
                       isPro
-                        ? "bg-zinc-50 text-[#070809] hover:bg-white"
-                        : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]",
+                        ? "bg-zinc-950 text-white hover:bg-zinc-800"
+                        : "border border-zinc-300 bg-white text-zinc-950 hover:bg-zinc-100",
                     )}
                   >
                     {plan.cta}
                   </Button>
                 </SignUpButton>
-                <ul className="mt-7 space-y-3 border-t border-white/[0.07] pt-6">
+                <ul className="mt-7 space-y-3 border-t border-zinc-200 pt-6">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
                       <HugeiconsIcon
@@ -163,10 +166,10 @@ export function Pricing() {
                         strokeWidth={2}
                         className={cn(
                           "mt-0.5 size-4 shrink-0",
-                          isPro ? "text-[#ff9a52]" : "text-zinc-500",
+                          isPro ? "text-[#c65f19]" : "text-zinc-400",
                         )}
                       />
-                      <span className="text-sm leading-5 text-zinc-300">
+                      <span className="text-sm leading-5 text-zinc-700">
                         {feature}
                       </span>
                     </li>
@@ -176,6 +179,33 @@ export function Pricing() {
             );
           })}
         </div>
+        <p className="relative mt-6 max-w-3xl text-xs leading-5 text-zinc-500">
+          Taxes are calculated at checkout where applicable. Tradstry is a
+          retrospective journal and analytics product, not an investment
+          adviser. It does not provide trading signals or personalized buy or
+          sell recommendations. See our{" "}
+          <a
+            href="/terms"
+            className="text-zinc-800 underline underline-offset-4"
+          >
+            Terms
+          </a>
+          ,{" "}
+          <a
+            href="/refund"
+            className="text-zinc-800 underline underline-offset-4"
+          >
+            Refund Policy
+          </a>
+          , and{" "}
+          <a
+            href="/support"
+            className="text-zinc-800 underline underline-offset-4"
+          >
+            Support
+          </a>{" "}
+          pages.
+        </p>
       </Section>
     </div>
   );

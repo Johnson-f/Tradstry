@@ -2,119 +2,25 @@
 
 import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { motion } from "motion/react";
-import { EASE_OUT } from "@/components/landing/motion";
 import { capture, EVENTS } from "@/lib/analytics/events";
-
-const VIEWPORT = { once: true, amount: 0.6 } as const;
-
-/** The whole product in 1.2s: the ledger exists, then the trade cuts across it. Used once. */
-function DrawnMark() {
-  return (
-    <motion.svg
-      viewBox="0 0 32 32"
-      fill="none"
-      aria-hidden="true"
-      className="size-6"
-      initial="hidden"
-      whileInView="shown"
-      viewport={VIEWPORT}
-    >
-      {["M7 12h18", "M7 17h18"].map((d, index) => (
-        <motion.path
-          key={d}
-          d={d}
-          stroke="currentColor"
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          variants={{
-            hidden: { opacity: 0 },
-            shown: {
-              opacity: 0.35,
-              transition: {
-                duration: 0.3,
-                delay: index * 0.08,
-                ease: EASE_OUT,
-              },
-            },
-          }}
-        />
-      ))}
-      <motion.path
-        d="M7 23l6-6 4 3 8-11"
-        stroke="currentColor"
-        strokeWidth={2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        variants={{
-          hidden: { pathLength: 0 },
-          shown: {
-            pathLength: 1,
-            transition: { duration: 0.9, delay: 0.26, ease: EASE_OUT },
-          },
-        }}
-      />
-    </motion.svg>
-  );
-}
+import { Reveal } from "./motion";
 
 export function Cta() {
   return (
-    <section className="relative overflow-hidden border-t border-white/[0.06] py-28 md:py-40">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[52rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.045]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ff8b3d]/10"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ff8b3d]/[0.07] blur-[130px]"
-      />
-
-      <div className="relative mx-auto max-w-2xl px-6 text-center">
-        <motion.span
-          initial={{ opacity: 0, scale: 0.92 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.45, ease: EASE_OUT }}
-          className="inline-flex size-12 items-center justify-center rounded-2xl border border-[#ff8b3d]/25 bg-[#ff8b3d]/10 text-[#ff9a52]"
-        >
-          <DrawnMark />
-        </motion.span>
-
-        <motion.h2
-          initial={{ opacity: 0, y: 10 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.5, delay: 0.5, ease: EASE_OUT }}
-          className="mt-8 text-balance text-4xl font-semibold tracking-[-0.045em] text-zinc-50 md:text-6xl md:leading-[1.02]"
-        >
-          <span className="block">Plan the risk. Sync the execution.</span>
-          <span className="block text-zinc-500">
-            Find the deviation. Improve the process.
-          </span>
-        </motion.h2>
-
-        <motion.p
-          initial={{ opacity: 0, y: 10 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.5, delay: 0.62, ease: EASE_OUT }}
-          className="mx-auto mt-5 max-w-md text-pretty text-[15px] leading-relaxed text-zinc-400"
-        >
-          Tradstry connects your plans, broker fills, trading rules, and
-          journal—so every trade shows you what to repeat and what to change.
-        </motion.p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.5, delay: 0.74, ease: EASE_OUT }}
-        >
+    <section className="border-t border-zinc-200 px-5 py-28 sm:px-8 md:py-36">
+      <Reveal className="mx-auto max-w-[68rem]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#c65f19]">
+          Build the record
+        </p>
+        <div className="mt-6 grid items-end gap-8 md:grid-cols-[1fr_auto]">
+          <div>
+            <h2 className="max-w-4xl text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.05em] text-zinc-950 md:text-6xl">
+              Plan the risk. Review the execution. Improve the process.
+            </h2>
+            <p className="mt-5 max-w-xl text-[16px] leading-7 text-zinc-600">
+              One connected record for every plan, execution, and review.
+            </p>
+          </div>
           <SignUpButton>
             <Button
               size="lg"
@@ -124,13 +30,13 @@ export function Cta() {
                   label: "Start free",
                 })
               }
-              className="mt-9 h-12 rounded-xl bg-zinc-50 px-8 text-[15px] font-semibold text-[#0A0A0B] hover:bg-white active:scale-[0.98]"
+              className="h-12 rounded-xl bg-zinc-950 px-8 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
             >
               Start free
             </Button>
           </SignUpButton>
-        </motion.div>
-      </div>
+        </div>
+      </Reveal>
     </section>
   );
 }

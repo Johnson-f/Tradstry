@@ -2,64 +2,31 @@
 
 import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { motion } from "motion/react";
 import { capture, EVENTS } from "@/lib/analytics/events";
-import { EASE_OUT } from "./motion";
-import { TradingOrbit } from "./trading-orbit";
+import { HeroSignalField } from "./hero-signal-field";
+
+const FACTS = ["35+ brokerages", "27 MCP tools", "0% used for training"];
 
 export function Hero() {
   return (
     <section
       id="top"
-      className="relative min-h-svh overflow-hidden px-6 pb-20 pt-32 sm:pt-36 lg:grid lg:place-items-center lg:py-32"
+      className="relative flex min-h-svh items-center overflow-hidden border-b border-zinc-200 px-5 pb-20 pt-28 sm:px-8 lg:py-20"
     >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_78%)]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[34rem] bg-[radial-gradient(ellipse_at_top,rgba(255,139,61,0.08),transparent_64%)]"
-      />
-
-      <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 lg:grid-cols-[0.88fr_1.12fr] lg:gap-4">
-        <div className="relative z-10 max-w-2xl">
-          <motion.a
-            href="#mcp"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: EASE_OUT }}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#ff8b3d]/20 bg-[#ff8b3d]/[0.06] px-3 font-mono text-[10px] tracking-[0.08em] text-[#ffb47a] outline-none hover:border-[#ff8b3d]/40 focus-visible:ring-2 focus-visible:ring-[#ff8b3d]/60"
-          >
-            <span className="size-1.5 rounded-full bg-[#ff8b3d] shadow-[0_0_12px_#ff8b3d]" />
-            YOUR JOURNAL · NOW AVAILABLE OVER MCP
-          </motion.a>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, delay: 0.08, ease: EASE_OUT }}
-            className="mt-7 text-balance text-[clamp(3rem,7vw,6.7rem)] font-semibold leading-[0.91] tracking-[-0.065em] text-white"
-          >
+      <HeroSignalField />
+      <div className="relative mx-auto w-full max-w-[68rem]">
+        <div className="max-w-[62rem]">
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#c65f19]">
+            Your complete trading record
+          </p>
+          <h1 className="mt-6 max-w-[11ch] text-balance text-[clamp(4rem,10vw,8.5rem)] font-semibold leading-[0.88] tracking-[-0.07em] text-zinc-950">
             Your trading record should talk back.
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.22, ease: EASE_OUT }}
-            className="mt-7 max-w-xl text-pretty text-[17px] leading-7 text-zinc-400 sm:text-lg"
-          >
-            Tradstry turns your broker activity, trading rules, and journal into
-            one clear record that you and your AI can analyze.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.34, ease: EASE_OUT }}
-            className="mt-9 flex flex-col gap-3 sm:flex-row"
-          >
+          </h1>
+          <p className="mt-8 max-w-2xl text-pretty text-[18px] leading-8 text-zinc-600">
+            Tradstry connects broker activity, trading rules, journal context,
+            and AI in one record you can review and question.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
             <SignUpButton>
               <Button
                 size="lg"
@@ -69,7 +36,7 @@ export function Hero() {
                     label: "Start free",
                   })
                 }
-                className="h-12 rounded-xl bg-zinc-50 px-7 text-[15px] font-semibold text-[#070809] shadow-[0_0_40px_rgba(255,255,255,0.12)] hover:bg-white active:scale-[0.98]"
+                className="h-12 rounded-xl bg-zinc-950 px-7 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
               >
                 Start free
               </Button>
@@ -78,32 +45,17 @@ export function Hero() {
               asChild
               size="lg"
               variant="outline"
-              className="h-12 rounded-xl border-white/10 bg-white/[0.035] px-7 text-[15px] text-zinc-300 backdrop-blur-md hover:bg-white/[0.07] hover:text-white"
+              className="h-12 rounded-xl border-zinc-300 bg-white px-7 text-sm text-zinc-800 hover:bg-zinc-100"
             >
-              <a href="#product">See the record</a>
+              <a href="#journal">View product</a>
             </Button>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.48 }}
-            className="mt-10 flex flex-wrap gap-x-7 gap-y-3 font-mono text-[10px] tracking-[0.11em] text-zinc-600"
-          >
-            <span>35+ BROKERAGES</span>
-            <span>27 MCP TOOLS</span>
-            <span>0% USED FOR TRAINING</span>
-          </motion.div>
+          </div>
+          <ul className="mt-9 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[9px] uppercase tracking-[0.13em] text-zinc-400">
+            {FACTS.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
         </div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.9, delay: 0.16, ease: EASE_OUT }}
-          className="relative -mx-8 lg:-mr-24"
-        >
-          <TradingOrbit />
-        </motion.div>
       </div>
     </section>
   );

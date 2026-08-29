@@ -183,6 +183,11 @@ const SECTIONS: LegalSection[] = [
             reconstruct your equity curve. We send them ticker symbols, never
             anything about you.
           </li>
+          <li>
+            <strong>Paddle</strong> — checkout, subscription billing, receipts,
+            transaction taxes, fraud prevention, and buyer payment support for
+            paid plans.
+          </li>
         </ul>
         <p>
           Your journal itself lives in a database we run on our own servers, not
@@ -292,7 +297,7 @@ const SECTIONS: LegalSection[] = [
         </p>
         <p>
           Questions, requests, or complaints: <Contact />. The data controller
-          is {LEGAL.entity}.
+          is {LEGAL.entity}, {LEGAL.operator}.
         </p>
       </>
     ),

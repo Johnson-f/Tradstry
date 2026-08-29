@@ -8,6 +8,13 @@ describe("public landing plans", () => {
       "founder",
     );
   });
+
+  test("states the full annual charge and renewal commitment", () => {
+    const pro = content.PLANS.find((plan) => plan.id === "pro");
+    expect(pro?.annualBillingNote).toContain("$180");
+    expect(pro?.annualBillingNote).toContain("Renews annually");
+    expect(pro?.monthlyBillingNote).toContain("Renews monthly");
+  });
 });
 
 describe("landing narrative", () => {
@@ -20,16 +27,30 @@ describe("landing narrative", () => {
     ).toBe(true);
   });
 
-  test("moves from the trading leak to one connected record before pricing", () => {
+  test("moves through the complete product record before pricing", () => {
     expect((content as Record<string, unknown>).LANDING_SECTIONS).toEqual([
-      "signal",
-      "leak",
-      "record",
+      "journal",
+      "analytics",
+      "playbooks",
+      "notebook",
+      "ai",
       "mcp",
-      "proof",
       "pricing",
       "faq",
     ]);
+  });
+
+  test("defines each editorial product story once", () => {
+    expect(content.PRODUCT_STORIES.map((story) => story.id)).toEqual([
+      "journal",
+      "analytics",
+      "playbooks",
+      "notebook",
+      "ai",
+    ]);
+    expect(
+      new Set(content.PRODUCT_STORIES.map((story) => story.title)).size,
+    ).toBe(content.PRODUCT_STORIES.length);
   });
 
   test("uses a static hero when motion or data should be reduced", () => {

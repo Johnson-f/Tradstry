@@ -35,7 +35,7 @@ export const SITE_KEYWORDS = [
  * every route as freshly modified on every deploy, which is a recrawl signal crawlers
  * learn to ignore.
  */
-export const CONTENT_LAST_MODIFIED = new Date("2026-08-24");
+export const CONTENT_LAST_MODIFIED = new Date("2026-08-28");
 
 export const PUBLIC_ROUTES = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
@@ -46,6 +46,8 @@ export const PUBLIC_ROUTES = [
   { path: "/security", changeFrequency: "monthly", priority: 0.8 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.5 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/refund", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/support", changeFrequency: "yearly", priority: 0.5 },
 ] as const;
 
 /**

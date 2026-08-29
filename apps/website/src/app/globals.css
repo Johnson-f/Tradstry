@@ -142,10 +142,14 @@
     @apply scroll-smooth;
   }
 
-  /* The marketing shell is force-dark on a nested div, so the document behind it
-     stays light and rubber-band scrolling exposes it. Paint the document instead. */
-  html:has([data-shell="marketing"]),
-  body:has([data-shell="marketing"]) {
+  html:has([data-shell="marketing"]:not(.dark)),
+  body:has([data-shell="marketing"]:not(.dark)) {
+    background-color: #ffffff;
+    overscroll-behavior-y: none;
+  }
+
+  html:has([data-shell="marketing"].dark),
+  body:has([data-shell="marketing"].dark) {
     background-color: #070809;
     overscroll-behavior-y: none;
   }

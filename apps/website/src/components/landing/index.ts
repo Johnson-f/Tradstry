@@ -7,5 +7,6 @@ export { Mcp } from "./mcp";
 export { Pillars } from "./pillars";
 export { Pricing } from "./pricing";
 export { Problem } from "./problem";
+export { ProductStories } from "./product-stories";
 export { Proof } from "./proof";
 export { SignalStrip } from "./signal-strip";

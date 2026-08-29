@@ -20,10 +20,10 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          These terms are a contract between you and{" "}
-          <Blank>{LEGAL.entity}</Blank> ("Tradstry", "we", "us"). They apply the
-          moment you create an account or use the service, including the web
-          app, the desktop app, and the MCP server.
+          These terms are a contract between you and <Blank>{LEGAL.entity}</Blank>,
+          {" "}{LEGAL.operator} ("Tradstry", "we", "us"). They apply the moment
+          you create an account or use the service, including the web app, the
+          desktop app, and the MCP server.
         </p>
         <p>
           If you don't agree with them, don't use Tradstry. If you're using
@@ -188,15 +188,20 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          Paid plans renew automatically at the end of each billing period until
-          you cancel. Prices are shown before you buy, exclusive of any tax we
-          are required to collect.
+          Paid plans renew automatically at the price and interval shown before
+          checkout until you cancel. Monthly Pro renews monthly. Annual Pro is
+          billed as one annual payment and renews annually.
         </p>
         <p>
-          You can cancel at any time from your account settings. Cancellation
-          stops the next renewal — you keep access for the rest of the period
-          you have already paid for. We don't pro-rate refunds for partial
-          periods unless the law where you live requires it.
+          Paddle is the Merchant of Record for paid purchases. Paddle processes
+          payment, applicable transaction taxes, receipts, subscription billing,
+          and approved refunds. A purchase through Paddle is also subject to
+          Paddle's buyer terms and refund policy shown at checkout.
+        </p>
+        <p>
+          You can cancel from your account billing settings. Cancellation stops
+          the next renewal and you normally keep access through the paid period.
+          Refund eligibility is explained in our <a href="/refund">Refund Policy</a>.
         </p>
         <p>
           If we change the price, we'll tell you before the change takes effect
@@ -280,14 +285,13 @@ const SECTIONS: LegalSection[] = [
     ),
   },
   {
-    id: "law",
-    heading: "Governing law and contact",
+    id: "contact",
+    heading: "Legal notices and contact",
     body: (
       <>
         <p>
-          These terms are governed by the laws of{" "}
-          <Blank>{LEGAL.jurisdiction}</Blank>, without regard to conflict-of-law
-          rules. Disputes go to the courts of that jurisdiction.
+          Nothing in these terms removes rights that cannot lawfully be waived.
+          The laws and consumer protections that apply to you continue to apply.
         </p>
         <p>
           Questions about any of this: <Contact />.

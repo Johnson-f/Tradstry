@@ -1,5 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { PUBLIC_ROUTES } from "@/lib/site";
 
 // Next 16 renamed the `middleware` convention to `proxy`; Clerk deprecated
 // `createRouteMatcher` in favour of resource-level auth. These redirects are a UX/perf
@@ -23,19 +24,11 @@ const CRAWLER_PATHS = new Set([
   "/opengraph-image",
 ]);
 
-const SOURCE_PATHS = new Set([
-  "/trading-journal",
-  "/mcp",
-  "/brokerage-sync",
-  "/analytics",
-  "/security",
-]);
+const PUBLIC_PATHS = new Set<string>(PUBLIC_ROUTES.map((route) => route.path));
 
 const isPublic = (path: string): boolean =>
   isEntry(path) ||
-  path === "/terms" ||
-  path === "/privacy" ||
-  SOURCE_PATHS.has(path) ||
+  PUBLIC_PATHS.has(path) ||
   CRAWLER_PATHS.has(path);
 
 export default clerkMiddleware(async (auth, req) => {
