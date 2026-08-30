@@ -98,8 +98,6 @@ pub struct Model {
     #[sea_orm(has_many)]
     pub notebook_folders: HasMany<crate::entities::notebook::notebook_folders::Entity>,
     #[sea_orm(has_many)]
-    pub notebook_images: HasMany<crate::entities::notebook::notebook_images::Entity>,
-    #[sea_orm(has_many)]
     pub notebook_media_blobs: HasMany<crate::entities::notebook::notebook_media_blobs::Entity>,
     #[sea_orm(has_many)]
     pub notebook_media_outboxes: HasMany<crate::entities::notebook::notebook_media_outbox::Entity>,

@@ -35,6 +35,8 @@ import { NotebookImageActionsProvider } from "./nodes/notebook-image-node";
 import { MediaRefreshPlugin } from "./plugins/media-refresh-plugin";
 import { PasteImagePlugin } from "./plugins/paste-image-plugin";
 import { SlashCommandPlugin } from "./plugins/slash-command-plugin";
+import { TableEdgeControlsPlugin } from "./plugins/table-edge-controls-plugin";
+import { TableScrollAreaPlugin } from "./plugins/table-scroll-area-plugin";
 import { TitleHeadingPlugin } from "./plugins/title-heading-plugin";
 import { ToolbarPlugin } from "./plugins/toolbar-plugin";
 import { TradeMentionPlugin } from "./plugins/trade-mention-plugin";
@@ -50,6 +52,7 @@ const BODY_PLACEHOLDER = "Start writing, or type / for commands.";
  * the placeholder straight over the chips.
  */
 function isEmptyBodyNode(node: LexicalNode): boolean {
+  if (node.getType() === "table") return false;
   if (node.getTextContent().trim().length > 0) return false;
 
   const getChildren = (node as { getChildren?: () => LexicalNode[] })
@@ -304,10 +307,15 @@ export function NotebookEditor({
         onDeleteImage={onDeleteImage}
       >
         <LinkedTradeProvider trades={trades} onUnlinkTrade={onUnlinkTrade}>
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ToolbarPlugin />
-            <ScrollArea className="min-h-0 flex-1">
-              <section className="mx-auto w-full max-w-5xl px-4 pt-8 pb-6 sm:px-6 lg:px-10">
+            <ScrollArea
+              orientation="both"
+              type="auto"
+              className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:block!"
+              data-notebook-scroll-area=""
+            >
+              <section className="w-full px-4 pt-8 pb-6 sm:px-6 lg:px-10">
                 {/* shouldBootstrap MUST stay false: the client never seeds a Y.Doc.
                     Two independently-bootstrapped docs concatenate rather than merge,
                     silently duplicating every paragraph. Only the creator seeds. */}
@@ -330,7 +338,9 @@ export function NotebookEditor({
                   <TrailingParagraphPlugin />
                   <ListPlugin />
                   <LinkPlugin />
-                  <TablePlugin />
+                  <TablePlugin hasHorizontalScroll hasTabHandler />
+                  <TableScrollAreaPlugin />
+                  <TableEdgeControlsPlugin />
                   <TabIndentationPlugin />
                   <MarkdownShortcutPlugin
                     transformers={MARKDOWN_TRANSFORMERS}

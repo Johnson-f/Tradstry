@@ -523,6 +523,10 @@ function NotebookImageComponent({
 
 /** Serialization lives in @tradstry/notebook-core; only rendering is here. */
 export class NotebookImageNode extends NotebookImageSchema<JSX.Element> {
+  static getType(): string {
+    return NotebookImageSchema.getType();
+  }
+
   static clone(node: NotebookImageNode): NotebookImageNode {
     return new NotebookImageNode(
       node.__hash,

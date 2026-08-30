@@ -45,8 +45,16 @@ const USER_SCOPED: &[(&str, &str)] = &[
         "SELECT to_jsonb(t) FROM notebook_notes t WHERE t.user_id = $1",
     ),
     (
-        "notebook_images",
-        "SELECT to_jsonb(t) FROM notebook_images t WHERE t.user_id = $1",
+        "notebook_media",
+        "SELECT to_jsonb(media) FROM (
+             SELECT reference.id,reference.note_id,reference.workspace_id,
+                    reference.original_filename,reference.created_at,
+                    blob.content_hash,blob.object_key,blob.content_type,blob.media_type,
+                    blob.format,blob.bytes,blob.width,blob.height,blob.duration_seconds
+             FROM notebook_media_references reference
+             JOIN notebook_media_blobs blob ON blob.id=reference.blob_id
+             WHERE reference.user_id=$1
+         ) media",
     ),
     (
         "brokerage_transactions",

@@ -33,7 +33,9 @@ export const HISTORY_OPTIONS: ReadonlyArray<{
 
 export function policyLabel(policy: TransactionImportPolicyInput): string {
 	if (policy.mode === "custom")
-		return `Since ${policy.customStartDate ?? "custom date"}`;
+		return policy.customStartDate
+			? `Since ${policy.customStartDate}`
+			: "Custom start date";
 	return (
 		HISTORY_OPTIONS.find((option) => option.mode === policy.mode)?.label ??
 		policy.mode
@@ -53,6 +55,30 @@ export function buildAccountImports(
 
 export function policyIsComplete(
 	policy: TransactionImportPolicyInput,
+	today?: string,
 ): boolean {
-	return policy.mode !== "custom" || Boolean(policy.customStartDate);
+	if (policy.mode !== "custom") return true;
+	const value = policy.customStartDate;
+	if (
+		!value ||
+		!/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+		value > (today ?? latestImportDate())
+	)
+		return false;
+	const date = new Date(`${value}T00:00:00Z`);
+	return (
+		!Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+	);
+}
+
+export function latestImportDate(now = new Date()): string {
+	const parts = new Intl.DateTimeFormat("en-US", {
+		timeZone: "America/New_York",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(now);
+	const part = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((item) => item.type === type)?.value;
+	return `${part("year")}-${part("month")}-${part("day")}`;
 }

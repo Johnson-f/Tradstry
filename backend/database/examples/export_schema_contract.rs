@@ -68,23 +68,7 @@ async fn export_contract(options: PgConnectOptions, schema: &str) -> Result<serd
         .sync(&db)
         .await
         .context("sync entity schema")?;
-    db.execute_unprepared(
-        "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS lane text NOT NULL DEFAULT 'deep';
-         ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS stage text NOT NULL DEFAULT 'queued';
-         CREATE TABLE IF NOT EXISTS agent_checkpoints (
-             id text PRIMARY KEY,
-             run_id text NOT NULL,
-             user_id text NOT NULL,
-             workspace_id text NOT NULL,
-             stage text NOT NULL,
-             sequence bigint NOT NULL,
-             state_json jsonb NOT NULL,
-             created_at timestamptz NOT NULL,
-             updated_at timestamptz NOT NULL
-         );",
-    )
-    .await
-    .context("prepare adoption compatibility")?;
+    tradstry_database::schema::prepare_fresh_adoption_compatibility(&db).await?;
     Migrator::up(&db, None).await.context("run migrations")?;
     let contract = read_contract(&db).await;
     pool.close().await;

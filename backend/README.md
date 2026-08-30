@@ -229,15 +229,12 @@ Nearly everything flows through one GraphQL endpoint. The REST routes exist only
 - **GraphiQL:** `GET /graphql`
 - **WebSocket (subscriptions):** `GET /graphql/ws`
 - **Health:** `GET /health`
-- **Images:** `POST /notebook/images/upload`, `GET|DELETE /notebook/images/{id}`
 - **Media:** `POST /notebook/media/upload`, `GET|DELETE /notebook/media/{hash}`, `GET /notebook/media/{hash}/thumb`
 - **Assistance:** `POST /notebook/assist/autocomplete`, `POST /notebook/assist/transform`
 
 All routes are Clerk-authenticated. `/health` is not in the middleware's exclusion list, so a liveness probe should accept any HTTP response rather than only 200.
 
-Notebook media is content-addressed per user. PostgreSQL stores one immutable blob plus separate note references, reserves plan quota before R2 writes, and queues thumbnails and deletion durably. Uploads spool to disk and use a conditional streamed R2 write, so cancellation cannot leave multipart fragments. Removing the last reference schedules physical deletion after 24 hours, and a new reference during that window cancels deletion. The legacy `/notebook/images` routes delegate to the same lifecycle.
-
-Deploy the legacy-delete delegation before allowing shared media references. After shared references exist, do not roll back to a binary that deletes R2 objects directly; roll forward with the compatibility mirror intact.
+Notebook media is content-addressed per user. PostgreSQL stores one immutable blob plus separate note references, reserves plan quota before R2 writes, and queues thumbnails and deletion durably. Uploads spool to disk and use a conditional streamed R2 write, so cancellation cannot leave multipart fragments. Removing the last reference schedules physical deletion after 24 hours, and a new reference during that window cancels deletion.
 
 ### Key GraphQL operations
 

@@ -3,8 +3,6 @@ export interface NotebookImage {
   noteId: string;
   userId: string;
   workspaceId: string;
-  cloudinaryAssetId: string;
-  cloudinaryPublicId: string;
   secureUrl: string;
   contentHash: string;
   width: number;

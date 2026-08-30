@@ -52,7 +52,7 @@ pub(super) async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db:
 const PRESIGN_TTL: std::time::Duration = std::time::Duration::from_secs(604_800);
 
 /// Overwrite each note image's (empty) `secure_url` with a freshly presigned
-/// R2 GET URL derived from its object key (stored in `cloudinary_public_id`).
+/// R2 GET URL derived from its object key.
 async fn presign_note_images(ctx: &Context<'_>, notes: &mut [NotebookNote]) -> Result<()> {
     let r2 = ctx.data::<Arc<R2Client>>()?;
 
@@ -63,7 +63,7 @@ async fn presign_note_images(ctx: &Context<'_>, notes: &mut [NotebookNote]) -> R
     for (note_idx, note) in notes.iter().enumerate() {
         for (img_idx, image) in note.images.iter().enumerate() {
             if image.secure_url.is_empty() {
-                targets.push((note_idx, img_idx, image.cloudinary_public_id.clone()));
+                targets.push((note_idx, img_idx, image.object_key.clone()));
             }
         }
     }

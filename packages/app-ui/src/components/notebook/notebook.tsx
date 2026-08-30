@@ -22,7 +22,7 @@ import {
   useCreateNotebookFolder,
   useCreateNotebookNote,
   useDeleteNotebookFolder,
-  useDeleteNotebookImage,
+  useDeleteNotebookMedia,
   useDeleteNotebookNote,
   useMoveNotebookNode,
   useNotebookFolders,
@@ -165,7 +165,7 @@ export function Notebook() {
   const createNoteMutation = useCreateNotebookNote();
   const deleteNoteMutation = useDeleteNotebookNote();
   const uploadMediaMutation = useUploadNotebookMedia();
-  const deleteImageMutation = useDeleteNotebookImage();
+  const deleteMediaMutation = useDeleteNotebookMedia();
   const updateNoteMutation = useUpdateNotebookNote();
   const createFolderMutation = useCreateNotebookFolder();
   const renameFolderMutation = useRenameNotebookFolder();
@@ -481,7 +481,7 @@ export function Notebook() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full">
+    <div className="flex h-full min-h-0 min-w-0 w-full">
       <div
         inert={collapsed}
         className={cn(
@@ -521,7 +521,7 @@ export function Notebook() {
         onToggleSidebar={toggleSidebar}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">{renderEditorPane()}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderEditorPane()}</div>
     </div>
   );
 
@@ -605,8 +605,6 @@ export function Notebook() {
                   noteId: note.id,
                   userId: note.userId,
                   workspaceId: note.workspaceId,
-                  cloudinaryAssetId: hash,
-                  cloudinaryPublicId: hash,
                   secureUrl,
                   contentHash: hash,
                   width: 0,
@@ -662,7 +660,7 @@ export function Notebook() {
             if (platform.media) {
               await platform.media.delete(note.id, hash);
             } else {
-              await deleteImageMutation.mutateAsync({ hash, noteId: note.id });
+              await deleteMediaMutation.mutateAsync({ hash, noteId: note.id });
             }
             toast.success("Image deleted.", { id: toastId });
           } catch (error) {

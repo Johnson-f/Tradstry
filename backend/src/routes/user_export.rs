@@ -58,28 +58,13 @@ pub async fn export_user_data(
         }
     };
 
-    // The blobs live in object storage, so the export carries links rather than
-    // megabytes of base64. Same dual-read rule the app uses to display them: only
-    // R2-backed rows have an empty secure_url, and presigning a legacy Cloudinary
-    // public id against R2 yields a URL that 404s.
     if let Some(images) = export
-        .get_mut("notebook_images")
+        .get_mut("notebook_media")
         .and_then(Value::as_array_mut)
     {
         for image in images {
-            let existing = image
-                .get("secure_url")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-
-            if !existing.is_empty() {
-                image["download_url"] = Value::String(existing);
-                continue;
-            }
-
             let Some(key) = image
-                .get("cloudinary_public_id")
+                .get("object_key")
                 .and_then(Value::as_str)
                 .map(str::to_owned)
             else {

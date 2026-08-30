@@ -45,7 +45,7 @@ async fn bootstrap_locked(pool: &PgPool, db: &DatabaseConnection) -> Result<()> 
             .sync(db)
             .await
             .context("SeaORM entity schema sync failed")?;
-        prepare_adoption_baseline_compatibility(db).await?;
+        prepare_fresh_adoption_compatibility(db).await?;
         Migrator::up(db, None)
             .await
             .context("SeaORM migrations failed")?;
@@ -64,7 +64,7 @@ async fn bootstrap_locked(pool: &PgPool, db: &DatabaseConnection) -> Result<()> 
     contract::verify(db).await
 }
 
-async fn prepare_adoption_baseline_compatibility(db: &DatabaseConnection) -> Result<()> {
+pub async fn prepare_fresh_adoption_compatibility(db: &DatabaseConnection) -> Result<()> {
     db.execute_unprepared(
         "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS lane text NOT NULL DEFAULT 'deep';
          ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS stage text NOT NULL DEFAULT 'queued';
@@ -78,6 +78,25 @@ async fn prepare_adoption_baseline_compatibility(db: &DatabaseConnection) -> Res
              state_json jsonb NOT NULL,
              created_at timestamptz NOT NULL,
              updated_at timestamptz NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS notebook_images (
+             id text PRIMARY KEY,
+             note_id text NOT NULL,
+             user_id text NOT NULL,
+             workspace_id text NOT NULL,
+             cloudinary_asset_id text NOT NULL DEFAULT '',
+             cloudinary_public_id text NOT NULL DEFAULT '',
+             secure_url text NOT NULL DEFAULT '',
+             width bigint NOT NULL DEFAULT 0,
+             height bigint NOT NULL DEFAULT 0,
+             format text NOT NULL DEFAULT '',
+             bytes bigint NOT NULL DEFAULT 0,
+             original_filename text NOT NULL DEFAULT '',
+             media_type text NOT NULL DEFAULT 'image',
+             content_type text NOT NULL DEFAULT '',
+             duration_seconds double precision NOT NULL DEFAULT 0,
+             created_at timestamptz NOT NULL DEFAULT now(),
+             content_hash text NOT NULL DEFAULT ''
          );",
     )
     .await

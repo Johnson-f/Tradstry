@@ -198,6 +198,10 @@ export type { SerializedTradeTableNode };
 
 /** Serialization lives in @tradstry/notebook-core; only rendering is here. */
 export class TradeTableNode extends TradeTableSchema<ReactNode> {
+  static getType(): string {
+    return TradeTableSchema.getType();
+  }
+
   static clone(node: TradeTableNode): TradeTableNode {
     return new TradeTableNode(node.__tradeIds, node.__label, node.__key);
   }

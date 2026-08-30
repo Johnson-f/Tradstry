@@ -32,6 +32,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { TableToolbar } from "./table-toolbar";
 
 type BlockType =
   | "paragraph"
@@ -213,7 +214,7 @@ export function ToolbarPlugin() {
   }, [editor]);
 
   return (
-    <div className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border/60 bg-background/80 px-3 py-1.5 backdrop-blur">
+    <div className="sticky top-0 z-10 flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border/60 bg-background/80 px-3 py-1.5 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <ToolbarButton
         label="Undo"
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
@@ -286,6 +287,7 @@ export function ToolbarPlugin() {
         onClick={() => applyBlockType("code")}
       />
       <ToolbarButton label="Link" onClick={toggleLink} />
+      <TableToolbar />
     </div>
   );
 }

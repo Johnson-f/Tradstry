@@ -440,7 +440,7 @@ export function useUploadNotebookMedia() {
   });
 }
 
-export function useDeleteNotebookImage() {
+export function useDeleteNotebookMedia() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
 
   // Same rationale as useUploadNotebookMedia: the node is removed from the
@@ -452,7 +452,7 @@ export function useDeleteNotebookImage() {
         throw new Error("You must be signed in to delete notebook images");
       }
 
-      return notebookService.deleteNotebookImage(
+      return notebookService.deleteNotebookMedia(
         () => getToken(),
         hash,
         noteId,

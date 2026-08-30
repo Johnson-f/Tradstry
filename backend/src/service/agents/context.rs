@@ -225,16 +225,19 @@ async fn search_media(
     query: &str,
 ) -> AgentResult<Vec<AgentContextSearchResult>> {
     let rows = sqlx::query_as::<_, MediaRow>(
-        "SELECT i.id, i.note_id, i.original_filename, i.media_type, i.content_type,
+        "SELECT reference.id, reference.note_id, reference.original_filename,
+                blob.media_type, blob.content_type,
                 n.title AS note_title
-         FROM notebook_images i
-         JOIN notebook_notes n ON n.id = i.note_id
-         WHERE i.user_id = $1 AND i.workspace_id = $2
+         FROM notebook_media_references reference
+         JOIN notebook_media_blobs blob ON blob.id=reference.blob_id
+         JOIN notebook_notes n ON n.id = reference.note_id
+         WHERE reference.user_id = $1 AND reference.workspace_id = $2
+           AND blob.state='ready' AND blob.content_hash IS NOT NULL
            AND n.user_id = $1 AND n.workspace_id = $2 AND n.deleted_at IS NULL
-           AND ($3 = '' OR strpos(lower(i.original_filename), lower($3)) > 0
-                OR strpos(lower(i.media_type), lower($3)) > 0
+           AND ($3 = '' OR strpos(lower(reference.original_filename), lower($3)) > 0
+                OR strpos(lower(blob.media_type), lower($3)) > 0
                 OR strpos(lower(n.title), lower($3)) > 0)
-         ORDER BY i.created_at DESC, i.id
+         ORDER BY reference.created_at DESC,reference.id
          LIMIT $4",
     )
     .bind(&actor.user_id)

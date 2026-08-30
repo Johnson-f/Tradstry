@@ -78,7 +78,7 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     .fetch_all(&pool)
     .await
     .expect("list fresh tables");
-    assert_eq!(tables.len(), 77);
+    assert_eq!(tables.len(), 76);
     assert!(tables.contains(&"seaql_migrations".to_string()));
     assert!(tables.contains(&"agent_run_items".to_string()));
     assert!(!tables.contains(&"agent_checkpoints".to_string()));
@@ -326,9 +326,54 @@ async fn notebook_media_migration_normalizes_shared_hashes_and_quota() {
             .fetch_one(&pool)
             .await
             .expect("read normalized media quota");
+    let legacy_table: Option<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.tables
+         WHERE table_schema=current_schema() AND table_name='notebook_images'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("inspect legacy notebook media table");
 
     assert_eq!(blob_count, 2);
     assert_eq!(reference_count, 4);
     assert_eq!(usage, (150, 0));
+    assert_eq!(legacy_table, None);
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
+async fn media_derivative_recovery_requeues_exhausted_jobs() {
+    let (admin, pool, schema) = isolated_pool().await;
+    let db = bootstrap(&pool, &schema)
+        .await
+        .expect("bootstrap media schema");
+    pool.execute(sqlx::AssertSqlSafe(
+        "INSERT INTO users(id,clerk_uuid,email,full_name)
+         VALUES ('u1','c1','u1@test.local','User One');
+         INSERT INTO notebook_media_blobs
+         (id,user_id,content_hash,object_key,state,content_type,media_type,format,bytes,
+          checksum_sha256,quota_counted)
+         VALUES ('b1','u1','hash','object','ready','image/png','image','png',10,'hash',true);
+         INSERT INTO notebook_media_outbox
+         (blob_id,user_id,action,attempt_count,max_attempts,last_error_code)
+         VALUES ('b1','u1','derive',5,5,'media_worker_failed');
+         DELETE FROM seaql_migrations
+         WHERE version='m20260830_000006_requeue_media_derivatives';"
+            .to_string(),
+    ))
+    .await
+    .expect("seed exhausted derivative job");
+
+    Migrator::up(&db, None)
+        .await
+        .expect("apply derivative recovery migration");
+    let job: (i32, Option<String>) = sqlx::query_as(
+        "SELECT attempt_count,last_error_code FROM notebook_media_outbox
+         WHERE blob_id='b1' AND action='derive'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read recovered derivative job");
+    assert_eq!(job, (0, None));
     cleanup(admin, pool, &schema).await;
 }

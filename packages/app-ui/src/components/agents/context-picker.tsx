@@ -200,6 +200,7 @@ export function ContextPicker({
 									const selected = selectedKeys.has(result.key);
 									return (
 										<button
+											key={result.key}
 											ref={(node) => {
 												optionRefs.current[index] = node;
 											}}

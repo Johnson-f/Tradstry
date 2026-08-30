@@ -6,10 +6,10 @@ import {
   Delete02Icon,
   Folder01Icon,
   FolderAddIcon,
+  FolderCogIcon,
   InboxIcon,
   Layers01Icon,
   PencilEdit01Icon,
-  SparklesIcon,
   StarIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -260,7 +260,7 @@ function FolderRow({
         }}
         style={{ paddingLeft: 10 + depth * INDENT }}
         className={cn(
-          "group relative flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+          "group relative flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
           active === node.id
             ? "bg-primary/10 text-foreground"
             : "text-foreground/80 hover:bg-muted/60",
@@ -270,27 +270,8 @@ function FolderRow({
         {active === node.id ? (
           <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" />
         ) : null}
-        <button
-          type="button"
-          aria-label={isOpen ? "Collapse" : "Expand"}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) onToggle(node.id);
-          }}
-          className={cn(
-            "flex size-4 shrink-0 items-center justify-center text-muted-foreground",
-            !hasChildren && "invisible",
-          )}
-        >
-          <HugeiconsIcon
-            icon={ArrowRight01Icon}
-            size={14}
-            strokeWidth={2}
-            className={cn("transition-transform", isOpen && "rotate-90")}
-          />
-        </button>
         <HugeiconsIcon
-          icon={isSystem ? SparklesIcon : Folder01Icon}
+          icon={isSystem ? FolderCogIcon : Folder01Icon}
           size={15}
           strokeWidth={2}
           className={cn(
@@ -299,6 +280,27 @@ function FolderRow({
           )}
         />
         <span className="min-w-0 flex-1 truncate">{node.name}</span>
+
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={`${isOpen ? "Collapse" : "Expand"} ${node.name}`}
+            aria-expanded={isOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.id);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <HugeiconsIcon
+              icon={ArrowRight01Icon}
+              size={14}
+              strokeWidth={2}
+              className={cn("transition-transform", isOpen && "rotate-90")}
+            />
+          </button>
+        ) : null}
 
         <div className="relative flex shrink-0 items-center justify-end">
           <span className="w-5 text-right text-xs tabular-nums text-muted-foreground transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0">
@@ -462,12 +464,16 @@ function NewFolderDialog({
           <DialogTrigger asChild>
             <Button
               type="button"
-              size="icon-sm"
+              size="icon-lg"
               variant="ghost"
               aria-label="New folder"
               className="text-muted-foreground"
             >
-              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={2} />
+              <HugeiconsIcon
+                icon={Add01Icon}
+                className="size-5"
+                strokeWidth={2}
+              />
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
@@ -552,7 +558,7 @@ export function FolderList({
   return (
     <div className="flex h-full w-60 shrink-0 flex-col border-r border-border/60">
       <div className="flex h-13 items-center justify-between gap-2 px-3">
-        <span className="text-base font-semibold">Notebook</span>
+        <span className="text-lg font-semibold">Notebook</span>
         <NewFolderDialog
           onCreateFolder={(name) => onCreateFolder(name, null)}
         />

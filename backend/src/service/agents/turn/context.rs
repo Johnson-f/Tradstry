@@ -82,7 +82,7 @@ async fn load_owned_media_blocks(state: &AgentRuntimeState) -> AgentResult<Vec<C
                 .r2
                 .as_ref()
                 .ok_or(AgentError::ProviderUnavailable)?
-                .get_object(&media.cloudinary_public_id)
+                .get_object(&media.object_key)
                 .await
                 .map_err(|_| AgentError::ProviderUnavailable)?;
             let (mime_type, file_uri) = crate::service::agents::runtime::upload_gemini_video(
@@ -108,7 +108,7 @@ async fn load_owned_media_blocks(state: &AgentRuntimeState) -> AgentResult<Vec<C
             .r2
             .as_ref()
             .ok_or(AgentError::ProviderUnavailable)?
-            .get_object(&media.cloudinary_public_id)
+            .get_object(&media.object_key)
             .await
             .map_err(|_| AgentError::ProviderUnavailable)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);

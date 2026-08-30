@@ -72,11 +72,20 @@ async fn context_search_is_grouped_owned_and_storage_safe() {
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO notebook_images
-         (id,note_id,user_id,workspace_id,cloudinary_asset_id,cloudinary_public_id,secure_url,
-          width,height,format,original_filename,media_type,content_type,content_hash)
-         VALUES ('media-owned','note-owned',$1,$2,'secret-asset','secret-public',
-                 'https://secret.invalid/file',100,100,'png','AXP chart.png','image','image/png','hash')",
+        "INSERT INTO notebook_media_blobs
+         (id,user_id,content_hash,object_key,state,content_type,media_type,format,bytes,
+          width,height,checksum_sha256,quota_counted)
+         VALUES ('blob-owned',$1,'hash','secret-object','ready','image/png','image','png',100,
+                 100,100,'hash',true)",
+    )
+    .bind(&fixture.actor.user_id)
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO notebook_media_references
+         (id,blob_id,user_id,workspace_id,note_id,original_filename)
+         VALUES ('media-owned','blob-owned',$1,$2,'note-owned','AXP chart.png')",
     )
     .bind(&fixture.actor.user_id)
     .bind(&fixture.scope.workspace_id)
@@ -112,9 +121,7 @@ async fn context_search_is_grouped_owned_and_storage_safe() {
     assert!(!results.iter().any(|result| result.key.contains("foreign")));
 
     let serialized = serde_json::to_string(&results).unwrap();
-    assert!(!serialized.contains("secret-asset"));
-    assert!(!serialized.contains("secret-public"));
-    assert!(!serialized.contains("secret.invalid"));
+    assert!(!serialized.contains("secret-object"));
 }
 
 #[tokio::test]

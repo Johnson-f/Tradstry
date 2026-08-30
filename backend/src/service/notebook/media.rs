@@ -143,9 +143,6 @@ pub async fn reserve_upload(
             &input.original_filename,
         )
         .await?;
-        if blob.state == "ready" {
-            upsert_compatibility_image(&mut tx, &reference_id).await?;
-        }
         tx.commit().await?;
         return Ok(MediaUploadReservation {
             upload_id: existing.id,
@@ -266,9 +263,6 @@ pub async fn reserve_upload(
         .execute(&mut *tx)
         .await?;
     }
-    if blob.state == "ready" {
-        upsert_compatibility_image(&mut tx, &reference_id).await?;
-    }
     tx.commit().await?;
     Ok(MediaUploadReservation {
         upload_id,
@@ -381,7 +375,6 @@ pub async fn finalize_upload(
         .execute(&mut *tx)
         .await?;
     }
-    upsert_all_compatibility_images(&mut tx, &blob_id).await?;
     let ready = blob_by_id(&mut tx, user_id, &blob_id).await?;
     tx.commit().await?;
     Ok(ready.into())
@@ -409,15 +402,10 @@ pub async fn remove_reference(
     .bind(&blob.id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some(reference_id) = reference_id else {
+    if reference_id.is_none() {
         tx.commit().await?;
         return Ok(false);
-    };
-    sqlx::query("DELETE FROM notebook_images WHERE id=$1 AND user_id=$2")
-        .bind(reference_id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+    }
     let remaining: i64 =
         sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE blob_id=$1")
             .bind(&blob.id)
@@ -449,74 +437,6 @@ pub async fn remove_reference(
         .bind(delete_after)
         .execute(&mut *tx)
         .await?;
-    }
-    tx.commit().await?;
-    Ok(true)
-}
-
-pub async fn remove_reference_by_id(
-    pool: &PgPool,
-    user_id: &str,
-    reference_id: &str,
-) -> MediaLifecycleResult<bool> {
-    let row = sqlx::query(
-        "SELECT reference.note_id,blob.content_hash,blob.id AS blob_id,blob.state
-         FROM notebook_media_references reference
-         JOIN notebook_media_blobs blob ON blob.id=reference.blob_id
-         WHERE reference.id=$1 AND reference.user_id=$2",
-    )
-    .bind(reference_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else {
-        return Ok(false);
-    };
-    let note_id: String = row.try_get("note_id")?;
-    if let Some(content_hash) = row.try_get::<Option<String>, _>("content_hash")? {
-        return remove_reference(pool, user_id, &note_id, &content_hash).await;
-    }
-
-    let blob_id: String = row.try_get("blob_id")?;
-    let mut tx = pool.begin().await?;
-    let state: Option<String> = sqlx::query_scalar(
-        "SELECT state FROM notebook_media_blobs
-         WHERE id=$1 AND user_id=$2 FOR UPDATE",
-    )
-    .bind(&blob_id)
-    .bind(user_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some(state) = state else {
-        tx.commit().await?;
-        return Ok(false);
-    };
-    let deleted = sqlx::query(
-        "DELETE FROM notebook_media_references
-         WHERE id=$1 AND user_id=$2 AND blob_id=$3",
-    )
-    .bind(reference_id)
-    .bind(user_id)
-    .bind(&blob_id)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
-    if deleted == 0 {
-        tx.commit().await?;
-        return Ok(false);
-    }
-    sqlx::query("DELETE FROM notebook_images WHERE id=$1 AND user_id=$2")
-        .bind(reference_id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-    let remaining: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE blob_id=$1")
-            .bind(&blob_id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if remaining == 0 && state == "ready" {
-        schedule_gc(&mut tx, &blob_id, user_id).await?;
     }
     tx.commit().await?;
     Ok(true)
@@ -576,23 +496,19 @@ pub async fn reconcile_note_references_tx(
             }
             revive_blob(&mut *connection, &blob_id).await?;
         }
-        let reference_id: String = sqlx::query_scalar(
+        sqlx::query(
             "INSERT INTO notebook_media_references
              (id,blob_id,user_id,workspace_id,note_id,original_filename,provisional_until)
              VALUES($1,$2,$3,$4,$5,'media',NULL)
-             ON CONFLICT(note_id,blob_id) DO UPDATE SET provisional_until=NULL
-             RETURNING id",
+             ON CONFLICT(note_id,blob_id) DO UPDATE SET provisional_until=NULL",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&blob_id)
         .bind(&user_id)
         .bind(&workspace_id)
         .bind(note_id)
-        .fetch_one(&mut *connection)
+        .execute(&mut *connection)
         .await?;
-        if state == "ready" || state == "gc_pending" {
-            upsert_compatibility_image(&mut *connection, &reference_id).await?;
-        }
     }
 
     for row in current {
@@ -608,10 +524,6 @@ pub async fn reconcile_note_references_tx(
         let blob_id: String = row.try_get("blob_id")?;
         let state: String = row.try_get("state")?;
         sqlx::query("DELETE FROM notebook_media_references WHERE id=$1")
-            .bind(&reference_id)
-            .execute(&mut *connection)
-            .await?;
-        sqlx::query("DELETE FROM notebook_images WHERE id=$1")
             .bind(&reference_id)
             .execute(&mut *connection)
             .await?;
@@ -636,21 +548,18 @@ pub async fn remove_note_references_tx(
         return Ok(());
     }
     let rows = sqlx::query(
-        "SELECT DISTINCT blob.id,blob.state
-         FROM notebook_media_references reference
-         JOIN notebook_media_blobs blob ON blob.id=reference.blob_id
-         WHERE reference.user_id=$1 AND reference.note_id=ANY($2)
+        "SELECT blob.id,blob.state
+         FROM notebook_media_blobs blob
+         WHERE blob.id IN (
+             SELECT reference.blob_id FROM notebook_media_references reference
+             WHERE reference.user_id=$1 AND reference.note_id=ANY($2)
+         )
          ORDER BY blob.id FOR UPDATE OF blob",
     )
     .bind(user_id)
     .bind(note_ids)
     .fetch_all(&mut *connection)
     .await?;
-    sqlx::query("DELETE FROM notebook_images WHERE user_id=$1 AND note_id=ANY($2)")
-        .bind(user_id)
-        .bind(note_ids)
-        .execute(&mut *connection)
-        .await?;
     sqlx::query("DELETE FROM notebook_media_references WHERE user_id=$1 AND note_id=ANY($2)")
         .bind(user_id)
         .bind(note_ids)
@@ -924,52 +833,6 @@ async fn upsert_reference(
     .bind(original_filename)
     .fetch_one(connection)
     .await
-}
-
-async fn upsert_compatibility_image(
-    connection: &mut PgConnection,
-    reference_id: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO notebook_images
-         (id,note_id,user_id,workspace_id,cloudinary_asset_id,cloudinary_public_id,
-          secure_url,width,height,format,bytes,original_filename,media_type,content_type,
-          duration_seconds,content_hash)
-         SELECT reference.id,reference.note_id,reference.user_id,reference.workspace_id,
-                COALESCE(blob.content_hash,blob.id),blob.object_key,'',blob.width,blob.height,
-                blob.format,blob.bytes,reference.original_filename,blob.media_type,
-                blob.content_type,blob.duration_seconds,COALESCE(blob.content_hash,'')
-         FROM notebook_media_references reference
-         JOIN notebook_media_blobs blob ON blob.id=reference.blob_id
-         WHERE reference.id=$1 AND blob.state='ready'
-         ON CONFLICT(id) DO UPDATE SET
-            note_id=EXCLUDED.note_id,user_id=EXCLUDED.user_id,
-            workspace_id=EXCLUDED.workspace_id,cloudinary_asset_id=EXCLUDED.cloudinary_asset_id,
-            cloudinary_public_id=EXCLUDED.cloudinary_public_id,secure_url='',
-            width=EXCLUDED.width,height=EXCLUDED.height,format=EXCLUDED.format,
-            bytes=EXCLUDED.bytes,original_filename=EXCLUDED.original_filename,
-            media_type=EXCLUDED.media_type,content_type=EXCLUDED.content_type,
-            duration_seconds=EXCLUDED.duration_seconds,content_hash=EXCLUDED.content_hash",
-    )
-    .bind(reference_id)
-    .execute(connection)
-    .await?;
-    Ok(())
-}
-
-async fn upsert_all_compatibility_images(
-    connection: &mut PgConnection,
-    blob_id: &str,
-) -> Result<(), sqlx::Error> {
-    let ids: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM notebook_media_references WHERE blob_id=$1 ORDER BY id")
-            .bind(blob_id)
-            .fetch_all(&mut *connection)
-            .await?;
-    for id in ids {
-        upsert_compatibility_image(&mut *connection, &id).await?;
-    }
-    Ok(())
 }
 
 fn media_type(content_type: &str) -> &str {

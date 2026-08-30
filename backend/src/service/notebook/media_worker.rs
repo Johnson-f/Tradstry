@@ -1,6 +1,4 @@
-use std::io::Cursor;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{io::Cursor, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, ensure};
 use aws_sdk_s3::primitives::ByteStream;
@@ -163,14 +161,7 @@ async fn derive(pool: &PgPool, r2: &R2Client, job: &Job) -> Result<()> {
             .ok_or_else(|| anyhow!("video thumbnail was not produced"))?
     } else {
         let path = input.path().to_path_buf();
-        tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
-            let image = image::open(path)?;
-            let thumbnail = image.thumbnail(640, 640);
-            let mut output = Cursor::new(Vec::new());
-            thumbnail.write_to(&mut output, ImageFormat::Jpeg)?;
-            Ok(output.into_inner())
-        })
-        .await??
+        tokio::task::spawn_blocking(move || thumbnail_image_file(&path)).await??
     };
     let derivative_hash = hex::encode(Sha256::digest(&thumbnail));
     let derivative_key = format!("{}.thumb/v1", blob.object_key);
@@ -219,6 +210,16 @@ async fn derive(pool: &PgPool, r2: &R2Client, job: &Job) -> Result<()> {
     tx.commit().await?;
     log::debug!("created media derivative {derivative_key} ({derivative_hash})");
     Ok(())
+}
+
+fn thumbnail_image_file(path: &std::path::Path) -> Result<Vec<u8>> {
+    let image = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .decode()?;
+    let thumbnail = image.thumbnail(640, 640);
+    let mut output = Cursor::new(Vec::new());
+    thumbnail.write_to(&mut output, ImageFormat::Jpeg)?;
+    Ok(output.into_inner())
 }
 
 async fn delete(pool: &PgPool, r2: &R2Client, job: &Job) -> Result<()> {
@@ -453,10 +454,6 @@ async fn expire_upload(pool: &PgPool, job: &Job) -> Result<()> {
     .bind(reserved)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("DELETE FROM notebook_images WHERE id IN (SELECT id FROM notebook_media_references WHERE blob_id=$1)")
-        .bind(&job.blob_id)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query("DELETE FROM notebook_media_references WHERE blob_id=$1")
         .bind(&job.blob_id)
         .execute(&mut *tx)
@@ -539,4 +536,25 @@ async fn fail_job(pool: &PgPool, job: &Job, error_code: &str) -> Result<()> {
     .execute(pool)
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use image::{DynamicImage, ImageFormat};
+
+    use super::thumbnail_image_file;
+
+    #[test]
+    fn thumbnails_an_extensionless_image_spool() {
+        let temporary = tempfile::NamedTempFile::new().unwrap();
+        let mut png = Cursor::new(Vec::new());
+        DynamicImage::new_rgb8(4, 4)
+            .write_to(&mut png, ImageFormat::Png)
+            .unwrap();
+        std::fs::write(temporary.path(), png.into_inner()).unwrap();
+
+        assert!(thumbnail_image_file(temporary.path()).is_ok());
+    }
 }

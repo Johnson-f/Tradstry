@@ -21,8 +21,6 @@ const NOTEBOOK_NOTE_FIELDS = `
     noteId
     userId
     workspaceId
-    cloudinaryAssetId
-    cloudinaryPublicId
     secureUrl
     contentHash
     width
@@ -281,8 +279,6 @@ function mapNotebookImage(img: Record<string, unknown>): NotebookImage {
     noteId: img.note_id,
     userId: img.user_id,
     workspaceId: img.workspace_id,
-    cloudinaryAssetId: img.cloudinary_asset_id,
-    cloudinaryPublicId: img.cloudinary_public_id,
     secureUrl: img.secure_url,
     contentHash: img.content_hash,
     width: img.width,
@@ -365,7 +361,7 @@ export async function uploadNotebookMedia(
   });
 }
 
-export async function deleteNotebookImage(
+export async function deleteNotebookMedia(
   getToken: TokenProvider,
   hash: string,
   noteId: string,

@@ -242,9 +242,7 @@ fn normalize_filename(filename: Option<&str>) -> String {
 
 async fn presign(r2: &R2Client, mut image: NotebookImage) -> NotebookImage {
     if image.secure_url.is_empty()
-        && let Ok(url) = r2
-            .presigned_get_url(&image.cloudinary_public_id, PRESIGN_TTL)
-            .await
+        && let Ok(url) = r2.presigned_get_url(&image.object_key, PRESIGN_TTL).await
     {
         image.secure_url = url;
     }

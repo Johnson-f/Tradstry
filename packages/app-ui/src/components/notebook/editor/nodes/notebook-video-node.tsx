@@ -98,6 +98,10 @@ function NotebookVideoComponent({
 
 /** Serialization lives in @tradstry/notebook-core; only rendering is here. */
 export class NotebookVideoNode extends NotebookVideoSchema<JSX.Element> {
+  static getType(): string {
+    return NotebookVideoSchema.getType();
+  }
+
   static clone(node: NotebookVideoNode): NotebookVideoNode {
     return new NotebookVideoNode(node.__hash, node.__altText, node.__key);
   }

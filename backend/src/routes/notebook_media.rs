@@ -131,7 +131,7 @@ pub async fn get_notebook_media(
 
     let range = request_range(&req, image.bytes)?;
     let object = r2
-        .get_object_stream(&image.cloudinary_public_id, range.as_deref())
+        .get_object_stream(&image.object_key, range.as_deref())
         .await
         .map_err(error::ErrorInternalServerError)?;
     Ok(stream_response(object, &image.content_type))
@@ -158,7 +158,7 @@ pub async fn get_notebook_media_thumb(
         .map_err(map_lifecycle_error)?;
     let thumbnail_key = storage
         .and_then(|storage| storage.derivative_key)
-        .unwrap_or_else(|| format!("{}.thumb", image.cloudinary_public_id));
+        .unwrap_or_else(|| format!("{}.thumb", image.object_key));
     let object = r2
         .get_object_stream(&thumbnail_key, None)
         .await

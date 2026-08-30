@@ -438,7 +438,7 @@ pub async fn list_notebook_notes(
         .collect();
 
     let trade_id_pairs = list_trade_ids_for_notes(pool, &note_ids, user_id).await?;
-    let image_pairs = images::list_notebook_images_for_notes(pool, &note_ids, user_id).await?;
+    let image_pairs = images::list_notebook_media_for_notes(pool, &note_ids, user_id).await?;
 
     Ok(assemble_notebook_notes(
         note_rows,
@@ -466,7 +466,7 @@ pub async fn find_notebook_note(
         Some(row) => {
             let note_row = row_to_notebook_note_row(&row)?;
             let trade_ids = list_trade_ids_for_note(pool, &note_row.id, user_id).await?;
-            let images = images::list_notebook_images_for_note(pool, &note_row.id, user_id).await?;
+            let images = images::list_notebook_media_for_note(pool, &note_row.id, user_id).await?;
             Ok(Some(to_notebook_note(note_row, trade_ids, images)))
         }
         None => Ok(None),
@@ -591,12 +591,14 @@ pub async fn update_notebook_note(
     }
 
     sync_trade_links_conn(&mut tx, id, &prepared.trade_ids).await?;
-    sqlx::query("UPDATE notebook_images SET workspace_id=$3 WHERE note_id=$1 AND user_id=$2")
-        .bind(id)
-        .bind(user_id)
-        .bind(&prepared.workspace_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE notebook_media_references SET workspace_id=$3 WHERE note_id=$1 AND user_id=$2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(&prepared.workspace_id)
+    .execute(&mut *tx)
+    .await?;
     if is_legacy && writes_document {
         let document: serde_json::Value = serde_json::from_str(&prepared.document_json)
             .context("Notebook document must be valid JSON")?;
@@ -663,8 +665,7 @@ mod tests {
             note_id: note_id.to_string(),
             user_id: "user-1".to_string(),
             workspace_id: "account-1".to_string(),
-            cloudinary_asset_id: String::new(),
-            cloudinary_public_id: String::new(),
+            object_key: String::new(),
             secure_url: String::new(),
             width: 0,
             height: 0,

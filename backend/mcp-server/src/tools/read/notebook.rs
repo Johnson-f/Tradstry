@@ -185,7 +185,7 @@ impl TradstryMcp {
             )]));
         };
 
-        let key = &media.cloudinary_public_id;
+        let key = &media.object_key;
         let content_type = media.content_type.clone();
 
         match media.media_type.as_str() {

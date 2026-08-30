@@ -42,7 +42,7 @@ async fn export_contains_a_key_for_every_user_table() {
         "notebook_folders",
         "notebook_notes",
         "notebook_note_trades",
-        "notebook_images",
+        "notebook_media",
         "brokerage_transactions",
         "account_equity_history",
         "agent_conversations",

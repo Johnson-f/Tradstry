@@ -56,11 +56,7 @@ impl Tool<AgentRuntimeState> for NotebookMediaTool {
                 tool_call_id: None,
                 source_type: "notebook_media".into(),
                 source_id: media.id.clone(),
-                source_version: if media.content_hash.is_empty() {
-                    media.created_at.clone()
-                } else {
-                    media.content_hash.clone()
-                },
+                source_version: media.content_hash.clone(),
                 title: media.original_filename.clone(),
                 excerpt: format!(
                     "Owned {} media, type {}, {} bytes.",

@@ -1,6 +1,5 @@
 pub mod notebook_client_mutations;
 pub mod notebook_folders;
-pub mod notebook_images;
 pub mod notebook_media_blobs;
 pub mod notebook_media_outbox;
 pub mod notebook_media_references;

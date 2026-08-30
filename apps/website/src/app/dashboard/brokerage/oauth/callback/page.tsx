@@ -87,10 +87,11 @@ function OAuthCallback() {
 
   if (state.kind === "setup" && attemptId) {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-background p-6">
+      <main className="flex min-h-svh items-center justify-center bg-muted/30 px-4 py-8 sm:px-6 sm:py-12">
         <BrokerageHistorySetup
           accounts={state.accounts}
           workspaceName="this workspace"
+          onBack={() => router.replace("/dashboard/brokerage")}
           isSubmitting={saving}
           onSubmit={(value) => {
             void (async () => {

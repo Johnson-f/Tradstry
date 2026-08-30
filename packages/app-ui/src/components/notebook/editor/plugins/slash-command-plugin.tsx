@@ -29,6 +29,8 @@ import { createPortal } from "react-dom";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import type { JournalEntry } from "@tradstry/app-ui/lib/types/journal";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { $getSelectedTable, OPEN_TABLE_PICKER_COMMAND } from "./table-actions";
+import { SlashCommandMenu } from "./slash-command-menu";
 
 class SlashCommandOption extends MenuOption {
   description: string;
@@ -198,6 +200,15 @@ export function SlashCommandPlugin({
         },
       ),
       new SlashCommandOption(
+        "Table",
+        "Basic blocks",
+        "Insert an editable table with rows and columns",
+        ["table", "grid", "rows", "columns"],
+        (editor) => {
+          editor.dispatchCommand(OPEN_TABLE_PICKER_COMMAND, undefined);
+        },
+      ),
+      new SlashCommandOption(
         "Divider",
         "Basic blocks",
         "Insert a horizontal divider line",
@@ -306,30 +317,24 @@ export function SlashCommandPlugin({
   );
 
   const filteredOptions = useMemo(() => {
+    const inTable = editor.getEditorState().read(
+      () => $getSelectedTable() !== null,
+    );
+    const availableOptions = inTable
+      ? options.filter((option) => option.key !== "Table")
+      : options;
     const query = (queryString ?? "").trim().toLowerCase();
     if (!query) {
-      return options;
+      return availableOptions;
     }
 
-    return options.filter((option) => {
+    return availableOptions.filter((option) => {
       const haystack = [option.key, option.description, ...option.keywords]
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [options, queryString]);
-
-  const groupedOptions = useMemo(() => {
-    const groups = new Map<string, SlashCommandOption[]>();
-
-    for (const option of filteredOptions) {
-      const current = groups.get(option.group) ?? [];
-      current.push(option);
-      groups.set(option.group, current);
-    }
-
-    return Array.from(groups.entries());
-  }, [filteredOptions]);
+  }, [editor, options, queryString]);
 
   return (
     <>
@@ -361,69 +366,13 @@ export function SlashCommandPlugin({
           }
 
           return createPortal(
-            <div className="w-80 overflow-hidden rounded-2xl border border-border bg-popover p-2 shadow-2xl shadow-slate-900/10">
-              <div className="shrink-0 px-2 pb-2 pt-1">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                  Slash Commands
-                </p>
-              </div>
-              <ScrollArea
-                className="h-[min(24rem,calc(100vh-8rem))]"
-                type="always"
-                onWheelCapture={(event) => {
-                  event.stopPropagation();
-                }}
-              >
-                <div className="space-y-3 px-1 pb-1 pr-3">
-                  {groupedOptions.map(([group, groupOptions]) => (
-                    <div key={group} className="space-y-1">
-                      <p className="px-2 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        {group}
-                      </p>
-                      {groupOptions.map((option) => {
-                        const index = options.findIndex(
-                          (currentOption) => currentOption.key === option.key,
-                        );
-
-                        return (
-                          <button
-                            key={option.key}
-                            ref={option.setRefElement}
-                            type="button"
-                            className={cn(
-                              "flex w-full flex-col rounded-xl px-3 py-2 text-left transition-colors",
-                              selectedIndex === index
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-transparent text-foreground hover:bg-accent",
-                            )}
-                            onMouseEnter={() => setHighlightedIndex(index)}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              setHighlightedIndex(index);
-                              selectOptionAndCleanUp(option);
-                            }}
-                          >
-                            <span className="text-sm font-medium">
-                              {option.key}
-                            </span>
-                            <span
-                              className={cn(
-                                "mt-0.5 text-xs",
-                                selectedIndex === index
-                                  ? "text-muted-foreground"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {option.description}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>,
+            <SlashCommandMenu
+              editor={editor}
+              options={options}
+              selectedIndex={selectedIndex}
+              setHighlightedIndex={setHighlightedIndex}
+              selectOption={selectOptionAndCleanUp}
+            />,
             anchorElementRef.current,
           );
         }}

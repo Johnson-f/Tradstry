@@ -71,6 +71,9 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider
+      unsafe_disableDevelopmentModeConsoleWarning={
+        process.env.NODE_ENV === "development"
+      }
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl="/dashboard"

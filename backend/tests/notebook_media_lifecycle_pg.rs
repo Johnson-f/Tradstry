@@ -3,9 +3,10 @@ use std::str::FromStr;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{ConnectOptions, Executor, PgPool};
 use tradstry_backend::service::db::schema::tables::notebook::folders;
+use tradstry_backend::service::db::schema::tables::notebook::notes;
 use tradstry_backend::service::notebook::media::{
     FinalizeMediaInput, MediaLifecycleError, ReserveMediaUploadInput, finalize_upload,
-    remove_reference, reserve_upload,
+    remove_note_references_tx, remove_reference, reserve_upload,
 };
 use uuid::Uuid;
 
@@ -228,6 +229,55 @@ async fn quota_rejection_does_not_create_media_state() {
     .await
     .unwrap();
     assert_eq!(counts, (0, 0));
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
+async fn deleting_a_note_with_media_schedules_the_blob_for_gc() {
+    let (admin, pool, schema) = isolated_pool().await;
+    migrate(&pool, &schema).await;
+    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let note_id = seed_note(&pool, &user_id, &workspace_id).await;
+    let reservation = reserve_upload(&pool, &user_id, input(&note_id, "delete-note-media"))
+        .await
+        .expect("reserve note media");
+    finalize_upload(
+        &pool,
+        &user_id,
+        &reservation.upload_id,
+        FinalizeMediaInput {
+            etag: Some("etag".into()),
+            width: 10,
+            height: 10,
+            duration_seconds: 0.0,
+            format: "png".into(),
+            content_type: "image/png".into(),
+        },
+    )
+    .await
+    .expect("finalize note media");
+
+    let mut tx = pool.begin().await.unwrap();
+    assert!(
+        notes::delete_notebook_note_tx(&mut tx, &note_id, &user_id, "delete-note-media")
+            .await
+            .unwrap()
+    );
+    remove_note_references_tx(&mut tx, &user_id, std::slice::from_ref(&note_id))
+        .await
+        .expect("remove deleted note media references");
+    tx.commit().await.unwrap();
+
+    let state: (String, i64) = sqlx::query_as(
+        "SELECT blob.state,
+                (SELECT count(*) FROM notebook_media_references WHERE blob_id=blob.id)
+         FROM notebook_media_blobs blob WHERE blob.id=$1",
+    )
+    .bind(&reservation.blob_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, ("gc_pending".into(), 0));
     cleanup(admin, pool, &schema).await;
 }
 

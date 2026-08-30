@@ -133,6 +133,10 @@ export type { SerializedLinkedTradeNode };
 
 /** Serialization lives in @tradstry/notebook-core; only rendering is here. */
 export class LinkedTradeNode extends LinkedTradeSchema<ReactNode> {
+  static getType(): string {
+    return LinkedTradeSchema.getType();
+  }
+
   static clone(node: LinkedTradeNode): LinkedTradeNode {
     return new LinkedTradeNode(node.__tradeId, node.__key);
   }

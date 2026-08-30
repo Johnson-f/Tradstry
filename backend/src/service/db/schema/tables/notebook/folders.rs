@@ -402,40 +402,6 @@ async fn renumber_sibling_group(
     Ok(())
 }
 
-pub async fn gather_subtree_image_public_ids(
-    pool: &PgPool,
-    folder_id: &str,
-    user_id: &str,
-) -> Result<Vec<String>> {
-    // No `deleted_at` guard on the folders/notes here: already-tombstoned notes
-    // still own R2 images, and this is the only path that reaps them.
-    let rows = sqlx::query(
-        r#"
-            WITH RECURSIVE subtree(id) AS (
-                SELECT id FROM notebook_folders WHERE id = $1 AND user_id = $2
-                UNION ALL
-                SELECT f.id FROM notebook_folders f JOIN subtree s ON f.parent_folder_id = s.id
-                WHERE f.user_id = $2
-            )
-            SELECT i.cloudinary_public_id FROM notebook_images i
-            JOIN notebook_notes n ON i.note_id = n.id
-            WHERE n.folder_id IN (SELECT id FROM subtree) AND n.user_id = $2
-            "#,
-    )
-    .bind(folder_id)
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .context("Failed to gather subtree image public ids")?;
-
-    let mut public_ids = Vec::new();
-    for row in &rows {
-        public_ids.push(row.try_get::<String, _>(0)?);
-    }
-
-    Ok(public_ids)
-}
-
 pub async fn delete_notebook_folder_subtree_tx(
     conn: &mut PgConnection,
     folder_id: &str,

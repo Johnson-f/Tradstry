@@ -284,11 +284,20 @@ async fn perplexity_rejects_video_before_message_or_run_persistence() {
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO notebook_images
-         (id,note_id,user_id,workspace_id,cloudinary_asset_id,cloudinary_public_id,secure_url,
-          width,height,format,original_filename,media_type,content_type,content_hash)
-         VALUES ('video-media','video-note',$1,$2,'asset','object-key','https://example.invalid/video',
-                 100,100,'mp4','review.mp4','video','video/mp4','hash')",
+        "INSERT INTO notebook_media_blobs
+         (id,user_id,content_hash,object_key,state,content_type,media_type,format,bytes,
+          width,height,checksum_sha256,quota_counted)
+         VALUES ('video-blob',$1,'hash','object-key','ready','video/mp4','video','mp4',100,
+                 100,100,'hash',true)",
+    )
+    .bind(&fixture.actor.user_id)
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO notebook_media_references
+         (id,blob_id,user_id,workspace_id,note_id,original_filename)
+         VALUES ('video-media','video-blob',$1,$2,'video-note','review.mp4')",
     )
     .bind(&fixture.actor.user_id)
     .bind(&fixture.scope.workspace_id)

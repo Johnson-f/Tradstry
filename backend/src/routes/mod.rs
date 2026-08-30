@@ -1,6 +1,5 @@
 pub mod clerk_webhook;
 mod graphql;
-mod notebook_images;
 pub mod notebook_media;
 pub mod snaptrade_oauth;
 pub mod snaptrade_webhook;
@@ -9,7 +8,6 @@ pub mod user_export;
 use actix_web::{HttpResponse, web};
 
 pub use graphql::{graphiql, graphql_handler, graphql_ws_handler};
-pub use notebook_images::{delete_notebook_image, get_notebook_image, upload_notebook_image};
 
 async fn health() -> HttpResponse {
     HttpResponse::Ok().finish()
@@ -34,12 +32,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             web::resource("/webhooks/clerk").route(web::post().to(clerk_webhook::clerk_webhook)),
         )
         .service(web::resource("/export").route(web::get().to(user_export::export_user_data)))
-        .service(
-            web::scope("/notebook/images")
-                .route("/upload", web::post().to(upload_notebook_image))
-                .route("/{id}", web::delete().to(delete_notebook_image))
-                .route("/{id}", web::get().to(get_notebook_image)),
-        )
         .service(
             web::scope("/notebook/media")
                 .route(

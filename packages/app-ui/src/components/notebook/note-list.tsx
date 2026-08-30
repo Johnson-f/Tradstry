@@ -50,7 +50,7 @@ export function NoteList({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              size="icon-sm"
+              size="icon-lg"
               variant="ghost"
               aria-label={sidebarCollapsed ? "Show folders" : "Hide folders"}
               aria-expanded={!sidebarCollapsed}
@@ -59,7 +59,7 @@ export function NoteList({
             >
               <HugeiconsIcon
                 icon={SidebarLeft01Icon}
-                size={16}
+                className="size-5"
                 strokeWidth={2}
               />
             </Button>
@@ -68,18 +68,24 @@ export function NoteList({
             {sidebarCollapsed ? "Show folders" : "Hide folders"}
           </TooltipContent>
         </Tooltip>
-        <span className="flex-1 truncate text-sm font-semibold">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+          {title}
+        </span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               type="button"
-              size="icon-sm"
+              size="icon-lg"
               variant="ghost"
               aria-label="New note"
               onClick={onCreateNote}
               className="shrink-0 text-muted-foreground"
             >
-              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={2} />
+              <HugeiconsIcon
+                icon={Add01Icon}
+                className="size-5"
+                strokeWidth={2}
+              />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">New note</TooltipContent>

@@ -41,7 +41,6 @@ pub use super::markets::market_watchlist_symbols::Entity as MarketWatchlistSymbo
 pub use super::markets::market_watchlists::Entity as MarketWatchlists;
 pub use super::notebook::notebook_client_mutations::Entity as NotebookClientMutations;
 pub use super::notebook::notebook_folders::Entity as NotebookFolders;
-pub use super::notebook::notebook_images::Entity as NotebookImages;
 pub use super::notebook::notebook_media_blobs::Entity as NotebookMediaBlobs;
 pub use super::notebook::notebook_media_outbox::Entity as NotebookMediaOutbox;
 pub use super::notebook::notebook_media_references::Entity as NotebookMediaReferences;

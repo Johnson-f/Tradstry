@@ -434,10 +434,11 @@ function CallbackHandler() {
 
   if (state.kind === "setup") {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-[#f7f7f5] px-5 py-10 dark:bg-[#111112]">
+      <main className="flex min-h-svh items-center justify-center bg-muted/30 px-4 py-8 sm:px-6 sm:py-12">
         <BrokerageHistorySetup
           accounts={state.accounts}
           workspaceName="this workspace"
+          onBack={() => router.replace("/dashboard/brokerage")}
           onSubmit={(value) => void finalizeSetup(value)}
           isSubmitting={isFinalizing}
         />

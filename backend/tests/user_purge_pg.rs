@@ -3,15 +3,14 @@ mod pg_support;
 use pg_support::{reset_schema, test_pool};
 use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
+use tradstry_migration::{Migrator, MigratorTrait};
 use uuid::Uuid;
 
 /// Returns `(user_id, clerk_uuid, r2_key)`.
 async fn seed_user_with_image(pool: &sqlx::PgPool) -> (String, String, String) {
     let user_id = Uuid::new_v4().to_string();
     let clerk_uuid = Uuid::new_v4().to_string();
-    let workspace_id = Uuid::new_v4().to_string();
-    let note_id = Uuid::new_v4().to_string();
-    let image_id = Uuid::new_v4().to_string();
+    let blob_id = Uuid::new_v4().to_string();
     let key = format!("notebook/{user_id}/media/deadbeef");
 
     sqlx::query("INSERT INTO users (id, clerk_uuid, email, full_name) VALUES ($1, $2, $3, $4)")
@@ -23,38 +22,14 @@ async fn seed_user_with_image(pool: &sqlx::PgPool) -> (String, String, String) {
         .await
         .expect("seed user");
 
-    sqlx::query("INSERT INTO workspaces (id, user_id, name) VALUES ($1, $2, $3)")
-        .bind(&workspace_id)
-        .bind(&user_id)
-        .bind("Test Workspace")
-        .execute(pool)
-        .await
-        .expect("seed account");
-
     sqlx::query(
-        "INSERT INTO notebook_notes (id, user_id, workspace_id, title, document_json)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO notebook_media_blobs
+         (id,user_id,content_hash,object_key,state,content_type,media_type,format,bytes,
+          checksum_sha256,quota_counted)
+         VALUES ($1,$2,'deadbeef',$3,'ready','image/png','image','png',10,'deadbeef',true)",
     )
-    .bind(&note_id)
+    .bind(&blob_id)
     .bind(&user_id)
-    .bind(&workspace_id)
-    .bind("A note")
-    .bind("{}")
-    .execute(pool)
-    .await
-    .expect("seed note");
-
-    sqlx::query(
-        "INSERT INTO notebook_images
-         (id, note_id, user_id, workspace_id, cloudinary_asset_id, cloudinary_public_id,
-          secure_url, width, height)
-         VALUES ($1, $2, $3, $4, $5, $6, '', 10, 10)",
-    )
-    .bind(&image_id)
-    .bind(&note_id)
-    .bind(&user_id)
-    .bind(&workspace_id)
-    .bind(&image_id)
     .bind(&key)
     .execute(pool)
     .await
@@ -68,6 +43,10 @@ async fn migrated_pool() -> sqlx::PgPool {
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, None)
+        .await
+        .expect("apply SeaORM migrations");
     pool
 }
 
@@ -101,12 +80,12 @@ async fn deletes_the_user_and_returns_the_internal_id() {
     assert_eq!(deleted.as_deref(), Some(user_id.as_str()));
 
     let remaining: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM notebook_images WHERE user_id = $1")
+        sqlx::query_scalar("SELECT count(*) FROM notebook_media_blobs WHERE user_id = $1")
             .bind(&user_id)
             .fetch_one(&pool)
             .await
             .expect("count images");
-    assert_eq!(remaining, 0, "notebook_images should cascade away");
+    assert_eq!(remaining, 0, "notebook media should cascade away");
 }
 
 #[tokio::test]
