@@ -14,6 +14,7 @@ import type {
 	AgentRunStatus,
 } from "@tradstry/app-ui/lib/types/agents";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { motion } from "motion/react";
 import * as React from "react";
 import {
@@ -21,6 +22,7 @@ import {
 	thinkingHeaderLabel,
 	thinkingNarrative,
 } from "./activity-model";
+import { ActivityNeuralNetwork } from "./activity-neural-network";
 import { ActivityRow } from "./activity-row";
 
 export function AgentActivityTimeline({
@@ -38,6 +40,7 @@ export function AgentActivityTimeline({
 	running?: boolean;
 	error?: Error | null;
 }) {
+	const { theme, kind } = useTradstryPlatform();
 	const [open, setOpen] = React.useState(running);
 	const wasRunning = React.useRef(running);
 	const detail = useAgentMessageActivity(
@@ -97,7 +100,15 @@ export function AgentActivityTimeline({
 					transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
 					className="pb-2 pl-7 pr-1"
 				>
-					<p className="text-xs leading-5 text-muted-foreground/70">
+					<ActivityNeuralNetwork
+						entries={entries}
+						runStatus={detail.data?.summary.status ?? runStatus}
+						reconnecting={Boolean(error || detail.error)}
+						loading={!running && detail.isLoading}
+						theme={theme}
+						enableParticles={kind === "web"}
+					/>
+					<p className="mt-2.5 text-xs leading-5 text-muted-foreground/70">
 						{thinkingNarrative({
 							running,
 							hasError: Boolean(error),
