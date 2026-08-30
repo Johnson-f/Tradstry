@@ -411,12 +411,14 @@ export function useUploadNotebookMedia() {
     mutationFn: async ({
       noteId,
       hash,
+      idempotencyKey,
       file,
       onProgress,
       signal,
     }: {
       noteId: string;
       hash: string;
+      idempotencyKey: string;
       file: File;
       onProgress?: (progress: notebookService.UploadProgress) => void;
       signal?: AbortSignal;
@@ -429,6 +431,7 @@ export function useUploadNotebookMedia() {
         () => getToken(),
         noteId,
         hash,
+        idempotencyKey,
         file,
         onProgress,
         signal,

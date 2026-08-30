@@ -1,5 +1,13 @@
-import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  copyFileSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  openAsBlob,
+  unlinkSync,
+} from "node:fs";
+import { copyFile, mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, parse } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -73,7 +81,7 @@ export class MediaRepository {
     this.#downloadsDirectory = options.downloadsDirectory;
   }
 
-  store(input: {
+  async store(input: {
     noteId: string;
     accountId: string;
     hash: string;
@@ -83,31 +91,55 @@ export class MediaRepository {
     height: number;
     durationSeconds: number;
     originalFilename: string;
-    bytes: Uint8Array | number[];
+    sourcePath: string;
     thumb: Uint8Array | number[];
-  }): void {
-    const bytes = new Uint8Array(input.bytes);
-    const thumb = new Uint8Array(input.thumb);
-    verifyMediaBytes(bytes, input.hash);
+  }): Promise<MediaResolved> {
+    await verifyMediaFile(input.sourcePath, input.hash);
+    const size = (await stat(input.sourcePath)).size;
     const thumbDirectory = join(this.#mediaDirectory, "thumb");
-    mkdirSync(thumbDirectory, { recursive: true });
+    await mkdir(thumbDirectory, { recursive: true });
     const fullPath = join(this.#mediaDirectory, input.hash);
     const thumbPath = join(thumbDirectory, `${input.hash}.jpg`);
-    writeFileSync(fullPath, bytes);
-    writeFileSync(thumbPath, thumb);
-    this.#db
-      .prepare(
-        `INSERT INTO notebook_media
-         (hash, note_id, account_id, mime, media_type, width, height, duration_seconds,
-          bytes, original_filename, local_path, thumb_path, upload_state)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-         ON CONFLICT(hash) DO UPDATE SET note_id = excluded.note_id, account_id = excluded.account_id,
-           mime = excluded.mime, media_type = excluded.media_type, width = excluded.width,
-           height = excluded.height, duration_seconds = excluded.duration_seconds, bytes = excluded.bytes,
-           original_filename = excluded.original_filename, local_path = excluded.local_path,
-           thumb_path = excluded.thumb_path, upload_state = excluded.upload_state`,
-      )
-      .run(input.hash, input.noteId, input.accountId, input.mime, input.mediaType, input.width, input.height, input.durationSeconds, bytes.byteLength, input.originalFilename, fullPath, thumbPath);
+    await copyFile(input.sourcePath, fullPath);
+    const thumb = new Uint8Array(input.thumb);
+    if (thumb.byteLength > 0) await writeFile(thumbPath, thumb);
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO local_media_blobs
+           (hash,mime,media_type,width,height,duration_seconds,bytes,
+            original_filename,local_path,thumb_path,upload_state)
+           VALUES (?,?,?,?,?,?,?,?,?,?,'pending')
+           ON CONFLICT(hash) DO UPDATE SET
+             mime=excluded.mime,media_type=excluded.media_type,width=excluded.width,
+             height=excluded.height,duration_seconds=excluded.duration_seconds,
+             bytes=excluded.bytes,original_filename=excluded.original_filename,
+             local_path=excluded.local_path,thumb_path=excluded.thumb_path,
+             upload_state=CASE WHEN local_media_blobs.upload_state='uploaded'
+                               THEN 'uploaded' ELSE 'pending' END`,
+        )
+        .run(input.hash, input.mime, input.mediaType, input.width, input.height, input.durationSeconds, size, input.originalFilename, fullPath, thumb.byteLength > 0 ? thumbPath : null);
+      this.#db
+        .prepare(
+          `INSERT INTO local_note_media_references
+           (note_id,account_id,hash,original_filename,sync_state,deleted_at)
+           VALUES (?,?,?,?,'pending',NULL)
+           ON CONFLICT(note_id,hash) DO UPDATE SET
+             account_id=excluded.account_id,original_filename=excluded.original_filename,
+             sync_state='pending',deleted_at=NULL`,
+        )
+        .run(input.noteId, input.accountId, input.hash, input.originalFilename);
+      this.#db.exec("COMMIT");
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
+    return {
+      state: "local",
+      fullPath,
+      thumbPath: thumb.byteLength > 0 ? thumbPath : null,
+    };
   }
 
   resolve(hash: string): MediaResolved {
@@ -122,46 +154,59 @@ export class MediaRepository {
   async ensure(noteId: string, hash: string): Promise<MediaResolved> {
     const resolved = this.resolve(hash);
     if (resolved.state === "local") return resolved;
-    let download: Awaited<ReturnType<MediaSync["download"]>>;
-    try {
-      download = await this.#media.download(hash);
-    } catch {
-      return { state: "missing", fullPath: null, thumbPath: null };
-    }
-    verifyMediaBytes(download.full, hash);
     const thumbDirectory = join(this.#mediaDirectory, "thumb");
     mkdirSync(thumbDirectory, { recursive: true });
     const fullPath = join(this.#mediaDirectory, hash);
-    writeFileSync(fullPath, download.full);
-    const thumbPath = download.thumb ? join(thumbDirectory, `${hash}.jpg`) : null;
-    if (download.thumb && thumbPath) writeFileSync(thumbPath, download.thumb);
+    const requestedThumbPath = join(thumbDirectory, `${hash}.jpg`);
+    let download: Awaited<ReturnType<MediaSync["download"]>>;
+    try {
+      download = await this.#media.download(hash, fullPath, requestedThumbPath);
+    } catch {
+      return { state: "missing", fullPath: null, thumbPath: null };
+    }
+    const thumbPath = download.hasThumbnail ? requestedThumbPath : null;
     const current = this.#find(hash);
     if (current) {
       this.#db
-        .prepare("UPDATE notebook_media SET local_path = ?, thumb_path = ?, upload_state = 'uploaded' WHERE hash = ?")
+        .prepare("UPDATE local_media_blobs SET local_path=?,thumb_path=?,upload_state='uploaded' WHERE hash=?")
         .run(fullPath, thumbPath, hash);
     } else {
       this.#db
         .prepare(
-          `INSERT INTO notebook_media
-           (hash, note_id, account_id, mime, media_type, bytes, original_filename,
-            local_path, thumb_path, upload_state)
-           VALUES (?, ?, '', ?, ?, ?, '', ?, ?, 'uploaded')`,
+          `INSERT INTO local_media_blobs
+           (hash,mime,media_type,bytes,original_filename,local_path,thumb_path,upload_state)
+           VALUES (?,?,?,?,?,?,?,'uploaded')`,
         )
-        .run(hash, noteId, download.mime, download.mime.startsWith("video/") ? "video" : "image", download.full.byteLength, fullPath, thumbPath);
+        .run(hash, download.mime, download.mime.startsWith("video/") ? "video" : "image", download.bytes, "", fullPath, thumbPath);
     }
+    this.#db
+      .prepare(
+        `INSERT INTO local_note_media_references(note_id,account_id,hash,sync_state)
+         VALUES (?,'',?,'synced')
+         ON CONFLICT(note_id,hash) DO UPDATE SET deleted_at=NULL`,
+      )
+      .run(noteId, hash);
     return { state: "local", fullPath, thumbPath };
   }
 
-  delete(hash: string): void {
+  delete(noteId: string, hash: string): void {
     const row = this.#find(hash);
+    this.#db
+      .prepare("DELETE FROM local_note_media_references WHERE note_id=? AND hash=?")
+      .run(noteId, hash);
+    const references = Number(
+      (this.#db
+        .prepare("SELECT count(*) AS count FROM local_note_media_references WHERE hash=?")
+        .get(hash) as { count: number }).count,
+    );
+    if (references > 0) return;
     for (const path of [row?.localPath, row?.thumbPath]) {
       if (!path) continue;
       try {
         unlinkSync(path);
       } catch {}
     }
-    this.#db.prepare("DELETE FROM notebook_media WHERE hash = ?").run(hash);
+    this.#db.prepare("DELETE FROM local_media_blobs WHERE hash=?").run(hash);
   }
 
   save(hash: string, filename: string): string {
@@ -185,9 +230,13 @@ export class MediaRepository {
   #find(hash: string): MediaRow | null {
     const row = this.#db
       .prepare(
-        `SELECT hash, note_id, account_id, mime, media_type, width, height, duration_seconds,
-                bytes, original_filename, local_path, thumb_path, upload_state
-         FROM notebook_media WHERE hash = ?`,
+        `SELECT blob.hash,reference.note_id,reference.account_id,blob.mime,blob.media_type,
+                blob.width,blob.height,blob.duration_seconds,blob.bytes,
+                COALESCE(reference.original_filename,blob.original_filename) AS original_filename,
+                blob.local_path,blob.thumb_path,blob.upload_state
+         FROM local_media_blobs blob
+         LEFT JOIN local_note_media_references reference ON reference.hash=blob.hash
+         WHERE blob.hash=? ORDER BY reference.created_at LIMIT 1`,
       )
       .get(hash) as StoredMediaRow | undefined;
     return row ? toMediaRow(row) : null;
@@ -214,11 +263,14 @@ export class MediaSync {
   async flush(accountId: string): Promise<number> {
     const rows = this.#db
       .prepare(
-        `SELECT hash, note_id, account_id, mime, media_type, width, height,
-                duration_seconds, bytes, original_filename, local_path, thumb_path, upload_state
-         FROM notebook_media
-         WHERE upload_state = 'pending' AND account_id = ?
-         ORDER BY created_at ASC LIMIT ?`,
+        `SELECT blob.hash,reference.note_id,reference.account_id,blob.mime,blob.media_type,
+                blob.width,blob.height,blob.duration_seconds,blob.bytes,
+                reference.original_filename,blob.local_path,blob.thumb_path,blob.upload_state
+         FROM local_note_media_references reference
+         JOIN local_media_blobs blob ON blob.hash=reference.hash
+         WHERE reference.sync_state='pending' AND reference.deleted_at IS NULL
+           AND reference.account_id=?
+         ORDER BY reference.created_at ASC LIMIT ?`,
       )
       .all(accountId, MEDIA_FLUSH_BATCH) as StoredMediaRow[];
     let uploaded = 0;
@@ -230,8 +282,11 @@ export class MediaSync {
       }
       const filename = row.originalFilename || row.hash;
       try {
-        await this.upload(row.hash, row.noteId, row.mime, filename, readFileSync(row.localPath));
-        this.#db.prepare("UPDATE notebook_media SET upload_state = 'uploaded' WHERE hash = ?").run(row.hash);
+        await this.upload(row.hash, row.noteId, row.mime, filename, row.localPath);
+        this.#db
+          .prepare("UPDATE local_note_media_references SET sync_state='synced' WHERE note_id=? AND hash=?")
+          .run(row.noteId, row.hash);
+        this.#db.prepare("UPDATE local_media_blobs SET upload_state='uploaded' WHERE hash=?").run(row.hash);
         uploaded += 1;
       } catch (error) {
         this.#logger.error(`media sync: upload ${row.hash} failed:`, error);
@@ -240,12 +295,13 @@ export class MediaSync {
     return uploaded;
   }
 
-  async upload(hash: string, noteId: string, mime: string, filename: string, bytes: Uint8Array): Promise<void> {
+  async upload(hash: string, noteId: string, mime: string, filename: string, path: string): Promise<void> {
     const token = await this.#accessToken();
     const form = new FormData();
     form.set("noteId", noteId);
     form.set("hash", hash);
-    form.set("file", new Blob([new Uint8Array(bytes).buffer], { type: mime }), filename || hash);
+    form.set("idempotencyKey", `desktop:${noteId}:${hash}`);
+    form.set("file", await openAsBlob(path, { type: mime }), filename || hash);
     const response = await this.#fetch(`${this.#origin}/notebook/media/upload`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -254,18 +310,30 @@ export class MediaSync {
     if (!response.ok) throw new Error(`media upload failed (${response.status}): ${await response.text()}`);
   }
 
-  async download(hash: string): Promise<{ full: Uint8Array; thumb: Uint8Array | null; mime: string }> {
+  async download(
+    hash: string,
+    fullPath: string,
+    thumbPath: string,
+  ): Promise<{ bytes: number; hasThumbnail: boolean; mime: string }> {
     const token = await this.#accessToken();
     const headers = { authorization: `Bearer ${token}` };
     const response = await this.#fetch(`${this.#origin}/notebook/media/${hash}`, { headers });
     if (!response.ok) throw new Error(`media download failed (${response.status}) for ${hash}`);
     const mime = response.headers.get("content-type") ?? "application/octet-stream";
     const total = Number(response.headers.get("content-length") ?? 0) || 0;
-    const full = await readResponse(response, (loaded) => this.#onProgress?.({ hash, loaded, total }), total);
+    const bytes = await streamVerifiedResponse(
+      response,
+      fullPath,
+      hash,
+      (loaded) => this.#onProgress?.({ hash, loaded, total }),
+      total,
+    );
 
     const thumbResponse = await this.#fetch(`${this.#origin}/notebook/media/${hash}/thumb`, { headers });
-    const thumb = thumbResponse.ok ? new Uint8Array(await thumbResponse.arrayBuffer()) : null;
-    return { full, thumb, mime };
+    if (thumbResponse.ok) {
+      await writeFile(thumbPath, new Uint8Array(await thumbResponse.arrayBuffer()));
+    }
+    return { bytes, hasThumbnail: thumbResponse.ok, mime };
   }
 
   async #accessToken(): Promise<string> {
@@ -285,33 +353,56 @@ export function verifyMediaBytes(bytes: Uint8Array, expectedHash: string): void 
   if (actual !== expectedHash) throw new Error(`media hash mismatch: expected ${expectedHash}, got ${actual}`);
 }
 
-async function readResponse(
+async function verifyMediaFile(path: string, expectedHash: string): Promise<void> {
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(path)) digest.update(chunk);
+  const actual = digest.digest("hex");
+  if (actual !== expectedHash) {
+    throw new Error(`media hash mismatch: expected ${expectedHash}, got ${actual}`);
+  }
+}
+
+async function streamVerifiedResponse(
   response: Response,
+  targetPath: string,
+  expectedHash: string,
   progress: (loaded: number) => void,
   total: number,
-): Promise<Uint8Array> {
-  if (!response.body) return new Uint8Array(await response.arrayBuffer());
+): Promise<number> {
+  if (!response.body) throw new Error("media response has no body");
+  const temporaryPath = `${targetPath}.partial-${randomUUID()}`;
+  const file = await open(temporaryPath, "w");
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const digest = createHash("sha256");
   let loaded = 0;
   let lastEmit = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.byteLength;
-    if (loaded - lastEmit >= MEDIA_PROGRESS_STEP || loaded === total) {
-      lastEmit = loaded;
-      progress(loaded);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await file.write(value);
+      digest.update(value);
+      loaded += value.byteLength;
+      if (loaded - lastEmit >= MEDIA_PROGRESS_STEP || loaded === total) {
+        lastEmit = loaded;
+        progress(loaded);
+      }
     }
+    await file.sync();
+    await file.close();
+    const actualHash = digest.digest("hex");
+    if (actualHash !== expectedHash) {
+      throw new Error(
+        `media hash mismatch: expected ${expectedHash}, got ${actualHash}`,
+      );
+    }
+    await rename(temporaryPath, targetPath);
+    return loaded;
+  } catch (error) {
+    await file.close().catch(() => {});
+    await rm(temporaryPath, { force: true }).catch(() => {});
+    throw error;
   }
-  const bytes = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }
 
 function toMediaRow(row: StoredMediaRow): MediaRow {

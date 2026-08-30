@@ -11,7 +11,7 @@ use std::time::Instant;
 use crate::graphql::AppSchema;
 use crate::service::countly::Countly;
 use crate::service::db::Db;
-use crate::service::r2::R2Client;
+use crate::service::upload::r2::R2Client;
 
 fn infer_operation_name(query: &str) -> &str {
     query

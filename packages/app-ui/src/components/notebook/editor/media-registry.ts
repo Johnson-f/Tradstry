@@ -1,22 +1,53 @@
-// Session-only map of content hash -> local blob: URL for media that has been
-// pasted but not yet confirmed resolvable via the server (`urlFor`). Lets a
-// node render immediately from the just-created object URL before the upload
-// finishes, without ever storing that URL on the node itself.
-const localBlobs = new Map<string, string>();
+type MediaEntry = {
+  url: string;
+  status: "pending" | "confirmed";
+  controller: AbortController | null;
+};
 
-export function registerLocalBlob(hash: string, url: string): void {
-  localBlobs.set(hash, url);
+const media = new Map<string, MediaEntry>();
+
+export function registerPendingMedia(
+  nodeKey: string,
+  url: string,
+  controller: AbortController,
+): void {
+  releaseMedia(nodeKey);
+  media.set(nodeKey, { url, status: "pending", controller });
 }
 
-export function getLocalBlob(hash: string): string | undefined {
-  return localBlobs.get(hash);
-}
-
-export function revokeLocalBlob(hash: string): void {
-  const url = localBlobs.get(hash);
-  if (url === undefined) {
-    return;
+export function confirmMedia(nodeKey: string, serverUrl: string): void {
+  const current = media.get(nodeKey);
+  if (current?.url.startsWith("blob:") && serverUrl) {
+    URL.revokeObjectURL(current.url);
   }
-  localBlobs.delete(hash);
-  URL.revokeObjectURL(url);
+  media.set(nodeKey, {
+    url: serverUrl || current?.url || "",
+    status: "confirmed",
+    controller: null,
+  });
+}
+
+export function getMediaUrl(nodeKey: string): string | undefined {
+  return media.get(nodeKey)?.url || undefined;
+}
+
+export function getMediaStatus(
+  nodeKey: string,
+): "pending" | "confirmed" | undefined {
+  return media.get(nodeKey)?.status;
+}
+
+export function cancelPendingMedia(nodeKey: string): void {
+  const entry = media.get(nodeKey);
+  if (entry?.status !== "pending") return;
+  entry.controller?.abort();
+  releaseMedia(nodeKey);
+}
+
+export function releaseMedia(nodeKey: string): void {
+  const entry = media.get(nodeKey);
+  if (!entry) return;
+  entry.controller?.abort();
+  if (entry.url.startsWith("blob:")) URL.revokeObjectURL(entry.url);
+  media.delete(nodeKey);
 }

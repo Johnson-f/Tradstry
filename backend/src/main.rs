@@ -12,8 +12,8 @@ use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::brokerage::client::BrokerageClient;
 use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
 use tradstry_backend::service::db::Db;
-use tradstry_backend::service::r2::R2Client;
 use tradstry_backend::service::redis::client::RedisClient;
+use tradstry_backend::service::upload::r2::R2Client;
 fn cors_allowed_origins() -> Vec<String> {
     let defaults = [
         "http://localhost:3038",
@@ -287,6 +287,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
+    let notebook_media_handle = {
+        let db = db.clone();
+        let r2 = r2_client.clone();
+        let shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            tradstry_backend::service::notebook::media_worker::run_media_worker(
+                db,
+                r2,
+                shutdown_rx,
+            )
+            .await;
+        })
+    };
+
     let notifications_outbox_handle = {
         let db = db.clone();
         let notification_events = notification_events_tx.clone();
@@ -393,6 +407,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .app_data(web::Data::new(snaptrade_oauth_config.clone()))
             .app_data(web::Data::new(jwks_provider_data.clone()))
             .app_data(web::Data::new(countly.clone()))
+            .app_data(
+                actix_multipart::form::MultipartFormConfig::default()
+                    .total_limit(260 * 1024 * 1024)
+                    .memory_limit(1024 * 1024),
+            )
             .configure(routes::configure)
     })
     .bind("0.0.0.0:7899")?
@@ -434,6 +453,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = sync_handle.await;
         let _ = snaptrade_webhook_handle.await;
         let _ = notebook_maintenance_handle.await;
+        let _ = notebook_media_handle.await;
         let _ = notifications_outbox_handle.await;
         let _ = market_monitor_handle.await;
         let _ = notifications_schedule_handle.await;

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clerk_rs::validators::jwks::MemoryCacheJwksProvider;
 use tradstry_backend::service::agents::knowledge::KnowledgeService;
 use tradstry_backend::service::db::Db;
-use tradstry_backend::service::r2::R2Client;
+use tradstry_backend::service::upload::r2::R2Client;
 
 use crate::rate_limit::RateLimiter;
 

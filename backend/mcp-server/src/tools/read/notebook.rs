@@ -11,9 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use base64::Engine as _;
-use tradstry_backend::service::media::extract_keyframes;
 use tradstry_backend::service::notebook::blocks::extract_notebook_blocks;
 use tradstry_backend::service::read_service::notebook as notebook_service;
+use tradstry_backend::service::upload::media::extract_keyframes;
 
 use crate::server::{TradstryMcp, envelope, internal};
 

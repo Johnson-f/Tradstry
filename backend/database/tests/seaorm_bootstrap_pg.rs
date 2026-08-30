@@ -78,7 +78,7 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     .fetch_all(&pool)
     .await
     .expect("list fresh tables");
-    assert_eq!(tables.len(), 73);
+    assert_eq!(tables.len(), 77);
     assert!(tables.contains(&"seaql_migrations".to_string()));
     assert!(tables.contains(&"agent_run_items".to_string()));
     assert!(!tables.contains(&"agent_checkpoints".to_string()));
@@ -268,5 +268,67 @@ async fn activity_migration_backfills_owned_completed_message_links() {
     contract::verify(&db)
         .await
         .expect("contract after activity upgrade");
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
+async fn notebook_media_migration_normalizes_shared_hashes_and_quota() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.expect("replay SQLx archive");
+    pool.execute(sqlx::AssertSqlSafe(
+        "INSERT INTO users (id,clerk_uuid,email,full_name)
+         VALUES ('u1','c1','u1@test.local','User One');
+         INSERT INTO workspaces (id,user_id,name) VALUES ('w1','u1','Main');
+         INSERT INTO notebook_notes
+             (id,user_id,workspace_id,title,document_json)
+         VALUES
+             ('n1','u1','w1','One','{\"root\":{\"children\":[]}}'),
+             ('n2','u1','w1','Two','{\"root\":{\"children\":[]}}'),
+             ('n3','u1','w1','Three','{\"root\":{\"children\":[]}}'),
+             ('n4','u1','w1','Four','{\"root\":{\"children\":[]}}');
+         INSERT INTO notebook_images
+             (id,note_id,user_id,workspace_id,cloudinary_asset_id,
+              cloudinary_public_id,secure_url,width,height,format,bytes,
+              original_filename,media_type,content_type,duration_seconds,content_hash)
+         VALUES
+             ('i1','n1','u1','w1','shared','notebook/u1/media/shared','',10,10,
+              'png',100,'one.png','image','image/png',0,'shared'),
+             ('i2','n2','u1','w1','shared','notebook/u1/media/shared','',10,10,
+              'png',100,'two.png','image','image/png',0,'shared'),
+             ('i3','n3','u1','w1','legacy-1','notebook/u1/w1/legacy','',5,5,
+              'png',50,'three.png','image','image/png',0,''),
+             ('i4','n4','u1','w1','legacy-2','notebook/u1/w1/legacy','',5,5,
+              'png',50,'four.png','image','image/png',0,'');"
+            .to_string(),
+    ))
+    .await
+    .expect("seed shared notebook media");
+
+    let db = bootstrap(&pool, &schema)
+        .await
+        .expect("upgrade notebook media lifecycle");
+    contract::verify(&db)
+        .await
+        .expect("contract after notebook media upgrade");
+
+    let blob_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notebook_media_blobs WHERE user_id='u1'")
+            .fetch_one(&pool)
+            .await
+            .expect("count normalized blobs");
+    let reference_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE user_id='u1'")
+            .fetch_one(&pool)
+            .await
+            .expect("count normalized references");
+    let usage: (i64, i64) =
+        sqlx::query_as("SELECT media_bytes_used,media_bytes_reserved FROM users WHERE id='u1'")
+            .fetch_one(&pool)
+            .await
+            .expect("read normalized media quota");
+
+    assert_eq!(blob_count, 2);
+    assert_eq!(reference_count, 4);
+    assert_eq!(usage, (150, 0));
     cleanup(admin, pool, &schema).await;
 }

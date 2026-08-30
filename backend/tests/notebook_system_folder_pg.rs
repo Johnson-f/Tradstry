@@ -61,7 +61,7 @@ async fn the_system_folder_cannot_be_renamed_or_deleted() {
             .is_err()
     );
     assert!(
-        folders::delete_notebook_folder_subtree(&pool, &sys.id)
+        folders::delete_notebook_folder_subtree(&pool, &sys.id, &user_id)
             .await
             .is_err()
     );
@@ -94,7 +94,7 @@ async fn an_ordinary_folder_is_still_renamable_and_deletable() {
     folders::rename_notebook_folder(&pool, &f.id, "Setups 2026")
         .await
         .unwrap();
-    folders::delete_notebook_folder_subtree(&pool, &f.id)
+    folders::delete_notebook_folder_subtree(&pool, &f.id, &user_id)
         .await
         .unwrap();
 

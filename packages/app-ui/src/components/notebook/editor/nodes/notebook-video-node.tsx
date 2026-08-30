@@ -8,9 +8,15 @@ import {
   type SerializedNotebookVideoNode,
 } from "@tradstry/notebook-core";
 import { $getNodeByKey, type LexicalNode, type NodeKey } from "lexical";
-import { type JSX, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { getLocalBlob, revokeLocalBlob } from "../media-registry";
+import { useTradstryPlatform } from "@tradstry/app-ui/platform";
+import {
+  cancelPendingMedia,
+  getMediaStatus,
+  getMediaUrl,
+  releaseMedia,
+} from "../media-registry";
 import { useNotebookMediaActions } from "./notebook-image-node";
 
 export type { SerializedNotebookVideoNode };
@@ -23,31 +29,38 @@ function NotebookVideoComponent({
   hash: string;
 }) {
   const [editor] = useLexicalComposerContext();
-  const { onDeleteImage, urlFor } = useNotebookMediaActions();
+  const { noteId, urlFor, onDeleteImage } = useNotebookMediaActions();
+  const { media } = useTradstryPlatform();
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (media && noteId) {
+      void media
+        .resolve(noteId, hash)
+        .then((url) => {
+          if (active) setLocalUrl(url);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      active = false;
+    };
+  }, [hash, media, noteId]);
   // A local blob: URL mid-upload takes precedence over the (possibly not-yet-
   // resolvable) server URL.
-  const src = getLocalBlob(hash) ?? urlFor?.(hash);
-  const [deleting, setDeleting] = useState(false);
-  const isTemp = Boolean(src?.startsWith("blob:"));
+  const src = getMediaUrl(nodeKey) ?? localUrl ?? urlFor?.(hash);
+  const isTemp = getMediaStatus(nodeKey) === "pending";
   const isPending = !src;
 
   const handleDelete = async () => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      if (getLocalBlob(hash) !== undefined) {
-        // No resolved server copy yet — nothing to delete server-side.
-        revokeLocalBlob(hash);
-      } else if (onDeleteImage) {
-        // Persisted videos (real hash on the server) are removed from R2 too.
-        await onDeleteImage(hash);
-      }
-      editor.update(() => {
-        $getNodeByKey(nodeKey)?.remove();
-      });
-    } finally {
-      setDeleting(false);
+    if (getMediaStatus(nodeKey) === "pending") cancelPendingMedia(nodeKey);
+    else {
+      await onDeleteImage?.(hash);
+      releaseMedia(nodeKey);
     }
+    editor.update(() => {
+      $getNodeByKey(nodeKey)?.remove();
+    });
   };
 
   return (
@@ -69,7 +82,6 @@ function NotebookVideoComponent({
         variant="ghost"
         size="icon-sm"
         aria-label={isTemp ? "Cancel upload" : "Delete video"}
-        disabled={deleting}
         onClick={handleDelete}
         className={`absolute top-2 right-2 z-20 bg-black/50 text-white transition-opacity hover:bg-black/70 hover:text-white ${
           isTemp ? "opacity-100" : "opacity-0 group-hover:opacity-100"

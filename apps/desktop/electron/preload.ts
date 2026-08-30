@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopBridge, DesktopEvent } from "../src/ipc/contract.ts";
 
 const bridge: DesktopBridge = {
@@ -11,6 +11,11 @@ const bridge: DesktopBridge = {
     return () => ipcRenderer.removeListener("tradstry:event", handler);
   },
   mediaUrl: (path) => `tradstry-media://local${encodeURI(path)}`,
+  storeMedia: (input, file) => {
+    const sourcePath = webUtils.getPathForFile(file);
+    if (!sourcePath) return Promise.resolve(null);
+    return ipcRenderer.invoke("tradstry:store-media", { ...input, sourcePath });
+  },
   openExternal: (url) => ipcRenderer.invoke("tradstry:open-external", url),
   setTheme: (theme) => ipcRenderer.invoke("tradstry:set-theme", theme),
   subscribe: (query, variables, handlers) => {

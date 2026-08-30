@@ -87,13 +87,8 @@ CREATE TABLE IF NOT EXISTS pulled_seq (
     seq INTEGER PRIMARY KEY NOT NULL
 );
 
--- Content-addressed media (images/video) referenced by notebook nodes via
--- `hash`. Bytes live on disk (`local_path`/`thumb_path`); this row tracks
--- where they are and whether the server has them yet.
-CREATE TABLE IF NOT EXISTS notebook_media (
+CREATE TABLE IF NOT EXISTS local_media_blobs (
     hash             TEXT PRIMARY KEY,
-    note_id          TEXT NOT NULL,
-    account_id       TEXT NOT NULL,
     mime             TEXT NOT NULL,
     media_type       TEXT NOT NULL,
     width            INTEGER NOT NULL DEFAULT 0,
@@ -106,7 +101,20 @@ CREATE TABLE IF NOT EXISTS notebook_media (
     upload_state     TEXT NOT NULL DEFAULT 'pending',
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_notebook_media_pending ON notebook_media (account_id, upload_state);
+CREATE INDEX IF NOT EXISTS idx_local_media_blobs_pending ON local_media_blobs (upload_state, created_at);
+
+CREATE TABLE IF NOT EXISTS local_note_media_references (
+    note_id           TEXT NOT NULL,
+    account_id        TEXT NOT NULL,
+    hash              TEXT NOT NULL REFERENCES local_media_blobs(hash) ON DELETE CASCADE,
+    original_filename TEXT NOT NULL DEFAULT '',
+    sync_state        TEXT NOT NULL DEFAULT 'pending',
+    deleted_at        TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (note_id, hash)
+);
+CREATE INDEX IF NOT EXISTS idx_local_media_refs_account_sync
+    ON local_note_media_references (account_id, sync_state, created_at);
 
 -- Playbooks are user-scoped (no account_id). Whole-row LWW via a single `hlc`;
 -- soft-delete via `deleted_at`. Stats are NOT stored here — they are an online

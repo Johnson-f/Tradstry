@@ -36,6 +36,11 @@ pub struct Model {
     pub notebook_folders: BelongsTo<Option<crate::entities::notebook::notebook_folders::Entity>>,
     #[sea_orm(has_many)]
     pub notebook_images: HasMany<crate::entities::notebook::notebook_images::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_references:
+        HasMany<crate::entities::notebook::notebook_media_references::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_uploads: HasMany<crate::entities::notebook::notebook_media_uploads::Entity>,
     #[sea_orm(has_one)]
     pub notebook_note_crdt: HasOne<crate::entities::notebook::notebook_note_crdt::Entity>,
     #[sea_orm(has_many)]

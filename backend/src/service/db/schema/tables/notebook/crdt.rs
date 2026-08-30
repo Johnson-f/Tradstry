@@ -305,6 +305,9 @@ pub async fn refresh_projection(pool: &PgPool, note_id: &str) -> Result<()> {
     .execute(&mut *tx)
     .await
     .context("refresh_projection: failed to advance projected_seq")?;
+    crate::service::notebook::media::reconcile_note_references_tx(&mut tx, note_id, &parsed)
+        .await
+        .context("refresh_projection: failed to reconcile media references")?;
     tx.commit()
         .await
         .context("refresh_projection: commit failed")?;

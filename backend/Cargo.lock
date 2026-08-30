@@ -7736,6 +7736,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "subtle",
+ "tempfile",
  "thiserror 2.0.18",
  "tinyagents",
  "tokenizers",

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use async_graphql::SimpleObject;
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -405,22 +405,25 @@ async fn renumber_sibling_group(
 pub async fn gather_subtree_image_public_ids(
     pool: &PgPool,
     folder_id: &str,
+    user_id: &str,
 ) -> Result<Vec<String>> {
     // No `deleted_at` guard on the folders/notes here: already-tombstoned notes
     // still own R2 images, and this is the only path that reaps them.
     let rows = sqlx::query(
         r#"
             WITH RECURSIVE subtree(id) AS (
-                SELECT id FROM notebook_folders WHERE id = $1
+                SELECT id FROM notebook_folders WHERE id = $1 AND user_id = $2
                 UNION ALL
                 SELECT f.id FROM notebook_folders f JOIN subtree s ON f.parent_folder_id = s.id
+                WHERE f.user_id = $2
             )
             SELECT i.cloudinary_public_id FROM notebook_images i
             JOIN notebook_notes n ON i.note_id = n.id
-            WHERE n.folder_id IN (SELECT id FROM subtree)
+            WHERE n.folder_id IN (SELECT id FROM subtree) AND n.user_id = $2
             "#,
     )
     .bind(folder_id)
+    .bind(user_id)
     .fetch_all(pool)
     .await
     .context("Failed to gather subtree image public ids")?;
@@ -436,8 +439,18 @@ pub async fn gather_subtree_image_public_ids(
 pub async fn delete_notebook_folder_subtree_tx(
     conn: &mut PgConnection,
     folder_id: &str,
+    user_id: &str,
     hlc: &str,
-) -> Result<()> {
+) -> Result<Vec<String>> {
+    let owned: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM notebook_folders
+         WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL)",
+    )
+    .bind(folder_id)
+    .bind(user_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    ensure!(owned, "Notebook folder not found");
     // Only the folder row is protected. Notes inside it are ordinary notes and are
     // deleted through the note paths, which this guard does not touch.
     if is_system_folder(conn, folder_id).await? {
@@ -446,30 +459,70 @@ pub async fn delete_notebook_folder_subtree_tx(
 
     // Soft delete does not fire ON DELETE CASCADE, so stamp both the whole folder
     // subtree and every note inside it explicitly.
-    let ids = folder_subtree_ids(&mut *conn, folder_id).await?;
+    let rows = sqlx::query(
+        "WITH RECURSIVE subtree(id) AS (
+             SELECT id FROM notebook_folders WHERE id=$1 AND user_id=$2
+             UNION ALL
+             SELECT folder.id FROM notebook_folders folder
+             JOIN subtree parent ON folder.parent_folder_id=parent.id
+             WHERE folder.user_id=$2
+         ) SELECT id FROM subtree ORDER BY id",
+    )
+    .bind(folder_id)
+    .bind(user_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    let ids = rows
+        .iter()
+        .map(|row| row.try_get::<String, _>("id"))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let note_ids = sqlx::query_scalar(
+        "SELECT id FROM notebook_notes
+         WHERE user_id=$1 AND folder_id=ANY($2) AND deleted_at IS NULL ORDER BY id",
+    )
+    .bind(user_id)
+    .bind(&ids)
+    .fetch_all(&mut *conn)
+    .await?;
 
     sqlx::query(
-        "UPDATE notebook_folders SET deleted_at = now(), hlc = $2 WHERE id = ANY($1) AND deleted_at IS NULL",
+        "UPDATE notebook_folders SET deleted_at = now(), hlc = $3
+         WHERE id = ANY($1) AND user_id=$2 AND deleted_at IS NULL",
     )
     .bind(&ids)
+    .bind(user_id)
     .bind(hlc)
     .execute(&mut *conn)
     .await
     .context("Failed to soft-delete folder subtree")?;
 
-    sqlx::query("UPDATE notebook_notes SET deleted_at = now(), hlc = $2 WHERE folder_id = ANY($1) AND deleted_at IS NULL")
-        .bind(&ids)
-        .bind(hlc)
-        .execute(&mut *conn)
-        .await
-        .context("Failed to soft-delete notes in folder subtree")?;
+    sqlx::query(
+        "UPDATE notebook_notes SET deleted_at=now(),hlc=$3
+         WHERE folder_id=ANY($1) AND user_id=$2 AND deleted_at IS NULL",
+    )
+    .bind(&ids)
+    .bind(user_id)
+    .bind(hlc)
+    .execute(&mut *conn)
+    .await
+    .context("Failed to soft-delete notes in folder subtree")?;
 
-    Ok(())
+    Ok(note_ids)
 }
 
-pub async fn delete_notebook_folder_subtree(pool: &PgPool, folder_id: &str) -> Result<()> {
+pub async fn delete_notebook_folder_subtree(
+    pool: &PgPool,
+    folder_id: &str,
+    user_id: &str,
+) -> Result<Vec<String>> {
     let mut tx = pool.begin().await?;
-    delete_notebook_folder_subtree_tx(&mut tx, folder_id, &crate::service::hlc::stamp()).await?;
+    let note_ids = delete_notebook_folder_subtree_tx(
+        &mut tx,
+        folder_id,
+        user_id,
+        &crate::service::hlc::stamp(),
+    )
+    .await?;
     tx.commit().await?;
-    Ok(())
+    Ok(note_ids)
 }

@@ -20,6 +20,18 @@ export type TradstryUser = {
 
 export type TradstryTheme = "light" | "dark" | "system";
 
+export type TradstryMedia = {
+  store(input: {
+    noteId: string;
+    workspaceId: string;
+    hash: string;
+    file: File;
+    signal?: AbortSignal;
+  }): Promise<string | null>;
+  resolve(noteId: string, hash: string): Promise<string | null>;
+  delete(noteId: string, hash: string): Promise<void>;
+};
+
 export type TradstryPlatform = {
   kind: "web" | "desktop";
   auth: TradstryAuth;
@@ -32,6 +44,7 @@ export type TradstryPlatform = {
   signOut: () => void | Promise<void>;
   theme: TradstryTheme;
   setTheme: (theme: TradstryTheme) => void;
+  media?: TradstryMedia;
   features?: {
     dashboardCompactMetrics?: boolean;
   };

@@ -1,6 +1,10 @@
 pub mod notebook_client_mutations;
 pub mod notebook_folders;
 pub mod notebook_images;
+pub mod notebook_media_blobs;
+pub mod notebook_media_outbox;
+pub mod notebook_media_references;
+pub mod notebook_media_uploads;
 pub mod notebook_note_crdt;
 pub mod notebook_note_trades;
 pub mod notebook_note_updates;

@@ -235,6 +235,10 @@ Nearly everything flows through one GraphQL endpoint. The REST routes exist only
 
 All routes are Clerk-authenticated. `/health` is not in the middleware's exclusion list, so a liveness probe should accept any HTTP response rather than only 200.
 
+Notebook media is content-addressed per user. PostgreSQL stores one immutable blob plus separate note references, reserves plan quota before R2 writes, and queues thumbnails and deletion durably. Uploads spool to disk and use a conditional streamed R2 write, so cancellation cannot leave multipart fragments. Removing the last reference schedules physical deletion after 24 hours, and a new reference during that window cancels deletion. The legacy `/notebook/images` routes delegate to the same lifecycle.
+
+Deploy the legacy-delete delegation before allowing shared media references. After shared references exist, do not roll back to a binary that deletes R2 objects directly; roll forward with the compatibility mirror intact.
+
 ### Key GraphQL operations
 
 **Queries:** `accounts`, `journalEntries`, `playbooks`, `principles`, `tags`, `tagCategories`, `chatSessions`, `chatMessages`, `notebookNotes`, `notebookFolders`, `userAgents`, `userPrompts`, `journalAnalytics`, `calendarAnalytics`, `advancedAnalytics`, `accountEquityHistory`, `brokerageTransactions`, `brokerageHoldings`, `brokerageBalances`, `pendingTrades`, `aiInsights`, `aiReport`, `mindsetSummary`
@@ -285,6 +289,7 @@ src/
     brokerage/               # SnapTrade sync, transactions, holdings, pending trades
     equity/                  # Equity curve replay, rebuild, price history
     notebook/                # Lexical document logic, projector, block extraction, maintenance loop
+    upload/                  # Notebook file validation, hashing, quota, R2 transfer, finalization
     read_service/            # Shared read helpers and analytics
     auth/                    # Clerk JWKS provider
     hlc.rs                   # Server Hybrid Logical Clock

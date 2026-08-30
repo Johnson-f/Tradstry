@@ -5,10 +5,10 @@ use crate::service::db::schema::tables::notebook::folders::{
     self, MoveNotebookNodeInput as TableMoveNotebookNodeInput, NotebookFolder, NotebookNodeType,
 };
 use crate::service::db::schema::tables::notebook::notes::{
-    CreateNotebookNoteInput, NotebookNote, UpdateNotebookNoteInput,
+    self, CreateNotebookNoteInput, NotebookNote, UpdateNotebookNoteInput,
 };
-use crate::service::r2::R2Client;
 use crate::service::read_service::notebook as notebook_service;
+use crate::service::upload::r2::R2Client;
 
 /// GraphQL-facing mirror of the table-layer `NotebookNodeType` enum.
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -166,29 +166,23 @@ impl NotebookMutation {
 
     async fn delete_notebook_note(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        // Fetch first so we have the note's media object keys before the DB
-        // cascade removes the notebook::images rows.
-        let existing = notebook_service::get_notebook_note(&user_db, &id).await?;
-        let deleted = notebook_service::delete_notebook_note(&user_db, &id).await?;
-        if deleted && let Some(note) = existing {
-            // Best-effort R2 cleanup of the note's media, concurrently. The DB rows
-            // are already gone via cascade; `cloudinary_public_id` holds the R2 key.
-            let r2 = ctx.data::<Arc<R2Client>>()?;
-            let results = futures_util::future::join_all(
-                note.images
-                    .iter()
-                    .map(|image| r2.delete_object(&image.cloudinary_public_id)),
+        let mut tx = user_db.pool().begin().await?;
+        let deleted = notes::delete_notebook_note_tx(
+            &mut tx,
+            &id,
+            user_db.user_id(),
+            &crate::service::hlc::stamp(),
+        )
+        .await?;
+        if deleted {
+            crate::service::notebook::media::remove_note_references_tx(
+                &mut tx,
+                user_db.user_id(),
+                std::slice::from_ref(&id),
             )
-            .await;
-            for (image, result) in note.images.iter().zip(results) {
-                if let Err(error) = result {
-                    log::warn!(
-                        "Failed to delete notebook media '{}' from R2 during note delete: {error}",
-                        image.cloudinary_public_id
-                    );
-                }
-            }
+            .await?;
         }
+        tx.commit().await?;
         Ok(deleted)
     }
 
@@ -225,20 +219,7 @@ impl NotebookMutation {
     async fn delete_notebook_folder(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
 
-        // Read-service cascades the DB delete and hands back R2 object keys.
-        let object_keys = notebook_service::delete_notebook_folder(&user_db, &id).await?;
-
-        // Best-effort R2 cleanup — log and continue on failure.
-        let r2 = ctx.data::<Arc<R2Client>>()?;
-        for object_key in object_keys {
-            if let Err(error) = r2.delete_object(&object_key).await {
-                log::warn!(
-                    "Failed to delete notebook media '{object_key}' from R2 during folder delete: {error}"
-                );
-            }
-        }
-
-        Ok(true)
+        Ok(notebook_service::delete_notebook_folder(&user_db, &id).await?)
     }
 
     async fn move_notebook_node(

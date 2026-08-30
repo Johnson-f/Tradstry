@@ -205,6 +205,7 @@ export function NotebookEditor({
   onUploadMedia?: (
     file: File,
     hash: string,
+    idempotencyKey: string,
     signal?: AbortSignal,
   ) => Promise<NotebookImage>;
   onDeleteImage?: (hash: string) => Promise<void>;
@@ -298,6 +299,7 @@ export function NotebookEditor({
       }}
     >
       <NotebookImageActionsProvider
+        noteId={noteId}
         images={images}
         onDeleteImage={onDeleteImage}
       >

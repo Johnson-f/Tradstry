@@ -36,6 +36,7 @@ export function openDesktopDatabase(
 		"PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;",
 	);
 	db.exec(schema);
+	migrateMediaSchema(db);
 
 	for (const sql of ALTERATIONS) {
 		try {
@@ -60,6 +61,41 @@ export function openDesktopDatabase(
 
 	const clientId = row.id;
 	return { db, clientId, hlc: new Hlc(clientId), close: () => db.close() };
+}
+
+function migrateMediaSchema(db: DatabaseSync): void {
+	const version = Number(
+		(db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)
+			?.user_version ?? 0,
+	);
+	if (version >= 1) return;
+	const legacy = db
+		.prepare(
+			"SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='notebook_media') AS present",
+		)
+		.get() as { present: number };
+	db.exec("BEGIN IMMEDIATE");
+	try {
+		if (legacy.present) {
+			db.exec(`
+        INSERT OR IGNORE INTO local_media_blobs
+          (hash,mime,media_type,width,height,duration_seconds,bytes,
+           original_filename,local_path,thumb_path,upload_state,created_at)
+        SELECT hash,mime,media_type,width,height,duration_seconds,bytes,
+               original_filename,local_path,thumb_path,upload_state,created_at
+        FROM notebook_media;
+        INSERT OR IGNORE INTO local_note_media_references
+          (note_id,account_id,hash,original_filename,sync_state,created_at)
+        SELECT note_id,account_id,hash,original_filename,upload_state,created_at
+        FROM notebook_media;
+        DROP TABLE notebook_media;
+      `);
+		}
+		db.exec("PRAGMA user_version = 1; COMMIT");
+	} catch (error) {
+		db.exec("ROLLBACK");
+		throw error;
+	}
 }
 
 export function transaction<T>(db: DatabaseSync, operation: () => T): T {

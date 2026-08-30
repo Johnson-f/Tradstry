@@ -7,12 +7,16 @@ import {
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
   probeDimensions,
-  sha256Hex,
 } from "@tradstry/notebook-core/media";
 import { $getNodeByKey, $insertNodes } from "lexical";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { NotebookImage } from "@tradstry/app-ui/lib/types/notebook";
-import { registerLocalBlob, revokeLocalBlob } from "../media-registry";
+import { hashMediaFile } from "../media-hash";
+import {
+  confirmMedia,
+  registerPendingMedia,
+  releaseMedia,
+} from "../media-registry";
 import {
   $createNotebookImageNode,
   $isNotebookImageNode,
@@ -28,17 +32,18 @@ export function PasteImagePlugin({
   onUploadMedia?: (
     file: File,
     hash: string,
+    idempotencyKey: string,
     signal?: AbortSignal,
   ) => Promise<NotebookImage>;
 }) {
   const [editor] = useLexicalComposerContext();
+  const uploadMediaRef = useRef(onUploadMedia);
+  uploadMediaRef.current = onUploadMedia;
 
   useEffect(() => {
-    if (!onUploadMedia) {
-      return;
-    }
-
-    return editor.registerRootListener((rootElement, previousRootElement) => {
+    let disposed = false;
+    const hashingControllers = new Set<AbortController>();
+    const unregister = editor.registerRootListener((rootElement, previousRootElement) => {
       if (previousRootElement) {
         previousRootElement.onpaste = null;
       }
@@ -48,6 +53,8 @@ export function PasteImagePlugin({
       }
 
       rootElement.onpaste = (event) => {
+        const uploadMedia = uploadMediaRef.current;
+        if (!uploadMedia) return;
         const mediaFiles = new Map<string, File>();
         const isMedia = (type: string) => isImage(type) || isVideo(type);
         const clipboardFiles = Array.from(event.clipboardData?.files ?? []);
@@ -84,9 +91,21 @@ export function PasteImagePlugin({
               return;
             }
 
-            const buf = await file.arrayBuffer();
-            const hash = await sha256Hex(buf);
-            registerLocalBlob(hash, URL.createObjectURL(file));
+            const controller = new AbortController();
+            hashingControllers.add(controller);
+            let hash: string;
+            try {
+              hash = await hashMediaFile(file, controller.signal);
+            } catch (error) {
+              if (!controller.signal.aborted) {
+                console.error("Failed to hash pasted notebook media", error);
+              }
+              return;
+            } finally {
+              hashingControllers.delete(controller);
+            }
+            if (disposed) return;
+            const idempotencyKey = crypto.randomUUID();
 
             let nodeKey: string | null = null;
             editor.update(() => {
@@ -101,6 +120,8 @@ export function PasteImagePlugin({
               nodeKey = node.getKey();
               $insertNodes([node]);
             });
+            if (!nodeKey) return;
+            registerPendingMedia(nodeKey, URL.createObjectURL(file), controller);
 
             try {
               if (!video) {
@@ -114,10 +135,15 @@ export function PasteImagePlugin({
                 });
               }
 
-              const controller = new AbortController();
-              await onUploadMedia(file, hash, controller.signal);
+              const image = await uploadMedia(
+                file,
+                hash,
+                idempotencyKey,
+                controller.signal,
+              );
+              confirmMedia(nodeKey, image.secureUrl);
             } catch (error) {
-              revokeLocalBlob(hash);
+              if (nodeKey) releaseMedia(nodeKey);
               editor.update(() => {
                 const liveNode = nodeKey ? $getNodeByKey(nodeKey) : null;
                 if (!liveNode) return;
@@ -135,7 +161,12 @@ export function PasteImagePlugin({
         );
       };
     });
-  }, [editor, onUploadMedia]);
+    return () => {
+      disposed = true;
+      for (const controller of hashingControllers) controller.abort();
+      unregister();
+    };
+  }, [editor]);
 
   return null;
 }

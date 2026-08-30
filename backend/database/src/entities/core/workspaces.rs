@@ -74,6 +74,11 @@ pub struct Model {
     #[sea_orm(has_many)]
     pub notebook_images: HasMany<crate::entities::notebook::notebook_images::Entity>,
     #[sea_orm(has_many)]
+    pub notebook_media_references:
+        HasMany<crate::entities::notebook::notebook_media_references::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_uploads: HasMany<crate::entities::notebook::notebook_media_uploads::Entity>,
+    #[sea_orm(has_many)]
     pub notebook_notes: HasMany<crate::entities::notebook::notebook_notes::Entity>,
     #[sea_orm(has_many)]
     pub position_calculator_rules:

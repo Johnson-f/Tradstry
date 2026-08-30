@@ -30,20 +30,21 @@ pub async fn move_notebook_node(user_db: &UserDb, input: MoveNotebookNodeInput) 
 /// Delete a notebook folder and its entire subtree (descendant folders + notes
 /// + images + note-trade links via the cascading deletes in the table layer).
 ///
-/// Cloudinary boundary: the `CloudinaryClient` lives in the route/resolver layer
-/// (see `routes/notebook_images.rs::delete_notebook_image`), not in the
-/// read-service, so this fn does NOT touch Cloudinary. It gathers the affected
-/// image `cloudinary_public_id`s FIRST (aborting on error so nothing is deleted
-/// if the gather fails), then removes the DB rows, and RETURNS the gathered
-/// public_ids. The caller (GraphQL mutation, which holds the Cloudinary client)
-/// is responsible for best-effort Cloudinary asset deletion of these ids.
-pub async fn delete_notebook_folder(user_db: &UserDb, folder_id: &str) -> Result<Vec<String>> {
-    // 1. Gather first — abort (propagate) before deleting anything if this fails.
-    let public_ids = folders::gather_subtree_image_public_ids(user_db.pool(), folder_id).await?;
-
-    // 2. Remove the DB rows for the whole subtree.
-    folders::delete_notebook_folder_subtree(user_db.pool(), folder_id).await?;
-
-    // 3. Hand the public_ids back to the caller for Cloudinary cleanup.
-    Ok(public_ids)
+pub async fn delete_notebook_folder(user_db: &UserDb, folder_id: &str) -> Result<bool> {
+    let mut tx = user_db.pool().begin().await?;
+    let note_ids = folders::delete_notebook_folder_subtree_tx(
+        &mut tx,
+        folder_id,
+        user_db.user_id(),
+        &crate::service::hlc::stamp(),
+    )
+    .await?;
+    crate::service::notebook::media::remove_note_references_tx(
+        &mut tx,
+        user_db.user_id(),
+        &note_ids,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }

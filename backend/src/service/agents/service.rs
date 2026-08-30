@@ -23,7 +23,7 @@ pub struct AgentService {
     budget: AgentBudget,
     models: Option<AgentModelRegistry>,
     knowledge: Option<Arc<KnowledgeService>>,
-    r2: Option<Arc<crate::service::r2::R2Client>>,
+    r2: Option<Arc<crate::service::upload::r2::R2Client>>,
     wake: Arc<Notify>,
     provider_circuit: super::runtime::resilience::ProviderCircuit,
 }
@@ -69,7 +69,7 @@ impl AgentService {
         self
     }
 
-    pub fn with_r2(mut self, r2: Arc<crate::service::r2::R2Client>) -> Self {
+    pub fn with_r2(mut self, r2: Arc<crate::service::upload::r2::R2Client>) -> Self {
         self.r2 = Some(r2);
         self
     }
@@ -94,7 +94,7 @@ impl AgentService {
         self.knowledge.as_ref()
     }
 
-    pub fn r2(&self) -> Option<&Arc<crate::service::r2::R2Client>> {
+    pub fn r2(&self) -> Option<&Arc<crate::service::upload::r2::R2Client>> {
         self.r2.as_ref()
     }
 

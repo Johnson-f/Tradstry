@@ -301,6 +301,7 @@ export async function uploadNotebookMedia(
   getToken: TokenProvider,
   noteId: string,
   hash: string,
+  idempotencyKey: string,
   file: File,
   onProgress?: (progress: UploadProgress) => void,
   signal?: AbortSignal,
@@ -313,6 +314,7 @@ export async function uploadNotebookMedia(
   const formData = new FormData();
   formData.set("noteId", noteId);
   formData.set("hash", hash);
+  formData.set("idempotencyKey", idempotencyKey);
   formData.set("file", file);
 
   // XMLHttpRequest (not fetch) so we can report upload progress via

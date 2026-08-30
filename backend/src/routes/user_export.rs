@@ -9,8 +9,8 @@ use tracing::error;
 
 use crate::service::countly::Countly;
 use crate::service::db::client::{Db, UserDb};
-use crate::service::r2::R2Client;
 use crate::service::read_service::users::ensure_user;
+use crate::service::upload::r2::R2Client;
 use crate::service::users::export::build_export;
 
 const MEDIA_URL_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 7);

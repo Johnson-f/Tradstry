@@ -290,7 +290,7 @@ export class DesktopService {
 					height: numberArg(args, "height"),
 					durationSeconds: numberArg(args, "durationSeconds"),
 					originalFilename: stringArg(args, "originalFilename"),
-					bytes: bytesArg(args, "bytes"),
+					sourcePath: stringArg(args, "sourcePath"),
 					thumb: bytesArg(args, "thumb"),
 				});
 			case "resolve_media":
@@ -301,7 +301,10 @@ export class DesktopService {
 					stringArg(args, "hash"),
 				);
 			case "delete_media":
-				return this.#media.delete(stringArg(args, "hash"));
+				return this.#media.delete(
+					stringArg(args, "noteId"),
+					stringArg(args, "hash"),
+				);
 			case "save_media":
 				return this.#media.save(
 					stringArg(args, "hash"),

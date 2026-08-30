@@ -47,6 +47,10 @@ async fn migrate_creates_all_tables_idempotently() {
         "notebook_notes",
         "notebook_note_trades",
         "notebook_images",
+        "notebook_media_blobs",
+        "notebook_media_references",
+        "notebook_media_uploads",
+        "notebook_media_outbox",
         "notebook_client_mutations",
         "notebook_note_crdt",
         "notebook_note_updates",
@@ -117,8 +121,8 @@ async fn migrate_creates_all_tables_idempotently() {
     }
     assert_eq!(
         tables.len(),
-        77,
-        "expected exactly 77 tables, got {tables:?}"
+        81,
+        "expected exactly 81 tables, got {tables:?}"
     );
 
     let indexes: Vec<String> = sqlx::query_scalar(

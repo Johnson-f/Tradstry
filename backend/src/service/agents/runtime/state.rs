@@ -5,7 +5,7 @@ use tinyagents::CancellationToken;
 use crate::service::agents::knowledge::KnowledgeService;
 use crate::service::agents::{AgentActor, AgentMessageContext, AgentScope, AgentStore};
 use crate::service::db::Db;
-use crate::service::r2::R2Client;
+use crate::service::upload::r2::R2Client;
 
 #[derive(Clone)]
 pub struct AgentRuntimeState {

@@ -398,15 +398,6 @@ async fn sync_trade_links_conn(
     Ok(())
 }
 
-async fn sync_trade_links(pool: &PgPool, note_id: &str, trade_ids: &[String]) -> Result<()> {
-    // Clear then re-insert the full link set in one transaction so a partial
-    // failure cannot leave the note with a half-rewritten trade list.
-    let mut tx = pool.begin().await?;
-    sync_trade_links_conn(&mut tx, note_id, trade_ids).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
 pub async fn list_notebook_notes(
     pool: &PgPool,
     user_id: &str,
@@ -553,6 +544,7 @@ pub async fn update_notebook_note(
     }
 
     let expected_updated_at = input.expected_updated_at.clone();
+    let writes_document = input.document_json.is_some();
 
     let mut conn = pool.acquire().await?;
     let prepared = prepare_update_note(&mut conn, user_id, &current, input).await?;
@@ -567,6 +559,7 @@ pub async fn update_notebook_note(
     // refresh_projection while projected_seq still says the row is fresh.
     let is_legacy = crdt::note_state(pool, id).await? == crdt::NoteState::Legacy;
 
+    let mut tx = pool.begin().await?;
     let affected = sqlx::query(
         r#"
         UPDATE notebook_notes
@@ -575,7 +568,7 @@ pub async fn update_notebook_note(
             title = CASE WHEN $8 THEN $3 ELSE title END,
             document_json = CASE WHEN $8 THEN $4 ELSE document_json END,
             hlc = $9
-        WHERE id = $5 AND user_id = $6
+        WHERE id = $5 AND user_id = $6 AND deleted_at IS NULL
           AND ($7::text IS NULL OR updated_at = $7::timestamptz)
         "#,
     )
@@ -588,19 +581,29 @@ pub async fn update_notebook_note(
     .bind(expected_updated_at.as_deref())
     .bind(is_legacy)
     .bind(crate::service::hlc::stamp())
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .context("Failed to update notebook note")?
     .rows_affected();
 
-    // The note existed and was not deleted (find_notebook_note above filters
-    // deleted rows), so zero affected rows can only mean the guard failed.
-    if expected_updated_at.is_some() && affected == 0 {
+    if affected == 0 {
         return Err(anyhow!("CONFLICT: note was modified"));
     }
 
-    sync_trade_links(pool, id, &prepared.trade_ids).await?;
-    images::sync_note_image_workspace_id(pool, id, user_id, &prepared.workspace_id).await?;
+    sync_trade_links_conn(&mut tx, id, &prepared.trade_ids).await?;
+    sqlx::query("UPDATE notebook_images SET workspace_id=$3 WHERE note_id=$1 AND user_id=$2")
+        .bind(id)
+        .bind(user_id)
+        .bind(&prepared.workspace_id)
+        .execute(&mut *tx)
+        .await?;
+    if is_legacy && writes_document {
+        let document: serde_json::Value = serde_json::from_str(&prepared.document_json)
+            .context("Notebook document must be valid JSON")?;
+        crate::service::notebook::media::reconcile_note_references_tx(&mut tx, id, &document)
+            .await?;
+    }
+    tx.commit().await?;
 
     find_notebook_note(pool, id, user_id)
         .await?

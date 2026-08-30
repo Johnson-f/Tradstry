@@ -1,35 +1,20 @@
-//! Hash-addressed notebook media. The client computes the SHA-256 of the bytes
-//! before uploading; that hash is the identity everywhere (object key, DB
-//! `content_hash`, the Lexical node's reference). Uploads are idempotent and the
-//! bytes are deduplicated in R2 — the same image pasted into two notes stores one
-//! object. Superssedes the id-addressed `/notebook/images` routes.
-
-use actix_multipart::Multipart;
+use actix_multipart::form::{MultipartForm, tempfile::TempFile, text::Text};
+use actix_web::http::{StatusCode, header};
 use actix_web::{HttpMessage, HttpRequest, HttpResponse, Result, error, web};
-use anyhow::{Context, anyhow, ensure};
+use anyhow::anyhow;
 use clerk_rs::validators::authorizer::ClerkJwt;
-use futures_util::StreamExt;
-use log::info;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use std::time::Duration;
-use uuid::Uuid;
 
 use crate::service::db::Db;
-use crate::service::db::schema::tables::notebook::images::{
-    CreateNotebookImageInput, NotebookImage,
-};
-use crate::service::r2::R2Client;
+use crate::service::db::schema::tables::notebook::images::NotebookImage;
+use crate::service::notebook::media::{MediaLifecycleError, remove_reference, storage_keys};
 use crate::service::read_service::images as image_service;
-use crate::service::read_service::notebook as notebook_service;
 use crate::service::read_service::users::ensure_user;
-
-const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES: usize = 250 * 1024 * 1024;
-const THUMB_MAX: u32 = 640;
-// R2/SigV4 presigned URLs max out at 7 days.
-const PRESIGN_TTL: Duration = Duration::from_secs(604_800);
+use crate::service::upload::notebook::{
+    HashPolicy, NotebookUploadError, NotebookUploadRequest, upload,
+};
+use crate::service::upload::r2::R2Client;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,37 +22,21 @@ struct UploadNotebookMediaResponse {
     image: NotebookImage,
 }
 
+#[derive(Debug, MultipartForm)]
+pub struct UploadNotebookMediaForm {
+    #[multipart(rename = "noteId", limit = "200B")]
+    note_id: Text<String>,
+    #[multipart(limit = "64B")]
+    hash: Text<String>,
+    #[multipart(rename = "idempotencyKey", limit = "200B")]
+    idempotency_key: Option<Text<String>>,
+    #[multipart(limit = "250MB")]
+    file: TempFile,
+}
+
 #[derive(Deserialize)]
 pub struct DeleteQuery {
     note_id: Option<String>,
-}
-
-/// The R2 object key for a user's content-addressed media. Two notes referencing
-/// the same bytes resolve to the same key, so `put_object` is idempotent.
-pub fn media_key(user_id: &str, hash: &str) -> String {
-    format!("notebook/{user_id}/media/{hash}")
-}
-
-/// Reject bytes whose SHA-256 does not match the client-declared hash. Content
-/// addressing only holds if the id is actually the digest of the bytes.
-pub fn verify_hash(bytes: &[u8], expected_hex: &str) -> anyhow::Result<()> {
-    let got = hex::encode(Sha256::digest(bytes));
-    ensure!(
-        got == expected_hex,
-        "hash mismatch: computed {got}, client sent {expected_hex}"
-    );
-    Ok(())
-}
-
-async fn presign(r2: &R2Client, mut image: NotebookImage) -> NotebookImage {
-    if image.secure_url.is_empty()
-        && let Ok(url) = r2
-            .presigned_get_url(&image.cloudinary_public_id, PRESIGN_TTL)
-            .await
-    {
-        image.secure_url = url;
-    }
-    image
 }
 
 async fn get_user_db(
@@ -94,213 +63,54 @@ async fn get_user_db(
     Ok(db.get_user_db(&user.id))
 }
 
-/// Downscale an image to a JPEG thumbnail (longest side <= 640), or grab a video's
-/// first keyframe via ffmpeg. Best-effort — a missing thumbnail is not fatal.
-async fn make_thumb(media_type: &str, bytes: &[u8]) -> Option<Vec<u8>> {
-    if media_type == "video" {
-        return crate::service::media::extract_keyframes(bytes, 1)
-            .await
-            .into_iter()
-            .next();
-    }
-    let img = image::load_from_memory(bytes).ok()?;
-    let thumb = img.thumbnail(THUMB_MAX, THUMB_MAX);
-    let mut out = std::io::Cursor::new(Vec::new());
-    thumb.write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
-    Some(out.into_inner())
-}
-
-async fn read_media_payload(
-    mut payload: Multipart,
-) -> anyhow::Result<(String, String, String, Vec<u8>, String)> {
-    let mut note_id: Option<String> = None;
-    let mut hash: Option<String> = None;
-    let mut filename = String::from("upload");
-    let mut mime_type: Option<String> = None;
-    let mut bytes = Vec::new();
-
-    while let Some(field) = payload.next().await {
-        let mut field =
-            field.map_err(|error| anyhow!("Failed to read multipart field: {error}"))?;
-        let field_name = field.name().unwrap_or_default().to_string();
-
-        if field_name == "noteId" || field_name == "hash" {
-            let mut value = Vec::new();
-            while let Some(chunk) = field.next().await {
-                let chunk =
-                    chunk.map_err(|error| anyhow!("Failed to read {field_name} field: {error}"))?;
-                value.extend_from_slice(&chunk);
-            }
-            let parsed = String::from_utf8(value).context("field must be utf-8")?;
-            if field_name == "noteId" {
-                note_id = Some(parsed.trim().to_string());
-            } else {
-                hash = Some(parsed.trim().to_string());
-            }
-            continue;
-        }
-
-        if field_name != "file" {
-            while let Some(chunk) = field.next().await {
-                chunk.map_err(|error| anyhow!("Failed to discard multipart field: {error}"))?;
-            }
-            continue;
-        }
-
-        if let Some(content_type) = field.content_type().cloned() {
-            mime_type = Some(content_type.essence_str().to_string());
-        }
-        if let Some(content_disposition) = field.content_disposition()
-            && let Some(original_name) = content_disposition.get_filename()
-            && !original_name.trim().is_empty()
-        {
-            filename = original_name.trim().to_string();
-        }
-
-        let resolved_mime = mime_type
-            .clone()
-            .unwrap_or_else(|| "application/octet-stream".to_string());
-        let max_bytes = if resolved_mime.starts_with("video/") {
-            MAX_VIDEO_BYTES
-        } else {
-            MAX_IMAGE_BYTES
-        };
-
-        while let Some(chunk) = field.next().await {
-            let chunk = chunk.map_err(|error| anyhow!("Failed to read uploaded bytes: {error}"))?;
-            ensure!(
-                bytes.len() + chunk.len() <= max_bytes,
-                "File exceeds the {}MB upload limit",
-                max_bytes / (1024 * 1024)
-            );
-            bytes.extend_from_slice(&chunk);
-        }
-    }
-
-    let note_id = note_id.ok_or_else(|| anyhow!("noteId is required"))?;
-    let hash = hash.ok_or_else(|| anyhow!("hash is required"))?;
-    ensure!(!note_id.is_empty(), "noteId is required");
-    ensure!(!hash.is_empty(), "hash is required");
-    ensure!(!bytes.is_empty(), "file is required");
-
-    let mime_type = mime_type.unwrap_or_else(|| "application/octet-stream".to_string());
-    ensure!(
-        mime_type.starts_with("image/") || mime_type.starts_with("video/"),
-        "Only image and video uploads are supported"
-    );
-
-    Ok((note_id, hash, filename, bytes, mime_type))
-}
-
 pub async fn upload_notebook_media(
     req: HttpRequest,
-    payload: Multipart,
+    MultipartForm(form): MultipartForm<UploadNotebookMediaForm>,
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
 ) -> Result<HttpResponse> {
     let user_db = get_user_db(&req, db.get_ref())
         .await
         .map_err(error::ErrorUnauthorized)?;
-    let (note_id, hash, filename, bytes, mime_type) = read_media_payload(payload)
-        .await
-        .map_err(error::ErrorBadRequest)?;
-
-    verify_hash(&bytes, &hash).map_err(error::ErrorBadRequest)?;
-
-    let note = notebook_service::get_notebook_note(&user_db, &note_id)
-        .await
-        .map_err(error::ErrorInternalServerError)?
-        .ok_or_else(|| error::ErrorNotFound("Notebook note not found"))?;
-
-    // Idempotent: re-uploading the same bytes into the same note returns the row.
-    if let Some(existing) =
-        image_service::find_notebook_image_for_note_hash(&user_db, &note.id, &hash)
-            .await
-            .map_err(error::ErrorInternalServerError)?
-    {
-        let existing = presign(r2.get_ref(), existing).await;
-        return Ok(HttpResponse::Ok().json(UploadNotebookMediaResponse { image: existing }));
-    }
-
-    let media_type = if mime_type.starts_with("video/") {
-        "video"
-    } else {
-        "image"
-    };
-    let format = mime_type.rsplit('/').next().unwrap_or("").to_string();
-    let byte_len = bytes.len() as i64;
-
-    let (width, height, duration_seconds) = if media_type == "video" {
-        let meta = crate::service::media::probe_video(&bytes).await;
-        (meta.width, meta.height, meta.duration_seconds)
-    } else {
-        match imagesize::blob_size(&bytes) {
-            Ok(dim) => (dim.width as i64, dim.height as i64, 0.0),
-            Err(_) => (0, 0, 0.0),
-        }
-    };
-
-    let object_key = media_key(user_db.user_id(), &hash);
-    info!(
-        "Uploading notebook media: user_id={} note_id={} hash={} type={}",
-        user_db.user_id(),
-        note.id,
-        hash,
-        media_type
-    );
-
-    // Only put (and arm cleanup) if the bytes are not already stored — content
-    // addressing means an existing object is the identical bytes, shared by other
-    // notes; deleting it on our orphan-cleanup would corrupt those references.
-    let already_stored = r2
-        .object_exists(&object_key)
-        .await
-        .map_err(error::ErrorInternalServerError)?;
-
-    let mut cleanup = if already_stored {
-        None
-    } else {
-        let guard = R2UploadGuard::new(r2.get_ref().clone(), object_key.clone());
-        r2.put_object(&object_key, bytes.clone(), &mime_type)
-            .await
-            .map_err(error::ErrorInternalServerError)?;
-        if let Some(thumb) = make_thumb(media_type, &bytes).await {
-            let _ = r2
-                .put_object(&format!("{object_key}.thumb"), thumb, "image/jpeg")
-                .await;
-        }
-        Some(guard)
-    };
-
-    let image = image_service::create_notebook_image(
+    let image = upload(
         &user_db,
-        CreateNotebookImageInput {
-            id: Uuid::new_v4().to_string(),
-            note_id: note.id,
-            workspace_id: note.workspace_id,
-            cloudinary_asset_id: hash.clone(),
-            cloudinary_public_id: object_key,
-            secure_url: String::new(),
-            width,
-            height,
-            format,
-            bytes: byte_len,
-            original_filename: filename,
-            media_type: media_type.to_string(),
-            content_type: mime_type,
-            duration_seconds,
-            content_hash: hash,
+        r2.get_ref(),
+        NotebookUploadRequest {
+            note_id: form.note_id.into_inner().trim().to_string(),
+            idempotency_key: form.idempotency_key.map(Text::into_inner),
+            hash_policy: HashPolicy::ClientDeclared(form.hash.into_inner().trim().to_string()),
+            file_path: form.file.file.path().to_path_buf(),
+            file_size: form.file.size,
+            original_filename: form.file.file_name,
+            declared_content_type: form
+                .file
+                .content_type
+                .map(|mime| mime.essence_str().to_string()),
         },
     )
     .await
-    .map_err(error::ErrorInternalServerError)?;
-
-    if let Some(guard) = cleanup.as_mut() {
-        guard.disarm();
-    }
-
-    let image = presign(r2.get_ref(), image).await;
+    .map_err(map_upload_error)?;
     Ok(HttpResponse::Ok().json(UploadNotebookMediaResponse { image }))
+}
+
+pub(super) fn map_upload_error(error: NotebookUploadError) -> actix_web::Error {
+    match error {
+        NotebookUploadError::Validation(message) => error::ErrorBadRequest(message),
+        NotebookUploadError::Lifecycle(error) => map_lifecycle_error(error),
+        NotebookUploadError::Internal(error) => error::ErrorInternalServerError(error),
+    }
+}
+
+pub(super) fn map_lifecycle_error(error: MediaLifecycleError) -> actix_web::Error {
+    match error {
+        MediaLifecycleError::Validation(message) => error::ErrorBadRequest(message),
+        MediaLifecycleError::NotFound => error::ErrorNotFound("Notebook media not found"),
+        MediaLifecycleError::Conflict | MediaLifecycleError::Deleting => {
+            error::ErrorConflict(error.to_string())
+        }
+        MediaLifecycleError::QuotaExceeded => error::ErrorForbidden(error.to_string()),
+        MediaLifecycleError::Database(_) => error::ErrorInternalServerError(error),
+    }
 }
 
 pub async fn get_notebook_media(
@@ -319,14 +129,12 @@ pub async fn get_notebook_media(
         .map_err(error::ErrorInternalServerError)?
         .ok_or_else(|| error::ErrorNotFound("Notebook media not found"))?;
 
-    let bytes = r2
-        .get_object(&image.cloudinary_public_id)
+    let range = request_range(&req, image.bytes)?;
+    let object = r2
+        .get_object_stream(&image.cloudinary_public_id, range.as_deref())
         .await
         .map_err(error::ErrorInternalServerError)?;
-
-    Ok(HttpResponse::Ok()
-        .content_type(image.content_type)
-        .body(bytes))
+    Ok(stream_response(object, &image.content_type))
 }
 
 pub async fn get_notebook_media_thumb(
@@ -345,12 +153,101 @@ pub async fn get_notebook_media_thumb(
         .map_err(error::ErrorInternalServerError)?
         .ok_or_else(|| error::ErrorNotFound("Notebook media not found"))?;
 
-    let bytes = r2
-        .get_object(&format!("{}.thumb", image.cloudinary_public_id))
+    let storage = storage_keys(user_db.pool(), user_db.user_id(), &hash)
+        .await
+        .map_err(map_lifecycle_error)?;
+    let thumbnail_key = storage
+        .and_then(|storage| storage.derivative_key)
+        .unwrap_or_else(|| format!("{}.thumb", image.cloudinary_public_id));
+    let object = r2
+        .get_object_stream(&thumbnail_key, None)
         .await
         .map_err(|_| error::ErrorNotFound("Thumbnail not found"))?;
+    Ok(stream_response(object, "image/jpeg"))
+}
 
-    Ok(HttpResponse::Ok().content_type("image/jpeg").body(bytes))
+fn request_range(req: &HttpRequest, length: i64) -> Result<Option<String>> {
+    let Some(value) = req.headers().get(header::RANGE) else {
+        return Ok(None);
+    };
+    let value = value
+        .to_str()
+        .map_err(|_| error::ErrorBadRequest("Invalid Range header"))?;
+    if value.len() > 100 || !value.starts_with("bytes=") || value.contains(',') || length <= 0 {
+        return Err(range_not_satisfiable(length));
+    }
+    let range = &value[6..];
+    let (start, end) = range
+        .split_once('-')
+        .ok_or_else(|| range_not_satisfiable(length))?;
+    let (start, end) = if start.is_empty() {
+        let suffix = end
+            .parse::<i64>()
+            .ok()
+            .filter(|suffix| *suffix > 0)
+            .ok_or_else(|| range_not_satisfiable(length))?;
+        (length.saturating_sub(suffix), length - 1)
+    } else {
+        let start = start
+            .parse::<i64>()
+            .ok()
+            .filter(|start| *start >= 0 && *start < length)
+            .ok_or_else(|| range_not_satisfiable(length))?;
+        let end = if end.is_empty() {
+            length - 1
+        } else {
+            end.parse::<i64>()
+                .ok()
+                .filter(|end| *end >= start)
+                .map(|end| end.min(length - 1))
+                .ok_or_else(|| range_not_satisfiable(length))?
+        };
+        (start, end)
+    };
+    Ok(Some(format!("bytes={start}-{end}")))
+}
+
+fn range_not_satisfiable(length: i64) -> actix_web::Error {
+    error::InternalError::from_response(
+        "Range not satisfiable",
+        HttpResponse::RangeNotSatisfiable()
+            .insert_header((header::CONTENT_RANGE, format!("bytes */{}", length.max(0))))
+            .finish(),
+    )
+    .into()
+}
+
+fn stream_response(
+    object: crate::service::upload::r2::StreamedObject,
+    fallback_type: &str,
+) -> HttpResponse {
+    let status = if object.content_range.is_some() {
+        StatusCode::PARTIAL_CONTENT
+    } else {
+        StatusCode::OK
+    };
+    let mut response = HttpResponse::build(status);
+    response.content_type(object.content_type.as_deref().unwrap_or(fallback_type));
+    response.insert_header((header::CONTENT_LENGTH, object.content_length));
+    response.insert_header((
+        header::ACCEPT_RANGES,
+        object.accept_ranges.as_deref().unwrap_or("bytes"),
+    ));
+    if let Some(value) = object.content_range {
+        response.insert_header((header::CONTENT_RANGE, value));
+    }
+    if let Some(value) = object.etag {
+        response.insert_header((header::ETAG, value));
+    }
+    let stream = futures_util::stream::unfold(Some(object.body), |state| async move {
+        let mut body = state?;
+        match body.try_next().await {
+            Ok(Some(bytes)) => Some((Ok::<_, actix_web::Error>(bytes), Some(body))),
+            Ok(None) => None,
+            Err(error) => Some((Err(error::ErrorBadGateway(error.to_string())), None)),
+        }
+    });
+    response.streaming(stream)
 }
 
 pub async fn delete_notebook_media(
@@ -358,7 +255,6 @@ pub async fn delete_notebook_media(
     path: web::Path<String>,
     query: web::Query<DeleteQuery>,
     db: web::Data<Arc<Db>>,
-    r2: web::Data<Arc<R2Client>>,
 ) -> Result<HttpResponse> {
     let user_db = get_user_db(&req, db.get_ref())
         .await
@@ -369,58 +265,48 @@ pub async fn delete_notebook_media(
         .note_id
         .ok_or_else(|| error::ErrorBadRequest("noteId query parameter is required"))?;
 
-    if let Some(image) = image_service::find_notebook_image_for_note_hash(&user_db, &note_id, &hash)
+    remove_reference(user_db.pool(), user_db.user_id(), &note_id, &hash)
         .await
-        .map_err(error::ErrorInternalServerError)?
-    {
-        image_service::delete_notebook_image(&user_db, &image.id)
-            .await
-            .map_err(error::ErrorInternalServerError)?;
-
-        // Refcount: only remove the shared bytes once no note references them.
-        let remaining = image_service::count_notebook_images_with_hash(&user_db, &hash)
-            .await
-            .map_err(error::ErrorInternalServerError)?;
-        if remaining == 0 {
-            let _ = r2.delete_object(&image.cloudinary_public_id).await;
-            let _ = r2
-                .delete_object(&format!("{}.thumb", image.cloudinary_public_id))
-                .await;
-        }
-    }
+        .map_err(map_lifecycle_error)?;
 
     Ok(HttpResponse::NoContent().finish())
 }
 
-/// Deletes a just-written R2 object on drop unless `disarm()` is called first.
-struct R2UploadGuard {
-    r2: Arc<R2Client>,
-    object_key: Option<String>,
-}
+#[cfg(test)]
+mod tests {
+    use actix_web::http::StatusCode;
 
-impl R2UploadGuard {
-    fn new(r2: Arc<R2Client>, object_key: String) -> Self {
-        Self {
-            r2,
-            object_key: Some(object_key),
-        }
+    use super::request_range;
+
+    #[test]
+    fn normalizes_single_byte_ranges() {
+        let request = actix_web::test::TestRequest::default()
+            .insert_header(("range", "bytes=10-"))
+            .to_http_request();
+        assert_eq!(
+            request_range(&request, 100).unwrap().as_deref(),
+            Some("bytes=10-99")
+        );
+
+        let request = actix_web::test::TestRequest::default()
+            .insert_header(("range", "bytes=-20"))
+            .to_http_request();
+        assert_eq!(
+            request_range(&request, 100).unwrap().as_deref(),
+            Some("bytes=80-99")
+        );
     }
 
-    fn disarm(&mut self) {
-        self.object_key = None;
-    }
-}
-
-impl Drop for R2UploadGuard {
-    fn drop(&mut self) {
-        if let Some(key) = self.object_key.take() {
-            let r2 = self.r2.clone();
-            tokio::spawn(async move {
-                if let Err(error) = r2.delete_object(&key).await {
-                    log::warn!("Failed to clean up orphaned R2 upload {key}: {error}");
-                }
-                let _ = r2.delete_object(&format!("{key}.thumb")).await;
-            });
-        }
+    #[test]
+    fn rejects_unsatisfiable_ranges() {
+        let request = actix_web::test::TestRequest::default()
+            .insert_header(("range", "bytes=100-200"))
+            .to_http_request();
+        let response = request_range(&request, 100).unwrap_err().error_response();
+        assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(
+            response.headers().get("content-range").unwrap(),
+            "bytes */100"
+        );
     }
 }

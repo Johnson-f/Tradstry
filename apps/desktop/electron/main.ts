@@ -420,7 +420,12 @@ app.whenReady().then(async () => {
   service = createService();
   ipcMain.handle("tradstry:invoke", (_event, command: string, args?: Record<string, unknown>) => {
     if (!service) throw new Error("Desktop service is not ready");
+    if (command === "store_media") throw new Error("Use the media file bridge");
     return service.invoke(command, args ?? {});
+  });
+  ipcMain.handle("tradstry:store-media", (_event, args: Record<string, unknown>) => {
+    if (!service) throw new Error("Desktop service is not ready");
+    return service.invoke("store_media", args);
   });
   ipcMain.handle("tradstry:open-external", (_event, url: string) => shell.openExternal(url));
   ipcMain.handle("tradstry:set-theme", (_event, theme: unknown) => {

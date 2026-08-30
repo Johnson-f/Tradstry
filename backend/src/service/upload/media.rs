@@ -1,5 +1,17 @@
 use anyhow::{Result, ensure};
 use serde::Deserialize;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+use tokio::sync::Semaphore;
+
+const PROCESS_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn process_semaphore() -> Arc<Semaphore> {
+    static SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SEMAPHORE
+        .get_or_init(|| Arc::new(Semaphore::new(2)))
+        .clone()
+}
 
 #[derive(Debug, Deserialize)]
 struct FfprobeOutput {
@@ -46,29 +58,44 @@ pub async fn probe_video(bytes: &[u8]) -> VideoMetadata {
     }
 }
 
-async fn probe_video_inner(bytes: &[u8]) -> Result<VideoMetadata> {
-    // ffprobe needs a seekable input for reliable duration, so write a temp file.
-    let tmp = std::env::temp_dir().join(format!("tradstry-probe-{}", uuid::Uuid::new_v4()));
-    tokio::fs::write(&tmp, bytes).await?;
-
-    let result = run_ffprobe(&tmp).await;
-    let _ = tokio::fs::remove_file(&tmp).await;
-    let output = result?;
-
-    let width = output.streams.iter().find_map(|s| s.width).unwrap_or(0);
-    let height = output.streams.iter().find_map(|s| s.height).unwrap_or(0);
+pub async fn probe_video_file(path: &std::path::Path) -> Result<VideoMetadata> {
+    let _permit = process_semaphore().acquire_owned().await?;
+    let output = run_ffprobe(path).await?;
+    let width = output
+        .streams
+        .iter()
+        .find_map(|stream| stream.width)
+        .unwrap_or(0);
+    let height = output
+        .streams
+        .iter()
+        .find_map(|stream| stream.height)
+        .unwrap_or(0);
     let duration_seconds = output
         .format
         .duration
         .as_deref()
-        .and_then(|d| d.parse::<f64>().ok())
+        .and_then(|duration| duration.parse::<f64>().ok())
         .unwrap_or(0.0);
-
+    ensure!(
+        width > 0 && height > 0,
+        "video has no decodable video stream"
+    );
     Ok(VideoMetadata {
         width,
         height,
         duration_seconds,
     })
+}
+
+async fn probe_video_inner(bytes: &[u8]) -> Result<VideoMetadata> {
+    // ffprobe needs a seekable input for reliable duration, so write a temp file.
+    let tmp = std::env::temp_dir().join(format!("tradstry-probe-{}", uuid::Uuid::new_v4()));
+    tokio::fs::write(&tmp, bytes).await?;
+
+    let result = probe_video_file(&tmp).await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    result
 }
 
 /// Extract up to `max_frames` evenly-spaced JPEG keyframes from a video
@@ -97,16 +124,13 @@ async fn extract_keyframes_inner(bytes: &[u8], max_frames: usize) -> Result<Vec<
         std::env::temp_dir().join(format!("tradstry-kf-out-{}", uuid::Uuid::new_v4()));
     tokio::fs::create_dir(&tmp_out_dir).await?;
 
-    let ffmpeg_result = run_ffmpeg_keyframes(&tmp_input, &tmp_out_dir, max_frames).await;
+    let ffmpeg_result = extract_keyframes_file(&tmp_input, &tmp_out_dir, max_frames).await;
 
     // Clean up the input temp file regardless of outcome (mirrors probe_video).
     let _ = tokio::fs::remove_file(&tmp_input).await;
 
-    // Propagate ffmpeg errors only after the input cleanup above.
-    ffmpeg_result?;
-
-    // Read all produced JPEG files, sorted by name, up to max_frames.
     let frames_result: Result<Vec<Vec<u8>>> = async {
+        ffmpeg_result?;
         let mut entries = tokio::fs::read_dir(&tmp_out_dir).await?;
         let mut jpg_paths: Vec<std::path::PathBuf> = Vec::new();
         while let Some(entry) = entries.next_entry().await? {
@@ -137,21 +161,60 @@ async fn extract_keyframes_inner(bytes: &[u8], max_frames: usize) -> Result<Vec<
     frames_result
 }
 
+pub async fn extract_keyframes_from_file(
+    input: &std::path::Path,
+    max_frames: usize,
+) -> Result<Vec<Vec<u8>>> {
+    if max_frames == 0 {
+        return Ok(Vec::new());
+    }
+    let output = tempfile::tempdir()?;
+    extract_keyframes_file(input, output.path(), max_frames).await?;
+    let mut entries = tokio::fs::read_dir(output.path()).await?;
+    let mut paths = Vec::new();
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) == Some("jpg") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    paths.truncate(max_frames);
+    let mut frames = Vec::with_capacity(paths.len());
+    for path in paths {
+        frames.push(tokio::fs::read(path).await?);
+    }
+    Ok(frames)
+}
+
+async fn extract_keyframes_file(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    max_frames: usize,
+) -> Result<()> {
+    let _permit = process_semaphore().acquire_owned().await?;
+    run_ffmpeg_keyframes(input, output, max_frames).await
+}
+
 async fn run_ffmpeg_keyframes(
     input: &std::path::Path,
     out_dir: &std::path::Path,
     max_frames: usize,
 ) -> Result<()> {
     let out_pattern = out_dir.join("frame_%03d.jpg");
-    let output = tokio::process::Command::new("ffmpeg")
-        .args(["-y", "-i"])
+    let mut command = tokio::process::Command::new("ffmpeg");
+    command
+        .kill_on_drop(true)
+        .stdin(std::process::Stdio::null())
+        .args(["-nostdin", "-v", "error", "-y", "-i"])
         .arg(input)
         .args(["-vf", "thumbnail,fps=1"])
         .args(["-frames:v", &max_frames.to_string()])
         .args(["-f", "image2"])
-        .arg(&out_pattern)
-        .output()
-        .await?;
+        .arg(&out_pattern);
+    let output = tokio::time::timeout(PROCESS_TIMEOUT, command.output())
+        .await
+        .map_err(|_| anyhow::anyhow!("ffmpeg timed out"))??;
 
     ensure!(
         output.status.success(),
@@ -163,8 +226,12 @@ async fn run_ffmpeg_keyframes(
 }
 
 async fn run_ffprobe(path: &std::path::Path) -> Result<FfprobeOutput> {
-    let output = tokio::process::Command::new("ffprobe")
+    let mut command = tokio::process::Command::new("ffprobe");
+    command
+        .kill_on_drop(true)
+        .stdin(std::process::Stdio::null())
         .args([
+            "-nostdin",
             "-v",
             "error",
             "-select_streams",
@@ -176,9 +243,10 @@ async fn run_ffprobe(path: &std::path::Path) -> Result<FfprobeOutput> {
             "-of",
             "json",
         ])
-        .arg(path)
-        .output()
-        .await?;
+        .arg(path);
+    let output = tokio::time::timeout(PROCESS_TIMEOUT, command.output())
+        .await
+        .map_err(|_| anyhow::anyhow!("ffprobe timed out"))??;
 
     ensure!(
         output.status.success(),

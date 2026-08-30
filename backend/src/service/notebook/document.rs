@@ -1,6 +1,8 @@
 //! Pure Lexical-document logic: title derivation and document_json normalization.
 //! No SQL — operates on `serde_json::Value`.
 use anyhow::{Context, Result, ensure};
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 
 pub const UNTITLED_NOTE_TITLE: &str = "Title";
@@ -66,9 +68,36 @@ pub fn normalize_document_json(document_json: &str) -> Result<(String, String)> 
     Ok((normalized, title))
 }
 
+pub fn media_hashes(document: &Value) -> BTreeSet<String> {
+    fn collect(node: &Value, hashes: &mut BTreeSet<String>) {
+        let media_node = matches!(
+            node.get("type").and_then(Value::as_str),
+            Some("notebook-image" | "notebook-video")
+        );
+        if media_node
+            && let Some(hash) = node.get("hash").and_then(Value::as_str)
+            && hash.len() == 64
+            && hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            hashes.insert(hash.to_string());
+        }
+        if let Some(children) = node.get("children").and_then(Value::as_array) {
+            for child in children {
+                collect(child, hashes);
+            }
+        }
+    }
+
+    let mut hashes = BTreeSet::new();
+    collect(document.get("root").unwrap_or(document), &mut hashes);
+    hashes
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{UNTITLED_NOTE_TITLE, derive_note_title, normalize_document_json};
+    use super::{UNTITLED_NOTE_TITLE, derive_note_title, media_hashes, normalize_document_json};
     use serde_json::json;
 
     #[test]
@@ -125,5 +154,20 @@ mod tests {
 
         assert!(document_json.contains("\"root\""));
         assert_eq!(title, "Title");
+    }
+
+    #[test]
+    fn extracts_unique_valid_media_hashes_from_nested_nodes() {
+        let hash = "a".repeat(64);
+        let document = json!({
+            "root": {"children": [
+                {"type": "notebook-image", "hash": hash},
+                {"type": "layout", "children": [
+                    {"type": "notebook-video", "hash": hash},
+                    {"type": "notebook-image", "hash": "INVALID"}
+                ]}
+            ]}
+        });
+        assert_eq!(media_hashes(&document), [hash].into_iter().collect());
     }
 }

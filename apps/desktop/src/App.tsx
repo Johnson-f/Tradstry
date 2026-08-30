@@ -63,6 +63,40 @@ function DesktopDashboard({ auth, onSignOut, theme, setTheme }: {
     signOut: onSignOut,
     theme,
     setTheme,
+    media: {
+      store: async ({ noteId, workspaceId, hash, file, signal }) => {
+        if (signal?.aborted) throw new DOMException("Upload aborted", "AbortError");
+        const resolved = await window.tradstry.storeMedia({
+          noteId,
+          accountId: workspaceId,
+          hash,
+          mime: file.type,
+          mediaType: file.type.startsWith("video/") ? "video" : "image",
+          width: 0,
+          height: 0,
+          durationSeconds: 0,
+          originalFilename: file.name,
+          thumb: new Uint8Array(),
+        }, file);
+        if (signal?.aborted) {
+          await window.tradstry.invoke("delete_media", { noteId, hash });
+          throw new DOMException("Upload aborted", "AbortError");
+        }
+        if (!resolved) return null;
+        if (!resolved.fullPath) throw new Error("Desktop media was not stored");
+        void window.tradstry.invoke("sync_now");
+        return window.tradstry.mediaUrl(resolved.fullPath);
+      },
+      resolve: async (noteId, hash) => {
+        const resolved = await window.tradstry.invoke<{
+          fullPath: string | null;
+        }>("ensure_media", { noteId, hash });
+        return resolved.fullPath ? window.tradstry.mediaUrl(resolved.fullPath) : null;
+      },
+      delete: async (noteId, hash) => {
+        await window.tradstry.invoke("delete_media", { noteId, hash });
+      },
+    },
   }), [auth.email, auth.name, onSignOut, pathname, setTheme, theme]);
 
   return (

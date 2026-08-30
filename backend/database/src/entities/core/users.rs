@@ -31,6 +31,7 @@ pub struct Model {
     pub quota_anchor_day: Option<i16>,
     pub data_bytes_used: i64,
     pub media_bytes_used: i64,
+    pub media_bytes_reserved: i64,
     pub usage_recomputed_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(column_type = "Text", nullable)]
     pub paddle_checkout_transaction_id: Option<String>,
@@ -98,6 +99,15 @@ pub struct Model {
     pub notebook_folders: HasMany<crate::entities::notebook::notebook_folders::Entity>,
     #[sea_orm(has_many)]
     pub notebook_images: HasMany<crate::entities::notebook::notebook_images::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_blobs: HasMany<crate::entities::notebook::notebook_media_blobs::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_outboxes: HasMany<crate::entities::notebook::notebook_media_outbox::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_references:
+        HasMany<crate::entities::notebook::notebook_media_references::Entity>,
+    #[sea_orm(has_many)]
+    pub notebook_media_uploads: HasMany<crate::entities::notebook::notebook_media_uploads::Entity>,
     #[sea_orm(has_many)]
     pub notebook_notes: HasMany<crate::entities::notebook::notebook_notes::Entity>,
     #[sea_orm(has_many)]

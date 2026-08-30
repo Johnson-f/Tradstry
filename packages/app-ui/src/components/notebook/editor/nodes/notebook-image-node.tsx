@@ -34,7 +34,13 @@ import {
   TooltipTrigger,
 } from "@tradstry/app-ui/components/ui/tooltip";
 import type { NotebookImage } from "@tradstry/app-ui/lib/types/notebook";
-import { getLocalBlob, revokeLocalBlob } from "../media-registry";
+import { useTradstryPlatform } from "@tradstry/app-ui/platform";
+import {
+  cancelPendingMedia,
+  getMediaStatus,
+  getMediaUrl,
+  releaseMedia,
+} from "../media-registry";
 
 /** Four draggable corner grips. signX/signY map a pointer delta to growth. */
 const RESIZE_CORNERS = [
@@ -69,6 +75,7 @@ type ResizeCorner = (typeof RESIZE_CORNERS)[number];
 export type { SerializedNotebookImageNode };
 
 const NotebookImageActionsContext = createContext<{
+  noteId?: string;
   onDeleteImage?: (hash: string) => Promise<void>;
   urlFor?: (hash: string) => string | undefined;
 }>({});
@@ -85,10 +92,12 @@ export function useNotebookMediaActions() {
  */
 export function NotebookImageActionsProvider({
   children,
+  noteId,
   images = [],
   onDeleteImage,
 }: {
   children: ReactNode;
+  noteId: string;
   images?: NotebookImage[];
   onDeleteImage?: (hash: string) => Promise<void>;
 }) {
@@ -96,8 +105,8 @@ export function NotebookImageActionsProvider({
     const byId = new Map(
       images.map((image) => [image.contentHash, image.secureUrl]),
     );
-    return { onDeleteImage, urlFor: (hash: string) => byId.get(hash) };
-  }, [images, onDeleteImage]);
+    return { noteId, onDeleteImage, urlFor: (hash: string) => byId.get(hash) };
+  }, [images, noteId, onDeleteImage]);
 
   return (
     <NotebookImageActionsContext.Provider value={value}>
@@ -120,12 +129,27 @@ function NotebookImageComponent({
   height: number;
 }) {
   const [editor] = useLexicalComposerContext();
-  const { onDeleteImage, urlFor } = useContext(NotebookImageActionsContext);
+  const { noteId, urlFor, onDeleteImage } = useContext(NotebookImageActionsContext);
+  const { media } = useTradstryPlatform();
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (media && noteId) {
+      void media
+        .resolve(noteId, hash)
+        .then((url) => {
+          if (active) setLocalUrl(url);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      active = false;
+    };
+  }, [hash, media, noteId]);
   // A local blob: URL mid-upload takes precedence over the (possibly not-yet-
   // resolvable) server URL.
-  const src = getLocalBlob(hash) ?? urlFor?.(hash);
+  const src = getMediaUrl(nodeKey) ?? localUrl ?? urlFor?.(hash);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draftSize, setDraftSize] = useState<{
     width: number;
@@ -146,7 +170,7 @@ function NotebookImageComponent({
     nextWidth: number;
     nextHeight: number;
   } | null>(null);
-  const isTemp = Boolean(src?.startsWith("blob:"));
+  const isTemp = getMediaStatus(nodeKey) === "pending";
   const isPending = !src;
   const displayWidth = draftSize?.width ?? (width > 0 ? width : 0);
   const displayHeight = draftSize?.height ?? (height > 0 ? height : 0);
@@ -179,32 +203,15 @@ function NotebookImageComponent({
   );
 
   const handleDelete = useCallback(async () => {
-    if (isDeleting) {
-      return;
-    }
-
-    if (getLocalBlob(hash) !== undefined) {
-      // No resolved server copy yet — nothing to delete server-side.
-      revokeLocalBlob(hash);
+    if (getMediaStatus(nodeKey) === "pending") {
+      cancelPendingMedia(nodeKey);
       removeNode();
       return;
     }
-
-    if (!onDeleteImage) {
-      removeNode();
-      return;
-    }
-
-    try {
-      setIsDeleting(true);
-      await onDeleteImage(hash);
-      removeNode();
-    } catch (error) {
-      console.error("Failed to delete notebook image", error);
-    } finally {
-      setIsDeleting(false);
-    }
-  }, [hash, isDeleting, onDeleteImage, removeNode]);
+    await onDeleteImage?.(hash);
+    releaseMedia(nodeKey);
+    removeNode();
+  }, [hash, nodeKey, onDeleteImage, removeNode]);
 
   const handleDownload = useCallback(() => {
     if (!src) {
@@ -413,7 +420,6 @@ function NotebookImageComponent({
                     variant="ghost"
                     size="icon-sm"
                     aria-label={isTemp ? "Cancel upload" : "Delete image"}
-                    disabled={isDeleting}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();

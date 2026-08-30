@@ -108,7 +108,7 @@ async fn deleted_folder_subtree_is_hidden() {
 
     let folder = make_folder(&pool, &user_id, &workspace_id, None).await;
 
-    folders::delete_notebook_folder_subtree(&pool, &folder.id)
+    folders::delete_notebook_folder_subtree(&pool, &folder.id, &user_id)
         .await
         .unwrap();
 
@@ -139,7 +139,7 @@ async fn deleting_folder_tombstones_notes_in_nested_subfolders() {
     let direct_note = make_note(&pool, &user_id, &workspace_id, Some(root.id.clone())).await;
     let nested_note = make_note(&pool, &user_id, &workspace_id, Some(child.id.clone())).await;
 
-    folders::delete_notebook_folder_subtree(&pool, &root.id)
+    folders::delete_notebook_folder_subtree(&pool, &root.id, &user_id)
         .await
         .unwrap();
 

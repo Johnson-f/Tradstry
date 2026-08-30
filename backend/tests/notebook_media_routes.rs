@@ -1,4 +1,4 @@
-use tradstry_backend::routes::notebook_media::{media_key, verify_hash};
+use tradstry_backend::service::upload::notebook::{media_key, verify_hash};
 
 #[test]
 fn media_key_is_hash_addressed() {

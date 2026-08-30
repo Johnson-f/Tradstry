@@ -47,8 +47,8 @@ use rmcp::transport::streamable_http_server::{
 use tradstry_backend::service::agents::knowledge::VoyageClient;
 use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::db::Db;
-use tradstry_backend::service::r2::R2Client;
 use tradstry_backend::service::redis::RedisClient;
+use tradstry_backend::service::upload::r2::R2Client;
 
 use app_state::AppState;
 use rate_limit::RateLimiter;

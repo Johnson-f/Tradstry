@@ -3,7 +3,7 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $getRoot, $isElementNode, type LexicalNode } from "lexical";
 import { useEffect, useRef } from "react";
-import { getLocalBlob } from "../media-registry";
+import { getMediaUrl } from "../media-registry";
 import {
   $isNotebookImageNode,
   useNotebookMediaActions,
@@ -42,7 +42,7 @@ export function MediaRefreshPlugin({ onRefresh }: { onRefresh?: () => void }) {
           if (!node) continue;
           if ($isNotebookImageNode(node) || $isNotebookVideoNode(node)) {
             const hash = node.__hash;
-            if (hash && !getLocalBlob(hash) && !urlFor?.(hash)) {
+            if (hash && !getMediaUrl(node.getKey()) && !urlFor?.(hash)) {
               unresolved.push(hash);
             }
           } else if ($isElementNode(node)) {

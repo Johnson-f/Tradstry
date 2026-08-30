@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 use crate::service::countly::Countly;
 use crate::service::db::client::Db;
 use crate::service::db::schema::tables::users_table;
-use crate::service::r2::R2Client;
+use crate::service::upload::r2::R2Client;
 use crate::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
 use crate::service::webhooks::svix::verify_svix_signature;
 

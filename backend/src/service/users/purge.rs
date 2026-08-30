@@ -5,8 +5,14 @@ use anyhow::Result;
 /// the R2 key, and no database cascade can reach object storage.
 pub async fn collect_r2_keys(pool: &PgPool, user_id: &str) -> Result<Vec<String>> {
     let keys = query_scalar::<String>(
-        "SELECT cloudinary_public_id FROM notebook_images
-         WHERE user_id = $1 AND cloudinary_public_id <> ''",
+        "SELECT object_key FROM notebook_media_blobs
+         WHERE user_id=$1 AND object_key<>''
+         UNION
+         SELECT derivative_key FROM notebook_media_blobs
+         WHERE user_id=$1 AND derivative_key IS NOT NULL AND derivative_key<>''
+         UNION
+         SELECT cloudinary_public_id FROM notebook_images
+         WHERE user_id=$1 AND cloudinary_public_id<>''",
     )
     .bind(user_id)
     .fetch_all(pool)
