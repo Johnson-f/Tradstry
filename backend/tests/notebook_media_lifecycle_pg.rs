@@ -316,3 +316,82 @@ async fn foreign_user_cannot_delete_a_notebook_folder() {
     );
     cleanup(admin, pool, &schema).await;
 }
+
+#[tokio::test]
+async fn migrated_hashless_media_survives_edits_until_explicit_note_deletion() -> anyhow::Result<()>
+{
+    use anyhow::ensure;
+    use async_graphql::{Request, Schema, Variables};
+    use clerk_rs::validators::authorizer::ClerkJwt;
+    use serde_json::json;
+    use sqlx::migrate::Migrator;
+    use std::{path::PathBuf, sync::Arc};
+    use tradstry_backend::{
+        graphql::{Mutation, Query, Subscription},
+        service::db::Db,
+    };
+
+    let (admin, pool, schema) = isolated_pool().await;
+    let result = async {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
+        let migrations = Migrator::new(path.as_path()).await?;
+        Migrator::with_migrations(migrations.iter().filter(|m| m.version <= 52).cloned().collect())
+            .run(&pool).await?;
+        let (user, workspace) = seed_user_workspace(&pool).await;
+        let (other_user, _) = seed_user_workspace(&pool).await;
+        let note = seed_note(&pool, &user, &workspace).await;
+        let hash = "b".repeat(64);
+        for (id, content_hash) in [("legacy", ""), ("hashed", hash.as_str())] {
+            sqlx::query("INSERT INTO notebook_images(id,note_id,user_id,workspace_id,cloudinary_asset_id,cloudinary_public_id,secure_url,width,height,format,bytes,original_filename,media_type,content_type,content_hash) VALUES($1,$2,$3,$4,$1,$5,'',10,10,'png',100,'fixture.png','image','image/png',$6)")
+                .bind(id).bind(&note).bind(&user).bind(&workspace)
+                .bind(format!("synthetic-only/{id}")).bind(content_hash).execute(&pool).await?;
+        }
+        // Exercise the production upgrade path before editing the migrated note.
+        migrate(&pool, &schema).await;
+        let document = json!({"root":{"children":[
+            {"type":"notebook-image","hash":hash,"version":1},
+            {"type":"notebook-image","src":"https://example.invalid/legacy.png","version":1},
+            {"type":"paragraph","children":[{"type":"text","text":"Edited text"}]}
+        ]}}).to_string();
+        notes::update_notebook_note(&pool, &note, &user, notes::UpdateNotebookNoteInput {
+            document_json: Some(document.clone()), ..Default::default()
+        }).await?;
+        let references: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE note_id=$1")
+            .bind(&note).fetch_one(&pool).await?;
+        ensure!(references == 2, "An ordinary edit discarded migrated hashless media");
+        let pending: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_media_outbox WHERE action='delete'")
+            .fetch_one(&pool).await?;
+        ensure!(pending == 0, "Editing retained media must not schedule deletion");
+
+        ensure!(notes::update_notebook_note(&pool, &note, &other_user, notes::UpdateNotebookNoteInput {
+            document_json: Some(document), ..Default::default()
+        }).await.is_err(), "Foreign user edited the note");
+
+        // Removing a known hash still schedules its normal cleanup. A legacy
+        // reference cannot be inferred absent from this hash-only document.
+        notes::update_notebook_note(&pool, &note, &user, notes::UpdateNotebookNoteInput {
+            document_json: Some(r#"{"root":{"children":[]}}"#.into()), ..Default::default()
+        }).await?;
+        let retained: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM notebook_media_references WHERE note_id=$1),(SELECT count(*) FROM notebook_media_blobs WHERE state='gc_pending')")
+            .bind(&note).fetch_one(&pool).await?;
+        ensure!(retained == (1, 1), "Known-hash cleanup or legacy retention regressed: {retained:?}");
+
+        let api = Schema::build(Query::default(), Mutation::default(), Subscription::default())
+            .data(Arc::new(Db::from_pool(pool.clone()))).finish();
+        for (actor, expected) in [(&other_user, false), (&user, true), (&user, false)] {
+            let subject: String = sqlx::query_scalar("SELECT clerk_uuid FROM users WHERE id=$1")
+                .bind(actor).fetch_one(&pool).await?;
+            let response = api.execute(Request::new("mutation($id:String!){deleteNotebookNote(id:$id)}")
+                .variables(Variables::from_json(json!({"id":note})))
+                .data(ClerkJwt {sub:subject,azp:None,exp:i32::MAX,iat:0,iss:"test".into(),nbf:0,sid:None,act:None,org:None,other:Default::default()})).await;
+            ensure!(response.errors.is_empty(), "Delete failed: {:?}", response.errors);
+            ensure!(response.data.into_json()?["deleteNotebookNote"] == expected, "Delete authorization/idempotency failed");
+        }
+        let deleted: (i64, i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM notebook_media_references WHERE note_id=$1),(SELECT count(*) FROM notebook_media_blobs WHERE state='gc_pending'),(SELECT count(*) FROM notebook_media_outbox WHERE action='delete' AND available_at>now()+interval '23 hours')")
+            .bind(&note).fetch_one(&pool).await?;
+        ensure!(deleted == (0, 2, 2), "Explicit note deletion must clean up both blobs once after the grace period: {deleted:?}");
+        Ok(())
+    }.await;
+    cleanup(admin, pool, &schema).await;
+    result
+}

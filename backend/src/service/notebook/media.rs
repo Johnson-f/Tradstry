@@ -515,7 +515,11 @@ pub async fn reconcile_note_references_tx(
         let hash: Option<String> = row.try_get("content_hash")?;
         let provisional_until: Option<chrono::DateTime<chrono::Utc>> =
             row.try_get("provisional_until")?;
-        let keep = hash.as_ref().is_some_and(|hash| desired.contains(hash))
+        // Legacy imports may have no content hash, so a hash-only document
+        // cannot prove that their attachment was removed. Preserve those
+        // references until explicit note deletion removes them.
+        let keep = hash.is_none()
+            || hash.as_ref().is_some_and(|hash| desired.contains(hash))
             || provisional_until.is_some_and(|until| until > chrono::Utc::now());
         if keep {
             continue;
