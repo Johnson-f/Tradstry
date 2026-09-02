@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/joho/godotenv v1.5.1
 	github.com/passiv/snaptrade-sdks/sdks/go v1.0.190
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.11
 )
 
