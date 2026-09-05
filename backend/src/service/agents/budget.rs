@@ -207,7 +207,7 @@ impl AgentBudget {
             "INSERT INTO agent_assistance_requests(id,user_id,workload,idempotency_key)
              VALUES($1,$2,$3,$4)",
         )
-        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(&actor.user_id)
         .bind(workload)
         .bind(idempotency_key.trim())

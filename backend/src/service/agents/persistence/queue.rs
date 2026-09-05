@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use super::conversations::message_from_row;
@@ -101,7 +100,7 @@ impl AgentStore {
         .bind(conversation_id)
         .fetch_one(&mut *tx)
         .await?;
-        let message_id = Uuid::new_v4().to_string();
+        let message_id = crate::ids::new_uuid_v7().to_string();
         let message = sqlx::query(
             "INSERT INTO agent_messages
              (id, conversation_id, user_id, workspace_id, sequence, role, content_json)
@@ -116,7 +115,7 @@ impl AgentStore {
         .fetch_one(&mut *tx)
         .await?;
 
-        let run_id = Uuid::new_v4().to_string();
+        let run_id = crate::ids::new_uuid_v7().to_string();
         let run = sqlx::query(
             "INSERT INTO agent_runs
              (id, conversation_id, user_id, workspace_id, input_message_id,
@@ -137,7 +136,7 @@ impl AgentStore {
              (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
              VALUES ($1, $2, $3, $4, 1, 'run_queued', $5) RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(&run_id)
         .bind(&actor.user_id)
         .bind(&workspace_id)

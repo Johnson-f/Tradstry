@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
 import { useEffect, useRef } from "react";
 import { Countly, countlyEnabled } from "@/lib/analytics/countly";
 
@@ -26,7 +27,7 @@ export function CountlyIdentify() {
       return;
     }
     if (wasSignedIn.current) {
-      Countly.set_id(`anonymous-${crypto.randomUUID()}`);
+      Countly.set_id(`anonymous-${newUuidV7()}`);
       wasSignedIn.current = false;
     }
   }, [isLoaded, isSignedIn, user]);

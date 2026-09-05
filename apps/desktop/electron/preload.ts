@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopBridge, DesktopEvent } from "../src/ipc/contract.ts";
+import { newUuidV7 } from "./uuid.ts";
 
 const bridge: DesktopBridge = {
   invoke: (command, args) => ipcRenderer.invoke("tradstry:invoke", command, args),
@@ -19,7 +20,7 @@ const bridge: DesktopBridge = {
   openExternal: (url) => ipcRenderer.invoke("tradstry:open-external", url),
   setTheme: (theme) => ipcRenderer.invoke("tradstry:set-theme", theme),
   subscribe: (query, variables, handlers) => {
-    const id = crypto.randomUUID();
+    const id = newUuidV7();
     const handler = (
       _event: Electron.IpcRendererEvent,
       message: { id: string; type: "data" | "error" | "complete"; data?: unknown; message?: string },

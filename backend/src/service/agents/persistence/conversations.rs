@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{
@@ -56,7 +55,7 @@ impl AgentStore {
         actor: &AgentActor,
         scope: &AgentScope,
     ) -> AgentResult<AgentConversation> {
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let row = sqlx::query(
             "INSERT INTO agent_conversations (id, user_id, workspace_id)
              SELECT $1, $2, w.id FROM workspaces w
@@ -178,7 +177,7 @@ impl AgentStore {
         .bind(conversation_id)
         .fetch_one(&mut *tx)
         .await?;
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let row = sqlx::query(
             "INSERT INTO agent_messages
              (id, conversation_id, user_id, workspace_id, sequence, role, content_json)

@@ -1,6 +1,7 @@
 import type { DesktopDatabase } from "./database.ts";
+import { newUuidV7 } from "../uuid.ts";
 import { transaction } from "./database.ts";
-import { decodeBase64Strict, enqueueMutation, uuidV7 } from "./mutations.ts";
+import { decodeBase64Strict, enqueueMutation } from "./mutations.ts";
 
 export type NotebookNote = {
   id: string;
@@ -76,7 +77,7 @@ export class NotebookRepository {
   }): string {
     const seed = decodeBase64Strict(input.seedUpdateB64);
     const stateVector = decodeBase64Strict(input.seedStateVectorB64);
-    const id = uuidV7();
+    const id = newUuidV7();
     const stamp = this.#store.hlc.now();
     transaction(this.#store.db, () => {
       this.#store.db
@@ -153,7 +154,7 @@ export class NotebookRepository {
   }
 
   createFolder(accountId: string, name: string): string {
-    const id = uuidV7();
+    const id = newUuidV7();
     const stamp = this.#store.hlc.now();
     transaction(this.#store.db, () => {
       this.#store.db

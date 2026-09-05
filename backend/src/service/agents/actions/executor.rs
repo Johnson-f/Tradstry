@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::json;
-use uuid::Uuid;
 
 use super::AgentActionPayload;
+use crate::ids::new_uuid_v7;
 use crate::service::agents::{AgentActionExecutionJob, AgentError, AgentResult, AgentService};
 use crate::service::db::schema::tables::{
     notebook::notes::{self, CreateNotebookNoteInput},
@@ -16,7 +16,7 @@ pub async fn run_action_worker(
     worker_index: usize,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
-    let owner = format!("action-worker-{}-{worker_index}", Uuid::new_v4());
+    let owner = format!("action-worker-{}-{worker_index}", new_uuid_v7());
     loop {
         if *shutdown.borrow() {
             return;
@@ -81,8 +81,7 @@ pub async fn execute(
             let document_json = crate::service::notebook::projector::markdown_to_json(&markdown)
                 .await
                 .map_err(|_| AgentError::Internal)?;
-            let note_id =
-                Uuid::new_v5(&Uuid::NAMESPACE_URL, job.proposal.id.as_bytes()).to_string();
+            let note_id = new_uuid_v7().to_string();
             let created = notes::create_notebook_note_tx(
                 &mut tx,
                 &job.proposal.user_id,
@@ -179,7 +178,7 @@ pub async fn execute(
     sqlx::query(
         "INSERT INTO agent_messages(id,conversation_id,user_id,workspace_id,sequence,role,content_json)
          VALUES($1,$2,$3,$4,$5,'action',$6)",
-    ).bind(Uuid::new_v4().to_string()).bind(&job.proposal.conversation_id)
+    ).bind(new_uuid_v7().to_string()).bind(&job.proposal.conversation_id)
       .bind(&job.proposal.user_id).bind(&job.proposal.workspace_id).bind(sequence)
       .bind(json!({"proposalId":job.proposal.id,"status":"executed","affected":affected}))
       .execute(&mut *tx).await?;

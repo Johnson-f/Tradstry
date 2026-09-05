@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Context, Result};
 
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use super::auth::BrokerageAuthSession;
 use super::client::{
@@ -92,7 +91,7 @@ pub async fn record_transaction_failure(
         user_id,
         workspace_id,
         snaptrade_account_id,
-        &Uuid::new_v4().to_string(),
+        &crate::ids::new_uuid_v7().to_string(),
         &TransactionReconciliation {
             status: "failed".to_string(),
             failed_count: 1,
@@ -127,7 +126,7 @@ async fn record_pending_transaction_reconciliation(
         user_id,
         workspace_id,
         snaptrade_account_id,
-        &Uuid::new_v4().to_string(),
+        &crate::ids::new_uuid_v7().to_string(),
         &TransactionReconciliation {
             status: "pending".to_string(),
             pending_count: 1,
@@ -172,7 +171,7 @@ async fn record_portfolio_reconciliation_status(
         user_id,
         workspace_id,
         snaptrade_account_id,
-        &Uuid::new_v4().to_string(),
+        &crate::ids::new_uuid_v7().to_string(),
         &PortfolioReconciliation {
             status: status.to_string(),
             local_holding_count,
@@ -422,7 +421,7 @@ pub async fn sync_transactions(
                     internal_user_id,
                     internal_account_id,
                     snaptrade_account_id,
-                    &Uuid::new_v4().to_string(),
+                    &crate::ids::new_uuid_v7().to_string(),
                     &TransactionReconciliation {
                         status: "failed".to_string(),
                         broker_count: checked_count(broker_count)?,
@@ -480,7 +479,7 @@ pub async fn sync_transactions(
                 internal_user_id,
                 internal_account_id,
                 snaptrade_account_id,
-                &Uuid::new_v4().to_string(),
+                &crate::ids::new_uuid_v7().to_string(),
                 &TransactionReconciliation {
                     status: "failed".to_string(),
                     broker_count: checked_count(broker_count)?,
@@ -549,7 +548,7 @@ pub async fn sync_transactions(
         internal_user_id,
         internal_account_id,
         snaptrade_account_id,
-        &Uuid::new_v4().to_string(),
+        &crate::ids::new_uuid_v7().to_string(),
         &TransactionReconciliation {
             status: status.to_string(),
             broker_count: report.broker_count,
@@ -795,7 +794,7 @@ pub async fn sync_holdings(
         internal_user_id,
         internal_account_id,
         snaptrade_account_id,
-        &Uuid::new_v4().to_string(),
+        &crate::ids::new_uuid_v7().to_string(),
         &PortfolioReconciliation {
             status: status.to_string(),
             broker_holding_count,

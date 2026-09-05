@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { version } from "uuid";
 import { CalculatorRepository } from "./calculator.ts";
 import { openDesktopDatabase, type DesktopDatabase } from "./database.ts";
 import { NotebookRepository } from "./notebook.ts";
@@ -22,11 +23,13 @@ test("notebook mutations keep rows and outbox writes atomic", () => {
     seedUpdateB64: Buffer.from("seed").toString("base64"),
     seedStateVectorB64: Buffer.from("vector").toString("base64"),
   });
+  assert.equal(version(id), 7);
   assert.equal(notebook.notes("account")[0]?.title, "Plan");
   assert.deepEqual(notebook.noteUpdates(id), [Buffer.from("seed").toString("base64")]);
   assert.equal(store.db.prepare("SELECT count(*) AS count FROM outbox WHERE name = 'createNote'").get()?.count, 1);
   assert.equal(store.db.prepare("SELECT count(*) AS count FROM outbox WHERE name = 'appendNoteUpdate'").get()?.count, 0);
   const folder = notebook.createFolder("account", "Setups");
+  assert.equal(version(folder), 7);
   notebook.moveNote(id, folder, 3);
   assert.equal(notebook.notes("account")[0]?.folderId, folder);
   store.close();
@@ -36,6 +39,7 @@ test("playbook and journal CRUD preserve derived metrics and mutation payloads",
   const store = open();
   const trading = new TradingRepository(store);
   const playbook = trading.createPlaybook({ name: "Breakout", edgeName: "Momentum" });
+  assert.equal(version(playbook.id), 7);
   assert.equal(trading.updatePlaybook(playbook.id, { name: "Breakout v2" }).edgeName, "Momentum");
   const trade = trading.createJournalEntry({
     accountId: "account",
@@ -49,6 +53,7 @@ test("playbook and journal CRUD preserve derived metrics and mutation payloads",
     tradeType: "long",
     playbookId: playbook.id,
   });
+  assert.equal(version(trade.id), 7);
   assert.equal(trade.totalPl, 10);
   assert.equal(trade.riskReward, 2);
   assert.equal(trading.updateJournalEntry(trade.id, { exitPrice: 90 }).status, "loss");
@@ -65,6 +70,7 @@ test("tag merge deduplicates local trade tags without echoing a trade mutation",
   const category = tags.createCategory("Custom", null);
   const from = tags.createTag(category.id, "From", null);
   const into = tags.createTag(category.id, "Into", null);
+  assert.ok([category.id, from.id, into.id].every((id) => version(id) === 7));
   store.db
     .prepare(
       `INSERT INTO journal_entries
@@ -83,6 +89,7 @@ test("principle statistics and calculator entities are computed and queued local
   const store = open();
   const principles = new PrinciplesRepository(store);
   const principle = principles.create({ accountId: "account", title: "No revenge trades" });
+  assert.equal(version(principle.id), 7);
   store.db
     .prepare(
       `INSERT INTO journal_entries
@@ -102,6 +109,7 @@ test("principle statistics and calculator entities are computed and queued local
     accountBalance: 10_000, accountRisk: 1, totalShares: 100, positionValue: 10_000,
     tranchesJson: "[]",
   });
+  assert.ok([first.id, plan.id].every((id) => version(id) === 7));
   assert.equal(calculator.updatePlan(plan.id, { status: "completed" }).status, "completed");
   assert.equal(calculator.history().length, 0);
   store.close();

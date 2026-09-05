@@ -163,3 +163,41 @@ async fn tool_call_terminal_transition_is_fenced() {
         Err(AgentError::Conflict)
     ));
 }
+
+#[tokio::test]
+async fn retrying_tool_evidence_keeps_one_uuid_v7_row() {
+    let fixture = AgentPgFixture::new().await;
+    let (run, _) = run_with_message(&fixture, "tool-evidence-retry").await;
+    let tool = fixture
+        .store
+        .start_tool_call(&run.id, "call-retry", "trading_performance", &json!({}))
+        .await
+        .unwrap();
+    let mut input = evidence("same-source");
+    input.tool_call_id = Some(tool.id);
+
+    let first = fixture
+        .store
+        .record_evidence(&run.id, &input)
+        .await
+        .unwrap();
+    let retried = fixture
+        .store
+        .record_evidence(&run.id, &input)
+        .await
+        .unwrap();
+
+    assert_eq!(retried.id, first.id);
+    assert_eq!(
+        uuid::Uuid::parse_str(&first.id).unwrap().get_version_num(),
+        7
+    );
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM agent_evidence WHERE run_id=$1 AND idempotency_key IS NOT NULL",
+    )
+    .bind(&run.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}

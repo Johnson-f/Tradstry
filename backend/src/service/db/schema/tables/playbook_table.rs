@@ -3,7 +3,6 @@ use async_graphql::{InputObject, SimpleObject};
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::trading::playbooks;
@@ -298,7 +297,7 @@ pub async fn create_playbook(
 ) -> Result<Playbook> {
     let workspace_id = input.workspace_id.clone();
     let prepared = prepare_new_playbook(input).await?;
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
 
     let db = sea_orm_connection(pool);
     playbooks::ActiveModel {

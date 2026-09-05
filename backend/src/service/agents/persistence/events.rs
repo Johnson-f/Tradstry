@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{AgentActor, AgentError, AgentResult, AgentRunEvent};
@@ -46,7 +45,7 @@ impl AgentStore {
              (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(&user_id)
         .bind(&workspace_id)

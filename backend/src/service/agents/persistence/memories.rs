@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use pgvector::HalfVector;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{
@@ -141,7 +140,7 @@ impl AgentStore {
             tx.commit().await?;
             return memory_from_row(&row);
         }
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let initial_status = if input.status == AgentMemoryStatus::Active {
             AgentMemoryStatus::PendingReview
         } else {

@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use serde_json::json;
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use super::conversations::message_from_row;
@@ -111,7 +110,7 @@ impl AgentStore {
         .bind(&conversation_id)
         .fetch_one(&mut *tx)
         .await?;
-        let message_id = Uuid::new_v4().to_string();
+        let message_id = crate::ids::new_uuid_v7().to_string();
         let message = sqlx::query(
             "INSERT INTO agent_messages
              (id, conversation_id, user_id, workspace_id, sequence, role, content_json)
@@ -142,7 +141,7 @@ impl AgentStore {
                     "answer cited evidence outside the current run".into(),
                 ));
             }
-            let claim_row_id = Uuid::new_v4().to_string();
+            let claim_row_id = crate::ids::new_uuid_v7().to_string();
             sqlx::query(
                 "INSERT INTO agent_claims
                  (id, run_id, message_id, user_id, workspace_id, claim_key, claim_text)
@@ -176,7 +175,7 @@ impl AgentStore {
              (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
              VALUES ($1, $2, $3, $4, $5, 'run_completed', $6)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(&user_id)
         .bind(&workspace_id)
@@ -205,7 +204,7 @@ impl AgentStore {
                  VALUES ($1,$2,$3,$4,$5,$6,'memory-v1')
                  ON CONFLICT (source_message_id, extraction_version) DO NOTHING",
             )
-            .bind(Uuid::new_v4().to_string())
+            .bind(crate::ids::new_uuid_v7().to_string())
             .bind(&user_id)
             .bind(&workspace_id)
             .bind(&conversation_id)
@@ -222,7 +221,7 @@ impl AgentStore {
                  ON CONFLICT (conversation_id) WHERE status='queued' DO UPDATE SET
                    target_sequence=GREATEST(agent_conversation_summary_jobs.target_sequence,EXCLUDED.target_sequence),
                    updated_at=now()",
-            ).bind(Uuid::new_v4().to_string()).bind(&conversation_id).bind(&user_id).bind(&workspace_id)
+            ).bind(crate::ids::new_uuid_v7().to_string()).bind(&conversation_id).bind(&user_id).bind(&workspace_id)
              .bind(sequence-20).execute(&mut *tx).await?;
         }
         crate::service::notifications::outbox::record(

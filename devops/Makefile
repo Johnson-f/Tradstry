@@ -326,6 +326,7 @@ sync-agent-env:
 
 test-agent-env-sync:
 	@bash "$(DEVOPS)/scripts/sync-agent-env.test.sh"
+	@bash "$(DEVOPS)/scripts/apply-agent-env-remote.test.sh"
 
 cleanup:
 	@bash -c "$$CLEANUP_SCRIPT"

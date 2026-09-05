@@ -367,12 +367,14 @@ async fn create_tag_category_and_tag_mutations_apply_through_push() {
     let _g = reset_schema(&pool).await;
     migrate(&pool).await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let category_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let tag_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m1 = NotebookMutation {
         id: 1,
         name: "createTagCategory".into(),
         args: serde_json::json!({
-            "id": "catx",
+            "id": category_id,
             "workspaceId": workspace_id,
             "name": "Tactics2",
             "color": "#abc",
@@ -389,9 +391,9 @@ async fn create_tag_category_and_tag_mutations_apply_through_push() {
         id: 2,
         name: "createTag".into(),
         args: serde_json::json!({
-            "id": "tagx",
+            "id": tag_id,
             "workspaceId": workspace_id,
-            "categoryId": "catx",
+            "categoryId": category_id,
             "name": "Gapper",
             "color": null,
         })
@@ -415,6 +417,6 @@ async fn create_tag_category_and_tag_mutations_apply_through_push() {
         .unwrap();
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].name, "Gapper");
-    assert_eq!(tags[0].category_id, "catx");
+    assert_eq!(tags[0].category_id, category_id);
     assert_eq!(tags[0].hlc, "000000000000002:00000:client");
 }

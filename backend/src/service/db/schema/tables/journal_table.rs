@@ -4,7 +4,6 @@ use finance_query::Ticker;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::HashSet;
-use uuid::Uuid;
 
 use crate::service::db::util::parse_flexible_datetime;
 use crate::service::read_service::journal::JournalFilter;
@@ -938,7 +937,7 @@ pub async fn create_journal_entry(
     user_id: &str,
     input: CreateJournalEntryInput,
 ) -> Result<JournalEntry> {
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     let brokerage_tx_ids = input.brokerage_transaction_ids.clone();
     let mut entry = prepare_new_entry(input).await?;
     entry.playbook_id =
@@ -1085,7 +1084,7 @@ pub async fn insert_brokerage_links(
     }
     let link_ids: Vec<String> = brokerage_transaction_ids
         .iter()
-        .map(|_| uuid::Uuid::new_v4().to_string())
+        .map(|_| crate::ids::new_uuid_v7().to_string())
         .collect();
     sqlx::query(
         "INSERT INTO journal_brokerage_links \

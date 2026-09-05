@@ -8,7 +8,6 @@ use tradstry_backend::service::notebook::media::{
     FinalizeMediaInput, MediaLifecycleError, ReserveMediaUploadInput, finalize_upload,
     remove_note_references_tx, remove_reference, reserve_upload,
 };
-use uuid::Uuid;
 
 fn test_url() -> String {
     std::env::var("TEST_DATABASE_URL")
@@ -24,7 +23,10 @@ async fn isolated_pool() -> (PgPool, PgPool, String) {
         .connect_with(options.clone())
         .await
         .expect("connect admin pool");
-    let schema = format!("media_test_{}", Uuid::new_v4().simple());
+    let schema = format!(
+        "media_test_{}",
+        tradstry_backend::ids::new_uuid_v7().simple()
+    );
     admin
         .execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA \"{schema}\"")))
         .await
@@ -67,11 +69,11 @@ async fn migrate(pool: &PgPool, schema: &str) {
 }
 
 async fn seed_user_workspace(pool: &PgPool) -> (String, String) {
-    let user_id = Uuid::new_v4().to_string();
-    let workspace_id = Uuid::new_v4().to_string();
+    let user_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let workspace_id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES($1,$2,$3,$4)")
         .bind(&user_id)
-        .bind(Uuid::new_v4().to_string())
+        .bind(tradstry_backend::ids::new_uuid_v7().to_string())
         .bind(format!("{user_id}@test.local"))
         .bind("Test User")
         .execute(pool)
@@ -87,7 +89,7 @@ async fn seed_user_workspace(pool: &PgPool) -> (String, String) {
 }
 
 async fn seed_note(pool: &sqlx::PgPool, user_id: &str, workspace_id: &str) -> String {
-    let id = Uuid::new_v4().to_string();
+    let id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO notebook_notes(id,user_id,workspace_id,title,document_json)
          VALUES($1,$2,$3,'Media','{\"root\":{\"children\":[]}}')",

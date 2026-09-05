@@ -4,13 +4,12 @@ use pg_support::{reset_schema, test_pool};
 use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
 use tradstry_migration::{Migrator, MigratorTrait};
-use uuid::Uuid;
 
 /// Returns `(user_id, clerk_uuid, r2_key)`.
 async fn seed_user_with_image(pool: &sqlx::PgPool) -> (String, String, String) {
-    let user_id = Uuid::new_v4().to_string();
-    let clerk_uuid = Uuid::new_v4().to_string();
-    let blob_id = Uuid::new_v4().to_string();
+    let user_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
+    let blob_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let key = format!("notebook/{user_id}/media/deadbeef");
 
     sqlx::query("INSERT INTO users (id, clerk_uuid, email, full_name) VALUES ($1, $2, $3, $4)")

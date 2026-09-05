@@ -4,7 +4,6 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::calculator::position_calculator_history;
@@ -120,7 +119,7 @@ pub async fn create_history_entry(
     user_id: &str,
     input: CreatePositionCalculatorHistoryInput,
 ) -> Result<PositionCalculatorHistoryEntry> {
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     let tranches: Vec<HistoryTranche> = input
         .tranches
         .unwrap_or_default()

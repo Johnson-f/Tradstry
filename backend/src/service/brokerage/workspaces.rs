@@ -437,7 +437,7 @@ pub async fn finalize_connection_accounts(
             {
                 workspace
             } else {
-                let id = uuid::Uuid::new_v4().to_string();
+                let id = crate::ids::new_uuid_v7().to_string();
                 let name = unique_workspace_name(&preferred_name, &mut existing_names);
                 sqlx::query(
                     "INSERT INTO workspaces (

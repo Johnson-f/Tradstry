@@ -144,7 +144,7 @@ pub async fn create_notebook_folder_tx(
             Uuid::parse_str(id).context("Client-supplied folder id must be a UUID")?;
             id.to_string()
         }
-        None => Uuid::new_v4().to_string(),
+        None => crate::ids::new_uuid_v7().to_string(),
     };
 
     sqlx::query(
@@ -208,7 +208,7 @@ pub async fn ensure_system_folder(pool: &PgPool, user_id: &str, workspace_id: &s
          SELECT $1, $2, $3, $4, -1, true \
          WHERE NOT EXISTS (SELECT 1 FROM notebook_folders WHERE workspace_id = $3 AND is_system)",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(crate::ids::new_uuid_v7().to_string())
     .bind(user_id)
     .bind(workspace_id)
     .bind(SYSTEM_FOLDER_NAME)

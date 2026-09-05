@@ -9,7 +9,6 @@ use tradstry_backend::service::db::schema::tables::brokerage_table::{
 fn counts() -> SignatureCounts {
     SignatureCounts::new()
 }
-use uuid::Uuid;
 
 fn fill(snaptrade_id: &str, external_reference_id: Option<&str>) -> NewBrokerageTransaction {
     NewBrokerageTransaction {
@@ -75,7 +74,7 @@ async fn reregistration_updates_in_place_and_preserves_journal_links() {
             .get(0);
 
     // Journal the fill, exactly as the merge-trade flow does.
-    let entry_id = Uuid::new_v4().to_string();
+    let entry_id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO journal_entries \
          (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, \
@@ -95,7 +94,7 @@ async fn reregistration_updates_in_place_and_preserves_journal_links() {
         "INSERT INTO journal_brokerage_links \
          (id, journal_entry_id, brokerage_transaction_id, user_id) VALUES ($1, $2, $3, $4)",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(tradstry_backend::ids::new_uuid_v7().to_string())
     .bind(&entry_id)
     .bind(&stored_id)
     .bind(&user_id)
@@ -434,7 +433,7 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
         .unwrap();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
-    let entry_id = Uuid::new_v4().to_string();
+    let entry_id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO journal_entries \
          (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, \
@@ -454,7 +453,7 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
     // key that the upsert path no longer produces.
     let mut dup_ids = Vec::new();
     for (n, snaptrade_id) in ["run-1", "run-2", "run-3"].iter().enumerate() {
-        let id = Uuid::new_v4().to_string();
+        let id = tradstry_backend::ids::new_uuid_v7().to_string();
         sqlx::query(
             "INSERT INTO brokerage_transactions \
              (id, user_id, workspace_id, snaptrade_id, symbol, currency, transaction_type, \
@@ -478,7 +477,7 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
             "INSERT INTO journal_brokerage_links \
              (id, journal_entry_id, brokerage_transaction_id, user_id) VALUES ($1, $2, $3, $4)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(tradstry_backend::ids::new_uuid_v7().to_string())
         .bind(&entry_id)
         .bind(&id)
         .bind(&user_id)
@@ -500,7 +499,7 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
                      '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', 'Webull', \
                      '', '{}', 1.0, $5)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(tradstry_backend::ids::new_uuid_v7().to_string())
         .bind(&user_id)
         .bind(&workspace_id)
         .bind(snaptrade_id)

@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::{PgConnection, PgPool, Row};
 use std::time::Duration;
-use uuid::Uuid;
 
 use super::render::Rendered;
 
@@ -50,7 +49,7 @@ pub async fn upsert_coalesced(
                        updated_at = now() \
          RETURNING id, group_count, (xmax = 0) AS created",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(crate::ids::new_uuid_v7().to_string())
     .bind(user_id)
     .bind(event_type)
     .bind(payload)

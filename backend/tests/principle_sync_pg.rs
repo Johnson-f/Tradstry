@@ -146,12 +146,13 @@ async fn create_principle_mutation_applies_through_push() {
     let _g = reset_schema(&pool).await;
     migrate(&pool).await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let principle_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m = NotebookMutation {
         id: 1,
         name: "createPrinciple".into(),
         args: serde_json::json!({
-            "id": "prx",
+            "id": principle_id,
             "workspaceId": workspace_id,
             "playbookId": null,
             "evidenceNoteId": null,

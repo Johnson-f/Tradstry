@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use sqlx::{PgPool, Row};
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct PushSubscription {
@@ -31,7 +30,7 @@ pub async fn upsert(
                user_agent = EXCLUDED.user_agent \
          RETURNING id",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(crate::ids::new_uuid_v7().to_string())
     .bind(user_id)
     .bind(endpoint)
     .bind(p256dh)

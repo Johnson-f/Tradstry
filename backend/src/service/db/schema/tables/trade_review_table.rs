@@ -6,7 +6,6 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::schema::tables::{
     brokerage_table, manual_execution_claim_table, position_calculator_plans_table,
@@ -84,7 +83,7 @@ pub async fn rebuild_workspace(pool: &PgPool, user_id: &str, workspace_id: &str)
     let episodes = build_episodes(fills).context("failed to build deterministic trade episodes")?;
     let mut tx = pool.begin().await?;
     for episode in &episodes {
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let instrument_json = serde_json::to_value(&episode.instrument)?;
         let direction = direction_str(episode.direction);
         let row = sqlx::query(
@@ -724,7 +723,7 @@ pub async fn publish_review(pool: &PgPool, user_id: &str, match_id: &str) -> Res
                 .and_then(serde_json::Value::as_str)
                 .map(|reason| format!("Plan vs actual review: {reason}"))
         });
-    let journal_id = Uuid::new_v4().to_string();
+    let journal_id = crate::ids::new_uuid_v7().to_string();
     let args = crate::service::db::schema::tables::journal_table::JournalWriteArgs {
         id: journal_id.clone(),
         workspace_id,
@@ -767,7 +766,7 @@ pub async fn publish_review(pool: &PgPool, user_id: &str, match_id: &str) -> Res
         .collect();
     let link_ids: Vec<String> = transaction_ids
         .iter()
-        .map(|_| Uuid::new_v4().to_string())
+        .map(|_| crate::ids::new_uuid_v7().to_string())
         .collect();
     let mut tx = pool.begin().await?;
     crate::service::db::schema::tables::journal_table::create_journal_entry_tx(
@@ -1010,7 +1009,7 @@ async fn publish_unplanned_episode(
     .flatten()
     .filter(|name| !name.trim().is_empty())
     .unwrap_or_else(|| symbol.clone());
-    let journal_id = Uuid::new_v4().to_string();
+    let journal_id = crate::ids::new_uuid_v7().to_string();
     let args = crate::service::db::schema::tables::journal_table::JournalWriteArgs {
         id: journal_id.clone(),
         workspace_id: episode.workspace_id.clone(),
@@ -1047,7 +1046,7 @@ async fn publish_unplanned_episode(
     };
     let link_ids: Vec<String> = transaction_ids
         .iter()
-        .map(|_| Uuid::new_v4().to_string())
+        .map(|_| crate::ids::new_uuid_v7().to_string())
         .collect();
     let mut tx = pool.begin().await?;
     sqlx::query(
@@ -1185,7 +1184,7 @@ async fn refresh_suggestions(pool: &PgPool, user_id: &str, workspace_id: &str) -
                  ON CONFLICT (episode_id,plan_id) DO UPDATE SET
                    score=EXCLUDED.score,evidence_json=EXCLUDED.evidence_json,updated_at=now()",
             )
-            .bind(Uuid::new_v4().to_string())
+            .bind(crate::ids::new_uuid_v7().to_string())
             .bind(user_id)
             .bind(workspace_id)
             .bind(&stored.id)
@@ -1227,7 +1226,7 @@ async fn create_review_version(
     .await?;
     let version: i32 = row.try_get(0)?;
     let supersedes_id: Option<String> = row.try_get(1)?;
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO trade_review_versions
          (id,user_id,workspace_id,match_id,version_number,stage,plan_snapshot_json,calculation_json,reflection_json,journal_draft_json,finalized_at,supersedes_id)

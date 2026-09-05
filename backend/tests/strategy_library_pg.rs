@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use tradstry_backend::service::db::schema::tables::{playbook_table, tags_table};
 
 async fn second_workspace(pool: &sqlx::PgPool, user_id: &str) -> String {
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query("INSERT INTO workspaces (id,user_id,name) VALUES ($1,$2,'Second Workspace')")
         .bind(&id)
         .bind(user_id)

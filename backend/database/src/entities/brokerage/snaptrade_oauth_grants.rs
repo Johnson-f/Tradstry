@@ -6,7 +6,12 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "snaptrade_oauth_grants")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
+    #[sea_orm(
+        primary_key,
+        auto_increment = false,
+        column_type = "Text",
+        default_expr = "Expr::cust(\"uuidv7()\")"
+    )]
     pub id: String,
     #[sea_orm(
         column_type = "Text",

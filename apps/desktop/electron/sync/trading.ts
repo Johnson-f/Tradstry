@@ -1,7 +1,8 @@
 import type { DesktopDatabase } from "./database.ts";
+import { newUuidV7 } from "../uuid.ts";
 import { transaction } from "./database.ts";
 import { deriveMetrics } from "./derive.ts";
-import { enqueueMutation, uuidV7 } from "./mutations.ts";
+import { enqueueMutation } from "./mutations.ts";
 
 export type PlaybookInput = {
 	name: string;
@@ -142,7 +143,7 @@ export class TradingRepository {
 	}
 
 	createPlaybook(input: PlaybookInput): Playbook {
-		const id = uuidV7();
+		const id = newUuidV7();
 		const row = normalizePlaybook(id, input);
 		const stamp = this.#store.hlc.now();
 		transaction(this.#store.db, () => {
@@ -264,7 +265,7 @@ export class TradingRepository {
 	}
 
 	createJournalEntry(input: JournalInput): JournalEntry {
-		const write = normalizeJournal(uuidV7(), input);
+		const write = normalizeJournal(newUuidV7(), input);
 		this.#writeJournal("create", write);
 		const row = this.#findJournal(write.id);
 		if (!row) throw new Error("journal entry not found after create");

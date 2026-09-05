@@ -15,7 +15,6 @@ use tinyagents::harness::tool::{ToolCall, ToolDelta};
 use tinyagents::harness::usage::Usage;
 use tinyagents::{Result as TinyResult, TinyAgentsError};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use uuid::Uuid;
 
 use super::AgentRuntimeState;
 use super::provider_contract::{ProviderDialect, compile_request};
@@ -353,7 +352,7 @@ impl GeminiAccumulator {
             if let Some(call) = part.get("functionCall") {
                 while self.tools.len() <= function_index {
                     self.tools.push(PendingTool {
-                        id: format!("call_{}", Uuid::new_v4()),
+                        id: format!("call_{}", crate::ids::new_uuid_v7()),
                         ..Default::default()
                     });
                 }

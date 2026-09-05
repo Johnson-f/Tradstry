@@ -1,7 +1,6 @@
 use tradstry_backend::service::db::schema::tables::{
     notebook::folders, notebook::notes, notebook::sync,
 };
-use uuid::Uuid;
 
 mod pg_support;
 use pg_support::{seed_user_workspace, test_pool};
@@ -12,7 +11,7 @@ const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
 async fn client_supplied_id_is_used_verbatim() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let wanted = Uuid::new_v4().to_string();
+    let wanted = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let note = notes::create_notebook_note(
         &pool,
@@ -78,7 +77,7 @@ async fn invalid_client_supplied_note_id_is_rejected() {
 async fn client_supplied_folder_id_is_used_verbatim() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let wanted = Uuid::new_v4().to_string();
+    let wanted = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let folder = folders::create_notebook_folder(
         &pool,
@@ -198,7 +197,7 @@ async fn cursor_excludes_unchanged_rows() {
 async fn mutation_id_advances_and_is_idempotent() {
     let pool = test_pool().await;
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
-    let client_id = Uuid::new_v4().to_string();
+    let client_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let mut tx = pool.begin().await.unwrap();
 
     assert_eq!(
@@ -238,7 +237,7 @@ use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation
 async fn replayed_mutation_is_applied_once() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let note_id = Uuid::new_v4().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m = NotebookMutation {
         id: 1,
@@ -254,7 +253,7 @@ async fn replayed_mutation_is_applied_once() {
         hlc: "000000000000001:00000:client-a".into(),
     };
 
-    let client = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
     // Apply the same batch twice, as an at-least-once channel would.
     let first = apply_mutation(&pool, &user_id, &client, &m).await.unwrap();
     let second = apply_mutation(&pool, &user_id, &client, &m).await.unwrap();
@@ -281,7 +280,7 @@ async fn invalid_mutation_still_advances_cursor() {
         hlc: "000000000000001:00000:client-b".into(),
     };
 
-    let client = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let last = apply_mutation(&pool, &user_id, &client, &bad)
         .await
         .expect("an invalid mutation must not fail the batch");
@@ -289,6 +288,68 @@ async fn invalid_mutation_still_advances_cursor() {
         last, 1,
         "a permanently invalid mutation must be acknowledged, or the client deadlocks"
     );
+}
+
+#[tokio::test]
+async fn sync_create_rejects_legacy_uuid_but_legacy_rows_remain_mutable() {
+    let pool = test_pool().await;
+    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let mut legacy_bytes = *tradstry_backend::ids::new_uuid_v7().as_bytes();
+    legacy_bytes[6] = (legacy_bytes[6] & 0x0f) | 0x40;
+    let legacy_id = uuid::Uuid::from_bytes(legacy_bytes).to_string();
+
+    let rejected = NotebookMutation {
+        id: 1,
+        name: "createNote".into(),
+        args: create_note_args(&legacy_id, &workspace_id, None).to_string(),
+        hlc: "000000000000001:00000:client-v7-policy".into(),
+    };
+    assert_eq!(
+        apply_mutation(&pool, &user_id, &client, &rejected)
+            .await
+            .unwrap(),
+        1
+    );
+    let rejected_count: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_notes WHERE id=$1")
+        .bind(&legacy_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rejected_count, 0);
+
+    notes::create_notebook_note(
+        &pool,
+        &user_id,
+        notes::CreateNotebookNoteInput {
+            id: Some(legacy_id.clone()),
+            workspace_id,
+            document_json: EMPTY_DOC.into(),
+            trade_ids: vec![],
+            folder_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let deleted = NotebookMutation {
+        id: 2,
+        name: "deleteNote".into(),
+        args: json!({ "id": &legacy_id }).to_string(),
+        hlc: "000000000000002:00000:client-v7-policy".into(),
+    };
+    assert_eq!(
+        apply_mutation(&pool, &user_id, &client, &deleted)
+            .await
+            .unwrap(),
+        2
+    );
+    let deleted_at: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT deleted_at FROM notebook_notes WHERE id=$1")
+            .bind(&legacy_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(deleted_at.is_some());
 }
 
 fn mutation(id: i64, name: &str, args: serde_json::Value, client: &str) -> NotebookMutation {
@@ -318,8 +379,8 @@ fn create_note_args(
 async fn delete_note_mutation_tombstones() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let client = Uuid::new_v4().to_string();
-    let note_id = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     apply_mutation(
         &pool,
@@ -357,8 +418,8 @@ async fn delete_note_mutation_tombstones() {
 async fn create_folder_mutation_lands() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let client = Uuid::new_v4().to_string();
-    let folder_id = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     apply_mutation(
         &pool,
@@ -391,8 +452,8 @@ async fn create_folder_mutation_lands() {
 async fn rename_folder_mutation_lands() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let client = Uuid::new_v4().to_string();
-    let folder_id = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     apply_mutation(
         &pool,
@@ -433,9 +494,9 @@ async fn rename_folder_mutation_lands() {
 async fn delete_folder_mutation_tombstones_subtree() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let client = Uuid::new_v4().to_string();
-    let folder_id = Uuid::new_v4().to_string();
-    let note_id = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     apply_mutation(
         &pool,
@@ -641,9 +702,9 @@ async fn fresh_update_with_matching_expected_succeeds() {
 async fn move_node_mutation_reparents() {
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let client = Uuid::new_v4().to_string();
-    let folder_id = Uuid::new_v4().to_string();
-    let note_id = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
+    let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     apply_mutation(
         &pool,
@@ -732,7 +793,7 @@ async fn append_note_update_mutation_is_applied_not_swallowed() {
         hlc: String::new(),
     };
 
-    let client_id = Uuid::new_v4().to_string();
+    let client_id = tradstry_backend::ids::new_uuid_v7().to_string();
     apply_mutation(&pool, &user_id, &client_id, &m)
         .await
         .unwrap();
@@ -754,7 +815,7 @@ async fn a_note_created_through_sync_is_born_crdt() {
 
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let note_id = Uuid::new_v4().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let document_json = r#"{"root":{"type":"root","version":1,"direction":"ltr","format":"","indent":0,"children":[{"type":"paragraph","version":1,"direction":"ltr","format":"","indent":0,"children":[{"type":"text","text":"hello","format":0,"detail":0,"mode":"normal","style":"","version":1}]}]}}"#;
 
@@ -772,7 +833,7 @@ async fn a_note_created_through_sync_is_born_crdt() {
         hlc: "000000000000001:00000:client-seed".into(),
     };
 
-    let client = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
     apply_mutation(&pool, &user_id, &client, &m).await.unwrap();
 
     assert_eq!(
@@ -799,7 +860,7 @@ async fn a_client_supplied_seed_is_installed_and_not_reseeded() {
 
     let pool = test_pool().await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
-    let note_id = Uuid::new_v4().to_string();
+    let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let seed = b"pretend-yjs-update";
     let state_vector = b"pretend-state-vector";
@@ -822,14 +883,14 @@ async fn a_client_supplied_seed_is_installed_and_not_reseeded() {
     };
 
     // Same client twice: deduped by mutation id, so this never re-enters the effect.
-    let client = Uuid::new_v4().to_string();
+    let client = tradstry_backend::ids::new_uuid_v7().to_string();
     apply_mutation(&pool, &user_id, &client, &m).await.unwrap();
     apply_mutation(&pool, &user_id, &client, &m).await.unwrap();
 
     // A *different* client with the same createNote does re-enter the effect — a
     // rebase or a second device replaying the note's creation. This is the path that
     // can seed a note twice, and the one the ON CONFLICT guard exists for.
-    let other = Uuid::new_v4().to_string();
+    let other = tradstry_backend::ids::new_uuid_v7().to_string();
     apply_mutation(&pool, &user_id, &other, &m).await.unwrap();
 
     assert_eq!(
@@ -858,8 +919,8 @@ async fn pull_acks_only_the_asking_clients_mutations() {
     let pool = test_pool().await;
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
-    let device_a = Uuid::new_v4().to_string();
-    let device_b = Uuid::new_v4().to_string();
+    let device_a = tradstry_backend::ids::new_uuid_v7().to_string();
+    let device_b = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let mut tx = pool.begin().await.unwrap();
     sync::advance_mutation_id(&mut tx, &device_a, &user_id, 1)
@@ -881,8 +942,12 @@ async fn pull_acks_only_the_asking_clients_mutations() {
     assert_eq!(b, 9);
 
     // A device the server has never seen is at zero, not at the user's maximum.
-    let fresh = sync::last_mutation_id_for_client(&pool, &Uuid::new_v4().to_string(), &user_id)
-        .await
-        .unwrap();
+    let fresh = sync::last_mutation_id_for_client(
+        &pool,
+        &tradstry_backend::ids::new_uuid_v7().to_string(),
+        &user_id,
+    )
+    .await
+    .unwrap();
     assert_eq!(fresh, 0, "an unknown device must start from zero");
 }

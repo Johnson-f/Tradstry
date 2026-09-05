@@ -22,7 +22,7 @@ async fn isolated_pool() -> (PgPool, PgPool, String) {
         .connect_with(options.clone())
         .await
         .expect("connect admin pool");
-    let schema = format!("seaorm_test_{}", Uuid::new_v4().simple());
+    let schema = format!("seaorm_test_{}", Uuid::now_v7().simple());
     admin
         .execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA \"{schema}\"")))
         .await
@@ -59,6 +59,24 @@ async fn cleanup(admin: PgPool, pool: PgPool, schema: &str) {
     admin.close().await;
 }
 
+async fn assert_uuid_v7_defaults(pool: &PgPool) {
+    let defaults: Vec<String> = sqlx::query_scalar(
+        "SELECT column_default FROM information_schema.columns
+         WHERE table_schema=current_schema()
+           AND table_name IN ('snaptrade_oauth_attempts','snaptrade_oauth_grants')
+           AND column_name='id'
+         ORDER BY table_name",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("read UUID defaults");
+    assert_eq!(defaults.len(), 2);
+    assert!(
+        defaults.iter().all(|default| default.contains("uuidv7()")),
+        "expected UUIDv7 defaults, got {defaults:?}"
+    );
+}
+
 #[tokio::test]
 async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     let (admin, pool, schema) = isolated_pool().await;
@@ -71,6 +89,7 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     bootstrap(&pool, &schema)
         .await
         .expect("idempotent bootstrap");
+    assert_uuid_v7_defaults(&pool).await;
 
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()",
@@ -122,6 +141,17 @@ async fn current_sqlx_schema_adopts_without_data_loss() {
     .execute(&pool)
     .await
     .expect("seed adoption row");
+    sqlx::query("INSERT INTO workspaces (id,user_id,name) VALUES ('w1','u1','Main')")
+        .execute(&pool)
+        .await
+        .expect("seed adoption workspace");
+    sqlx::query(
+        "INSERT INTO snaptrade_oauth_grants (id,user_id,oauth_client_id,status)
+         VALUES ('74738ff5-5367-5958-9aee-98fffdcd1876','u1','legacy-client','revoked')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed legacy UUIDv5 row");
     let index_oid_before: i64 = sqlx::query_scalar(
         "SELECT 'idx_brokerage_tx_user_workspace_date_id'::regclass::oid::bigint",
     )
@@ -135,6 +165,7 @@ async fn current_sqlx_schema_adopts_without_data_loss() {
     contract::verify(&db)
         .await
         .expect("contract after adoption");
+    assert_uuid_v7_defaults(&pool).await;
     for retained in [
         "price_history",
         "price_fetch_failures",
@@ -157,6 +188,13 @@ async fn current_sqlx_schema_adopts_without_data_loss() {
         .await
         .expect("read preserved row");
     assert_eq!(user_name, "User One");
+    let legacy_id: String = sqlx::query_scalar(
+        "SELECT id FROM snaptrade_oauth_grants WHERE oauth_client_id='legacy-client'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read preserved legacy UUIDv5 row");
+    assert_eq!(legacy_id, "74738ff5-5367-5958-9aee-98fffdcd1876");
     let index_oid_after: i64 = sqlx::query_scalar(
         "SELECT 'idx_brokerage_tx_user_workspace_date_id'::regclass::oid::bigint",
     )

@@ -54,6 +54,7 @@
     "recharts": "2.15.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
+    "uuid": "14.0.2",
     "vaul": "^1.1.2",
     "yjs": "13.6.32",
     "zustand": "^5.0.15"

@@ -11,7 +11,10 @@ pub async fn run_knowledge_worker(
     lease_seconds: u64,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
-    let owner = format!("knowledge-worker-{}-{worker_index}", uuid::Uuid::new_v4());
+    let owner = format!(
+        "knowledge-worker-{}-{worker_index}",
+        crate::ids::new_uuid_v7()
+    );
     info!("[agents] knowledge worker {owner} started");
     loop {
         if *shutdown.borrow() {

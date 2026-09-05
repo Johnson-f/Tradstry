@@ -1,9 +1,9 @@
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
+use crate::ids::new_uuid_v7;
 use crate::service::agents::runtime::provider_failure::ProviderFailure;
 use crate::service::agents::{AgentActor, AgentError, AgentResult, AgentRun, AgentRunStatus};
 use tinyagents::harness::usage::UsageTotals;
@@ -60,38 +60,43 @@ impl AgentStore {
     pub async fn create_subagent_run(
         &self,
         parent_run_id: &str,
-        child_run_id: &str,
         role: &str,
         call_id: &str,
-    ) -> AgentResult<()> {
+    ) -> AgentResult<String> {
         let mut tx = self.pool().begin().await?;
+        let idempotency_key = format!("subagent:{parent_run_id}:{role}:{call_id}");
         sqlx::query(
-            "DELETE FROM agent_runs
-             WHERE id=$1 AND parent_run_id=$2 AND status IN ('failed','cancelled')",
+            "DELETE FROM agent_runs child
+             USING agent_runs parent
+             WHERE parent.id=$1 AND parent.status='running'
+               AND child.parent_run_id=parent.id AND child.user_id=parent.user_id
+               AND child.idempotency_key=$2 AND child.status IN ('failed','cancelled')",
         )
-        .bind(child_run_id)
         .bind(parent_run_id)
+        .bind(&idempotency_key)
         .execute(&mut *tx)
         .await?;
-        let inserted = sqlx::query(
+        let child_run_id = new_uuid_v7().to_string();
+        let inserted: Option<String> = sqlx::query_scalar(
             "INSERT INTO agent_runs
              (id,conversation_id,user_id,workspace_id,parent_run_id,input_message_id,status,
               idempotency_key,lease_owner,leased_at,heartbeat_at,attempt_count)
              SELECT $1,conversation_id,user_id,workspace_id,id,input_message_id,'running',
                     $2,lease_owner,now(),now(),1
              FROM agent_runs WHERE id=$3 AND status='running'
-             ON CONFLICT (id) DO NOTHING",
+             ON CONFLICT DO NOTHING
+             RETURNING id",
         )
-        .bind(child_run_id)
-        .bind(format!("subagent:{parent_run_id}:{role}:{call_id}"))
+        .bind(&child_run_id)
+        .bind(&idempotency_key)
         .bind(parent_run_id)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
-        if inserted.rows_affected() != 1 {
+        let Some(child_run_id) = inserted else {
             return Err(AgentError::Conflict);
-        }
+        };
         tx.commit().await?;
-        Ok(())
+        Ok(child_run_id)
     }
 
     pub async fn record_subagent_usage(
@@ -195,7 +200,7 @@ impl AgentStore {
                 return Err(AgentError::NotFound);
             }
         }
-        let id = Uuid::new_v4().to_string();
+        let id = new_uuid_v7().to_string();
         let inserted = sqlx::query(
             "INSERT INTO agent_runs
              (id, conversation_id, user_id, workspace_id, parent_run_id, input_message_id,
@@ -376,7 +381,7 @@ impl AgentStore {
              (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(new_uuid_v7().to_string())
         .bind(run_id)
         .bind(row.try_get::<String, _>("user_id")?)
         .bind(row.try_get::<String, _>("workspace_id")?)
@@ -475,7 +480,7 @@ async fn terminal_subagent_run(
          (id,run_id,user_id,workspace_id,sequence,kind,payload_json)
          VALUES($1,$2,$3,$4,$5,$6,$7)",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(new_uuid_v7().to_string())
     .bind(child_run_id)
     .bind(row.try_get::<String, _>("user_id")?)
     .bind(row.try_get::<String, _>("workspace_id")?)
@@ -529,7 +534,7 @@ async fn terminal_claimed_run(
          (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(new_uuid_v7().to_string())
     .bind(run_id)
     .bind(row.try_get::<String, _>("user_id")?)
     .bind(row.try_get::<String, _>("workspace_id")?)
@@ -563,7 +568,7 @@ async fn terminal_claimed_run(
              (id, run_id, user_id, workspace_id, sequence, kind, payload_json)
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(new_uuid_v7().to_string())
         .bind(child.try_get::<String, _>("id")?)
         .bind(child.try_get::<String, _>("user_id")?)
         .bind(child.try_get::<String, _>("workspace_id")?)

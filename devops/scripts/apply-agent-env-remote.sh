@@ -30,12 +30,26 @@ rollback() {
 }
 trap rollback ERR
 
-keys=(AGENTS_V2_ENABLED AGENT_FAST_MODEL AGENT_REASONING_MODEL AGENT_VISION_MODEL
-  AGENT_FAST_FALLBACK_MODEL AGENT_REASONING_FALLBACK_MODEL AGENT_VISION_FALLBACK_MODEL
-  AGENT_WORKER_CONCURRENCY AGENT_INDEX_WORKER_CONCURRENCY AGENT_RUN_LEASE_SECONDS
-  AGENT_HEARTBEAT_SECONDS GEMINI_API_KEY VOYAGE_API_KEY VOYAGE_EMBEDDING_MODEL
-  VOYAGE_OUTPUT_DIMENSION VOYAGE_RERANKER_MODEL)
-bash "${merge_script}" "${backend_env}" "${fragment}" "${keys[@]}"
+allowed_keys=(AGENTS_V2_ENABLED AGENT_MODEL_PROVIDER AGENT_FAST_MODEL
+  AGENT_REASONING_MODEL AGENT_VISION_MODEL AGENT_FAST_FALLBACK_MODEL
+  AGENT_REASONING_FALLBACK_MODEL AGENT_VISION_FALLBACK_MODEL
+  AGENT_WORKER_CONCURRENCY AGENT_INDEX_WORKER_CONCURRENCY
+  AGENT_RUN_LEASE_SECONDS AGENT_HEARTBEAT_SECONDS
+  AGENT_MAX_ACTIVE_RUNS_PER_USER AGENT_PROVIDER_BURST
+  AGENT_PROVIDER_CALLS_PER_MINUTE AGENT_PROVIDER_CIRCUIT_FAILURES
+  AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS GEMINI_API_KEY PERPLEXITY_API_KEY
+  VOYAGE_BASE_URL VOYAGE_API_KEY VOYAGE_EMBEDDING_MODEL
+  VOYAGE_OUTPUT_DIMENSION VOYAGE_RERANKER_MODEL VOYAGE_TIMEOUT_SECS
+  VOYAGE_RPM VOYAGE_TPM)
+allowed=" ${allowed_keys[*]} "
+fragment_keys=()
+while IFS='=' read -r key _; do
+  [[ -z "${key}" ]] && continue
+  [[ "${allowed}" == *" ${key} "* ]] || { echo "Unapproved agent env key: ${key}" >&2; exit 66; }
+  fragment_keys+=("${key}")
+done <"${fragment}"
+(( ${#fragment_keys[@]} >= 6 )) || { echo "Agent env fragment is incomplete." >&2; exit 66; }
+bash "${merge_script}" "${backend_env}" "${fragment}" "${fragment_keys[@]}"
 chown "${ENV_OWNER}:${ENV_GROUP}" "${backend_env}"; chmod 600 "${backend_env}"
 compose config --quiet
 compose up -d --force-recreate --wait --wait-timeout 180 backend

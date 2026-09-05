@@ -12,7 +12,7 @@ pub async fn run_agent_worker(
     worker_index: usize,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
-    let owner = format!("agent-worker-{}-{worker_index}", uuid::Uuid::new_v4());
+    let owner = format!("agent-worker-{}-{worker_index}", crate::ids::new_uuid_v7());
     let wake = service.wake_handle();
     info!("[agents] worker {owner} started");
     loop {

@@ -73,7 +73,7 @@ pub async fn upload(
         .map_err(|_| NotebookUploadError::Validation("File size exceeds i64".to_string()))?;
     let idempotency_key = request
         .idempotency_key
-        .unwrap_or_else(|| format!("legacy:{}", uuid::Uuid::new_v4()));
+        .unwrap_or_else(|| format!("legacy:{}", crate::ids::new_uuid_v7()));
 
     let reserved = reserve_upload(
         user_db.pool(),

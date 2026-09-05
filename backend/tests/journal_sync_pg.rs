@@ -2,7 +2,6 @@ mod pg_support;
 use pg_support::{reset_schema, test_pool};
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::journal_table as jt;
-use uuid::Uuid;
 
 async fn migrate(pool: &PgPool) {
     tradstry_backend::service::db::schema::pg::migrate(pool)
@@ -32,7 +31,7 @@ async fn seed_account(pool: &PgPool, id: &str, user_id: &str) {
 /// Inserts a tag_category + tag for `user_id`, returning the tag id. `tags`
 /// FKs to `tag_categories`, so a bare tag insert would violate the constraint.
 async fn seed_tag(pool: &PgPool, user_id: &str, workspace_id: &str) -> String {
-    let category_id = Uuid::new_v4().to_string();
+    let category_id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO tag_categories (id, user_id, workspace_id, name, created_at, updated_at) \
          VALUES ($1, $2, $3, 'Setup', now(), now())",
@@ -44,7 +43,7 @@ async fn seed_tag(pool: &PgPool, user_id: &str, workspace_id: &str) -> String {
     .await
     .expect("seed tag_category");
 
-    let tag_id = Uuid::new_v4().to_string();
+    let tag_id = tradstry_backend::ids::new_uuid_v7().to_string();
     sqlx::query(
         "INSERT INTO tags (id, user_id, workspace_id, category_id, name, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, 'Breakout', now(), now())",
@@ -161,12 +160,13 @@ async fn create_journal_entry_mutation_applies_through_push() {
     migrate(&pool).await;
     seed_user(&pool, "u2").await;
     seed_account(&pool, "acc2", "u2").await;
+    let journal_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m = NotebookMutation {
         id: 1,
         name: "createJournalEntry".into(),
         args: serde_json::json!({
-            "id": "jex",
+            "id": journal_id,
             "workspaceId": "acc2",
             "openDate": "2026-01-01T09:00:00Z",
             "closeDate": "2026-01-01T11:00:00Z",

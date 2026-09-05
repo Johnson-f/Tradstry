@@ -4,7 +4,6 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::calculator::position_calculator_plans;
@@ -166,7 +165,7 @@ pub async fn create_plan(
     user_id: &str,
     input: CreatePositionCalculatorPlanInput,
 ) -> Result<PositionCalculatorPlan> {
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     let instrument_json = input
         .instrument_json
         .as_deref()
@@ -188,7 +187,7 @@ pub async fn create_plan(
         .tranches
         .into_iter()
         .map(|t| Tranche {
-            id: Uuid::new_v4().to_string(),
+            id: crate::ids::new_uuid_v7().to_string(),
             percent: t.percent,
             shares: t.shares,
             target_price: t.target_price,

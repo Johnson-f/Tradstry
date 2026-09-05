@@ -487,7 +487,7 @@ pub async fn create_notebook_note_tx(
             Uuid::parse_str(id).context("Client-supplied note id must be a UUID")?;
             id.to_string()
         }
-        None => Uuid::new_v4().to_string(),
+        None => crate::ids::new_uuid_v7().to_string(),
     };
     let prepared = prepare_create_note(conn, user_id, input).await?;
 

@@ -5,7 +5,7 @@ use agent_support::AgentPgFixture;
 use tradstry_backend::service::agents::actions::execute_action;
 use tradstry_backend::service::agents::{
     AgentActionChange, AgentActionPayload, AgentActionPreview, AgentConfig, AgentService,
-    AgentStore, TradeTagAction,
+    AgentStore, CreateNotebookNoteAction, TradeTagAction,
 };
 
 fn enabled_config() -> AgentConfig {
@@ -131,4 +131,76 @@ async fn confirmed_tag_action_executes_once_through_canonical_versioned_mutation
         "SELECT count(*) FROM agent_index_outbox WHERE source_type='journal_entry' AND source_id='action-trade' AND status='queued'",
     ).fetch_one(&fixture.pool).await.unwrap();
     assert_eq!(index_work, 1);
+}
+
+#[tokio::test]
+async fn confirmed_note_action_creates_one_uuid_v7_note() {
+    let fixture = AgentPgFixture::new().await;
+    let run = fixture.create_run("action-note-v7").await;
+    let proposal = fixture
+        .store
+        .create_action_proposal(
+            &fixture.actor,
+            &run.id,
+            &AgentActionPayload::CreateNotebookNote(CreateNotebookNoteAction {
+                title: "Review".into(),
+                markdown: "Stay patient.".into(),
+                trade_ids: Vec::new(),
+                playbook_ids: Vec::new(),
+            }),
+            &AgentActionPreview {
+                title: "Create note".into(),
+                summary: "Create after confirmation".into(),
+                changes: Vec::new(),
+                warnings: Vec::new(),
+            },
+            15,
+        )
+        .await
+        .unwrap();
+    fixture
+        .store
+        .approve_action_proposal(&fixture.actor, &proposal.id, "create-note")
+        .await
+        .unwrap();
+    let service = AgentService::from_parts(
+        enabled_config(),
+        AgentStore::new(fixture.pool.clone()),
+        None,
+    );
+    let job = service
+        .store()
+        .claim_action_execution("action-worker", 120)
+        .await
+        .unwrap()
+        .unwrap();
+    execute_action(&service, &job, "action-worker")
+        .await
+        .unwrap();
+
+    let note_id: String = sqlx::query_scalar(
+        "SELECT affected_records_json->0->>'id' FROM agent_action_executions WHERE proposal_id=$1",
+    )
+    .bind(&proposal.id)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        uuid::Uuid::parse_str(&note_id).unwrap().get_version_num(),
+        7
+    );
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_notes WHERE id=$1")
+        .bind(&note_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    assert!(
+        service
+            .store()
+            .claim_action_execution("another", 120)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

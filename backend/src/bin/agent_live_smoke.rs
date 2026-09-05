@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 
     let postgres_url = std::env::var("POSTGRES_URL").context("POSTGRES_URL is required")?;
     let pool = PgPoolOptions::new().connect_lazy(&postgres_url)?;
-    let request_id = uuid::Uuid::new_v4().to_string();
+    let request_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let state = AgentRuntimeState {
         db: Arc::new(Db::from_pool(pool.clone())),
         store: AgentStore::new(pool),

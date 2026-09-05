@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
+use crate::ids::new_uuid_v7;
 use crate::service::agents::{AgentActor, AgentClaim, AgentError, AgentResult};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -85,12 +85,7 @@ impl AgentStore {
                 &input.source_version,
             )
         });
-        let id = idempotency_key.as_ref().map_or_else(
-            || Uuid::new_v4().to_string(),
-            |key| {
-                Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{run_id}:{key}").as_bytes()).to_string()
-            },
-        );
+        let id = new_uuid_v7().to_string();
         let row = sqlx::query(
             "INSERT INTO agent_evidence
              (id, run_id, tool_call_id, user_id, workspace_id, source_type, source_id,
@@ -160,8 +155,7 @@ impl AgentStore {
                 &input.source_id,
                 &input.source_version,
             );
-            let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{run_id}:{key}").as_bytes())
-                .to_string();
+            let id = new_uuid_v7().to_string();
             let row = sqlx::query(
                 "INSERT INTO agent_evidence
                  (id, run_id, tool_call_id, user_id, workspace_id, source_type, source_id,
@@ -281,7 +275,7 @@ impl AgentStore {
                     "evidence does not belong to run".into(),
                 ));
             }
-            let claim_row_id = Uuid::new_v4().to_string();
+            let claim_row_id = new_uuid_v7().to_string();
             sqlx::query(
                 "INSERT INTO agent_claims
                  (id, run_id, message_id, user_id, workspace_id, claim_key, claim_text)

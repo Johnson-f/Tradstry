@@ -92,12 +92,13 @@ async fn create_playbook_mutation_applies_through_push() {
     let _g = reset_schema(&pool).await;
     migrate(&pool).await;
     seed_user(&pool, "u2").await;
+    let playbook_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m = NotebookMutation {
         id: 1,
         name: "createPlaybook".into(),
         args: serde_json::json!({
-            "id": "pbx",
+            "id": playbook_id,
             "workspaceId": "ws-u2",
             "name": "Pullback",
             "edgeName": "Trend",

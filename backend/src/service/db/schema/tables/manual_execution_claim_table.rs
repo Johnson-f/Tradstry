@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use sqlx::{PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::error::is_unique_violation;
 use crate::service::db::schema::tables::position_calculator_plans_table;
@@ -112,7 +111,7 @@ pub async fn create_claim(
         .context("executedAt must be an RFC 3339 timestamp")?
         .with_timezone(&Utc);
 
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     let db = sea_orm_connection(pool);
     let model = manual_execution_claims::ActiveModel {
         id: Set(id),

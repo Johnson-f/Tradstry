@@ -2,9 +2,19 @@ mod pg_support;
 
 use chrono::{Duration, Utc};
 use pg_support::{reset_schema, seed_user_workspace, test_pool};
+use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::db::schema::tables::snaptrade_oauth_table::{
     self, CreateAttempt, StoreGrant,
 };
+use tradstry_migration::{Migrator, MigratorTrait};
+
+async fn migrate(pool: &sqlx::PgPool) {
+    tradstry_backend::service::db::schema::pg::migrate(pool)
+        .await
+        .unwrap();
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, None).await.unwrap();
+}
 
 fn grant<'a>(
     user_id: &'a str,
@@ -27,9 +37,7 @@ fn grant<'a>(
 async fn same_identity_rotates_tokens_but_different_identity_is_rejected() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    migrate(&pool).await;
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let original = snaptrade_oauth_table::store_grant(
@@ -38,6 +46,12 @@ async fn same_identity_rotates_tokens_but_different_identity_is_rejected() {
     )
     .await
     .unwrap();
+    assert_eq!(
+        uuid::Uuid::parse_str(&original.id)
+            .unwrap()
+            .get_version_num(),
+        7
+    );
     let rotated = snaptrade_oauth_table::store_grant(
         &pool,
         grant(&user_id, "personal-a", "access-b", "refresh-b"),
@@ -76,9 +90,7 @@ async fn same_identity_rotates_tokens_but_different_identity_is_rejected() {
 async fn reauthorization_required_clears_all_usable_credentials() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    migrate(&pool).await;
     let (user_id, _) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,
@@ -105,9 +117,7 @@ async fn reauthorization_required_clears_all_usable_credentials() {
 async fn authorized_attempt_keeps_its_workspace_and_intent() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    migrate(&pool).await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,
@@ -131,6 +141,12 @@ async fn authorized_attempt_keeps_its_workspace_and_intent() {
     )
     .await
     .unwrap();
+    assert_eq!(
+        uuid::Uuid::parse_str(&attempt_id)
+            .unwrap()
+            .get_version_num(),
+        7
+    );
     snaptrade_oauth_table::claim_attempt(&pool, "state-hash")
         .await
         .unwrap();
@@ -151,9 +167,7 @@ async fn authorized_attempt_keeps_its_workspace_and_intent() {
 async fn local_revocation_clears_tokens_and_unlinks_every_oauth_workspace() {
     let pool = test_pool().await;
     let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    migrate(&pool).await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,

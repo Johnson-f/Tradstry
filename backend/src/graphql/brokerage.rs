@@ -6,7 +6,6 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, sleep};
 
 use chrono::Utc;
-use uuid::Uuid;
 
 use crate::graphql::analytics::{AnalyticsRange, AnalyticsTimeFilterInput, map_time_filter};
 use crate::service::brokerage::auth::{
@@ -1135,14 +1134,14 @@ impl BrokerageMutation {
                     .as_ref()
                     .and_then(|value| value.diagnostic_id.clone())
             })
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+            .unwrap_or_else(|| crate::ids::new_uuid_v7().to_string());
         let snapshot = brokerage_report_snapshot(
             workspace.broker.as_deref(),
             snaptrade_account_id,
             outcome.as_ref(),
             reconciliation.as_ref(),
         );
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let report = brokerage_data_report_table::create(
             user_db.pool(),
             brokerage_data_report_table::CreateBrokerageDataReport {
@@ -1705,7 +1704,7 @@ impl BrokerageMutation {
             });
         }
 
-        let diagnostic_id = Uuid::new_v4().to_string();
+        let diagnostic_id = crate::ids::new_uuid_v7().to_string();
         if let Err(error) = workspaces_table::mark_brokerage_sync_started(
             user_db.pool(),
             &workspace_id,

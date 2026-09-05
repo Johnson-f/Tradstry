@@ -3,7 +3,6 @@ use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use uuid::Uuid;
 
 use crate::service::db::util::parse_flexible_datetime;
 
@@ -463,7 +462,7 @@ pub async fn upsert_transactions(
         qb.push_values(
             chunk,
             |mut b, (tx, trade_date, settlement_date, dedup_key)| {
-                b.push_bind(Uuid::new_v4().to_string())
+                b.push_bind(crate::ids::new_uuid_v7().to_string())
                     .push_bind(user_id)
                     .push_bind(workspace_id)
                     .push_bind(tx.snaptrade_id.as_str())
@@ -645,7 +644,7 @@ pub async fn replace_holdings(
 
     let mut count = 0u64;
     for h in holdings {
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         // expiration_date is TIMESTAMPTZ and nullable; parse when present.
         let expiration_date = match h.expiration_date.as_deref() {
             Some(s) if !s.is_empty() => Some(parse_flexible_datetime(s)?),
@@ -773,7 +772,7 @@ pub async fn replace_balances(
     } else {
         let ids: Vec<String> = balances
             .iter()
-            .map(|_| Uuid::new_v4().to_string())
+            .map(|_| crate::ids::new_uuid_v7().to_string())
             .collect();
         let currencies: Vec<String> = balances.iter().map(|row| row.currency.clone()).collect();
         let cash: Vec<f64> = balances.iter().map(|row| row.cash.unwrap_or(0.0)).collect();
@@ -842,7 +841,7 @@ pub async fn replace_portfolio_snapshot(
               expiration_date, raw_json) \
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(user_id)
         .bind(workspace_id)
         .bind(holding.snaptrade_symbol_id.as_deref().unwrap_or(""))
@@ -873,7 +872,7 @@ pub async fn replace_portfolio_snapshot(
              (id, user_id, workspace_id, currency, cash, buying_power) \
              VALUES ($1,$2,$3,$4,$5,$6)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(user_id)
         .bind(workspace_id)
         .bind(&balance.currency)

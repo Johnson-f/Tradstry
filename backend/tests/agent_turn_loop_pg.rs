@@ -271,7 +271,7 @@ async fn send_with_context_and_wait(
                 conversation_id: conversation.id,
                 content: text.into(),
                 context,
-                idempotency_key: uuid::Uuid::new_v4().to_string(),
+                idempotency_key: tradstry_backend::ids::new_uuid_v7().to_string(),
             },
         )
         .await

@@ -6,7 +6,6 @@ use tradstry_backend::service::db::schema::tables::{
     brokerage_data_report_table::{self, CreateBrokerageDataReport},
     workspaces_table,
 };
-use uuid::Uuid;
 
 async fn create_report(
     pool: &sqlx::PgPool,
@@ -14,7 +13,7 @@ async fn create_report(
     workspace_id: &str,
     snapshot: &serde_json::Value,
 ) -> anyhow::Result<brokerage_data_report_table::BrokerageDataReport> {
-    let id = Uuid::new_v4().to_string();
+    let id = tradstry_backend::ids::new_uuid_v7().to_string();
     brokerage_data_report_table::create(
         pool,
         CreateBrokerageDataReport {

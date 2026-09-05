@@ -18,7 +18,9 @@ use tradstry_backend::service::read_service::journal;
 use tradstry_backend::service::trading_performance::TradingPerformance;
 
 async fn runtime(fixture: &AgentPgFixture, context: AgentMessageContext) -> AgentRuntimeState {
-    let run = fixture.create_run(&uuid::Uuid::new_v4().to_string()).await;
+    let run = fixture
+        .create_run(&tradstry_backend::ids::new_uuid_v7().to_string())
+        .await;
     AgentRuntimeState {
         db: fixture.db.clone(),
         store: AgentStore::new(fixture.pool.clone()),

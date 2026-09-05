@@ -1,3 +1,5 @@
+import { newUuidV7 } from "./uuid";
+
 export type GraphQLFetcher = <T>(
   query: string,
   variables?: Record<string, unknown>,
@@ -90,7 +92,7 @@ export function createWebSocketGraphQLSubscriber(options: {
     variables: Record<string, unknown> | undefined,
     handlers: GraphQLSubscriptionHandlers<T>,
   ) => {
-    const id = crypto.randomUUID();
+    const id = newUuidV7();
     const url = new URL(options.endpoint);
     url.pathname = "/graphql/ws";
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

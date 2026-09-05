@@ -2,7 +2,6 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::{Mutex, OwnedMutexGuard};
-use uuid::Uuid;
 
 /// Shared connection helper for migration integration tests.
 /// Requires the local Docker Postgres from docker-compose.test.yml.
@@ -65,9 +64,9 @@ pub async fn reset_schema(pool: &PgPool) -> OwnedMutexGuard<()> {
 /// can exist without them.
 #[allow(dead_code)]
 pub async fn seed_user_workspace(pool: &PgPool) -> (String, String) {
-    let user_id = Uuid::new_v4().to_string();
-    let workspace_id = Uuid::new_v4().to_string();
-    let clerk_uuid = Uuid::new_v4().to_string();
+    let user_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let workspace_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
 
     sqlx::query("INSERT INTO users (id, clerk_uuid, email, full_name) VALUES ($1, $2, $3, $4)")
         .bind(&user_id)

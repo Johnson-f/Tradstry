@@ -13,6 +13,7 @@ use sqlx::{PgConnection, PgPool};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
+use crate::ids::require_uuid_v7;
 use crate::service::db::schema::tables::journal_table;
 use crate::service::db::schema::tables::notebook::crdt;
 use crate::service::db::schema::tables::notebook::folders::{
@@ -321,6 +322,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
     match m.name.as_str() {
         "createNote" => {
             let a: CreateNoteArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             let note_id = a.id.clone();
             notes::create_notebook_note_tx(
                 conn,
@@ -376,6 +378,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createFolder" => {
             let a: CreateFolderArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             folders::create_notebook_folder_tx(
                 conn,
                 CreateNotebookFolderInput {
@@ -423,6 +426,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createPlaybook" => {
             let a: PlaybookArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             playbook_table::create_playbook_tx(conn, user_id, &a.into_write_args(), &m.hlc).await?;
         }
         "updatePlaybook" => {
@@ -448,6 +452,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createJournalEntry" => {
             let a: JournalArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             journal_table::create_journal_entry_tx(conn, user_id, &a.into_write_args(), &m.hlc)
                 .await?;
         }
@@ -462,6 +467,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createPrinciple" => {
             let a: PrincipleArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             trading_principle_table::create_principle_tx(
                 conn,
                 user_id,
@@ -491,6 +497,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createTagCategory" => {
             let a: TagCategoryArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             let args = tags_table::CreateCategoryTxArgs {
                 workspace_id: &a.workspace_id,
                 id: &a.id,
@@ -534,6 +541,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createTag" => {
             let a: TagArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             let args = tags_table::CreateTagTxArgs {
                 workspace_id: &a.workspace_id,
                 id: &a.id,
@@ -561,6 +569,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "upsertPositionCalculatorRule" => {
             let a: CalculatorRuleArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             position_calculator_rule_table::upsert_rule_tx(
                 conn,
                 user_id,
@@ -571,6 +580,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createPositionCalculatorPlan" => {
             let a: CreateCalculatorPlanArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             position_calculator_plans_table::create_plan_tx(
                 conn,
                 user_id,
@@ -596,6 +606,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "createPositionCalculatorHistory" => {
             let a: CreateCalculatorHistoryArgs = serde_json::from_str(&m.args)?;
+            require_uuid_v7(&a.id)?;
             position_calculator_history_table::create_history_tx(
                 conn,
                 user_id,

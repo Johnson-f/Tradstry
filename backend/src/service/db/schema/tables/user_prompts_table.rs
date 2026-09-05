@@ -6,7 +6,6 @@ use sea_orm::{
     QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::service::db::entities::core::user_prompts;
 
@@ -73,7 +72,7 @@ pub async fn create_user_prompt(
     content: &str,
 ) -> Result<UserPrompt> {
     Ok(user_prompts::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
+        id: Set(crate::ids::new_uuid_v7().to_string()),
         user_id: Set(user_id.to_owned()),
         name: Set(name.to_owned()),
         content: Set(content.to_owned()),

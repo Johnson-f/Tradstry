@@ -90,7 +90,7 @@ pub async fn probe_video_file(path: &std::path::Path) -> Result<VideoMetadata> {
 
 async fn probe_video_inner(bytes: &[u8]) -> Result<VideoMetadata> {
     // ffprobe needs a seekable input for reliable duration, so write a temp file.
-    let tmp = std::env::temp_dir().join(format!("tradstry-probe-{}", uuid::Uuid::new_v4()));
+    let tmp = std::env::temp_dir().join(format!("tradstry-probe-{}", crate::ids::new_uuid_v7()));
     tokio::fs::write(&tmp, bytes).await?;
 
     let result = probe_video_file(&tmp).await;
@@ -116,12 +116,13 @@ pub async fn extract_keyframes(bytes: &[u8], max_frames: usize) -> Vec<Vec<u8>> 
 
 async fn extract_keyframes_inner(bytes: &[u8], max_frames: usize) -> Result<Vec<Vec<u8>>> {
     // Write the video bytes to a temp input file (mirrors probe_video).
-    let tmp_input = std::env::temp_dir().join(format!("tradstry-kf-in-{}", uuid::Uuid::new_v4()));
+    let tmp_input =
+        std::env::temp_dir().join(format!("tradstry-kf-in-{}", crate::ids::new_uuid_v7()));
     tokio::fs::write(&tmp_input, bytes).await?;
 
     // Create a dedicated temp directory for the output JPEG frames.
     let tmp_out_dir =
-        std::env::temp_dir().join(format!("tradstry-kf-out-{}", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("tradstry-kf-out-{}", crate::ids::new_uuid_v7()));
     tokio::fs::create_dir(&tmp_out_dir).await?;
 
     let ffmpeg_result = extract_keyframes_file(&tmp_input, &tmp_out_dir, max_frames).await;

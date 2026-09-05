@@ -5,7 +5,6 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrde
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
 
 use super::playbook_table;
 use crate::service::db::client::sea_orm_connection;
@@ -302,7 +301,7 @@ pub async fn create_principle(
     )
     .await?;
 
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
 
     let db = sea_orm_connection(pool);
     Ok(trading_principles::ActiveModel {

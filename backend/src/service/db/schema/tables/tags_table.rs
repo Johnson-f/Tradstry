@@ -4,7 +4,6 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, QueryFilter, Qu
 use serde::Serialize;
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
 
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::trading::tags;
@@ -146,7 +145,7 @@ impl From<tags::Model> for Tag {
 }
 
 fn new_id() -> String {
-    Uuid::new_v4().to_string()
+    crate::ids::new_uuid_v7().to_string()
 }
 
 fn is_unique_violation(err: &anyhow::Error) -> bool {

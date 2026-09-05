@@ -1,7 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{
@@ -31,7 +30,7 @@ impl AgentStore {
              ON CONFLICT (run_id,tool_call_id) DO UPDATE SET tool_call_id=EXCLUDED.tool_call_id
              RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(tool_call_id)
         .bind(payload.kind())
@@ -128,7 +127,7 @@ impl AgentStore {
              SELECT $1,r.id,r.conversation_id,r.user_id,r.workspace_id,$4,$5,$6,$7,$8
              FROM agent_runs r WHERE r.id=$2 AND r.user_id=$3 RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(&actor.user_id)
         .bind(payload.kind())
@@ -199,7 +198,7 @@ impl AgentStore {
              (id,proposal_id,user_id,workspace_id,idempotency_key)
              VALUES ($1,$2,$3,$4,$5)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(proposal_id)
         .bind(&actor.user_id)
         .bind(row.try_get::<String, _>("workspace_id")?)

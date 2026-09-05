@@ -8,7 +8,6 @@ use tinyagents::harness::runtime::AgentHarness;
 use tinyagents::harness::tool::{
     Tool, ToolCall, ToolErrorPolicy, ToolExecutionContext, ToolPolicy, ToolResult, ToolSchema,
 };
-use uuid::Uuid;
 
 use crate::service::agents::runtime::{AgentRuntimeState, build_specialist_harness};
 use crate::service::agents::specialists::{SpecialistKind, SpecialistRegistry};
@@ -113,14 +112,9 @@ impl Tool<AgentRuntimeState> for DomainSubagentTool {
         let args: DelegationArgs = serde_json::from_value(call.arguments.clone())
             .map_err(|error| tinyagents::TinyAgentsError::Validation(error.to_string()))?;
         let parent_run_id = context.run_id.as_str();
-        let child_id = Uuid::new_v5(
-            &Uuid::NAMESPACE_URL,
-            format!("{parent_run_id}:{}:{}", self.name, call.id).as_bytes(),
-        )
-        .to_string();
-        state
+        let child_id = state
             .store
-            .create_subagent_run(parent_run_id, &child_id, &self.name, &call.id)
+            .create_subagent_run(parent_run_id, &self.name, &call.id)
             .await
             .map_err(agent_error)?;
         let mut child_state = state.clone();

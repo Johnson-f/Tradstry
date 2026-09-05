@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { version } from "uuid";
 import { openDesktopDatabase, transaction } from "./database.ts";
 
 const schema = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
@@ -11,6 +12,7 @@ const schema = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
 test("database initialization is idempotent and persists one client id", () => {
   const first = openDesktopDatabase(":memory:", schema);
   assert.ok(first.clientId);
+  assert.equal(version(first.clientId), 7);
   assert.equal(first.db.prepare("SELECT count(*) AS count FROM client").get()?.count, 1);
   first.close();
 });

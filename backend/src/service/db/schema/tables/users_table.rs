@@ -5,7 +5,6 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::service::db::entities::core::users;
 use crate::service::db::error::is_unique_violation;
@@ -56,7 +55,7 @@ pub async fn create_user(
     email: &str,
 ) -> Result<User> {
     let model = users::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
+        id: Set(crate::ids::new_uuid_v7().to_string()),
         clerk_uuid: Set(clerk_uuid.to_owned()),
         full_name: Set(full_name.to_owned()),
         email: Set(email.to_owned()),

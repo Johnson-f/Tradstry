@@ -87,7 +87,7 @@ pub async fn run_media_worker(
     r2: Arc<R2Client>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
-    let owner = format!("media-worker-{}", uuid::Uuid::new_v4());
+    let owner = format!("media-worker-{}", crate::ids::new_uuid_v7());
     log::info!("notebook media worker started");
     loop {
         tokio::select! {
@@ -124,7 +124,7 @@ async fn claim(pool: &PgPool, owner: &str) -> Result<Vec<Job>> {
              FOR UPDATE SKIP LOCKED LIMIT $3
          )
          UPDATE notebook_media_outbox job
-         SET lease_owner=$1 || ':' || gen_random_uuid()::text,leased_at=now()
+         SET lease_owner=$1 || ':' || uuidv7()::text,leased_at=now()
          FROM candidates WHERE job.id=candidates.id
          RETURNING job.id,job.blob_id,job.user_id,job.action,job.attempt_count,
                    job.lease_owner",

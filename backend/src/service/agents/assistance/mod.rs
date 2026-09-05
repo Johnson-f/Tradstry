@@ -36,7 +36,7 @@ async fn invoke_text(
     actor: &AgentActor,
     invocation: TextInvocation<'_>,
 ) -> AgentResult<String> {
-    let request_id = uuid::Uuid::new_v4().to_string();
+    let request_id = crate::ids::new_uuid_v7().to_string();
     service
         .budget()
         .reserve_assistance_action(actor, invocation.workload, &request_id)

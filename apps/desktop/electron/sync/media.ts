@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   createReadStream,
@@ -10,6 +10,7 @@ import {
 import { copyFile, mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, parse } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { newUuidV7 } from "../uuid.ts";
 
 export const MEDIA_FLUSH_BATCH = 20;
 export const MEDIA_PROGRESS_STEP = 64 * 1024;
@@ -370,7 +371,7 @@ async function streamVerifiedResponse(
   total: number,
 ): Promise<number> {
   if (!response.body) throw new Error("media response has no body");
-  const temporaryPath = `${targetPath}.partial-${randomUUID()}`;
+  const temporaryPath = `${targetPath}.partial-${newUuidV7()}`;
   const file = await open(temporaryPath, "w");
   const reader = response.body.getReader();
   const digest = createHash("sha256");

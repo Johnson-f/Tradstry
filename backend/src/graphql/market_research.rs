@@ -5,7 +5,6 @@ use chrono::Utc;
 use clerk_rs::validators::authorizer::ClerkJwt;
 use serde_json::Value;
 use sqlx::Row;
-use uuid::Uuid;
 
 use crate::service::agents::{AgentActor, AgentService};
 use crate::service::db::Db;
@@ -361,7 +360,7 @@ impl MarketResearchMutation {
         if name.is_empty() {
             return Err(Error::new("Watchlist name is required"));
         }
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         sqlx::query(
             "INSERT INTO market_watchlists (id, workspace_id, user_id, name) VALUES ($1,$2,$3,$4)",
         )
@@ -433,7 +432,7 @@ impl MarketResearchMutation {
         if !input.threshold.is_finite() || input.threshold <= 0.0 {
             return Err(Error::new("Threshold must be positive"));
         }
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         let name = input.name.trim().to_string();
         let symbol = normalize_symbol(&input.symbol)?;
         sqlx::query("INSERT INTO market_monitors (id, workspace_id, user_id, symbol, name, condition, threshold) VALUES ($1,$2,$3,$4,$5,$6,$7)")
@@ -548,7 +547,7 @@ impl MarketResearchMutation {
             .await
             .map_err(|error| Error::new(error.to_string()))?;
         let title = format!("{symbol} research brief");
-        let id = Uuid::new_v4().to_string();
+        let id = crate::ids::new_uuid_v7().to_string();
         sqlx::query("INSERT INTO market_reports (id, workspace_id, user_id, symbol, title, body, sources) VALUES ($1,$2,$3,$4,$5,$6,$7)")
             .bind(&id).bind(&workspace_id).bind(&user_id).bind(&symbol).bind(&title).bind(&body).bind(serde_json::json!(sources)).execute(db.pool()).await?;
         let event = NotificationEvent::ArtifactReady {

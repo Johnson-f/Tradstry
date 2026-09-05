@@ -21,6 +21,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { TradstryMark } from "@tradstry/app-ui/components/logo";
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Card, CardContent } from "@tradstry/app-ui/components/ui/card";
 import {
@@ -456,7 +457,7 @@ export function AgentPanel() {
 				conversationId,
 				content,
 				context: messageContext,
-				idempotencyKey: crypto.randomUUID(),
+				idempotencyKey: newUuidV7(),
 			});
 			setDraft(draftKey, "");
 			setDraft(conversationId, "");
@@ -1639,7 +1640,7 @@ function AgentActionCard({ proposalId }: { proposalId: string }) {
 									onClick={() =>
 										approve.mutate({
 											proposalId,
-											idempotencyKey: crypto.randomUUID(),
+											idempotencyKey: newUuidV7(),
 										})
 									}
 								>

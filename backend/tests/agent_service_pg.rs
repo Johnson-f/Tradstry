@@ -230,7 +230,7 @@ async fn send_message_rejects_blank_and_oversized_input() {
                     conversation_id: conversation.id.clone(),
                     content,
                     context: AgentMessageContext::default(),
-                    idempotency_key: uuid::Uuid::new_v4().to_string(),
+                    idempotency_key: tradstry_backend::ids::new_uuid_v7().to_string(),
                 },
             )
             .await;

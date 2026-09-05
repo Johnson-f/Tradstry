@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 use tinyagents::harness::message::{ContentBlock, Message};
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{AgentError, AgentResult};
@@ -49,7 +48,7 @@ impl AgentStore {
              ON CONFLICT (run_id, item_key) DO UPDATE SET item_key = EXCLUDED.item_key
              RETURNING id, run_id, sequence, item_key, kind, message_json",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(run.try_get::<String, _>("user_id")?)
         .bind(run.try_get::<String, _>("workspace_id")?)

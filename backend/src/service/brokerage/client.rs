@@ -863,7 +863,7 @@ impl BrokerageClient {
             .duration_since(UNIX_EPOCH)
             .context("system clock is before Unix epoch")?
             .as_secs();
-        let nonce = uuid::Uuid::new_v4().to_string();
+        let nonce = crate::ids::new_uuid_v7().to_string();
         Ok(proto::RequestAuth {
             unix_seconds: unix_seconds
                 .try_into()

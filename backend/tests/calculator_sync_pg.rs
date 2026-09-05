@@ -216,12 +216,15 @@ async fn calculator_mutations_apply_through_push() {
     let _g = reset_schema(&pool).await;
     migrate(&pool).await;
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let rule_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let plan_id = tradstry_backend::ids::new_uuid_v7().to_string();
+    let history_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     let m1 = NotebookMutation {
         id: 1,
         name: "upsertPositionCalculatorRule".into(),
         args: serde_json::json!({
-            "id": "rulex",
+            "id": rule_id,
             "workspaceId": workspace_id,
             "accountBalance": 5000.0,
             "accountRisk": 1.5,
@@ -246,7 +249,7 @@ async fn calculator_mutations_apply_through_push() {
         id: 2,
         name: "createPositionCalculatorPlan".into(),
         args: serde_json::json!({
-            "id": "planx",
+            "id": plan_id,
             "workspaceId": workspace_id,
             "symbol": "MSFT",
             "positionType": "long",
@@ -278,7 +281,7 @@ async fn calculator_mutations_apply_through_push() {
         id: 3,
         name: "updatePositionCalculatorPlan".into(),
         args: serde_json::json!({
-            "id": "planx",
+            "id": plan_id,
             "status": "completed",
             "tranchesJson": "[]",
             "notes": "done",
@@ -298,7 +301,7 @@ async fn calculator_mutations_apply_through_push() {
     let m4 = NotebookMutation {
         id: 4,
         name: "deletePositionCalculatorPlan".into(),
-        args: serde_json::json!({ "id": "planx" }).to_string(),
+        args: serde_json::json!({ "id": plan_id }).to_string(),
         hlc: "000000000000004:00000:client".into(),
     };
     apply_mutation(&pool, &user_id, "clientA", &m4)
@@ -313,7 +316,7 @@ async fn calculator_mutations_apply_through_push() {
         id: 5,
         name: "createPositionCalculatorHistory".into(),
         args: serde_json::json!({
-            "id": "histx",
+            "id": history_id,
             "workspaceId": workspace_id,
             "symbol": "NVDA",
             "positionType": "long",
@@ -325,7 +328,7 @@ async fn calculator_mutations_apply_through_push() {
             "positionValue": 2000.0,
             "accountPct": 40.0,
             "stopLossPct": 5.0,
-            "planId": "planx",
+            "planId": plan_id,
             "tranchesJson": "[{\"id\":\"t1\",\"status\":\"filled\"}]",
         })
         .to_string(),
@@ -339,13 +342,13 @@ async fn calculator_mutations_apply_through_push() {
         .unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].symbol, "NVDA");
-    assert_eq!(history[0].plan_id.as_deref(), Some("planx"));
+    assert_eq!(history[0].plan_id.as_deref(), Some(plan_id.as_str()));
     assert!(history[0].tranches_json.contains("filled"));
 
     let m6 = NotebookMutation {
         id: 6,
         name: "deletePositionCalculatorHistory".into(),
-        args: serde_json::json!({ "id": "histx" }).to_string(),
+        args: serde_json::json!({ "id": history_id }).to_string(),
         hlc: "000000000000006:00000:client".into(),
     };
     apply_mutation(&pool, &user_id, "clientA", &m6)

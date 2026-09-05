@@ -1,6 +1,7 @@
 import type { DesktopDatabase } from "./database.ts";
+import { newUuidV7 } from "../uuid.ts";
 import { transaction } from "./database.ts";
-import { enqueueMutation, uuidV7 } from "./mutations.ts";
+import { enqueueMutation } from "./mutations.ts";
 
 export type CalculatorRule = {
   id: string;
@@ -87,7 +88,7 @@ export class CalculatorRepository {
     const existing = this.#store.db.prepare("SELECT id FROM calc_rules WHERE account_id = ?").get(input.accountId) as
       | { id: string }
       | undefined;
-    const id = existing?.id ?? uuidV7();
+    const id = existing?.id ?? newUuidV7();
     const stamp = this.#store.hlc.now();
     transaction(this.#store.db, () => {
       this.#store.db
@@ -111,7 +112,7 @@ export class CalculatorRepository {
   }
 
   createPlan(input: CalculatorPlanInput): CalculatorPlan {
-    const id = uuidV7();
+    const id = newUuidV7();
     const stamp = this.#store.hlc.now();
     transaction(this.#store.db, () => {
       this.#store.db
@@ -154,7 +155,7 @@ export class CalculatorRepository {
   }
 
   createHistory(input: CalculatorHistoryInput): CalculatorHistory {
-    const id = uuidV7();
+    const id = newUuidV7();
     const stamp = this.#store.hlc.now();
     transaction(this.#store.db, () => {
       this.#store.db

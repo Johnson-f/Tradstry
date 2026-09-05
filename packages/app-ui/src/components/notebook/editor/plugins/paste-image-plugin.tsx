@@ -11,6 +11,7 @@ import {
 import { $getNodeByKey, $insertNodes } from "lexical";
 import { useEffect, useRef } from "react";
 import type { NotebookImage } from "@tradstry/app-ui/lib/types/notebook";
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
 import { hashMediaFile } from "../media-hash";
 import {
   confirmMedia,
@@ -105,7 +106,7 @@ export function PasteImagePlugin({
               hashingControllers.delete(controller);
             }
             if (disposed) return;
-            const idempotencyKey = crypto.randomUUID();
+            const idempotencyKey = newUuidV7();
 
             let nodeKey: string | null = null;
             editor.update(() => {

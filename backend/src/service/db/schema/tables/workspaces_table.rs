@@ -3,7 +3,6 @@ use anyhow::{Context, Result, ensure};
 use async_graphql::{InputObject, SimpleObject};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
@@ -209,7 +208,7 @@ pub async fn create_workspace(
     input: CreateWorkspaceInput,
 ) -> Result<Workspace> {
     validate_asset_class(&input.asset_class)?;
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
     let mut tx = pool.begin().await?;
     sqlx::query(
         "INSERT INTO workspaces (id, user_id, name, icon, currency, risk_profile, asset_class) \

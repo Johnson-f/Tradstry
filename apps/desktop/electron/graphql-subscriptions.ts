@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { newUuidV7 } from "./uuid.ts";
 
 type Emit = (
   id: string,
@@ -61,7 +61,7 @@ export class GraphqlSubscriptions {
       const url = new URL(this.#endpoint);
       url.pathname = "/graphql/ws";
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-      const operationId = randomUUID();
+      const operationId = newUuidV7();
       const socket = new WebSocket(url, "graphql-transport-ws");
       let finished = false;
       this.#sockets.set(rendererId, socket);

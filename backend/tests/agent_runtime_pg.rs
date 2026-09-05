@@ -174,9 +174,9 @@ async fn reclaiming_expired_root_terminalizes_orphaned_children() {
         .await
         .unwrap()
         .unwrap();
-    fixture
+    let child_id = fixture
         .store
-        .create_subagent_run(&run.id, "child-run", "delegate_trade_review", "call-1")
+        .create_subagent_run(&run.id, "delegate_trade_review", "call-1")
         .await
         .unwrap();
     sqlx::query("UPDATE agent_runs SET heartbeat_at=now()-interval '10 minutes' WHERE id=$1")
@@ -193,12 +193,57 @@ async fn reclaiming_expired_root_terminalizes_orphaned_children() {
         .unwrap();
     assert_eq!(reclaimed.id, run.id);
     let child: (String, Option<String>) =
-        sqlx::query_as("SELECT status,error_code FROM agent_runs WHERE id='child-run'")
+        sqlx::query_as("SELECT status,error_code FROM agent_runs WHERE id=$1")
+            .bind(child_id)
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
     assert_eq!(child.0, "failed");
     assert_eq!(child.1.as_deref(), Some("parent_lease_expired"));
+}
+
+#[tokio::test]
+async fn subagent_retry_replaces_terminal_run_with_uuid_v7() {
+    let fixture = AgentPgFixture::new().await;
+    let run = fixture.create_run("subagent-retry").await;
+    fixture
+        .store
+        .claim_run("worker", 120)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let first = fixture
+        .store
+        .create_subagent_run(&run.id, "delegate_trade_review", "call-1")
+        .await
+        .unwrap();
+    assert_eq!(uuid::Uuid::parse_str(&first).unwrap().get_version_num(), 7);
+    fixture
+        .store
+        .fail_subagent_run(&first, "subagent_execution_failed")
+        .await
+        .unwrap();
+
+    let replacement = fixture
+        .store
+        .create_subagent_run(&run.id, "delegate_trade_review", "call-1")
+        .await
+        .unwrap();
+    assert_ne!(replacement, first);
+    assert_eq!(
+        uuid::Uuid::parse_str(&replacement)
+            .unwrap()
+            .get_version_num(),
+        7
+    );
+    assert!(
+        fixture
+            .store
+            .create_subagent_run(&run.id, "delegate_trade_review", "call-1")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

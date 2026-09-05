@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { version } from "uuid";
 import {
   createHttpGraphQLFetcher,
   createWebSocketGraphQLSubscriber,
@@ -81,6 +82,10 @@ describe("createWebSocketGraphQLSubscriber", () => {
     });
 
     const socket = await connectedSocket();
+    const subscribeMessage = socket.sent
+      .map((value) => JSON.parse(value))
+      .find((message) => message.type === "subscribe");
+    expect(version(subscribeMessage.id)).toBe(7);
     const lateError = socket.onerror;
     socket.receive({ type: "complete" });
     lateError?.(new Event("error"));

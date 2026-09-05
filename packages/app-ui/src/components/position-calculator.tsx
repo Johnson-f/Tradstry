@@ -25,6 +25,7 @@ import { Separator } from "@tradstry/app-ui/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@tradstry/app-ui/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@tradstry/app-ui/components/ui/toggle-group";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces/hooks";
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
 import {
   useCreatePositionCalculatorHistory,
   useCreatePositionCalculatorPlan,
@@ -1136,7 +1137,7 @@ type PlanSeed = {
 
 function createTranche(targetPrice: number, percent = "") {
   return {
-    id: crypto.randomUUID(),
+    id: newUuidV7(),
     percent,
     targetPrice: targetPrice.toString(),
   };

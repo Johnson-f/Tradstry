@@ -4,7 +4,6 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
-use uuid::Uuid;
 
 use super::workspaces_table;
 use crate::service::db::client::sea_orm_connection;
@@ -82,7 +81,7 @@ pub async fn upsert_rule(
         .await?
         .with_context(|| format!("account {} not found", input.workspace_id))?;
 
-    let id = Uuid::new_v4().to_string();
+    let id = crate::ids::new_uuid_v7().to_string();
 
     sqlx::query(
         "INSERT INTO position_calculator_rules \

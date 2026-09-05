@@ -1,6 +1,7 @@
 import type { DesktopDatabase } from "./database.ts";
+import { newUuidV7 } from "../uuid.ts";
 import { transaction } from "./database.ts";
-import { enqueueMutation, uuidV7 } from "./mutations.ts";
+import { enqueueMutation } from "./mutations.ts";
 
 export type LocalTag = {
 	id: string;
@@ -62,7 +63,7 @@ export class TagsRepository {
 	}
 
 	createTag(categoryId: string, name: string, color: string | null): LocalTag {
-		const id = uuidV7();
+		const id = newUuidV7();
 		const stamp = this.#store.hlc.now();
 		transaction(this.#store.db, () => {
 			this.#store.db
@@ -81,7 +82,7 @@ export class TagsRepository {
 	}
 
 	createCategory(name: string, color: string | null): LocalTagCategory {
-		const id = uuidV7();
+		const id = newUuidV7();
 		const stamp = this.#store.hlc.now();
 		const order = Number(
 			(

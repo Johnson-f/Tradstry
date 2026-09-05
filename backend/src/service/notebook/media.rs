@@ -3,7 +3,6 @@ use std::time::Duration;
 use serde_json::Value;
 use sqlx::{PgConnection, PgPool, Row};
 use thiserror::Error;
-use uuid::Uuid;
 
 const UPLOAD_TTL: Duration = Duration::from_secs(30 * 60);
 const GC_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -178,7 +177,7 @@ pub async fn reserve_upload(
         None => {
             reserve_quota(&mut tx, user_id, input.expected_bytes).await?;
             reserved_bytes = input.expected_bytes;
-            let id = Uuid::new_v4().to_string();
+            let id = crate::ids::new_uuid_v7().to_string();
             let object_key = format!("notebook/{user_id}/media/{}", input.content_hash);
             let media_type = media_type(&input.content_type).to_string();
             let format = format_from_content_type(&input.content_type).to_string();
@@ -223,7 +222,7 @@ pub async fn reserve_upload(
         &input.original_filename,
     )
     .await?;
-    let upload_id = Uuid::new_v4().to_string();
+    let upload_id = crate::ids::new_uuid_v7().to_string();
     let expires_at = chrono::Utc::now()
         + chrono::Duration::from_std(UPLOAD_TTL)
             .map_err(|error| MediaLifecycleError::Validation(error.to_string()))?;
@@ -502,7 +501,7 @@ pub async fn reconcile_note_references_tx(
              VALUES($1,$2,$3,$4,$5,'media',NULL)
              ON CONFLICT(note_id,blob_id) DO UPDATE SET provisional_until=NULL",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(&blob_id)
         .bind(&user_id)
         .bind(&workspace_id)
@@ -829,7 +828,7 @@ async fn upsert_reference(
          SET original_filename=EXCLUDED.original_filename
          RETURNING id",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(crate::ids::new_uuid_v7().to_string())
     .bind(blob_id)
     .bind(user_id)
     .bind(workspace_id)

@@ -1,6 +1,7 @@
 import type { DesktopDatabase } from "./database.ts";
+import { newUuidV7 } from "../uuid.ts";
 import { transaction } from "./database.ts";
-import { enqueueMutation, uuidV7 } from "./mutations.ts";
+import { enqueueMutation } from "./mutations.ts";
 
 export type PrincipleInput = {
   accountId: string;
@@ -82,7 +83,7 @@ export class PrinciplesRepository {
     if (!input.accountId) throw new Error("accountId is required");
     if (!input.title) throw new Error("title is required");
     const write: PrincipleWrite = {
-      id: uuidV7(),
+      id: newUuidV7(),
       accountId: input.accountId,
       playbookId: input.playbookId ?? null,
       evidenceNoteId: input.evidenceNoteId ?? null,

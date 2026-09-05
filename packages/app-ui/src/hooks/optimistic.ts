@@ -1,6 +1,7 @@
 "use client";
 
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
 
 /**
  * Optimistic-update helpers for list caches.
@@ -149,5 +150,5 @@ export function optimisticRemove<TVars>(
 
 /** A client-side id for a temp entity, replaced when the server's real row arrives. */
 export function tempId(): string {
-  return `temp-${crypto.randomUUID()}`;
+  return `temp-${newUuidV7()}`;
 }

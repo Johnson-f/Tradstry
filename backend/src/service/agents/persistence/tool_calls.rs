@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::Row;
-use uuid::Uuid;
 
 use super::AgentStore;
 use crate::service::agents::{AgentError, AgentResult};
@@ -59,7 +58,7 @@ impl AgentStore {
              ON CONFLICT (run_id, call_id) DO UPDATE SET call_id = EXCLUDED.call_id
              RETURNING *",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(crate::ids::new_uuid_v7().to_string())
         .bind(run_id)
         .bind(call_id.trim())
         .bind(tool_name.trim())

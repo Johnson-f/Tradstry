@@ -1,3 +1,5 @@
+import { newUuidV7 } from "@tradstry/app-ui/lib/uuid";
+
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:7899/graphql";
 
@@ -108,10 +110,7 @@ export function createGraphQLSubscriber(
     variables: Record<string, unknown> | undefined,
     handlers: GraphQLSubscriptionHandlers<T>,
   ) => {
-    const operationId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `sub_${Date.now()}`;
+    const operationId = newUuidV7();
 
     let socket: WebSocket | null = null;
     let closed = false;

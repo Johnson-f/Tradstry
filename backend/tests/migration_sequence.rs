@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
+use tradstry_migration::{Migrator, MigratorTrait};
 
 #[test]
 fn archived_migration_versions_do_not_have_gaps() {
@@ -30,5 +31,15 @@ fn archived_migration_versions_do_not_have_gaps() {
     assert!(
         missing.is_empty(),
         "migration versions must be contiguous; missing {missing:?}"
+    );
+}
+
+#[test]
+fn seaorm_migrations_end_with_uuid_v7_defaults() {
+    let migrations = Migrator::migrations();
+    assert_eq!(migrations.len(), 7);
+    assert_eq!(
+        migrations.last().unwrap().name(),
+        "m20260902_000007_uuid_v7_defaults"
     );
 }

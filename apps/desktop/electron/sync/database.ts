@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { newUuidV7 } from "../uuid.ts";
 import { Hlc } from "./hlc.ts";
 
 const ALTERATIONS = [
@@ -54,7 +54,7 @@ export function openDesktopDatabase(
 		| { id: string }
 		| undefined;
 	if (!row) {
-		const id = randomUUID();
+		const id = newUuidV7();
 		db.prepare("INSERT INTO client (id) VALUES (?)").run(id);
 		row = { id };
 	}
