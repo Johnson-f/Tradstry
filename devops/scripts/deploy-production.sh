@@ -19,6 +19,22 @@ compose() {
     "$@"
 }
 
+# Every deploy pulls new app images and nothing else removes the old ones. Keep
+# this release and the previous one (the rollback target); drop the rest.
+prune_old_app_images() {
+  local keep_previous="$1" image repo tag
+  compose config --images | grep ":${IMAGE_TAG}\$" | while read -r image; do
+    repo="${image%:*}"
+    docker image ls "${repo}" --format '{{.Tag}}' | while read -r tag; do
+      if [[ "${tag}" == "${IMAGE_TAG}" || "${tag}" == "${keep_previous}" || "${tag}" == "<none>" ]]; then
+        continue
+      fi
+      docker image rm "${repo}:${tag}" >/dev/null 2>&1 || echo "Kept ${repo}:${tag}; it is still in use."
+    done
+  done
+  docker image prune --force >/dev/null
+}
+
 if [[ ! "${COMMIT_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Error: deployment commit must be a full 40-character Git SHA." >&2
   exit 2
@@ -103,6 +119,11 @@ trap - ERR
 printf '%s\n' "${PREVIOUS_COMMIT}" >"${DEPLOY_DIR}/.previous-deploy-commit"
 printf '%s\n' "${COMMIT_SHA}" >"${DEPLOY_DIR}/.current-deploy-commit"
 chmod 600 "${DEPLOY_DIR}/.previous-deploy-commit" "${DEPLOY_DIR}/.current-deploy-commit"
+
+echo "Removing app images older than the previous release..."
+if ! prune_old_app_images "${PREVIOUS_TAG}"; then
+  echo "Warning: old image cleanup failed; the deployment itself succeeded." >&2
+fi
 
 echo "Production deployment complete."
 echo "Commit: ${COMMIT_SHA}"

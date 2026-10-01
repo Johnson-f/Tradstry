@@ -57,6 +57,7 @@ mod schema_pg;
 mod server_hlc_pg;
 mod smoke_pg;
 mod snaptrade_oauth_pg;
+mod snaptrade_webhook_targets_pg;
 mod strategy_library_pg;
 mod svix_signature;
 mod tags_sync_pg;

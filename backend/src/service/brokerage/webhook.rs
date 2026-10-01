@@ -133,12 +133,13 @@ struct PendingEvent {
     event: WebhookEvent,
 }
 
-struct SyncTarget {
-    user_id: String,
-    workspace_id: String,
-    connection_id: String,
-    account_id: Option<String>,
-    broker: String,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncTarget {
+    pub user_id: String,
+    pub workspace_id: String,
+    pub connection_id: String,
+    pub account_id: Option<String>,
+    pub broker: String,
 }
 
 /// Persist before acknowledging the adapter. The event ID is supplied by
@@ -238,18 +239,21 @@ fn holdings_refresh_succeeded(details: Option<&WebhookDetails>) -> bool {
     .all(|operation| operation.is_none_or(|operation| operation.success))
 }
 
-async fn targets(pool: &PgPool, event: &WebhookEvent) -> Result<Vec<SyncTarget>> {
+/// The local brokerage connections a webhook refers to: commercial connections by
+/// their SnapTrade user, OAuth connections through an active grant for the same
+/// OAuth client.
+pub async fn sync_targets(pool: &PgPool, event: &WebhookEvent) -> Result<Vec<SyncTarget>> {
     let rows = sqlx::query(
         "SELECT bc.user_id, bc.workspace_id, \
                 bc.snaptrade_connection_id, bc.snaptrade_account_id, \
                 COALESCE(bc.broker, 'your brokerage') \
          FROM brokerage_connections bc \
-         LEFT JOIN snaptrade_oauth_grants grant ON grant.id=bc.oauth_grant_id \
+         LEFT JOIN snaptrade_oauth_grants oauth_grant ON oauth_grant.id=bc.oauth_grant_id \
          WHERE ( \
              (bc.auth_mode='commercial' AND bc.snaptrade_user_id=$1 \
               AND bc.snaptrade_user_secret_encrypted IS NOT NULL) \
-             OR (bc.auth_mode='oauth' AND grant.snaptrade_user_id=$1 \
-                 AND grant.status='active' AND grant.oauth_client_id=$4) \
+             OR (bc.auth_mode='oauth' AND oauth_grant.snaptrade_user_id=$1 \
+                 AND oauth_grant.status='active' AND oauth_grant.oauth_client_id=$4) \
          ) \
            AND bc.snaptrade_connection_id IS NOT NULL \
            AND ($2::text IS NULL OR bc.snaptrade_account_id = $2) \
@@ -397,7 +401,7 @@ async fn process(
     if !supported {
         return Ok(());
     }
-    let targets = targets(db.pool(), event).await?;
+    let targets = sync_targets(db.pool(), event).await?;
     anyhow::ensure!(
         !targets.is_empty(),
         "no local brokerage binding exists for webhook target"
