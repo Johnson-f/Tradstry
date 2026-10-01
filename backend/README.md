@@ -48,6 +48,7 @@ The projector is the only place Yjs updates are interpreted. Rust treats CRDT up
 ```bash
 cd backend
 cp .env.example .env  # then fill in values
+(cd projector && bun install --frozen-lockfile)  # notebook writes and their tests spawn it
 cargo build
 ```
 
@@ -320,11 +321,13 @@ cargo test --lib
 export TEST_DATABASE_URL=postgres://postgres:tradstry@localhost:5432/tradstry_test
 cargo test
 
-# One suite
-cargo test --test brokerage_dedup_pg
+# One suite (each file under tests/integration/ is a module of one test binary)
+cargo test --test integration brokerage_dedup_pg::
 ```
 
-`tests/pg_support.rs` migrates the target database on first use and defaults to `postgres://tradstry:tradstry@localhost:5435/tradstry_test` when `TEST_DATABASE_URL` is unset. Point it at whatever Postgres you have; `make postgres` from the repo root gives you one on 5432.
+All integration suites live in `tests/integration/` and compile into a single binary, so the backend links once. Add a new suite as `tests/integration/<name>.rs` and register it with `mod <name>;` in `tests/integration/main.rs`; a file placed directly in `tests/` would build as its own binary again.
+
+`tests/integration/pg_support.rs` brings the target database to the current schema on first use and defaults to `postgres://tradstry:tradstry@localhost:5435/tradstry_test` when `TEST_DATABASE_URL` is unset. Point it at whatever Postgres you have; `make postgres` from the repo root gives you one on 5432. Tests run in parallel against that one database: get the pool from `test_pool()`, and take `reset_schema()` (which holds the schema exclusively) before dropping or migrating `public` yourself. A test that needs a private schema history should create its own database, as `notebook_media_lifecycle_pg` does.
 
 Projector tests run under Bun:
 

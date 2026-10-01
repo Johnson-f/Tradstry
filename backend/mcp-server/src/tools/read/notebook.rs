@@ -42,16 +42,38 @@ pub struct ViewMediaParams {
     pub media_id: String,
 }
 
+/// Claude rejects images over 5 MB, and a larger inline image would dominate the
+/// model's context anyway.
+const MAX_INLINE_IMAGE_BYTES: i64 = 5 * 1024 * 1024;
+/// Keyframe extraction buffers the whole file in memory before ffmpeg runs.
+const MAX_KEYFRAME_VIDEO_BYTES: i64 = 100 * 1024 * 1024;
+
+fn too_large(kind: &str, bytes: i64, limit: i64) -> CallToolResult {
+    CallToolResult::success(vec![ContentBlock::text(format!(
+        "This {kind} is {:.1} MB, over the {} MB this tool can return. Ask the user to open \
+         it in Tradstry instead.",
+        bytes as f64 / (1024.0 * 1024.0),
+        limit / (1024 * 1024),
+    ))])
+}
+
 #[tool_router(router = notebook_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Get notebook notes",
         description = "Get the user's notebook notes with their full text content and a media manifest \
                        listing attached images and videos, plus the folder tree for the account(s) in \
                        view. Each media item exposes a media_id for the view_media tool. Each folder \
                        carries its id, parent_folder_id (for nesting) and is_system flag — use these ids \
                        as the folder_id/parent_folder_id when creating notes or folders (the System \
                        folder is where agent notes land by default). Pass note_id for a single note; \
-                       pass workspace_id to scope to one trading account; omit both to list all notes."
+                       pass workspace_id to scope to one trading account; omit both to list all notes.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn get_notebook(
         &self,
@@ -61,13 +83,14 @@ impl TradstryMcp {
         let u = self.user(&ctx)?;
         let user_db = self.synced_user_db(&u.user_id).await?;
 
-        let notes = match params.note_id {
+        let page_size = params.limit.unwrap_or(20).clamp(1, 100) as usize;
+        let (notes, next_cursor) = match params.note_id {
             Some(ref id) => {
                 match notebook_service::get_notebook_note(&user_db, id)
                     .await
                     .map_err(internal)?
                 {
-                    Some(note) => vec![note],
+                    Some(note) => (vec![note], None),
                     None => {
                         return Ok(CallToolResult::success(vec![ContentBlock::text(
                             "Notebook note not found.",
@@ -75,24 +98,23 @@ impl TradstryMcp {
                     }
                 }
             }
-            None => notebook_service::list_notebook_notes(&user_db, params.workspace_id.as_deref())
+            // Notes carry their full text, so a listing is one of the largest payloads
+            // this server emits. Paged in SQL so only the requested page is loaded.
+            None => {
+                let (page, has_more) = notebook_service::list_notebook_notes_page(
+                    &user_db,
+                    params.workspace_id.as_deref(),
+                    params.after_cursor.as_deref(),
+                    page_size,
+                )
                 .await
-                .map_err(internal)?,
+                .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+                let next_cursor = has_more
+                    .then(|| page.last().map(|n| n.id.clone()))
+                    .flatten();
+                (page, next_cursor)
+            }
         };
-
-        // Notes carry their full text, so an unbounded listing is one of the largest
-        // payloads this server can emit. Page it like trades.
-        let page_size = params.limit.unwrap_or(20).min(100) as usize;
-        let start = params
-            .after_cursor
-            .as_deref()
-            .and_then(|c| notes.iter().position(|n| n.id == c).map(|i| i + 1))
-            .unwrap_or(0);
-        let page: Vec<_> = notes.iter().skip(start).take(page_size).cloned().collect();
-        let next_cursor = (start + page.len() < notes.len())
-            .then(|| page.last().map(|n| n.id.clone()))
-            .flatten();
-        let notes = page;
 
         let out: Vec<serde_json::Value> = notes
             .iter()
@@ -160,11 +182,17 @@ impl TradstryMcp {
     }
 
     #[tool(
-        description = "Fetch the raw bytes of a media item (image or video) from the user's notebook \
-                       and return it as native image content so the model can view it directly. \
-                       Pass a media_id obtained from the get_notebook tool's media manifest. \
-                       For images, the content is returned inline. \
-                       For videos, a text guidance response is returned (full keyframe analysis is not yet implemented)."
+        title = "View notebook media",
+        description = "View an image or video from the user's notebook. Pass a media_id from the \
+                       get_notebook tool's media manifest. Images up to 5 MB come back inline; a \
+                       video up to 100 MB comes back as up to 8 keyframes in order. Larger files \
+                       return a short text note instead.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn view_media(
         &self,
@@ -188,7 +216,20 @@ impl TradstryMcp {
         let key = &media.object_key;
         let content_type = media.content_type.clone();
 
+        // The stored size can predate the upload limits, so ask R2 before downloading.
+        let size = self
+            .state
+            .r2
+            .object_metadata(key)
+            .await
+            .map_err(internal)?
+            .map(|object| object.content_length)
+            .ok_or_else(|| internal("media file is missing from storage"))?;
+
         match media.media_type.as_str() {
+            "image" if size > MAX_INLINE_IMAGE_BYTES => {
+                Ok(too_large("image", size, MAX_INLINE_IMAGE_BYTES))
+            }
             "image" => {
                 let bytes = self.state.r2.get_object(key).await.map_err(internal)?;
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -196,6 +237,9 @@ impl TradstryMcp {
                     b64,
                     content_type,
                 )]))
+            }
+            _ if size > MAX_KEYFRAME_VIDEO_BYTES => {
+                Ok(too_large("video", size, MAX_KEYFRAME_VIDEO_BYTES))
             }
             _ => {
                 // Video: fetch bytes and extract keyframes via ffmpeg.

@@ -7,6 +7,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use base64::Engine as _;
 use clerk_rs::validators::{
     authorizer::{ClerkJwt, validate_jwt},
     jwks::MemoryCacheJwksProvider,
@@ -88,6 +89,31 @@ fn issuer_matches(token_iss: &str, expected_iss: &str) -> bool {
     token_iss == expected_iss
 }
 
+/// The JWT `typ` header values Clerk sets on OAuth access tokens (RFC 9068).
+/// Session tokens from the web app carry `typ: JWT` and are refused, so only a
+/// token minted through the OAuth consent flow can reach the tools.
+const OAUTH_ACCESS_TOKEN_TYPES: [&str; 2] = ["at+jwt", "application/at+jwt"];
+
+/// Read the JOSE header's `typ`. Call only after signature validation: the header
+/// is covered by the signature, so it is trustworthy once `validate` passes.
+fn token_type(token: &str) -> Option<String> {
+    let header = token.split('.').next()?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(header.trim_end_matches('='))
+        .ok()?;
+    let header: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    header.get("typ")?.as_str().map(str::to_owned)
+}
+
+fn is_oauth_access_token_type(typ: Option<&str>) -> bool {
+    // Media types compare case-insensitively (RFC 7515 §4.1.9).
+    typ.is_some_and(|typ| {
+        OAUTH_ACCESS_TOKEN_TYPES
+            .iter()
+            .any(|expected| typ.eq_ignore_ascii_case(expected))
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Axum middleware
 // ---------------------------------------------------------------------------
@@ -147,11 +173,22 @@ pub async fn require_auth(
         return unauthorized(&state.public_url);
     }
 
+    // 2b. Only OAuth access tokens. Without this, any token this Clerk instance
+    //     signs, including the web app's session tokens, would be accepted.
+    let typ = token_type(&token_str);
+    if !is_oauth_access_token_type(typ.as_deref()) {
+        tracing::warn!(
+            typ = typ.as_deref().unwrap_or("missing"),
+            "auth: rejected a token that is not an OAuth access token"
+        );
+        return unauthorized(&state.public_url);
+    }
+
     // No `aud` check: a Clerk OAuth access token's `aud` is the OAuth app's
-    // client id, not our resource URL, and Clerk's own MCP verifier doesn't
-    // enforce audience. Authenticity is covered by the signature + issuer check
-    // above (JWKS-pinned to this Clerk instance) plus the OAuth app's locked
-    // redirect URIs.
+    // client id, not our resource URL, and clients register a fresh client per
+    // connection, so there is no fixed value to pin. Authenticity is covered by
+    // the signature + issuer check above (JWKS-pinned to this Clerk instance)
+    // and the access-token type check.
 
     // 3. Extract identity fields from the JWT claims (mirrors accounts.rs).
     let sub = jwt.sub.clone();
@@ -254,6 +291,37 @@ mod tests {
         assert!(!issuer_matches(
             "https://Clerk.Tradstry.com",
             "https://clerk.tradstry.com"
+        ));
+    }
+
+    fn token_with_header(header: &serde_json::Value) -> String {
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        format!(
+            "{}.{}.sig",
+            encode(header.to_string().as_bytes()),
+            encode(b"{}")
+        )
+    }
+
+    #[test]
+    fn accepts_oauth_access_token_types() {
+        for typ in ["at+jwt", "application/at+jwt", "AT+JWT"] {
+            let token = token_with_header(&serde_json::json!({"alg": "RS256", "typ": typ}));
+            assert!(
+                is_oauth_access_token_type(token_type(&token).as_deref()),
+                "{typ} should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_session_tokens_and_untyped_tokens() {
+        let session = token_with_header(&serde_json::json!({"alg": "RS256", "typ": "JWT"}));
+        assert!(!is_oauth_access_token_type(token_type(&session).as_deref()));
+        let untyped = token_with_header(&serde_json::json!({"alg": "RS256"}));
+        assert!(!is_oauth_access_token_type(token_type(&untyped).as_deref()));
+        assert!(!is_oauth_access_token_type(
+            token_type("not-a-jwt").as_deref()
         ));
     }
 

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
+use super::super::workspaces_table;
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::notebook::notebook_folders;
 
@@ -74,10 +75,12 @@ impl From<notebook_folders::Model> for NotebookFolder {
 
 pub async fn list_notebook_folders(
     pool: &PgPool,
+    user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<NotebookFolder>> {
     let db = sea_orm_connection(pool);
     Ok(notebook_folders::Entity::find()
+        .filter(notebook_folders::Column::UserId.eq(user_id))
         .filter(notebook_folders::Column::WorkspaceId.eq(workspace_id))
         .filter(notebook_folders::Column::DeletedAt.is_null())
         .order_by_asc(notebook_folders::Column::SortOrder)
@@ -90,14 +93,62 @@ pub async fn list_notebook_folders(
         .collect())
 }
 
-pub async fn find_notebook_folder(pool: &PgPool, id: &str) -> Result<Option<NotebookFolder>> {
+pub async fn find_notebook_folder(
+    pool: &PgPool,
+    user_id: &str,
+    id: &str,
+) -> Result<Option<NotebookFolder>> {
     let db = sea_orm_connection(pool);
     Ok(notebook_folders::Entity::find_by_id(id)
+        .filter(notebook_folders::Column::UserId.eq(user_id))
         .filter(notebook_folders::Column::DeletedAt.is_null())
         .one(&db)
         .await
         .context("Failed to find notebook folder")?
         .map(Into::into))
+}
+
+/// `notebook_folders` has no composite `(workspace_id, user_id)` foreign key, so
+/// workspace ownership is enforced here rather than by Postgres.
+async fn ensure_workspace_owned(
+    conn: &mut PgConnection,
+    user_id: &str,
+    workspace_id: &str,
+) -> Result<()> {
+    let workspace = workspaces_table::find_workspace(&mut *conn, workspace_id, user_id).await?;
+    ensure!(
+        workspace.is_some(),
+        "Workspace '{workspace_id}' was not found"
+    );
+    Ok(())
+}
+
+/// A folder referenced as a parent or a note's home must be one the caller owns
+/// in that same workspace. The foreign keys check only that the id exists, which
+/// would let a caller file things under someone else's folder. Tombstoned folders
+/// still pass, so an offline client's move into a folder another device just
+/// deleted is not dropped.
+pub async fn ensure_folder_in_workspace(
+    conn: &mut PgConnection,
+    user_id: &str,
+    workspace_id: &str,
+    folder_id: &str,
+) -> Result<()> {
+    let found: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM notebook_folders \
+         WHERE id = $1 AND user_id = $2 AND workspace_id = $3)",
+    )
+    .bind(folder_id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_one(&mut *conn)
+    .await
+    .context("Failed to verify notebook folder")?;
+    ensure!(
+        found,
+        "Folder '{folder_id}' was not found in workspace '{workspace_id}'"
+    );
+    Ok(())
 }
 
 async fn next_folder_sort_order(
@@ -147,6 +198,11 @@ pub async fn create_notebook_folder_tx(
         None => crate::ids::new_uuid_v7().to_string(),
     };
 
+    ensure_workspace_owned(conn, &input.user_id, &input.workspace_id).await?;
+    if let Some(parent_id) = input.parent_folder_id.as_deref() {
+        ensure_folder_in_workspace(conn, &input.user_id, &input.workspace_id, parent_id).await?;
+    }
+
     sqlx::query(
         r#"
         INSERT INTO notebook_folders (id, user_id, workspace_id, parent_folder_id, name, sort_order, hlc)
@@ -171,6 +227,7 @@ pub async fn create_notebook_folder(
     pool: &PgPool,
     input: CreateNotebookFolderInput,
 ) -> Result<NotebookFolder> {
+    let user_id = input.user_id.clone();
     let mut tx = pool.begin().await?;
     let sort_order = next_folder_sort_order(
         &mut tx,
@@ -182,7 +239,7 @@ pub async fn create_notebook_folder(
         .await?;
     tx.commit().await?;
 
-    find_notebook_folder(pool, &id)
+    find_notebook_folder(pool, &user_id, &id)
         .await?
         .context("Notebook folder not found after insert")
 }
@@ -190,14 +247,17 @@ pub async fn create_notebook_folder(
 /// The name every account's system folder carries.
 pub const SYSTEM_FOLDER_NAME: &str = "System";
 
-async fn is_system_folder(conn: &mut PgConnection, id: &str) -> Result<bool> {
-    let row: Option<(bool,)> =
-        sqlx::query_as("SELECT is_system FROM notebook_folders WHERE id = $1")
+/// Errors when the folder is missing or not the caller's, so a foreign id is
+/// indistinguishable from one that never existed.
+async fn owned_folder_is_system(conn: &mut PgConnection, user_id: &str, id: &str) -> Result<bool> {
+    let is_system: Option<bool> =
+        sqlx::query_scalar("SELECT is_system FROM notebook_folders WHERE id = $1 AND user_id = $2")
             .bind(id)
+            .bind(user_id)
             .fetch_optional(&mut *conn)
             .await
             .context("Failed to read folder")?;
-    Ok(row.map(|(v,)| v).unwrap_or(false))
+    is_system.context("Notebook folder not found")
 }
 
 /// Idempotent: creates the account's System folder if it does not have one. Safe to call
@@ -220,17 +280,19 @@ pub async fn ensure_system_folder(pool: &PgPool, user_id: &str, workspace_id: &s
 
 pub async fn rename_notebook_folder_tx(
     conn: &mut PgConnection,
+    user_id: &str,
     id: &str,
     name: &str,
     hlc: &str,
 ) -> Result<()> {
-    if is_system_folder(conn, id).await? {
+    if owned_folder_is_system(conn, user_id, id).await? {
         anyhow::bail!("The System folder cannot be renamed");
     }
-    sqlx::query("UPDATE notebook_folders SET name = $2, hlc = $3 WHERE id = $1")
+    sqlx::query("UPDATE notebook_folders SET name = $2, hlc = $3 WHERE id = $1 AND user_id = $4")
         .bind(id)
         .bind(name)
         .bind(hlc)
+        .bind(user_id)
         .execute(&mut *conn)
         .await
         .context("Failed to rename notebook folder")?;
@@ -238,9 +300,14 @@ pub async fn rename_notebook_folder_tx(
     Ok(())
 }
 
-pub async fn rename_notebook_folder(pool: &PgPool, id: &str, name: &str) -> Result<()> {
+pub async fn rename_notebook_folder(
+    pool: &PgPool,
+    user_id: &str,
+    id: &str,
+    name: &str,
+) -> Result<()> {
     let mut conn = pool.acquire().await?;
-    rename_notebook_folder_tx(&mut conn, id, name, &crate::service::hlc::stamp()).await
+    rename_notebook_folder_tx(&mut conn, user_id, id, name, &crate::service::hlc::stamp()).await
 }
 
 pub async fn folder_subtree_ids<'e, E>(executor: E, folder_id: &str) -> Result<Vec<String>>
@@ -271,11 +338,49 @@ where
     Ok(ids)
 }
 
+async fn owned_node_workspace(
+    conn: &mut PgConnection,
+    user_id: &str,
+    node_type: NotebookNodeType,
+    node_id: &str,
+) -> Result<String> {
+    let sql = match node_type {
+        NotebookNodeType::Folder => {
+            "SELECT workspace_id FROM notebook_folders WHERE id = $1 AND user_id = $2"
+        }
+        NotebookNodeType::Note => {
+            "SELECT workspace_id FROM notebook_notes WHERE id = $1 AND user_id = $2"
+        }
+    };
+    let workspace_id: Option<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
+        .bind(node_id)
+        .bind(user_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .context("Failed to read notebook node")?;
+    workspace_id.context("Notebook node not found")
+}
+
 pub async fn move_notebook_node_tx(
     conn: &mut PgConnection,
+    user_id: &str,
     input: MoveNotebookNodeInput,
     hlc: &str,
 ) -> Result<()> {
+    // The renumber below rewrites every sibling in `input.workspace_id`, so that
+    // workspace, the node, and the destination must all be the caller's.
+    ensure_workspace_owned(conn, user_id, &input.workspace_id).await?;
+    let node_workspace_id =
+        owned_node_workspace(conn, user_id, input.node_type, &input.node_id).await?;
+    ensure!(
+        node_workspace_id == input.workspace_id,
+        "Notebook node not found in workspace '{}'",
+        input.workspace_id
+    );
+    if let Some(parent_id) = input.new_parent_folder_id.as_deref() {
+        ensure_folder_in_workspace(conn, user_id, &input.workspace_id, parent_id).await?;
+    }
+
     // Cycle guard: a folder cannot be moved into itself or any of its descendants.
     if input.node_type == NotebookNodeType::Folder
         && let Some(target) = input.new_parent_folder_id.as_deref()
@@ -288,10 +393,10 @@ pub async fn move_notebook_node_tx(
 
     let sql = match input.node_type {
         NotebookNodeType::Folder => {
-            "UPDATE notebook_folders SET parent_folder_id = $2, sort_order = $3, hlc = $4 WHERE id = $1"
+            "UPDATE notebook_folders SET parent_folder_id = $2, sort_order = $3, hlc = $4 WHERE id = $1 AND user_id = $5"
         }
         NotebookNodeType::Note => {
-            "UPDATE notebook_notes SET folder_id = $2, sort_order = $3, hlc = $4 WHERE id = $1"
+            "UPDATE notebook_notes SET folder_id = $2, sort_order = $3, hlc = $4 WHERE id = $1 AND user_id = $5"
         }
     };
 
@@ -300,6 +405,7 @@ pub async fn move_notebook_node_tx(
         .bind(input.new_parent_folder_id.as_deref())
         .bind(input.new_sort_order)
         .bind(hlc)
+        .bind(user_id)
         .execute(&mut *conn)
         .await
         .context("Failed to reparent notebook node")?;
@@ -309,11 +415,15 @@ pub async fn move_notebook_node_tx(
     Ok(())
 }
 
-pub async fn move_notebook_node(pool: &PgPool, input: MoveNotebookNodeInput) -> Result<()> {
+pub async fn move_notebook_node(
+    pool: &PgPool,
+    user_id: &str,
+    input: MoveNotebookNodeInput,
+) -> Result<()> {
     // Reparent the node and renumber the destination sibling group together so
     // the two writes either both land or both roll back.
     let mut tx = pool.begin().await?;
-    move_notebook_node_tx(&mut tx, input, &crate::service::hlc::stamp()).await?;
+    move_notebook_node_tx(&mut tx, user_id, input, &crate::service::hlc::stamp()).await?;
     tx.commit().await?;
 
     Ok(())
@@ -419,7 +529,7 @@ pub async fn delete_notebook_folder_subtree_tx(
     ensure!(owned, "Notebook folder not found");
     // Only the folder row is protected. Notes inside it are ordinary notes and are
     // deleted through the note paths, which this guard does not touch.
-    if is_system_folder(conn, folder_id).await? {
+    if owned_folder_is_system(conn, user_id, folder_id).await? {
         anyhow::bail!("The System folder cannot be deleted");
     }
 

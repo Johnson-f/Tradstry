@@ -52,6 +52,13 @@ functions AS (
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = current_schema()
+      AND NOT EXISTS (
+          SELECT 1
+          FROM pg_depend d
+          WHERE d.classid = 'pg_proc'::regclass
+            AND d.objid = p.oid
+            AND d.deptype = 'e'
+      )
 ),
 triggers AS (
     SELECT t.relname AS table_name,

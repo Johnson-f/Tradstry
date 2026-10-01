@@ -32,4 +32,7 @@ pub struct AppState {
     pub clerk_issuer: String,
     /// Per-user token-bucket rate limiter for the MCP transport.
     pub rate_limiter: Arc<RateLimiter>,
+    /// Domain-verification token from the OpenAI plugin portal
+    /// (`OPENAI_APPS_CHALLENGE_TOKEN`). `None` until a submission draft issues one.
+    pub openai_apps_challenge: Option<String>,
 }

@@ -58,7 +58,7 @@ cd backend
 cargo fmt --all -- --check
 git diff --check
 cargo test -p tradstry-database --test seaorm_bootstrap_pg
-cargo test -p tradstry-backend --test migration_sequence
+cargo test -p tradstry-backend --test integration migration_sequence::
 cargo check -p tradstry-database
 cargo check -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
 ```

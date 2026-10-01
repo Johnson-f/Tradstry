@@ -96,18 +96,19 @@ struct Envelope<T> {
     next_cursor: Option<String>,
 }
 
-/// Serialize `data` inside the versioned envelope and package it as MCP text.
+/// Serialize `data` inside the versioned envelope as `structuredContent`. rmcp also
+/// mirrors it as a JSON text block for clients that only read text content.
 pub(crate) fn envelope<T: Serialize>(
     data: T,
     next_cursor: Option<String>,
 ) -> Result<CallToolResult, ErrorData> {
-    let json = serde_json::to_string(&Envelope {
+    let value = serde_json::to_value(Envelope {
         version: RESPONSE_VERSION,
         data,
         next_cursor,
     })
     .map_err(internal)?;
-    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    Ok(CallToolResult::structured(value))
 }
 
 /// Reject unknown `fields` / `include` keys instead of dropping them.
@@ -172,12 +173,14 @@ fn project_object(value: Value, fields: &[String]) -> Value {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for TradstryMcp {
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
-        info.capabilities = ServerCapabilities::builder().enable_tools().build();
-        info.server_info = Implementation::new("tradstry-mcp", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some(
-            "Read and write access to the user's Tradstry trading journal, playbooks, tags, \
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(
+                "tradstry-mcp",
+                env!("CARGO_PKG_VERSION"),
+            ))
+            .with_instructions(
+                "Read and write access to the user's Tradstry trading journal, playbooks, tags, \
              principles and notebook. \
              Call list_workspaces first — most tools need a workspace_id. \
              READ: query_trades, calculate_analytics, advanced_analytics, search_trades, \
@@ -193,10 +196,8 @@ impl ServerHandler for TradstryMcp {
              violated by a trade in the account it governs. Prefer add over set when linking, \
              so you never discard the user's own judgment. \
              Agent-written notes belong in the account's System folder, which create_note uses \
-             by default."
-                .to_string(),
-        );
-        info
+             by default.",
+            )
     }
 }
 
@@ -221,6 +222,60 @@ mod tests {
                 "{} must expose a top-level object input schema",
                 tool.name
             );
+        }
+    }
+
+    /// OpenAI rejects a plugin whose tools leave these hints unset, and the MCP
+    /// defaults (`destructiveHint: true`, `openWorldHint: true`) would misdescribe
+    /// every read tool. Every tool states all three explicitly.
+    #[test]
+    fn every_tool_declares_title_and_safety_hints() {
+        for tool in TradstryMcp::build_tool_router().list_all() {
+            let name = &tool.name;
+            assert!(tool.title.is_some(), "{name} has no title");
+            let a = tool
+                .annotations
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name} has no annotations"));
+            let read_only = a
+                .read_only_hint
+                .unwrap_or_else(|| panic!("{name} leaves readOnlyHint unset"));
+            let destructive = a
+                .destructive_hint
+                .unwrap_or_else(|| panic!("{name} leaves destructiveHint unset"));
+            let open_world = a
+                .open_world_hint
+                .unwrap_or_else(|| panic!("{name} leaves openWorldHint unset"));
+            assert!(
+                !(read_only && destructive),
+                "{name} cannot be both read-only and destructive"
+            );
+            assert!(!open_world, "{name} only touches the user's own journal");
+        }
+    }
+
+    #[test]
+    fn envelope_returns_structured_content_and_a_text_mirror() {
+        let result = envelope(serde_json::json!({"trades": []}), Some("c1".into())).unwrap();
+        let structured = result.structured_content.expect("structuredContent");
+        assert_eq!(structured["version"], RESPONSE_VERSION);
+        assert_eq!(structured["next_cursor"], "c1");
+        let text = result.content[0]
+            .as_text()
+            .expect("text mirror")
+            .text
+            .clone();
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), structured);
+    }
+
+    #[test]
+    fn delete_tools_are_marked_destructive() {
+        for tool in TradstryMcp::build_tool_router().list_all() {
+            if tool.name.starts_with("delete_") {
+                let a = tool.annotations.as_ref().unwrap();
+                assert_eq!(a.destructive_hint, Some(true), "{}", tool.name);
+                assert_eq!(a.read_only_hint, Some(false), "{}", tool.name);
+            }
         }
     }
 }

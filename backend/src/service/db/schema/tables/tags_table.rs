@@ -674,27 +674,40 @@ pub async fn set_tag_color(
 pub async fn delete_tag(pool: &PgPool, user_id: &str, id: &str) -> Result<bool> {
     let mut tx = pool.begin().await?;
 
+    // `trade_tags` has no `user_id`, so ownership must be settled before any link
+    // is touched, or another user's tag id would strip that tag from their trades.
+    let owned: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .context("Failed to verify tag ownership")?;
+    if !owned {
+        return Ok(false);
+    }
+
+    let hlc = crate::service::hlc::stamp();
+    bump_trades_with_tag_tx(&mut tx, user_id, id, &hlc).await?;
+
     sqlx::query("DELETE FROM trade_tags WHERE tag_id = $1")
         .bind(id)
         .execute(&mut *tx)
         .await
         .context("Failed to delete trade_tags for tag")?;
 
-    let rows_affected = sqlx::query("DELETE FROM tags WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await
-        .context("Failed to delete tag")?
-        .rows_affected();
+    // Tombstone rather than hard-delete: offline clients learn a tag is gone only
+    // from the tombstone in the tags delta.
+    soft_delete_tag_tx(&mut tx, user_id, id, &hlc).await?;
 
     tx.commit().await?;
-    Ok(rows_affected > 0)
+    Ok(true)
 }
 
 /// Merge `from_id` into `into_id`. Both tags must belong to the user and be in
-/// the same category. Repoints all `trade_tags` links to `into_id` (dedup via
-/// ON CONFLICT DO NOTHING), removes the old links, then deletes the `from` tag.
+/// the same category. Repoints all `trade_tags` links to `into_id` and tombstones
+/// the `from` tag (see [`merge_tags_tx`]).
 pub async fn merge_tags(pool: &PgPool, user_id: &str, from_id: &str, into_id: &str) -> Result<()> {
     ensure!(from_id != into_id, "cannot merge a tag into itself");
 
@@ -711,32 +724,38 @@ pub async fn merge_tags(pool: &PgPool, user_id: &str, from_id: &str, into_id: &s
     );
 
     let mut tx = pool.begin().await?;
-
-    sqlx::query(
-        "INSERT INTO trade_tags (journal_entry_id, tag_id) \
-         SELECT journal_entry_id, $1 FROM trade_tags WHERE tag_id = $2 \
-         ON CONFLICT (journal_entry_id, tag_id) DO NOTHING",
+    merge_tags_tx(
+        &mut tx,
+        user_id,
+        from_id,
+        into_id,
+        &crate::service::hlc::stamp(),
     )
-    .bind(into_id)
-    .bind(from_id)
-    .execute(&mut *tx)
-    .await
-    .context("Failed to repoint trade_tags during merge")?;
-
-    sqlx::query("DELETE FROM trade_tags WHERE tag_id = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await
-        .context("Failed to clear old trade_tags during merge")?;
-
-    sqlx::query("DELETE FROM tags WHERE id = $1 AND user_id = $2")
-        .bind(from_id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await
-        .context("Failed to delete source tag during merge")?;
-
+    .await?;
     tx.commit().await?;
+    Ok(())
+}
+
+/// A trade's synced `tag_ids` are aggregated from `trade_tags`, but changing those
+/// links does NOT touch `journal_entries`, so the cursor pull would never
+/// re-deliver the trade. Bump every trade carrying `tag_id` so the journal delta
+/// re-delivers it. Call this BEFORE removing the links.
+async fn bump_trades_with_tag_tx(
+    conn: &mut PgConnection,
+    user_id: &str,
+    tag_id: &str,
+    hlc: &str,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE journal_entries SET updated_at = now(), hlc = $1 \
+         WHERE user_id = $2 AND id IN (SELECT journal_entry_id FROM trade_tags WHERE tag_id = $3)",
+    )
+    .bind(hlc)
+    .bind(user_id)
+    .bind(tag_id)
+    .execute(&mut *conn)
+    .await
+    .context("Failed to bump trades carrying the tag")?;
     Ok(())
 }
 
@@ -1244,12 +1263,12 @@ pub async fn soft_delete_tag_tx(
     Ok(())
 }
 
-/// Offline counterpart of [`merge_tags`]: the online path hard-deletes `from_id`
-/// after repointing `trade_tags`, but a hard delete leaves offline clients with
-/// no way to learn the tag is gone. Tombstone it instead (delete-wins LWW) —
-/// `into_id` is left untouched since the whole-row LWW clone doesn't need to
-/// bump it, and callers must not enqueue a separate trade outbox row for the
-/// repoint (see the mergeTags handling note in the tags offline plan).
+/// Repoints `trade_tags` from `from_id` to `into_id` and tombstones `from_id`
+/// (delete-wins LWW), since a hard delete leaves offline clients with no way to
+/// learn the tag is gone. `into_id` is left untouched since the whole-row LWW
+/// clone doesn't need to bump it, and callers must not enqueue a separate trade
+/// outbox row for the repoint (see the mergeTags handling note in the tags
+/// offline plan).
 pub async fn merge_tags_tx(
     conn: &mut PgConnection,
     user_id: &str,
@@ -1257,6 +1276,22 @@ pub async fn merge_tags_tx(
     into_id: &str,
     hlc: &str,
 ) -> Result<()> {
+    // Merging a tag into itself would delete every one of its links below.
+    ensure!(from_id != into_id, "cannot merge a tag into itself");
+
+    // `trade_tags` has no `user_id`, so both tags must be the caller's before any
+    // link moves. Tombstones still count: an offline merge of a tag another device
+    // already deleted should still move its links.
+    let owned: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE id IN ($1, $2) AND user_id = $3")
+            .bind(from_id)
+            .bind(into_id)
+            .bind(user_id)
+            .fetch_one(&mut *conn)
+            .await
+            .context("Failed to verify tag ownership during merge_tags_tx")?;
+    ensure!(owned == 2, "tag not found");
+
     sqlx::query(
         "INSERT INTO trade_tags (journal_entry_id, tag_id) \
          SELECT journal_entry_id, $1 FROM trade_tags WHERE tag_id = $2 \
@@ -1268,22 +1303,9 @@ pub async fn merge_tags_tx(
     .await
     .context("Failed to repoint trade_tags during merge_tags_tx")?;
 
-    // A trade's synced `tag_ids` are aggregated from `trade_tags`, but repointing
-    // them does NOT touch `journal_entries`, so the cursor pull would never
-    // re-deliver these trades and another device's cached tags would stay stale.
-    // Bump the affected trades' hlc + updated_at (with the merge's stamp, which is
-    // newer than any prior trade write) so the journal delta re-delivers them and
-    // LWW applies the repointed tag set. Do this BEFORE deleting the old links.
-    sqlx::query(
-        "UPDATE journal_entries SET updated_at = now(), hlc = $1 \
-         WHERE user_id = $2 AND id IN (SELECT journal_entry_id FROM trade_tags WHERE tag_id = $3)",
-    )
-    .bind(hlc)
-    .bind(user_id)
-    .bind(from_id)
-    .execute(&mut *conn)
-    .await
-    .context("Failed to bump merged trades during merge_tags_tx")?;
+    // The merge's stamp is newer than any prior trade write, so LWW applies the
+    // repointed tag set on other devices.
+    bump_trades_with_tag_tx(conn, user_id, from_id, hlc).await?;
 
     sqlx::query("DELETE FROM trade_tags WHERE tag_id = $1")
         .bind(from_id)

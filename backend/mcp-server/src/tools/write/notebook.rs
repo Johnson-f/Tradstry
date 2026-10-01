@@ -106,11 +106,18 @@ pub struct CreateFolderParams {
 #[tool_router(router = write_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Create note",
         description = "Create a notebook note from Markdown. Use this to file a report or \
                        analysis the user can read later. The body is Markdown (headings, \
                        lists, code, quotes, links, bold/italic); begin with an `# H1`, which \
                        becomes the note's title. Defaults to the account's System folder — the \
-                       folder that exists to hold agent-written notes. Returns the note id."
+                       folder that exists to hold agent-written notes. Returns the note id.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn create_note(
         &self,
@@ -126,9 +133,10 @@ impl TradstryMcp {
 
         // Fetch the account's folders once: to validate a caller-supplied folder_id (an
         // agent can hallucinate an id) and, absent one, to file the note in System.
-        let account_folders = folders::list_notebook_folders(user_db.pool(), &params.workspace_id)
-            .await
-            .map_err(internal)?;
+        let account_folders =
+            folders::list_notebook_folders(user_db.pool(), user_db.user_id(), &params.workspace_id)
+                .await
+                .map_err(internal)?;
         let folder_id = match params.folder_id {
             Some(id) => {
                 if !account_folders.iter().any(|f| f.id == id) {
@@ -176,11 +184,18 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Update note",
         description = "Rewrite or extend an existing note's body with Markdown. mode=\"append\" \
                        adds to the end and cannot destroy existing content; mode=\"replace\" \
                        swaps the entire body, so send the complete note, not a fragment. Safe \
                        to call while the user has the note open — the change merges with their \
-                       edits rather than overwriting them."
+                       edits rather than overwriting them.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn update_note(
         &self,
@@ -282,9 +297,16 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Delete note",
         description = "Delete a notebook note. Soft delete: it disappears from every device. \
                        Notes inside the System folder are ordinary notes and delete freely; \
-                       the System folder itself cannot be deleted."
+                       the System folder itself cannot be deleted.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn delete_note(
         &self,
@@ -306,8 +328,15 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Move note",
         description = "Move a note into a folder, or out of every folder (Uncategorized) by \
-                       omitting folder_id."
+                       omitting folder_id.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn move_note(
         &self,
@@ -322,20 +351,22 @@ impl TradstryMcp {
             .map_err(internal)?
             .ok_or_else(|| ErrorData::invalid_params("note not found", None))?;
 
-        notes::update_notebook_note(
+        // The same move the editor's drag-and-drop performs. A note update cannot clear
+        // the folder: there an absent folder_id means "leave it where it is".
+        folders::move_notebook_node(
             user_db.pool(),
-            &note.id,
             user_db.user_id(),
-            UpdateNotebookNoteInput {
-                workspace_id: None,
-                document_json: None,
-                trade_ids: None,
-                folder_id: params.folder_id.clone(),
-                expected_updated_at: None,
+            folders::MoveNotebookNodeInput {
+                workspace_id: note.workspace_id.clone(),
+                node_id: note.id.clone(),
+                node_type: folders::NotebookNodeType::Note,
+                new_parent_folder_id: params.folder_id.clone(),
+                // Last among its new siblings; the move renumbers the group.
+                new_sort_order: i64::MAX,
             },
         )
         .await
-        .map_err(internal)?;
+        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
 
         ok(match params.folder_id {
             Some(f) => format!("Moved note {} to folder {f}.", note.id),
@@ -343,7 +374,16 @@ impl TradstryMcp {
         })
     }
 
-    #[tool(description = "Create a notebook folder. Returns the folder id.")]
+    #[tool(
+        title = "Create folder",
+        description = "Create a notebook folder. Returns the folder id.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
     pub async fn create_folder(
         &self,
         Parameters(params): Parameters<CreateFolderParams>,
@@ -360,10 +400,13 @@ impl TradstryMcp {
         // A supplied parent must exist in this account, or the folder would be orphaned or
         // silently mis-nested under an id from somewhere else.
         if let Some(parent_id) = &params.parent_folder_id {
-            let account_folders =
-                folders::list_notebook_folders(user_db.pool(), &params.workspace_id)
-                    .await
-                    .map_err(internal)?;
+            let account_folders = folders::list_notebook_folders(
+                user_db.pool(),
+                user_db.user_id(),
+                &params.workspace_id,
+            )
+            .await
+            .map_err(internal)?;
             if !account_folders.iter().any(|f| f.id == *parent_id) {
                 return Err(ErrorData::invalid_params(
                     format!("parent_folder_id '{parent_id}' does not exist in this account"),

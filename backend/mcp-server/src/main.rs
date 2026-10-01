@@ -89,6 +89,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let clerk_issuer = std::env::var("CLERK_ISSUER").expect("CLERK_ISSUER must be set");
 
+    let openai_apps_challenge = std::env::var("OPENAI_APPS_CHALLENGE_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty());
+
     let jwks = Arc::new(create_jwks_provider(&clerk_secret));
 
     let db = Arc::new(Db::new().await?);
@@ -121,6 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         public_url,
         clerk_issuer,
         rate_limiter,
+        openai_apps_challenge,
     });
 
     // ---------------------------------------------------------------------------
@@ -148,14 +154,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Public branch   : OAuth discovery endpoints and /health — no auth.
     // ---------------------------------------------------------------------------
 
-    let protected = Router::new().nest_service("/mcp", mcp_service).route_layer(
-        middleware::from_fn_with_state(state.clone(), auth::require_auth),
-    );
+    let protected = Router::new()
+        .nest_service(metadata::MCP_PATH, mcp_service)
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
 
-    let discovery = axum::routing::get(metadata::handler).options(metadata::options_handler);
     let public = Router::new()
-        .route(metadata::ROOT_METADATA_PATH, discovery.clone())
-        .route(metadata::MCP_METADATA_PATH, discovery)
+        .route(
+            metadata::ROOT_METADATA_PATH,
+            axum::routing::get(metadata::root_handler).options(metadata::options_handler),
+        )
+        .route(
+            metadata::MCP_METADATA_PATH,
+            axum::routing::get(metadata::mcp_handler).options(metadata::options_handler),
+        )
+        .route(
+            metadata::OPENAI_APPS_CHALLENGE_PATH,
+            axum::routing::get(metadata::openai_apps_challenge_handler),
+        )
         .route("/health", axum::routing::get(|| async { "ok" }));
 
     let app = public.merge(protected).with_state(state);

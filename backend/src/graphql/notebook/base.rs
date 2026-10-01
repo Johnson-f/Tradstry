@@ -211,7 +211,7 @@ impl NotebookMutation {
         let user_db = get_user_db(ctx).await?;
         notebook_service::rename_notebook_folder(&user_db, &id, &name).await?;
         // Return the freshly renamed folder via a direct lookup.
-        folders::find_notebook_folder(user_db.pool(), &id)
+        folders::find_notebook_folder(user_db.pool(), user_db.user_id(), &id)
             .await?
             .ok_or_else(|| async_graphql::Error::new("Notebook folder not found after rename"))
     }

@@ -26,11 +26,18 @@ pub struct ListTagsParams {
 #[tool_router(router = tags_read_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "List tags",
         description = "List the user's tag categories and the tags inside each. Call this \
                        before tagging a trade — you need the tag ids. A category's `role` is \
                        what gives it analytic meaning: tags in the `mistake` category are \
                        what mark a trade as flawed, which drives the clean-vs-flawed and \
-                       mistake-cost analytics."
+                       mistake-cost analytics.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn list_tags(
         &self,

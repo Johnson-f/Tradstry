@@ -43,7 +43,8 @@ pub struct JournalFilter {
     /// `Some(true)` = only trades with a stop set (`stop_loss <> 0`);
     /// `Some(false)` = only trades with no stop (`stop_loss = 0`).
     pub has_stop_loss: Option<bool>,
-    /// Case-insensitive substring match against the `mistakes` field.
+    /// Case-insensitive substring match against the trade's `mistake`-role tag
+    /// names and its legacy `mistakes` text.
     pub mistake_contains: Option<String>,
     /// Inclusive lower bound on the UTC calendar date of `close_date` (YYYY-MM-DD).
     pub date_from: Option<String>,

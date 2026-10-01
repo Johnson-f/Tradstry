@@ -77,10 +77,17 @@ pub struct FlagViolationParams {
 #[tool_router(router = principle_write_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Create principle",
         description = "Create a trading principle: a rule the user holds themselves to. State \
                        `the_rule` so a trade can actually be judged against it, and ground \
                        `why` in what breaking it has cost them. Once it exists, flag_violation \
-                       ties trades to it and the discipline analytics start pricing it."
+                       ties trades to it and the discipline analytics start pricing it.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn create_principle(
         &self,
@@ -110,8 +117,15 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Update principle",
         description = "Edit a principle. Only the fields you pass change. Set is_active=false \
-                       to retire a rule while keeping its violation history intact."
+                       to retire a rule while keeping its violation history intact.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn update_principle(
         &self,
@@ -145,8 +159,15 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Delete principle",
         description = "Delete a principle. Every violation link to it is removed, and the \
-                       trades that carried them are updated accordingly."
+                       trades that carried them are updated accordingly.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn delete_principle(
         &self,
@@ -166,11 +187,18 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Flag principle violation",
         description = "Record that a trade broke one or more of the user's principles — or \
                        clear such a record. This is what turns a written rule into a measured \
                        one: violations feed the discipline analytics and the per-principle \
                        cost. A principle can only be violated by a trade in the account it \
-                       governs. Prefer mode=\"add\" so you never erase the user's own judgment."
+                       governs. Prefer mode=\"add\" so you never erase the user's own judgment.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn flag_violation(
         &self,

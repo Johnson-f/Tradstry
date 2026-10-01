@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{HashMap, HashSet};
 
-use super::playbook_table;
+use super::{playbook_table, workspaces_table};
 use crate::service::db::client::sea_orm_connection;
 use crate::service::db::entities::trading::trading_principles;
 
@@ -286,6 +286,13 @@ pub async fn create_principle(
     let workspace_id = normalize_required_text(&input.workspace_id, "workspace_id")?;
     let prepared = prepare_new_principle(input)?;
 
+    // `trading_principles` has no composite `(workspace_id, user_id)` foreign key.
+    ensure!(
+        workspaces_table::find_workspace(pool, &workspace_id, user_id)
+            .await?
+            .is_some(),
+        "workspace {workspace_id} not found"
+    );
     ensure_playbook_owned(
         pool,
         user_id,
@@ -660,12 +667,59 @@ const DELTA_COLS: &str = "id, workspace_id, playbook_id, evidence_note_id, title
     to_char(deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS deleted_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at";
 
+/// The sync path's counterpart to the online checks: every id a client sends must
+/// be the caller's, since the foreign keys check only that each id exists.
+/// Tombstoned playbooks and notes still count so offline edits are not dropped.
+async fn ensure_principle_refs_owned_tx(
+    conn: &mut PgConnection,
+    user_id: &str,
+    args: &PrincipleWriteArgs,
+) -> Result<()> {
+    ensure!(
+        workspaces_table::find_workspace(&mut *conn, &args.workspace_id, user_id)
+            .await?
+            .is_some(),
+        "workspace {} not found",
+        args.workspace_id
+    );
+    if let Some(playbook_id) = args.playbook_id.as_deref() {
+        let owned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id = $1 AND user_id = $2)",
+        )
+        .bind(playbook_id)
+        .bind(user_id)
+        .fetch_one(&mut *conn)
+        .await
+        .context("Failed to verify principle playbook")?;
+        ensure!(owned, "playbook {playbook_id} not found");
+    }
+    if let Some(note_id) = args.evidence_note_id.as_deref() {
+        let owned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM notebook_notes \
+             WHERE id = $1 AND user_id = $2 AND workspace_id = $3)",
+        )
+        .bind(note_id)
+        .bind(user_id)
+        .bind(&args.workspace_id)
+        .fetch_one(&mut *conn)
+        .await
+        .context("Failed to verify principle evidence note")?;
+        ensure!(
+            owned,
+            "evidence note {note_id} not found in workspace {}",
+            args.workspace_id
+        );
+    }
+    Ok(())
+}
+
 pub async fn create_principle_tx(
     conn: &mut PgConnection,
     user_id: &str,
     args: &PrincipleWriteArgs,
     hlc: &str,
 ) -> Result<()> {
+    ensure_principle_refs_owned_tx(conn, user_id, args).await?;
     sqlx::query(
         "INSERT INTO trading_principles \
          (id, user_id, workspace_id, playbook_id, evidence_note_id, title, the_rule, why, intervention, priority, is_active, hlc) \
@@ -696,6 +750,7 @@ pub async fn update_principle_tx(
     args: &PrincipleWriteArgs,
     hlc: &str,
 ) -> Result<()> {
+    ensure_principle_refs_owned_tx(conn, user_id, args).await?;
     sqlx::query(
         "UPDATE trading_principles SET workspace_id = $1, playbook_id = $2, evidence_note_id = $3, \
          title = $4, the_rule = $5, why = $6, intervention = $7, priority = $8, is_active = $9, \

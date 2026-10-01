@@ -70,10 +70,17 @@ pub struct SetTradePlaybookParams {
 #[tool_router(router = playbook_write_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Create playbook",
         description = "Create a trading playbook: a named setup with its entry, exit and \
                        position-sizing rules. Playbooks are how trades get attributed to a \
                        strategy, and `get_playbook` reports each one's realized win rate and \
-                       P&L. Returns the playbook id."
+                       P&L. Returns the playbook id.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn create_playbook(
         &self,
@@ -103,8 +110,15 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Update playbook",
         description = "Edit a playbook's rules. Only the fields you pass are changed; omit \
-                       the rest. Use this to refine a setup as the user learns what works."
+                       the rest. Use this to refine a setup as the user learns what works.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn update_playbook(
         &self,
@@ -135,9 +149,16 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Delete playbook",
         description = "Delete a playbook. Refused while any trading principle still \
                        references it — detach or delete those principles first. Trades that \
-                       used the playbook keep their history and become unattributed."
+                       used the playbook keep their history and become unattributed.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn delete_playbook(
         &self,
@@ -159,9 +180,16 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Set trade playbook",
         description = "Attribute a trade to a playbook, or detach it by omitting playbook_id. \
                        This is what makes `get_playbook` and the by-playbook analytics \
-                       breakdown meaningful, so attributing untagged trades is high value."
+                       breakdown meaningful, so attributing untagged trades is high value.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn set_trade_playbook(
         &self,

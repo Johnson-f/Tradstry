@@ -27,7 +27,14 @@ pub struct GetPlaybookParams {
 #[tool_router(router = playbook_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
-        description = "Get one workspace's trading playbooks with full details (edge, entry/exit/position-sizing/additional rules) and performance stats (win rate, profit, trade count). Pass workspace_id from list_workspaces. Pass playbook_id for one; omit for all."
+        title = "Get playbooks",
+        description = "Get one workspace's trading playbooks with full details (edge, entry/exit/position-sizing/additional rules) and performance stats (win rate, profit, trade count). Pass workspace_id from list_workspaces. Pass playbook_id for one; omit for all.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn get_playbook(
         &self,

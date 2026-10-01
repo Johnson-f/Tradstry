@@ -67,6 +67,39 @@ pub async fn create_user(
     Ok(model.into())
 }
 
+/// Fill in an email or full name that is still blank, leaving any value already
+/// stored untouched. A user first seen through a token without those claims is
+/// created with blanks, and nothing else ever updates the profile.
+pub async fn fill_blank_profile(
+    db: &DatabaseConnection,
+    user: User,
+    full_name: &str,
+    email: &str,
+) -> Result<User> {
+    let fill_name = user.full_name.is_empty() && !full_name.is_empty();
+    let fill_email = user.email.is_empty() && !email.is_empty();
+    if !fill_name && !fill_email {
+        return Ok(user);
+    }
+
+    let mut model = users::ActiveModel {
+        id: Set(user.id.clone()),
+        ..Default::default()
+    };
+    if fill_name {
+        model.full_name = Set(full_name.to_owned());
+    }
+    if fill_email {
+        model.email = Set(email.to_owned());
+    }
+    model.updated_at = Set(Utc::now().fixed_offset());
+    Ok(model
+        .update(db)
+        .await
+        .context("Failed to fill blank user profile")?
+        .into())
+}
+
 pub async fn find_or_create_user(
     db: &DatabaseConnection,
     clerk_uuid: &str,

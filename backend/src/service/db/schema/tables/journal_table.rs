@@ -675,8 +675,19 @@ fn build_filtered_sql(filter: &JournalFilter) -> String {
         Some(false) => sql.push_str(" AND stop_loss IS NULL"),
     }
     if filter.mistake_contains.is_some() {
+        // Mistakes are recorded as `mistake`-role tags now; the freeform `mistakes`
+        // column is frozen legacy data. Match either, with the one bound pattern.
         n += 1;
-        sql.push_str(&format!(" AND mistakes ILIKE ${n} ESCAPE '\\'"));
+        sql.push_str(&format!(
+            " AND (mistakes ILIKE ${n} ESCAPE '\\' OR EXISTS (\
+             SELECT 1 FROM trade_tags tt \
+             JOIN tags t ON t.id = tt.tag_id \
+             JOIN tag_categories c ON c.id = t.category_id \
+             WHERE tt.journal_entry_id = journal_entries.id \
+               AND t.user_id = journal_entries.user_id \
+               AND t.deleted_at IS NULL AND c.role = 'mistake' \
+               AND t.name ILIKE ${n} ESCAPE '\\'))"
+        ));
     }
     if filter.date_from.is_some() {
         n += 1;
@@ -1914,7 +1925,8 @@ mod tests {
             mistake_contains: Some("30-min".into()),
             ..empty_filter()
         });
-        assert!(sql.contains("AND mistakes ILIKE $2 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("mistakes ILIKE $2 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("t.name ILIKE $2 ESCAPE '\\'"), "{sql}");
         assert!(sql.trim_end().ends_with("LIMIT $3"), "{sql}");
     }
 
@@ -1934,7 +1946,8 @@ mod tests {
         assert!(sql.contains("AND playbook_id IS NULL"), "{sql}");
         assert!(sql.contains("AND status = $3"), "{sql}");
         assert!(sql.contains("AND stop_loss IS NOT NULL"), "{sql}");
-        assert!(sql.contains("AND mistakes ILIKE $4 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("mistakes ILIKE $4 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("t.name ILIKE $4 ESCAPE '\\'"), "{sql}");
         assert!(sql.trim_end().ends_with("LIMIT $5"), "{sql}");
     }
 
@@ -1960,7 +1973,8 @@ mod tests {
         assert!(sql.contains("AND status = $5"), "{sql}");
         assert!(sql.contains("AND total_pl >= $6"), "{sql}");
         assert!(sql.contains("AND total_pl <= $7"), "{sql}");
-        assert!(sql.contains("AND mistakes ILIKE $8 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("mistakes ILIKE $8 ESCAPE '\\'"), "{sql}");
+        assert!(sql.contains("t.name ILIKE $8 ESCAPE '\\'"), "{sql}");
         assert!(sql.contains("'YYYY-MM-DD') >= $9"), "{sql}");
         assert!(sql.contains("'YYYY-MM-DD') <= $10"), "{sql}");
         assert!(sql.trim_end().ends_with("LIMIT $11"), "{sql}");

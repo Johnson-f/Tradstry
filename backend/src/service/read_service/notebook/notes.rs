@@ -12,6 +12,22 @@ pub async fn list_notebook_notes(
     notes::list_notebook_notes(user_db.pool(), user_db.user_id(), workspace_id).await
 }
 
+pub async fn list_notebook_notes_page(
+    user_db: &UserDb,
+    workspace_id: Option<&str>,
+    after_note_id: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<NotebookNote>, bool)> {
+    notes::list_notebook_notes_page(
+        user_db.pool(),
+        user_db.user_id(),
+        workspace_id,
+        after_note_id,
+        limit,
+    )
+    .await
+}
+
 pub async fn get_notebook_note(user_db: &UserDb, id: &str) -> Result<Option<NotebookNote>> {
     notes::find_notebook_note(user_db.pool(), id, user_db.user_id()).await
 }

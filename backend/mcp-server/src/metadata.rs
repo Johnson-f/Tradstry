@@ -1,8 +1,9 @@
 //! OAuth 2.0 Protected Resource Metadata (RFC 9728)
 //!
 //! Serves the RFC 9728 protected-resource document at both the origin-level
-//! and path-specific well-known URLs. MCP clients differ on which discovery
-//! form they probe, so both routes intentionally return the same document.
+//! and path-specific well-known URLs, since MCP clients differ on which form they
+//! probe. Each names the resource its URL was derived from: the origin for the
+//! root document and the `/mcp` endpoint for the path-specific one.
 
 use axum::{
     Json,
@@ -17,6 +18,9 @@ use crate::app_state::AppState;
 
 pub const ROOT_METADATA_PATH: &str = "/.well-known/oauth-protected-resource";
 pub const MCP_METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
+pub const OPENAI_APPS_CHALLENGE_PATH: &str = "/.well-known/openai-apps-challenge";
+/// Where the MCP service is mounted; the protected resource clients connect to.
+pub const MCP_PATH: &str = "/mcp";
 
 /// Build the RFC 9728 Protected Resource Metadata document.
 ///
@@ -48,17 +52,45 @@ fn discovery_headers() -> HeaderMap {
     headers
 }
 
-/// Public discovery handler. CORS is included because some MCP clients fetch
+/// Origin-level discovery. CORS is included because some MCP clients fetch
 /// well-known metadata from a browser context before starting OAuth.
-pub async fn handler(State(state): State<Arc<AppState>>) -> Response {
+pub async fn root_handler(State(state): State<Arc<AppState>>) -> Response {
+    discovery_response(&state.public_url, &state.clerk_issuer)
+}
+
+/// Path-specific discovery for the `/mcp` endpoint, the document the 401
+/// challenge points clients at.
+pub async fn mcp_handler(State(state): State<Arc<AppState>>) -> Response {
+    discovery_response(&mcp_resource(&state.public_url), &state.clerk_issuer)
+}
+
+pub fn mcp_resource(public_url: &str) -> String {
+    format!("{}{MCP_PATH}", public_url.trim_end_matches('/'))
+}
+
+fn discovery_response(resource: &str, auth_server: &str) -> Response {
     (
         discovery_headers(),
-        Json(protected_resource_metadata(
-            &state.public_url,
-            &state.clerk_issuer,
-        )),
+        Json(protected_resource_metadata(resource, auth_server)),
     )
         .into_response()
+}
+
+/// OpenAI's plugin portal fetches this to verify domain ownership and expects the
+/// bare token as the whole body, not JSON.
+pub async fn openai_apps_challenge_handler(State(state): State<Arc<AppState>>) -> Response {
+    openai_apps_challenge_response(state.openai_apps_challenge.as_deref())
+}
+
+fn openai_apps_challenge_response(token: Option<&str>) -> Response {
+    match token {
+        Some(token) => (
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            token.to_owned(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// CORS preflight for both protected-resource discovery URLs.
@@ -91,11 +123,45 @@ mod tests {
     }
 
     #[test]
+    fn path_specific_document_names_the_mcp_endpoint() {
+        assert_eq!(
+            mcp_resource("https://mcp.tradstry.com"),
+            "https://mcp.tradstry.com/mcp"
+        );
+        assert_eq!(
+            mcp_resource("https://mcp.tradstry.com/"),
+            "https://mcp.tradstry.com/mcp"
+        );
+    }
+
+    #[test]
     fn exposes_origin_and_path_specific_discovery_locations() {
         assert_eq!(ROOT_METADATA_PATH, "/.well-known/oauth-protected-resource");
         assert_eq!(
             MCP_METADATA_PATH,
             "/.well-known/oauth-protected-resource/mcp"
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_challenge_serves_the_bare_token() {
+        let response = openai_apps_challenge_response(Some("abc123"));
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/plain; charset=utf-8"
+        );
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"abc123");
+    }
+
+    #[test]
+    fn openai_challenge_is_absent_until_configured() {
+        assert_eq!(
+            openai_apps_challenge_response(None).status(),
+            StatusCode::NOT_FOUND
         );
     }
 

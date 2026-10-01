@@ -46,8 +46,8 @@ pub struct QueryTradesParams {
     pub max_pl_pct: Option<f64>,
     /// `true` = only trades with a stop-loss set; `false` = only trades with no stop.
     pub has_stop_loss: Option<bool>,
-    /// Case-insensitive substring to search for within each trade's `mistakes` notes
-    /// (e.g. "30-min rule"). Filtered server-side.
+    /// Case-insensitive substring matched against the names of the trade's
+    /// `mistake`-role tags and its legacy mistake notes (e.g. "30-min rule").
     pub mistake_contains: Option<String>,
     /// Optional inclusive lower bound on the trade close date (ISO 8601, e.g. "2025-01-01").
     pub date_from: Option<String>,
@@ -107,7 +107,14 @@ fn decode_cursor(cursor: &str) -> Option<(String, String)> {
 #[tool_router(router = journal_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
-        description = "Query the user's journaled trades. IMPORTANT — money vs percent: `pl_dollars` is the realized P&L in account currency and is the ONLY field to sum or total; `pl_percent` is the percent change from entry to exit and must never be added up or reported as money. Optional filters, all applied in SQL: symbol, account, playbook (or untagged-only), status (profit/loss), percent-P/L range (min_pl_pct/max_pl_pct, in percent), stop-loss presence (has_stop_loss), a case-insensitive substring match on the mistakes field (mistake_contains), and inclusive close-date range. Each trade carries its current `tags` (each with the category `role`) and `violated_principle_ids`, so you can see what is already linked before calling tag_trade or flag_violation — a tag whose role is `mistake` is what marks a trade flawed. Fields that are unset for a trade are omitted from the response. Row limit defaults to 50 (max 500)."
+        title = "Query trades",
+        description = "Query the user's journaled trades. IMPORTANT — money vs percent: `pl_dollars` is the realized P&L in account currency and is the ONLY field to sum or total; `pl_percent` is the percent change from entry to exit and must never be added up or reported as money. Optional filters, all applied in SQL: symbol, account, playbook (or untagged-only), status (profit/loss), percent-P/L range (min_pl_pct/max_pl_pct, in percent), stop-loss presence (has_stop_loss), a case-insensitive substring match on the trade's mistakes: its `mistake`-role tag names or legacy mistake notes (mistake_contains), and inclusive close-date range. Each trade carries its current `tags` (each with the category `role`) and `violated_principle_ids`, so you can see what is already linked before calling tag_trade or flag_violation — a tag whose role is `mistake` is what marks a trade flawed. Fields that are unset for a trade are omitted from the response. Row limit defaults to 50 (max 500).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn query_trades(
         &self,
@@ -199,7 +206,14 @@ impl TradstryMcp {
     }
 
     #[tool(
-        description = "Semantically search the user's trades and notes. Requires a workspace_id — call list_workspaces first to obtain one."
+        title = "Search trades and notes",
+        description = "Semantically search the user's trades and notes. Requires a workspace_id — call list_workspaces first to obtain one.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn search_trades(
         &self,

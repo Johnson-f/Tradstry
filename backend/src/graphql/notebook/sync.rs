@@ -395,7 +395,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "renameFolder" => {
             let a: RenameFolderArgs = serde_json::from_str(&m.args)?;
-            folders::rename_notebook_folder_tx(conn, &a.id, &a.name, &m.hlc).await?;
+            folders::rename_notebook_folder_tx(conn, user_id, &a.id, &a.name, &m.hlc).await?;
         }
         "deleteFolder" => {
             let a: IdArgs = serde_json::from_str(&m.args)?;
@@ -413,6 +413,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
             };
             folders::move_notebook_node_tx(
                 conn,
+                user_id,
                 MoveNotebookNodeInput {
                     workspace_id: a.workspace_id,
                     node_id: a.node_id,

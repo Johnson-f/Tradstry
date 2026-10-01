@@ -24,7 +24,14 @@ pub struct ListWorkspacesParams {}
 #[tool_router(router = workspaces_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
-        description = "List the user's trading workspaces (id, name, asset class, broker, currency). Call this first to obtain a workspace_id for calculate_analytics, advanced_analytics, or search_trades. A workspace can have at most one brokerage account. `total_value` is omitted when the broker reports none — absent means unknown, not zero."
+        title = "List workspaces",
+        description = "List the user's trading workspaces (id, name, asset class, broker, currency). Call this first to obtain a workspace_id for calculate_analytics, advanced_analytics, or search_trades. A workspace can have at most one brokerage account. `total_value` is omitted when the broker reports none — absent means unknown, not zero.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn list_workspaces(
         &self,

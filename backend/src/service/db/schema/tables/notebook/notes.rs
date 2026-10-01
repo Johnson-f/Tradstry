@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use super::super::workspaces_table;
 use super::crdt;
+use super::folders::ensure_folder_in_workspace;
 use super::images::{self, NotebookImage};
 use crate::service::notebook::document::normalize_document_json;
 
@@ -227,6 +228,9 @@ async fn prepare_create_note(
     let (document_json, title) = normalize_document_json(&input.document_json)?;
     let trade_ids = normalize_trade_ids(input.trade_ids)?;
     validate_trade_ids(conn, user_id, &workspace_id, &trade_ids).await?;
+    if let Some(folder_id) = input.folder_id.as_deref() {
+        ensure_folder_in_workspace(conn, user_id, &workspace_id, folder_id).await?;
+    }
 
     Ok(PreparedNotebookNote {
         workspace_id,
@@ -262,7 +266,10 @@ async fn prepare_update_note(
     validate_trade_ids(conn, user_id, &workspace_id, &trade_ids).await?;
 
     let folder_id = match input.folder_id {
-        Some(folder_id) => Some(folder_id),
+        Some(folder_id) => {
+            ensure_folder_in_workspace(conn, user_id, &workspace_id, &folder_id).await?;
+            Some(folder_id)
+        }
         None => current.folder_id.clone(),
     };
 
@@ -423,12 +430,67 @@ pub async fn list_notebook_notes(
     }
     .context("Failed to list notebook notes")?;
 
-    // Materialize the note rows once (preserving the sort_order ASC, updated_at DESC
-    // ordering from the query above), then fetch all trade links and images for the
-    // whole set in two batched queries instead of 2N per-note round-trips. Total: 3
-    // queries regardless of note count.
+    hydrate_notes(pool, user_id, &rows).await
+}
+
+/// One page of notes, newest first by `(created_at, id)`.
+/// Unlike the editor's `sort_order, updated_at` order, neither key moves when a note
+/// is edited, so pages never skip or repeat a note. `after_note_id` is the last id of
+/// the previous page; a tombstoned note still anchors the page because its row stays.
+/// Returns at most `limit` notes plus whether more follow.
+pub async fn list_notebook_notes_page(
+    pool: &PgPool,
+    user_id: &str,
+    workspace_id: Option<&str>,
+    after_note_id: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<NotebookNote>, bool)> {
+    if let Some(after) = after_note_id {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM notebook_notes WHERE id = $1 AND user_id = $2)",
+        )
+        .bind(after)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .context("Failed to resolve notebook page cursor")?;
+        ensure!(exists, "unknown notebook page cursor '{after}'");
+    }
+
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM notebook_notes \
+         WHERE user_id = $1 AND deleted_at IS NULL \
+           AND ($2::text IS NULL OR workspace_id = $2) \
+           AND ($3::text IS NULL OR (created_at, id) < \
+                (SELECT created_at, id FROM notebook_notes WHERE id = $3 AND user_id = $1)) \
+         ORDER BY created_at DESC, id DESC \
+         LIMIT $4"
+    );
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+        .bind(user_id)
+        .bind(workspace_id)
+        .bind(after_note_id)
+        .bind(limit as i64 + 1)
+        .fetch_all(pool)
+        .await
+        .context("Failed to page notebook notes")?;
+
+    let has_more = rows.len() > limit;
+    let mut notes = hydrate_notes(pool, user_id, &rows[..rows.len().min(limit)]).await?;
+    notes.truncate(limit);
+    Ok((notes, has_more))
+}
+
+/// Materialize the note rows once (preserving the query's order), then fetch all
+/// trade links and images for the whole set in two batched queries instead of 2N
+/// per-note round-trips.
+async fn hydrate_notes(
+    pool: &PgPool,
+    user_id: &str,
+    rows: &[sqlx::postgres::PgRow],
+) -> Result<Vec<NotebookNote>> {
     let mut note_rows = Vec::with_capacity(rows.len());
-    for row in &rows {
+    for row in rows {
         note_rows.push(row_to_notebook_note_row(row)?);
     }
 

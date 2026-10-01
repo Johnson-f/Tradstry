@@ -22,9 +22,8 @@ pub struct CalculateAnalyticsParams {
     /// Trading account id to compute analytics for. Required: analytics are
     /// aggregated per account.
     pub workspace_id: Option<String>,
-    /// Optional inclusive start date for the analytics window (ISO 8601). When
-    /// both `date_from` and `date_to` are supplied a custom range is used;
-    /// otherwise the last year is used.
+    /// Optional inclusive start date for the analytics window (ISO 8601). Supply
+    /// it together with `date_to`; omit both to use the last year.
     pub date_from: Option<String>,
     /// Optional inclusive end date for the analytics window (ISO 8601).
     pub date_to: Option<String>,
@@ -40,9 +39,8 @@ pub struct AdvancedAnalyticsParams {
     /// Trading account id to compute advanced analytics for. Required: analytics
     /// are aggregated per account.
     pub workspace_id: Option<String>,
-    /// Optional inclusive start date for the analytics window (ISO 8601). When
-    /// both `date_from` and `date_to` are supplied a custom range is used;
-    /// otherwise the last year is used.
+    /// Optional inclusive start date for the analytics window (ISO 8601). Supply
+    /// it together with `date_to`; omit both to use the last year.
     pub date_from: Option<String>,
     /// Optional inclusive end date for the analytics window (ISO 8601).
     pub date_to: Option<String>,
@@ -52,10 +50,36 @@ pub struct AdvancedAnalyticsParams {
     pub include: Option<Vec<String>>,
 }
 
+/// Both bounds or neither. Dropping a lone bound would silently answer for the
+/// last year instead of the range the caller asked about.
+fn time_filter(
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<AnalyticsTimeFilter, ErrorData> {
+    match (date_from, date_to) {
+        (Some(start_date), Some(end_date)) => Ok(AnalyticsTimeFilter::Custom {
+            start_date,
+            end_date,
+        }),
+        (None, None) => Ok(AnalyticsTimeFilter::Last1Year),
+        _ => Err(ErrorData::invalid_params(
+            "date_from and date_to must be supplied together",
+            None,
+        )),
+    }
+}
+
 #[tool_router(router = analytics_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
-        description = "Compute the user's trading analytics (win rate, profit factor, R multiples). Requires a workspace_id — call list_workspaces first to obtain one."
+        title = "Calculate trading analytics",
+        description = "Compute the user's trading analytics (win rate, profit factor, R multiples). Requires a workspace_id — call list_workspaces first to obtain one.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn calculate_analytics(
         &self,
@@ -69,13 +93,7 @@ impl TradstryMcp {
             ErrorData::invalid_params("workspace_id is required for analytics", None)
         })?;
 
-        let time_filter = match (params.date_from, params.date_to) {
-            (Some(start_date), Some(end_date)) => AnalyticsTimeFilter::Custom {
-                start_date,
-                end_date,
-            },
-            _ => AnalyticsTimeFilter::Last1Year,
-        };
+        let time_filter = time_filter(params.date_from, params.date_to)?;
 
         let user_db = self.synced_user_db(&u.user_id).await?;
 
@@ -99,7 +117,14 @@ impl TradstryMcp {
     }
 
     #[tool(
-        description = "Advanced trading analytics — expectancy ($/R), SQN, max drawdown, recovery factor, equity curve, R-distribution, streaks, holding time, and breakdowns by symbol/day-of-week/session/playbook plus behavioral (mistake cost). Requires a workspace_id — call list_workspaces first to obtain one."
+        title = "Advanced trading analytics",
+        description = "Advanced trading analytics — expectancy ($/R), SQN, max drawdown, recovery factor, equity curve, R-distribution, streaks, holding time, and breakdowns by symbol/day-of-week/session/playbook plus behavioral (mistake cost). Requires a workspace_id — call list_workspaces first to obtain one.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn advanced_analytics(
         &self,
@@ -113,13 +138,7 @@ impl TradstryMcp {
             ErrorData::invalid_params("workspace_id is required for analytics", None)
         })?;
 
-        let time_filter = match (params.date_from, params.date_to) {
-            (Some(start_date), Some(end_date)) => AnalyticsTimeFilter::Custom {
-                start_date,
-                end_date,
-            },
-            _ => AnalyticsTimeFilter::Last1Year,
-        };
+        let time_filter = time_filter(params.date_from, params.date_to)?;
 
         let user_db = self.synced_user_db(&u.user_id).await?;
 
@@ -140,5 +159,24 @@ impl TradstryMcp {
             ),
             None,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lone_date_bound_is_rejected() {
+        assert!(time_filter(Some("2026-01-01".into()), None).is_err());
+        assert!(time_filter(None, Some("2026-06-30".into())).is_err());
+    }
+
+    #[test]
+    fn no_bounds_means_the_last_year() {
+        assert!(matches!(
+            time_filter(None, None),
+            Ok(AnalyticsTimeFilter::Last1Year)
+        ));
     }
 }

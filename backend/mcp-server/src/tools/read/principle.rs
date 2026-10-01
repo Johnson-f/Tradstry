@@ -26,12 +26,19 @@ pub struct GetPrinciplesParams {
 #[tool_router(router = principle_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Get trading principles",
         description = "Get the user's trading principles for an account: the rule, why it exists, \
                        the intervention that enforces it, and what breaking it has cost (violation \
                        count, cumulative P&L in dollars and percent, win rate on violating trades). \
                        Covers account-wide principles (playbookId null) and playbook-scoped ones. \
                        Requires workspace_id — call list_workspaces first. Pass playbook_id to narrow \
-                       to that playbook's principles plus the account-wide ones."
+                       to that playbook's principles plus the account-wide ones.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn get_principles(
         &self,

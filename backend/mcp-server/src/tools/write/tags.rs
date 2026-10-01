@@ -82,11 +82,18 @@ pub struct MergeTagsParams {
 #[tool_router(router = tags_write_router, vis = "pub")]
 impl TradstryMcp {
     #[tool(
+        title = "Create tag",
         description = "Create a tag, or return it if it already exists. Tags are how a trade's \
                        qualities become queryable and priced: a tag in the `mistake`-role \
                        category marks the trade as flawed, which is what the clean-vs-flawed \
                        and mistake-cost analytics are computed from. Call `list_tags` first to \
-                       see the existing taxonomy — reuse a tag rather than inventing a synonym."
+                       see the existing taxonomy — reuse a tag rather than inventing a synonym.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn create_tag(
         &self,
@@ -160,10 +167,17 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Tag trade",
         description = "Attach tags to a trade, or detach them. mode=\"add\" keeps the tags the \
                        trade already has; mode=\"set\" replaces them entirely (this discards \
                        the user's own tags, so only use it when you mean to); \
-                       mode=\"remove\" detaches just the ones you name."
+                       mode=\"remove\" detaches just the ones you name.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     pub async fn tag_trade(
         &self,
@@ -220,8 +234,15 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Delete tag",
         description = "Delete a tag. It is detached from every trade that carried it, and \
-                       those trades keep their history."
+                       those trades keep their history.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn delete_tag(
         &self,
@@ -241,10 +262,17 @@ impl TradstryMcp {
     }
 
     #[tool(
+        title = "Merge tags",
         description = "Fold a duplicate tag into another: every trade tagged with `from` ends \
                        up tagged with `into`, and `from` is deleted. Use this to clean up \
                        synonyms (\"chased\" and \"chasing\") so the analytics stop splitting \
-                       one behaviour across two tags."
+                       one behaviour across two tags.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     pub async fn merge_tags(
         &self,

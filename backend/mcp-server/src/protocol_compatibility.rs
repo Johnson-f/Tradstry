@@ -1,6 +1,6 @@
 use rmcp::{
     ServerHandler,
-    model::{Implementation, ServerCapabilities, ServerInfo},
+    model::{Implementation, ServerCapabilities, ServerConfig},
     transport::streamable_http_server::{
         StreamableHttpService, session::local::LocalSessionManager,
     },
@@ -13,8 +13,8 @@ use crate::mcp_server_config;
 struct CompatibilityServer;
 
 impl ServerHandler for CompatibilityServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("tradstry-mcp-test", "1.0.0"))
     }
 }

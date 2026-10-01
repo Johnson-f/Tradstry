@@ -9,7 +9,7 @@ pub async fn list_notebook_folders(
     user_db: &UserDb,
     workspace_id: &str,
 ) -> Result<Vec<NotebookFolder>> {
-    folders::list_notebook_folders(user_db.pool(), workspace_id).await
+    folders::list_notebook_folders(user_db.pool(), user_db.user_id(), workspace_id).await
 }
 
 pub async fn create_notebook_folder(
@@ -20,11 +20,11 @@ pub async fn create_notebook_folder(
 }
 
 pub async fn rename_notebook_folder(user_db: &UserDb, id: &str, name: &str) -> Result<()> {
-    folders::rename_notebook_folder(user_db.pool(), id, name).await
+    folders::rename_notebook_folder(user_db.pool(), user_db.user_id(), id, name).await
 }
 
 pub async fn move_notebook_node(user_db: &UserDb, input: MoveNotebookNodeInput) -> Result<()> {
-    folders::move_notebook_node(user_db.pool(), input).await
+    folders::move_notebook_node(user_db.pool(), user_db.user_id(), input).await
 }
 
 /// Delete a notebook folder and its entire subtree (descendant folders + notes
