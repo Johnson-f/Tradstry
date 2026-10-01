@@ -9,7 +9,6 @@ use tokio::time::{Duration, sleep};
 use super::auth::resolve_workspace_session;
 use super::client::{BrokerageClient, ConnectionStatus};
 use super::transaction;
-use crate::service::countly::{Countly, clerk_id_for_user};
 use crate::service::db::Db;
 use crate::service::db::schema::tables::workspaces_table;
 use crate::service::redis::brokerage as brokerage_cache;
@@ -120,30 +119,7 @@ pub fn next_scheduled_sync(now: DateTime<Utc>) -> Option<DateTime<Utc>> {
 // Sync all connected accounts
 // ---------------------------------------------------------------------------
 
-/// The scheduler holds only the internal user id, so every event has to resolve
-/// the Clerk id first — anything else splits the person in two in Countly.
-async fn capture(
-    countly: Option<&Arc<Countly>>,
-    db: &Db,
-    user_id: &str,
-    event: &str,
-    props: serde_json::Value,
-) {
-    let Some(countly) = countly else {
-        return;
-    };
-    let Some(clerk_id) = clerk_id_for_user(db.pool(), user_id).await else {
-        return;
-    };
-    countly.capture(&clerk_id, event, props).await;
-}
-
-async fn sync_all_accounts(
-    db: &Db,
-    brokerage: &BrokerageClient,
-    redis: Option<&RedisClient>,
-    countly: Option<&Arc<Countly>>,
-) {
+async fn sync_all_accounts(db: &Db, brokerage: &BrokerageClient, redis: Option<&RedisClient>) {
     info!("[sync] Starting scheduled sync of all connected accounts");
 
     // Find all users who have accounts with snaptrade credentials
@@ -219,18 +195,6 @@ async fn sync_all_accounts(
                         "[sync] Failed to load workspace credentials for account {}: {e}",
                         workspace_id
                     );
-                    capture(
-                        countly,
-                        db,
-                        user_id,
-                        "brokerage_sync_failed",
-                        serde_json::json!({
-                            "broker": broker,
-                            "workspace_id": workspace_id,
-                            "reason": "credential_load_failed",
-                        }),
-                    )
-                    .await;
                     continue;
                 }
             };
@@ -396,18 +360,6 @@ async fn sync_all_accounts(
                     {
                         error!("[sync] Failed to flag disabled connection for {workspace_id}: {e}");
                     }
-                    capture(
-                        countly,
-                        db,
-                        user_id,
-                        "brokerage_sync_failed",
-                        serde_json::json!({
-                            "broker": broker,
-                            "workspace_id": workspace_id,
-                            "reason": "stale_credentials",
-                        }),
-                    )
-                    .await;
                     continue;
                 }
 
@@ -415,18 +367,6 @@ async fn sync_all_accounts(
                     "[sync] Failed to list SnapTrade accounts for {}: {e}",
                     workspace_id
                 );
-                capture(
-                    countly,
-                    db,
-                    user_id,
-                    "brokerage_sync_failed",
-                    serde_json::json!({
-                        "broker": broker,
-                        "workspace_id": workspace_id,
-                        "reason": "list_accounts_failed",
-                    }),
-                )
-                .await;
                 continue;
             }
             Err(_) => {
@@ -434,18 +374,6 @@ async fn sync_all_accounts(
                     "[sync] Timeout listing SnapTrade accounts for {}",
                     workspace_id
                 );
-                capture(
-                    countly,
-                    db,
-                    user_id,
-                    "brokerage_sync_failed",
-                    serde_json::json!({
-                        "broker": broker,
-                        "workspace_id": workspace_id,
-                        "reason": "list_accounts_timeout",
-                    }),
-                )
-                .await;
                 continue;
             }
         };
@@ -612,15 +540,6 @@ async fn sync_all_accounts(
 
         info!("[sync] Finished syncing account {}", workspace_id);
 
-        capture(
-            countly,
-            db,
-            user_id,
-            "brokerage_sync_completed",
-            serde_json::json!({ "broker": broker, "workspace_id": workspace_id }),
-        )
-        .await;
-
         // Invalidate cache for this account
         if let Some(redis) = redis {
             brokerage_cache::invalidate_account_cache(redis, user_id, workspace_id).await;
@@ -638,7 +557,6 @@ pub async fn run_sync_scheduler(
     db: Arc<Db>,
     brokerage: Arc<BrokerageClient>,
     redis: Option<Arc<RedisClient>>,
-    countly: Option<Arc<Countly>>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     info!("[sync] Brokerage sync scheduler started");
@@ -646,13 +564,7 @@ pub async fn run_sync_scheduler(
     // Test mode: sync immediately on startup
     if std::env::var("SYNC_TEST_NOW").unwrap_or_default() == "true" {
         info!("[sync] SYNC_TEST_NOW=true — running immediate sync");
-        sync_all_accounts(
-            &db,
-            &brokerage,
-            redis.as_ref().map(|r| r.as_ref()),
-            countly.as_ref(),
-        )
-        .await;
+        sync_all_accounts(&db, &brokerage, redis.as_ref().map(|r| r.as_ref())).await;
         info!("[sync] Test sync complete");
     }
 
@@ -688,13 +600,7 @@ pub async fn run_sync_scheduler(
                 weekday, hour, minute
             );
             last_sync_minute = Some(key);
-            sync_all_accounts(
-                &db,
-                &brokerage,
-                redis.as_ref().map(|r| r.as_ref()),
-                countly.as_ref(),
-            )
-            .await;
+            sync_all_accounts(&db, &brokerage, redis.as_ref().map(|r| r.as_ref())).await;
         }
     }
 }

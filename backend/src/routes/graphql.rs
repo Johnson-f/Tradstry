@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::graphql::AppSchema;
-use crate::service::countly::Countly;
 use crate::service::db::Db;
 use crate::service::upload::r2::R2Client;
 
@@ -30,7 +29,6 @@ pub async fn graphql_handler(
     http_req: HttpRequest,
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
-    countly: web::Data<Option<Arc<Countly>>>,
     req: GraphQLRequest,
 ) -> GraphQLResponse {
     let started_at = Instant::now();
@@ -66,9 +64,6 @@ pub async fn graphql_handler(
     }
     request = request.data(db.get_ref().clone());
     request = request.data(r2.get_ref().clone());
-    if let Some(countly) = countly.get_ref().clone() {
-        request = request.data(countly);
-    }
     request = request.data(async_graphql::dataloader::DataLoader::new(
         crate::graphql::tags::TagLoader {
             db: db.get_ref().clone(),
@@ -101,13 +96,11 @@ pub async fn graphiql() -> Result<HttpResponse> {
         .body(GraphiQLSource::build().endpoint("/graphql").finish()))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn graphql_ws_handler(
     schema: web::Data<AppSchema>,
     http_req: HttpRequest,
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
-    countly: web::Data<Option<Arc<Countly>>>,
     jwks: web::Data<Arc<MemoryCacheJwksProvider>>,
     payload: web::Payload,
 ) -> Result<HttpResponse> {
@@ -118,9 +111,6 @@ pub async fn graphql_ws_handler(
     }
     data.insert(db.get_ref().clone());
     data.insert(r2.get_ref().clone());
-    if let Some(countly) = countly.get_ref().clone() {
-        data.insert(countly);
-    }
     data.insert(crate::graphql::auth::RequestUser::default());
 
     GraphQLSubscription::new(schema.get_ref().clone())
