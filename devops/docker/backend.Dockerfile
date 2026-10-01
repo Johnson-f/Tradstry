@@ -3,7 +3,11 @@
 
 FROM rust:1.95-bookworm AS chef
 RUN cargo install cargo-chef --locked
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev mold && rm -rf /var/lib/apt/lists/*
+# mold links the two large binaries far faster than the default GNU ld. Set here so
+# the dependency cook and the final build share identical flags; any difference
+# would make cargo rebuild every dependency.
+ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 WORKDIR /app
 
 FROM chef AS planner
@@ -20,7 +24,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 # only with Cargo.lock, without exporting the per-commit source and build layers.
 FROM chef AS deps
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+# Cook exactly the packages and binaries the builder compiles. Cooking the whole
+# workspace resolves different dependency features, and the final build would then
+# recompile every dependency whose features differ.
+RUN cargo chef cook --release --recipe-path recipe.json \
+    -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
 
 FROM deps AS builder
 COPY Cargo.toml Cargo.lock ./

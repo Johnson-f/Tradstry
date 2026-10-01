@@ -51,7 +51,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Only the compiled-dependency layer is cached, in this repository's private
-      # Actions cache. It changes only with Cargo.lock, so each deploy reuses one entry
+      # Actions cache. Every step that builds on it must also list it in cache-from:
+      # a cache hit here does not load the layer into the builder. It changes only with Cargo.lock, so each deploy reuses one entry
       # instead of leaving its source and build layers behind. The Docker Hub repos are
       # public, so a registry cache would publish the source those layers contain.
       - name: Build Rust dependencies
@@ -72,6 +73,7 @@ jobs:
           target: backend
           build-contexts: |
             notebook-core=./packages/notebook-core
+          cache-from: type=gha,scope=backend-deps
           push: true
           tags: ${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
 
@@ -83,6 +85,7 @@ jobs:
           target: mcp
           build-contexts: |
             notebook-core=./packages/notebook-core
+          cache-from: type=gha,scope=backend-deps
           push: true
           tags: ${{ env.MCP_IMAGE }}:${{ env.IMAGE_TAG }}
 
