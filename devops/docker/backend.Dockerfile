@@ -16,9 +16,13 @@ COPY mcp-server ./mcp-server
 COPY migration ./migration
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef AS builder
+# Compiled dependencies only. Its own target so CI can cache this layer, which changes
+# only with Cargo.lock, without exporting the per-commit source and build layers.
+FROM chef AS deps
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
+
+FROM deps AS builder
 COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 COPY proto ./proto

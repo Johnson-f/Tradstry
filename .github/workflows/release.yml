@@ -26,24 +26,46 @@ jobs:
   build:
     name: Build immutable production images
     needs: verify
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      # The build summary stays on the run page; skip the per-build record artifact.
+      DOCKER_BUILD_RECORD_UPLOAD: false
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@9309da73a81f66976a6d750572e221508b1e2682 # v1.12.0
+      - name: Free disk space for the Rust release build
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Only the compiled-dependency layer is cached, in this repository's private
+      # Actions cache. It changes only with Cargo.lock, so each deploy reuses one entry
+      # instead of leaving its source and build layers behind. The Docker Hub repos are
+      # public, so a registry cache would publish the source those layers contain.
+      - name: Build Rust dependencies
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./backend
+          file: ./devops/docker/backend.Dockerfile
+          target: deps
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=backend-deps
+          cache-to: type=gha,scope=backend-deps,mode=min
+
       - name: Build and push backend
-        uses: useblacksmith/build-push-action@9b0579bbec7a6cad2f171596c57e7ac1e7658850 # v2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./backend
           file: ./devops/docker/backend.Dockerfile
@@ -54,7 +76,7 @@ jobs:
           tags: ${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
 
       - name: Build and push MCP server
-        uses: useblacksmith/build-push-action@9b0579bbec7a6cad2f171596c57e7ac1e7658850 # v2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./backend
           file: ./devops/docker/backend.Dockerfile
@@ -65,7 +87,7 @@ jobs:
           tags: ${{ env.MCP_IMAGE }}:${{ env.IMAGE_TAG }}
 
       - name: Build and push SnapTrade service
-        uses: useblacksmith/build-push-action@9b0579bbec7a6cad2f171596c57e7ac1e7658850 # v2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./microservice/snaptrade-service
           file: ./devops/docker/snaptrade.Dockerfile
@@ -75,7 +97,7 @@ jobs:
   deploy:
     name: Deploy production
     needs: build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
       name: Production
@@ -107,19 +129,17 @@ jobs:
   promote:
     name: Promote verified images to latest
     needs: deploy
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@9309da73a81f66976a6d750572e221508b1e2682 # v1.12.0
-
       - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Retags the pushed manifests in the registry; no builder needed.
       - name: Promote verified images to latest
         run: |
           docker buildx imagetools create \
