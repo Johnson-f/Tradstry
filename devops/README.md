@@ -8,7 +8,6 @@ All deployment and infrastructure configuration lives here.
 - `docker/` — backend, SnapTrade, and Postgres images
 - `caddy/` — reverse proxy and TLS routing
 - `scripts/` — database cutover, cleanup, SSH hardening, and local Redis tools
-- `bugsink/` — Bugsink environment template
 - `Makefile` — local services, deployment, and release helpers
 
 ## Production deployment
@@ -40,6 +39,5 @@ docker compose --env-file devops/.env -f devops/compose.yml up -d
 docker compose --env-file devops/.env -f devops/compose.yml logs -f
 ```
 
-Production secrets are ignored by Git and live beside the Compose file:
-`devops/.env`, `devops/countly.env`, `devops/countly-dashboard.env`, and
-`devops/bugsink/.env.production`.
+Production secrets are ignored by Git and live beside the Compose file in
+`devops/.env`.

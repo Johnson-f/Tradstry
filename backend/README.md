@@ -15,7 +15,7 @@ Rust backend built with Actix-Web and async-graphql. All data lives in a single 
 - **Cache:** Redis (optional — the server runs without it)
 - **Brokerage:** SnapTrade, via the Go microservice in `../microservice/snaptrade-service`
 - **Market data:** `finance-query` crate
-- **Observability:** `tracing` + Sentry (self-hosted Bugsink in production)
+- **Observability:** `tracing` + Sentry (hosted)
 
 SnapTrade webhooks enter Rust directly at `/webhooks/snaptrade`. Rust verifies
 SnapTrade's signature and replay window, persists the normalized event before
@@ -150,15 +150,8 @@ SYNC_TEST_NOW=false                          # true = sync every account once at
 # Cache — optional. Absent or unreachable, the server logs a warning and runs uncached.
 REDIS_URL=redis://localhost:6379
 
-# Product analytics — self-hosted Countly Lite. The backend uses the Clerk ID
-# as Countly's device ID, so its events and browser events share one profile.
-COUNTLY_APP_KEY=
-COUNTLY_HOST=https://countly.example.com
-# The frontend needs the same Countly app key and self-hosted URL at build time:
-NEXT_PUBLIC_COUNTLY_APP_KEY=
-NEXT_PUBLIC_COUNTLY_HOST=https://countly.example.com
 # Optional. Defaults to false, keeping all dashboard metrics visible. Set true
-# only to hide the secondary dashboard metrics; this replaces Countly Remote Config.
+# only to hide the secondary dashboard metrics.
 NEXT_PUBLIC_DASHBOARD_COMPACT_METRICS=false
 
 # Server

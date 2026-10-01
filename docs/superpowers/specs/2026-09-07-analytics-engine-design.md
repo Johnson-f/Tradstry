@@ -26,7 +26,7 @@ Product examples include “show profitable trades with their R numbers,” “a
 
 “Everything valid” means any well-typed request expressible with the installed language and authorized dataset catalog. A new metric or combination requires a definition, not new engine code. A new fundamental operator or new source mapping may require extending the engine or catalog. Arbitrary executable SQL, scripts, unavailable data, and unlimited computation are not part of this promise.
 
-This release provides requested calculations. The separate automatic pattern discovery and statistical follow-up feature described in `2026-08-30-behavior-insights-design.md` can later consume this engine; its autonomous search, evidence labels, and inference policies are not implicitly included here. Countly product-event reporting remains a separate subsystem.
+This release provides requested calculations. The separate automatic pattern discovery and statistical follow-up feature described in `2026-08-30-behavior-insights-design.md` can later consume this engine; its autonomous search, evidence labels, and inference policies are not implicitly included here.
 
 ## 2. Current implementation and required changes
 

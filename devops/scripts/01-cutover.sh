@@ -25,8 +25,7 @@ say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 
 say "Preflight"
 for f in devops/compose.yml devops/.env devops/caddy/Caddyfile \
-         devops/docker/postgres/Dockerfile devops/bugsink/.env.production \
-         devops/countly.env devops/countly-dashboard.env \
+         devops/docker/postgres/Dockerfile \
          backend/.env.production microservice/snaptrade-service/.env; do
   [ -f "$ROOT/$f" ] || { echo "MISSING: $f"; exit 1; }
 done
@@ -65,19 +64,15 @@ docker run --rm \
 CERTS
 
 say "Syncing config to $HOST"
-ssh "$HOST" "mkdir -p $REMOTE_DIR/{backend,microservice/snaptrade-service,devops/bugsink,devops/caddy,devops/docker/postgres}"
+ssh "$HOST" "mkdir -p $REMOTE_DIR/{backend,microservice/snaptrade-service,devops/caddy,devops/docker/postgres}"
 scp -q "$ROOT/devops/compose.yml"                     "$HOST:$REMOTE_DIR/devops/compose.yml"
 scp -q "$ROOT/devops/caddy/Caddyfile"                "$HOST:$REMOTE_DIR/devops/caddy/Caddyfile"
 scp -q "$ROOT/devops/docker/postgres/Dockerfile"     "$HOST:$REMOTE_DIR/devops/docker/postgres/Dockerfile"
 scp -q "$ROOT/devops/.env"                           "$HOST:$REMOTE_DIR/devops/.env"
-scp -q "$ROOT/devops/countly.env"                    "$HOST:$REMOTE_DIR/devops/countly.env"
-scp -q "$ROOT/devops/countly-dashboard.env"          "$HOST:$REMOTE_DIR/devops/countly-dashboard.env"
 scp -q "$ROOT/backend/.env.production"                "$HOST:$REMOTE_DIR/backend/.env"
 scp -q "$ROOT/microservice/snaptrade-service/.env"    "$HOST:$REMOTE_DIR/microservice/snaptrade-service/.env"
-scp -q "$ROOT/devops/bugsink/.env.production"         "$HOST:$REMOTE_DIR/devops/bugsink/.env.production"
-ssh "$HOST" "chmod 600 $REMOTE_DIR/devops/.env $REMOTE_DIR/devops/countly.env \
-             $REMOTE_DIR/devops/countly-dashboard.env $REMOTE_DIR/backend/.env \
-             $REMOTE_DIR/devops/bugsink/.env.production $REMOTE_DIR/microservice/snaptrade-service/.env"
+ssh "$HOST" "chmod 600 $REMOTE_DIR/devops/.env $REMOTE_DIR/backend/.env \
+             $REMOTE_DIR/microservice/snaptrade-service/.env"
 
 say "Cutover"
 ssh "$HOST" bash -euo pipefail -s -- "$STAMP" <<'CUTOVER'
@@ -135,7 +130,7 @@ say "Verifying"
 ssh "$HOST" bash -euo pipefail -s <<'VERIFY'
 fail=0
 compose() { docker compose --env-file /root/tradstry/devops/.env -f /root/tradstry/devops/compose.yml "$@"; }
-for u in https://backend.tradstry.com/health https://mcp.tradstry.com/health https://bugsink.tradstry.com/; do
+for u in https://backend.tradstry.com/health https://mcp.tradstry.com/health; do
   code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$u" || echo 000)
   printf '  %-40s %s\n' "$u" "$code"
   case "$code" in 2*|3*) ;; *) fail=1 ;; esac
