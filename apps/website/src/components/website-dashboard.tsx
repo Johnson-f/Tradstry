@@ -12,7 +12,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import * as React from "react";
 import { AccountDialog } from "@/components/account";
-import { Countly, countlyEnabled } from "@/lib/analytics/countly";
 import { SITE_URL } from "@/lib/site";
 
 const GRAPHQL_ENDPOINT =
@@ -72,11 +71,6 @@ export function WebsiteDashboard() {
       setTheme,
       features: {
         dashboardCompactMetrics: DASHBOARD_COMPACT_METRICS,
-      },
-      capture: (event, properties) => {
-        if (countlyEnabled()) {
-          Countly.add_event({ key: event, count: 1, segmentation: properties });
-        }
       },
       renderAccountDialog: (open, onOpenChange) => (
         <AccountDialog open={open} onOpenChange={onOpenChange} />

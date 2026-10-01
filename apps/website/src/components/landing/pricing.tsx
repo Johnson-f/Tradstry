@@ -6,33 +6,17 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
-import { capture, EVENTS } from "@/lib/analytics/events";
+import { useState } from "react";
 import { PLANS } from "./content";
 import { Reveal } from "./motion";
 import { Eyebrow, Heading, Lede, Section } from "./primitives";
 
 export function Pricing() {
   const [cadence, setCadence] = useState<"monthly" | "annual">("annual");
-  const sectionRef = useRef<HTMLDivElement | null>(null);
-  const fired = useRef(false);
   const reducedMotion = useReducedMotion() === true;
 
-  useEffect(() => {
-    const node = sectionRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && !fired.current) {
-        fired.current = true;
-        capture(EVENTS.pricingViewed, {});
-      }
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    <div ref={sectionRef}>
+    <div>
       <Section id="pricing" className="relative overflow-hidden">
         <Reveal className="relative max-w-3xl">
           <Eyebrow>Pricing</Eyebrow>
@@ -142,12 +126,6 @@ export function Pricing() {
                 </p>
                 <SignUpButton>
                   <Button
-                    onClick={() =>
-                      capture(EVENTS.ctaClicked, {
-                        location: "pricing",
-                        label: plan.cta,
-                      })
-                    }
                     className={cn(
                       "mt-5 h-11 w-full rounded-xl active:scale-[0.97]",
                       isPro

@@ -4,8 +4,6 @@ import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
-import { CountlyIdentify } from "@/components/providers/countly-identify";
-import { CountlyProvider } from "@/components/providers/countly-provider";
 import "./globals.css";
 import "@designcodeio/threeui/style.css";
 import { Toaster } from "@tradstry/app-ui/components/ui/sonner";
@@ -88,20 +86,17 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
         >
-          <CountlyProvider>
-            <CountlyIdentify />
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              <TooltipProvider>
-                {children}
-                <Toaster />
-              </TooltipProvider>
-            </ThemeProvider>
-          </CountlyProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <TooltipProvider>
+              {children}
+              <Toaster />
+            </TooltipProvider>
+          </ThemeProvider>
           <Analytics />
         </body>
       </html>

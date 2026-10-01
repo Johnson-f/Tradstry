@@ -18,7 +18,6 @@ import {
 	useSnapTradeOAuthAvailable,
 	useSnapTradeOAuthFlow,
 } from "@tradstry/app-ui/hooks/brokerage";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { platformUrl, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -35,7 +34,6 @@ export function BrokerageEmptyState() {
 		if (!workspace) return;
 
 		setConnecting(true);
-		capture(EVENTS.brokerageConnectStarted, {});
 
 		try {
 			// Build callback URL with workspaceId so the callback page knows which workspace to update

@@ -41,7 +41,6 @@ import {
 } from "@tradstry/app-ui/hooks/position-calculator";
 import { usePrinciples } from "@tradstry/app-ui/hooks/principle";
 import { useTagCategories } from "@tradstry/app-ui/hooks/tags";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as brokerageService from "@tradstry/app-ui/lib/service/brokerage";
 import type { BrokerageTransaction } from "@tradstry/app-ui/lib/types/brokerage";
@@ -453,7 +452,6 @@ export function MergeTradesModal({
           tagIds,
           violatedPrincipleIds: form.violatedPrincipleIds,
         });
-        capture(EVENTS.tradesMerged, { count: selectedTransactions.length });
         setOpen(false);
         onSuccess();
         return;
@@ -477,7 +475,6 @@ export function MergeTradesModal({
         contractMultiplier: defaults.contractMultiplier,
       });
       queryClient.invalidateQueries({ queryKey: ["linked-brokerage-tx-ids"] });
-      capture(EVENTS.tradesMerged, { count: selectedTransactions.length });
       setOpen(false);
       onSuccess();
     } catch (submitError) {

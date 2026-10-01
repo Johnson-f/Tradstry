@@ -6,9 +6,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { cn } from "@tradstry/app-ui/lib/utils";
-import { useEffect } from "react";
 
 export type DashboardErrorCategory = "network" | "session" | "unknown";
 
@@ -59,12 +57,6 @@ export function DashboardCardError({
 	onRetry: () => unknown;
 	className?: string;
 }) {
-	const category = dashboardErrorCategory(error);
-
-	useEffect(() => {
-		capture(EVENTS.dashboardCardFailed, { card: title, category });
-	}, [category, title]);
-
 	return (
 		<section
 			role="alert"

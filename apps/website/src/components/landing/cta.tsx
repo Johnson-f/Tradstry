@@ -2,7 +2,6 @@
 
 import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { capture, EVENTS } from "@/lib/analytics/events";
 import { Reveal } from "./motion";
 
 export function Cta() {
@@ -24,12 +23,6 @@ export function Cta() {
           <SignUpButton>
             <Button
               size="lg"
-              onClick={() =>
-                capture(EVENTS.ctaClicked, {
-                  location: "footer_cta",
-                  label: "Start free",
-                })
-              }
               className="h-12 rounded-xl bg-zinc-950 px-8 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
             >
               Start free

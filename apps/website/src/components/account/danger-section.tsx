@@ -14,7 +14,6 @@ import {
 } from "@/components/account/shared";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Input } from "@tradstry/app-ui/components/ui/input";
-import { capture, EVENTS } from "@/lib/analytics/events";
 
 const LOSSES = [
   "Every trade, tag and journal entry",
@@ -43,7 +42,6 @@ function DangerSectionBody({ user }: { user: ClerkUser }) {
     if (!matches) return;
     setBusy(true);
     setError(null);
-    capture(EVENTS.accountDeletionRequested, {});
     try {
       await deleteAccount();
       toast.success("Your account has been deleted.");

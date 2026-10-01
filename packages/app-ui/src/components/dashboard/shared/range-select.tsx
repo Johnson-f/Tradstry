@@ -8,7 +8,6 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@tradstry/app-ui/components/ui/select";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { RANGE_PRESETS } from "@tradstry/app-ui/lib/range-presets";
 import type { AnalyticsRange } from "@tradstry/app-ui/lib/types/analytics";
 
@@ -26,7 +25,6 @@ export function DashboardRangeSelect({
     <Select
       value={value}
       onValueChange={(v) => {
-        capture(EVENTS.analyticsRangeChanged, { range: v });
         onValueChange(v as AnalyticsRange);
       }}
     >

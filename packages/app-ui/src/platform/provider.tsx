@@ -2,7 +2,6 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
-import { configureCapture } from "../lib/analytics/events";
 import type { GraphQLFetcher, GraphQLSubscriber } from "../lib/client";
 import { configureBackendBaseUrl } from "../lib/client";
 
@@ -48,7 +47,6 @@ export type TradstryPlatform = {
   features?: {
     dashboardCompactMetrics?: boolean;
   };
-  capture?: (event: string, properties: Record<string, unknown>) => void;
   renderAccountDialog?: (
     open: boolean,
     onOpenChange: (open: boolean) => void,
@@ -75,7 +73,6 @@ export function TradstryProvider({
   children: React.ReactNode;
 }) {
   configureBackendBaseUrl(platform.backendBaseUrl);
-  configureCapture(platform.capture);
   const queryClientRef = React.useRef<QueryClient | null>(null);
   if (!queryClientRef.current) {
     queryClientRef.current = new QueryClient({

@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as playbookService from "@tradstry/app-ui/lib/service/playbook";
 import type {
@@ -76,7 +75,6 @@ export function useCreatePlaybook() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: PLAYBOOK_KEY });
-			capture(EVENTS.playbookCreated, {});
 		},
 	});
 }

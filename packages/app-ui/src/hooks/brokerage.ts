@@ -6,7 +6,6 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as brokerageService from "@tradstry/app-ui/lib/service/brokerage";
 import { snapTradeOAuthPhase } from "@tradstry/app-ui/lib/snaptrade-oauth-flow";
@@ -30,7 +29,6 @@ import type {
 	TransactionImportPolicy,
 	TransactionImportPolicyInput,
 } from "@tradstry/app-ui/lib/types/brokerage";
-import type { Workspace } from "@tradstry/app-ui/lib/types/workspaces";
 import { useAuth, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -462,12 +460,7 @@ export function useCompleteConnection() {
 	>({
 		mutationFn: ({ workspaceId, connectionId }) =>
 			brokerageService.completeConnection(fetcher, workspaceId, connectionId),
-		onSuccess: (_data, { workspaceId }) => {
-			// Read before invalidating; the broker name only exists on the cached account.
-			const broker = queryClient
-				.getQueryData<Workspace[]>(["workspaces"])
-				?.find((account) => account.id === workspaceId)?.broker;
-			capture(EVENTS.brokerageConnected, { broker: broker ?? "unknown" });
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["workspaces"] });
 		},
 	});

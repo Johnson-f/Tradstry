@@ -3,7 +3,6 @@
 import { useAuth } from "@tradstry/app-ui/platform";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as notebookService from "@tradstry/app-ui/lib/service/notebook";
 import type {
@@ -33,18 +32,6 @@ const foldersKey = (workspaceId?: string | null) =>
 const allNotesKey = [...NOTEBOOK_KEY, "notes"] as const;
 
 const nowIso = () => new Date().toISOString();
-
-const EDIT_THROTTLE_MS = 30_000;
-let lastEditCapture = 0;
-
-export function captureNoteEdited() {
-  const now = Date.now();
-  if (now - lastEditCapture < EDIT_THROTTLE_MS) {
-    return;
-  }
-  lastEditCapture = now;
-  capture(EVENTS.noteEdited, {});
-}
 
 export function useNotebookNotes(workspaceId?: string | null) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -100,7 +87,6 @@ export function useCreateNotebookNote() {
       notebookService.createNotebookNote(fetcher, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTEBOOK_KEY });
-      capture(EVENTS.noteCreated, {});
     },
   });
 }
@@ -145,7 +131,6 @@ export function useUpdateNotebookNote() {
           return found ? next : [...next, saved];
         },
       );
-      captureNoteEdited();
     },
   });
 }

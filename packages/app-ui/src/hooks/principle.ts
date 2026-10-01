@@ -2,7 +2,6 @@
 
 import { useAuth } from "@tradstry/app-ui/platform";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as principleService from "@tradstry/app-ui/lib/service/principle";
 import type {
@@ -38,7 +37,6 @@ export function useCreatePrinciple(workspaceId: string) {
       principleService.createPrinciple(fetcher, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: principleKey(workspaceId) });
-      capture(EVENTS.principleCreated, {});
     },
   });
 }

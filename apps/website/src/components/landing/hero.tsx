@@ -2,7 +2,6 @@
 
 import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { capture, EVENTS } from "@/lib/analytics/events";
 import { HeroSignalField } from "./hero-signal-field";
 
 const FACTS = ["35+ brokerages", "27 MCP tools", "0% used for training"];
@@ -30,12 +29,6 @@ export function Hero() {
             <SignUpButton>
               <Button
                 size="lg"
-                onClick={() =>
-                  capture(EVENTS.ctaClicked, {
-                    location: "hero",
-                    label: "Start free",
-                  })
-                }
                 className="h-12 rounded-xl bg-zinc-950 px-7 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
               >
                 Start free

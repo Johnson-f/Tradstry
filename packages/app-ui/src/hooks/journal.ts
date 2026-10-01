@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { capture, EVENTS } from "@tradstry/app-ui/lib/analytics/events";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import * as journalService from "@tradstry/app-ui/lib/service/journal";
 import type {
@@ -11,39 +10,9 @@ import type {
   UpdateJournalEntryInput,
 } from "@tradstry/app-ui/lib/types/journal";
 import { useAuth } from "@tradstry/app-ui/platform";
-import type { OptimisticContext } from "./optimistic";
 import { optimisticRemove, optimisticUpdate } from "./optimistic";
 
 const JOURNAL_KEY = ["journal"] as const;
-
-/** Trade tags/violations carry no per-link role here, so `tag_applied` reports "unknown". */
-function captureLinkedTagsAndViolations(input: {
-  tagIds?: string[];
-  violatedPrincipleIds?: string[];
-}) {
-  for (const tagId of input.tagIds ?? []) {
-    capture(EVENTS.tagApplied, { tagId, role: "unknown" });
-  }
-  for (const principleId of input.violatedPrincipleIds ?? []) {
-    capture(EVENTS.violationFlagged, { principleId });
-  }
-}
-
-/** Recover the deleted entry's workspaceId from the pre-mutation cache snapshot; `id` alone doesn't carry it. */
-function findWorkspaceId(
-  ctx: OptimisticContext | undefined,
-  id: string,
-): string {
-  for (const [, data] of ctx?.snapshots ?? []) {
-    if (Array.isArray(data)) {
-      const match = (data as JournalEntry[]).find((entry) => entry?.id === id);
-      if (match?.workspaceId) {
-        return match.workspaceId;
-      }
-    }
-  }
-  return "";
-}
 
 export function useJournalEntries() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -95,14 +64,8 @@ export function useCreateJournalEntry() {
   return useMutation({
     mutationFn: (input: CreateJournalEntryInput) =>
       journalService.createJournalEntry(fetcher, input),
-    onSuccess: (_data, input) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: JOURNAL_KEY });
-      capture(EVENTS.tradeLogged, {
-        workspaceId: input.workspaceId,
-        symbol: input.symbol,
-        source: "manual",
-      });
-      captureLinkedTagsAndViolations(input);
     },
   });
 }
@@ -114,12 +77,11 @@ export function usePublishBrokerageEpisodeReview() {
   return useMutation({
     mutationFn: (input: PublishBrokerageEpisodeReviewInput) =>
       journalService.publishBrokerageEpisodeReview(fetcher, input),
-    onSuccess: (_journalId, input) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: JOURNAL_KEY });
       queryClient.invalidateQueries({ queryKey: ["pending-trades"] });
       queryClient.invalidateQueries({ queryKey: ["linked-brokerage-tx-ids"] });
       queryClient.invalidateQueries({ queryKey: ["trade-review-inbox"] });
-      captureLinkedTagsAndViolations(input);
     },
   });
 }
@@ -141,15 +103,7 @@ export function useUpdateJournalEntry() {
   return useMutation({
     mutationFn: ({ id, input }: UpdateVars) =>
       journalService.updateJournalEntry(fetcher, id, input),
-    // optimisticUpdate returns onMutate/onError/onSettled only, so adding onSuccess
-    // here is additive, not an override.
     ...optimistic,
-    onSuccess: (_data, vars) => {
-      capture(EVENTS.tradeEdited, {
-        workspaceId: vars.input.workspaceId ?? "",
-      });
-      captureLinkedTagsAndViolations(vars.input);
-    },
   });
 }
 
@@ -166,8 +120,5 @@ export function useDeleteJournalEntry() {
   return useMutation({
     mutationFn: (id: string) => journalService.deleteJournalEntry(fetcher, id),
     ...optimistic,
-    onSuccess: (_data, id, ctx) => {
-      capture(EVENTS.tradeDeleted, { workspaceId: findWorkspaceId(ctx, id) });
-    },
   });
 }
