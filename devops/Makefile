@@ -11,9 +11,13 @@ export DEVOPS
 PG_CONTAINER := tradstry-postgres
 PG_IMAGE     := tradstry-postgres:pg18-pgsearch
 PG_VOLUME    := tradstry_postgres_data
-PG_PORT      := 5432
+PG_PORT      ?= 5433
 PG_PASSWORD  := tradstry
-export PG_CONTAINER PG_IMAGE PG_VOLUME PG_PORT PG_PASSWORD
+PG_DATABASE  ?= postgres
+BACKEND_PORT ?= 7899
+-include $(DEVOPS)/local.mk
+export PG_CONTAINER PG_IMAGE PG_VOLUME PG_PORT PG_PASSWORD PG_DATABASE
+export BACKEND_PORT
 
 SERVER     := myserver
 REMOTE_DIR := /opt/tradstry
@@ -24,8 +28,10 @@ export SERVER REMOTE_DIR
 help:
 	@echo "Tradstry"
 	@echo "========"
-	@echo "  make backend    Start local Postgres, then the Rust backend on :7899"
+	@echo "  make backend    Start local Postgres, then the Rust backend on :$(BACKEND_PORT)"
 	@echo "  make postgres   Start local Postgres only"
+	@echo "                  Uses localhost:5433; override with PG_PORT=<port>"
+	@echo "                  Local overrides can be saved in devops/local.mk"
 	@echo "  make frontend   Start the web frontend (bun dev)"
 	@echo "  make desktop    Start the Electron desktop app in dev mode"
 	@echo "  make micro      Start the SnapTrade Go microservice"
@@ -51,6 +57,15 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 0
 fi
 
+if docker container inspect "$$PG_CONTAINER" >/dev/null 2>&1; then
+  existing_port=$$(docker inspect --format '{{range (index .HostConfig.PortBindings "5432/tcp")}}{{.HostPort}}{{end}}' "$$PG_CONTAINER")
+  if [ "$$existing_port" != "$$PG_PORT" ]; then
+    echo "Postgres '$${PG_CONTAINER}' uses host port $${existing_port}, but PG_PORT is $${PG_PORT}." >&2
+    echo "Use make backend PG_PORT=$${existing_port} to keep its current port." >&2
+    exit 1
+  fi
+fi
+
 if docker ps --format '{{.Names}}' | grep -q "^$${PG_CONTAINER}$$"; then
   echo -e "$${GREEN}Postgres '$${PG_CONTAINER}' already running.$${NC}"
 elif docker ps -a --format '{{.Names}}' | grep -q "^$${PG_CONTAINER}$$"; then
@@ -69,7 +84,7 @@ else
   docker run -d \
     --name "$$PG_CONTAINER" \
     --restart unless-stopped \
-    -p "$${PG_PORT}:5432" \
+    -p "127.0.0.1:$${PG_PORT}:5432" \
     -e POSTGRES_PASSWORD="$$PG_PASSWORD" \
     -e PGDATA=/var/lib/postgresql/18/docker \
     -v "$${PG_VOLUME}:/var/lib/postgresql" \
@@ -106,7 +121,7 @@ echo "=================================="
 
 # dotenvy does not override existing env, so these take precedence over any
 # POSTGRES_URL in backend/.env.
-export POSTGRES_URL="postgres://postgres:$${PG_PASSWORD}@localhost:$${PG_PORT}/postgres"
+export POSTGRES_URL="postgres://postgres:$${PG_PASSWORD}@localhost:$${PG_PORT}/$${PG_DATABASE}"
 export POSTGRES_DATABASE="$${POSTGRES_DATABASE:-dev}"
 export RUST_BACKTRACE=full
 

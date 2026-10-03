@@ -5,6 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { MetricHelp } from "@tradstry/app-ui/components/dashboard/performance/metrics-row";
 import { DashboardCardError } from "@tradstry/app-ui/components/dashboard/shared/card-error";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import { useCalendarAnalytics } from "@tradstry/app-ui/hooks/analytics";
@@ -365,10 +366,14 @@ export function TradingCalendarView({
 				</div>
 			) : null}
 
-			<div className="mt-5 overflow-x-auto pb-1">
+			<ScrollArea
+				orientation="horizontal"
+				type="auto"
+				className="mt-5 min-w-0 [&>[data-slot=scroll-area-viewport]]:overscroll-x-contain [&>[data-slot=scroll-area-viewport]>div]:block!"
+			>
 				<div
 					className={cn(
-						"grid min-w-[54rem] grid-cols-[repeat(7,minmax(0,1fr))_7.5rem] gap-2 transition-opacity duration-200",
+						"grid min-w-[54rem] grid-cols-[repeat(7,minmax(0,1fr))_7.5rem] gap-2 pb-3 transition-opacity duration-200",
 						isPlaceholderData && "opacity-55",
 					)}
 				>
@@ -399,7 +404,7 @@ export function TradingCalendarView({
 						</Fragment>
 					))}
 				</div>
-			</div>
+			</ScrollArea>
 		</section>
 	);
 }

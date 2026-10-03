@@ -5,6 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MergeTradesModal } from "@tradstry/app-ui/components/brokerage/merge-trades-modal";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import {
   Tooltip,
@@ -322,8 +323,8 @@ export function PendingTrades({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col p-3 md:p-5 xl:p-6">
-        <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border bg-background">
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="flex flex-1 flex-col overflow-hidden rounded-xl bg-muted/50">
           <div className="border-b px-4 py-3">
             <Skeleton className="h-8 w-56" />
           </div>
@@ -342,7 +343,7 @@ export function PendingTrades({
   if (trades.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-12">
-        <div className="max-w-sm rounded-2xl border bg-background px-8 py-10 text-center shadow-sm">
+        <div className="max-w-sm rounded-xl bg-muted/50 px-8 py-10 text-center">
           <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-full border bg-muted/40 text-sm font-semibold">
             0
           </div>
@@ -359,22 +360,26 @@ export function PendingTrades({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-5 xl:p-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
       <section
         aria-label="Pending trades"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-background shadow-[0_1px_2px_rgb(0_0_0/0.04),0_10px_30px_rgb(0_0_0/0.025)]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-muted/50"
       >
-        <header className="shrink-0 border-b bg-muted/15 px-4 py-3">
-          <h2 className="text-sm font-semibold tracking-tight">
+        <header className="shrink-0 border-b border-border px-4 py-4">
+          <h2 className="text-[0.8125rem] font-medium">
             Trades ready to journal
           </h2>
           <p className="text-[0.6875rem] text-muted-foreground">
             {trades.length.toLocaleString()} broker positions awaiting review
           </p>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+        <ScrollArea
+          orientation="both"
+          type="auto"
+          className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain [&>[data-slot=scroll-area-viewport]>div]:block! [&>[data-slot=scroll-area-scrollbar]]:z-20"
+        >
           <table className="w-full min-w-[64rem] border-separate border-spacing-0">
-            <thead className="sticky top-0 z-10 bg-background/95 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-[0_1px_0_var(--border)] backdrop-blur-sm">
+            <thead className="sticky top-0 z-10 bg-muted text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-[0_1px_0_var(--border)]">
               <tr>
                 <th className="h-10 px-3 py-2 text-left">Status</th>
                 <th className="h-10 min-w-64 px-3 py-2 text-left">Security</th>
@@ -404,7 +409,7 @@ export function PendingTrades({
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollArea>
       </section>
     </div>
   );

@@ -1,5 +1,18 @@
 import { expect, test } from "bun:test";
-import { parseBrokerageQuery } from "./brokerage-query";
+import { brokerageJournalFilter, parseBrokerageQuery } from "./brokerage-query";
+
+test("Journalled always requests linked fills regardless of the all-transactions filter", () => {
+	expect(brokerageJournalFilter("journalled", "all")).toBe(true);
+	expect(brokerageJournalFilter("journalled", "unjournalled")).toBe(true);
+	expect(brokerageJournalFilter("journalled", "journalled")).toBe(true);
+});
+
+test("all-transactions journal status maps to the server filter without affecting pending", () => {
+	expect(brokerageJournalFilter("all", "all")).toBeUndefined();
+	expect(brokerageJournalFilter("all", "unjournalled")).toBe(false);
+	expect(brokerageJournalFilter("all", "journalled")).toBe(true);
+	expect(brokerageJournalFilter("pending", "unjournalled")).toBeUndefined();
+});
 
 test("parses a symbol breakdown link into the all-transactions filters", () => {
 	expect(

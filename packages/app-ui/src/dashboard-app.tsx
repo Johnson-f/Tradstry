@@ -1,9 +1,6 @@
 "use client";
 
-import {
-	AgentPanel,
-	AgentPanelTrigger,
-} from "@tradstry/app-ui/components/agents";
+import { AgentPanel } from "@tradstry/app-ui/components/agents";
 import { Analytics } from "@tradstry/app-ui/components/analytics";
 import { AppSidebar } from "@tradstry/app-ui/components/app-sidebar";
 import { BrokerageEmptyState } from "@tradstry/app-ui/components/brokerage/brokerage-empty-state";
@@ -45,7 +42,10 @@ function DashboardHome() {
 				}
 			/>
 			<PageCanvas>
-				<div className="flex min-h-0 flex-1 flex-col overflow-auto">
+				<ScrollArea
+					type="auto"
+					className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain [&>[data-slot=scroll-area-viewport]>div]:block!"
+				>
 					{workspaces.isLoading || workspaces.isPending ? (
 						<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
 							<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -83,7 +83,7 @@ function DashboardHome() {
 							</div>
 						</div>
 					)}
-				</div>
+				</ScrollArea>
 			</PageCanvas>
 		</>
 	);
@@ -95,7 +95,7 @@ function BrokerageScreen() {
 		<>
 			<SiteHeader />
 			<PageCanvas>
-				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 					{workspace?.snaptradeConnectionId ? (
 						<BrokerageTransactions />
 					) : (
@@ -172,7 +172,10 @@ function Screen({ pathname }: { pathname: string }) {
 
 function FeatureScroll({ children }: { children: React.ReactNode }) {
 	return (
-		<ScrollArea className="min-h-0 flex-1">
+		<ScrollArea
+			type="auto"
+			className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain [&>[data-slot=scroll-area-viewport]>div]:block!"
+		>
 			<div className="@container/main flex flex-1 flex-col gap-2">
 				<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
 					{children}
@@ -186,7 +189,7 @@ function PageCanvas({ children }: { children: React.ReactNode }) {
 	return (
 		<section
 			data-slot="app-canvas"
-			className="mx-1.5 mb-1.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1rem] border border-black/10 bg-background shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_rgba(0,0,0,0.035)] md:mx-2.5 md:mb-10 dark:border-white/10 dark:shadow-[0_1px_2px_rgba(0,0,0,0.28),0_18px_46px_rgba(0,0,0,0.16)]"
+			className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
 		>
 			{children}
 		</section>
@@ -196,21 +199,19 @@ function PageCanvas({ children }: { children: React.ReactNode }) {
 export function DashboardApp({ pathname }: { pathname: string }) {
 	return (
 		<SidebarProvider
-			className="bg-[var(--app-chrome)]"
+			data-dashboard-shell=""
+			className="fixed inset-0 h-dvh min-h-0 overscroll-none bg-[var(--app-chrome)]"
 			style={
 				{
 					"--sidebar-width": "13.5rem",
 					"--sidebar-width-icon": "3.25rem",
-					"--header-height": "2.75rem",
+					"--header-height": "4rem",
 				} as React.CSSProperties
 			}
 		>
 			<AppSidebar />
-			<SidebarInset className="min-h-0 overflow-hidden bg-transparent">
+			<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-background md:border-l md:border-border/60">
 				<Screen pathname={pathname} />
-				<div className="absolute bottom-0 right-0 z-30 hidden h-10 items-center md:flex">
-					<AgentPanelTrigger placement="dock" />
-				</div>
 			</SidebarInset>
 			<AgentPanel />
 		</SidebarProvider>

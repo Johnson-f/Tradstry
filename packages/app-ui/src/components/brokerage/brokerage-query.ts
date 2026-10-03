@@ -12,6 +12,17 @@ export type BrokerageQueryState = {
 	episodeClosedDate: string | undefined;
 };
 
+export type BrokerageJournalStatus = "all" | "journalled" | "unjournalled";
+
+export function brokerageJournalFilter(
+	tab: BrokerageQueryState["tab"],
+	status: BrokerageJournalStatus,
+): boolean | undefined {
+	if (tab === "journalled") return true;
+	if (tab !== "all" || status === "all") return undefined;
+	return status === "journalled";
+}
+
 const TABS = new Set<BrokerageQueryState["tab"]>([
 	"pending",
 	"all",

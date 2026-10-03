@@ -4,6 +4,13 @@ import { AgentPanelTrigger } from "@tradstry/app-ui/components/agents";
 import { BrokerageButton } from "@tradstry/app-ui/components/brokerage";
 import { getDashboardRouteMeta } from "@tradstry/app-ui/components/dashboard-route-meta";
 import { NotificationsButton } from "@tradstry/app-ui/components/notifications";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@tradstry/app-ui/components/ui/breadcrumb";
 import { SidebarTrigger } from "@tradstry/app-ui/components/ui/sidebar";
 import {
 	Tooltip,
@@ -18,14 +25,14 @@ export function SiteHeader({ actions }: { actions?: React.ReactNode }) {
 	const title = getDashboardRouteMeta(pathname).title;
 
 	return (
-		<header className="relative z-30 flex h-(--header-height) shrink-0 items-center bg-transparent">
-			<div className="flex w-full min-w-0 items-center px-2.5 md:px-3">
+		<header className="relative z-30 flex h-(--header-height) shrink-0 items-center bg-background">
+			<div className="flex w-full min-w-0 items-center gap-2 px-4">
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<SidebarTrigger
 							aria-label="Toggle sidebar"
 							aria-keyshortcuts="Meta+B Control+B"
-							className="mr-1.5 size-8 rounded-lg text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8 [&_svg]:size-[1.125rem]!"
+							className="-ml-1 size-8 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4!"
 						/>
 					</TooltipTrigger>
 					<TooltipContent side="bottom" className="flex items-center gap-2">
@@ -35,22 +42,24 @@ export function SiteHeader({ actions }: { actions?: React.ReactNode }) {
 						</kbd>
 					</TooltipContent>
 				</Tooltip>
-				<div className="flex min-w-0 items-center">
-					<h1 className="shrink-0 text-sm font-semibold tracking-[-0.015em]">
-						{title}
-					</h1>
-					<span
-						className="mx-2.5 h-3.5 w-px shrink-0 bg-foreground/10"
-						aria-hidden
-					/>
-					<WorkspaceSwitcher />
-				</div>
+				<span className="mr-2 h-4 w-px shrink-0 bg-border" aria-hidden />
+				<Breadcrumb className="min-w-0">
+					<BreadcrumbList className="flex-nowrap gap-2 text-sm">
+						<BreadcrumbItem className="min-w-0">
+							<WorkspaceSwitcher />
+						</BreadcrumbItem>
+						<BreadcrumbSeparator className="hidden sm:block" />
+						<BreadcrumbItem className="min-w-0">
+							<h1 className="truncate text-sm font-normal">
+								<BreadcrumbPage>{title}</BreadcrumbPage>
+							</h1>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 				<div className="ml-auto flex shrink-0 items-center gap-0.5">
 					<BrokerageButton />
 					<NotificationsButton />
-					<div className="md:hidden">
-						<AgentPanelTrigger />
-					</div>
+					<AgentPanelTrigger />
 					{actions ? <div className="ml-1.5">{actions}</div> : null}
 				</div>
 			</div>

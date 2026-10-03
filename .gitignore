@@ -46,6 +46,7 @@ devops/deploy.env*
 .deploy.lock
 .current-deploy-commit
 .previous-deploy-commit
+/devops/local.mk
 !.env.example
 !.env.template
 

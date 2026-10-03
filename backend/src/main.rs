@@ -45,6 +45,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _sentry = tradstry_backend::service::telemetry::init();
     info!("Starting backend...");
 
+    let port = std::env::var("BACKEND_PORT")
+        .unwrap_or_else(|_| "7899".to_string())
+        .parse::<std::num::NonZeroU16>()?;
+    let listener = std::net::TcpListener::bind(("0.0.0.0", port.get()))?;
+
     let db = Arc::new(Db::new().await?);
     tradstry_backend::service::notebook::projector::ensure_ready().await?;
     info!("Projector bundles ready");
@@ -338,7 +343,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
-    info!("Starting server on 0.0.0.0:7899");
+    info!("Starting server on {}", listener.local_addr()?);
     info!("Allowed CORS origins: {:?}", allowed_origins);
     let server = HttpServer::new(move || {
         let jwks_provider = create_jwks_provider(&clerk_secret);
@@ -384,7 +389,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .configure(routes::configure)
     })
-    .bind("0.0.0.0:7899")?
+    .listen(listener)?
     .run();
 
     // Stop the HTTP server gracefully on SIGTERM (Docker stop) / SIGINT (Ctrl-C):

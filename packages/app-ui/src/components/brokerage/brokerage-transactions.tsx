@@ -1,10 +1,21 @@
 "use client";
 
-import { currentBrokerageQuery } from "@tradstry/app-ui/components/brokerage/brokerage-query";
+import {
+  brokerageJournalFilter,
+  currentBrokerageQuery,
+  type BrokerageJournalStatus,
+} from "@tradstry/app-ui/components/brokerage/brokerage-query";
 import { BrokerageTable } from "@tradstry/app-ui/components/brokerage/brokerage-table";
 import { MergeTradesModal } from "@tradstry/app-ui/components/brokerage/merge-trades-modal";
 import { PendingTrades } from "@tradstry/app-ui/components/brokerage/pending-trades";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@tradstry/app-ui/components/ui/select";
 import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import {
   useBrokerageTransactions,
@@ -24,11 +35,7 @@ import {
 
 const DEFAULT_PAGE_SIZE = 100;
 
-const JOURNALLED_FILTER_STORAGE_KEY = "brokerage-journalled-filter";
-
 type BrokerageTab = "pending" | "all" | "journalled";
-
-type JournalledFilter = "journalled" | "unjournalled";
 
 function formatClosedDate(value: string) {
   return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
@@ -47,17 +54,8 @@ export function BrokerageTransactions() {
   const [dateRange, setDateRange] = useState<AnalyticsRange>(
     initialQuery.range,
   );
-  // Sub-filter for the "Journalled" tab: linked vs not-yet-linked trades.
-  // Persisted to localStorage so the last choice is remembered across visits.
-  const [journalledFilter, setJournalledFilter] = useState<JournalledFilter>(
-    () => {
-      if (typeof window === "undefined") return "journalled";
-      return window.localStorage.getItem(JOURNALLED_FILTER_STORAGE_KEY) ===
-        "unjournalled"
-        ? "unjournalled"
-        : "journalled";
-    },
-  );
+  const [journalStatus, setJournalStatus] =
+    useState<BrokerageJournalStatus>("all");
 
   // Server-side filters (sent to GraphQL)
   const [filters, setFilters] = useState<TransactionFilters>({
@@ -69,10 +67,7 @@ export function BrokerageTransactions() {
     startDate: initialQuery.startDate,
     endDate: initialQuery.endDate,
     episodeClosedDate: initialQuery.episodeClosedDate,
-    isJournalled:
-      initialQuery.tab === "journalled"
-        ? journalledFilter === "journalled"
-        : undefined,
+    isJournalled: brokerageJournalFilter(initialQuery.tab, journalStatus),
   });
 
   // Track page offsets so "previous" works after trimming
@@ -104,22 +99,18 @@ export function BrokerageTransactions() {
     setSelectedIds(new Set());
     setEditingEpisodeId(null);
     setPageOffsets([0]);
-    const isJournalled =
-      next === "journalled" ? journalledFilter === "journalled" : undefined;
+    const isJournalled = brokerageJournalFilter(next, journalStatus);
     setFilters((prev) => ({ ...prev, isJournalled, offset: 0 }));
   }
 
-  function handleJournalledFilterChange(next: JournalledFilter) {
-    if (next === journalledFilter) return;
-    setJournalledFilter(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(JOURNALLED_FILTER_STORAGE_KEY, next);
-    }
+  function handleJournalStatusChange(next: BrokerageJournalStatus) {
+    if (next === journalStatus) return;
+    setJournalStatus(next);
     setSelectedIds(new Set());
     setPageOffsets([0]);
     setFilters((prev) => ({
       ...prev,
-      isJournalled: next === "journalled",
+      isJournalled: brokerageJournalFilter(tab, next),
       offset: 0,
     }));
   }
@@ -130,6 +121,7 @@ export function BrokerageTransactions() {
     symbol: string,
   ) {
     setTab("all");
+    setJournalStatus("all");
     setEditingEpisodeId(episodeId);
     setSelectedIds(new Set(transactionIds));
     setSymbolSearch(symbol);
@@ -249,30 +241,30 @@ export function BrokerageTransactions() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
-      <div className="shrink-0 border-b border-border/60 bg-background px-3 md:px-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="shrink-0 px-4 pt-4">
         <div
           aria-label="Brokerage views"
           role="tablist"
-          className="flex h-12 items-end gap-6 overflow-x-auto"
+          className="flex h-9 w-fit max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1"
         >
           <TabButton
             active={tab === "pending"}
             onClick={() => handleTabChange("pending")}
           >
-            Pending
+            Review
           </TabButton>
           <TabButton
             active={tab === "all"}
             onClick={() => handleTabChange("all")}
           >
-            All transactions
+            Trades
           </TabButton>
           <TabButton
             active={tab === "journalled"}
             onClick={() => handleTabChange("journalled")}
           >
-            Journalled
+            In journal
           </TabButton>
         </div>
       </div>
@@ -280,9 +272,9 @@ export function BrokerageTransactions() {
       {tab === "pending" ? (
         <PendingTrades onAdjustFills={beginGroupingEdit} />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
           {editingEpisodeId ? (
-            <div className="mb-3 shrink-0 rounded-lg border border-l-2 border-l-sky-500 bg-background px-3 py-2">
+            <div className="mb-3 shrink-0 rounded-lg border border-l-2 border-l-foreground bg-background px-3 py-2">
               <p className="text-xs font-medium">Edit trade grouping</p>
               <p className="text-[0.6875rem] text-muted-foreground">
                 Select the broker fills that make up one closed trade. Prices,
@@ -328,31 +320,27 @@ export function BrokerageTransactions() {
                     Closed {formatClosedDate(filters.episodeClosedDate)}
                   </span>
                 ) : null}
-                {tab === "journalled" ? (
-                  <fieldset className="flex items-center rounded-lg border bg-background p-0.5">
-                    <legend className="sr-only">Journal status</legend>
-                    {(
-                      [
-                        ["journalled", "In journal"],
-                        ["unjournalled", "Needs journal"],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={journalledFilter === value}
-                        onClick={() => handleJournalledFilterChange(value)}
-                        className={cn(
-                          "h-7 rounded-md px-2.5 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                          journalledFilter === value
-                            ? "bg-foreground text-background shadow-sm"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </fieldset>
+                {tab === "all" ? (
+                  <Select
+                    value={journalStatus}
+                    onValueChange={(value) =>
+                      handleJournalStatusChange(value as BrokerageJournalStatus)
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label="Journal status"
+                      className="h-8 w-auto min-w-36 bg-background text-xs shadow-none"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Journal status: All</SelectItem>
+                      <SelectItem value="unjournalled">
+                        Needs journal
+                      </SelectItem>
+                      <SelectItem value="journalled">In journal</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : null}
               </>
             }
@@ -418,9 +406,9 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative h-12 shrink-0 px-0.5 pb-3 pt-4 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
+        "h-7 shrink-0 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
         active
-          ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-sky-500"
+          ? "bg-background text-foreground shadow-xs"
           : "text-muted-foreground hover:text-foreground",
       )}
     >

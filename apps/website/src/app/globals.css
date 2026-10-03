@@ -153,6 +153,13 @@
     background-color: #070809;
     overscroll-behavior-y: none;
   }
+
+  html:has([data-dashboard-shell]),
+  body:has([data-dashboard-shell]) {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
 }
 
 @keyframes playbook-card-in {
