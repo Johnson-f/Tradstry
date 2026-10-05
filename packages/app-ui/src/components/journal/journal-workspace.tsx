@@ -80,7 +80,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
   const status = useQuery({ queryKey: [...base, "status"], queryFn: () => flow.status(fetcher, workspaceId), refetchInterval: 8_000 });
   const trades = useQuery({ queryKey: [...base, "trades"], queryFn: () => flow.trades(fetcher, workspaceId), refetchInterval: 15_000 });
   const route=platform.pathname.split("?")[0]??platform.pathname;
-  const [params]=React.useState(()=>new URLSearchParams(platform.kind==="desktop"?platform.pathname.split("?")[1]??"":typeof window==="undefined"?"":window.location.search));
+  const [params]=React.useState(()=>new URLSearchParams(typeof window==="undefined"?"":window.location.search));
   const [search, setSearch] = React.useState(params.get("symbol")??"");
   const [lifecycle, setLifecycle] = React.useState(params.get("status")??"all");
   const [reviewState, setReviewState] = React.useState("all");

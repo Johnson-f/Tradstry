@@ -77,7 +77,7 @@ const SECTIONS: LegalSection[] = [
     body: (
       <ul>
         <li>To show you your own trades, analytics and notes.</li>
-        <li>To sync your data between the web app and the desktop app.</li>
+        <li>To keep your data available across your signed-in browser sessions.</li>
         <li>
           To answer questions you ask an AI model about your journal, whether in
           the app or over MCP.

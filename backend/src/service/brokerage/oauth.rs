@@ -87,10 +87,7 @@ pub async fn start(
 ) -> Result<OAuthStart> {
     config.require_enabled()?;
     oauth_table::cleanup_attempts(pool).await?;
-    anyhow::ensure!(
-        matches!(platform, "web" | "desktop"),
-        "invalid OAuth platform"
-    );
+    anyhow::ensure!(platform == "web", "invalid OAuth platform");
     anyhow::ensure!(
         matches!(intent, "connect" | "reauthorize"),
         "invalid OAuth intent"

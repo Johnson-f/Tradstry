@@ -11,7 +11,7 @@ const content: SourcePageContent = {
   summary:
     "Tradstry is a subscription trading journal for active stock and options traders who want brokerage-synced fills, rule tracking, analytics, notebook context, and AI access through MCP.",
   facts: [
-    "Product: Web app and macOS desktop app",
+    "Product: Web app",
     "Price: $20/month or $180/year",
     "Coverage: Stocks and options, with manual entry available",
     "AI access: In-app assistance and an authenticated MCP server",

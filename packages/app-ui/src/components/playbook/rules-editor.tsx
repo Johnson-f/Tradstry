@@ -19,7 +19,7 @@ const notesClass =
  * A rules field: a numbered list you build item by item, plus free-form text for anything
  * that is not a rule — context, caveats, a note to yourself.
  *
- * The value stays a plain string, because that is what the column, the desktop and the MCP
+ * The value stays a plain string, because that is what the column, sync API and MCP
  * tools all read. Structure is parsed out on the way in and written back on the way out.
  */
 export function RulesEditor({

@@ -34,7 +34,6 @@ import {
   TooltipTrigger,
 } from "@tradstry/app-ui/components/ui/tooltip";
 import type { NotebookImage } from "@tradstry/app-ui/lib/types/notebook";
-import { useTradstryPlatform } from "@tradstry/app-ui/platform";
 import {
   cancelPendingMedia,
   getMediaStatus,
@@ -129,26 +128,10 @@ function NotebookImageComponent({
   height: number;
 }) {
   const [editor] = useLexicalComposerContext();
-  const { noteId, urlFor, onDeleteImage } = useContext(NotebookImageActionsContext);
-  const { media } = useTradstryPlatform();
-  const [localUrl, setLocalUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    if (media && noteId) {
-      void media
-        .resolve(noteId, hash)
-        .then((url) => {
-          if (active) setLocalUrl(url);
-        })
-        .catch(() => {});
-    }
-    return () => {
-      active = false;
-    };
-  }, [hash, media, noteId]);
+  const { urlFor, onDeleteImage } = useContext(NotebookImageActionsContext);
   // A local blob: URL mid-upload takes precedence over the (possibly not-yet-
   // resolvable) server URL.
-  const src = getMediaUrl(nodeKey) ?? localUrl ?? urlFor?.(hash);
+  const src = getMediaUrl(nodeKey) ?? urlFor?.(hash);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draftSize, setDraftSize] = useState<{

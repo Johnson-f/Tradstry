@@ -16,7 +16,7 @@ export const FAQS = [
   },
   {
     q: "Does it work offline?",
-    a: "The desktop app does. It keeps a local database, lets you journal on a plane, and merges cleanly when you reconnect — no last-write-wins data loss.",
+    a: "Use Tradstry online. Brokerage sync and AI features need an internet connection.",
   },
   {
     q: "Who owns my data?",
@@ -35,8 +35,8 @@ export const FAQS = [
     a: "Every half hour during US market hours — on the hour and the half hour between 9:00 and 16:00 Eastern — plus a final pass at 16:30 to catch the close, and once over the weekend. Nothing polls overnight, so a sync is never more than thirty minutes behind the market.",
   },
   {
-    q: "Is there a Windows or Linux desktop app?",
-    a: "Not today. The desktop app is macOS only. Tradstry runs in any modern browser on Windows and Linux, and the browser version has everything except the offline local database.",
+    q: "Does Tradstry work on Windows and Linux?",
+    a: "Yes. Tradstry runs in any modern browser on Windows, Linux, and macOS.",
   },
   {
     q: "Is there a mobile app?",
@@ -197,7 +197,7 @@ export const PLANS: Plan[] = [
       "Complete analytics and discipline tracking",
       "300 Tradstry AI actions per month",
       "1 GB media storage",
-      "MCP access and the macOS desktop app",
+      "MCP access",
     ],
   },
 ];
@@ -264,7 +264,7 @@ export const PRODUCT_STORIES = [
     id: "notebook",
     kicker: "Notebook",
     title: "Keep the lesson with the trade.",
-    body: "Capture ideas with images, code, slash commands, and autocomplete. Notes stay connected to the trades and playbooks they explain, and the desktop editor keeps working offline.",
+    body: "Capture ideas with images, code, slash commands, and autocomplete. Notes stay connected to the trades and playbooks they explain.",
     visual: "screenshot",
     shot: SCREENSHOTS.notebook,
   },

@@ -50,7 +50,7 @@ const PILLARS = [
     icon: Notebook01Icon,
     kicker: "Notebook",
     title: "Thinking, not filing.",
-    body: "The Tradstry notebook is a real editor — images, code, slash commands, and an autocomplete that has read your journal and finishes the sentence you were already writing. It syncs across web and desktop, keeps working on a plane, and links a note to the trade it explains so the two stay together.",
+    body: "The Tradstry notebook is a real editor — images, code, slash commands, and an autocomplete that has read your journal and finishes the sentence you were already writing. It links a note to the trade it explains so the two stay together.",
     visual: <Shot shot={SCREENSHOTS.notebook} />,
   },
 ] satisfies Array<{

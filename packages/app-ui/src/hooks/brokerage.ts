@@ -273,7 +273,7 @@ export function useInitiateSnapTradeOAuth() {
 	return useMutation<
 		SnapTradeOAuthStart,
 		Error,
-		{ workspaceId: string; platform: "web" | "desktop" }
+		{ workspaceId: string; platform: "web" }
 	>({
 		mutationFn: ({ workspaceId, platform }) =>
 			brokerageService.initiateSnapTradeOAuth(fetcher, workspaceId, platform),

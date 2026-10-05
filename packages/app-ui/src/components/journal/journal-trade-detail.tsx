@@ -1642,7 +1642,6 @@ function ContextNotebook({ noteId }: { noteId: string }) {
 	const note = useNotebookNote(noteId);
 	const upload = useUploadNotebookMedia();
 	const remove = useDeleteNotebookMedia();
-	const platform = useTradstryPlatform();
 	if (note.isLoading)
 		return (
 			<div role="status" className="min-h-64 p-4">
@@ -1674,33 +1673,6 @@ function ContextNotebook({ noteId }: { noteId: string }) {
 				images={document.images}
 				onNeedMediaRefresh={() => void note.refetch()}
 				onUploadMedia={async (file, hash, idempotencyKey, signal) => {
-					if (platform.media) {
-						const secureUrl = await platform.media.store({
-							noteId,
-							workspaceId: document.workspaceId,
-							hash,
-							file,
-							signal,
-						});
-						if (secureUrl)
-							return {
-								id: idempotencyKey,
-								noteId,
-								userId: document.userId,
-								workspaceId: document.workspaceId,
-								secureUrl,
-								contentHash: hash,
-								width: 0,
-								height: 0,
-								format: file.type.split("/").at(-1) ?? "",
-								bytes: file.size,
-								originalFilename: file.name,
-								mediaType: file.type.startsWith("video/") ? "video" : "image",
-								contentType: file.type,
-								durationSeconds: 0,
-								createdAt: new Date().toISOString(),
-							};
-					}
 					return upload.mutateAsync({
 						noteId,
 						hash,
@@ -1710,8 +1682,7 @@ function ContextNotebook({ noteId }: { noteId: string }) {
 					});
 				}}
 				onDeleteImage={async (hash) => {
-					if (platform.media) await platform.media.delete(noteId, hash);
-					else await remove.mutateAsync({ noteId, hash });
+					await remove.mutateAsync({ noteId, hash });
 				}}
 			/>
 		</div>

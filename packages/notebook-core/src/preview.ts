@@ -39,9 +39,7 @@ function heading(tag: string): LexNode {
 }
 
 /**
- * The document every new note is seeded from, on every client. The creating device
- * seeds the note's Y.Doc from this, so a note minted on the desktop and one minted
- * on the web must start from the same structure or the two clients diverge.
+ * New notes share this structure so the editor and server seed compatible documents.
  */
 export const DEFAULT_NOTE_DOC = docJson(heading("h1"), paragraph());
 

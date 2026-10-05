@@ -606,38 +606,6 @@ export function Notebook() {
           const label = file.type.startsWith("video/") ? "video" : "image";
           const toastId = toast.loading(`Uploading ${label}…`);
           try {
-            if (platform.media) {
-              const secureUrl = await platform.media.store({
-                noteId: note.id,
-                workspaceId: note.workspaceId,
-                hash,
-                file,
-                signal,
-              });
-              if (secureUrl) {
-                toast.success(
-                  `${label === "video" ? "Video" : "Image"} saved.`,
-                  { id: toastId },
-                );
-                return {
-                  id: idempotencyKey,
-                  noteId: note.id,
-                  userId: note.userId,
-                  workspaceId: note.workspaceId,
-                  secureUrl,
-                  contentHash: hash,
-                  width: 0,
-                  height: 0,
-                  format: file.type.split("/").at(-1) ?? "",
-                  bytes: file.size,
-                  originalFilename: file.name,
-                  mediaType: label,
-                  contentType: file.type,
-                  durationSeconds: 0,
-                  createdAt: new Date().toISOString(),
-                };
-              }
-            }
             const image = await uploadMediaMutation.mutateAsync({
               noteId: note.id,
               hash,
@@ -676,11 +644,7 @@ export function Notebook() {
         onDeleteImage={async (hash) => {
           const toastId = toast.loading("Deleting image...");
           try {
-            if (platform.media) {
-              await platform.media.delete(note.id, hash);
-            } else {
-              await deleteMediaMutation.mutateAsync({ hash, noteId: note.id });
-            }
+            await deleteMediaMutation.mutateAsync({ hash, noteId: note.id });
             toast.success("Image deleted.", { id: toastId });
           } catch (error) {
             toast.error(

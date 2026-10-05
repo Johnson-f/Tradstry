@@ -7,11 +7,9 @@
   ],
   "scripts": {
     "dev:website": "bun run --cwd apps/website dev",
-    "dev:desktop": "bun run --cwd apps/desktop dev",
     "build:website": "bun run --cwd apps/website build",
-    "build:desktop": "bun run --cwd apps/desktop build",
     "typecheck:app-ui": "bunx tsc --noEmit -p packages/app-ui/tsconfig.json",
-    "test:packages": "bunx bun@1.3.13 test packages/app-ui packages/notebook-core && bun run --cwd apps/desktop test:main"
+    "test:packages": "bunx bun@1.3.13 test packages/app-ui packages/notebook-core"
   },
   "overrides": {
     "@hono/node-server": "2.1.0",

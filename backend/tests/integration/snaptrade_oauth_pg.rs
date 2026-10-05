@@ -132,7 +132,7 @@ async fn authorized_attempt_keeps_its_workspace_and_intent() {
             state_hash: "state-hash",
             code_verifier_encrypted: "encrypted-verifier",
             requested_scopes: &scopes,
-            platform: "desktop",
+            platform: "web",
             intent: "reauthorize",
             expires_at: Utc::now() + Duration::minutes(10),
         },

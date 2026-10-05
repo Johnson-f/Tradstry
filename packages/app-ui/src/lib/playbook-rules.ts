@@ -1,8 +1,6 @@
 /**
- * Playbook rules are stored as a single TEXT column, and four things read them: the web
- * form, the desktop form, the MCP `get_playbook` tool, and the desktop's last-writer-wins
- * sync. So the structure lives *inside* the text rather than in the schema — a JSON column
- * would break the sync merge and the MCP payload, and every existing playbook with it.
+ * Playbook rules stay in their existing TEXT column so the web form, sync API, and
+ * MCP tools share the same readable format without migrating saved playbooks.
  *
  * A line that starts with a bullet or a number is a list item; everything else is free-form
  * prose. That means the plaintext stays readable everywhere, an old playbook parses without

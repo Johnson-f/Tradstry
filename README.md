@@ -82,9 +82,9 @@ Tradstry combines advanced journaling capabilities with sophisticated analytics 
 tradstry/
 ├── apps/
 │   ├── website/                  # Next.js frontend
-│   └── desktop/                  # Electron desktop app
+│   └── desktop/                  # Native SwiftUI macOS app
 ├── packages/
-│   ├── app-ui/                  # Shared website and desktop product UI
+│   ├── app-ui/                  # Shared product UI
 │   ├── notebook-core/            # Shared Lexical/Yjs logic
 │   └── ui/                       # Shared React primitives
 ├── backend/                      # Rust backend
@@ -220,12 +220,6 @@ bun run build            # Build for production
 bun run start            # Start production server
 bun run lint             # Run Biome linter
 bun run format           # Format code with Biome
-
-# Desktop
-cd apps/desktop
-bun run dev              # Start Electron development app
-bun run typecheck        # Check renderer and main process
-bun run build            # Build desktop distributable
 
 # Backend
 cd backend

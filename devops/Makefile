@@ -33,9 +33,9 @@ help:
 	@echo "                  Uses localhost:5433; override with PG_PORT=<port>"
 	@echo "                  Local overrides can be saved in devops/local.mk"
 	@echo "  make frontend   Start the web frontend (bun dev)"
-	@echo "  make desktop    Start the Electron desktop app in dev mode"
+	@echo "  make desktop    Build and launch the native SwiftUI macOS app"
 	@echo "  make micro      Start the SnapTrade Go microservice"
-	@echo "  make cleanup    Remove JS, Next, Electron, test, and Rust build artifacts"
+	@echo "  make cleanup    Remove JS, Next, test, and Rust build artifacts"
 	@echo "  make deploy     Emergency redeploy of the current origin/master build"
 	@echo "  make tag        Create a release tag (not required for deployment)"
 	@echo "  make sync-oauth-env  Safely sync OAuth settings to production"
@@ -140,37 +140,6 @@ exec bun run dev
 endef
 export FRONTEND_SCRIPT
 
-define DESKTOP_SCRIPT
-set -e
-GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
-
-echo -e "$${BLUE}Starting Tradstry Desktop$${NC}"
-echo "=================================="
-
-if [ ! -d "$$ROOT/apps/desktop" ]; then
-  echo -e "$${RED}Desktop app not found at $$ROOT/apps/desktop$${NC}" >&2
-  exit 1
-fi
-if ! command -v bun >/dev/null 2>&1; then
-  echo -e "$${RED}bun not found — install it from https://bun.sh$${NC}" >&2
-  exit 1
-fi
-
-cd "$$ROOT/apps/desktop"
-echo "Current directory: $$(pwd)"
-
-if [ ! -d node_modules ]; then
-  echo -e "$${BLUE}Installing dependencies (bun install)...$${NC}"
-  bun install
-fi
-
-echo -e "$${YELLOW}Reminder: the backend should be running (make backend) for data to load.$${NC}"
-echo -e "$${GREEN}Launching Electron desktop app (bun run dev)...$${NC}"
-echo -e "$${YELLOW}First run downloads the local Electron runtime — this can take a few minutes.$${NC}"
-exec bun run dev
-endef
-export DESKTOP_SCRIPT
-
 define MICRO_SCRIPT
 cd "$$ROOT/microservice/snaptrade-service"
 exec go run main.go
@@ -224,7 +193,7 @@ rm -f \
 echo "Cleaning the Rust workspace..."
 cargo clean --manifest-path "$$ROOT/backend/Cargo.toml"
 
-echo "Cleanup complete. Run 'bun install' before starting the frontend or desktop app again."
+echo "Cleanup complete. Run 'bun install' before starting the frontend again."
 endef
 export CLEANUP_SCRIPT
 
@@ -323,7 +292,7 @@ frontend:
 	@bash -c "$$FRONTEND_SCRIPT"
 
 desktop:
-	@bash -c "$$DESKTOP_SCRIPT"
+	@$(MAKE) -C "$(ROOT)/apps/desktop" run
 
 micro:
 	@bash -c "$$MICRO_SCRIPT"

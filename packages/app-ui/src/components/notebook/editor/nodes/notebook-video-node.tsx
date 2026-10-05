@@ -8,9 +8,8 @@ import {
   type SerializedNotebookVideoNode,
 } from "@tradstry/notebook-core";
 import { $getNodeByKey, type LexicalNode, type NodeKey } from "lexical";
-import { type JSX, useEffect, useState } from "react";
+import type { JSX } from "react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { useTradstryPlatform } from "@tradstry/app-ui/platform";
 import {
   cancelPendingMedia,
   getMediaStatus,
@@ -29,26 +28,10 @@ function NotebookVideoComponent({
   hash: string;
 }) {
   const [editor] = useLexicalComposerContext();
-  const { noteId, urlFor, onDeleteImage } = useNotebookMediaActions();
-  const { media } = useTradstryPlatform();
-  const [localUrl, setLocalUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    if (media && noteId) {
-      void media
-        .resolve(noteId, hash)
-        .then((url) => {
-          if (active) setLocalUrl(url);
-        })
-        .catch(() => {});
-    }
-    return () => {
-      active = false;
-    };
-  }, [hash, media, noteId]);
+  const { urlFor, onDeleteImage } = useNotebookMediaActions();
   // A local blob: URL mid-upload takes precedence over the (possibly not-yet-
   // resolvable) server URL.
-  const src = getMediaUrl(nodeKey) ?? localUrl ?? urlFor?.(hash);
+  const src = getMediaUrl(nodeKey) ?? urlFor?.(hash);
   const isTemp = getMediaStatus(nodeKey) === "pending";
   const isPending = !src;
 

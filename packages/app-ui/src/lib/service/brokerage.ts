@@ -430,7 +430,7 @@ export async function initiateConnection(
 export async function initiateSnapTradeOAuth(
 	fetcher: GraphQLFetcher,
 	workspaceId: string,
-	platform: "web" | "desktop",
+	platform: "web",
 ): Promise<SnapTradeOAuthStart> {
 	const data = await fetcher<{ initiateSnaptradeOauth: SnapTradeOAuthStart }>(
 		INITIATE_SNAPTRADE_OAUTH_MUTATION,

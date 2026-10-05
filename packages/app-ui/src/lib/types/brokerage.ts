@@ -225,7 +225,7 @@ export interface SnapTradeOAuthStatus {
 		| "expired";
 	errorCode: string | null;
 	workspaceId: string;
-	platform: "web" | "desktop";
+	platform: string;
 	intent: "connect" | "reauthorize";
 }
 

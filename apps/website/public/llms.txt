@@ -10,7 +10,7 @@ Tradstry is a subscription web and macOS app for active traders. It connects to 
 - $180/year ($15/month equivalent), billed annually — three months free.
 - No free tier. No usage-based AI charges: MCP uses your own Claude subscription.
 
-Every plan includes: unlimited trades, tags and journal entries; brokerage sync with automatic trade matching; the full analytics suite; playbooks, principles and discipline tracking; the offline-first notebook; the macOS desktop app; and the MCP server.
+Every plan includes: unlimited trades, tags and journal entries; brokerage sync with automatic trade matching; the full analytics suite; playbooks, principles and discipline tracking; the notebook; and the MCP server.
 
 ## Brokerage support
 

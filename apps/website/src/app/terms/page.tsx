@@ -22,8 +22,7 @@ const SECTIONS: LegalSection[] = [
         <p>
           These terms are a contract between you and <Blank>{LEGAL.entity}</Blank>,
           {" "}{LEGAL.operator} ("Tradstry", "we", "us"). They apply the moment
-          you create an account or use the service, including the web app, the
-          desktop app, and the MCP server.
+          you create an account or use the service, including the web app and the MCP server.
         </p>
         <p>
           If you don't agree with them, don't use Tradstry. If you're using

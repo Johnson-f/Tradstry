@@ -80,7 +80,7 @@ export function BrokerageTransactions() {
   const [pageOffsets, setPageOffsets] = useState<number[]>([0]);
   useEffect(()=>{
     if(!automatic)return;
-    const search=platform.kind==="desktop"?platform.pathname.split("?")[1]??"":window.location.search;
+    const search=window.location.search;
     if(new URLSearchParams(search).get("tab")==="pending"){
       platform.navigate(`/dashboard/journal/review${initialQuery.episodeClosedDate?`?date=${initialQuery.episodeClosedDate}`:""}`);return;
     }
