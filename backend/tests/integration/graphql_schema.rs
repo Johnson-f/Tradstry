@@ -16,6 +16,10 @@ fn schema_builds_without_duplicate_type_names() {
     .finish();
 
     let sdl = schema.sdl();
+    // Internal request structs must not change arguments used by web/desktop.
+    assert!(sdl.contains("enableJournalFlow(workspaceId: String!, expectedRevision: Int!, flatBefore: String, timezone: String!, clientId: String!, mutationId: String!): JournalActivationV2!"));
+    assert!(sdl.contains("openJournalReviewSession(workspaceId: String!, date: String, refresh: Boolean! = false, expectedVersion: Int, clientId: String!, mutationId: String!): JournalReviewSessionV2"));
+    assert!(sdl.contains("moveJournalReviewCursor(workspaceId: String!, sessionId: String!, entryId: String!, expectedVersion: Int!, clientId: String!, mutationId: String!): Int!"));
     assert!(
         sdl.contains("input NotebookMutationInput"),
         "the push mutation's input object must not collide with the mutation root"

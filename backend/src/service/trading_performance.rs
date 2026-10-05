@@ -153,6 +153,17 @@ pub fn calculate_trading_performance_with_plans(
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
 ) -> TradingPerformance {
+    calculate_performance(episodes, confirmed_plans, start, end, None, New_York)
+}
+
+fn calculate_performance(
+    episodes: &[StoredEpisode],
+    confirmed_plans: &HashMap<String, PlanSnapshot>,
+    start: Option<DateTime<Utc>>,
+    end: Option<DateTime<Utc>>,
+    canonical: Option<&HashMap<String, Option<Decimal>>>,
+    timezone: chrono_tz::Tz,
+) -> TradingPerformance {
     let mut transaction_episode_counts = HashMap::<&str, usize>::new();
     for episode in episodes {
         for allocation in &episode.draft.allocations {
@@ -185,22 +196,28 @@ pub fn calculate_trading_performance_with_plans(
         {
             continue;
         }
-        let is_ambiguous = episode.draft.allocations.iter().any(|allocation| {
-            transaction_episode_counts
-                .get(allocation.transaction_id.as_str())
-                .copied()
-                .unwrap_or_default()
-                > 1
-        });
+        let is_ambiguous = canonical.is_none()
+            && episode.draft.allocations.iter().any(|allocation| {
+                transaction_episode_counts
+                    .get(allocation.transaction_id.as_str())
+                    .copied()
+                    .unwrap_or_default()
+                    > 1
+            });
         if is_ambiguous || episode.draft.current_quantity != Decimal::ZERO {
             needs_review_count += 1;
             continue;
         }
-        let Some(pnl) = realized_pnl(
-            episode.draft.direction,
-            &episode.draft.allocations,
-            episode.draft.instrument.multiplier(),
-        ) else {
+        let value = if let Some(canonical) = canonical {
+            canonical.get(&episode.id).copied().flatten()
+        } else {
+            realized_pnl(
+                episode.draft.direction,
+                &episode.draft.allocations,
+                episode.draft.instrument.multiplier(),
+            )
+        };
+        let Some(pnl) = value else {
             needs_review_count += 1;
             continue;
         };
@@ -229,7 +246,7 @@ pub fn calculate_trading_performance_with_plans(
         } else {
             breakeven_trade_count += 1;
         }
-        let day = closed_at.with_timezone(&New_York).date_naive();
+        let day = closed_at.with_timezone(&timezone).date_naive();
         daily.entry(day).or_default().record(pnl);
         let symbol = match &episode.draft.instrument {
             ExecutionInstrument::Equity { symbol } => symbol.clone(),
@@ -372,6 +389,16 @@ pub fn calculate_trading_calendar(
     year: i32,
     month: u32,
 ) -> Result<TradingCalendar> {
+    calculate_calendar(episodes, year, month, None, New_York)
+}
+
+fn calculate_calendar(
+    episodes: &[StoredEpisode],
+    year: i32,
+    month: u32,
+    canonical: Option<&HashMap<String, Option<Decimal>>>,
+    timezone: chrono_tz::Tz,
+) -> Result<TradingCalendar> {
     ensure!((1..=12).contains(&month), "month must be between 1 and 12");
     let month_start =
         NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(|| anyhow!("Invalid month"))?;
@@ -382,18 +409,25 @@ pub fn calculate_trading_calendar(
     }
     .ok_or_else(|| anyhow!("Invalid next month"))?;
     let month_end = next_month - Duration::days(1);
-    let start = New_York
+    let start = timezone
         .from_local_datetime(&month_start.and_hms_opt(0, 0, 0).unwrap())
         .single()
         .ok_or_else(|| anyhow!("Invalid month start"))?
         .with_timezone(&Utc);
-    let end = New_York
+    let end = timezone
         .from_local_datetime(&next_month.and_hms_opt(0, 0, 0).unwrap())
         .single()
         .ok_or_else(|| anyhow!("Invalid month end"))?
         .with_timezone(&Utc)
         - Duration::nanoseconds(1);
-    let performance = calculate_trading_performance(episodes, Some(start), Some(end));
+    let performance = calculate_performance(
+        episodes,
+        &HashMap::new(),
+        Some(start),
+        Some(end),
+        canonical,
+        timezone,
+    );
     let points_by_date: BTreeMap<NaiveDate, TradingPerformancePoint> = performance
         .points
         .iter()
@@ -500,6 +534,10 @@ pub async fn load_trading_calendar(
     year: i32,
     month: u32,
 ) -> Result<TradingCalendar> {
+    if crate::service::trade_review::journal_flow::is_enabled(pool, user_id, workspace_id).await? {
+        let (episodes, values, _, timezone) = canonical_input(pool, user_id, workspace_id).await?;
+        return calculate_calendar(&episodes, year, month, Some(&values), timezone);
+    }
     let mut episodes =
         trade_review_table::list_workspace_episodes(pool, user_id, workspace_id).await?;
     if episodes.is_empty() {
@@ -525,6 +563,19 @@ pub async fn load_trading_performance(
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
 ) -> Result<TradingPerformance> {
+    if crate::service::trade_review::journal_flow::is_enabled(pool, user_id, workspace_id).await? {
+        let (episodes, values, attention, timezone) =
+            canonical_input(pool, user_id, workspace_id).await?;
+        let mut plans =
+            trade_review_table::list_confirmed_episode_plans(pool, user_id, workspace_id).await?;
+        let proven:Vec<String>=sqlx::query_scalar("SELECT m.episode_id FROM trade_episode_matches m JOIN position_calculator_plans p ON p.id=m.plan_id JOIN trade_episodes e ON e.id=m.episode_id WHERE m.user_id=$1 AND m.workspace_id=$2 AND m.status='confirmed' AND p.updated_at<=e.opened_at")
+            .bind(user_id).bind(workspace_id).fetch_all(pool).await?;
+        plans.retain(|episode, _| proven.contains(episode));
+        let mut performance =
+            calculate_performance(&episodes, &plans, start, end, Some(&values), timezone);
+        performance.needs_review_count += attention;
+        return Ok(performance);
+    }
     let mut episodes =
         trade_review_table::list_workspace_episodes(pool, user_id, workspace_id).await?;
     if episodes.is_empty() {
@@ -539,4 +590,39 @@ pub async fn load_trading_performance(
         start,
         end,
     ))
+}
+
+async fn canonical_input(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+) -> Result<(
+    Vec<StoredEpisode>,
+    HashMap<String, Option<Decimal>>,
+    usize,
+    chrono_tz::Tz,
+)> {
+    let rows:Vec<(Option<String>,String,Option<Decimal>)>=sqlx::query_as("SELECT e.episode_id,e.lifecycle_state,CASE WHEN e.currency=w.currency THEN e.realized_net ELSE NULL END AS realized_net FROM journal_entries e JOIN workspaces w ON w.id=e.workspace_id AND w.user_id=e.user_id WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.source_kind='broker' AND e.deleted_at IS NULL AND e.retired_at IS NULL")
+        .bind(user).bind(workspace).fetch_all(pool).await?;
+    let attention = rows
+        .iter()
+        .filter(|(_, state, _)| state == "incomplete")
+        .count();
+    let values = rows
+        .into_iter()
+        .filter(|(_, state, _)| state != "incomplete")
+        .filter_map(|(id, _, value)| id.map(|id| (id, value)))
+        .collect::<HashMap<_, _>>();
+    let mut episodes = trade_review_table::list_workspace_episodes(pool, user, workspace).await?;
+    episodes.retain(|episode| values.contains_key(&episode.id));
+    let timezone: String =
+        sqlx::query_scalar("SELECT journal_timezone FROM workspaces WHERE id=$1 AND user_id=$2")
+            .bind(workspace)
+            .bind(user)
+            .fetch_one(pool)
+            .await?;
+    let timezone = timezone
+        .parse()
+        .map_err(|_| anyhow!("Invalid journal timezone"))?;
+    Ok((episodes, values, attention, timezone))
 }

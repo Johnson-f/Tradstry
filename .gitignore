@@ -116,3 +116,4 @@ backend/projector/node_modules/
 # Subagent-driven-development scratch (progress ledger, task briefs, review packages)
 .superpowers/
 .design/ 
+.claude/skills/

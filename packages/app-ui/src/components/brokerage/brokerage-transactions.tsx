@@ -25,6 +25,9 @@ import {
 import type { AnalyticsRange } from "@tradstry/app-ui/lib/types/analytics";
 import type { TransactionFilters } from "@tradstry/app-ui/lib/types/brokerage";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { useGraphQL,useTradstryPlatform } from "@tradstry/app-ui/platform";
+import * as journalFlow from "@tradstry/app-ui/lib/service/journal-flow";
 import {
   type PointerEvent as ReactPointerEvent,
   useEffect,
@@ -48,6 +51,9 @@ function formatClosedDate(value: string) {
 export function BrokerageTransactions() {
   const account = useActiveWorkspace();
   const workspaceId = account?.id ?? null;
+  const fetcher=useGraphQL();const platform=useTradstryPlatform();
+  const flow=useQuery({queryKey:["journal-flow",platform.user.email,workspaceId,"status"],queryFn:()=>journalFlow.status(fetcher,workspaceId!),enabled:!!workspaceId});
+  const automatic=flow.data?.enabled??false;
   const [initialQuery] = useState(currentBrokerageQuery);
 
   const [tab, setTab] = useState<BrokerageTab>(initialQuery.tab);
@@ -72,6 +78,14 @@ export function BrokerageTransactions() {
 
   // Track page offsets so "previous" works after trimming
   const [pageOffsets, setPageOffsets] = useState<number[]>([0]);
+  useEffect(()=>{
+    if(!automatic)return;
+    const search=platform.kind==="desktop"?platform.pathname.split("?")[1]??"":window.location.search;
+    if(new URLSearchParams(search).get("tab")==="pending"){
+      platform.navigate(`/dashboard/journal/review${initialQuery.episodeClosedDate?`?date=${initialQuery.episodeClosedDate}`:""}`);return;
+    }
+    setTab("all");setFilters((previous)=>({...previous,isJournalled:undefined,offset:0}));setPageOffsets([0]);
+  },[automatic]);
 
   function handleDateRangeChange(range: AnalyticsRange) {
     setDateRange(range);
@@ -243,7 +257,7 @@ export function BrokerageTransactions() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div className="shrink-0 px-4 pt-4">
-        <div
+        {automatic?<div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-medium">Broker records</h2><p className="mt-1 text-xs text-muted-foreground">Inspect original executions and manage your connection. Grouping and review live in Journal.</p></div><Button size="sm" variant="outline" onClick={()=>platform.navigate("/dashboard/journal")}>Open Journal</Button></div>:<div
           aria-label="Brokerage views"
           role="tablist"
           className="flex h-9 w-fit max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1"
@@ -266,10 +280,10 @@ export function BrokerageTransactions() {
           >
             In journal
           </TabButton>
-        </div>
+        </div>}
       </div>
 
-      {tab === "pending" ? (
+      {tab === "pending" && !automatic ? (
         <PendingTrades onAdjustFills={beginGroupingEdit} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
@@ -320,7 +334,7 @@ export function BrokerageTransactions() {
                     Closed {formatClosedDate(filters.episodeClosedDate)}
                   </span>
                 ) : null}
-                {tab === "all" ? (
+                {tab === "all" && !automatic ? (
                   <Select
                     value={journalStatus}
                     onValueChange={(value) =>
@@ -345,7 +359,8 @@ export function BrokerageTransactions() {
               </>
             }
           />
-          {(selectedIds.size >= 1 || editingEpisodeId) && (
+          {automatic && selectedIds.size>0 && <div className="mt-3 flex items-center justify-between rounded-lg border p-3 text-sm"><span>Change trade grouping in your journal.</span><Button size="sm" onClick={()=>platform.navigate(`/dashboard/journal${symbol?`?symbol=${encodeURIComponent(symbol)}`:""}`)}>{symbol?`Find ${symbol} in Journal`:"Open Journal"}</Button></div>}
+          {!automatic && (selectedIds.size >= 1 || editingEpisodeId) && (
             <DraggableBar>
               <span className="text-xs font-medium">
                 {editingEpisodeId ? "Editing grouping · " : ""}

@@ -193,7 +193,7 @@ export class SyncEngine {
 		try {
 			await this.#pullJournal(accountId);
 		} catch (error) {
-			this.#logger.error(`journal sync (${accountId}):`, error);
+            if (!(error instanceof Error && error.message.includes("JOURNAL_V2_REQUIRED"))) this.#logger.error(`journal sync (${accountId}):`, error);
 		}
 		try {
 			await this.#pullPrinciples(accountId);
@@ -285,6 +285,7 @@ export class SyncEngine {
 		}
 		for (const note of result.notes) {
 			this.#applyNote(accountId, note);
+            this.#store.db.prepare("UPDATE notes SET purpose=? WHERE id=? AND account_id=?").run(note.purpose ?? "general",note.id,accountId);
 			report.pulledNotes += 1;
 		}
 		this.#store.db

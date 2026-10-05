@@ -15,6 +15,42 @@ mock.module("@tradstry/app-ui/hooks/brokerage", () => ({
 
 const { SyncConfidenceCard } = await import("./sync-confidence-card");
 
+const emptySyncProps = {
+	workspaceId: "workspace-cash",
+	workspaceName: "Main Workspace",
+	brokerageAccountName: "Webull Cash",
+	outcome: undefined,
+	reconciliation: undefined,
+	connectionDisabled: false,
+	isRefreshing: false,
+	isSyncing: false,
+	isReconnecting: false,
+	onSync: () => undefined,
+	onReconnect: () => undefined,
+};
+
+test("unrecorded sync counts remain unknown instead of showing zero", () => {
+	const html = renderToStaticMarkup(<SyncConfidenceCard {...emptySyncProps} />);
+	expect(html).toContain("Transactions");
+	expect(html).toContain("Holdings");
+	expect(html).toContain("Balances");
+	expect(html).toContain("—");
+	expect(html).not.toContain(">0<");
+});
+
+test("moving actions to the modal header retains the reconnect explanation", () => {
+	const html = renderToStaticMarkup(
+		<SyncConfidenceCard
+			{...emptySyncProps}
+			connectionDisabled
+			showActions={false}
+		/>,
+	);
+	expect(html).toContain("Your brokerage authorization has expired");
+	expect(html).toContain("Reconnect to resume");
+	expect(html).not.toMatch(/<button[^>]*>Reconnect<\/button>/);
+});
+
 test("groups brokerage health and sync metrics into one compact overview", () => {
 	const html = renderToStaticMarkup(
 		<SyncConfidenceCard

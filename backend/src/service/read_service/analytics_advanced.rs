@@ -172,7 +172,7 @@ fn dollar_pl(e: &JournalEntry) -> f64 {
 /// computed risk is zero or negative).
 fn r_multiple(e: &JournalEntry) -> Option<f64> {
     let stop = e.stop_loss?;
-    let risk = (e.entry_price - stop).abs() * e.position_size;
+    let risk = (e.entry_price - stop).abs() * e.position_size * e.contract_multiplier;
     if risk > 0.0 {
         Some(dollar_pl(e) / risk)
     } else {

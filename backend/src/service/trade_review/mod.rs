@@ -1,6 +1,7 @@
 pub mod allocation;
 pub mod calculation;
 pub mod episode;
+pub mod journal_flow;
 pub mod matching;
 pub mod types;
 

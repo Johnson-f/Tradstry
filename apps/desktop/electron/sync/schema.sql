@@ -353,3 +353,36 @@ CREATE TABLE IF NOT EXISTS workspace_calculator_sync (
     cookie       TEXT NULL,
     last_sync_at TEXT NULL
 );
+
+CREATE TABLE IF NOT EXISTS journal_flow_cache (
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    cache_key TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    variables_json TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(owner_id,workspace_id,cache_key)
+);
+CREATE TABLE IF NOT EXISTS journal_flow_outbox (
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    mutation_id TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    variables_json TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    response_json TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(owner_id,client_id,mutation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_journal_flow_pending ON journal_flow_outbox(owner_id,state,created_at);
+CREATE TABLE IF NOT EXISTS journal_flow_sync (
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    cursor TEXT NOT NULL,
+    PRIMARY KEY(owner_id,workspace_id)
+);

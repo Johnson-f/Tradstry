@@ -136,9 +136,7 @@ function Screen({ pathname }: { pathname: string }) {
 			<>
 				<SiteHeader />
 				<PageCanvas>
-					<FeatureScroll>
-						<Journal />
-					</FeatureScroll>
+					<Journal />
 				</PageCanvas>
 			</>
 		);

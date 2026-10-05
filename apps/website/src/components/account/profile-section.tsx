@@ -77,26 +77,17 @@ export function ProfileSection() {
   }
 
   return (
-    <Section
-      title="Personal details"
-      description="Your photo and display name appear throughout the workspace."
-      footer={
-        <Button size="sm" onClick={save} disabled={!dirty || saving}>
-          {saving ? <Spinner /> : null}
-          Save changes
-        </Button>
-      }
-    >
-      <div className="grid gap-5">
-        <div className="flex items-center gap-4">
+    <div className="space-y-6">
+      <Section title="Profile photo">
+        <div className="flex flex-wrap items-center gap-4">
           <button
             type="button"
             aria-label="Change profile photo"
             onClick={() => fileInput.current?.click()}
             disabled={uploading}
-            className="group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70"
+            className="group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <Avatar className="size-16">
+            <Avatar className="size-14">
               <AvatarImage src={user.imageUrl} alt="" />
               <AvatarFallback className="text-base">{initials}</AvatarFallback>
             </Avatar>
@@ -114,10 +105,11 @@ export function ProfileSection() {
           </button>
 
           <div className="grid gap-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 variant="outline"
+                className="h-8"
                 onClick={() => fileInput.current?.click()}
                 disabled={uploading}
               >
@@ -129,7 +121,7 @@ export function ProfileSection() {
                   variant="ghost"
                   onClick={() => setImage(null)}
                   disabled={uploading}
-                  className="text-muted-foreground"
+                  className="h-8 text-muted-foreground"
                 >
                   Remove
                 </Button>
@@ -144,7 +136,7 @@ export function ProfileSection() {
             ref={fileInput}
             type="file"
             accept="image/*"
-            className="sr-only"
+            hidden
             onChange={(e) => {
               const file = e.target.files?.[0] ?? null;
               e.target.value = "";
@@ -152,13 +144,23 @@ export function ProfileSection() {
             }}
           />
         </div>
-
+      </Section>
+      <Section
+        title="Display name"
+        footer={
+          <Button size="sm" onClick={save} disabled={!dirty || saving}>
+            {saving ? <Spinner /> : null}
+            Save changes
+          </Button>
+        }
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name" htmlFor="account-first-name">
             <Input
               id="account-first-name"
               value={firstName}
               autoComplete="given-name"
+              className="h-9 bg-background"
               onChange={(e) => setFirstName(e.target.value)}
             />
           </Field>
@@ -167,17 +169,18 @@ export function ProfileSection() {
               id="account-last-name"
               value={lastName}
               autoComplete="family-name"
+              className="h-9 bg-background"
               onChange={(e) => setLastName(e.target.value)}
             />
           </Field>
         </div>
 
         {error ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p role="alert" className="mt-3 text-xs text-destructive">
             {error}
           </p>
         ) : null}
-      </div>
-    </Section>
+      </Section>
+    </div>
   );
 }

@@ -2,6 +2,7 @@ pub mod agents;
 pub mod brokerage;
 pub mod calculator;
 pub mod core;
+pub mod journal_flow;
 pub mod markets;
 pub mod notebook;
 pub mod notifications;

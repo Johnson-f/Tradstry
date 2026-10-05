@@ -1,3 +1,3 @@
-import { WebsiteDashboard } from "@/components/website-dashboard";
-
-export default WebsiteDashboard;
+export default function NotebookPage() {
+  return null;
+}

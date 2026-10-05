@@ -27,6 +27,7 @@ pub struct Model {
     pub price: Decimal,
     pub fee: Decimal,
     pub executed_at: DateTimeWithTimeZone,
+    pub allocation_order: i32,
     #[sea_orm(
         belongs_to,
         from = "brokerage_transaction_id",

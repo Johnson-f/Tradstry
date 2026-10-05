@@ -98,31 +98,38 @@ export function BrokerageEmptyState() {
 
 	return (
 		<div className="flex flex-1 items-center justify-center p-6">
-			<Empty className="max-w-sm border-none">
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
+			<Empty className="max-w-sm gap-5 border-none p-0">
+				<EmptyHeader className="gap-2">
+					<EmptyMedia variant="icon" className="size-11 rounded-xl">
 						<HugeiconsIcon icon={BankIcon} strokeWidth={2} />
 					</EmptyMedia>
 					<EmptyTitle>Connect your brokerage</EmptyTitle>
-					<EmptyDescription>
-						Link one brokerage account to this workspace to automatically sync
-						your transaction history, positions, and balances.
+					<EmptyDescription className="max-w-64">
+						Sync your trades, positions, and balances.
 					</EmptyDescription>
 				</EmptyHeader>
-				<EmptyContent>
-					<Button size="sm" onClick={handleConnect} disabled={connecting}>
-						{connecting ? "Connecting..." : "Connect brokerage account"}
+				<EmptyContent className="max-w-60 gap-2">
+					<Button
+						size="sm"
+						className="h-9 w-full"
+						onClick={handleConnect}
+						disabled={connecting || !workspace}
+					>
+						{connecting ? "Connecting…" : "Connect brokerage"}
 					</Button>
 					{oauthAvailable.data ? (
 						<Button
 							size="sm"
-							variant="outline"
+							variant="ghost"
+							className="h-8 w-full text-muted-foreground hover:text-foreground"
 							onClick={() => void handleOAuthConnect()}
-							disabled={oauth.isStarting || oauth.phase === "waiting"}
+							disabled={
+								!workspace || oauth.isStarting || oauth.phase === "waiting"
+							}
 						>
 							{oauth.phase === "waiting" || oauth.phase === "reauthorizing"
 								? "Waiting for SnapTrade…"
-								: "Continue with SnapTrade"}
+								: "Use existing SnapTrade account"}
 						</Button>
 					) : null}
 					{oauth.phase === "error" ? (
@@ -130,12 +137,8 @@ export function BrokerageEmptyState() {
 							SnapTrade authorization did not finish. You can try again.
 						</p>
 					) : null}
-					<p className="text-xs text-muted-foreground">
-						{oauthAvailable.data
-							? "Continue with SnapTrade reuses brokerage connections in your Personal account. Both connection methods are read-only."
-							: "Supports read-only brokerage connections through SnapTrade."}
-					</p>
 				</EmptyContent>
+				<p className="text-[11px] text-muted-foreground">Read-only access</p>
 			</Empty>
 		</div>
 	);

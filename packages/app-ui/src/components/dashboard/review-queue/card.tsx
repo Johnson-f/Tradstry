@@ -19,6 +19,9 @@ import { useActiveWorkspace } from "@tradstry/app-ui/components/workspaces";
 import { usePendingTrades } from "@tradstry/app-ui/hooks/brokerage";
 import { cn, formatPnl } from "@tradstry/app-ui/lib/utils";
 import { useTradstryPlatform } from "@tradstry/app-ui/platform";
+import { useGraphQL } from "@tradstry/app-ui/platform";
+import { useQuery } from "@tanstack/react-query";
+import * as journalFlow from "@tradstry/app-ui/lib/service/journal-flow";
 
 function QueueCount({
   label,
@@ -115,6 +118,31 @@ function QueueItem({ item }: { item: ReviewQueueItem }) {
 }
 
 export function DashboardReviewQueueCard() {
+  const workspace = useActiveWorkspace();
+  const fetcher = useGraphQL();
+  const platform = useTradstryPlatform();
+  const status = useQuery({queryKey:["journal-flow",platform.user.email,workspace?.id,"status"],queryFn:()=>journalFlow.status(fetcher,workspace!.id),enabled:!!workspace});
+  if (!workspace) return null;
+  if (status.isLoading) return <Skeleton className="h-64 rounded-xl"/>;
+  if (status.isError) return <DashboardCardError title="Review queue" error={status.error} onRetry={status.refetch}/>;
+  return status.data?.enabled ? <AutomaticReviewQueue workspaceId={workspace.id}/> : <LegacyReviewQueue/>;
+}
+
+function AutomaticReviewQueue({workspaceId}:{workspaceId:string}) {
+  const fetcher=useGraphQL();
+  const platform=useTradstryPlatform();
+  const trades=useQuery({queryKey:["journal-flow",platform.user.email,workspaceId,"trades"],queryFn:()=>journalFlow.trades(fetcher,workspaceId)});
+  if(trades.isLoading)return <Skeleton className="h-64 rounded-xl"/>;
+  if(trades.isError)return <DashboardCardError title="Review queue" error={trades.error} onRetry={trades.refetch}/>;
+  const all=trades.data??[];
+  const attention=all.filter((trade)=>trade.lifecycleState==="incomplete");
+  const review=all.filter((trade)=>trade.lifecycleState==="closed" && trade.reviewState!=="reviewed");
+  const open=all.filter((trade)=>trade.lifecycleState==="open");
+  const items=[...attention,...review].slice(0,3);
+  return <section className="flex h-full flex-col rounded-xl border border-border/70 bg-card/55 p-4"><h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Review queue</h2><p className="mt-1 text-xs text-muted-foreground">Recorded automatically · reviewed by you</p><div className="mt-4 grid grid-cols-3 gap-2"><QueueCount label="Needs attention" value={attention.length} tone="warning"/><QueueCount label="To review" value={review.length} tone="primary"/><QueueCount label="Open trades" value={open.length} tone="neutral"/></div><div className="my-4 flex-1">{items.map((trade)=><button type="button" key={trade.id} onClick={()=>platform.navigate(`/dashboard/journal/${encodeURIComponent(trade.id)}`)} className="flex w-full items-center justify-between border-b px-2 py-3 text-left text-sm hover:bg-accent/40"><span>{trade.symbol} · {trade.direction}</span><span className="text-xs text-muted-foreground">{trade.lifecycleState==="incomplete"?"Resolve history":trade.reviewState==="outdated"?"Results changed":"Add your takeaway"}</span></button>)}{!items.length && <p className="py-6 text-center text-sm text-muted-foreground">{all.length?"You’re caught up. Open trades update as fills arrive.":"Your trades will appear here after brokerage sync."}</p>}</div><Button variant="outline" onClick={()=>platform.navigate(attention.length?"/dashboard/journal?status=incomplete":review.length?"/dashboard/journal/review":"/dashboard/journal")}>{attention.length?"Resolve trade history":review.length?"Review latest trading day":"Open journal"}</Button></section>;
+}
+
+function LegacyReviewQueue() {
   const workspace = useActiveWorkspace();
   const { navigate } = useTradstryPlatform();
   const { data, isLoading, error, refetch } = usePendingTrades(

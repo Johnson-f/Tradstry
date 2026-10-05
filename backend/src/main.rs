@@ -223,6 +223,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let journal_projection_handle = {
+        let pool = db.pool().clone();
+        let shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            tradstry_backend::service::trade_review::journal_flow::run_worker(pool, shutdown_rx)
+                .await;
+        })
+    };
+
     // Brokerage sync scheduler
     let sync_handle = {
         let db = db.clone();
@@ -426,6 +435,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = summary_worker_handle.await;
         }
         let _ = sync_handle.await;
+        let _ = journal_projection_handle.await;
         let _ = snaptrade_webhook_handle.await;
         let _ = notebook_maintenance_handle.await;
         let _ = notebook_media_handle.await;

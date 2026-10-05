@@ -412,7 +412,7 @@ pub async fn list_notebook_notes(
 ) -> Result<Vec<NotebookNote>> {
     let rows = if let Some(workspace_id) = workspace_id {
         let sql = format!(
-            "SELECT {SELECT_COLS} FROM notebook_notes WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL ORDER BY sort_order ASC, updated_at DESC"
+            "SELECT {SELECT_COLS} FROM notebook_notes WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND purpose = 'general' ORDER BY sort_order ASC, updated_at DESC"
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(user_id)
@@ -421,7 +421,7 @@ pub async fn list_notebook_notes(
             .await
     } else {
         let sql = format!(
-            "SELECT {SELECT_COLS} FROM notebook_notes WHERE user_id = $1 AND deleted_at IS NULL ORDER BY sort_order ASC, updated_at DESC"
+            "SELECT {SELECT_COLS} FROM notebook_notes WHERE user_id = $1 AND deleted_at IS NULL AND purpose = 'general' ORDER BY sort_order ASC, updated_at DESC"
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(user_id)
@@ -459,7 +459,7 @@ pub async fn list_notebook_notes_page(
 
     let sql = format!(
         "SELECT {SELECT_COLS} FROM notebook_notes \
-         WHERE user_id = $1 AND deleted_at IS NULL \
+         WHERE user_id = $1 AND deleted_at IS NULL AND purpose = 'general' \
            AND ($2::text IS NULL OR workspace_id = $2) \
            AND ($3::text IS NULL OR (created_at, id) < \
                 (SELECT created_at, id FROM notebook_notes WHERE id = $3 AND user_id = $1)) \

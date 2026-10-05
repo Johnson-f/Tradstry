@@ -1,0 +1,17 @@
+"use client";
+import * as React from "react";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
+import { useGraphQL,useTradstryPlatform } from "@tradstry/app-ui/platform";
+import { Button } from "@tradstry/app-ui/components/ui/button";
+import * as flow from "@tradstry/app-ui/lib/service/journal-flow";
+import { GroupingDialog } from "./journal-grouping";
+
+export function JournalSuggestions({workspaceId,trade,onChanged}:{workspaceId:string;trade:flow.JournalTrade;onChanged:()=>void|Promise<void>}) {
+  const fetcher=useGraphQL();const platform=useTradstryPlatform();const cache=useQueryClient();
+  const [offset,setOffset]=React.useState(0);const [active,setActive]=React.useState<string|undefined>();const [error,setError]=React.useState<string|null>(null);
+  const query=useQuery({queryKey:["journal-flow",platform.user.email,workspaceId,"suggestions",trade.id,offset],queryFn:()=>flow.suggestions(fetcher,workspaceId,trade.id,offset),refetchInterval:15_000});
+  const refresh=async()=>{await cache.invalidateQueries({queryKey:["journal-flow",platform.user.email,workspaceId,"suggestions"]});await onChanged();};
+  const dismiss=async(id:string)=>{try{await flow.execute(fetcher,flow.command(flow.DISMISS_SUGGESTION,"dismissJournalSuggestion",{workspaceId,suggestionId:id},platform.user.email));await refresh();}catch(reason){setError(reason instanceof Error?reason.message:"Could not dismiss suggestion");}};
+  if(query.isLoading || (!query.data?.length && !offset && !query.isError))return null;
+  return <section className="rounded-xl border p-4"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-medium">Possible separate trading ideas</h2><span className="text-xs text-muted-foreground">Optional suggestions</span></div>{error&&<p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}{query.isError?<Button variant="outline" size="sm" onClick={()=>void query.refetch()}>Retry suggestions</Button>:query.data?.map((suggestion)=><div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-3 border-t py-3"><p className="max-w-xl text-sm text-muted-foreground">{suggestion.explanation}</p><div className="flex gap-2"><Button variant="outline" size="sm" onClick={()=>setActive(suggestion.id)}>Preview</Button><Button variant="ghost" size="sm" onClick={()=>void dismiss(suggestion.id)}>Dismiss</Button></div></div>)}{(offset>0||query.data?.length===3)&&<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-3))}>Previous</Button><Button variant="ghost" size="sm" disabled={query.data?.length!==3} onClick={()=>setOffset(offset+3)}>More suggestions</Button></div>}<details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Grouping preferences</summary><p className="mt-2">Suggestions use only corrections confirmed in this account. They never change trades automatically.</p><Button variant="ghost" size="sm" onClick={async()=>{try{await flow.execute(fetcher,flow.command(flow.RESET_LEARNING,"resetJournalLearning",{workspaceId},platform.user.email));await refresh();}catch(reason){setError(reason instanceof Error?reason.message:"Could not reset preferences");}}}>Reset learned preferences</Button></details><GroupingDialog open={!!active} onOpenChange={(open)=>{if(!open)setActive(undefined);}} workspaceId={workspaceId} entries={[trade]} mode="split" suggestionId={active} onDone={refresh}/></section>;
+}

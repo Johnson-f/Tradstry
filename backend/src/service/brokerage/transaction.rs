@@ -365,6 +365,45 @@ pub async fn sync_transactions_if_advanced(
 /// namespaces are not guaranteed to match.
 #[allow(clippy::too_many_arguments)]
 pub async fn sync_transactions(
+    client: &BrokerageClient,
+    pool: &PgPool,
+    auth: &mut BrokerageAuthSession<'_>,
+    snaptrade_account_id: &str,
+    internal_user_id: &str,
+    internal_account_id: &str,
+    import_start_date: Option<&str>,
+) -> Result<TransactionSyncReport> {
+    use crate::service::trade_review::journal_flow;
+    let mut guard = pool.begin().await?;
+    let locked: bool =
+        sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(format!("journal-import:{internal_account_id}"))
+            .fetch_one(&mut *guard)
+            .await?;
+    anyhow::ensure!(
+        locked,
+        "a transaction import is already running for this account"
+    );
+    journal_flow::begin_import(pool, internal_user_id, internal_account_id).await?;
+    let result = sync_transactions_inner(
+        client,
+        pool,
+        auth,
+        snaptrade_account_id,
+        internal_user_id,
+        internal_account_id,
+        import_start_date,
+    )
+    .await;
+    match &result {
+        Ok(_) => journal_flow::seal_import(pool, internal_user_id, internal_account_id).await?,
+        Err(_) => journal_flow::fail_import(pool, internal_user_id, internal_account_id).await?,
+    }
+    guard.commit().await?;
+    result
+}
+
+async fn sync_transactions_inner(
     _client: &BrokerageClient,
     pool: &PgPool,
     auth: &mut BrokerageAuthSession<'_>,

@@ -5,6 +5,7 @@ import { newUuidV7 } from "../uuid.ts";
 import { Hlc } from "./hlc.ts";
 
 const ALTERATIONS = [
+    "ALTER TABLE notes ADD COLUMN purpose TEXT NOT NULL DEFAULT 'general'",
 	"ALTER TABLE tag_categories_cache ADD COLUMN color TEXT",
 	"ALTER TABLE tag_categories_cache ADD COLUMN hlc TEXT NOT NULL DEFAULT ''",
 	"ALTER TABLE tag_categories_cache ADD COLUMN deleted_at TEXT",

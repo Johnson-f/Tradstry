@@ -29,6 +29,7 @@ mod calculator_sync_pg;
 mod clerk_webhook;
 mod cross_account_isolation_pg;
 mod graphql_schema;
+mod journal_flow_pg;
 mod journal_sync_pg;
 mod mcp_readiness_pg;
 mod migration_sequence;

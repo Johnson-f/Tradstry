@@ -37,16 +37,16 @@ export function Section({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border bg-muted/[0.14]",
+        "min-w-0",
         tone === "destructive"
-          ? "border-destructive/35"
-          : "border-border/65",
+          ? "rounded-xl border border-destructive/25 bg-destructive/[0.02] p-4"
+          : "border-b border-border/60 pb-6 last:border-b-0 last:pb-0",
       )}
     >
-      <header className="px-5 pt-5">
+      <header>
         <h3
           className={cn(
-            "text-sm font-semibold tracking-[-0.015em]",
+            "text-sm font-medium",
             tone === "destructive" && "text-destructive",
           )}
         >
@@ -58,9 +58,9 @@ export function Section({
           </p>
         ) : null}
       </header>
-      <div className="px-5 py-5">{children}</div>
+      <div className="mt-4">{children}</div>
       {footer ? (
-        <div className="flex items-center justify-end gap-2 border-t border-border/60 bg-background/70 px-5 py-3">
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 [&_button]:h-9 [&_button]:px-3">
           {footer}
         </div>
       ) : null}
@@ -103,14 +103,14 @@ export function Spinner({ className }: { className?: string }) {
     <HugeiconsIcon
       icon={Loading03Icon}
       strokeWidth={2}
-      className={cn("size-4 animate-spin", className)}
+      className={cn("size-4 animate-spin motion-reduce:animate-none", className)}
     />
   );
 }
 
 export function EmptyRow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-border/70 bg-background/60 px-3 py-7 text-center text-xs text-muted-foreground">
+    <p className="rounded-lg bg-muted/30 px-3 py-4 text-xs text-muted-foreground">
       {children}
     </p>
   );

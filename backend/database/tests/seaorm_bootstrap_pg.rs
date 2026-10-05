@@ -78,6 +78,35 @@ async fn assert_uuid_v7_defaults(pool: &PgPool) {
 }
 
 #[tokio::test]
+async fn journal_flow_schema_records_an_open_trade_without_inventing_a_close_or_stop() {
+    let (admin, pool, schema) = isolated_pool().await;
+    bootstrap(&pool, &schema)
+        .await
+        .expect("bootstrap journal schema");
+    pool.execute("INSERT INTO users (id,clerk_uuid,email,full_name) VALUES ('journal-user','journal-clerk','journal@test.local','Journal User');
+        INSERT INTO workspaces (id,user_id,name) VALUES ('journal-workspace','journal-user','Journal');
+        INSERT INTO journal_entries (id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,remaining_quantity)
+        VALUES ('open-trade','journal-user','journal-workspace','ACME','Acme','long','broker','open','unknown',100)")
+        .await.expect("record an open broker trade");
+    let row: (Option<String>, Option<f64>, Option<f64>, String) =
+        sqlx::query_as("SELECT close_date::text,exit_price,stop_loss,lifecycle_state FROM journal_entries WHERE id='open-trade'")
+        .fetch_one(&pool).await.expect("read the open entry");
+    assert_eq!(row, (None, None, None, "open".to_string()));
+    let missing_price = pool.execute("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id,stop_state) VALUES ('open-trade','journal-user','journal-workspace','price')").await;
+    assert!(
+        missing_price.is_err(),
+        "a stated stop price cannot be unknown"
+    );
+    pool.execute("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id,stop_state) VALUES ('open-trade','journal-user','journal-workspace','unknown')")
+        .await.expect("unknown stop remains valid");
+    pool.execute("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES ('other','other-clerk','other@test.local','Other'); INSERT INTO workspaces(id,user_id,name) VALUES ('other-workspace','other','Other')")
+        .await.expect("seed separate owner");
+    let wrong_owner = pool.execute("INSERT INTO journal_review_drafts(entry_id,user_id,workspace_id) VALUES ('open-trade','other','other-workspace')").await;
+    assert!(wrong_owner.is_err(), "draft must belong to the entry owner");
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
 async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     let (admin, pool, schema) = isolated_pool().await;
     let (left, right) = tokio::join!(bootstrap(&pool, &schema), bootstrap(&pool, &schema));
@@ -97,7 +126,7 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     .fetch_all(&pool)
     .await
     .expect("list fresh tables");
-    assert_eq!(tables.len(), 76);
+    assert_eq!(tables.len(), 89);
     assert!(tables.contains(&"seaql_migrations".to_string()));
     assert!(tables.contains(&"agent_run_items".to_string()));
     assert!(!tables.contains(&"agent_checkpoints".to_string()));
@@ -128,6 +157,67 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     ] {
         assert!(!tables.contains(&excluded.to_string()), "found {excluded}");
     }
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
+async fn journal_flow_upgrade_preserves_existing_entry_notes_and_execution_links() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.expect("replay archived schema");
+    let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, Some(7))
+        .await
+        .expect("previous release schema");
+    pool.execute("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES ('u1','c1','one@test.local','One');
+        INSERT INTO workspaces(id,user_id,name) VALUES ('w1','u1','Main');
+        INSERT INTO journal_entries(id,user_id,workspace_id,open_date,close_date,entry_price,exit_price,position_size,symbol,symbol_name,status,total_pl,net_roi,duration,trade_type,mistakes,entry_tactics,edges_spotted,notes)
+        VALUES ('existing','u1','w1','2026-09-01','2026-09-02',100,110,10,'ACME','Acme','profit',10,10,86400,'long','','','','Keep my original reflection');
+        INSERT INTO journal_brokerage_links(id,user_id,journal_entry_id,brokerage_transaction_id) VALUES ('link1','u1','existing','broker-buy');
+        INSERT INTO notebook_notes(id,user_id,workspace_id,title,document_json) VALUES ('note1','u1','w1','My notes','{}');
+        INSERT INTO notebook_note_trades(note_id,trade_id) VALUES ('note1','existing');
+        INSERT INTO tag_categories(id,user_id,workspace_id,name,created_at,updated_at) VALUES ('category','u1','w1','Strategy',now(),now());
+        INSERT INTO tags(id,user_id,workspace_id,category_id,name,created_at,updated_at) VALUES ('tag','u1','w1','category','Breakout',now(),now());
+        INSERT INTO trade_tags(journal_entry_id,tag_id) VALUES ('existing','tag');
+        INSERT INTO notebook_media_blobs(id,user_id,object_key,content_type,media_type,format,bytes,checksum_sha256)
+        VALUES ('blob','u1','owned/image','image/png','image','png',100,'test-checksum');
+        INSERT INTO notebook_media_references(id,blob_id,user_id,workspace_id,note_id,original_filename)
+        VALUES ('attachment','blob','u1','w1','note1','chart.png');")
+        .await.expect("seed linked legacy journal entry");
+    let related_sql = "SELECT jsonb_build_object('tags',(SELECT jsonb_agg(to_jsonb(t)) FROM trade_tags t),'notes',(SELECT jsonb_agg(to_jsonb(t)) FROM notebook_note_trades t),'media',(SELECT jsonb_agg(to_jsonb(t)) FROM notebook_media_references t),'blobs',(SELECT jsonb_agg(to_jsonb(t)) FROM notebook_media_blobs t))";
+    let related_before: serde_json::Value = sqlx::query_scalar(related_sql)
+        .fetch_one(&pool)
+        .await
+        .expect("capture related records");
+    let before: serde_json::Value =
+        sqlx::query_scalar("SELECT to_jsonb(e) FROM journal_entries e WHERE id='existing'")
+            .fetch_one(&pool)
+            .await
+            .expect("capture legacy entry");
+    bootstrap(&pool, &schema)
+        .await
+        .expect("upgrade journal schema");
+    let after: serde_json::Value =
+        sqlx::query_scalar("SELECT to_jsonb(e) FROM journal_entries e WHERE id='existing'")
+            .fetch_one(&pool)
+            .await
+            .expect("read upgraded entry");
+    for (key, value) in before.as_object().expect("entry object") {
+        if key == "updated_at" {
+            assert!(after[key].as_str().unwrap() >= value.as_str().unwrap());
+            continue;
+        }
+        assert_eq!(&after[key], value, "changed legacy field {key}");
+    }
+    assert_eq!(after["source_kind"], "manual");
+    assert_eq!(after["outcome"], "profit");
+    let links: (i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM journal_brokerage_links WHERE id='link1'),(SELECT count(*) FROM notebook_note_trades WHERE trade_id='existing')")
+        .fetch_one(&pool).await.expect("read preserved links");
+    assert_eq!(links, (1, 1));
+    let related_after: serde_json::Value = sqlx::query_scalar(related_sql)
+        .fetch_one(&pool)
+        .await
+        .expect("read preserved related records");
+    assert_eq!(related_after, related_before);
     cleanup(admin, pool, &schema).await;
 }
 

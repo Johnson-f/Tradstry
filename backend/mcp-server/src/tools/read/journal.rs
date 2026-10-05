@@ -18,6 +18,26 @@ use tradstry_backend::service::read_service::journal as journal_service;
 
 use crate::server::{TradstryMcp, envelope, internal, project, validate_keys};
 
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct JournalRecordsV2Params {
+    pub workspace_id: String,
+    pub symbol: Option<String>,
+    pub lifecycle_state: Option<String>,
+    pub review_state: Option<String>,
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
+}
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct JournalContextV2Params {
+    pub workspace_id: String,
+    pub entry_id: String,
+}
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct JournalSuggestionPreviewParams {
+    pub workspace_id: String,
+    pub suggestion_id: String,
+}
+
 /// Trade outcome filter for `query_trades`.
 #[derive(Debug, Deserialize, Serialize, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -106,6 +126,151 @@ fn decode_cursor(cursor: &str) -> Option<(String, String)> {
 
 #[tool_router(router = journal_router, vis = "pub")]
 impl TradstryMcp {
+    #[tool(
+        title = "Read automatic journal records",
+        description = "Read open, closed and incomplete journal records, with review state separate from recording. Money and quantities are decimal strings. realized_net is money in currency, already including the contract multiplier and known fees; never multiply it again. Null means unknown, not zero. Open partial realized results must not enter closed-trade win rates. Filters: lifecycle_state open/closed/incomplete, review_state unreviewed/reviewed/outdated. Default 50 rows, maximum 200. This is the version 2 journal; legacy query_trades contains only complete closed records.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    pub async fn query_journal_records_v2(
+        &self,
+        Parameters(params): Parameters<JournalRecordsV2Params>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let actor = self.user(&ctx)?;
+        let db = self.synced_user_db(&actor.user_id).await?;
+        let records = tradstry_backend::service::trade_review::journal_flow::list_trades(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+        )
+        .await
+        .map_err(internal)?;
+        let filtered = records
+            .into_iter()
+            .filter(|trade| {
+                params
+                    .symbol
+                    .as_ref()
+                    .is_none_or(|symbol| trade.symbol.eq_ignore_ascii_case(symbol))
+                    && params
+                        .lifecycle_state
+                        .as_ref()
+                        .is_none_or(|state| &trade.lifecycle_state == state)
+                    && params
+                        .review_state
+                        .as_ref()
+                        .is_none_or(|state| &trade.review_state == state)
+            })
+            .collect::<Vec<_>>();
+        let offset = params.offset.unwrap_or(0);
+        let limit = params.limit.unwrap_or(50).clamp(1, 200);
+        let next = (filtered.len() > offset.saturating_add(limit))
+            .then(|| offset.saturating_add(limit).to_string());
+        envelope(
+            filtered
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .collect::<Vec<_>>(),
+            next,
+        )
+    }
+
+    #[tool(
+        title = "Read trade context and review",
+        description = "Read owned trade context with honest recording times, current review draft, and optional grouping suggestions. Retrospective context is not evidence of a pre-entry plan. An existing entry or a draft does not mean the user reviewed the trade. Suggestions require a human to inspect and confirm in Journal.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    pub async fn read_journal_context_v2(
+        &self,
+        Parameters(params): Parameters<JournalContextV2Params>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let actor = self.user(&ctx)?;
+        let db = self.synced_user_db(&actor.user_id).await?;
+        use tradstry_backend::service::trade_review::journal_flow::{
+            self, reflection, suggestions,
+        };
+        let trade = journal_flow::get_trade(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+            &params.entry_id,
+        )
+        .await
+        .map_err(internal)?;
+        let context = reflection::context(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+            &params.entry_id,
+        )
+        .await
+        .map_err(internal)?;
+        let draft = reflection::draft(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+            &params.entry_id,
+        )
+        .await
+        .map_err(internal)?;
+        let suggestions = suggestions::list(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+            Some(&params.entry_id),
+            0,
+        )
+        .await
+        .map_err(internal)?;
+        envelope(
+            serde_json::json!({"trade":trade,"context":context,"draft":draft,"suggestions":suggestions}),
+            None,
+        )
+    }
+
+    #[tool(
+        title = "Preview a suggested grouping",
+        description = "Create an expiring, owned preview of an existing grouping suggestion. Returns allocations, positions, fees and money before and after. This does not change trades. The user must confirm ambiguous grouping in the Journal interface; this tool cannot apply it.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    pub async fn preview_journal_suggestion_v2(
+        &self,
+        Parameters(params): Parameters<JournalSuggestionPreviewParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let actor = self.user(&ctx)?;
+        let db = self.synced_user_db(&actor.user_id).await?;
+        let preview = tradstry_backend::service::trade_review::journal_flow::suggestions::preview(
+            db.pool(),
+            db.user_id(),
+            &params.workspace_id,
+            &params.suggestion_id,
+            None,
+        )
+        .await
+        .map_err(internal)?;
+        envelope(
+            serde_json::json!({"preview":preview,"confirmation_required":true,"confirm_in":"Journal"}),
+            None,
+        )
+    }
     #[tool(
         title = "Query trades",
         description = "Query the user's journaled trades. IMPORTANT — money vs percent: `pl_dollars` is the realized P&L in account currency and is the ONLY field to sum or total; `pl_percent` is the percent change from entry to exit and must never be added up or reported as money. Optional filters, all applied in SQL: symbol, account, playbook (or untagged-only), status (profit/loss), percent-P/L range (min_pl_pct/max_pl_pct, in percent), stop-loss presence (has_stop_loss), a case-insensitive substring match on the trade's mistakes: its `mistake`-role tag names or legacy mistake notes (mistake_contains), and inclusive close-date range. Each trade carries its current `tags` (each with the category `role`) and `violated_principle_ids`, so you can see what is already linked before calling tag_trade or flag_violation — a tag whose role is `mistake` is what marks a trade flawed. Fields that are unset for a trade are omitted from the response. Row limit defaults to 50 (max 500).",

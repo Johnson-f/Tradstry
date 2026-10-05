@@ -17,10 +17,10 @@ fn non_empty(s: &str) -> Option<String> {
 }
 
 /// `journal_entries.total_pl` is a percent of entry price, so money is only recoverable
-/// with the position: `position_size * entry_price * total_pl / 100`. Mirrors the
+/// with the position and contract multiplier. Mirrors the
 /// backend's `DOLLAR_PL_EXPR`, which is what every dollar figure elsewhere is built from.
 pub fn pl_dollars(entry: &JournalEntry) -> f64 {
-    entry.position_size * entry.entry_price * entry.total_pl / 100.0
+    entry.position_size * entry.entry_price * entry.total_pl / 100.0 * entry.contract_multiplier
 }
 
 #[derive(Debug, Serialize)]

@@ -6,6 +6,7 @@ export const NOTIFICATION_EVENT_TYPES = [
 	"DailyRecap",
 	"WeeklyReview",
 	"MarketMonitorTriggered",
+	"AgentRunReady",
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -43,12 +44,12 @@ export const NOTIFICATION_EVENT_LABELS: Record<
 	{ label: string; description: string }
 > = {
 	FillsLanded: {
-		label: "New fills",
+		label: "New trades",
 		description:
 			"When a brokerage sync brings in trades you haven't journaled.",
 	},
 	BrokerageConnectionDisabled: {
-		label: "Broken connections",
+		label: "Connection issues",
 		description: "When a brokerage stops syncing and needs reconnecting.",
 	},
 	ArtifactReady: {
@@ -60,7 +61,7 @@ export const NOTIFICATION_EVENT_LABELS: Record<
 		description: "When a trade breaks one of your trading principles.",
 	},
 	DailyRecap: {
-		label: "Daily journaling reminder",
+		label: "Daily reminder",
 		description:
 			"After the close on weekdays, when you have trades that aren't written up.",
 	},
@@ -70,8 +71,12 @@ export const NOTIFICATION_EVENT_LABELS: Record<
 			"A summary of how you traded — journaling, rule adherence, and holding patterns.",
 	},
 	MarketMonitorTriggered: {
-		label: "Market monitors",
+		label: "Price alerts",
 		description: "When a watched symbol crosses one of your price thresholds.",
+	},
+	AgentRunReady: {
+		label: "AI analysis ready",
+		description: "When Tradstry AI finishes your analysis.",
 	},
 };
 

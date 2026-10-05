@@ -214,7 +214,9 @@ pub enum ExtremeKind {
 
 const SELECT_COLS: &str = "id, user_id, workspace_id, to_char(open_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS open_date, to_char(close_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS created_at, contract_multiplier";
 
-const DOLLAR_PL_EXPR: &str = "position_size * entry_price * total_pl / 100.0 * contract_multiplier";
+const DOLLAR_PL_EXPR: &str = "COALESCE(realized_net::double precision, position_size * entry_price * total_pl / 100.0 * contract_multiplier)";
+const LEGACY_COMPLETE: &str = "lifecycle_state='closed' AND retired_at IS NULL AND open_date IS NOT NULL AND close_date IS NOT NULL AND entry_price IS NOT NULL AND exit_price IS NOT NULL AND position_size IS NOT NULL AND status IS NOT NULL AND total_pl IS NOT NULL AND net_roi IS NOT NULL AND duration IS NOT NULL AND (currency IS NULL OR currency=(SELECT currency FROM workspaces WHERE id=journal_entries.workspace_id AND user_id=journal_entries.user_id))";
+const ALIASED_COMPLETE: &str = "e.lifecycle_state='closed' AND e.retired_at IS NULL AND e.open_date IS NOT NULL AND e.close_date IS NOT NULL AND e.entry_price IS NOT NULL AND e.exit_price IS NOT NULL AND e.position_size IS NOT NULL AND e.status IS NOT NULL AND e.total_pl IS NOT NULL AND e.net_roi IS NOT NULL AND e.duration IS NOT NULL AND (e.currency IS NULL OR e.currency=(SELECT currency FROM workspaces WHERE id=e.workspace_id AND user_id=e.user_id))";
 
 fn row_to_journal_entry(row: &sqlx::postgres::PgRow) -> Result<JournalEntry> {
     Ok(JournalEntry {
@@ -576,7 +578,7 @@ async fn validate_playbook_exists(
 
 pub async fn list_journal_entries(pool: &PgPool, user_id: &str) -> Result<Vec<JournalEntry>> {
     let sql = format!(
-        "SELECT {SELECT_COLS} FROM journal_entries WHERE user_id = $1 AND deleted_at IS NULL ORDER BY open_date DESC, close_date DESC"
+        "SELECT {SELECT_COLS} FROM journal_entries WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE} ORDER BY open_date DESC, close_date DESC"
     );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(user_id)
@@ -600,7 +602,7 @@ pub async fn list_journal_entries_for_workspace(
 ) -> Result<Vec<JournalEntry>> {
     let sql = format!(
         "SELECT {SELECT_COLS} FROM journal_entries \
-         WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL \
+         WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND {LEGACY_COMPLETE} \
          ORDER BY created_at DESC, id DESC"
     );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
@@ -638,7 +640,7 @@ fn like_contains(term: &str) -> String {
 /// this sequence exactly.
 fn build_filtered_sql(filter: &JournalFilter) -> String {
     let mut sql = format!(
-        "SELECT {SELECT_COLS} FROM journal_entries WHERE user_id = $1 AND deleted_at IS NULL"
+        "SELECT {SELECT_COLS} FROM journal_entries WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}"
     );
     let mut n = 1;
     if filter.workspace_id.is_some() {
@@ -794,12 +796,12 @@ pub async fn aggregate_journal_analytics(
             COALESCE(SUM({DOLLAR_PL_EXPR}), 0.0) AS cumulative_profit,
             COALESCE(SUM(CASE WHEN total_pl > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
             COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss,
-            COALESCE(SUM(risk_reward), 0.0) AS sum_risk_reward,
+            COALESCE(SUM(CASE WHEN NOT EXISTS(SELECT 1 FROM journal_workspace_state s WHERE s.workspace_id=journal_entries.workspace_id AND s.user_id=journal_entries.user_id AND s.enabled) THEN risk_reward END), 0.0) AS sum_risk_reward,
             COALESCE(SUM(CASE WHEN total_pl > 0 THEN total_pl ELSE 0.0 END), 0.0) AS sum_win_pct,
             COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS(total_pl) ELSE 0.0 END), 0.0) AS sum_loss_pct,
-            COUNT(risk_reward) AS risk_reward_count
+            COUNT(CASE WHEN NOT EXISTS(SELECT 1 FROM journal_workspace_state s WHERE s.workspace_id=journal_entries.workspace_id AND s.user_id=journal_entries.user_id AND s.enabled) THEN risk_reward END) AS risk_reward_count
         FROM journal_entries
-        WHERE user_id = $1 AND deleted_at IS NULL
+        WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
           AND workspace_id = $2
           AND close_date >= $3
           AND close_date <= $4
@@ -847,7 +849,7 @@ pub async fn find_extreme_trade(
     let sql = format!(
         "SELECT symbol, symbol_name, {DOLLAR_PL_EXPR} AS amount
          FROM journal_entries
-         WHERE user_id = $1 AND deleted_at IS NULL
+         WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
            AND workspace_id = $2
            AND close_date >= $3
            AND close_date <= $4
@@ -890,7 +892,7 @@ pub async fn aggregate_calendar_days(
             COUNT(*) AS trade_count,
             COALESCE(SUM(CASE WHEN total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trade_count
         FROM journal_entries
-        WHERE user_id = $1 AND deleted_at IS NULL
+        WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
           AND workspace_id = $2
           AND close_date >= $3
           AND close_date <= $4
@@ -928,7 +930,7 @@ where
     E: sqlx::PgExecutor<'e>,
 {
     let sql = format!(
-        "SELECT {SELECT_COLS} FROM journal_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL"
+        "SELECT {SELECT_COLS} FROM journal_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND {LEGACY_COMPLETE}"
     );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(id)
@@ -956,6 +958,11 @@ pub async fn create_journal_entry(
 
     let open_ts = parse_flexible_datetime(&entry.open_date)?;
     let close_ts = parse_flexible_datetime(&entry.close_date)?;
+
+    let mut transaction = pool.begin().await?;
+    if brokerage_tx_ids.as_ref().is_some_and(|ids| !ids.is_empty()) {
+        ensure_legacy_link_mode(&mut transaction, user_id, &entry.workspace_id).await?;
+    }
 
     sqlx::query(
         "INSERT INTO journal_entries (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, contract_multiplier, hlc) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
@@ -990,15 +997,16 @@ pub async fn create_journal_entry(
     .bind(entry.rule_adherence_score)
     .bind(entry.contract_multiplier)
     .bind(crate::service::hlc::stamp())
-    .execute(pool)
+    .execute(&mut *transaction)
     .await
     .context("Failed to insert journal entry")?;
 
     if let Some(ref tx_ids) = brokerage_tx_ids
         && !tx_ids.is_empty()
     {
-        insert_brokerage_links(pool, &id, user_id, tx_ids).await?;
+        insert_brokerage_links_tx(&mut transaction, &id, user_id, tx_ids).await?;
     }
+    transaction.commit().await?;
 
     find_journal_entry(pool, &id, user_id)
         .await?
@@ -1011,6 +1019,7 @@ pub async fn update_journal_entry(
     user_id: &str,
     input: UpdateJournalEntryInput,
 ) -> Result<JournalEntry> {
+    ensure_manual_write(pool, id, user_id).await?;
     let current = find_journal_entry(pool, id, user_id)
         .await?
         .context("Journal entry not found")?;
@@ -1090,9 +1099,87 @@ pub async fn insert_brokerage_links(
     user_id: &str,
     brokerage_transaction_ids: &[String],
 ) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    insert_brokerage_links_tx(
+        &mut transaction,
+        journal_entry_id,
+        user_id,
+        brokerage_transaction_ids,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+pub(super) async fn ensure_legacy_link_mode(
+    connection: &mut PgConnection,
+    user: &str,
+    workspace: &str,
+) -> Result<()> {
+    sqlx::query("INSERT INTO journal_workspace_state(workspace_id,user_id) SELECT id,user_id FROM workspaces WHERE id=$1 AND user_id=$2 ON CONFLICT(workspace_id) DO NOTHING").bind(workspace).bind(user).execute(&mut *connection).await?;
+    let enabled:Option<bool>=sqlx::query_scalar("SELECT enabled FROM journal_workspace_state WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE").bind(workspace).bind(user).fetch_optional(connection).await?;
+    ensure!(
+        enabled == Some(false),
+        "JOURNAL_V2_REQUIRED: broker trades are recorded automatically; use a grouping preview in Journal"
+    );
+    Ok(())
+}
+
+async fn ensure_manual_write_tx(connection: &mut PgConnection, id: &str, user: &str) -> Result<()> {
+    let kind: Option<String> = sqlx::query_scalar(
+        "SELECT source_kind FROM journal_entries WHERE id=$1 AND user_id=$2 FOR UPDATE",
+    )
+    .bind(id)
+    .bind(user)
+    .fetch_optional(connection)
+    .await?;
+    ensure!(
+        kind.as_deref() != Some("broker"),
+        "JOURNAL_V2_REQUIRED: use Journal context or a grouping preview for broker trades"
+    );
+    Ok(())
+}
+
+async fn ensure_manual_write(pool: &PgPool, id: &str, user: &str) -> Result<()> {
+    let kind: Option<String> =
+        sqlx::query_scalar("SELECT source_kind FROM journal_entries WHERE id=$1 AND user_id=$2")
+            .bind(id)
+            .bind(user)
+            .fetch_optional(pool)
+            .await?;
+    ensure!(
+        kind.as_deref() != Some("broker"),
+        "JOURNAL_V2_REQUIRED: broker results are read-only; edit context or use a grouping preview in Journal"
+    );
+    Ok(())
+}
+
+async fn insert_brokerage_links_tx(
+    connection: &mut PgConnection,
+    journal_entry_id: &str,
+    user_id: &str,
+    brokerage_transaction_ids: &[String],
+) -> Result<()> {
     if brokerage_transaction_ids.is_empty() {
         return Ok(());
     }
+    let workspace: Option<String> =
+        sqlx::query_scalar("SELECT workspace_id FROM journal_entries WHERE id=$1 AND user_id=$2")
+            .bind(journal_entry_id)
+            .bind(user_id)
+            .fetch_optional(&mut *connection)
+            .await?;
+    let workspace = workspace.ok_or_else(|| anyhow!("Journal entry not found"))?;
+    ensure_legacy_link_mode(connection, user_id, &workspace).await?;
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM brokerage_transactions WHERE user_id=$1 AND workspace_id=$2 AND id=ANY($3)").bind(user_id).bind(&workspace).bind(brokerage_transaction_ids).fetch_one(&mut *connection).await?;
+    ensure!(
+        count as usize
+            == brokerage_transaction_ids
+                .iter()
+                .collect::<HashSet<_>>()
+                .len(),
+        "Broker executions must belong to this account"
+    );
     let link_ids: Vec<String> = brokerage_transaction_ids
         .iter()
         .map(|_| crate::ids::new_uuid_v7().to_string())
@@ -1108,7 +1195,7 @@ pub async fn insert_brokerage_links(
     .bind(brokerage_transaction_ids)
     .bind(journal_entry_id)
     .bind(user_id)
-    .execute(pool)
+    .execute(connection)
     .await
     .context("Failed to insert brokerage links")?;
     Ok(())
@@ -1152,7 +1239,7 @@ pub async fn list_journal_entries_for_account_in_range(
 ) -> Result<Vec<JournalEntry>> {
     let sql = format!(
         "SELECT {SELECT_COLS} FROM journal_entries
-         WHERE user_id = $1 AND deleted_at IS NULL
+         WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
            AND workspace_id = $2
            AND close_date >= $3
            AND close_date <= $4
@@ -1189,7 +1276,7 @@ pub async fn aggregate_stats_per_playbook(
             COALESCE(SUM(CASE WHEN total_pl > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
             COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
          FROM journal_entries
-         WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+         WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
            AND playbook_id IS NOT NULL
          GROUP BY playbook_id"
     );
@@ -1233,7 +1320,7 @@ pub async fn aggregate_stats_for_playbook(
             COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
          FROM journal_entries
          WHERE user_id = $1 AND workspace_id = $2 AND playbook_id = $3
-           AND deleted_at IS NULL
+           AND deleted_at IS NULL AND {LEGACY_COMPLETE}
          GROUP BY playbook_id"
     );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql))
@@ -1267,8 +1354,7 @@ pub async fn aggregate_violation_stats_per_principle(
     workspace_id: &str,
 ) -> Result<Vec<PrincipleStatsRow>> {
     // Table-aliased form of DOLLAR_PL_EXPR; this query joins journal_entries as `e`.
-    const ALIASED_DOLLAR_PL: &str =
-        "e.position_size * e.entry_price * e.total_pl / 100.0 * e.contract_multiplier";
+    const ALIASED_DOLLAR_PL: &str = "COALESCE(e.realized_net::double precision, e.position_size * e.entry_price * e.total_pl / 100.0 * e.contract_multiplier)";
 
     let sql = format!(
         "SELECT
@@ -1282,7 +1368,7 @@ pub async fn aggregate_violation_stats_per_principle(
          JOIN journal_entries e ON e.id = v.journal_entry_id
          WHERE e.user_id = $1
            AND e.workspace_id = $2
-           AND e.deleted_at IS NULL
+           AND e.deleted_at IS NULL AND {ALIASED_COMPLETE}
          GROUP BY v.principle_id"
     );
 
@@ -1313,8 +1399,7 @@ pub async fn aggregate_violation_stats_for_principle(
     workspace_id: &str,
     principle_id: &str,
 ) -> Result<Option<PrincipleStatsRow>> {
-    const ALIASED_DOLLAR_PL: &str =
-        "e.position_size * e.entry_price * e.total_pl / 100.0 * e.contract_multiplier";
+    const ALIASED_DOLLAR_PL: &str = "COALESCE(e.realized_net::double precision, e.position_size * e.entry_price * e.total_pl / 100.0 * e.contract_multiplier)";
     let sql = format!(
         "SELECT
             v.principle_id,
@@ -1326,7 +1411,7 @@ pub async fn aggregate_violation_stats_for_principle(
          FROM trade_principle_violations v
          JOIN journal_entries e ON e.id = v.journal_entry_id
          WHERE e.user_id = $1 AND e.workspace_id = $2
-           AND v.principle_id = $3 AND e.deleted_at IS NULL
+           AND v.principle_id = $3 AND e.deleted_at IS NULL AND {ALIASED_COMPLETE}
          GROUP BY v.principle_id"
     );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql))
@@ -1428,7 +1513,7 @@ const DELTA_COLS: &str = "id, \
 /// (rather than calling `tags_service::set_trade_tags`) because that helper
 /// takes a `&PgPool` and opens its own transaction; the sync writers already
 /// hold the outer push transaction's `&mut PgConnection`.
-async fn replace_trade_tags_tx(
+pub(crate) async fn replace_trade_tags_tx(
     conn: &mut PgConnection,
     user_id: &str,
     workspace_id: &str,
@@ -1479,7 +1564,7 @@ async fn replace_trade_tags_tx(
 /// `principle_ids`. Same rationale as [`replace_trade_tags_tx`]: inlined SQL
 /// against the caller's `&mut PgConnection` instead of
 /// `trading_principle_table::set_trade_principle_violations`, which needs a pool.
-async fn replace_principle_violations_tx(
+pub(crate) async fn replace_principle_violations_tx(
     conn: &mut PgConnection,
     user_id: &str,
     workspace_id: &str,
@@ -1614,6 +1699,7 @@ pub async fn update_journal_entry_tx(
     args: &JournalWriteArgs,
     hlc: &str,
 ) -> Result<()> {
+    ensure_manual_write_tx(conn, &args.id, user_id).await?;
     if let Some(playbook_id) = args.playbook_id.as_deref() {
         let valid: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM playbooks WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL \
@@ -1700,6 +1786,7 @@ pub async fn soft_delete_journal_entry_tx(
     id: &str,
     hlc: &str,
 ) -> Result<()> {
+    ensure_manual_write_tx(conn, id, user_id).await?;
     sqlx::query(
         "UPDATE journal_entries SET deleted_at = now(), hlc = $1 \
          WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL",
@@ -1724,6 +1811,11 @@ pub async fn journal_entries_since(
     workspace_id: &str,
     cookie: Option<&str>,
 ) -> Result<Vec<JournalDelta>> {
+    ensure!(
+        !crate::service::trade_review::journal_flow::is_enabled(pool, user_id, workspace_id)
+            .await?,
+        "JOURNAL_V2_REQUIRED: this workspace uses automatic journalling; update the client to use the version 2 journal"
+    );
     // A first pull that saw no rows returns `""` as the cursor (unwrap_or_default),
     // and `''::timestamptz` throws. Treat an empty cookie as "no cursor".
     let cookie = cookie.filter(|c| !c.is_empty());

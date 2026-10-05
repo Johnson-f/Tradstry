@@ -27,6 +27,13 @@ type TokenResponse = {
 
 export type AuthStatus = { signedIn: boolean; email: string | null; name: string | null };
 
+class OAuthTokenError extends Error {
+  constructor(readonly status:number,message:string){super(message);}
+}
+function temporaryAuthFailure(error:unknown):boolean {
+  return error instanceof TypeError || (error instanceof OAuthTokenError && (error.status>=500 || error.status===429));
+}
+
 export class DesktopAuth implements AuthCommands {
   readonly #path: string;
   readonly #baseUrl: string;
@@ -88,7 +95,8 @@ export class DesktopAuth implements AuthCommands {
     }
     try {
       return await this.#refresh(tokens);
-    } catch {
+    } catch (error) {
+      if(temporaryAuthFailure(error))return statusFrom(tokens);
       this.#clear();
       return signedOut();
     }
@@ -96,6 +104,15 @@ export class DesktopAuth implements AuthCommands {
 
   async signOut(): Promise<void> {
     this.#clear();
+  }
+
+  async cacheOwner(): Promise<string | null> {
+    const tokens=this.#load();if(!tokens)return null;
+    try {
+      const payload=JSON.parse(Buffer.from(tokens.accessToken.split(".")[1] ?? "","base64url").toString("utf8")) as {iss?:unknown;sub?:unknown};
+      if(typeof payload.iss!=="string" || typeof payload.sub!=="string")return null;
+      return createHash("sha256").update(JSON.stringify([payload.iss,payload.sub])).digest("hex");
+    } catch{return null;}
   }
 
   async accessToken(): Promise<string | null> {
@@ -106,7 +123,8 @@ export class DesktopAuth implements AuthCommands {
     try {
       await this.#refresh(tokens);
       return this.#load()?.accessToken ?? null;
-    } catch {
+    } catch (error) {
+      if(temporaryAuthFailure(error))throw new TypeError("Network unavailable; your signed-in session is retained for offline work");
       this.#clear();
       return null;
     }
@@ -145,7 +163,7 @@ export class DesktopAuth implements AuthCommands {
       body: new URLSearchParams(parameters),
     });
     const payload = (await response.json()) as TokenResponse & { error_description?: string };
-    if (!response.ok || !payload.access_token) throw new Error(payload.error_description ?? `OAuth token request failed (${response.status})`);
+    if (!response.ok || !payload.access_token) throw new OAuthTokenError(response.status,payload.error_description ?? `OAuth token request failed (${response.status})`);
     return payload;
   }
 

@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::trading_principle_table as tp;
 
 async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
+    tradstry_backend::service::db::schema::bootstrap(pool, "public")
         .await
         .expect("migrate");
 }

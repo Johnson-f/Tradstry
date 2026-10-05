@@ -5,6 +5,66 @@ use serde_json::{Map, Value};
 /// Static `(key, sql)` pairs keep the table list injection-proof.
 const USER_SCOPED: &[(&str, &str)] = &[
     (
+        "trade_episodes",
+        "SELECT to_jsonb(t) FROM trade_episodes t WHERE t.user_id=$1",
+    ),
+    (
+        "brokerage_transaction_versions",
+        "SELECT to_jsonb(t) FROM brokerage_transaction_versions t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_workspace_state",
+        "SELECT to_jsonb(t) FROM journal_workspace_state t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_projection_jobs",
+        "SELECT to_jsonb(t) - 'lease_owner' FROM journal_projection_jobs t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_mutations",
+        "SELECT to_jsonb(t) FROM journal_mutations t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_grouping_operations",
+        "SELECT to_jsonb(t) FROM journal_grouping_operations t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_grouping_suggestions",
+        "SELECT to_jsonb(t) FROM journal_grouping_suggestions t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_grouping_feedback",
+        "SELECT to_jsonb(t) FROM journal_grouping_feedback t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_trade_context",
+        "SELECT to_jsonb(t) FROM journal_trade_context t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_trade_context_events",
+        "SELECT to_jsonb(t) FROM journal_trade_context_events t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_review_sessions",
+        "SELECT to_jsonb(t) FROM journal_review_sessions t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_trade_reviews",
+        "SELECT to_jsonb(t) FROM journal_trade_reviews t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_review_drafts",
+        "SELECT to_jsonb(t) FROM journal_review_drafts t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_changes",
+        "SELECT to_jsonb(t) FROM journal_changes t WHERE t.user_id=$1",
+    ),
+    (
+        "trade_episode_fills",
+        "SELECT to_jsonb(f) FROM trade_episode_fills f JOIN trade_episodes e ON e.id=f.episode_id WHERE e.user_id=$1",
+    ),
+    (
         "workspaces",
         "SELECT to_jsonb(t) FROM workspaces t WHERE t.user_id = $1",
     ),

@@ -38,6 +38,7 @@ import {
 
 let window: BrowserWindow | null = null;
 let service: DesktopService | null = null;
+let journalSyncTimer: ReturnType<typeof setInterval> | null = null;
 let stopSync: (() => void) | null = null;
 let subscriptions: GraphqlSubscriptions | null = null;
 let tray: Tray | null = null;
@@ -418,6 +419,7 @@ app.whenReady().then(async () => {
   });
 
   service = createService();
+  journalSyncTimer=setInterval(()=>{void service?.syncJournalFlow().catch((error)=>console.error("Journal sync:",error));},10_000);
   ipcMain.handle("tradstry:invoke", (_event, command: string, args?: Record<string, unknown>) => {
     if (!service) throw new Error("Desktop service is not ready");
     if (command === "store_media") throw new Error("Use the media file bridge");
@@ -453,6 +455,8 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  if(journalSyncTimer)clearInterval(journalSyncTimer);
+  journalSyncTimer=null;
   if (marketRefreshTimer) clearInterval(marketRefreshTimer);
   if (marketRotationTimer) clearInterval(marketRotationTimer);
   marketRefreshTimer = null;

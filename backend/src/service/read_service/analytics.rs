@@ -227,7 +227,7 @@ pub async fn get_advanced_analytics(
         .map(|d| d.format("%Y-%m-%d").to_string());
     let range_end = bounds.end_date_et.map(|d| d.format("%Y-%m-%d").to_string());
 
-    let (entries, workspace) = tokio::try_join!(
+    let (mut entries, workspace) = tokio::try_join!(
         journal_table::list_journal_entries_for_account_in_range(
             user_db.pool(),
             user_db.user_id(),
@@ -237,6 +237,18 @@ pub async fn get_advanced_analytics(
         ),
         workspaces_table::find_workspace(user_db.pool(), workspace_id, user_db.user_id()),
     )?;
+    if crate::service::trade_review::journal_flow::is_enabled(
+        user_db.pool(),
+        user_db.user_id(),
+        workspace_id,
+    )
+    .await?
+    {
+        for entry in &mut entries {
+            entry.stop_loss = None;
+            entry.risk_reward = None;
+        }
+    }
     let current_equity = workspace.and_then(|account| account.total_value);
 
     // Hydrate per-trade tags for the behavioral (clean/flawed, per-category)

@@ -1,9 +1,16 @@
 "use client";
 
-import { UnfoldMoreIcon } from "@hugeicons/core-free-icons";
+import { CheckListIcon, UnfoldMoreIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
 import { Checkbox } from "@tradstry/app-ui/components/ui/checkbox";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@tradstry/app-ui/components/ui/empty";
 import {
   Popover,
   PopoverContent,
@@ -74,9 +81,30 @@ export function PrinciplePicker({
 
   if (applicable.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground">
-        No principles yet — add them on the Playbook page.
-      </p>
+      <Empty
+        className={cn(
+          "min-h-24 flex-row items-start justify-start gap-3 rounded-lg border bg-muted/20 p-3 text-left",
+          className,
+        )}
+      >
+        <EmptyMedia variant="icon" className="mb-0 text-muted-foreground">
+          <HugeiconsIcon
+            icon={CheckListIcon}
+            aria-hidden="true"
+            className="size-4"
+          />
+        </EmptyMedia>
+        <EmptyHeader className="min-w-0 items-start gap-1">
+          <EmptyTitle className="text-xs">
+            {all.length === 0 ? "No principles added" : "No matching principles"}
+          </EmptyTitle>
+          <EmptyDescription>
+            {all.length === 0
+              ? "Create principles in Playbooks → Principles, then select any you broke on this trade."
+              : "Add or activate a rule for all trades or this playbook in Playbooks → Principles."}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 

@@ -90,8 +90,12 @@ export const dashboardRouteMeta: Record<string, DashboardRouteMeta> = {
 };
 
 export function getDashboardRouteMeta(pathname: string): DashboardRouteMeta {
+	const path = pathname.split(/[?#]/)[0] ?? pathname;
 	return (
-		dashboardRouteMeta[pathname] ?? {
+		dashboardRouteMeta[path] ??
+		(path.startsWith("/dashboard/journal/")
+			? dashboardRouteMeta["/dashboard/journal"]
+			: undefined) ?? {
 			title: "Dashboard",
 			description: "Shared workspace for the active dashboard route.",
 			section: "Tradstry",

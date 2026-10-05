@@ -58,6 +58,7 @@ pub struct NotebookPushResult {
 #[derive(SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
 pub struct NotebookNoteDeltaGql {
+    pub purpose: String,
     pub id: String,
     pub folder_id: Option<String>,
     pub title: String,
@@ -72,6 +73,7 @@ pub struct NotebookNoteDeltaGql {
 impl From<NotebookNoteDelta> for NotebookNoteDeltaGql {
     fn from(d: NotebookNoteDelta) -> Self {
         Self {
+            purpose: d.purpose,
             id: d.id,
             folder_id: d.folder_id,
             title: d.title,

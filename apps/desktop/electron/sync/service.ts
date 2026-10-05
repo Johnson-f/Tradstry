@@ -7,6 +7,7 @@ import { PrinciplesRepository } from "./principles.ts";
 import type { GraphqlClient } from "./protocol.ts";
 import { TagsRepository } from "./tags.ts";
 import { TradingRepository } from "./trading.ts";
+import { JournalFlowRepository } from "./journal-flow.ts";
 
 const MARKET_QUOTES = `query DesktopMarketQuotes($symbols: [String!]!) {
   marketQuotes(symbols: $symbols) {
@@ -24,6 +25,7 @@ export type AuthCommands = {
 	status(): Promise<unknown>;
 	signOut(): Promise<void>;
 	accessToken?(): Promise<string | null>;
+	cacheOwner?(): Promise<string | null>;
 };
 
 export type AnalyticsCommands = {
@@ -44,6 +46,7 @@ export class DesktopService {
 	readonly #principles: PrinciplesRepository;
 	readonly #calculator: CalculatorRepository;
 	readonly #media: MediaRepository;
+	readonly #journalFlow: JournalFlowRepository;
 
 	constructor(options: {
 		store: DesktopDatabase;
@@ -64,7 +67,10 @@ export class DesktopService {
 		this.#tags = new TagsRepository(options.store);
 		this.#principles = new PrinciplesRepository(options.store);
 		this.#calculator = new CalculatorRepository(options.store);
+		this.#journalFlow = new JournalFlowRepository(options.store,options.graphql,()=>options.auth.cacheOwner?.() ?? Promise.resolve(null));
 	}
+
+	async syncJournalFlow():Promise<void> { await this.#journalFlow.sync(); }
 
 	async invoke(
 		command: string,
@@ -83,6 +89,7 @@ export class DesktopService {
 			case "sign_out":
 				return this.#auth.signOut();
 			case "graphql_query":
+				if (this.#journalFlow.handles(stringArg(args,"query"))) return this.#journalFlow.execute(stringArg(args,"query"),optionalObjectArg(args,"variables") ?? {});
 				return this.#graphql(
 					stringArg(args, "query"),
 					optionalObjectArg(args, "variables"),

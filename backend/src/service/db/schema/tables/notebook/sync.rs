@@ -9,7 +9,7 @@ use sqlx::{PgConnection, PgPool, Row};
 
 // Microsecond precision on updated_at is load-bearing: it is the sync cursor,
 // so a truncated stamp would re-emit or skip rows across pulls.
-const NOTE_DELTA_COLS: &str = "id, folder_id, title, document_json, sort_order, hlc, \
+const NOTE_DELTA_COLS: &str = "id, folder_id, title, document_json, sort_order, hlc, purpose, \
     to_char(deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS deleted_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at";
 
@@ -19,6 +19,7 @@ const FOLDER_DELTA_COLS: &str = "id, parent_folder_id, name, sort_order, is_syst
 
 #[derive(Debug, Clone)]
 pub struct NotebookNoteDelta {
+    pub purpose: String,
     pub id: String,
     pub folder_id: Option<String>,
     pub title: String,
@@ -146,6 +147,7 @@ pub async fn notes_since(
         let id: String = row.try_get("id")?;
         let trade_ids = trades_by_note.remove(&id).unwrap_or_default();
         out.push(NotebookNoteDelta {
+            purpose: row.try_get("purpose")?,
             id,
             folder_id: row.try_get("folder_id")?,
             title: row.try_get("title")?,

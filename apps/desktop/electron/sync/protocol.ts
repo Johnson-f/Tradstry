@@ -11,6 +11,7 @@ export type OutboxRow = {
 };
 
 export type WireNote = {
+    purpose?: string;
 	id: string;
 	folderId: string | null;
 	title: string;
@@ -221,7 +222,7 @@ const PUSH = `mutation PushNotebook($input: NotebookPushInput!) {
 const PULL = `query PullNotebook($cookie: String, $workspaceId: String!, $clientId: String!) {
   pullNotebook(cookie: $cookie, workspaceId: $workspaceId, clientId: $clientId) {
     cookie lastMutationId
-    notes { id folderId title documentJson sortOrder tradeIds hlc deletedAt updatedAt }
+    notes { id folderId title documentJson sortOrder tradeIds hlc deletedAt updatedAt purpose }
     folders { id parentFolderId name sortOrder isSystem hlc deletedAt updatedAt }
   }
 }`;

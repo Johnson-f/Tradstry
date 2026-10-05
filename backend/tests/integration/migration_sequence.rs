@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_uuid_v7_defaults() {
+fn seaorm_migrations_end_with_journal_first_flow() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 7);
+    assert_eq!(migrations.len(), 8);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20260902_000007_uuid_v7_defaults"
+        "m20261003_000008_journal_first_flow"
     );
 }

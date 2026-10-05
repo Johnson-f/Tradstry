@@ -495,7 +495,7 @@ export function CreateTrades({
                 </Select>
               </Field>
 
-              <Field label="Playbook (Optional)">
+              <Field label="Playbook">
                 <Select
                   value={form.playbookId || "__none__"}
                   onValueChange={(value) =>

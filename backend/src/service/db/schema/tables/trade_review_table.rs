@@ -57,6 +57,11 @@ pub struct PublishEpisodeReviewInput {
 }
 
 pub async fn rebuild_workspace(pool: &PgPool, user_id: &str, workspace_id: &str) -> Result<usize> {
+    if crate::service::trade_review::journal_flow::is_enabled(pool, user_id, workspace_id).await? {
+        let count:i64=sqlx::query_scalar("SELECT count(*) FROM trade_episodes WHERE user_id=$1 AND workspace_id=$2 AND retired_at IS NULL")
+            .bind(user_id).bind(workspace_id).fetch_one(pool).await?;
+        return Ok(count.try_into()?);
+    }
     let transactions = brokerage_table::list_all_for_lifecycle(pool, user_id, workspace_id).await?;
     let manually_grouped_transaction_ids: HashSet<String> = sqlx::query_scalar(
         "SELECT DISTINCT f.brokerage_transaction_id
@@ -82,6 +87,7 @@ pub async fn rebuild_workspace(pool: &PgPool, user_id: &str, workspace_id: &str)
 
     let episodes = build_episodes(fills).context("failed to build deterministic trade episodes")?;
     let mut tx = pool.begin().await?;
+    super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, workspace_id).await?;
     for episode in &episodes {
         let id = crate::ids::new_uuid_v7().to_string();
         let instrument_json = serde_json::to_value(&episode.instrument)?;
@@ -263,6 +269,7 @@ pub async fn regroup_episode(
     );
 
     let mut tx = pool.begin().await?;
+    super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, &workspace_id).await?;
     sqlx::query(
         "SELECT id FROM brokerage_transactions
          WHERE id=ANY($1) AND user_id=$2 AND workspace_id=$3 FOR UPDATE",
@@ -400,24 +407,23 @@ pub async fn reset_episode_grouping(
     user_id: &str,
     episode_id: &str,
 ) -> Result<bool> {
-    let workspace_id = sqlx::query_scalar::<_, String>(
-        "DELETE FROM trade_episodes
-         WHERE id=$1 AND user_id=$2 AND grouping_source='manual'
-           AND NOT EXISTS (
-             SELECT 1 FROM brokerage_episode_publications p
-             WHERE p.episode_id=trade_episodes.id
-           )
-         RETURNING workspace_id",
-    )
-    .bind(episode_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some(workspace_id) = workspace_id else {
+    let mut tx = pool.begin().await?;
+    let workspace: Option<String> =
+        sqlx::query_scalar("SELECT workspace_id FROM trade_episodes WHERE id=$1 AND user_id=$2")
+            .bind(episode_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(workspace) = workspace else {
         return Ok(false);
     };
-    rebuild_workspace(pool, user_id, &workspace_id).await?;
-    Ok(true)
+    super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, &workspace).await?;
+    let deleted = sqlx::query("DELETE FROM trade_episodes WHERE id=$1 AND user_id=$2 AND grouping_source='manual' AND NOT EXISTS(SELECT 1 FROM brokerage_episode_publications WHERE episode_id=$1)").bind(episode_id).bind(user_id).execute(&mut *tx).await?.rows_affected()>0;
+    tx.commit().await?;
+    if deleted {
+        rebuild_workspace(pool, user_id, &workspace).await?;
+    }
+    Ok(deleted)
 }
 
 pub async fn request_execution_check(pool: &PgPool, user_id: &str, plan_id: &str) -> Result<usize> {
@@ -448,7 +454,9 @@ pub async fn list_inbox(
     .await?;
     if episode_count == 0 {
         rebuild_workspace(pool, user_id, workspace_id).await?;
-    } else {
+    } else if !crate::service::trade_review::journal_flow::is_enabled(pool, user_id, workspace_id)
+        .await?
+    {
         refresh_suggestions(pool, user_id, workspace_id).await?;
     }
     let rows = sqlx::query(
@@ -769,6 +777,7 @@ pub async fn publish_review(pool: &PgPool, user_id: &str, match_id: &str) -> Res
         .map(|_| crate::ids::new_uuid_v7().to_string())
         .collect();
     let mut tx = pool.begin().await?;
+    super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, &args.workspace_id).await?;
     crate::service::db::schema::tables::journal_table::create_journal_entry_tx(
         &mut tx,
         user_id,
@@ -824,6 +833,15 @@ pub async fn publish_episode_review(
     }
 
     let episode = load_episode(pool, user_id, &input.episode_id).await?;
+    ensure!(
+        !crate::service::trade_review::journal_flow::is_enabled(
+            pool,
+            user_id,
+            &episode.workspace_id
+        )
+        .await?,
+        "JOURNAL_V2_REQUIRED: this trade is already recorded; add context and review in Journal"
+    );
     ensure!(
         episode.draft.closed_at.is_some(),
         "the broker position is still open"
@@ -927,6 +945,8 @@ pub async fn publish_episode_review(
     .await?;
     if let Some(match_id) = confirmed_match_id {
         let mut tx = pool.begin().await?;
+        super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, &episode.workspace_id)
+            .await?;
         sqlx::query(
             "UPDATE manual_execution_claims
              SET status='pending',reconciled_match_id=NULL,updated_at=now()
@@ -1049,6 +1069,7 @@ async fn publish_unplanned_episode(
         .map(|_| crate::ids::new_uuid_v7().to_string())
         .collect();
     let mut tx = pool.begin().await?;
+    super::journal_table::ensure_legacy_link_mode(&mut tx, user_id, &episode.workspace_id).await?;
     sqlx::query(
         "SELECT id FROM brokerage_transactions
          WHERE id=ANY($1) AND user_id=$2 FOR UPDATE",
@@ -1344,11 +1365,13 @@ async fn load_episodes(
     user_id: &str,
     workspace_id: &str,
 ) -> Result<Vec<StoredEpisode>> {
-    let rows = sqlx::query("SELECT id FROM trade_episodes WHERE user_id=$1 AND workspace_id=$2")
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(pool)
-        .await?;
+    let rows = sqlx::query(
+        "SELECT id FROM trade_episodes WHERE user_id=$1 AND workspace_id=$2 AND retired_at IS NULL",
+    )
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
     let mut episodes = Vec::new();
     for row in rows {
         episodes.push(load_episode(pool, user_id, row.try_get::<String, _>(0)?.as_str()).await?);
@@ -1360,7 +1383,7 @@ async fn load_episode(pool: &PgPool, user_id: &str, episode_id: &str) -> Result<
     let row = sqlx::query("SELECT id,workspace_id,grouping_source,instrument_json,direction,opened_at,closed_at,current_quantity,fingerprint FROM trade_episodes WHERE id=$1 AND user_id=$2")
         .bind(episode_id).bind(user_id).fetch_optional(pool).await?.ok_or_else(|| anyhow!("episode not found"))?;
     let instrument: ExecutionInstrument = serde_json::from_value(row.try_get(3)?)?;
-    let fill_rows = sqlx::query("SELECT brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,brokerage_transaction_id")
+    let fill_rows = sqlx::query("SELECT brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,allocation_order,brokerage_transaction_id")
         .bind(episode_id).fetch_all(pool).await?;
     let allocations = fill_rows
         .into_iter()

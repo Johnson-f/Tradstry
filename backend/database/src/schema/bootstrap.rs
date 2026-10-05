@@ -65,6 +65,29 @@ async fn bootstrap_locked(pool: &PgPool, db: &DatabaseConnection) -> Result<()> 
 }
 
 pub async fn prepare_fresh_adoption_compatibility(db: &DatabaseConnection) -> Result<()> {
+    // The released adoption migration replaces generated indexes. Reinstall these
+    // new composite ownership constraints in the journal migration after adoption.
+    db.execute_unprepared(
+        "DO $journal_compat$ DECLARE item record; BEGIN
+           FOR item IN
+             SELECT c.conrelid::regclass AS table_name, c.conname
+             FROM pg_constraint c JOIN pg_class i ON i.oid=c.conindid
+             JOIN pg_namespace n ON n.oid=i.relnamespace
+             WHERE c.contype='f' AND n.nspname=current_schema()
+               AND i.relname LIKE 'idx-%'
+               AND c.conrelid IN (
+                 'journal_workspace_state'::regclass,'journal_projection_jobs'::regclass,
+                 'brokerage_transaction_versions'::regclass,'journal_mutations'::regclass,
+                 'journal_grouping_operations'::regclass,'journal_grouping_suggestions'::regclass,
+                 'journal_grouping_feedback'::regclass,'journal_trade_context'::regclass,
+                 'journal_trade_context_events'::regclass,'journal_review_sessions'::regclass,
+                 'journal_trade_reviews'::regclass,'journal_review_drafts'::regclass,'journal_changes'::regclass)
+           LOOP EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I',item.table_name,item.conname);
+           END LOOP;
+         END $journal_compat$;",
+    )
+    .await
+    .context("prepare generated journal ownership indexes for adoption")?;
     db.execute_unprepared(
         "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS lane text NOT NULL DEFAULT 'deep';
          ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS stage text NOT NULL DEFAULT 'queued';

@@ -67,7 +67,7 @@ struct FmpTranscript {
     content: Option<String>,
 }
 
-async fn configured_ticker(symbol: &str) -> finance_query::Result<Ticker> {
+pub(crate) async fn configured_ticker(symbol: &str) -> finance_query::Result<Ticker> {
     if std::env::var("POLYGON_API_KEY").is_ok_and(|key| !key.trim().is_empty()) {
         let providers = Providers::builder()
             .route(Capability::QUOTE, [Provider::Polygon, Provider::Yahoo])
@@ -142,7 +142,7 @@ pub async fn chart(symbol: &str, range: &str) -> Result<Vec<Candle>> {
         .collect())
 }
 
-fn normalize_market_timestamp(timestamp: i64) -> i64 {
+pub(crate) fn normalize_market_timestamp(timestamp: i64) -> i64 {
     // Polygon aggregate bars use milliseconds; Yahoo uses seconds.
     if timestamp.abs() >= 10_000_000_000 {
         timestamp / 1_000

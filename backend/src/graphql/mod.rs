@@ -3,6 +3,7 @@ mod analytics;
 pub(crate) mod auth;
 mod brokerage;
 mod journal;
+mod journal_flow;
 mod market;
 mod market_research;
 pub mod notifications;
@@ -29,6 +30,7 @@ pub struct Query(
     principle::PrincipleQuery,
     user_prompts::UserPromptQuery,
     journal::JournalQuery,
+    journal_flow::JournalFlowQuery,
     notebook::base::NotebookQuery,
     notebook::sync::NotebookSyncQuery,
     notebook::crdt::NotebookCrdtQuery,
@@ -48,6 +50,7 @@ pub struct Mutation(
     principle::PrincipleMutation,
     user_prompts::UserPromptMutation,
     journal::JournalMutation,
+    journal_flow::JournalFlowMutation,
     notebook::base::NotebookMutation,
     notebook::sync::NotebookSyncMutation,
     notebook::crdt::NotebookCrdtMutation,

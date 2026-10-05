@@ -7,6 +7,7 @@ mod m20260830_000004_notebook_media_lifecycle;
 mod m20260830_000005_remove_notebook_images;
 mod m20260830_000006_requeue_media_derivatives;
 mod m20260902_000007_uuid_v7_defaults;
+mod m20261003_000008_journal_first_flow;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260830_000005_remove_notebook_images::Migration),
             Box::new(m20260830_000006_requeue_media_derivatives::Migration),
             Box::new(m20260902_000007_uuid_v7_defaults::Migration),
+            Box::new(m20261003_000008_journal_first_flow::Migration),
         ]
     }
 }

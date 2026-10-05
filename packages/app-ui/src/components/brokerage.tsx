@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	Alert02Icon,
 	ArrowReloadHorizontalIcon,
 	BankIcon,
 	Delete02Icon,
@@ -20,6 +21,14 @@ import {
 	DialogTrigger,
 } from "@tradstry/app-ui/components/ui/dialog";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
+import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@tradstry/app-ui/components/ui/tabs";
+import { formatSyncTimestamp } from "@tradstry/app-ui/lib/brokerage-sync-confidence";
 import {
 	Tooltip,
 	TooltipContent,
@@ -70,15 +79,6 @@ function formatCurrency(
 	}
 }
 
-function formatSyncTime(value: string): string {
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return "";
-	return new Intl.DateTimeFormat("en-US", {
-		hour: "numeric",
-		minute: "2-digit",
-	}).format(date);
-}
-
 function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 	const accounts = useBrokerageConnectionAccounts(
 		workspace.id,
@@ -118,12 +118,39 @@ function AdditionalBrokerageAccounts({ workspace }: { workspace: Workspace }) {
 	}
 	if (accounts.error) {
 		return (
-			<p className="mt-2.5 border-t pt-2.5 text-[0.65rem] text-destructive">
-				Could not load the other accounts from this brokerage.
-			</p>
+			<div
+				role="alert"
+				className="flex items-start gap-3 rounded-lg border p-4"
+			>
+				<HugeiconsIcon
+					icon={Alert02Icon}
+					className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<div className="min-w-0 flex-1">
+					<p className="text-xs font-medium">Other accounts unavailable</p>
+					<p className="mt-1 text-xs text-muted-foreground">
+						We couldn’t load additional accounts from this brokerage.
+					</p>
+				</div>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					disabled={accounts.isFetching}
+					onClick={() => void accounts.refetch()}
+				>
+					{accounts.isFetching ? "Retrying…" : "Retry"}
+				</Button>
+			</div>
 		);
 	}
-	if (available.length === 0) return null;
+	if (available.length === 0)
+		return (
+			<p className="text-xs text-muted-foreground">
+				No additional brokerage accounts available.
+			</p>
+		);
 
 	async function handleCreateWorkspaces() {
 		try {
@@ -450,155 +477,144 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 		}
 	}
 
+	const isReconnecting =
+		reconnecting ||
+		oauth.isStarting ||
+		oauth.phase === "waiting" ||
+		oauth.phase === "reauthorizing";
+	const busy =
+		(sync.isPending || refreshActive) && !workspace.snaptradeConnectionDisabled;
+
 	return (
-		<div className="overflow-hidden rounded-lg border bg-background">
-			{/* Header row */}
-			<div className="flex items-center justify-between gap-4 px-3 py-2.5">
-				<div className="flex items-center gap-2.5">
-					<div className="flex size-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
-						<HugeiconsIcon icon={BankIcon} strokeWidth={2} className="size-4" />
+		<div className="space-y-5">
+			<div className="flex flex-wrap items-center justify-between gap-4">
+				<div className="flex min-w-0 items-center gap-3">
+					<div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40">
+						<HugeiconsIcon
+							icon={BankIcon}
+							className="size-5 text-muted-foreground"
+							aria-hidden="true"
+						/>
 					</div>
-					<div>
-						<p className="text-xs font-semibold">
+					<div className="min-w-0">
+						<p className="text-lg font-semibold tracking-tight">
 							{workspace.broker ?? "Brokerage"}
 						</p>
-						<p className="text-[0.65rem] text-muted-foreground">
-							{workspace.name}
+						<p className="truncate text-xs text-muted-foreground">
+							{connectionAccounts.data?.find((account) => account.current)
+								?.name ?? workspace.name}
 						</p>
 					</div>
 				</div>
-				<div className="flex items-center gap-1">
-					{reconnecting ||
-					oauth.isStarting ||
-					oauth.phase === "waiting" ||
-					oauth.phase === "reauthorizing" ? (
-						<output
-							aria-label="Reconnecting brokerage"
-							className="flex size-8 items-center justify-center text-muted-foreground"
-						>
-							<HugeiconsIcon
-								icon={Loading03Icon}
-								strokeWidth={2}
-								className="size-4 animate-spin"
-								aria-hidden
-							/>
-						</output>
-					) : (
-						<>
-							{refreshActive && (
-								<span className="mr-1 text-[0.625rem] font-medium text-muted-foreground">
-									Refreshing…
-								</span>
-							)}
-							{workspace.snaptradeConnectionDisabled && (
-								<>
-									<span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[0.6rem] font-medium text-destructive">
-										Disconnected
-									</span>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={handleReconnect}
-										title="Reconnect"
-									>
-										Reconnect
-									</Button>
-								</>
-							)}
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={handleSync}
-								disabled={
-									sync.isPending ||
-									refreshActive ||
-									workspace.snaptradeConnectionDisabled
-								}
-								title={
-									workspace.snaptradeConnectionDisabled
-										? "Reconnect before syncing"
-										: refreshActive
-											? "Refresh in progress"
-											: "Sync"
-								}
-							>
-								<HugeiconsIcon
-									icon={ArrowReloadHorizontalIcon}
-									strokeWidth={2}
-									className={`size-3.5 ${sync.isPending || refreshActive ? "animate-spin" : ""}`}
-								/>
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={handleDisconnect}
-								disabled={disconnect.isPending}
-								title="Disconnect"
-								className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-							>
-								<HugeiconsIcon
-									icon={Delete02Icon}
-									strokeWidth={2}
-									className="size-3.5"
-								/>
-							</Button>
-						</>
-					)}
-				</div>
+				<Button
+					type="button"
+					size="sm"
+					className="h-9 gap-2 px-3"
+					onClick={
+						workspace.snaptradeConnectionDisabled ? handleReconnect : handleSync
+					}
+					disabled={busy || isReconnecting}
+				>
+					<HugeiconsIcon
+						icon={
+							busy || isReconnecting ? Loading03Icon : ArrowReloadHorizontalIcon
+						}
+						className={
+							busy || isReconnecting
+								? "size-4 animate-spin motion-reduce:animate-none"
+								: "size-4"
+						}
+						aria-hidden="true"
+					/>
+					{isReconnecting
+						? "Reconnecting…"
+						: busy
+							? "Syncing…"
+							: workspace.snaptradeConnectionDisabled
+								? "Reconnect"
+								: syncOutcome?.status === "failed"
+									? "Retry sync"
+									: "Sync now"}
+				</Button>
 			</div>
 
-			<div className="grid border-t sm:grid-cols-[minmax(13rem,0.72fr)_minmax(0,1.55fr)]">
-				<section aria-label="Account balance" className="bg-muted/[0.14] p-3">
-					<p className="text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
-						Account balance
-					</p>
-					{isLoading ? (
-						<p className="mt-3 text-[0.65rem] text-muted-foreground">
-							Loading balances...
-						</p>
-					) : balances && balances.length > 0 ? (
-						<div className="mt-2.5 space-y-3">
-							{balances.map((balance) => (
-								<div key={balance.id}>
-									<div className="flex items-center gap-2">
-										<span className="rounded-md bg-background px-1.5 py-1 text-[0.6rem] font-semibold uppercase text-muted-foreground ring-1 ring-foreground/10">
-											{balance.currency}
-										</span>
-										<div className="h-px flex-1 bg-border" />
+			<Tabs defaultValue="overview" className="gap-5">
+				<TabsList
+					variant="line"
+					aria-label="Brokerage details"
+					className="w-full justify-start border-b pb-1"
+				>
+					<TabsTrigger
+						value="overview"
+						className="flex-none px-3 transition-colors"
+					>
+						Overview
+					</TabsTrigger>
+					<TabsTrigger
+						value="connection"
+						className="flex-none px-3 transition-colors"
+					>
+						Connection
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent
+					value="overview"
+					forceMount
+					className="min-h-80 space-y-5 data-[state=inactive]:hidden"
+				>
+					<section aria-label="Account balance">
+						{isLoading ? (
+							<div
+								className="grid grid-cols-2 gap-4"
+								role="status"
+								aria-label="Loading balances"
+							>
+								{[0, 1].map((key) => (
+									<div key={key} className="rounded-xl border p-4">
+										<Skeleton className="h-3 w-16" />
+										<Skeleton className="mt-3 h-7 w-28" />
 									</div>
-									<div className="mt-2 grid grid-cols-2 gap-4">
-										<div>
-											<p className="text-[0.6rem] text-muted-foreground">
-												Cash
+								))}
+							</div>
+						) : balances && balances.length > 0 ? (
+							<div className="space-y-3">
+								{balances.map((balance) => (
+									<div
+										key={balance.id}
+										className="grid grid-cols-2 divide-x overflow-hidden rounded-xl border bg-muted/20"
+									>
+										<div className="p-4">
+											<p className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground">
+												Cash{" "}
+												<span className="text-[10px]">{balance.currency}</span>
 											</p>
-											<p className="mt-0.5 text-sm font-semibold tabular-nums">
+											<p className="mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">
 												{formatCurrency(balance.cash, balance.currency)}
 											</p>
 										</div>
-										<div>
-											<p className="text-[0.6rem] text-muted-foreground">
-												Buying power
+										<div className="p-4">
+											<p className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground">
+												Buying power{" "}
+												<span className="text-[10px]">{balance.currency}</span>
 											</p>
-											<p className="mt-0.5 text-sm font-semibold tabular-nums">
+											<p className="mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">
 												{formatCurrency(balance.buyingPower, balance.currency)}
 											</p>
 										</div>
 									</div>
-								</div>
-							))}
-							{latestBalanceSync && (
-								<p className="text-[0.6rem] text-muted-foreground">
-									Updated {formatSyncTime(latestBalanceSync)}
-								</p>
-							)}
-						</div>
-					) : (
-						<p className="mt-3 text-[0.65rem] text-muted-foreground">
-							No balance reported.
-						</p>
-					)}
-				</section>
-				<div className="border-t p-3 sm:border-t-0 sm:border-l">
+								))}
+								{latestBalanceSync && (
+									<p className="text-[11px] text-muted-foreground">
+										Balances updated {formatSyncTimestamp(latestBalanceSync)}
+									</p>
+								)}
+							</div>
+						) : (
+							<p className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
+								No balance reported yet.
+							</p>
+						)}
+					</section>
 					<SyncConfidenceCard
 						workspaceId={workspace.id}
 						workspaceName={workspace.name}
@@ -611,117 +627,142 @@ function ConnectionCard({ workspace }: { workspace: Workspace }) {
 						connectionDisabled={workspace.snaptradeConnectionDisabled}
 						isRefreshing={refreshActive}
 						isSyncing={sync.isPending}
-						isReconnecting={
-							reconnecting ||
-							oauth.isStarting ||
-							oauth.phase === "waiting" ||
-							oauth.phase === "reauthorizing"
-						}
+						isReconnecting={isReconnecting}
+						showActions={false}
 						onSync={() => void handleSync()}
 						onReconnect={() => void handleReconnect()}
 					/>
-				</div>
-			</div>
-			<div className="px-3 pb-3">
-				{importPolicy.data ? (
-					<div className="mb-3 rounded-md border bg-muted/15 p-3">
-						<div className="flex flex-wrap items-center justify-between gap-2">
-							<div>
-								<p className="text-xs font-medium">Transaction history</p>
-								<p className="mt-0.5 text-[0.65rem] text-muted-foreground">
-									{importPolicy.data.mode === "all"
-										? "All available history"
-										: `Imported since ${importPolicy.data.startDate ?? "the configured date"}`}
-									{importPolicy.data.initialImportCompletedAt
-										? " · Initial import complete"
-										: " · Initial import pending"}
-								</p>
+				</TabsContent>
+				<TabsContent
+					value="connection"
+					forceMount
+					className="min-h-80 space-y-5 data-[state=inactive]:hidden"
+				>
+					{importPolicy.data ? (
+						<div className="mb-3 rounded-md border bg-muted/15 p-3">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<div>
+									<p className="text-xs font-medium">Transaction history</p>
+									<p className="mt-0.5 text-[0.65rem] text-muted-foreground">
+										{importPolicy.data.mode === "all"
+											? "All available history"
+											: `Imported since ${importPolicy.data.startDate ?? "the configured date"}`}
+										{importPolicy.data.initialImportCompletedAt
+											? " · Initial import complete"
+											: " · Initial import pending"}
+									</p>
+								</div>
+								{importPolicy.data.mode !== "all" ? (
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => setShowHistoryExpansion((value) => !value)}
+									>
+										Import older history
+									</Button>
+								) : null}
 							</div>
-							{importPolicy.data.mode !== "all" ? (
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() => setShowHistoryExpansion((value) => !value)}
-								>
-									Import older history
-								</Button>
-							) : null}
-						</div>
-						{showHistoryExpansion ? (
-							<div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
-								<label className="grid gap-1 text-[0.65rem] text-muted-foreground">
-									Older range
-									<select
-										className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
-										value={expandedPolicy.mode}
-										onChange={(event) =>
-											setExpandedPolicy({
-												mode: event.target.value as TransactionImportMode,
-											})
+							{showHistoryExpansion ? (
+								<div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+									<label className="grid gap-1 text-[0.65rem] text-muted-foreground">
+										Older range
+										<select
+											className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+											value={expandedPolicy.mode}
+											onChange={(event) =>
+												setExpandedPolicy({
+													mode: event.target.value as TransactionImportMode,
+												})
+											}
+										>
+											{importPolicy.data.mode === "one_year" ? (
+												<option value="two_years">Past 2 years</option>
+											) : null}
+											<option value="all">All available history</option>
+											<option value="custom">Custom earlier date</option>
+										</select>
+									</label>
+									{expandedPolicy.mode === "custom" ? (
+										<input
+											type="date"
+											aria-label="Older history start date"
+											max={importPolicy.data.startDate ?? undefined}
+											className="h-8 rounded-md border bg-background px-2 text-xs"
+											value={expandedPolicy.customStartDate ?? ""}
+											onChange={(event) =>
+												setExpandedPolicy({
+													mode: "custom",
+													customStartDate: event.target.value,
+												})
+											}
+										/>
+									) : null}
+									<Button
+										size="sm"
+										onClick={() => void handleExpandHistory()}
+										disabled={
+											expandHistory.isPending ||
+											(expandedPolicy.mode === "custom" &&
+												!expandedPolicy.customStartDate)
 										}
 									>
-										{importPolicy.data.mode === "one_year" ? (
-											<option value="two_years">Past 2 years</option>
-										) : null}
-										<option value="all">All available history</option>
-										<option value="custom">Custom earlier date</option>
-									</select>
-								</label>
-								{expandedPolicy.mode === "custom" ? (
-									<input
-										type="date"
-										aria-label="Older history start date"
-										max={importPolicy.data.startDate ?? undefined}
-										className="h-8 rounded-md border bg-background px-2 text-xs"
-										value={expandedPolicy.customStartDate ?? ""}
-										onChange={(event) =>
-											setExpandedPolicy({
-												mode: "custom",
-												customStartDate: event.target.value,
-											})
-										}
-									/>
-								) : null}
-								<Button
-									size="sm"
-									onClick={() => void handleExpandHistory()}
-									disabled={
-										expandHistory.isPending ||
-										(expandedPolicy.mode === "custom" &&
-											!expandedPolicy.customStartDate)
-									}
-								>
-									{expandHistory.isPending ? "Saving…" : "Import older history"}
-								</Button>
-								<p className="w-full text-[0.625rem] text-muted-foreground">
-									Existing transactions and journal work are preserved.
+										{expandHistory.isPending
+											? "Saving…"
+											: "Import older history"}
+									</Button>
+									<p className="w-full text-[0.625rem] text-muted-foreground">
+										Existing transactions and journal work are preserved.
+									</p>
+								</div>
+							) : null}
+						</div>
+					) : null}
+					{workspace.snaptradeAuthMode === "oauth" ? (
+						<div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+							<div>
+								<p className="text-xs font-medium">SnapTrade Personal access</p>
+								<p className="mt-1 text-[0.625rem] text-muted-foreground">
+									Revoking removes Tradstry's access but keeps your brokerage
+									connections in SnapTrade.
 								</p>
 							</div>
-						) : null}
-					</div>
-				) : null}
-				{workspace.snaptradeAuthMode === "oauth" ? (
-					<div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => void handleRevokeOAuth()}
+								disabled={revokeOAuth.isPending}
+							>
+								{revokeOAuth.isPending ? "Revoking…" : "Revoke access"}
+							</Button>
+						</div>
+					) : null}
+					<AdditionalBrokerageAccounts workspace={workspace} />
+					<div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
 						<div>
-							<p className="text-xs font-medium">SnapTrade Personal access</p>
-							<p className="mt-1 text-[0.625rem] text-muted-foreground">
-								Revoking removes Tradstry's access but keeps your brokerage
-								connections in SnapTrade.
+							<p className="text-xs font-medium">Disconnect brokerage</p>
+							<p className="mt-1 text-xs text-muted-foreground">
+								Stop syncing this account with {workspace.name}.
 							</p>
 						</div>
 						<Button
+							type="button"
 							variant="outline"
 							size="sm"
-							onClick={() => void handleRevokeOAuth()}
-							disabled={revokeOAuth.isPending}
+							onClick={handleDisconnect}
+							disabled={disconnect.isPending}
+							className="gap-2 hover:border-destructive/40 hover:text-destructive"
 						>
-							{revokeOAuth.isPending ? "Revoking…" : "Revoke access"}
+							<HugeiconsIcon
+								icon={Delete02Icon}
+								className="size-3.5"
+								aria-hidden="true"
+							/>
+							{disconnect.isPending ? "Disconnecting…" : "Disconnect"}
 						</Button>
 					</div>
-				) : null}
-				<AdditionalBrokerageAccounts workspace={workspace} />
-			</div>
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }
@@ -833,16 +874,20 @@ export function BrokerageButton() {
 					{connected ? "Brokerage connected" : "Connect brokerage"}
 				</TooltipContent>
 			</Tooltip>
-			<DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-4xl">
-				<DialogHeader className="shrink-0">
+			<DialogContent
+				className={`flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl ${connected && workspace?.brokerageSetupComplete ? "h-[min(42rem,calc(100svh-2rem))]" : ""}`}
+			>
+				<DialogHeader className="shrink-0 border-b px-6 py-5 pr-12">
 					<DialogTitle>Brokerage connection</DialogTitle>
 					<DialogDescription>
-						Connect one brokerage account to this workspace.
+						{connected
+							? "Manage your account, balances, and sync."
+							: "Connect a brokerage account to this workspace."}
 					</DialogDescription>
 				</DialogHeader>
 
-				<ScrollArea className="-mx-4 min-h-0 px-4 [&>[data-radix-scroll-area-viewport]]:max-h-[calc(100svh-9rem)]">
-					<div className="flex flex-col gap-3">
+				<ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:max-h-[calc(100svh-10rem)]">
+					<div className="flex flex-col gap-5 px-6 py-5">
 						{oauth.phase === "setup" && workspace && oauth.accounts.data ? (
 							<BrokerageHistorySetup
 								accounts={oauth.accounts.data}

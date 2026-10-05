@@ -432,6 +432,7 @@ export function useSnapTradeOAuthFlow() {
 		});
 		for (const workspace of configured) await sync.mutateAsync(workspace.id);
 		setAttemptId(null);
+		platform.navigate("/dashboard/journal");
 		return configured;
 	}
 
@@ -570,6 +571,7 @@ export function useSyncBrokerageData() {
 			brokerageService.syncBrokerageData(fetcher, workspaceId),
 		onSuccess: (data, workspaceId) => {
 			const invalidate = () => {
+				queryClient.invalidateQueries({queryKey:["journal-flow"]});
 				queryClient.invalidateQueries({
 					queryKey: [...TRANSACTIONS_KEY, workspaceId],
 				});

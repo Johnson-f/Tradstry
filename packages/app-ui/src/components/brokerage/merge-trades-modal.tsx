@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@tradstry/app-ui/components/ui/dialog";
 import { Input } from "@tradstry/app-ui/components/ui/input";
-import { Label } from "@tradstry/app-ui/components/ui/label";
+import { TradeFormField as Field } from "@tradstry/app-ui/components/journal/trade-form-field";
 import {
   Select,
   SelectContent,
@@ -134,29 +134,6 @@ function fmtDateShort(iso: string | null): string {
     month: "short",
     day: "numeric",
   }).format(new Date(iso));
-}
-
-// ---------------------------------------------------------------------------
-// Field component
-// ---------------------------------------------------------------------------
-
-function Field({
-  label,
-  htmlFor,
-  children,
-  className,
-}: {
-  label: string;
-  htmlFor?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("grid gap-2", className)}>
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
