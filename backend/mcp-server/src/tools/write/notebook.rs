@@ -149,7 +149,7 @@ impl TradstryMcp {
             }
             None => account_folders
                 .iter()
-                .find(|f| f.is_system)
+                .find(|f| f.is_system && f.parent_folder_id.is_none())
                 .map(|f| f.id.clone()),
         };
 

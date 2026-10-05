@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_journal_first_flow() {
+fn seaorm_migrations_end_with_recent_trade_notes() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 8);
+    assert_eq!(migrations.len(), 9);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261003_000008_journal_first_flow"
+        "m20261005_000009_recent_trade_notes"
     );
 }

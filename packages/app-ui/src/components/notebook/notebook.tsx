@@ -576,6 +576,25 @@ export function Notebook() {
 
   function renderEditor(note: (typeof notes)[number]) {
     return (
+      <>
+        {note.tradeIds.length > 0 && (
+          <div aria-label="Linked trades" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3">
+            <span className="text-xs text-muted-foreground">Linked trades</span>
+            {note.tradeIds.map((id) => {
+              const trade = trades.find((item) => item.id === id);
+              const date = trade ? new Date(trade.openDate) : null;
+              const label = trade
+                ? [trade.symbol, date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ")
+                : "Open linked trade";
+              return (
+                <Button key={id} type="button" variant="outline" size="sm"
+                  onClick={() => platform.navigate("/dashboard/journal/" + encodeURIComponent(id))}>
+                  {label}
+                </Button>
+              );
+            })}
+          </div>
+        )}
       <NotebookEditor
         key={note.id}
         noteId={note.id}
@@ -694,6 +713,7 @@ export function Notebook() {
           });
         }}
       />
+      </>
     );
   }
 }

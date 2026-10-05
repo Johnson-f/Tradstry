@@ -18,7 +18,7 @@ import {
 	TabsTrigger,
 	TabsContent,
 } from "@tradstry/app-ui/components/ui/tabs";
-import { TradeFormField as Field } from "./trade-form-field";
+import { TradeFormField as Field, TradeFieldHelp } from "./trade-form-field";
 import { TagPicker } from "./tag-picker";
 import { PrinciplePicker } from "./principle-picker";
 import { ArrowDown01Icon, ArrowLeft01Icon } from "@hugeicons/core-free-icons";
@@ -54,6 +54,11 @@ import { DeleteTrades } from "./delete-trades";
 import { useJournalEntry } from "@tradstry/app-ui/hooks/journal";
 
 const STOP_PRICE_ERROR = "Enter a positive stop price, or choose Not recorded.";
+const tagHelp: Record<string, string> = {
+	mistakes: "Errors you made during this trade.",
+	tactics: "Actions you used to manage this trade.",
+	edges: "Advantages that supported this trade.",
+};
 function validateStop(value: { stopState: string; stopPrice: string | null }) {
 	return value.stopState === "price" &&
 		(!value.stopPrice ||
@@ -69,6 +74,7 @@ type Props = {
 	entryId: string;
 	sessionId?: string;
 	embedded?: boolean;
+	inDialog?: boolean;
 	onBack?: () => void;
 	onChanged: () => void | Promise<void>;
 	onReviewed?: () => void | Promise<void>;
@@ -92,6 +98,7 @@ export function TradeDetail(props: Props) {
 		return (
 			<TradeDetailSkeleton
 				embedded={props.embedded}
+				inDialog={props.inDialog}
 				review={!!props.sessionId}
 				hasBack={!!props.onBack}
 			/>
@@ -123,11 +130,13 @@ export function TradeDetail(props: Props) {
 
 export function TradeDetailSkeleton({
 	embedded,
+	inDialog,
 	review,
 	hasBack,
 }: {
 	embedded?: boolean;
 	review: boolean;
+	inDialog?: boolean;
 	hasBack: boolean;
 }) {
 	return (
@@ -143,7 +152,12 @@ export function TradeDetailSkeleton({
 				aria-hidden="true"
 				className="flex min-h-0 flex-1 flex-col gap-4 [&_[data-slot=skeleton]]:motion-reduce:animate-none"
 			>
-				<div className="flex shrink-0 items-start justify-between gap-4">
+				<div
+					className={cn(
+						"flex shrink-0 items-start justify-between gap-4",
+						inDialog && "pr-10",
+					)}
+				>
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2.5">
 							{hasBack && <Skeleton className="size-8 shrink-0" />}
@@ -455,6 +469,7 @@ function TradeEditor({
 			localStorage.setItem(key, JSON.stringify(request));
 			await flow.execute<string>(fetcher, request);
 			localStorage.removeItem(key);
+			await cache.invalidateQueries({ queryKey: ["notebook"] });
 			await refresh();
 		} catch (reason) {
 			setError(
@@ -509,7 +524,7 @@ function TradeEditor({
 				!props.embedded && "p-3 md:p-5",
 			)}
 		>
-			<header className="shrink-0 pb-4">
+			<header className={cn("shrink-0 pb-4", props.inDialog && "pr-10")}>
 				<div className="flex flex-wrap items-start justify-between gap-3">
 					<div className="min-w-0">
 						<div className="flex flex-wrap items-center gap-2.5">
@@ -548,7 +563,12 @@ function TradeEditor({
 							</span>
 						</div>
 						<p className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
-							{!props.embedded && <><span>{subtitle}</span><span aria-hidden="true">·</span></>}
+							{!props.embedded && (
+								<>
+									<span>{subtitle}</span>
+									<span aria-hidden="true">·</span>
+								</>
+							)}
 							<span>
 								{tradeDate(trade.openDate, status.data?.timezone)}
 								{trade.closeDate &&
@@ -600,8 +620,18 @@ function TradeEditor({
 								: "bg-muted/30",
 					)}
 				>
-					<p className="text-xs text-muted-foreground">
+					<p className="flex items-center gap-1.5 text-xs text-muted-foreground">
 						{trade.sourceKind === "manual" ? "Recorded P&L" : "Realized net"}
+						<TradeFieldHelp
+							label={
+								trade.sourceKind === "manual" ? "Recorded P&L" : "Realized net"
+							}
+							description={
+								trade.sourceKind === "manual"
+									? "The profit or loss recorded for this trade."
+									: "Profit or loss from closed quantities, after fees."
+							}
+						/>
 					</p>
 					<p
 						className={cn(
@@ -613,16 +643,35 @@ function TradeEditor({
 					</p>
 				</div>
 				{[
-					["Average entry", money(trade.entryPrice, trade.currency)],
-					["Average exit", money(trade.exitPrice, trade.currency)],
-					["Open quantity", trade.remainingQuantity ?? "—"],
-					["Fees paid", money(trade.feesPaid, trade.currency)],
-				].map(([label, value]) => (
+					[
+						"Average entry",
+						money(trade.entryPrice, trade.currency),
+						"The average price you entered at.",
+					],
+					[
+						"Average exit",
+						money(trade.exitPrice, trade.currency),
+						"The average price you exited at.",
+					],
+					[
+						"Open quantity",
+						trade.remainingQuantity ?? "—",
+						"The quantity still held in this trade.",
+					],
+					[
+						"Fees paid",
+						money(trade.feesPaid, trade.currency),
+						"Total fees recorded for this trade.",
+					],
+				].map(([label, value, description]) => (
 					<div
 						key={label}
 						className="border-border/60 px-3 py-3 md:px-4 sm:border-r sm:last:border-r-0"
 					>
-						<p className="text-xs text-muted-foreground">{label}</p>
+						<p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+							{label}
+							<TradeFieldHelp label={label} description={description} />
+						</p>
 						<p className="mt-1 text-base font-medium tabular-nums">{value}</p>
 					</div>
 				))}
@@ -635,7 +684,10 @@ function TradeEditor({
 				}}
 				className="min-h-0 min-w-0 flex-1 gap-3 pt-4"
 			>
-				<TabsList variant="line" aria-label="Trade details" className="w-full shrink-0 justify-start border-b pb-1 [&>button]:flex-none [&>button]:px-4 [&>button]:shadow-none">
+				<TabsList
+					aria-label="Trade details"
+					className="shrink-0"
+				>
 					<TabsTrigger value="overview">Overview</TabsTrigger>
 					<TabsTrigger value="review">Review</TabsTrigger>
 					<TabsTrigger value="notes">Notes</TabsTrigger>
@@ -847,9 +899,9 @@ function TradeEditor({
 							forceMount
 							className="m-0 data-[state=inactive]:hidden"
 						>
-							<section className="space-y-5">
-								<div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(260px,1fr)]">
-									<div className="min-w-0 space-y-4 rounded-xl border bg-background p-4 md:p-5">
+							<section className="space-y-6 pt-2">
+								<div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(260px,1fr)] xl:gap-8">
+									<div className="min-w-0 space-y-4">
 										<div className="flex items-start justify-between gap-3">
 											<div>
 												<h2 className="text-base font-semibold tracking-tight">
@@ -861,50 +913,8 @@ function TradeEditor({
 											</div>
 											<SaveStatus state={draft.state} />
 										</div>
-										<Field label="Lesson" htmlFor={reviewId + "-lesson"}>
-											<textarea
-												id={reviewId + "-lesson"}
-												disabled={readOnly}
-												value={draft.value.takeaway}
-												onChange={(event) =>
-													draft.update({
-														...draft.value,
-														takeaway: event.target.value,
-													})
-												}
-												onBlur={() => void draft.flush().catch(() => {})}
-												placeholder="What will you repeat or change next time?"
-												maxLength={4000}
-												rows={3}
-												className="min-h-28 w-full resize-y rounded-lg border border-input bg-muted/15 px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/75 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-											/>
-										</Field>
-										<Field
-											label="Additional context · optional"
-											htmlFor={reviewId + "-notes"}
-										>
-											<textarea
-												id={reviewId + "-notes"}
-												disabled={readOnly}
-												value={
-													context.value.notes ??
-													data.journalContextV2.notes ??
-													""
-												}
-												onChange={(event) =>
-													context.update({
-														...context.value,
-														notes: event.target.value,
-													})
-												}
-												onBlur={() => void context.flush().catch(() => {})}
-												placeholder="What influenced the execution?"
-												rows={2}
-												className="min-h-20 w-full resize-y rounded-lg border border-input bg-muted/15 px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/75 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-											/>
-										</Field>
 										<section
-											className="space-y-4 border-t border-border/60 pt-4"
+											className="space-y-4 border-b border-border/60 pb-4"
 											aria-label="Trade tags"
 										>
 											<h3 className="text-xs font-medium text-muted-foreground">
@@ -918,7 +928,14 @@ function TradeEditor({
 															.map((tag) => tag.id),
 													);
 													return (
-														<Field key={category.id} label={category.name}>
+														<Field
+															key={category.id}
+															label={category.name}
+															description={
+																tagHelp[category.name.toLowerCase()] ??
+																"Labels to organize and review this trade."
+															}
+														>
 															<fieldset
 																disabled={
 																	readOnly ||
@@ -963,16 +980,68 @@ function TradeEditor({
 												</Button>
 											)}
 										</section>
+										<Field
+											label="Lesson"
+											description="What you’ll repeat or change next time."
+											htmlFor={reviewId + "-lesson"}
+										>
+											<textarea
+												id={reviewId + "-lesson"}
+												disabled={readOnly}
+												value={draft.value.takeaway}
+												onChange={(event) =>
+													draft.update({
+														...draft.value,
+														takeaway: event.target.value,
+													})
+												}
+												onBlur={() => void draft.flush().catch(() => {})}
+												placeholder="What will you repeat or change next time?"
+												maxLength={4000}
+												rows={3}
+												className="min-h-28 w-full resize-none rounded-lg border border-input bg-muted/15 px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/75 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+											/>
+										</Field>
+										<Field
+											label="Additional context · optional"
+											description="What influenced this trade."
+											htmlFor={reviewId + "-notes"}
+										>
+											<textarea
+												id={reviewId + "-notes"}
+												disabled={readOnly}
+												value={
+													context.value.notes ??
+													data.journalContextV2.notes ??
+													""
+												}
+												onChange={(event) =>
+													context.update({
+														...context.value,
+														notes: event.target.value,
+													})
+												}
+												onBlur={() => void context.flush().catch(() => {})}
+												placeholder="What influenced the execution?"
+												rows={2}
+												className="min-h-20 w-full resize-none rounded-lg border border-input bg-muted/15 px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/75 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+											/>
+										</Field>
 									</div>
 									<aside
-										className="min-w-0 space-y-4 rounded-xl border bg-muted/20 p-4 md:p-5 [&_[data-slot=select-trigger]]:h-9 [&_[data-slot=select-trigger]]:rounded-lg [&_[data-slot=select-trigger]]:bg-background"
+										className="min-w-0 space-y-4 border-t border-border/60 pt-6 xl:border-t-0 xl:border-l xl:pl-8 xl:pt-0 [&_[data-slot=select-trigger]]:h-9 [&_[data-slot=select-trigger]]:rounded-lg [&_[data-slot=select-trigger]]:bg-background"
 										aria-label="Trade setup and risk"
 									>
 										<div className="flex items-center justify-between gap-3">
-											<h2 className="text-sm font-semibold">Setup & risk</h2>
+											<h2 className="text-base font-semibold tracking-tight">
+												Setup & risk
+											</h2>
 											<SaveStatus state={context.state} />
 										</div>
-										<Field label="Playbook · optional">
+										<Field
+											label="Playbook"
+											description="The trading strategy you used."
+										>
 											<Select
 												disabled={readOnly || playbooks.isLoading}
 												value={context.value.playbookId ?? "__none__"}
@@ -1011,7 +1080,10 @@ function TradeEditor({
 											</Select>
 										</Field>
 										{trade.episodeId && (
-											<Field label="Position plan">
+											<Field
+												label="Position plan"
+												description="A saved Position Calculator plan to compare with this trade."
+											>
 												<Select
 													disabled={
 														readOnly ||
@@ -1076,7 +1148,10 @@ function TradeEditor({
 											</Field>
 										)}
 										{selectedPlan && (
-											<Field label="Plan adherence">
+											<Field
+												label="Plan adherence"
+												description="How closely you followed your plan."
+											>
 												<Select
 													disabled={readOnly}
 													value={draft.value.planAdherence ?? "__unset__"}
@@ -1112,7 +1187,11 @@ function TradeEditor({
 												</Select>
 											</Field>
 										)}
-										<Field label="Stop Loss" htmlFor={reviewId + "-stop"}>
+										<Field
+											label="Stop Loss"
+											description="Your planned exit price to limit losses; no order is placed."
+											htmlFor={reviewId + "-stop"}
+										>
 											<div className="grid grid-cols-2 gap-2">
 												<Select
 													disabled={readOnly}
@@ -1206,13 +1285,17 @@ function TradeEditor({
 												)}
 										</Field>
 										<div className="border-t border-border/60 pt-4">
-											<Field label="Principles broken" className="self-start">
+											<Field
+												label="Principles broken"
+												description="Trading rules you broke on this trade."
+												className="self-start"
+											>
 												<fieldset disabled={readOnly}>
 													<PrinciplePicker
 														workspaceId={props.workspaceId}
 														selectedPlaybookId={context.value.playbookId}
 														value={selectedPrinciples}
-														className="w-full"
+														className="w-full data-[slot=empty]:min-h-0 data-[slot=empty]:rounded-none data-[slot=empty]:border-0 data-[slot=empty]:bg-transparent data-[slot=empty]:p-0"
 														onChange={(violatedPrincipleIds) => {
 															if (!readOnly)
 																context.update({
@@ -1255,8 +1338,8 @@ function TradeEditor({
 										)}
 									</div>
 								)}
-								<details className="group rounded-xl border border-border/60 bg-muted/15">
-									<summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+								<details className="group border-t border-border/60">
+									<summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
 										<span className="font-medium">
 											Broker details{" "}
 											<span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -1270,13 +1353,22 @@ function TradeEditor({
 											aria-hidden="true"
 										/>
 									</summary>
-									<dl className="grid gap-x-6 gap-y-4 border-t border-border/60 p-4 sm:grid-cols-2 xl:grid-cols-4">
+									<dl className="grid gap-x-6 gap-y-4 pb-4 sm:grid-cols-2 xl:grid-cols-4">
 										{[
-											["Symbol", trade.symbol],
-											["Symbol name", trade.symbolName || "—"],
+											[
+												"Symbol",
+												trade.symbol,
+												"The ticker of the asset you traded.",
+											],
+											[
+												"Symbol name",
+												trade.symbolName || "—",
+												"The full name of the traded asset.",
+											],
 											[
 												"Open date",
 												tradeTimestamp(trade.openDate, status.data?.timezone),
+												"When this trade first opened.",
 											],
 											[
 												"Close date",
@@ -1288,20 +1380,38 @@ function TradeEditor({
 													: trade.lifecycleState === "open"
 														? "Still open"
 														: "Not recorded",
+												"When the remaining position was fully closed.",
 											],
-											["Entry price", money(trade.entryPrice, trade.currency)],
-											["Exit price", money(trade.exitPrice, trade.currency)],
+											[
+												"Entry price",
+												money(trade.entryPrice, trade.currency),
+												"The average price you entered at.",
+											],
+											[
+												"Exit price",
+												money(trade.exitPrice, trade.currency),
+												"The average price you exited at.",
+											],
 											[
 												Number(trade.contractMultiplier) !== 1
 													? "Position size (contracts)"
 													: "Position size",
 												trade.enteredQuantity ?? "—",
+												"The total quantity entered in this trade.",
 											],
-											["Trade type", trade.direction],
-										].map(([label, value]) => (
+											[
+												"Trade type",
+												trade.direction,
+												"Long buys first; short sells first.",
+											],
+										].map(([label, value, description]) => (
 											<div key={label} className="min-w-0">
-												<dt className="text-[11px] text-muted-foreground">
+												<dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
 													{label}
+													<TradeFieldHelp
+														label={label}
+														description={description}
+													/>
 												</dt>
 												<dd className="mt-1 break-words text-sm tabular-nums">
 													{value}

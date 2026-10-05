@@ -258,7 +258,7 @@ pub async fn ensure_note(
     client: &str,
     mutation: &str,
 ) -> Result<String> {
-    use crate::service::db::schema::tables::notebook::{crdt, notes};
+    use crate::service::db::schema::tables::notebook::{crdt, folders, notes};
     let payload = json!({"kind":"context_note","workspace":workspace,"entry":entry_id});
     let mut tx = pool.begin().await?;
     if let Some(saved) =
@@ -268,6 +268,7 @@ pub async fn ensure_note(
     }
     commands::lock_owner(&mut tx, user, workspace).await?;
     let entry = owned_entry(&mut tx, user, workspace, entry_id).await?;
+    let folder_id = folders::ensure_recent_trades_folder_tx(&mut tx, user, workspace).await?;
     sqlx::query("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id) VALUES ($1,$2,$3) ON CONFLICT(entry_id) DO NOTHING").bind(entry_id).bind(user).bind(workspace).execute(&mut *tx).await?;
     let existing:Option<String>=sqlx::query_scalar("SELECT companion_note_id FROM journal_trade_context WHERE entry_id=$1 AND user_id=$2 AND workspace_id=$3").bind(entry_id).bind(user).bind(workspace).fetch_one(&mut *tx).await?;
     let note = if let Some(id) = existing {
@@ -276,7 +277,8 @@ pub async fn ensure_note(
         let text = entry
             .try_get::<Option<String>, _>("notes")?
             .unwrap_or_default();
-        let document = json!({"root":{"children":[{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":text,"type":"text","version":1}],"direction":null,"format":"","indent":0,"type":"paragraph","version":1}],"direction":null,"format":"","indent":0,"type":"root","version":1}});
+        let title = format!("{} trade", entry.try_get::<String, _>("symbol")?);
+        let document = json!({"root":{"children":[{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":title,"type":"text","version":1}],"direction":null,"format":"","indent":0,"tag":"h1","type":"heading","version":1},{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":text,"type":"text","version":1}],"direction":null,"format":"","indent":0,"type":"paragraph","version":1}],"direction":null,"format":"","indent":0,"type":"root","version":1}});
         let id = notes::create_notebook_note_tx(
             &mut tx,
             user,
@@ -285,7 +287,7 @@ pub async fn ensure_note(
                 workspace_id: workspace.into(),
                 document_json: document.to_string(),
                 trade_ids: vec![entry_id.into()],
-                folder_id: None,
+                folder_id: Some(folder_id),
             },
             &crate::service::hlc::stamp(),
         )

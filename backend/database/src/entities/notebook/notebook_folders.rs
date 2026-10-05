@@ -10,7 +10,7 @@ pub struct Model {
     pub id: String,
     #[sea_orm(column_type = "Text")]
     pub user_id: String,
-    #[sea_orm(column_type = "Text", unique)]
+    #[sea_orm(column_type = "Text")]
     pub workspace_id: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub parent_folder_id: Option<String>,

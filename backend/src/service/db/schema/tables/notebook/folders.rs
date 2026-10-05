@@ -20,7 +20,7 @@ pub struct NotebookFolder {
     pub parent_folder_id: Option<String>,
     pub name: String,
     pub sort_order: i64,
-    /// System-owned: the destination for agent-written notes. Cannot be renamed or
+    /// System-owned: managed folders for agent and trade notes. Cannot be renamed or
     /// deleted. Its *contents* are ordinary notes and remain fully deletable.
     pub is_system: bool,
     pub created_at: String,
@@ -246,6 +246,7 @@ pub async fn create_notebook_folder(
 
 /// The name every account's system folder carries.
 pub const SYSTEM_FOLDER_NAME: &str = "System";
+pub const RECENT_TRADES_FOLDER_NAME: &str = "Recent Trades";
 
 /// Errors when the folder is missing or not the caller's, so a foreign id is
 /// indistinguishable from one that never existed.
@@ -263,19 +264,37 @@ async fn owned_folder_is_system(conn: &mut PgConnection, user_id: &str, id: &str
 /// Idempotent: creates the account's System folder if it does not have one. Safe to call
 /// on every account creation and on backfill; the partial unique index is the real guard.
 pub async fn ensure_system_folder(pool: &PgPool, user_id: &str, workspace_id: &str) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    ensure_recent_trades_folder_tx(&mut tx, user_id, workspace_id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn ensure_recent_trades_folder_tx(
+    conn: &mut PgConnection,
+    user_id: &str,
+    workspace_id: &str,
+) -> Result<String> {
+    ensure_workspace_owned(conn, user_id, workspace_id).await?;
     sqlx::query(
         "INSERT INTO notebook_folders (id, user_id, workspace_id, name, sort_order, is_system) \
-         SELECT $1, $2, $3, $4, -1, true \
-         WHERE NOT EXISTS (SELECT 1 FROM notebook_folders WHERE workspace_id = $3 AND is_system)",
+         VALUES ($1, $2, $3, $4, -1, true) ON CONFLICT DO NOTHING",
     )
     .bind(crate::ids::new_uuid_v7().to_string())
     .bind(user_id)
     .bind(workspace_id)
     .bind(SYSTEM_FOLDER_NAME)
-    .execute(pool)
+    .execute(&mut *conn)
     .await
     .context("Failed to ensure system notebook folder")?;
-    Ok(())
+    sqlx::query("INSERT INTO notebook_folders(id,user_id,workspace_id,parent_folder_id,name,sort_order,is_system)
+        SELECT $1,$2,$3,id,$4,-1,true FROM notebook_folders
+        WHERE user_id=$2 AND workspace_id=$3 AND is_system AND parent_folder_id IS NULL
+        ON CONFLICT DO NOTHING")
+        .bind(crate::ids::new_uuid_v7().to_string()).bind(user_id).bind(workspace_id).bind(RECENT_TRADES_FOLDER_NAME)
+        .execute(&mut *conn).await?;
+    Ok(sqlx::query_scalar("SELECT id FROM notebook_folders WHERE user_id=$1 AND workspace_id=$2 AND is_system AND parent_folder_id IS NOT NULL AND name=$3 AND deleted_at IS NULL")
+        .bind(user_id).bind(workspace_id).bind(RECENT_TRADES_FOLDER_NAME).fetch_one(&mut *conn).await?)
 }
 
 pub async fn rename_notebook_folder_tx(
@@ -379,6 +398,12 @@ pub async fn move_notebook_node_tx(
     );
     if let Some(parent_id) = input.new_parent_folder_id.as_deref() {
         ensure_folder_in_workspace(conn, user_id, &input.workspace_id, parent_id).await?;
+    }
+
+    if input.node_type == NotebookNodeType::Folder
+        && owned_folder_is_system(conn, user_id, &input.node_id).await?
+    {
+        anyhow::bail!("System folders cannot be moved");
     }
 
     // Cycle guard: a folder cannot be moved into itself or any of its descendants.

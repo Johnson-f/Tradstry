@@ -21,6 +21,7 @@ import { $getRoot, type LexicalNode } from "lexical";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Doc } from "yjs";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
+import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { useGraphQL } from "@tradstry/app-ui/lib/client";
 import {
@@ -43,6 +44,7 @@ import { TradeMentionPlugin } from "./plugins/trade-mention-plugin";
 import { TrailingParagraphPlugin } from "./plugins/trailing-paragraph-plugin";
 import { notebookEditorTheme } from "./theme";
 import { createGraphQLProvider } from "./yjs-provider";
+import { loadNoteUpdates } from "./load-note-updates";
 
 const BODY_PLACEHOLDER = "Start writing, or type / for commands.";
 
@@ -219,6 +221,7 @@ export function NotebookEditor({
 }) {
   const fetcher = useGraphQL();
   const [state, setState] = useState<Loaded>({ kind: "loading" });
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const seedRef = useRef<NotebookUpdate[]>([]);
   if (state.kind === "crdt") seedRef.current = state.updates;
@@ -230,21 +233,23 @@ export function NotebookEditor({
   // in-flight request before it resolves — so `setState` never fires and the editor
   // loads forever. Every other caller passes `fetcher` into a queryFn, never a dep.
   useEffect(() => {
-    let cancelled = false;
-    fetchNotebookUpdates(fetcherRef.current, noteId, 0)
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    loadNoteUpdates(
+      () => fetchNotebookUpdates(fetcherRef.current, noteId, 0),
+      controller.signal,
+      () => setState({ kind: "pending" }),
+    )
       .then((updates) => {
-        if (cancelled) return;
-        setState(
-          updates.length > 0 ? { kind: "crdt", updates } : { kind: "pending" },
-        );
+        if (!controller.signal.aborted) setState({ kind: "crdt", updates });
       })
       .catch(() => {
-        if (!cancelled) setState({ kind: "error" });
+        if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [noteId]);
+  }, [noteId, loadAttempt]);
 
   // CollaborationPlugin memoizes the provider on the factory's identity. An inline
   // arrow is a new identity every render, so it rebuilt the Y.Doc, replayed every
@@ -275,7 +280,16 @@ export function NotebookEditor({
   if (state.kind === "error") {
     return (
       <div className="mx-auto w-full max-w-5xl px-4 py-16 text-center text-sm text-muted-foreground sm:px-6 lg:px-10">
-        Could not load this note. Reopen it to try again.
+        <p>Could not load this note.</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+        >
+          Try again
+        </Button>
       </div>
     );
   }

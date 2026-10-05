@@ -40,7 +40,7 @@ export class NotebookRepository {
     const rows = this.#store.db
       .prepare(
         `SELECT id, folder_id, title, document_json, trade_ids, sort_order
-         FROM notes WHERE account_id = ? AND deleted_at IS NULL AND purpose = 'general'
+         FROM notes WHERE account_id = ? AND deleted_at IS NULL
          ORDER BY sort_order ASC, id ASC`,
       )
       .all(accountId) as StoredNote[];

@@ -25,7 +25,7 @@ async fn create_note(pool: &PgPool, user_id: &str, workspace_id: &str, markdown:
         .await
         .unwrap()
         .into_iter()
-        .find(|f| f.is_system)
+        .find(|f| f.is_system && f.parent_folder_id.is_none())
         .map(|f| f.id);
 
     let document_json = projector::markdown_to_json(markdown).await.unwrap();
@@ -153,7 +153,7 @@ async fn create_note_files_markdown_into_the_system_folder_with_a_title_from_the
         .await
         .unwrap()
         .into_iter()
-        .find(|f| f.is_system)
+        .find(|f| f.is_system && f.parent_folder_id.is_none())
         .unwrap();
     assert_eq!(note.folder_id.as_deref(), Some(system.id.as_str()));
 }

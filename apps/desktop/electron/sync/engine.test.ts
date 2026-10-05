@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { type DesktopDatabase, openDesktopDatabase } from "./database.ts";
 import { REPLAY_WINDOW, SyncEngine, type SyncTransport } from "./engine.ts";
+import { NotebookRepository } from "./notebook.ts";
 import type {
 	CalculatorPullResult,
 	JournalPullResult,
@@ -80,6 +81,21 @@ class FakeTransport implements SyncTransport {
 function store(): DesktopDatabase {
 	return openDesktopDatabase(":memory:", schema);
 }
+
+test("Notebook includes trade notes with their folder and source trade", () => {
+	const database = store();
+	try {
+		database.db.prepare("INSERT INTO notes (id,account_id,folder_id,title,document_json,trade_ids,purpose) VALUES (?,?,?,?,?,?,?)")
+			.run("trade-note", "workspace", "recent-trades", "PAY trade", "{}", '["pay-trade"]', "trade_context");
+		const repository = new NotebookRepository(database);
+		const [note] = repository.notes("workspace");
+		assert.equal(note?.folderId, "recent-trades");
+		assert.deepEqual(note?.tradeIds, ["pay-trade"]);
+		assert.deepEqual(repository.notes("another-workspace"), []);
+	} finally {
+		database.db.close();
+	}
+});
 
 function enqueue(database: DesktopDatabase, count: number): void {
 	for (let id = 1; id <= count; id += 1) {

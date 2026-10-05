@@ -6,6 +6,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@tradstry/app-ui/components/ui/dialog";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { Progress } from "@tradstry/app-ui/components/ui/progress";
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
@@ -85,12 +86,25 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
   const [reviewState, setReviewState] = React.useState("all");
   const [selected, setSelected] = React.useState<string[]>([]);
   const [grouping, setGrouping] = React.useState(false);
+  const [openedTrade, setOpenedTrade] = React.useState<{ id: string; route: string } | null>(null);
+  const returnFocus = React.useRef<HTMLButtonElement | null>(null);
+  const searchInput = React.useRef<HTMLInputElement>(null);
   const entryId = route.split("/dashboard/journal/")[1]?.split("/")[0];
+  const linkedEntryId = entryId && entryId !== "review" ? decodeURIComponent(entryId) : null;
+  const modalEntryId = openedTrade?.route === route ? openedTrade.id : linkedEntryId;
   const view = entryId === "review" ? "review" : "trades";
   const entries = trades.data ?? [];
+  const modalTrade = entries.find((trade) => trade.id === modalEntryId);
   const filtered = entries.filter((trade) => (!search || `${trade.symbol} ${trade.symbolName}`.toLowerCase().includes(search.toLowerCase())) && (lifecycle === "all" || trade.lifecycleState === lifecycle) && (reviewState === "all" || trade.reviewState === reviewState));
   const reload = async () => { await cache.invalidateQueries({ queryKey: base }); };
-  if (entryId && entryId!=="review") return <TradeDetail key={`${workspaceId}:${entryId}`} workspaceId={workspaceId} entryId={decodeURIComponent(entryId)} onBack={() => platform.navigate("/dashboard/journal")} onChanged={reload} />;
+  function openTrade(id: string, trigger: HTMLButtonElement | null) {
+    returnFocus.current = trigger;
+    setOpenedTrade({ id, route });
+  }
+  function closeTrade() {
+    setOpenedTrade(null);
+    if (linkedEntryId) platform.navigate("/dashboard/journal");
+  }
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 md:p-5">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
@@ -112,7 +126,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
       {view === "trades" && status.data && !status.data.enabled && <JournalSetup workspaceId={workspaceId} onDone={reload}/>}
       {view === "trades" ? <>
         <div className="flex flex-wrap items-center gap-2">
-          <Input aria-label="Search trades" placeholder="Search symbol or company…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-9 max-w-xs" />
+          <Input ref={searchInput} aria-label="Search trades" placeholder="Search symbol or company…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-9 max-w-xs" />
           <StatusFilter label="Trade status" value={lifecycle} onChange={setLifecycle} options={TRADE_STATUSES} className="min-w-44" />
           <StatusFilter label="Review status" value={reviewState} onChange={setReviewState} options={REVIEW_STATUSES} className="min-w-48" />
           {(lifecycle !== "all" || reviewState !== "all") && (
@@ -124,9 +138,9 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
           {trades.isLoading ? <p className="p-8 text-center text-sm text-muted-foreground">Loading your trades…</p> : trades.isError ? <div className="p-8 text-center"><p>We couldn’t load your journal.</p><Button className="mt-3" variant="outline" onClick={() => void trades.refetch()}>Retry</Button></div> : filtered.length === 0 ? <div className="grid min-h-64 flex-1 place-content-center gap-3 p-8 text-center"><h2 className="font-medium">{entries.length ? "No trades match these filters" : "Your trading story starts here"}</h2><p className="max-w-sm text-sm text-muted-foreground">{entries.length ? "Try another symbol or clear the status filters." : "Connect your brokerage to bring in your executions, or add a trade yourself."}</p>{!entries.length && <Button variant="outline" onClick={() => platform.navigate("/dashboard/brokerage")}>Go to brokerage</Button>}</div> : <ScrollArea className="min-h-0 flex-1" orientation="both">
             <table className="w-full min-w-[760px] text-sm"><thead className="sticky top-0 z-10 bg-muted/90 text-xs text-muted-foreground"><tr><th className="w-10 px-3 py-3"><span className="sr-only">Select</span></th><th className="px-3 py-3 text-left font-medium">Trade</th><th className="px-3 py-3 text-left font-medium">Date</th><th className="px-3 py-3 text-left font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Open quantity</th><th className="px-3 py-3 text-right font-medium">Realized net</th><th className="px-3 py-3 text-left font-medium">Review</th></tr></thead><tbody>
-              {filtered.map((trade) => <tr key={trade.id} className="border-t transition-colors hover:bg-accent/50" onClick={() => platform.navigate(`/dashboard/journal/${encodeURIComponent(trade.id)}`)}>
+              {filtered.map((trade) => <tr key={trade.id} className="cursor-pointer border-t transition-colors hover:bg-accent/50" onClick={(event) => openTrade(trade.id, event.currentTarget.querySelector<HTMLButtonElement>("[data-trade-open]"))}>
                 <td className="px-3 py-4" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${trade.symbol} trade`} checked={selected.includes(trade.id)} disabled={!trade.episodeId || trade.lifecycleState === "incomplete"} onChange={(event) => setSelected(event.target.checked ? [...selected, trade.id] : selected.filter((id) => id !== trade.id))} /></td>
-                <td className="px-3 py-4"><button className="text-left font-medium hover:underline focus-visible:outline-ring" onClick={(event) => { event.stopPropagation(); platform.navigate(`/dashboard/journal/${encodeURIComponent(trade.id)}`); }}>{trade.symbol}</button><p className="mt-0.5 max-w-60 truncate text-xs text-muted-foreground">{trade.symbolName} · {trade.direction}</p></td>
+                <td className="px-3 py-4"><button type="button" data-trade-open aria-haspopup="dialog" className="text-left font-medium hover:underline focus-visible:outline-ring" onClick={(event) => { event.stopPropagation(); openTrade(trade.id, event.currentTarget); }}>{trade.symbol}</button><p className="mt-0.5 max-w-60 truncate text-xs text-muted-foreground">{trade.symbolName} · {trade.direction}</p></td>
                 <td className="px-3 py-4 text-muted-foreground">{tradeDate(trade.closeDate ?? trade.openDate, status.data?.timezone)}</td>
                 <td className="px-3 py-4"><span className={`rounded-md px-2 py-1 text-xs ${trade.lifecycleState === "incomplete" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{trade.lifecycleState === "incomplete" ? "Needs attention" : trade.lifecycleState === "open" ? "Open" : "Closed"}</span></td>
                 <td className="px-3 py-4 text-right tabular-nums">{trade.remainingQuantity ?? "—"}</td><td className={`px-3 py-4 text-right font-medium tabular-nums ${Number(trade.realizedNet) < 0 ? "text-rose-600" : Number(trade.realizedNet) > 0 ? "text-emerald-600" : ""}`}>{money(trade.realizedNet, trade.currency)}</td>
@@ -136,6 +150,20 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
           </ScrollArea>}
         </div>
       </> : null}
+      <Dialog open={!!modalEntryId} onOpenChange={(open) => { if (!open) closeTrade(); }}>
+        <DialogContent
+          className="flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[88rem]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = returnFocus.current?.isConnected ? returnFocus.current : searchInput.current;
+            target?.focus({ preventScroll: true });
+          }}
+        >
+          <DialogTitle className="sr-only">{modalTrade ? `${modalTrade.symbol} trade details` : "Trade details"}</DialogTitle>
+          <DialogDescription className="sr-only">View the chart, executions, review, notes, and history for this trade.</DialogDescription>
+          {modalEntryId && <TradeDetail key={`${workspaceId}:${modalEntryId}`} workspaceId={workspaceId} entryId={modalEntryId} inDialog onChanged={reload} />}
+        </DialogContent>
+      </Dialog>
       <GroupingDialog open={grouping} onOpenChange={setGrouping} workspaceId={workspaceId} entries={entries.filter((trade) => selected.includes(trade.id))} mode="merge" onDone={async () => { setSelected([]); await reload(); }} />
     </section>
   );

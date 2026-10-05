@@ -8,6 +8,53 @@ use tradstry_database::schema::{bootstrap, contract, pg};
 use tradstry_migration::{Migrator, MigratorTrait};
 use uuid::Uuid;
 
+#[tokio::test]
+async fn recent_trades_upgrade_preserves_note_content_and_trade_links() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.unwrap();
+    let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, Some(8)).await.unwrap();
+    pool.execute("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES ('recent-u','recent-c','recent@test.local','Recent');
+        INSERT INTO workspaces(id,user_id,name) VALUES ('recent-w','recent-u','Main');
+        INSERT INTO notebook_folders(id,user_id,workspace_id,name,is_system) VALUES ('recent-system','recent-u','recent-w','System',true);
+        INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type,status,total_pl,net_roi,duration)
+        VALUES ('recent-trade','recent-u','recent-w','PAY','Paymentus',now(),now(),1,2,1,'long','profit',1,1,1);
+        INSERT INTO notebook_notes(id,user_id,workspace_id,title,document_json,purpose,hlc) VALUES ('recent-note','recent-u','recent-w','Keep title','{\"keep\":true}','trade_context','009999999999999:00001:test');
+        INSERT INTO journal_trade_context(entry_id,user_id,workspace_id,companion_note_id) VALUES ('recent-trade','recent-u','recent-w','recent-note');
+        INSERT INTO notebook_note_trades(note_id,trade_id) VALUES ('recent-note','recent-trade');").await.unwrap();
+    bootstrap(&pool, &schema).await.unwrap();
+    let row: (String, String, String, bool, String) = sqlx::query_as("SELECT n.title,n.document_json,f.name,f.is_system,f.parent_folder_id FROM notebook_notes n JOIN notebook_folders f ON f.id=n.folder_id WHERE n.id='recent-note'").fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        row,
+        (
+            "Keep title".into(),
+            "{\"keep\":true}".into(),
+            "Recent Trades".into(),
+            true,
+            "recent-system".into()
+        )
+    );
+    let links: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_note_trades WHERE note_id='recent-note' AND trade_id='recent-trade'").fetch_one(&pool).await.unwrap();
+    assert_eq!(links, 1);
+    let stamp: String = sqlx::query_scalar("SELECT hlc FROM notebook_notes WHERE id='recent-note'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        stamp.as_str() > "009999999999999:00001:test",
+        "desktop must accept the folder backfill"
+    );
+    bootstrap(&pool, &schema).await.unwrap();
+    let folders: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notebook_folders WHERE workspace_id='recent-w' AND is_system",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(folders, 2);
+    cleanup(admin, pool, &schema).await;
+}
+
 fn test_url() -> String {
     std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://tradstry:tradstry@localhost:5435/tradstry_test".to_string())
