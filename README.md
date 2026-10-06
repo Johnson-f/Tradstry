@@ -1,247 +1,239 @@
-# Tradstry - AI-Powered Trading Journal & Analytics Platform
+# Tradstry
 
-Tradstry is a comprehensive trading journal and analytics platform that helps traders track, analyze, and improve their trading performance using AI-powered insights and real-time analytics.
+Tradstry is a trading journal and analytics web app for stock and options traders. It connects brokerage activity to trade records, performance reports, playbooks, principles, and notebook entries.
 
-## Overview
+The repository also contains an authenticated MCP server for AI clients and a native macOS app prototype. The desktop prototype uses AppKit, displays sample data, and keeps newly entered notes only for the current session; it is not yet connected to the web app's accounts or backend.
 
-Tradstry combines advanced journaling capabilities with sophisticated analytics to transform how traders make decisions. The platform integrates with brokerage accounts, provides real-time market data, and uses AI to generate personalized trading insights and reports.
+## Product
 
-### Key Features
+- **Journal:** Automatic grouping of brokerage fills into trades, manual entries, trade details, review fields, tags, and linked notes. The separate Journal **Review** tab is currently an empty placeholder.
+- **Analytics:** Performance summaries, profit and loss, risk metrics, trading calendars, and breakdowns by symbol and other trade attributes.
+- **Brokerage:** SnapTrade connections, account and position data, transaction imports, scheduled synchronization, and webhook reconciliation.
+- **Notebook:** Lexical rich text with Yjs document updates, images and videos, folders, and a system-managed Recent Trades folder for linked trade notes.
+- **Playbooks and principles:** Trading rules and records of which principles were broken on a trade.
+- **AI:** Configurable TinyAgents workers for analysis and research, plus MCP tools for accessing journal data and managing supported records.
+- **Notifications:** An in-app feed, notification preferences, and optional browser push notifications.
 
-- **Real-time Analytics**: Comprehensive performance tracking with risk metrics, P&L analysis, and market correlation insights
-- **AI-Powered Insights**: Automated behavioral analysis, pattern recognition, and personalized recommendations
-- **Advanced Journaling**: Rich text editor (Lexical), trade tagging, playbook creation, and multimedia support
-- **Brokerage Integration**: Direct connection to trading accounts via SnapTrade for automatic trade importing
-- **Market Data**: Live quotes, historical data, technical indicators, and news aggregation
-- **AI Chat**: Interactive AI assistant for trading analysis and strategy discussions
-- **Responsive Design**: Full-featured web application with mobile support
+## Stack
 
-## Tech Stack
+| Area | Implementation |
+| --- | --- |
+| Web app | Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix/shadcn UI |
+| Web data and editing | TanStack Query/Table, Zustand, Lexical, Yjs, Recharts |
+| Backend | Rust 2024 edition, Actix Web, async-graphql, REST endpoints, GraphQL subscriptions |
+| Database | PostgreSQL 18, SeaORM and SQLx; pgvector and ParadeDB `pg_search` for search |
+| AI runtime | TinyAgents 2, configurable Gemini or Perplexity models; Voyage embeddings and reranking |
+| Authentication | Clerk |
+| Media storage | Cloudflare R2 through the S3-compatible API |
+| Market data | `finance-query`, with Polygon and Financial Modeling Prep integrations |
+| Brokerage adapter | Go and gRPC over a private Unix socket |
+| MCP server | Rust, Axum, rmcp; authenticated Streamable HTTP at `/mcp` |
+| Cache and rate limits | Redis; optional for the main backend, required by the MCP server |
+| Desktop prototype | Swift 6, AppKit, macOS 26+, XcodeGen |
+| Tooling and hosting | Bun, Biome, Docker Compose, Caddy, GitHub Actions; Vercel configuration for the website |
 
-### Frontend (`/frontend`)
-- **Framework**: Next.js 16 with React 19
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **UI Library**: Radix UI / shadcn components
-- **State Management**: Zustand
-- **Data Fetching**: TanStack Query
-- **Rich Text Editor**: Lexical
-- **Charts**: Recharts
-- **Linting & Formatting**: Biome
-- **Package Manager**: Bun
+## Repository layout
 
-### Backend (`/backend`)
-- **Language**: Rust (Edition 2024)
-- **Web Framework**: Actix-web
-- **API**: GraphQL (async-graphql) + REST
-- **Database**: Turso (libSQL) for app data, Postgres for LangGraph checkpoints/memory
-- **Vector Search**: Qdrant for AI embeddings
-- **LLM**: Groq (default model: `openai/gpt-oss-120b`)
-- **Embeddings & Reranking**: Jina
-- **AI Framework**: custom LangGraph crate (`backend/crates`)
-- **Authentication**: Clerk
-- **File Storage**: Cloudinary
-
-### Microservices (`/microservice`)
-- **SnapTrade Service**: Go-based brokerage integration service for account syncing and trade importing
-
-### Infrastructure
-- **Deployment**: Docker with multi-stage builds
-- **Reverse Proxy**: Caddy with automatic HTTPS
-- **Orchestration**: Docker Compose
-- **CI/CD**: GitHub Actions
-- **Frontend Hosting**: Vercel
-- **Monitoring**: Health check endpoints
-
-## Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Next.js App   │────│   Rust Backend  │────│     Database     │
-│   (Vercel)      │    │   (Actix-web)   │    │   (Turso/SQL)    │
-│                 │    │                 │    │                 │
-│ • Landing Pages │    │ • GraphQL API   │    │ • User Data      │
-│ • Dashboard     │    │ • REST API      │    │ • Trade Records  │
-│ • Analytics UI  │    │ • Auth (Clerk)  │    └─────────────────┘
-│ • Journaling    │    │ • AI Services   │            │
-└─────────────────┘    └────────┬────────┘            │
-                                │                      │
-                    ┌───────────┼───────────┐          │
-                    │           │           │          │
-              ┌─────┴─────┐ ┌──┴──┐ ┌──────┴──────┐   │
-              │  SnapTrade │ │Qdrant│ │  AI Services │   │
-              │  Service   │ │     │ │             │   │
-              │  (Go)      │ │     │ │ • Rig       │   │
-              └────────────┘ └─────┘ │ • LangGraph │   │
-                                     └─────────────┘   │
+```text
+apps/
+  website/                 Next.js routes, landing pages, authentication, web integration
+  desktop/                 Native AppKit prototype and XcodeGen project specification
+packages/
+  app-ui/                  Product screens, hooks, services, and web platform interface
+  notebook-core/           Shared Lexical nodes, document structure, and Yjs helpers
+  ui/                      Shared React primitives
+backend/
+  src/                     HTTP server, GraphQL, domain services, background workers
+  database/                SeaORM entities, connection setup, and schema bootstrap
+  migration/               Database migrations and schema support
+  mcp-server/              Standalone MCP server
+  projector/               Bun helpers that turn notebook updates into document data
+  proto/                   Versioned SnapTrade protobuf contract
+  tests/                   Backend integration checks
+microservice/
+  snaptrade-service/       Go SnapTrade adapter
+devops/
+  Makefile                 Local service and deployment commands
+  compose.yml              Production service stack
+  docker/                  Backend, MCP, SnapTrade, and Postgres image builds
+  caddy/                   Reverse proxy configuration
+  scripts/                 Deployment and operations scripts
+.github/workflows/         Pull request checks and production image/deployment workflow
 ```
 
-## Project Structure
+The website calls the Rust backend over GraphQL and HTTP. The backend stores application data in Postgres, media in R2, and calls the Go adapter for SnapTrade operations. AI jobs and search also use Postgres. The MCP process shares backend services and database access, and uses Clerk authentication and Redis rate limits.
 
-```
-tradstry/
-├── apps/
-│   ├── website/                  # Next.js frontend
-│   └── desktop/                  # Native SwiftUI macOS app
-├── packages/
-│   ├── app-ui/                  # Shared product UI
-│   ├── notebook-core/            # Shared Lexical/Yjs logic
-│   └── ui/                       # Shared React primitives
-├── backend/                      # Rust backend
-│   ├── src/                      # Application source
-│   ├── crates/                   # Workspace crates (LangGraph)
-│   ├── Cargo.toml                # Rust dependencies
-├── microservice/
-│   └── snaptrade-service/        # Go brokerage integration
-├── devops/                       # Deployment and infrastructure
-│   ├── compose.yml               # Production orchestration
-│   ├── docker/                   # Service Dockerfiles
-│   ├── caddy/                    # Reverse proxy config
-│   └── scripts/                  # Migration and operations scripts
-└── .github/
-    └── workflows/                # CI/CD pipelines
-        ├── commit-check.yml      # PR quality checks (fmt, clippy, build, audit)
-        └── release.yml           # Tagged release Docker builds
-```
+## Local development
 
-## Local Development Setup
+Run commands from the repository root unless a block changes directories.
 
 ### Prerequisites
 
-- **Bun**: Package manager for frontend
-- **Rust**: 1.85+ with Cargo
-- **Docker**: For production services
-- **Git**: For version control
+- Bun **1.3.13**, matching the root package manager declaration and container builds.
+- Rust and Cargo; production images build with **Rust 1.95**, and CI uses stable Rust.
+- Docker with a running daemon for the local Postgres image, which includes both search extensions.
+- Go **1.26.5** for the SnapTrade adapter.
+- Clerk, R2, and SnapTrade development credentials for the connected web app.
+- `ffmpeg` and `ffprobe` for video processing.
+- For the desktop prototype only: macOS 26+, Xcode with the macOS 26 SDK, and XcodeGen.
 
-### 1. Clone and Install
+### 1. Install dependencies
 
 ```bash
-git clone <repository-url>
-cd tradstry
-
-# Install frontend dependencies
-cd apps/website
-bun install
-
-# Build backend
-cd ../backend
-cargo build
+bun install --frozen-lockfile
+(cd backend/projector && bun install --frozen-lockfile)
+bun run --cwd backend/projector sync-core
 ```
 
-### 2. Environment Configuration
+The projector has its own dependencies outside the root Bun workspace. The backend can regenerate missing notebook bundles on startup, but its dependencies must already be installed.
 
-#### Frontend
-Create `apps/website/.env.local`:
+### 2. Configure the web app and backend
+
+For a new checkout, copy the templates without replacing existing local configuration:
+
 ```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
-NEXT_PUBLIC_BACKEND_URL=http://localhost:7899
+cp -n apps/website/.env.example apps/website/.env.local
+cp -n backend/.env.example backend/.env
 ```
 
-#### Backend
-Create `backend/.env` (see `backend/.env.example` for the full list):
-```bash
-# Database — Turso (libSQL)
-TURSO_DB_URL=libsql://your-db.turso.io
-TURSO_DB_TOKEN=your_turso_token
+In `apps/website/.env.local`, fill in both Clerk keys and set the full GraphQL URL:
 
-# Database — Postgres (LangGraph checkpoints + memory store)
-POSTGRES_URL=postgres://user:pass@localhost:5432/tradstry
+```dotenv
+NEXT_PUBLIC_BACKEND_URL=http://localhost:7899/graphql
+```
 
-# Auth — Clerk
-CLERK_SECRET_KEY=sk_live_...
+In `backend/.env`, use these local database and browser origins:
 
-# AI — Groq LLM
-GROQ_API_KEY=gsk_...
-GROQ_MODEL=openai/gpt-oss-120b
-
-# Vector Search — Qdrant
-QDRANT_URL=https://your-instance.qdrant.io:6334
-QDRANT_API_KEY=your_qdrant_key
-
-# Embeddings + Reranking — Jina
-JINA_API_KEY=jina_...
-JINA_EMBEDDING_MODEL=jina-embeddings-v5-text-small
-JINA_RERANKER_MODEL=jina-reranker-v2-base-multilingual
-
-# Images — Cloudinary
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
-
-# Brokerage — SnapTrade (via private Go gRPC adapter)
-SNAPTRADE_GRPC_SOCKET=/tmp/tradstry-snaptrade.sock
-SNAPTRADE_INTERNAL_SECRET=generate_at_least_32_random_bytes
-SNAPTRADE_CONSUMER_KEY=your_snaptrade_consumer_key
-BROKERAGE_ENCRYPTION_KEY=your_encryption_key
-
-# Server
-RUST_LOG=info
+```dotenv
+POSTGRES_URL=postgres://postgres:tradstry@localhost:5433/postgres
+POSTGRES_DATABASE=dev
+BACKEND_PORT=7899
 CORS_ALLOWED_ORIGINS=http://localhost:3038,http://127.0.0.1:3038
+SNAPTRADE_OAUTH_REDIRECT_URI=http://localhost:7899/oauth/snaptrade/callback
+SNAPTRADE_OAUTH_FRONTEND_RETURN_URL=http://localhost:3038/dashboard/brokerage/oauth/callback
 ```
 
-#### SnapTrade Microservice
-Create `microservice/snaptrade-service/.env`:
-```bash
-SNAPTRADE_CLIENT_ID=your_snaptrade_client_id
-SNAPTRADE_CONSUMER_KEY=your_snaptrade_consumer_key
-SNAPTRADE_INTERNAL_SECRET=the_same_value_used_by_the_backend
+`POSTGRES_DATABASE=dev` selects the `tradstry_dev` **schema** inside the database named in `POSTGRES_URL`. Database schema bootstrap runs when the backend connects.
+
+Fill in the remaining settings in [backend/.env.example](backend/.env.example):
+
+- `CLERK_SECRET_KEY`, using the same Clerk instance as the website.
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET` for notebook media.
+- `SNAPTRADE_INTERNAL_SECRET` with at least 32 bytes, shared with the Go adapter; `SNAPTRADE_CONSUMER_KEY`; and `BROKERAGE_ENCRYPTION_KEY`, a base64-encoded 32-byte key.
+- `POLYGON_API_KEY` and `FMP_API_KEY` for the corresponding market data providers.
+
+Leave `AGENTS_V2_ENABLED=false` to keep in-app AI workers disabled. To enable them, set it to `true`, choose `AGENT_MODEL_PROVIDER`, fill in the fast/reasoning/vision model names, and supply the selected provider's API key plus `VOYAGE_API_KEY`. Optional Redis, Sentry, and browser push settings are also listed in the template.
+
+### 3. Configure and start the SnapTrade adapter
+
+Create `microservice/snaptrade-service/.env` with:
+
+```dotenv
+SNAPTRADE_CLIENT_ID=your_client_id
+SNAPTRADE_CONSUMER_KEY=your_consumer_key
+SNAPTRADE_OAUTH_CLIENT_ID=your_oauth_client_id
+SNAPTRADE_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+SNAPTRADE_INTERNAL_SECRET=the_same_secret_as_the_backend
 SNAPTRADE_GRPC_SOCKET=/tmp/tradstry-snaptrade.sock
 ```
 
-### 3. Run Development Servers
+Start it in its own terminal:
 
-#### Frontend (Terminal 1)
 ```bash
-cd apps/website
-bun run dev
-# http://localhost:3038
+make micro
 ```
 
-#### Backend (Terminal 2)
+The adapter uses a private Unix socket, not a public HTTP port. Keep the socket path and shared secret consistent with the backend. See [microservice/README.md](microservice/README.md) for the adapter contract and protobuf generation commands.
+
+### 4. Start the backend and website
+
+In separate terminals:
+
+```bash
+make backend
+```
+
+```bash
+make frontend
+```
+
+Default local addresses:
+
+| Service | Address |
+| --- | --- |
+| Website | `http://localhost:3038` |
+| Backend GraphQL | `http://localhost:7899/graphql` |
+| Backend health | `http://localhost:7899/health` |
+| Postgres | `localhost:5433` |
+
+`make backend` starts Postgres and then runs `tradstry-backend`. It sets the connection URL from `PG_PORT` and `PG_DATABASE`, overriding `POSTGRES_URL` in the backend environment file. Defaults are port `5433` and database `postgres`; ignored `devops/local.mk` can override them and `BACKEND_PORT`.
+
+For an existing external database, run `cargo run --bin tradstry-backend` from `backend/` to use its environment file directly. If you change the backend port, also update the website GraphQL URL and SnapTrade redirect URL.
+
+### MCP server
+
+The MCP server runs separately. Configure `MCP_PUBLIC_URL`, `MCP_BIND_ADDR`, and `CLERK_ISSUER` in `backend/.env`, plus working Postgres, Clerk, R2, Voyage, and Redis settings. Redis and Voyage are required for this process even when in-app AI workers are disabled.
+
 ```bash
 cd backend
-cargo run
-# http://localhost:7899
+cargo run -p mcp-server --bin mcp-server
 ```
 
-### 4. Production (Docker)
-```bash
-docker compose --env-file devops/.env -f devops/compose.yml up --build
-```
+The default local MCP endpoint is `http://localhost:7900/mcp`. Its `/health` and OAuth discovery routes are public; MCP tool requests require authentication.
 
-## Development Commands
+### Native macOS prototype
+
+Generate the Xcode project from [apps/desktop/project.yml](apps/desktop/project.yml), then build and open the local app:
 
 ```bash
-# Frontend
-cd apps/website
-bun run dev              # Start development server
-bun run build            # Build for production
-bun run start            # Start production server
-bun run lint             # Run Biome linter
-bun run format           # Format code with Biome
-
-# Backend
-cd backend
-cargo build              # Build application
-cargo run                # Run development server
-cargo test               # Run tests
-cargo fmt                # Format code
-cargo clippy             # Run linter
-cargo build --release    # Production build
+cd apps/desktop
+xcodegen generate
+xcodebuild -project Tradstry.xcodeproj -scheme Tradstry \
+  -configuration Debug -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO build
+open build/Debug/Tradstry.app
 ```
+
+The generated Xcode project and `build/` directory are ignored by Git. Use these direct commands: the root `make desktop` target currently points to a desktop Makefile that is absent.
+
+## Development checks
+
+From the repository root:
+
+```bash
+# Web and shared packages
+bun run typecheck:app-ui
+bunx tsc --noEmit -p apps/website/tsconfig.json
+bun run test:packages
+bun run build:website
+bun run --cwd apps/website lint
+
+# Notebook document helpers
+bun run --cwd backend/projector test
+
+# Rust checks used by CI
+(cd backend && cargo fmt --all -- --check)
+(cd backend && cargo check --all-targets)
+(cd backend && cargo clippy --all-targets --all-features -- -D warnings)
+
+# Backend workspace tests
+(cd backend && cargo test --workspace)
+
+# SnapTrade adapter
+(cd microservice/snaptrade-service && go test ./...)
+(cd microservice/snaptrade-service && go vet ./...)
+```
+
+Database integration tests need a separate test Postgres database with the required extensions. Set `TEST_DATABASE_URL` for that database; do not point it at application data. Notebook tests also need the projector dependencies above.
 
 ## Deployment
 
-### Production
-- **Frontend**: Vercel (Next.js)
-- **Backend**: Docker container on VPS via Docker Compose
-- **Reverse Proxy**: Caddy (automatic HTTPS via Let's Encrypt)
-- **Database**: Turso cloud
+[devops/compose.yml](devops/compose.yml) defines the backend, MCP server, SnapTrade adapter, Postgres, Redis, Caddy, and container health management. Website deployment is separate from this stack.
 
-### CI/CD
-- **PR Checks** (`commit-check.yml`): `cargo fmt`, `cargo check`, `cargo clippy`, `cargo build --release`, `cargo audit`
-- **Production** (`release.yml`): Verified merges to `master` build immutable backend, MCP, and SnapTrade images, wait for approval, then deploy the exact Git SHA to the VPS
+- [commit-check.yml](.github/workflows/commit-check.yml) runs Rust formatting, type checks, and Clippy for pull requests to `main` or `master`. It does not currently run the frontend or test suites.
+- [release.yml](.github/workflows/release.yml) runs on pushes to `master` or manual dispatch, reuses the Rust checks, builds backend/MCP/SnapTrade images tagged `sha-<commit>`, deploys the exact commit through the GitHub `Production` environment, and promotes successfully deployed images to `latest`.
+- `make deploy` is an emergency deployment command for already-built `origin/master` images. Release tags are not required by the deployment workflow.
+- Environment files remain outside Git. See [devops/README.md](devops/README.md) for operations and Compose commands.
 
 ## License
 
