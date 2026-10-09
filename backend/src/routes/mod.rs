@@ -1,3 +1,4 @@
+mod auth;
 pub mod clerk_webhook;
 mod graphql;
 pub mod notebook_media;

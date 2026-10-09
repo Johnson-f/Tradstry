@@ -1,20 +1,12 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
-use sqlx::PgPool;
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::service::db::schema::tables::position_calculator_history_table as h;
 use tradstry_backend::service::db::schema::tables::position_calculator_plans_table as p;
 use tradstry_backend::service::db::schema::tables::position_calculator_rule_table as r;
 
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn rule_upsert_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -68,11 +60,10 @@ async fn rule_upsert_flow_and_since() {
     assert_eq!(deltas[0].hlc, "000000000000002:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn plan_create_update_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -144,11 +135,10 @@ async fn plan_create_update_delete_flow_and_since() {
     assert_eq!(deltas[0].hlc, "000000000000003:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn history_create_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -207,13 +197,12 @@ async fn history_create_delete_flow_and_since() {
     assert_eq!(deltas[0].hlc, "000000000000002:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn calculator_mutations_apply_through_push() {
     use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation};
 
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let rule_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let plan_id = tradstry_backend::ids::new_uuid_v7().to_string();

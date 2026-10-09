@@ -2,7 +2,7 @@ use crate::agent_support::AgentPgFixture;
 use crate::pg_support::seed_user_workspace;
 use tradstry_backend::service::agents::{AgentContextKind, context};
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn context_search_is_grouped_owned_and_storage_safe() {
     let fixture = AgentPgFixture::new().await;
     let (foreign_user, foreign_workspace) = seed_user_workspace(&fixture.pool).await;
@@ -121,7 +121,7 @@ async fn context_search_is_grouped_owned_and_storage_safe() {
     assert!(!serialized.contains("secret-object"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn context_search_rejects_foreign_workspace() {
     let fixture = AgentPgFixture::new().await;
     let (_, foreign_workspace) = seed_user_workspace(&fixture.pool).await;

@@ -1,7 +1,7 @@
 use crate::agent_support::AgentPgFixture;
 use tradstry_backend::service::agents::runtime::provider_failure::ProviderFailure;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn provider_failure_is_stored_with_safe_diagnostic_fields() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("provider-failure").await;

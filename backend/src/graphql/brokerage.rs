@@ -12,6 +12,7 @@ use crate::service::brokerage::auth::{
     BrokerageAuth, BrokerageAuthSession, resolve_oauth_grant_session, resolve_workspace_session,
 };
 use crate::service::brokerage::client::{BrokerageClient, SnapTradeAccount, SnapTradeError};
+use crate::service::brokerage::connection::release_snaptrade_connection;
 use crate::service::brokerage::db::decrypt_secret;
 use crate::service::brokerage::history_policy::{
     self, TransactionImportMode, TransactionImportPolicy,
@@ -1637,35 +1638,13 @@ impl BrokerageMutation {
             workspaces_table::find_workspace(user_db.pool(), &workspace_id, user_db.user_id())
                 .await?
                 .ok_or_else(|| async_graphql::Error::new("Workspace not found"))?;
-        if let (Some(snaptrade_user_id), Some(encrypted), Some(connection_id)) = (
-            workspace.snaptrade_user_id.as_deref(),
-            workspace.snaptrade_user_secret_encrypted.as_deref(),
-            workspace.snaptrade_connection_id.as_deref(),
-        ) {
-            let other_references: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM brokerage_connections \
-                 WHERE user_id = $1 AND snaptrade_connection_id = $2 AND workspace_id <> $3",
-            )
-            .bind(user_db.user_id())
-            .bind(connection_id)
-            .bind(&workspace_id)
-            .fetch_one(user_db.pool())
-            .await?;
-            if other_references == 0 {
-                brokerage_client
-                    .delete_connection(
-                        snaptrade_user_id,
-                        &decrypt_secret(encrypted)?,
-                        connection_id,
-                    )
-                    .await
-                    .map_err(|error| {
-                        async_graphql::Error::new(format!(
-                            "Failed to disconnect the brokerage at SnapTrade: {error}"
-                        ))
-                    })?;
-            }
-        }
+        release_snaptrade_connection(
+            user_db.pool(),
+            brokerage_client,
+            user_db.user_id(),
+            &workspace,
+        )
+        .await?;
         workspaces_table::clear_snaptrade_credentials(
             user_db.pool(),
             &workspace_id,

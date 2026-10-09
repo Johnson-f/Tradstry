@@ -5,7 +5,7 @@
 use sqlx::PgPool;
 use tradstry_backend::service::brokerage::webhook::{WebhookEvent, sync_targets};
 
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 const OAUTH_CLIENT: &str = "tradstry-oauth-client";
 
@@ -87,9 +87,10 @@ fn unique(prefix: &str) -> String {
     format!("{prefix}-{}", tradstry_backend::ids::new_uuid_v7().simple())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_commercial_webhook_finds_its_connection() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let snaptrade_user = unique("commercial");
     let (user_id, workspace_id) = commercial_connection(&pool, &snaptrade_user).await;
 
@@ -104,9 +105,10 @@ async fn a_commercial_webhook_finds_its_connection() {
     assert_eq!(targets[0].broker, "Webull");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn an_oauth_webhook_finds_its_connection_through_an_active_grant() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let snaptrade_user = unique("oauth");
     let workspace_id = oauth_connection(&pool, &snaptrade_user, "active").await;
 
@@ -130,9 +132,10 @@ async fn an_oauth_webhook_finds_its_connection_through_an_active_grant() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn an_oauth_webhook_ignores_a_revoked_grant() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let snaptrade_user = unique("revoked");
     oauth_connection(&pool, &snaptrade_user, "revoked").await;
 
@@ -142,9 +145,10 @@ async fn an_oauth_webhook_ignores_a_revoked_grant() {
     assert!(targets.is_empty());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn account_and_connection_filters_narrow_the_targets() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let snaptrade_user = unique("filtered");
     commercial_connection(&pool, &snaptrade_user).await;
 

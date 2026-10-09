@@ -107,7 +107,7 @@ fn input(note_id: &str, key: &str) -> ReserveMediaUploadInput {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn concurrent_shared_hash_reserves_once_and_gc_waits_for_last_reference() {
     let (admin, pool, database) = isolated_pool().await;
     migrate(&pool, &database).await;
@@ -178,7 +178,7 @@ async fn concurrent_shared_hash_reserves_once_and_gc_waits_for_last_reference() 
     cleanup(admin, pool, &database).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn quota_rejection_does_not_create_media_state() {
     let (admin, pool, database) = isolated_pool().await;
     migrate(&pool, &database).await;
@@ -227,7 +227,7 @@ async fn quota_rejection_does_not_create_media_state() {
     cleanup(admin, pool, &database).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_note_with_media_schedules_the_blob_for_gc() {
     let (admin, pool, database) = isolated_pool().await;
     migrate(&pool, &database).await;
@@ -276,7 +276,7 @@ async fn deleting_a_note_with_media_schedules_the_blob_for_gc() {
     cleanup(admin, pool, &database).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn foreign_user_cannot_delete_a_notebook_folder() {
     let (admin, pool, database) = isolated_pool().await;
     migrate(&pool, &database).await;
@@ -312,7 +312,7 @@ async fn foreign_user_cannot_delete_a_notebook_folder() {
     cleanup(admin, pool, &database).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migrated_hashless_media_survives_edits_until_explicit_note_deletion() -> anyhow::Result<()>
 {
     use anyhow::ensure;

@@ -31,7 +31,7 @@ async fn runtime(fixture: &AgentPgFixture, context: AgentMessageContext) -> Agen
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn performance_tool_matches_canonical_service_and_persists_evidence() {
     let fixture = AgentPgFixture::new().await;
     let state = runtime(&fixture, AgentMessageContext::default()).await;
@@ -67,7 +67,7 @@ async fn performance_tool_matches_canonical_service_and_persists_evidence() {
     assert_eq!(evidence_count, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn attached_trade_scope_overrides_model_filters() {
     let fixture = AgentPgFixture::new().await;
     let user_db = fixture.db.get_user_db(&fixture.actor.user_id);

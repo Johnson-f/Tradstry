@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use chrono::NaiveDate;
 use tradstry_backend::service::brokerage::{
     client::SnapTradeAccount,
@@ -18,13 +18,10 @@ fn account(id: &str, name: &str) -> SnapTradeAccount {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn prepared_connection_waits_for_an_explicit_policy() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let prepared = workspaces_table::prepare_snaptrade_connection(
@@ -56,13 +53,10 @@ async fn prepared_connection_waits_for_an_explicit_policy() {
     assert!(policy.start_date.is_none());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn multi_account_finalization_persists_independent_fixed_boundaries() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     workspaces_table::prepare_snaptrade_connection(
         &pool,

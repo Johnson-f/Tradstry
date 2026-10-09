@@ -1,25 +1,11 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::export::build_export;
-use tradstry_migration::{Migrator, MigratorTrait};
 
-async fn migrated_pool() -> sqlx::PgPool {
-    let pool = test_pool().await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("migrate");
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-    Migrator::up(&db, None)
-        .await
-        .expect("apply SeaORM migrations");
-    pool
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn export_contains_a_key_for_every_user_table() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
@@ -71,11 +57,10 @@ async fn export_contains_a_key_for_every_user_table() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn export_excludes_another_users_rows() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let (mine, _) = seed_user_workspace(&pool).await;
     let (_theirs, _) = seed_user_workspace(&pool).await;

@@ -2,15 +2,13 @@
 
 use std::sync::Arc;
 
-use sea_orm::SqlxPostgresConnector;
 use serde_json::json;
 use tradstry_backend::service::agents::{
     AgentActor, AgentConversation, AgentRun, AgentScope, AgentStore, CreateAgentRun,
 };
 use tradstry_backend::service::db::Db;
-use tradstry_migration::{Migrator, MigratorTrait};
 
-use crate::pg_support::{SchemaGuard, reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 pub struct AgentPgFixture {
     pub pool: sqlx::PgPool,
@@ -18,20 +16,13 @@ pub struct AgentPgFixture {
     pub actor: AgentActor,
     pub scope: AgentScope,
     pub store: AgentStore,
-    _schema_guard: SchemaGuard,
+    _test_db: TestDb,
 }
 
 impl AgentPgFixture {
     pub async fn new() -> Self {
-        let pool = test_pool().await;
-        let schema_guard = reset_schema(&pool).await;
-        tradstry_backend::service::db::schema::pg::migrate(&pool)
-            .await
-            .expect("migrate archived agent test schema");
-        let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-        Migrator::up(&db, None)
-            .await
-            .expect("migrate agent test runtime");
+        let test_db = TestDb::new().await;
+        let pool = test_db.pool();
         let (user_id, workspace_id) = seed_user_workspace(&pool).await;
         let db = Arc::new(Db::from_pool(pool.clone()));
         let store = AgentStore::new(pool.clone());
@@ -44,7 +35,7 @@ impl AgentPgFixture {
             },
             scope: AgentScope { workspace_id },
             store,
-            _schema_guard: schema_guard,
+            _test_db: test_db,
         }
     }
 

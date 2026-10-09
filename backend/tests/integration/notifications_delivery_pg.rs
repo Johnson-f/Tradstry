@@ -1,16 +1,10 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use serde_json::json;
 use sqlx::PgPool;
 use std::time::Duration;
 use tradstry_backend::service::notifications::delivery_worker;
 use tradstry_backend::service::notifications::push::{FakePushSender, PushOutcome};
 use tradstry_backend::service::notifications::{deliveries, store, subscriptions};
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 async fn a_notification(pool: &PgPool, user_id: &str) -> String {
     let mut conn = pool.acquire().await.unwrap();
@@ -20,11 +14,10 @@ async fn a_notification(pool: &PgPool, user_id: &str) -> String {
         .id
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn subscribing_the_same_browser_twice_upserts() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let a = subscriptions::upsert(
@@ -54,11 +47,10 @@ async fn subscribing_the_same_browser_twice_upserts() {
     assert_eq!(subs[0].p256dh, "k2", "re-subscribing refreshes the keys");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fan_out_creates_one_row_per_browser() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     subscriptions::upsert(&pool, &user_id, "https://push/1", "k", "a", None)
@@ -76,11 +68,10 @@ async fn fan_out_creates_one_row_per_browser() {
     assert_eq!(created, 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_user_with_no_browsers_gets_no_delivery_rows() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let n = a_notification(&pool, &user_id).await;
@@ -93,11 +84,10 @@ async fn a_user_with_no_browsers_gets_no_delivery_rows() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_browser_subscribing_later_gets_no_row_for_old_news() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let n = a_notification(&pool, &user_id).await;
@@ -115,11 +105,10 @@ async fn a_browser_subscribing_later_gets_no_row_for_old_news() {
     assert_eq!(due.len(), 0, "a new browser must not receive old pushes");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn gone_deletes_the_subscription_and_leaves_others_pending() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let dead = subscriptions::upsert(&pool, &user_id, "https://push/dead", "k", "a", None)
@@ -149,11 +138,10 @@ async fn gone_deletes_the_subscription_and_leaves_others_pending() {
     assert_eq!(due.len(), 1, "the healthy browser is still owed its push");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn retry_pushes_the_next_attempt_forward_then_fails_at_the_cap() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let sub = subscriptions::upsert(&pool, &user_id, "https://push/1", "k", "a", None)
@@ -196,11 +184,10 @@ async fn retry_pushes_the_next_attempt_forward_then_fails_at_the_cap() {
     assert_eq!(status.0, "failed");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn sent_rows_are_never_claimed_again() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let sub = subscriptions::upsert(&pool, &user_id, "https://push/1", "k", "a", None)
@@ -226,11 +213,10 @@ fn backoff_grows_and_is_capped() {
     assert_eq!(deliveries::backoff(99), Duration::from_secs(6 * 60 * 60));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_sent_push_marks_the_row_and_touches_the_subscription() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
     let sub = subscriptions::upsert(&pool, &user_id, "https://push/1", "k", "a", None)
         .await
@@ -262,11 +248,10 @@ async fn a_sent_push_marks_the_row_and_touches_the_subscription() {
     assert!(touched.0.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_gone_endpoint_is_deleted() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
     subscriptions::upsert(&pool, &user_id, "https://push/dead", "k", "a", None)
         .await
@@ -295,11 +280,10 @@ async fn a_gone_endpoint_is_deleted() {
     assert_eq!(row.0, "gone");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn one_browser_failing_does_not_affect_another() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
     subscriptions::upsert(&pool, &user_id, "https://push/1", "k", "a", None)
         .await
@@ -326,11 +310,10 @@ async fn one_browser_failing_does_not_affect_another() {
     assert_eq!(statuses[1].0, "sent");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn nothing_due_is_not_an_error() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let sender = FakePushSender::new(vec![]);
     assert_eq!(

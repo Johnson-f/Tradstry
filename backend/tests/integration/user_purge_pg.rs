@@ -1,7 +1,6 @@
-use crate::pg_support::{reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::users::purge::{collect_r2_keys, delete_user_by_clerk_uuid};
-use tradstry_migration::{Migrator, MigratorTrait};
 
 /// Returns `(user_id, clerk_uuid, r2_key)`.
 async fn seed_user_with_image(pool: &sqlx::PgPool) -> (String, String, String) {
@@ -35,23 +34,10 @@ async fn seed_user_with_image(pool: &sqlx::PgPool) -> (String, String, String) {
     (user_id, clerk_uuid, key)
 }
 
-async fn migrated_pool() -> sqlx::PgPool {
-    let pool = test_pool().await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("migrate");
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-    Migrator::up(&db, None)
-        .await
-        .expect("apply SeaORM migrations");
-    pool
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn collects_every_r2_key_for_the_user() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let (user_id, _clerk_uuid, key) = seed_user_with_image(&pool).await;
 
@@ -61,11 +47,10 @@ async fn collects_every_r2_key_for_the_user() {
     assert_eq!(keys, vec![key]);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deletes_the_user_and_returns_the_internal_id() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let (user_id, clerk_uuid, _key) = seed_user_with_image(&pool).await;
 
@@ -85,11 +70,10 @@ async fn deletes_the_user_and_returns_the_internal_id() {
     assert_eq!(remaining, 0, "notebook media should cascade away");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn returns_none_for_an_unknown_clerk_uuid() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
     let deleted = delete_user_by_clerk_uuid(&db, "user_does_not_exist")

@@ -1,12 +1,6 @@
-use crate::pg_support::{reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::playbook_table as pb;
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 async fn seed_user(pool: &PgPool, id: &str) {
     sqlx::query("INSERT INTO users (id, clerk_uuid) VALUES ($1, $2)")
@@ -36,11 +30,10 @@ fn args(id: &str, name: &str) -> pb::PlaybookWriteArgs {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_update_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     seed_user(&pool, "u1").await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -83,13 +76,12 @@ async fn create_update_delete_flow_and_since() {
     assert!(deltas[0].deleted_at.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_playbook_mutation_applies_through_push() {
     use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation};
 
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     seed_user(&pool, "u2").await;
     let playbook_id = tradstry_backend::ids::new_uuid_v7().to_string();
 

@@ -1,12 +1,13 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::notebook::folders;
 use tradstry_backend::service::db::schema::tables::notebook::notes;
 use tradstry_backend::service::trade_review::journal_flow::reflection;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn trade_note_is_listed_in_recent_trades_and_keeps_its_source_link() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = seed_user_workspace(&pool).await;
     sqlx::query(
         "INSERT INTO journal_workspace_state(workspace_id,user_id,enabled) VALUES ($1,$2,true)",
@@ -70,15 +71,6 @@ async fn trade_note_is_listed_in_recent_trades_and_keeps_its_source_link() {
     );
 }
 
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-    tradstry_backend::service::db::schema::bootstrap(pool, "public")
-        .await
-        .expect("bootstrap");
-}
-
 async fn system_folder(
     pool: &PgPool,
     user_id: &str,
@@ -92,11 +84,10 @@ async fn system_folder(
         .expect("account has a system folder")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn every_account_is_provisioned_with_exactly_one_system_folder() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     // Backfill + create-time provisioning both run; neither may produce a duplicate.
@@ -152,11 +143,10 @@ async fn every_account_is_provisioned_with_exactly_one_system_folder() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn the_system_folder_cannot_be_renamed_or_deleted() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     folders::ensure_system_folder(&pool, &user_id, &workspace_id)
         .await
@@ -181,11 +171,10 @@ async fn the_system_folder_cannot_be_renamed_or_deleted() {
     assert_eq!(still_there.name, folders::SYSTEM_FOLDER_NAME);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn an_ordinary_folder_is_still_renamable_and_deletable() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let f = folders::create_notebook_folder(

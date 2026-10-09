@@ -37,7 +37,7 @@ fn input(
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn superseding_keeps_one_active_memory_per_subject() {
     let fixture = AgentPgFixture::new().await;
     let (conversation, message) = source(&fixture).await;
@@ -83,7 +83,7 @@ async fn superseding_keeps_one_active_memory_per_subject() {
     assert_eq!(old_status, "superseded");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn memory_controls_are_owned_and_conversation_delete_cascades() {
     let fixture = AgentPgFixture::new().await;
     let (conversation, message) = source(&fixture).await;
@@ -134,7 +134,7 @@ async fn memory_controls_are_owned_and_conversation_delete_cascades() {
     assert_eq!(count, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn forgetting_removes_memory_from_active_listing_immediately() {
     let fixture = AgentPgFixture::new().await;
     let (conversation, message) = source(&fixture).await;

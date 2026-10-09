@@ -1,18 +1,10 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
-use sqlx::PgPool;
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::service::notifications::preferences;
 
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_user_with_no_rows_is_enabled() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     assert!(
@@ -22,11 +14,10 @@ async fn a_user_with_no_rows_is_enabled() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn an_explicit_false_disables_only_that_type() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     preferences::set(&pool, &user_id, "FillsLanded", false)
@@ -46,13 +37,12 @@ async fn an_explicit_false_disables_only_that_type() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_brand_new_event_type_reaches_a_user_who_muted_something_else() {
     // The regression this pins: switching to explicit opt-in would silently
     // stop delivering every event type added after a user's first mute.
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     preferences::set(&pool, &user_id, "FillsLanded", false)
@@ -66,11 +56,10 @@ async fn a_brand_new_event_type_reaches_a_user_who_muted_something_else() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn set_is_idempotent_and_can_re_enable() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     preferences::set(&pool, &user_id, "FillsLanded", false)
@@ -95,11 +84,10 @@ async fn set_is_idempotent_and_can_re_enable() {
     assert_eq!(count.0, 1, "upsert, not insert");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_returns_every_known_type() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     preferences::set(&pool, &user_id, "FillsLanded", false)

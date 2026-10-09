@@ -49,9 +49,10 @@ async fn project(pool: &PgPool, user: &str, workspace: &str) {
         .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn empty_option_metadata_recovers_stock_history_and_preserves_the_journal_entry() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     for (name, side, quantity, price, at) in [
         ("buy", "BUY", 2.0, 5.88, "2026-09-01T14:00:00Z"),
@@ -177,9 +178,10 @@ async fn empty_option_metadata_recovers_stock_history_and_preserves_the_journal_
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn stock_placeholders_do_not_hide_genuinely_incomplete_options() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET opening_inventory=jsonb_build_object('*',opening_inventory->'equity:ACME|USD') WHERE workspace_id=$1")
         .bind(&workspace).execute(&pool).await.unwrap();
@@ -285,9 +287,10 @@ async fn stock_placeholders_do_not_hide_genuinely_incomplete_options() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn confirmed_ticker_continuation_closes_the_position_without_changing_broker_facts() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET opening_inventory=jsonb_build_object('*',opening_inventory->'equity:ACME|USD') WHERE workspace_id=$1")
         .bind(&workspace).execute(&pool).await.unwrap();
@@ -377,13 +380,14 @@ async fn confirmed_ticker_continuation_closes_the_position_without_changing_brok
         .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unresolved_history_is_confirmed_reviewed_and_undone_without_losing_identity() {
     use journal_flow::{
         grouping::{self, AllocationInput, GroupInput, GroupingInput},
         reflection,
     };
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET opening_inventory='{}' WHERE workspace_id=$1")
         .bind(&workspace)
@@ -670,9 +674,10 @@ async fn unresolved_history_is_confirmed_reviewed_and_undone_without_losing_iden
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn entry_identity_and_context_survive_partial_and_final_exits() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -758,9 +763,10 @@ async fn entry_identity_and_context_survive_partial_and_final_exits() {
     assert_eq!(row.get::<Decimal, _>("allocated"), Decimal::from(200));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reversal_allocates_exact_fees_and_keeps_both_identities_on_later_sync() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -856,9 +862,10 @@ async fn reversal_allocates_exact_fees_and_keeps_both_identities_on_later_sync()
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn missing_opening_history_is_repaired_without_replacing_the_entry() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET opening_inventory='{}' WHERE workspace_id=$1")
         .bind(&workspace)
@@ -911,9 +918,10 @@ async fn missing_opening_history_is_repaired_without_replacing_the_entry() {
     assert_eq!(trades[0].realized_net.as_deref(), Some("1000"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unsealed_import_waits_and_expired_worker_lease_recovers() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -965,9 +973,10 @@ async fn unsealed_import_waits_and_expired_worker_lease_recovers() {
     assert_eq!(versions, (1, 1));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fee_availability_correction_recalculates_the_same_entry() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -1014,9 +1023,10 @@ async fn fee_availability_correction_recalculates_the_same_entry() {
     assert_eq!(after[0].realized_net.as_deref(), Some("1000"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn allocation_fees_cannot_exceed_the_broker_record() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -1041,9 +1051,10 @@ async fn allocation_fees_cannot_exceed_the_broker_record() {
     assert!(result.is_err(), "an allocation must not manufacture fees");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn failed_import_preserves_the_last_projection_until_a_successful_retry() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -1116,9 +1127,10 @@ async fn failed_import_preserves_the_last_projection_until_a_successful_retry() 
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_source_correction_marks_the_same_entry_incomplete_and_can_recover() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,
@@ -1168,9 +1180,10 @@ async fn invalid_source_correction_marks_the_same_entry_incomplete_and_can_recov
     assert_eq!(trades[0].realized_net.as_deref(), Some("0"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn existing_published_entry_keeps_its_identity_and_notes() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET enabled=false WHERE workspace_id=$1")
         .bind(&workspace)
@@ -1259,9 +1272,10 @@ async fn existing_published_entry_keeps_its_identity_and_notes() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn legacy_manual_merge_with_exact_links_is_adopted_once() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     sqlx::query("UPDATE journal_workspace_state SET enabled=false WHERE workspace_id=$1")
         .bind(&workspace)
@@ -1325,10 +1339,11 @@ async fn legacy_manual_merge_with_exact_links_is_adopted_once() {
     assert_eq!(notes, "Original manual merge");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn split_preview_is_read_only_and_confirmation_preserves_the_holding() {
     use journal_flow::grouping::{self, AllocationInput, GroupInput, GroupingInput};
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
     fill(
         &pool,

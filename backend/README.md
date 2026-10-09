@@ -310,17 +310,28 @@ A few rules are load-bearing and easy to break by accident:
 # Unit tests (no database)
 cargo test --lib
 
-# Integration tests — need a Postgres with pgvector + pg_search
-export TEST_DATABASE_URL=postgres://postgres:tradstry@localhost:5432/tradstry_test
-cargo test
+# Integration tests: start the throwaway test Postgres first (from the repo root)
+make test-db
+cargo nextest run --test integration      # or: cargo test --test integration
 
 # One suite (each file under tests/integration/ is a module of one test binary)
-cargo test --test integration brokerage_dedup_pg::
+cargo nextest run --test integration brokerage_dedup_pg::
+
+make test-db-stop                          # its data lives in memory and is discarded
 ```
+
+`make test-db` runs a separate Postgres (pgvector + pg_search) on `localhost:5435`, in memory and with durability off. It never touches the development database from `make postgres`. Point the tests elsewhere with `TEST_DATABASE_URL`; the role needs to create and drop databases.
 
 All integration suites live in `tests/integration/` and compile into a single binary, so the backend links once. Add a new suite as `tests/integration/<name>.rs` and register it with `mod <name>;` in `tests/integration/main.rs`; a file placed directly in `tests/` would build as its own binary again.
 
-`tests/integration/pg_support.rs` brings the target database to the current schema on first use and defaults to `postgres://tradstry:tradstry@localhost:5435/tradstry_test` when `TEST_DATABASE_URL` is unset. Point it at whatever Postgres you have; `make postgres` from the repo root gives you one on 5432. Tests run in parallel against that one database: get the pool from `test_pool()`, and take `reset_schema()` (which holds the schema exclusively) before dropping or migrating `public` yourself. A test that needs a private schema history should create its own database, as `notebook_media_lifecycle_pg` does.
+Each test gets its own database from `TestDb` (`tests/integration/test_db.rs`):
+
+- `TestDb::new()` copies a template that holds the current schema. The template is built once and rebuilt only when `schema/`, `migration/` or `database/` change, so tests never migrate, never share rows, and run in parallel.
+- `TestDb::empty()` gives a blank database for tests that replay schema history themselves, such as the adoption and migration tests.
+- Keep the `TestDb` value alive for the whole test (`let test_db = TestDb::new().await; let pool = test_db.pool();`). Its database is dropped when the test passes and kept when it fails, so the rows can be inspected; kept databases are removed after a day.
+- Write database tests as `#[tokio::test(flavor = "multi_thread")]`. Dropping a test's database needs its runtime to keep running; on a single-threaded runtime the drop can stall for a minute.
+
+cargo-nextest (`cargo install cargo-nextest --locked`) runs each test in its own process, so one crash or hang cannot hide the other results; its settings are in `.config/nextest.toml`. Notebook tests spawn the Bun projector, so run `(cd projector && bun install --frozen-lockfile)` once first.
 
 Projector tests run under Bun:
 

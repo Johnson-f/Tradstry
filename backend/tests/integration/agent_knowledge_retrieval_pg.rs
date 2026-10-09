@@ -76,7 +76,7 @@ async fn insert_note_and_passage(
     .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn retrieval_prefilters_scope_relationships_and_discards_stale_sources() {
     let fixture = AgentPgFixture::new().await;
     insert_note_and_passage(

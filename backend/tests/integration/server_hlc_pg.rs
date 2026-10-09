@@ -6,15 +6,9 @@
 //! own values: a server-side edit was silently dropped on the desktop while looking applied
 //! in the browser. These tests pin the stamp onto the rows the web and MCP actually write.
 
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::{playbook_table, trading_principle_table};
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 async fn hlc_of(pool: &PgPool, table: &str, id: &str) -> String {
     let sql = format!("SELECT hlc FROM {table} WHERE id = $1");
@@ -30,11 +24,10 @@ fn desktop_would_take(pulled: &str, local: &str) -> bool {
     pulled > local
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_server_authored_playbook_write_is_stamped_and_reaches_the_desktop() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let pb = playbook_table::create_playbook(
@@ -82,11 +75,10 @@ async fn a_server_authored_playbook_write_is_stamped_and_reaches_the_desktop() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_server_stamp_outranks_the_empty_default_rows_already_carry() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let p = trading_principle_table::create_principle(
@@ -118,11 +110,10 @@ async fn a_server_stamp_outranks_the_empty_default_rows_already_carry() {
 /// A hard DELETE vanishes from the sync delta, so the desktop never learns the row is gone
 /// and shows it forever. Server-authored deletes must leave a stamped tombstone — and the
 /// read paths must then hide it, or the row would simply reappear in the browser.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_server_delete_leaves_a_stamped_tombstone_that_reads_hide() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let pb = playbook_table::create_playbook(

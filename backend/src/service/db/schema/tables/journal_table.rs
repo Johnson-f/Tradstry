@@ -1927,7 +1927,7 @@ mod tests {
         );
     }
 
-    use super::{JournalFilter, build_filtered_sql, like_contains};
+    use super::{JournalFilter, LEGACY_COMPLETE, build_filtered_sql, like_contains};
     use crate::service::read_service::journal::TradeStatus;
 
     fn empty_filter() -> JournalFilter {
@@ -1942,8 +1942,10 @@ mod tests {
         // through a read, however few filters the caller asked for.
         assert!(sql.contains("AND deleted_at IS NULL"), "{sql}");
         assert!(
-            !sql.replace("AND deleted_at IS NULL", "").contains(" AND "),
-            "no filter clauses beyond the tombstone guard: {sql}"
+            sql.contains(&format!(
+                "WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE} ORDER BY"
+            )),
+            "no filter clauses beyond the scoping guards: {sql}"
         );
         assert!(sql.contains("ORDER BY created_at DESC, id DESC"), "{sql}");
         assert!(sql.trim_end().ends_with("LIMIT $2"), "{sql}");

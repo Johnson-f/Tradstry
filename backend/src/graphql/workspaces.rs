@@ -3,6 +3,9 @@ use crate::service::db::schema::tables::workspaces_table::{
 };
 use crate::service::read_service::workspaces as workspace_service;
 use async_graphql::{Context, Object, Result};
+use std::sync::Arc;
+
+use crate::service::brokerage::client::BrokerageClient;
 
 /// Resolve or create the internal user ID from the JWT, then build a UserDb.
 async fn get_user_db(ctx: &Context<'_>) -> Result<crate::service::db::client::UserDb> {
@@ -51,6 +54,7 @@ impl WorkspaceMutation {
 
     async fn delete_workspace(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        Ok(workspace_service::delete_workspace(&user_db, &id).await?)
+        let brokerage = ctx.data::<Arc<BrokerageClient>>()?;
+        Ok(workspace_service::delete_workspace(&user_db, brokerage, &id).await?)
     }
 }

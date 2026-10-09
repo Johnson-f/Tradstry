@@ -118,6 +118,22 @@ fn validate_asset_class(value: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_currency(value: &str) -> Result<()> {
+    ensure!(
+        matches!(value, "USD" | "EUR" | "GBP" | "JPY" | "CAD" | "AUD" | "CHF"),
+        "unsupported currency"
+    );
+    Ok(())
+}
+
+fn validate_risk_profile(value: &str) -> Result<()> {
+    ensure!(
+        matches!(value, "conservative" | "moderate" | "aggressive"),
+        "unsupported risk profile"
+    );
+    Ok(())
+}
+
 pub async fn list_workspaces(pool: &PgPool, user_id: &str) -> Result<Vec<Workspace>> {
     let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {SELECT_COLS} {FROM_JOIN} WHERE w.user_id = $1 ORDER BY w.created_at, w.id"
@@ -208,6 +224,8 @@ pub async fn create_workspace(
     input: CreateWorkspaceInput,
 ) -> Result<Workspace> {
     validate_asset_class(&input.asset_class)?;
+    validate_currency(&input.currency)?;
+    validate_risk_profile(&input.risk_profile)?;
     let id = crate::ids::new_uuid_v7().to_string();
     let mut tx = pool.begin().await?;
     sqlx::query(
@@ -255,6 +273,12 @@ pub async fn update_workspace(
     if let Some(asset_class) = input.asset_class.as_deref() {
         validate_asset_class(asset_class)?;
     }
+    if let Some(currency) = input.currency.as_deref() {
+        validate_currency(currency)?;
+    }
+    if let Some(risk_profile) = input.risk_profile.as_deref() {
+        validate_risk_profile(risk_profile)?;
+    }
     let current = find_workspace(pool, id, user_id)
         .await?
         .context("Workspace not found")?;
@@ -296,6 +320,18 @@ pub async fn update_workspace(
 }
 
 pub async fn delete_workspace(pool: &PgPool, id: &str, user_id: &str) -> Result<bool> {
+    delete_workspace_with(pool, id, user_id, async |_| Ok(())).await
+}
+
+/// Delete a workspace, running `before_delete` once the deletion is known to be
+/// allowed. An error from it aborts the deletion. It runs while the user's
+/// workspaces are locked, so the "keep at least one" rule cannot change under it.
+pub async fn delete_workspace_with(
+    pool: &PgPool,
+    id: &str,
+    user_id: &str,
+    before_delete: impl AsyncFnOnce(&Workspace) -> Result<()>,
+) -> Result<bool> {
     let mut tx = pool.begin().await?;
 
     // Serialize workspace deletions for this user. Without this lock, two
@@ -313,6 +349,10 @@ pub async fn delete_workspace(pool: &PgPool, id: &str, user_id: &str) -> Result<
         .fetch_one(&mut *tx)
         .await?;
     ensure!(count > 1, "You must keep at least one workspace");
+    let Some(workspace) = find_workspace(pool, id, user_id).await? else {
+        return Ok(false);
+    };
+    before_delete(&workspace).await?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id=$1 AND user_id=$2")
         .bind(id)
         .bind(user_id)
@@ -773,6 +813,22 @@ pub async fn mark_brokerage_sync_failed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_currencies_and_risk_profiles_the_app_offers_are_accepted() {
+        for currency in ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF"] {
+            assert!(validate_currency(currency).is_ok(), "{currency}");
+        }
+        for currency in ["BTC", "usd", "", "INR"] {
+            assert!(validate_currency(currency).is_err(), "{currency}");
+        }
+        for risk in ["conservative", "moderate", "aggressive"] {
+            assert!(validate_risk_profile(risk).is_ok(), "{risk}");
+        }
+        for risk in ["yolo", "Moderate", ""] {
+            assert!(validate_risk_profile(risk).is_err(), "{risk}");
+        }
+    }
 
     #[test]
     fn encrypted_secret_is_never_serialized() {

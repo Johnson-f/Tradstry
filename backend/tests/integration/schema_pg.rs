@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sea_orm::SqlxPostgresConnector;
 use tradstry_migration::{Migrator, MigratorTrait};
 
@@ -12,115 +12,49 @@ async fn migrate(pool: &sqlx::PgPool) {
         .expect("apply SeaORM migrations");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migrate_creates_all_tables_idempotently() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
 
     migrate(&pool).await;
     migrate(&pool).await;
 
-    let tables: Vec<String> = sqlx::query_scalar(
+    let mut tables: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables \
          WHERE table_schema = 'public' \
-           AND table_name NOT IN ('_sqlx_migrations', 'seaql_migrations') \
-         ORDER BY table_name",
+           AND table_name NOT IN ('_sqlx_migrations', 'seaql_migrations')",
     )
     .fetch_all(&pool)
     .await
     .unwrap();
+    tables.sort();
 
-    for expected in [
-        "users",
-        "workspaces",
-        "brokerage_connections",
-        "brokerage_data_reports",
-        "brokerage_reconciliation_state",
-        "brokerage_transactions",
-        "brokerage_holdings",
-        "brokerage_balances",
-        "journal_entries",
-        "playbooks",
-        "playbook_workspace_applicability",
-        "notebook_folders",
-        "notebook_notes",
-        "notebook_note_trades",
-        "notebook_media_blobs",
-        "notebook_media_references",
-        "notebook_media_uploads",
-        "notebook_media_outbox",
-        "notebook_client_mutations",
-        "notebook_note_crdt",
-        "notebook_note_updates",
-        "agent_conversations",
-        "agent_messages",
-        "agent_runs",
-        "agent_run_events",
-        "agent_run_items",
-        "agent_tool_calls",
-        "agent_evidence",
-        "agent_claims",
-        "agent_claim_evidence",
-        "agent_conversation_summary_jobs",
-        "agent_knowledge_passages",
-        "agent_index_outbox",
-        "agent_memories",
-        "agent_memory_jobs",
-        "agent_action_proposals",
-        "agent_action_executions",
-        "agent_assistance_requests",
-        "journal_brokerage_links",
-        "user_prompts",
-        "position_calculator_rules",
-        "position_calculator_history",
-        "position_calculator_plans",
-        "tag_categories",
-        "tag_category_workspace_applicability",
-        "tags",
-        "trade_tags",
-        "trading_principles",
-        "trade_principle_violations",
-        "price_history",
-        "price_fetch_failures",
-        "account_equity_history",
-        "account_equity_rebuild",
-        "plan_limits",
-        "usage_counters",
-        "paddle_webhook_events",
-        "brokerage_sync_state",
-        "brokerage_transactions_dedup_archive",
-        "brokerage_episode_publications",
-        "manual_execution_claims",
-        "snaptrade_webhook_events",
-        "snaptrade_oauth_attempts",
-        "snaptrade_oauth_grants",
-        "founder_grants",
-        "trade_episodes",
-        "trade_episode_fills",
-        "trade_episode_matches",
-        "trade_review_publications",
-        "trade_review_versions",
-        "notification_outbox",
-        "notifications",
-        "notification_preferences",
-        "push_subscriptions",
-        "notification_deliveries",
-        "notification_user_settings",
-        "notification_schedule_runs",
-        "market_watchlists",
-        "market_watchlist_symbols",
-        "market_reports",
-        "market_monitors",
-    ] {
-        assert!(
-            tables.contains(&expected.to_string()),
-            "missing table {expected}"
-        );
-    }
+    let contract: serde_json::Value =
+        serde_json::from_str(include_str!("../../schema/postgres/contract.json"))
+            .expect("parse schema contract");
+    let mut expected: Vec<String> = contract["tables"]
+        .as_array()
+        .expect("contract lists tables")
+        .iter()
+        .map(|table| table.as_str().expect("table name").to_owned())
+        .collect();
+    // Support tables the contract deliberately leaves unmanaged; see
+    // schema/postgres/contract_query.sql.
+    expected.extend(
+        [
+            "account_equity_rebuild",
+            "brokerage_transactions_dedup_archive",
+            "paddle_webhook_events",
+            "price_fetch_failures",
+            "price_history",
+        ]
+        .map(String::from),
+    );
+    expected.sort();
     assert_eq!(
-        tables.len(),
-        80,
-        "expected exactly 80 tables, got {tables:?}"
+        tables, expected,
+        "migrated tables differ from the schema contract"
     );
 
     let indexes: Vec<String> = sqlx::query_scalar(
@@ -144,10 +78,10 @@ async fn migrate_creates_all_tables_idempotently() {
     assert_eq!(indexes.len(), 10, "missing performance index: {indexes:?}");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migration_adds_notebook_sync_columns() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
@@ -171,10 +105,10 @@ async fn migration_adds_notebook_sync_columns() {
     assert!(row.0, "notebook_client_mutations missing");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn notification_tables_exist_with_expected_columns() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");
@@ -204,10 +138,10 @@ async fn notification_tables_exist_with_expected_columns() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unread_coalesce_key_is_unique_per_user() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .expect("migrate");

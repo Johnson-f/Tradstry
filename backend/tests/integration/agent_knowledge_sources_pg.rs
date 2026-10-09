@@ -3,7 +3,7 @@ use tradstry_backend::service::agents::knowledge::{
     KnowledgeOutboxRecord, KnowledgeSourceType, chunking::chunk_source, sources::build_source,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn note_relationships_come_only_from_explicit_links() {
     let fixture = AgentPgFixture::new().await;
     sqlx::query(

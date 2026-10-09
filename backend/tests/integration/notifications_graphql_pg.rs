@@ -1,19 +1,11 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use serde_json::json;
-use sqlx::PgPool;
 use tradstry_backend::service::notifications::{preferences, store, subscriptions};
 
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn the_feed_is_scoped_to_its_owner() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (owner, _) = seed_user_workspace(&pool).await;
     let (stranger, _) = seed_user_workspace(&pool).await;
 
@@ -30,11 +22,10 @@ async fn the_feed_is_scoped_to_its_owner() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn feed_pagination_walks_backwards_without_repeating() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     for _ in 0..5 {
@@ -57,11 +48,10 @@ async fn feed_pagination_walks_backwards_without_repeating() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_subscription_is_scoped_to_its_owner() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (owner, _) = seed_user_workspace(&pool).await;
     let (stranger, _) = seed_user_workspace(&pool).await;
 
@@ -89,11 +79,10 @@ async fn deleting_a_subscription_is_scoped_to_its_owner() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn preference_list_is_per_user() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (a, _) = seed_user_workspace(&pool).await;
     let (b, _) = seed_user_workspace(&pool).await;
 

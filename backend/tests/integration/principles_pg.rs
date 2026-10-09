@@ -1,12 +1,6 @@
-use crate::pg_support::{reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::trading_principle_table as tp;
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::bootstrap(pool, "public")
-        .await
-        .expect("migrate");
-}
 
 async fn seed_user(pool: &PgPool, id: &str) {
     sqlx::query("INSERT INTO users (id, clerk_uuid) VALUES ($1, $2)")
@@ -52,11 +46,10 @@ fn create_input(workspace_id: &str, title: &str) -> tp::CreatePrincipleInput {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn evidence_note_from_another_account_is_rejected() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -75,11 +68,10 @@ async fn evidence_note_from_another_account_is_rejected() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn violation_from_another_workspace_is_rejected() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -112,11 +104,10 @@ async fn violation_from_another_workspace_is_rejected() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reorder_assigns_descending_priority() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -138,13 +129,12 @@ async fn reorder_assigns_descending_priority() {
     assert!(listed[0].priority > listed[1].priority);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn violation_stats_use_dollar_expr_and_percent_roi() {
     use tradstry_backend::service::db::schema::tables::journal_table;
 
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -193,13 +183,12 @@ async fn violation_stats_use_dollar_expr_and_percent_roi() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_playbook_with_principles_is_blocked() {
     use tradstry_backend::service::db::schema::tables::playbook_table;
 
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -236,13 +225,12 @@ async fn deleting_a_playbook_with_principles_is_blocked() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_playbook_without_principles_still_works() {
     use tradstry_backend::service::db::schema::tables::playbook_table;
 
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -271,13 +259,12 @@ async fn deleting_a_playbook_without_principles_still_works() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn playbook_owned_by_another_user_is_rejected() {
     use tradstry_backend::service::db::schema::tables::playbook_table;
 
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_user(&pool, "u2").await;
@@ -312,13 +299,12 @@ async fn playbook_owned_by_another_user_is_rejected() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn universal_playbook_can_govern_another_workspace_but_selected_scope_is_enforced() {
     use tradstry_backend::service::db::schema::tables::playbook_table;
 
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "workspace-a", "u1").await;
@@ -367,11 +353,10 @@ async fn universal_playbook_can_govern_another_workspace_but_selected_scope_is_e
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_the_evidence_note_nulls_the_link_and_keeps_the_principle() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -399,11 +384,10 @@ async fn deleting_the_evidence_note_nulls_the_link_and_keeps_the_principle() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn replacing_violations_removes_the_old_links() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;
@@ -446,11 +430,10 @@ async fn replacing_violations_removes_the_old_links() {
     assert_eq!(remaining, vec![b.id.clone()]);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_principle_cascades_its_violations() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account(&pool, "a1", "u1").await;

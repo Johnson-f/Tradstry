@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sqlx::PgPool;
 
 async fn migrate(pool: &PgPool) {
@@ -30,10 +30,10 @@ async fn seed_account_at(pool: &PgPool, id: &str, user_id: &str, created_at: &st
     .expect("seed workspace");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migration_adds_account_id_and_drops_user_unique() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     migrate(&pool).await;
 
     let is_not_null: bool = sqlx::query_scalar(
@@ -68,11 +68,10 @@ async fn migration_adds_account_id_and_drops_user_unique() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn one_user_can_hold_a_rule_per_account() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account_at(&pool, "a1", "u1", "2026-01-01T00:00:00Z").await;
@@ -100,11 +99,10 @@ async fn one_user_can_hold_a_rule_per_account() {
     assert_eq!(count, 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_second_rule_for_the_same_account_is_rejected() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account_at(&pool, "a1", "u1", "2026-01-01T00:00:00Z").await;
@@ -143,11 +141,10 @@ fn upsert_input(workspace_id: &str, risk: f64) -> pcr::UpsertPositionCalculatorR
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn upsert_rejects_an_account_owned_by_another_user() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_user(&pool, "u2").await;
@@ -169,11 +166,10 @@ async fn upsert_rejects_an_account_owned_by_another_user() {
     assert_eq!(count, 0, "nothing may be written");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn upsert_updates_only_the_targeted_account_rule() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account_at(&pool, "a1", "u1", "2026-01-01T00:00:00Z").await;
@@ -202,11 +198,10 @@ async fn upsert_updates_only_the_targeted_account_rule() {
     assert_eq!(r2.workspace_id, "a2");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn get_rule_is_scoped_to_the_account() {
-    let pool = test_pool().await;
-    let _schema_guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     seed_user(&pool, "u1").await;
     seed_account_at(&pool, "a1", "u1", "2026-01-01T00:00:00Z").await;

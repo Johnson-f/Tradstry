@@ -7,7 +7,7 @@ use tradstry_backend::service::db::schema::tables::playbook_table;
 use tradstry_backend::service::db::schema::tables::tags_table;
 use tradstry_backend::service::db::schema::tables::trading_principle_table as tp;
 
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
 
@@ -99,9 +99,10 @@ async fn link_count(pool: &PgPool, tag_id: &str) -> i64 {
 // Notebook folders
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn folder_reads_are_scoped_to_the_caller() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, _) = seed_user_workspace(&pool).await;
     let folder = make_folder(&pool, &victim, &victim_ws, None).await.unwrap();
@@ -117,9 +118,10 @@ async fn folder_reads_are_scoped_to_the_caller() {
     assert!(found.is_none(), "found another user's folder");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn folders_cannot_be_created_in_or_under_another_users_workspace() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, attacker_ws) = seed_user_workspace(&pool).await;
     let victim_folder = make_folder(&pool, &victim, &victim_ws, None).await.unwrap();
@@ -153,9 +155,10 @@ async fn folders_cannot_be_created_in_or_under_another_users_workspace() {
     assert_eq!(foreign_rows, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn another_users_folder_cannot_be_renamed() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, _) = seed_user_workspace(&pool).await;
     let folder = make_folder(&pool, &victim, &victim_ws, None).await.unwrap();
@@ -173,9 +176,10 @@ async fn another_users_folder_cannot_be_renamed() {
     assert_eq!(after.name, "Setups");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn another_users_nodes_cannot_be_moved() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, attacker_ws) = seed_user_workspace(&pool).await;
     let victim_folder = make_folder(&pool, &victim, &victim_ws, None).await.unwrap();
@@ -262,9 +266,10 @@ async fn another_users_nodes_cannot_be_moved() {
     assert_eq!(note.folder_id.as_deref(), Some(victim_folder.id.as_str()));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn owner_can_still_move_and_rename() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     let parent = make_folder(&pool, &user, &ws, None).await.unwrap();
     let child = make_folder(&pool, &user, &ws, None).await.unwrap();
@@ -332,9 +337,10 @@ async fn owner_can_still_move_and_rename() {
     assert_eq!(unfiled.folder_id, None);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn notes_cannot_be_filed_in_another_users_folder() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, attacker_ws) = seed_user_workspace(&pool).await;
     let victim_folder = make_folder(&pool, &victim, &victim_ws, None).await.unwrap();
@@ -371,9 +377,10 @@ async fn notes_cannot_be_filed_in_another_users_folder() {
 // Tags
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_another_users_tag_leaves_their_links_alone() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, _) = seed_user_workspace(&pool).await;
     let (_, tag_id, _) = seed_tagged_trade(&pool, &victim, &victim_ws, "Breakout").await;
@@ -392,9 +399,10 @@ async fn deleting_another_users_tag_leaves_their_links_alone() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_tag_tombstones_it_and_bumps_its_trades() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     let (_, tag_id, trade_id) = seed_tagged_trade(&pool, &user, &ws, "Breakout").await;
     sqlx::query("UPDATE journal_entries SET updated_at = now() - interval '1 day' WHERE id = $1")
@@ -439,9 +447,10 @@ async fn deleting_a_tag_tombstones_it_and_bumps_its_trades() {
         .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn merging_with_another_users_tag_is_refused() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, attacker_ws) = seed_user_workspace(&pool).await;
     let (_, victim_tag, _) = seed_tagged_trade(&pool, &victim, &victim_ws, "Breakout").await;
@@ -468,9 +477,10 @@ async fn merging_with_another_users_tag_is_refused() {
     assert_eq!(link_count(&pool, &attacker_tag).await, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn merging_a_tag_into_itself_keeps_its_links() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     let (_, tag_id, _) = seed_tagged_trade(&pool, &user, &ws, "Breakout").await;
 
@@ -484,9 +494,10 @@ async fn merging_a_tag_into_itself_keeps_its_links() {
     assert_eq!(link_count(&pool, &tag_id).await, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn online_merge_repoints_links_and_tombstones_the_source() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     let (category_id, from_tag, trade_id) = seed_tagged_trade(&pool, &user, &ws, "Chased").await;
     let into_tag = tags_table::create_tag(&pool, &user, &ws, &category_id, "Chasing", None)
@@ -545,9 +556,10 @@ fn principle_write_args(workspace_id: &str, playbook_id: Option<String>) -> tp::
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn principles_cannot_be_created_in_another_users_workspace() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (_, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, _) = seed_user_workspace(&pool).await;
 
@@ -570,9 +582,10 @@ async fn principles_cannot_be_created_in_another_users_workspace() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn synced_principles_cannot_reference_another_users_playbook() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (victim, victim_ws) = seed_user_workspace(&pool).await;
     let (attacker, attacker_ws) = seed_user_workspace(&pool).await;
     let victim_playbook = playbook_table::create_playbook(

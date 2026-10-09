@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod client;
+pub mod connection;
 pub mod db;
 pub mod history_policy;
 pub mod oauth;

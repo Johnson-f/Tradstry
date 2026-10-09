@@ -2,13 +2,14 @@ use tradstry_backend::service::db::schema::tables::{
     notebook::folders, notebook::notes, notebook::sync,
 };
 
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn client_supplied_id_is_used_verbatim() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let wanted = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -29,9 +30,10 @@ async fn client_supplied_id_is_used_verbatim() {
     assert_eq!(note.id, wanted);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn absent_id_is_minted_by_server() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -51,9 +53,10 @@ async fn absent_id_is_minted_by_server() {
     assert_eq!(note.id.len(), 36, "expected a UUID");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_client_supplied_note_id_is_rejected() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let result = notes::create_notebook_note(
@@ -72,9 +75,10 @@ async fn invalid_client_supplied_note_id_is_rejected() {
     assert!(result.is_err(), "non-UUID client id must be rejected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn client_supplied_folder_id_is_used_verbatim() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let wanted = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -94,9 +98,10 @@ async fn client_supplied_folder_id_is_used_verbatim() {
     assert_eq!(folder.id, wanted);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_client_supplied_folder_id_is_rejected() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let result = folders::create_notebook_folder(
@@ -114,9 +119,10 @@ async fn invalid_client_supplied_folder_id_is_rejected() {
     assert!(result.is_err(), "non-UUID client id must be rejected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn pull_includes_tombstones() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -151,9 +157,10 @@ async fn pull_includes_tombstones() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn cursor_excludes_unchanged_rows() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     notes::create_notebook_note(
@@ -192,9 +199,10 @@ async fn cursor_excludes_unchanged_rows() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn mutation_id_advances_and_is_idempotent() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
     let client_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let mut tx = pool.begin().await.unwrap();
@@ -232,9 +240,10 @@ async fn mutation_id_advances_and_is_idempotent() {
 use serde_json::json;
 use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation};
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn replayed_mutation_is_applied_once() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -267,9 +276,10 @@ async fn replayed_mutation_is_applied_once() {
     assert_eq!(count, 1, "replayed mutation created a duplicate note");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_mutation_still_advances_cursor() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     let bad = NotebookMutation {
@@ -289,9 +299,10 @@ async fn invalid_mutation_still_advances_cursor() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn sync_create_rejects_legacy_uuid_but_legacy_rows_remain_mutable() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let mut legacy_bytes = *tradstry_backend::ids::new_uuid_v7().as_bytes();
@@ -374,9 +385,10 @@ fn create_note_args(
     })
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn delete_note_mutation_tombstones() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -413,9 +425,10 @@ async fn delete_note_mutation_tombstones() {
     assert_eq!(count, 1, "deleteNote must soft-delete the row");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_folder_mutation_lands() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -447,9 +460,10 @@ async fn create_folder_mutation_lands() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn rename_folder_mutation_lands() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -489,9 +503,10 @@ async fn rename_folder_mutation_lands() {
     assert_eq!(name, "New");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn delete_folder_mutation_tombstones_subtree() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -553,9 +568,10 @@ async fn delete_folder_mutation_tombstones_subtree() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn stale_update_is_rejected() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -623,10 +639,11 @@ async fn stale_update_is_rejected() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn update_without_expected_updated_at_still_succeeds() {
     // The desktop push path always passes `None`; it must never start failing.
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -659,12 +676,13 @@ async fn update_without_expected_updated_at_still_succeeds() {
     assert!(updated.document_json.contains("[9]"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fresh_update_with_matching_expected_succeeds() {
     // Proves the updated_at round-trips at full precision: a write whose
     // expected_updated_at equals the stored value must be accepted. If the API
     // serialized updated_at to whole seconds, this would 409 every time.
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -697,9 +715,10 @@ async fn fresh_update_with_matching_expected_succeeds() {
     assert!(updated.document_json.contains("[7]"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn move_node_mutation_reparents() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let client = tradstry_backend::ids::new_uuid_v7().to_string();
     let folder_id = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -758,15 +777,13 @@ async fn move_node_mutation_reparents() {
 /// the push path treats it as an unknown mutation, logs, and STILL advances the
 /// watermark — so the update is dropped and acked, and the client deletes it from
 /// its outbox. The first synced keystroke on a crdt note would vanish silently.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn append_note_update_mutation_is_applied_not_swallowed() {
     use base64::{Engine, engine::general_purpose::STANDARD as B64};
     use tradstry_backend::service::db::schema::tables::notebook::crdt;
 
-    let pool = test_pool().await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = notes::create_notebook_note(
@@ -808,11 +825,12 @@ async fn append_note_update_mutation_is_applied_not_swallowed() {
     assert_eq!(rows[0].0, blob, "update bytes were mutated in transit");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_note_created_through_sync_is_born_crdt() {
     use tradstry_backend::service::db::schema::tables::notebook::crdt::{self, NoteState};
 
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -853,11 +871,12 @@ async fn a_note_created_through_sync_is_born_crdt() {
 /// The desktop mints its own seed offline. The server must install that exact blob
 /// and must not seed a second Y.Doc: two seeds concatenate, silently duplicating
 /// every paragraph.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_client_supplied_seed_is_installed_and_not_reseeded() {
     use tradstry_backend::service::db::schema::tables::notebook::crdt::{self, NoteState};
 
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -913,9 +932,10 @@ async fn a_client_supplied_seed_is_installed_and_not_reseeded() {
 /// A pull's ack must be scoped to the asking device. With a user-wide `MAX`, device
 /// A (at mutation 1) would be told device B's 9 was applied; a client that trusted
 /// it would truncate its outbox and discard mutations the server never saw.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn pull_acks_only_the_asking_clients_mutations() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     let device_a = tradstry_backend::ids::new_uuid_v7().to_string();

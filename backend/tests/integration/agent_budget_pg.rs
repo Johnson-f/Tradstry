@@ -1,7 +1,7 @@
 use crate::agent_support::AgentPgFixture;
 use tradstry_backend::service::agents::{AgentBudget, AgentError};
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn same_run_reserves_only_once() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("budget-once").await;
@@ -26,7 +26,7 @@ async fn same_run_reserves_only_once() {
     assert_eq!(used, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn concurrent_final_slot_allows_one_run() {
     let fixture = AgentPgFixture::new().await;
     sqlx::query("UPDATE plan_limits SET ai_actions_per_month = 1 WHERE plan = 'free'")
@@ -44,7 +44,7 @@ async fn concurrent_final_slot_allows_one_run() {
     assert!(matches!(a, Err(AgentError::Capacity)) || matches!(b, Err(AgentError::Capacity)));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn founder_plan_is_unlimited_and_does_not_write_counter() {
     let fixture = AgentPgFixture::new().await;
     sqlx::query("UPDATE users SET plan = 'founder' WHERE id = $1")

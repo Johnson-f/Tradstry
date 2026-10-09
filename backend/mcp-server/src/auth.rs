@@ -7,12 +7,12 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use base64::Engine as _;
 use clerk_rs::validators::{
     authorizer::{ClerkJwt, validate_jwt},
     jwks::MemoryCacheJwksProvider,
 };
-use tradstry_backend::service::read_service::users::ensure_user;
+use tradstry_backend::service::auth::is_oauth_access_token;
+use tradstry_backend::service::read_service::users::{AccountRequired, Provisioning, load_user};
 
 use crate::app_state::AppState;
 use crate::user_context::UserContext;
@@ -89,31 +89,6 @@ fn issuer_matches(token_iss: &str, expected_iss: &str) -> bool {
     token_iss == expected_iss
 }
 
-/// The JWT `typ` header values Clerk sets on OAuth access tokens (RFC 9068).
-/// Session tokens from the web app carry `typ: JWT` and are refused, so only a
-/// token minted through the OAuth consent flow can reach the tools.
-const OAUTH_ACCESS_TOKEN_TYPES: [&str; 2] = ["at+jwt", "application/at+jwt"];
-
-/// Read the JOSE header's `typ`. Call only after signature validation: the header
-/// is covered by the signature, so it is trustworthy once `validate` passes.
-fn token_type(token: &str) -> Option<String> {
-    let header = token.split('.').next()?;
-    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(header.trim_end_matches('='))
-        .ok()?;
-    let header: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    header.get("typ")?.as_str().map(str::to_owned)
-}
-
-fn is_oauth_access_token_type(typ: Option<&str>) -> bool {
-    // Media types compare case-insensitively (RFC 7515 §4.1.9).
-    typ.is_some_and(|typ| {
-        OAUTH_ACCESS_TOKEN_TYPES
-            .iter()
-            .any(|expected| typ.eq_ignore_ascii_case(expected))
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Axum middleware
 // ---------------------------------------------------------------------------
@@ -175,12 +150,8 @@ pub async fn require_auth(
 
     // 2b. Only OAuth access tokens. Without this, any token this Clerk instance
     //     signs, including the web app's session tokens, would be accepted.
-    let typ = token_type(&token_str);
-    if !is_oauth_access_token_type(typ.as_deref()) {
-        tracing::warn!(
-            typ = typ.as_deref().unwrap_or("missing"),
-            "auth: rejected a token that is not an OAuth access token"
-        );
+    if !is_oauth_access_token(&token_str) {
+        tracing::warn!("auth: rejected a token that is not an OAuth access token");
         return unauthorized(&state.public_url);
     }
 
@@ -203,26 +174,48 @@ pub async fn require_auth(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // 4. Resolve (or create) the internal Tradstry user.
-    let user = match ensure_user(&state.db, &sub, full_name, email).await {
-        Ok(u) => u,
+    // 4. Resolve the internal Tradstry user. Accounts are only created by signing
+    //    up on the web app, never by connecting an MCP client.
+    let user = match load_user(
+        &state.db,
+        &sub,
+        full_name,
+        email,
+        Provisioning::ExistingOnly,
+    )
+    .await
+    {
+        Ok(u) => Some(u),
+        Err(e) if e.is::<AccountRequired>() => None,
         Err(e) => {
-            tracing::error!("ensure_user failed for sub={sub}: {e}");
+            tracing::error!("load_user failed for sub={sub}: {e}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
 
     // 4b. Per-user token-bucket rate limit. Agents can retry aggressively;
     //     this protects the shared backend without touching the tool handlers.
-    if let Err(retry_after) = state.rate_limiter.check(&user.id).await {
+    let rate_limit_key = user
+        .as_ref()
+        .map_or_else(|| format!("clerk:{sub}"), |u| u.id.clone());
+    if let Err(retry_after) = state.rate_limiter.check(&rate_limit_key).await {
         tracing::warn!("auth: rate limit exceeded (retry after {retry_after}s)");
         return too_many_requests(retry_after);
     }
 
-    // 5. Thread the resolved identity into the request extensions so rmcp
-    //    tool handlers can read it via `ctx.extensions`.
-    req.extensions_mut()
-        .insert(UserContext { user_id: user.id });
+    // 5. Thread the identity into the request extensions so rmcp tool handlers
+    //    can read it via `ctx.extensions`. Without an account the session still
+    //    connects, so each tool can tell the user to sign up rather than the
+    //    client showing a bare connection failure.
+    match user {
+        Some(user) => {
+            req.extensions_mut()
+                .insert(UserContext { user_id: user.id });
+        }
+        None => {
+            req.extensions_mut().insert(AccountRequired);
+        }
+    }
 
     // 6. Pass the (now annotated) request down the middleware chain.
     let response = next.run(req).await;
@@ -291,37 +284,6 @@ mod tests {
         assert!(!issuer_matches(
             "https://Clerk.Tradstry.com",
             "https://clerk.tradstry.com"
-        ));
-    }
-
-    fn token_with_header(header: &serde_json::Value) -> String {
-        let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
-        format!(
-            "{}.{}.sig",
-            encode(header.to_string().as_bytes()),
-            encode(b"{}")
-        )
-    }
-
-    #[test]
-    fn accepts_oauth_access_token_types() {
-        for typ in ["at+jwt", "application/at+jwt", "AT+JWT"] {
-            let token = token_with_header(&serde_json::json!({"alg": "RS256", "typ": typ}));
-            assert!(
-                is_oauth_access_token_type(token_type(&token).as_deref()),
-                "{typ} should be accepted"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_session_tokens_and_untyped_tokens() {
-        let session = token_with_header(&serde_json::json!({"alg": "RS256", "typ": "JWT"}));
-        assert!(!is_oauth_access_token_type(token_type(&session).as_deref()));
-        let untyped = token_with_header(&serde_json::json!({"alg": "RS256"}));
-        assert!(!is_oauth_access_token_type(token_type(&untyped).as_deref()));
-        assert!(!is_oauth_access_token_type(
-            token_type("not-a-jwt").as_deref()
         ));
     }
 

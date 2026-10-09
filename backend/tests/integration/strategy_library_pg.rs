@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::migrate::Migrator;
 use std::path::PathBuf;
 use tradstry_backend::service::db::schema::tables::{playbook_table, tags_table};
@@ -14,13 +14,10 @@ async fn second_workspace(pool: &sqlx::PgPool, user_id: &str) -> String {
     id
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn playbooks_are_universal_by_default_and_can_be_limited_to_selected_workspaces() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, first_workspace) = seed_user_workspace(&pool).await;
     let second_workspace = second_workspace(&pool, &user_id).await;
 
@@ -73,13 +70,10 @@ async fn playbooks_are_universal_by_default_and_can_be_limited_to_selected_works
     assert_eq!(selected.workspace_ids, vec![first_workspace]);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tag_categories_are_universal_by_default_and_tags_inherit_applicability() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, first_workspace) = seed_user_workspace(&pool).await;
     let second_workspace = second_workspace(&pool, &user_id).await;
 
@@ -139,10 +133,10 @@ async fn tag_categories_are_universal_by_default_and_tags_inherit_applicability(
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migration_deduplicates_workspace_clones_and_preserves_trade_links() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all = Migrator::new(migrations_path.as_path()).await.unwrap();
     Migrator::with_migrations(

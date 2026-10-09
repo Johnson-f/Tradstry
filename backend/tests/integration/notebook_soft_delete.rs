@@ -1,6 +1,6 @@
 use tradstry_backend::service::db::schema::tables::{notebook::folders, notebook::notes};
 
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
 
@@ -45,9 +45,10 @@ async fn make_folder(
     .expect("create folder")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleted_note_is_hidden_from_every_read_path() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = make_note(&pool, &user_id, &workspace_id, None).await;
@@ -79,9 +80,10 @@ async fn deleted_note_is_hidden_from_every_read_path() {
     assert!(found.is_none(), "find returned a deleted note");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn double_delete_note_is_idempotent() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let note = make_note(&pool, &user_id, &workspace_id, None).await;
@@ -100,9 +102,10 @@ async fn double_delete_note_is_idempotent() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleted_folder_subtree_is_hidden() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let folder = make_folder(&pool, &user_id, &workspace_id, None).await;
@@ -127,9 +130,10 @@ async fn deleted_folder_subtree_is_hidden() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_folder_tombstones_notes_in_nested_subfolders() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let root = make_folder(&pool, &user_id, &workspace_id, None).await;

@@ -40,9 +40,10 @@ fn broker_fill(
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn broker_episode_can_be_confirmed_finalized_and_published() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = crate::pg_support::seed_user_workspace(&pool).await;
     let plan = position_calculator_plans_table::create_plan(
         &pool,
@@ -209,9 +210,10 @@ async fn broker_episode_can_be_confirmed_finalized_and_published() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unplanned_closed_episode_publishes_once_and_leaves_pending() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = crate::pg_support::seed_user_workspace(&pool).await;
     let opened = Utc::now() + Duration::minutes(2);
     brokerage_table::upsert_transactions(
@@ -276,9 +278,10 @@ async fn unplanned_closed_episode_publishes_once_and_leaves_pending() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reversal_episodes_require_manual_fill_grouping() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = crate::pg_support::seed_user_workspace(&pool).await;
     let opened = Utc::now() + Duration::minutes(3);
     brokerage_table::upsert_transactions(
@@ -357,9 +360,10 @@ async fn reversal_episodes_require_manual_fill_grouping() {
     assert!(error.to_string().contains("still open"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn user_can_regroup_broker_fills_reset_and_publish_the_corrected_trade() {
-    let pool = crate::pg_support::test_pool().await;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = crate::pg_support::seed_user_workspace(&pool).await;
     let opened = Utc::now() + Duration::minutes(4);
     brokerage_table::upsert_transactions(

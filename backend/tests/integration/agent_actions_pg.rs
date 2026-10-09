@@ -25,7 +25,7 @@ fn preview() -> AgentActionPreview {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn only_pending_proposal_can_be_confirmed_and_same_key_is_idempotent() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("action-proposal").await;
@@ -62,7 +62,7 @@ async fn only_pending_proposal_can_be_confirmed_and_same_key_is_idempotent() {
     assert_eq!(executions, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn proposal_approval_and_rejection_are_owned() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("action-owned").await;

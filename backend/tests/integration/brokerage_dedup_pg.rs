@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::{PgPool, Row};
 use tradstry_backend::service::db::schema::tables::brokerage_table::{
     self, NewBrokerageTransaction, SignatureCounts,
@@ -49,13 +49,10 @@ async fn row_count(pool: &PgPool, workspace_id: &str) -> i64 {
 /// `snaptrade_id` when a user is deleted and re-registered. Keying the upsert on
 /// it duplicated every fill and orphaned the journal links pointing at the old
 /// rows.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reregistration_updates_in_place_and_preserves_journal_links() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let tx = fill("snaptrade-uuid-before", Some("webull-order-6a579ff9"));
@@ -154,13 +151,10 @@ async fn reregistration_updates_in_place_and_preserves_journal_links() {
 /// rows, and nothing here can tell them apart, so all three must persist —
 /// dropping two would silently destroy real fills. A resync must still find
 /// three, not six.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn identical_partial_fills_survive_and_resync_idempotently() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let order_ref = Some("26197500726035");
@@ -205,10 +199,10 @@ async fn identical_partial_fills_survive_and_resync_idempotently() {
 /// symbol, mixed-case type, and a fill with no reference id all format
 /// differently under `{:.8}` than under `to_char`, which is where the two
 /// implementations would part ways first.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn rust_signature_matches_migration_sql() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .unwrap();
@@ -283,13 +277,10 @@ async fn rust_signature_matches_migration_sql() {
 /// `:0`/`:1` ordinal assigned in arrival order, so a reordered batch swapped
 /// which row each fill upserted onto — quietly trading their amounts, fees and
 /// reference ids, and leaving any journal link pointed at the other trade.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fills_differing_only_by_reference_keep_their_own_rows() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let aaa = || {
@@ -356,13 +347,10 @@ async fn fills_differing_only_by_reference_keep_their_own_rows() {
 
 /// Pagination must not restart the ordinal: two fills of one order arriving in
 /// separate pages would otherwise both claim `:0` and collide.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn ordinals_stay_distinct_across_pages() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut seen = counts();
@@ -386,13 +374,10 @@ async fn ordinals_stay_distinct_across_pages() {
 }
 
 /// A repeated sync of the same single fill must not duplicate it.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn repeated_sync_of_one_fill_stays_one_row() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     for snaptrade_id in ["id-one", "id-two"] {
@@ -422,10 +407,10 @@ async fn repeated_sync_of_one_fill_stays_one_row() {
 /// the surviving link onto it, archive the two it removed, and leave a
 /// same-signature group that carries *no* reference id alone — that group is
 /// indistinguishable by attributes, so collapsing it would destroy real fills.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     tradstry_backend::service::db::schema::pg::migrate(&pool)
         .await
         .unwrap();
@@ -594,13 +579,10 @@ async fn migration_collapses_cross_run_duplicates_and_repoints_links() {
 
 /// The signature must not be so coarse that genuinely different fills merge —
 /// that would silently delete a trade.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn distinct_fills_remain_separate_rows() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let first = fill("id-one", None);

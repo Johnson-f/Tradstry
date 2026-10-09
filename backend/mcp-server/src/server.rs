@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use crate::app_state::AppState;
 use crate::user_context::UserContext;
+use tradstry_backend::service::read_service::users::AccountRequired;
 
 /// The MCP server handler. Cloned once per session by the streamable-HTTP
 /// transport; the shared `AppState` is behind an `Arc` so clones are cheap.
@@ -49,14 +50,20 @@ impl TradstryMcp {
     }
 
     /// Resolve the authenticated user from the request extensions threaded by
-    /// `auth::require_auth`. Returns an error if no user context is present
-    /// (which should never happen for requests that passed the auth layer).
+    /// `auth::require_auth`. A caller with no Tradstry account gets an error
+    /// telling them to sign up on the web.
     pub(crate) fn user(&self, ctx: &RequestContext<RoleServer>) -> Result<UserContext, ErrorData> {
-        ctx.extensions
+        let extensions = ctx
+            .extensions
             .get::<axum::http::request::Parts>()
-            .and_then(|p| p.extensions.get::<UserContext>())
-            .cloned()
-            .ok_or_else(|| ErrorData::internal_error("missing user context", None))
+            .map(|p| &p.extensions);
+        if let Some(user) = extensions.and_then(|e| e.get::<UserContext>()) {
+            return Ok(user.clone());
+        }
+        if let Some(missing) = extensions.and_then(|e| e.get::<AccountRequired>()) {
+            return Err(ErrorData::invalid_request(missing.to_string(), None));
+        }
+        Err(ErrorData::internal_error("missing user context", None))
     }
 
     /// Best-effort refresh of the local replica before a read, then open the

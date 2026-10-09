@@ -46,7 +46,7 @@ async fn insert_trade(fixture: &AgentPgFixture, id: &str) {
     .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn canonical_sources_enqueue_and_coalesce_transactionally() {
     let fixture = AgentPgFixture::new().await;
     insert_note(&fixture, "note-knowledge").await;
@@ -88,7 +88,7 @@ async fn canonical_sources_enqueue_and_coalesce_transactionally() {
     assert_eq!(operation, "delete");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn rolled_back_source_change_publishes_no_index_work() {
     let fixture = AgentPgFixture::new().await;
     let mut tx = fixture.pool.begin().await.unwrap();
@@ -110,7 +110,7 @@ async fn rolled_back_source_change_publishes_no_index_work() {
     assert_eq!(count, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn explicit_note_trade_link_enqueues_both_real_relationship_ends() {
     let fixture = AgentPgFixture::new().await;
     insert_note(&fixture, "linked-note").await;

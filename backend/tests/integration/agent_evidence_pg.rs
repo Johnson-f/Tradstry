@@ -50,7 +50,7 @@ fn evidence(source_id: &str) -> NewAgentEvidence {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn claim_rejects_evidence_from_another_run() {
     let fixture = AgentPgFixture::new().await;
     let (run, message) = run_with_message(&fixture, "claim-run").await;
@@ -75,7 +75,7 @@ async fn claim_rejects_evidence_from_another_run() {
     assert!(matches!(result, Err(AgentError::Validation(_))));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn claims_round_trip_sources_in_stable_order() {
     let fixture = AgentPgFixture::new().await;
     let (run, message) = run_with_message(&fixture, "claim-roundtrip").await;
@@ -116,7 +116,7 @@ async fn claims_round_trip_sources_in_stable_order() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tool_evidence_must_share_its_run() {
     let fixture = AgentPgFixture::new().await;
     let (run, _) = run_with_message(&fixture, "tool-run").await;
@@ -132,7 +132,7 @@ async fn tool_evidence_must_share_its_run() {
     assert!(matches!(result, Err(AgentError::Validation(_))));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tool_call_terminal_transition_is_fenced() {
     let fixture = AgentPgFixture::new().await;
     let (run, _) = run_with_message(&fixture, "tool-fence").await;
@@ -161,7 +161,7 @@ async fn tool_call_terminal_transition_is_fenced() {
     ));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn retrying_tool_evidence_keeps_one_uuid_v7_row() {
     let fixture = AgentPgFixture::new().await;
     let (run, _) = run_with_message(&fixture, "tool-evidence-retry").await;

@@ -2,6 +2,7 @@
 //! links once instead of once per suite. Suites that touch Postgres coordinate
 //! through the schema lock in `pg_support`; see its module docs.
 
+mod account_provisioning_pg;
 mod agent_action_execution_pg;
 mod agent_actions_pg;
 mod agent_activity_pg;
@@ -60,6 +61,7 @@ mod snaptrade_webhook_targets_pg;
 mod strategy_library_pg;
 mod svix_signature;
 mod tags_sync_pg;
+mod test_db;
 mod trade_linking_pg;
 mod trade_review_pg;
 mod trading_calendar;

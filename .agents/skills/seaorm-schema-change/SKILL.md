@@ -63,6 +63,6 @@ cargo check -p tradstry-database
 cargo check -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
 ```
 
-Run affected data-preservation or service tests as well. The PostgreSQL tests expect the repository's test database, normally on port `5435`; report an unavailable database as a verification gap rather than weakening the test.
+Run affected data-preservation or service tests as well. The PostgreSQL tests expect the repository's test database on port `5435`; start it with `make test-db` from the repository root. A schema change rebuilds the integration tests' template database automatically on the next run. Report an unavailable database as a verification gap rather than weakening the test.
 
 Finish by reporting the entity changes, ordered migrations, contract refresh, fresh/upgrade evidence, preserved data, checks run, and any remaining rollout risk. Do not commit, deploy, or mutate production unless separately requested.

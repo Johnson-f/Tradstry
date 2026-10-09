@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::pg_support::{reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sqlx::migrate::Migrator;
 use sqlx::{AssertSqlSafe, PgPool};
 
@@ -211,10 +211,10 @@ async fn seed_legacy_data(pool: &PgPool) {
     .expect("seed representative legacy data");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn workspace_migration_preserves_legacy_production_data() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
 
     let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all_migrations = Migrator::new(migrations_path.as_path())
@@ -368,10 +368,10 @@ async fn workspace_migration_preserves_legacy_production_data() {
     assert_eq!(broken_links, 0, "migration must preserve all seeded links");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn partial_brokerage_subaccount_connections_are_backfilled_from_sync_state() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
 
     let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/archive/sqlx");
     let all_migrations = Migrator::new(migrations_path.as_path())

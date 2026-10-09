@@ -6,15 +6,9 @@
 //! things the tables cannot do for themselves: check *both* sides belong to the caller, and
 //! bump the entry it touched.
 
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::{tags_table, trading_principle_table as tp};
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 async fn seed_trade(pool: &PgPool, id: &str, user_id: &str, workspace_id: &str) {
     sqlx::query(
@@ -55,11 +49,10 @@ async fn trade_clock(pool: &PgPool, id: &str) -> (String, chrono::DateTime<chron
         .unwrap()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tagging_a_trade_bumps_its_clock_so_the_link_reaches_the_desktop() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_trade(&pool, "t1", &user_id, &workspace_id).await;
 
@@ -90,11 +83,10 @@ async fn tagging_a_trade_bumps_its_clock_so_the_link_reaches_the_desktop() {
 
 /// `trade_tags` has no `user_id`. Validating only the tag would let a caller staple their
 /// own tags onto a stranger's trade.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_foreign_trade_cannot_be_tagged() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     seed_user_and_account(&pool, "stranger", "stranger-acct").await;
@@ -127,11 +119,10 @@ async fn a_foreign_trade_cannot_be_tagged() {
     assert_eq!(links, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_tag_cannot_cross_workspace_boundaries() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_a) = seed_user_workspace(&pool).await;
 
     sqlx::query("INSERT INTO workspaces (id, user_id, name) VALUES ('workspace-b', $1, 'B')")
@@ -177,11 +168,10 @@ async fn a_tag_cannot_cross_workspace_boundaries() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn flagging_a_violation_bumps_the_trade_clock() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_trade(&pool, "t1", &user_id, &workspace_id).await;
 
@@ -212,11 +202,10 @@ async fn flagging_a_violation_bumps_the_trade_clock() {
 
 /// Principles are workspace-scoped and so are trades. Linking across workspaces would silently
 /// corrupt per-workspace analytics.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_principle_cannot_be_violated_by_a_trade_in_another_workspace() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, account_a) = seed_user_workspace(&pool).await;
 
     sqlx::query("INSERT INTO workspaces (id, user_id, name) VALUES ('acct-b', $1, 'B')")
@@ -253,11 +242,10 @@ async fn a_principle_cannot_be_violated_by_a_trade_in_another_workspace() {
 
 /// The read side must close the loop. Without a trade's current tags and violations, an
 /// agent cannot use `add` sensibly and cannot use `remove` at all — it has nothing to name.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_trades_tags_and_violations_are_readable_back() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_trade(&pool, "t1", &user_id, &workspace_id).await;
     seed_trade(&pool, "t2", &user_id, &workspace_id).await;

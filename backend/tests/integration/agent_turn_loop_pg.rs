@@ -296,7 +296,7 @@ async fn send_with_context_and_wait(
     run
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn greeting_answers_directly_without_tools() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -311,7 +311,7 @@ async fn greeting_answers_directly_without_tools() {
     assert_eq!(run.tool_calls, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn typed_performance_operation_uses_no_model() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -335,7 +335,7 @@ async fn typed_performance_operation_uses_no_model() {
     assert_eq!(run.tool_calls, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn data_question_uses_tool_then_grounded_answer() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -356,7 +356,7 @@ async fn data_question_uses_tool_then_grounded_answer() {
     assert_eq!(evidence, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn write_request_creates_proposal_without_domain_mutation() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -381,7 +381,7 @@ async fn write_request_creates_proposal_without_domain_mutation() {
     assert_eq!(notes, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_citation_gets_one_repair_turn() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -403,7 +403,7 @@ async fn invalid_citation_gets_one_repair_turn() {
     assert_eq!(repairs, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn malformed_structured_answer_gets_one_repair_turn() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -447,7 +447,7 @@ async fn malformed_structured_answer_gets_one_repair_turn() {
     assert_eq!(repaired, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_repair_fails_once_with_a_specific_terminal_code() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -466,7 +466,7 @@ async fn invalid_repair_fails_once_with_a_specific_terminal_code() {
     assert_eq!(exhausted, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn complex_request_may_use_optional_subagent() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);

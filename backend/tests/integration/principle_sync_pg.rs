@@ -1,12 +1,5 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
-use sqlx::PgPool;
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::service::db::schema::tables::trading_principle_table as pt;
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 fn args(id: &str, workspace_id: &str, title: &str, priority: i64) -> pt::PrincipleWriteArgs {
     pt::PrincipleWriteArgs {
@@ -23,11 +16,10 @@ fn args(id: &str, workspace_id: &str, title: &str, priority: i64) -> pt::Princip
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_update_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -85,11 +77,10 @@ async fn create_update_delete_flow_and_since() {
     assert_eq!(deltas[0].hlc, "000000000000003:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reorder_assigns_absolute_priority_and_hlc() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -137,13 +128,12 @@ async fn reorder_assigns_absolute_priority_and_hlc() {
     assert_eq!(pr2.hlc, "000000000000003:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_principle_mutation_applies_through_push() {
     use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation};
 
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let principle_id = tradstry_backend::ids::new_uuid_v7().to_string();
 

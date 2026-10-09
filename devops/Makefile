@@ -15,15 +15,18 @@ PG_PORT      ?= 5433
 PG_PASSWORD  := tradstry
 PG_DATABASE  ?= postgres
 BACKEND_PORT ?= 7899
+TEST_PG_CONTAINER := tradstry-test-postgres
+TEST_PG_PORT      ?= 5435
 -include $(DEVOPS)/local.mk
 export PG_CONTAINER PG_IMAGE PG_VOLUME PG_PORT PG_PASSWORD PG_DATABASE
+export TEST_PG_CONTAINER TEST_PG_PORT
 export BACKEND_PORT
 
 SERVER     := myserver
 REMOTE_DIR := /opt/tradstry
 export SERVER REMOTE_DIR
 
-.PHONY: help backend postgres frontend desktop micro cleanup deploy tag sync-oauth-env test-oauth-env-sync sync-agent-env test-agent-env-sync
+.PHONY: help backend postgres test-db test-db-stop frontend desktop micro cleanup deploy tag sync-oauth-env test-oauth-env-sync sync-agent-env test-agent-env-sync
 
 help:
 	@echo "Tradstry"
@@ -32,6 +35,8 @@ help:
 	@echo "  make postgres   Start local Postgres only"
 	@echo "                  Uses localhost:5433; override with PG_PORT=<port>"
 	@echo "                  Local overrides can be saved in devops/local.mk"
+	@echo "  make test-db    Start the throwaway Postgres the backend tests use (localhost:5435)"
+	@echo "  make test-db-stop  Stop it; its data lives in memory and is discarded"
 	@echo "  make frontend   Start the web frontend (bun dev)"
 	@echo "  make desktop    Build and launch the native SwiftUI macOS app"
 	@echo "  make micro      Start the SnapTrade Go microservice"
@@ -111,6 +116,58 @@ docker exec "$$PG_CONTAINER" psql -U postgres -q \
   -c "CREATE EXTENSION IF NOT EXISTS pg_search;" >/dev/null 2>&1 || true
 endef
 export POSTGRES_SCRIPT
+
+# ---------------------------------------------------------------------------
+# Test Postgres: a separate, disposable server for `cargo test`. Data lives in
+# memory and durability is off, because tests only need speed. Each test gets
+# its own database copied from a template (backend/tests/integration/test_db.rs).
+# ---------------------------------------------------------------------------
+define TEST_DB_SCRIPT
+set -e
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
+
+if docker ps --format '{{.Names}}' | grep -q "^$${TEST_PG_CONTAINER}$$"; then
+  echo -e "$${GREEN}Test Postgres '$${TEST_PG_CONTAINER}' already running on $${TEST_PG_PORT}.$${NC}"
+  exit 0
+fi
+if ! docker image inspect "$$PG_IMAGE" >/dev/null 2>&1; then
+  case "$$(uname -m)" in
+    arm64 | aarch64) PG_ARCH=arm64 ;;
+    *) PG_ARCH=amd64 ;;
+  esac
+  echo -e "$${BLUE}Building $${PG_IMAGE} (pgvector/pg18 + pg_search, $${PG_ARCH})...$${NC}"
+  docker build --build-arg PG_ARCH="$$PG_ARCH" -t "$$PG_IMAGE" "$$DEVOPS/docker/postgres"
+fi
+
+echo -e "$${BLUE}Starting test Postgres on port $${TEST_PG_PORT}...$${NC}"
+docker run -d --rm \
+  --name "$$TEST_PG_CONTAINER" \
+  -p "127.0.0.1:$${TEST_PG_PORT}:5432" \
+  -e POSTGRES_PASSWORD=postgres \
+  --tmpfs /var/lib/postgresql \
+  "$$PG_IMAGE" \
+  postgres -c shared_preload_libraries=pg_search -c max_connections=300 \
+    -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null
+
+for i in $$(seq 1 60); do
+  if docker exec "$$TEST_PG_CONTAINER" psql -U postgres -tAc "SELECT 1" >/dev/null 2>&1; then
+    break
+  fi
+  if [ "$$i" -eq 60 ]; then
+    echo "Test Postgres did not become ready. Check: docker logs $${TEST_PG_CONTAINER}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+# Tests create and drop their own databases and extensions, so the role is a
+# superuser. The server holds nothing but test data.
+docker exec "$$TEST_PG_CONTAINER" psql -U postgres -q \
+  -c "CREATE ROLE tradstry LOGIN SUPERUSER PASSWORD 'tradstry'" \
+  -c "CREATE DATABASE tradstry_test OWNER tradstry" >/dev/null
+echo -e "$${GREEN}Test Postgres ready: postgres://tradstry:tradstry@localhost:$${TEST_PG_PORT}/tradstry_test$${NC}"
+endef
+export TEST_DB_SCRIPT
 
 define BACKEND_SCRIPT
 set -e
@@ -284,6 +341,12 @@ export TAG_SCRIPT
 
 postgres:
 	@bash -c "$$POSTGRES_SCRIPT"
+
+test-db:
+	@bash -c "$$TEST_DB_SCRIPT"
+
+test-db-stop:
+	@docker stop "$(TEST_PG_CONTAINER)" >/dev/null 2>&1 && echo "Stopped $(TEST_PG_CONTAINER)." || echo "$(TEST_PG_CONTAINER) is not running."
 
 backend: postgres
 	@bash -c "$$BACKEND_SCRIPT"

@@ -1,4 +1,4 @@
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::graphql::notebook::crdt as notebook_crdt;
 use tradstry_backend::service::db::schema::tables::{notebook::crdt, notebook::notes};
 use tradstry_backend::service::notebook::projector;
@@ -67,17 +67,10 @@ async fn update_row_count(pool: &sqlx::PgPool, note_id: &str) -> i64 {
         .0
 }
 
-async fn migrated_pool() -> sqlx::PgPool {
-    let pool = test_pool().await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("migrate");
-    pool
-}
-
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn crdt_note_rejects_plain_body_write() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note = notes::create_notebook_note(
         &pool,
@@ -113,9 +106,10 @@ async fn crdt_note_rejects_plain_body_write() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn crdt_note_still_accepts_metadata_writes() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note = notes::create_notebook_note(
         &pool,
@@ -146,9 +140,10 @@ async fn crdt_note_still_accepts_metadata_writes() {
     .expect("metadata write on a crdt note must succeed");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seeding_note_rejects_plain_body_write() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note = notes::create_notebook_note(
         &pool,
@@ -191,9 +186,10 @@ async fn seeding_note_rejects_plain_body_write() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn legacy_note_accepts_plain_body_write() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note = notes::create_notebook_note(
         &pool,
@@ -222,9 +218,10 @@ async fn legacy_note_accepts_plain_body_write() {
     .expect("legacy notes are unchanged");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn migration_adds_crdt_tables() {
-    let pool = test_pool().await;
+    let test_db = TestDb::empty().await;
+    let pool = test_db.pool();
     // Test binaries share one database and run in an arbitrary order. Migrating
     // here (idempotent, no reset) means this file does not depend on schema_pg
     // having run first.
@@ -244,9 +241,10 @@ async fn migration_adds_crdt_tables() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seed_note_transitions_legacy_to_crdt() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_legacy_note(&pool, &user_id, workspace_id).await;
 
@@ -277,9 +275,10 @@ async fn seed_note_transitions_legacy_to_crdt() {
     assert_eq!(projected_seq, 0, "seeding must not advance projected_seq");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seed_note_is_idempotent() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_legacy_note(&pool, &user_id, workspace_id).await;
 
@@ -301,9 +300,10 @@ async fn seed_note_is_idempotent() {
 /// document_json do NOT conflict — Yjs merges them by concatenation, so every
 /// paragraph appears twice with no error. This is why only the server seeds,
 /// exactly once, and why seed_note is a no-op on a crdt note.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn two_independent_seeds_duplicate_content() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     // Bypass seed_note: build two independent seed updates from the same source.
@@ -329,9 +329,10 @@ async fn two_independent_seeds_duplicate_content() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seed_note_leaves_document_json_projectable() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_legacy_note(&pool, &user_id, workspace_id).await;
 
@@ -353,9 +354,10 @@ async fn seed_note_leaves_document_json_projectable() {
 
 /// Hard-gate evidence: a document with the node types most likely to lose
 /// attributes must survive seed -> project with its title still derivable.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seed_note_round_trips_a_realistic_document() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let doc = r#"{"root":{"children":[
@@ -418,9 +420,10 @@ async fn seed_note_round_trips_a_realistic_document() {
 
 /// refresh_projection writes document_json matching the CRDT, keeps the derived
 /// title correct, and advances freshness.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn refresh_projection_writes_document_title_and_advances_freshness() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, TITLE_DOC).await;
 
@@ -451,9 +454,10 @@ async fn refresh_projection_writes_document_title_and_advances_freshness() {
 
 /// is_projection_fresh flips false on every append past projected_seq and true
 /// again after re-projection.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn is_projection_fresh_tracks_each_append() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, SEED_DOC).await;
     crdt::seed_note(&pool, &note_id).await.unwrap();
@@ -474,9 +478,10 @@ async fn is_projection_fresh_tracks_each_append() {
 
 // ---- Task 8: the byte pipe (appendNotebookUpdates / notebookUpdatesSince) ----
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn append_updates_returns_new_max_seq() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, SEED_DOC).await;
     crdt::mark_crdt(&pool, &note_id, &[1, 2, 3]).await.unwrap();
@@ -502,9 +507,10 @@ async fn append_updates_returns_new_max_seq() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn append_to_legacy_note_is_rejected() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_legacy_note(&pool, &user_id, workspace_id).await;
 
@@ -517,9 +523,10 @@ async fn append_to_legacy_note_is_rejected() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn append_to_seeding_note_is_rejected() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, SEED_DOC).await;
     sqlx::query(
@@ -536,9 +543,10 @@ async fn append_to_seeding_note_is_rejected() {
     assert_eq!(update_row_count(&pool, &note_id).await, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn updates_since_returns_only_newer() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, SEED_DOC).await;
     crdt::mark_crdt(&pool, &note_id, &[9]).await.unwrap();
@@ -565,9 +573,10 @@ async fn updates_since_returns_only_newer() {
 
 /// The test that matters: a blob with `0x00` and invalid UTF-8 must come back
 /// byte-identical after a full Postgres `bytea` round trip.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn update_bytes_survive_postgres_round_trip() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, SEED_DOC).await;
     crdt::mark_crdt(&pool, &note_id, &[7]).await.unwrap();
@@ -595,9 +604,10 @@ async fn update_bytes_survive_postgres_round_trip() {
 /// This is the only test that both creates stale seeding rows and calls the global
 /// sweep, so its exact count is deterministic despite the shared, non-reset,
 /// parallel test DB (every other test creates only fresh `now()` seeds).
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn sweeper_recovers_only_stale_seeding_notes() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     // 1. Stale seed: crdt row claimed an hour ago, no update row (the process died
@@ -665,9 +675,10 @@ async fn sweeper_recovers_only_stale_seeding_notes() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn another_user_cannot_read_or_append() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (owner, workspace_id) = seed_user_workspace(&pool).await;
     let (intruder, _) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &owner, workspace_id, SEED_DOC).await;
@@ -702,9 +713,10 @@ async fn another_user_cannot_read_or_append() {
 /// Asserts the sweep's *selection*, then refreshes only this note. The sweep itself
 /// is database-wide, and other tests in this binary run concurrently and depend on
 /// their own notes staying stale — running it here would corrupt them.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_seeded_note_no_reindex_touched_is_swept_up_for_projection() {
-    let pool = migrated_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let note_id = make_note(&pool, &user_id, workspace_id, TITLE_DOC).await;
 

@@ -17,7 +17,7 @@ fn enabled_config() -> AgentConfig {
     .unwrap()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn confirmed_tag_action_executes_once_through_canonical_versioned_mutation() {
     let fixture = AgentPgFixture::new().await;
     sqlx::query(
@@ -130,7 +130,7 @@ async fn confirmed_tag_action_executes_once_through_canonical_versioned_mutation
     assert_eq!(index_work, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn confirmed_note_action_creates_one_uuid_v7_note() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("action-note-v7").await;

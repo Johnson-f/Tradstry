@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use std::collections::HashSet;
 use tradstry_backend::service::brokerage::{
     client::SnapTradeAccount,
@@ -21,13 +21,10 @@ fn snaptrade_account(id: &str, name: &str, connection_id: &str) -> SnapTradeAcco
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn binds_only_one_snaptrade_account_to_the_selected_workspace() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, primary_id) = seed_user_workspace(&pool).await;
 
     workspaces_table::update_snaptrade_credentials(
@@ -105,13 +102,10 @@ async fn binds_only_one_snaptrade_account_to_the_selected_workspace() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn one_user_can_keep_different_brokerage_accounts_in_different_workspaces() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, options_workspace_id) = seed_user_workspace(&pool).await;
     let futures_workspace = workspaces_table::create_workspace(
         &pool,
@@ -178,13 +172,10 @@ async fn one_user_can_keep_different_brokerage_accounts_in_different_workspaces(
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn stale_snaptrade_account_binding_rebinds_by_workspace_name() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     workspaces_table::update_workspace(
@@ -231,13 +222,10 @@ async fn stale_snaptrade_account_binding_rebinds_by_workspace_name() {
     assert_eq!(rebound.snaptrade_account_id.as_deref(), Some("new-margin"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn selected_brokerage_accounts_bind_matching_unlinked_workspaces() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, cash_workspace_id) = seed_user_workspace(&pool).await;
 
     workspaces_table::update_workspace(
@@ -351,13 +339,10 @@ async fn selected_brokerage_accounts_bind_matching_unlinked_workspaces() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn selected_brokerage_accounts_repair_partially_linked_workspaces_by_sync_state() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, cash_workspace_id) = seed_user_workspace(&pool).await;
 
     workspaces_table::update_workspace(
@@ -460,13 +445,10 @@ async fn selected_brokerage_accounts_repair_partially_linked_workspaces_by_sync_
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn sync_outcomes_keep_the_last_success_and_reject_stale_attempts() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     workspaces_table::update_snaptrade_credentials(

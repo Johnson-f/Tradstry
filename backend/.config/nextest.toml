@@ -1,0 +1,7 @@
+# Each test runs in its own process with its own database (tests/integration/test_db.rs),
+# so a crash or hang is confined to that test.
+
+[profile.default]
+fail-fast = false
+# Report a test as slow after 30s and stop it after two minutes.
+slow-timeout = { period = "30s", terminate-after = 4 }

@@ -66,7 +66,7 @@ async fn forbidden_rows(pool: &sqlx::PgPool) -> i64 {
     .unwrap()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn notebook_assistance_isolated_from_agent_state() {
     let fixture = AgentPgFixture::new().await;
     let model: Arc<dyn ChatModel<AgentRuntimeState>> = Arc::new(AssistanceModel);

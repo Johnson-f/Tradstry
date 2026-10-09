@@ -1,17 +1,14 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::service::db::schema::tables::brokerage_table;
 
 /// The gate's whole purpose: once we've recorded that SnapTrade synced through a
 /// date, seeing that same date again must not trigger another fetch. SnapTrade
 /// advances this at most once a day, so without the gate we re-fetch ~14x daily
 /// for data that cannot have changed.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn records_and_reads_back_the_watermark() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     assert_eq!(
@@ -44,13 +41,10 @@ async fn records_and_reads_back_the_watermark() {
 /// One Tradstry account can front several SnapTrade accounts — a Webull margin
 /// and cash account, say — each syncing on its own schedule. Sharing a watermark
 /// between them would let one account's advance suppress the other's fetch.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn watermarks_are_tracked_per_snaptrade_account() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     brokerage_table::record_transactions_synced_through(
@@ -74,13 +68,10 @@ async fn watermarks_are_tracked_per_snaptrade_account() {
 
 /// Re-registration regenerates SnapTrade's account ids, so the new ids find no
 /// stored watermark and a full re-sync happens without any special-casing.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn new_snaptrade_account_id_reads_as_stale() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     brokerage_table::record_transactions_synced_through(
@@ -108,13 +99,10 @@ async fn new_snaptrade_account_id_reads_as_stale() {
 }
 
 /// Re-recording must overwrite rather than accumulate rows.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn advancing_the_watermark_overwrites_in_place() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     for date in ["2026-07-18", "2026-07-19", "2026-07-20"] {

@@ -1,12 +1,6 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::tags_table as t;
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 /// Inserts a minimal journal_entries row directly (bypassing business-rule
 /// validation, which is irrelevant here) so `trade_tags` has a valid FK target
@@ -26,11 +20,10 @@ async fn seed_journal_entry(pool: &PgPool, id: &str, user_id: &str, workspace_id
     .expect("seed journal entry");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn seaorm_tag_edits_advance_the_sync_cursor() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let category = t::create_category(&pool, &user_id, &workspace_id, "Setups", None)
         .await
@@ -64,11 +57,10 @@ async fn seaorm_tag_edits_advance_the_sync_cursor() {
     assert_eq!(deltas[0].name, "Breakout v2");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn category_create_rename_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -133,11 +125,10 @@ async fn category_create_rename_delete_flow_and_since() {
     assert!(deltas[0].deleted_at.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reorder_categories_sets_absolute_sort_order_and_hlc() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -185,11 +176,10 @@ async fn reorder_categories_sets_absolute_sort_order_and_hlc() {
     assert_eq!(cat1.hlc, "000000000000003:00000:client");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tag_create_rename_delete_flow_and_since() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -268,11 +258,10 @@ async fn tag_create_rename_delete_flow_and_since() {
     assert!(deltas[0].deleted_at.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn merge_tags_tombstones_from_and_repoints_trade_tags() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let mut c = pool.acquire().await.unwrap();
@@ -358,13 +347,12 @@ async fn merge_tags_tombstones_from_and_repoints_trade_tags() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_tag_category_and_tag_mutations_apply_through_push() {
     use tradstry_backend::graphql::notebook::sync::{NotebookMutation, apply_mutation};
 
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let category_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let tag_id = tradstry_backend::ids::new_uuid_v7().to_string();

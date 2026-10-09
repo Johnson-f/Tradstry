@@ -1,13 +1,7 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use chrono::{DateTime, TimeZone, Utc};
 use sqlx::PgPool;
 use tradstry_backend::service::notifications::{schedule_worker, settings};
-
-async fn migrate(pool: &PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .expect("migrate");
-}
 
 fn utc(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
@@ -53,22 +47,20 @@ async fn outbox_count(pool: &PgPool) -> i64 {
     row.0
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn settings_default_when_no_row_exists() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let s = settings::get(&pool, &user_id).await.expect("get");
     assert_eq!(s, settings::UserSettings::default());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn settings_patch_leaves_untouched_fields_alone() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     settings::upsert(
@@ -99,11 +91,10 @@ async fn settings_patch_leaves_untouched_fields_alone() {
     assert_eq!(s.daily_recap_minute, settings::DEFAULT_DAILY_RECAP_MINUTE);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn recap_fires_once_and_only_once() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     seed_unjournaled_fill(&pool, &user_id, &workspace_id, "AAPL").await;
@@ -123,11 +114,10 @@ async fn recap_fires_once_and_only_once() {
     assert_eq!(outbox_count(&pool).await, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn recap_is_silent_with_nothing_to_journal() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _account_id) = seed_user_workspace(&pool).await;
 
     set_recap_minute(&pool, &user_id, 840).await;
@@ -138,11 +128,10 @@ async fn recap_is_silent_with_nothing_to_journal() {
     assert_eq!(outbox_count(&pool).await, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_silent_slot_can_still_fire_later_the_same_day() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     set_recap_minute(&pool, &user_id, 840).await;
@@ -160,11 +149,10 @@ async fn a_silent_slot_can_still_fire_later_the_same_day() {
     assert_eq!(outbox_count(&pool).await, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn nothing_fires_outside_the_slot() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     seed_unjournaled_fill(&pool, &user_id, &workspace_id, "AAPL").await;

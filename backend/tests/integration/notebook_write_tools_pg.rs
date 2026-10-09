@@ -5,7 +5,7 @@
 //! step with the update chain. This drives that sequence against a real Postgres and a real
 //! projector subprocess, exactly as `update_note` does.
 
-use crate::pg_support::{bring_to_current_schema, reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use sqlx::PgPool;
 use tradstry_backend::graphql::notebook::crdt as crdt_api;
 use tradstry_backend::service::db::schema::tables::notebook::{
@@ -13,11 +13,6 @@ use tradstry_backend::service::db::schema::tables::notebook::{
     notes::{self, CreateNotebookNoteInput, UpdateNotebookNoteInput},
 };
 use tradstry_backend::service::notebook::projector::{self, EditMode};
-
-/// Note writes touch the media tables, which only the SeaORM bootstrap creates.
-async fn migrate(pool: &PgPool) {
-    bring_to_current_schema(pool).await;
-}
 
 /// What `create_note` does: markdown in, note row out, filed in the System folder.
 async fn create_note(pool: &PgPool, user_id: &str, workspace_id: &str, markdown: &str) -> String {
@@ -120,11 +115,10 @@ async fn title(pool: &PgPool, user_id: &str, note_id: &str) -> String {
         .title
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_note_files_markdown_into_the_system_folder_with_a_title_from_the_h1() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     folders::ensure_system_folder(&pool, &user_id, &workspace_id)
         .await
@@ -158,11 +152,10 @@ async fn create_note_files_markdown_into_the_system_folder_with_a_title_from_the
     assert_eq!(note.folder_id.as_deref(), Some(system.id.as_str()));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_legacy_note_appends_without_losing_what_was_already_there() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let id = create_note(&pool, &user_id, &workspace_id, "# Log\n\nWeek 1.\n").await;
@@ -182,11 +175,10 @@ async fn a_legacy_note_appends_without_losing_what_was_already_there() {
     assert_eq!(title(&pool, &user_id, &id).await, "Log");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_legacy_note_replaces_its_whole_body() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let id = create_note(&pool, &user_id, &workspace_id, "# Old\n\nStale.\n").await;
@@ -203,11 +195,10 @@ async fn a_legacy_note_replaces_its_whole_body() {
 /// The real hazard. Once a client opens a note it is CRDT-backed: `document_json` is no
 /// longer authoritative, and an edit must be a delta appended to the update chain. A doc
 /// rebuilt from scratch would concatenate rather than conflict, doubling every paragraph.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_crdt_note_is_edited_by_appending_a_delta_and_the_projection_keeps_up() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let id = create_note(
@@ -252,11 +243,10 @@ async fn a_crdt_note_is_edited_by_appending_a_delta_and_the_projection_keeps_up(
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn another_users_note_is_not_writable() {
-    let pool = test_pool().await;
-    let _g = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
 
     let id = create_note(&pool, &user_id, &workspace_id, "# Mine\n\nSecret.\n").await;

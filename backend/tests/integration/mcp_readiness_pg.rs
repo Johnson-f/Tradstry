@@ -8,7 +8,7 @@ use tradstry_backend::service::db::schema::tables::{journal_table, tags_table, u
 use tradstry_backend::service::read_service::journal::JournalFilter;
 use tradstry_backend::service::read_service::users::ensure_user;
 
-use crate::pg_support::{seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 
 const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
 
@@ -29,9 +29,10 @@ async fn make_note(pool: &PgPool, user_id: &str, workspace_id: &str) -> String {
     .id
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn notebook_pages_cover_every_note_once_even_if_the_cursor_note_is_deleted() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     let mut created = Vec::new();
     for _ in 0..5 {
@@ -76,9 +77,10 @@ async fn notebook_pages_cover_every_note_once_even_if_the_cursor_note_is_deleted
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn an_unknown_notebook_cursor_is_an_error_not_page_one() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     make_note(&pool, &user, &ws).await;
     let missing = tradstry_backend::ids::new_uuid_v7().to_string();
@@ -89,9 +91,10 @@ async fn an_unknown_notebook_cursor_is_an_error_not_page_one() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
     let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -132,9 +135,10 @@ async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {
     assert_eq!(workspaces, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn blank_profile_fields_are_filled_but_never_overwritten() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
     let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
 
@@ -154,9 +158,10 @@ async fn blank_profile_fields_are_filled_but_never_overwritten() {
     assert_eq!(user.email, "ada@example.com");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn mistake_search_matches_mistake_role_tags() {
-    let pool = test_pool().await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user, ws) = seed_user_workspace(&pool).await;
     tags_table::ensure_default_categories(&pool, &user, &ws)
         .await

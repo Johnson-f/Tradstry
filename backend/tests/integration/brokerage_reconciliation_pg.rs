@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use tradstry_backend::service::db::schema::tables::{
     brokerage_reconciliation_table::{self, PortfolioReconciliation, TransactionReconciliation},
     workspaces_table::{self, CreateWorkspaceInput},
@@ -30,13 +30,10 @@ async fn webull_workspace(
     workspace.id
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn webull_subaccounts_keep_independent_reconciliation_state() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, primary_workspace_id) = seed_user_workspace(&pool).await;
     workspaces_table::update_snaptrade_credentials(
         &pool,
@@ -138,13 +135,10 @@ async fn webull_subaccounts_keep_independent_reconciliation_state() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn transaction_and_portfolio_errors_are_preserved_independently() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     workspaces_table::update_snaptrade_credentials(
         &pool,

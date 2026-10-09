@@ -28,7 +28,7 @@ fn service(fixture: &AgentPgFixture) -> AgentService {
     )
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn disabled_service_rejects_conversation_creation() {
     let fixture = AgentPgFixture::new().await;
     let disabled = AgentService::from_parts(
@@ -42,7 +42,7 @@ async fn disabled_service_rejects_conversation_creation() {
     assert!(matches!(result, Err(AgentError::Disabled)));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn send_message_commits_message_run_and_queued_event_together() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -90,7 +90,7 @@ async fn send_message_commits_message_run_and_queued_event_together() {
     assert_eq!(events[0].kind, "run_queued");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn send_message_rejects_a_reference_that_does_not_match_its_context_id() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -122,7 +122,7 @@ async fn send_message_rejects_a_reference_that_does_not_match_its_context_id() {
     assert!(matches!(result, Err(AgentError::Validation(_))));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn retrying_idempotency_key_does_not_append_a_second_message() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -152,7 +152,7 @@ async fn retrying_idempotency_key_does_not_append_a_second_message() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn active_run_cap_replays_duplicates_but_rejects_new_work_without_a_message() {
     let fixture = AgentPgFixture::new().await;
     let config = AgentConfig::from_lookup(|name| match name {
@@ -211,7 +211,7 @@ async fn active_run_cap_replays_duplicates_but_rejects_new_work_without_a_messag
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn send_message_rejects_blank_and_oversized_input() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -235,7 +235,7 @@ async fn send_message_rejects_blank_and_oversized_input() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancelling_queued_run_commits_terminal_event() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);
@@ -268,7 +268,7 @@ async fn cancelling_queued_run_commits_terminal_event() {
     assert_eq!(events.last().unwrap().kind, "run_cancelled");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn perplexity_rejects_video_before_message_or_run_persistence() {
     let fixture = AgentPgFixture::new().await;
     sqlx::query(
@@ -337,7 +337,7 @@ async fn perplexity_rejects_video_before_message_or_run_persistence() {
     assert_eq!(persisted, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn gemini_preserves_existing_video_enqueue_behavior() {
     let fixture = AgentPgFixture::new().await;
     let service = service(&fixture);

@@ -1,16 +1,14 @@
 use actix_multipart::form::{MultipartForm, tempfile::TempFile, text::Text};
 use actix_web::http::{StatusCode, header};
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, Result, error, web};
-use anyhow::anyhow;
-use clerk_rs::validators::authorizer::ClerkJwt;
+use actix_web::{HttpRequest, HttpResponse, Result, error, web};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use super::auth::request_user_db;
 use crate::service::db::Db;
 use crate::service::db::schema::tables::notebook::images::NotebookImage;
 use crate::service::notebook::media::{MediaLifecycleError, remove_reference, storage_keys};
 use crate::service::read_service::images as image_service;
-use crate::service::read_service::users::ensure_user;
 use crate::service::upload::notebook::{
     HashPolicy, NotebookUploadError, NotebookUploadRequest, upload,
 };
@@ -39,39 +37,13 @@ pub struct DeleteQuery {
     note_id: Option<String>,
 }
 
-async fn get_user_db(
-    req: &HttpRequest,
-    db: &Arc<Db>,
-) -> anyhow::Result<crate::service::db::client::UserDb> {
-    let jwt = req
-        .extensions()
-        .get::<ClerkJwt>()
-        .cloned()
-        .ok_or_else(|| anyhow!("Unauthorized"))?;
-    let full_name = jwt
-        .other
-        .get("full_name")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-    let email = jwt
-        .other
-        .get("email")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-
-    let user = ensure_user(db, &jwt.sub, full_name, email).await?;
-    Ok(db.get_user_db(&user.id))
-}
-
 pub async fn upload_notebook_media(
     req: HttpRequest,
     MultipartForm(form): MultipartForm<UploadNotebookMediaForm>,
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
 ) -> Result<HttpResponse> {
-    let user_db = get_user_db(&req, db.get_ref())
-        .await
-        .map_err(error::ErrorUnauthorized)?;
+    let user_db = request_user_db(&req, db.get_ref()).await?;
     let image = upload(
         &user_db,
         r2.get_ref(),
@@ -119,9 +91,7 @@ pub async fn get_notebook_media(
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
 ) -> Result<HttpResponse> {
-    let user_db = get_user_db(&req, db.get_ref())
-        .await
-        .map_err(error::ErrorUnauthorized)?;
+    let user_db = request_user_db(&req, db.get_ref()).await?;
     let hash = path.into_inner();
 
     let image = image_service::find_notebook_image_by_hash(&user_db, &hash)
@@ -143,9 +113,7 @@ pub async fn get_notebook_media_thumb(
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
 ) -> Result<HttpResponse> {
-    let user_db = get_user_db(&req, db.get_ref())
-        .await
-        .map_err(error::ErrorUnauthorized)?;
+    let user_db = request_user_db(&req, db.get_ref()).await?;
     let hash = path.into_inner();
 
     let image = image_service::find_notebook_image_by_hash(&user_db, &hash)
@@ -256,9 +224,7 @@ pub async fn delete_notebook_media(
     query: web::Query<DeleteQuery>,
     db: web::Data<Arc<Db>>,
 ) -> Result<HttpResponse> {
-    let user_db = get_user_db(&req, db.get_ref())
-        .await
-        .map_err(error::ErrorUnauthorized)?;
+    let user_db = request_user_db(&req, db.get_ref()).await?;
     let hash = path.into_inner();
     let note_id = query
         .into_inner()

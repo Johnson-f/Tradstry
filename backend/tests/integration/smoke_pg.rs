@@ -3,19 +3,17 @@
 //! compiler can't see — to_char timestamp formatting, ON CONFLICT targets,
 //! $N bind counts, COUNT/SUM type decoding, and the bool/timestamptz columns.
 
-use crate::pg_support::{bring_to_current_schema, reset_schema, test_pool};
+use crate::pg_support::TestDb;
 use sea_orm::SqlxPostgresConnector;
 
 use tradstry_backend::service::db::schema::tables::{
     journal_table, tags_table, user_prompts_table, users_table, workspaces_table,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn end_to_end_user_account_journal_tags() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    // The user model reads columns added after the archived SQLx history.
-    bring_to_current_schema(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
 
     // --- users: upsert path (ON CONFLICT clerk_uuid) ---

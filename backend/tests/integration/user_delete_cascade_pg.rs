@@ -1,11 +1,9 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
-use sea_orm::SqlxPostgresConnector;
+use crate::pg_support::{TestDb, seed_user_workspace};
 use serde_json::json;
 use tradstry_backend::service::agents::{
     ActivateAgentMemory, AgentActor, AgentMemoryKind, AgentMemoryStatus, AgentScope, AgentStore,
     CreateAgentRun,
 };
-use tradstry_migration::{Migrator, MigratorTrait};
 
 async fn seed_tag(pool: &sqlx::PgPool, user_id: &str, workspace_id: &str) {
     sqlx::query(
@@ -52,17 +50,10 @@ async fn count(pool: &sqlx::PgPool, sql: &'static str, user_id: &str) -> i64 {
         .expect("count rows")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_user_removes_their_tags_and_categories() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .expect("migrate");
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-    Migrator::up(&db, None)
-        .await
-        .expect("migrate agent runtime");
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
 
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     seed_tag(&pool, &user_id, &workspace_id).await;

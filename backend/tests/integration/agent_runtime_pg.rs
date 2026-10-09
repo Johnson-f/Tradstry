@@ -5,7 +5,7 @@ use tradstry_backend::service::agents::{
     AgentActor, AgentError, AgentRunStatus, AgentScope, CreateAgentRun,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn conversation_requires_owned_workspace() {
     let fixture = AgentPgFixture::new().await;
     let (_, foreign_workspace) = crate::pg_support::seed_user_workspace(&fixture.pool).await;
@@ -21,7 +21,7 @@ async fn conversation_requires_owned_workspace() {
     assert!(matches!(result, Err(AgentError::NotFound)));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn messages_are_monotonic_and_recent_page_is_in_display_order() {
     let fixture = AgentPgFixture::new().await;
     let conversation = fixture.create_conversation().await;
@@ -49,7 +49,7 @@ async fn messages_are_monotonic_and_recent_page_is_in_display_order() {
     assert_eq!(messages[0].content["text"], "two");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn run_idempotency_returns_the_original_run() {
     let fixture = AgentPgFixture::new().await;
     let conversation = fixture.create_conversation().await;
@@ -72,7 +72,7 @@ async fn run_idempotency_returns_the_original_run() {
     assert_eq!(first.id, second.id);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_are_monotonic_and_replay_after_sequence() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("event-order").await;
@@ -97,7 +97,7 @@ async fn events_are_monotonic_and_replay_after_sequence() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn another_user_cannot_read_run_events() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("private-events").await;
@@ -121,7 +121,7 @@ async fn another_user_cannot_read_run_events() {
     assert!(matches!(result, Err(AgentError::NotFound)));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn run_items_are_idempotent() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("run-item-order").await;
@@ -145,7 +145,7 @@ async fn run_items_are_idempotent() {
     assert_eq!(count, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn lease_heartbeat_is_fenced_by_owner() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("lease").await;
@@ -161,7 +161,7 @@ async fn lease_heartbeat_is_fenced_by_owner() {
     assert!(fixture.store.heartbeat(&run.id, "worker-a").await.unwrap());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reclaiming_expired_root_terminalizes_orphaned_children() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("expired-root").await;
@@ -199,7 +199,7 @@ async fn reclaiming_expired_root_terminalizes_orphaned_children() {
     assert_eq!(child.1.as_deref(), Some("parent_lease_expired"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn subagent_retry_replaces_terminal_run_with_uuid_v7() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("subagent-retry").await;
@@ -243,7 +243,7 @@ async fn subagent_retry_replaces_terminal_run_with_uuid_v7() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn deleting_conversation_cascades_runtime_rows() {
     let fixture = AgentPgFixture::new().await;
     let conversation = fixture.create_conversation().await;
@@ -259,7 +259,7 @@ async fn deleting_conversation_cascades_runtime_rows() {
     assert_eq!(fixture.count_runtime_rows(&conversation.id).await, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancellation_is_owned_and_idempotent() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("cancel").await;

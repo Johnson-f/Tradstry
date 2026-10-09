@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use crate::graphql::AppSchema;
 use crate::service::db::Db;
+use crate::service::read_service::users::Provisioning;
 use crate::service::upload::r2::R2Client;
 
 fn infer_operation_name(query: &str) -> &str {
@@ -62,6 +63,7 @@ pub async fn graphql_handler(
     if let Some(jwt) = auth {
         request = request.data(jwt);
     }
+    request = request.data(super::auth::provisioning(&http_req));
     request = request.data(db.get_ref().clone());
     request = request.data(r2.get_ref().clone());
     request = request.data(async_graphql::dataloader::DataLoader::new(
@@ -109,6 +111,7 @@ pub async fn graphql_ws_handler(
     if let Some(jwt) = http_req.extensions().get::<ClerkJwt>().cloned() {
         data.insert(jwt);
     }
+    data.insert(super::auth::provisioning(&http_req));
     data.insert(db.get_ref().clone());
     data.insert(r2.get_ref().clone());
     data.insert(crate::graphql::auth::RequestUser::default());
@@ -131,6 +134,7 @@ pub async fn graphql_ws_handler(
                             .await
                             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
                         data.insert(jwt);
+                        data.insert(Provisioning::for_token(&token));
                     }
                     Ok(data)
                 }

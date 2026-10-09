@@ -1,18 +1,8 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use chrono::{Duration, Utc};
-use sea_orm::SqlxPostgresConnector;
 use tradstry_backend::service::db::schema::tables::snaptrade_oauth_table::{
     self, CreateAttempt, StoreGrant,
 };
-use tradstry_migration::{Migrator, MigratorTrait};
-
-async fn migrate(pool: &sqlx::PgPool) {
-    tradstry_backend::service::db::schema::pg::migrate(pool)
-        .await
-        .unwrap();
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-    Migrator::up(&db, None).await.unwrap();
-}
 
 fn grant<'a>(
     user_id: &'a str,
@@ -31,11 +21,10 @@ fn grant<'a>(
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn same_identity_rotates_tokens_but_different_identity_is_rejected() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
 
     let original = snaptrade_oauth_table::store_grant(
@@ -84,11 +73,10 @@ async fn same_identity_rotates_tokens_but_different_identity_is_rejected() {
     assert_eq!(stored.access_token_encrypted.as_deref(), Some("access-b"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reauthorization_required_clears_all_usable_credentials() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, _) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,
@@ -111,11 +99,10 @@ async fn reauthorization_required_clears_all_usable_credentials() {
     assert!(cleared.access_token_expires_at.is_none());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn authorized_attempt_keeps_its_workspace_and_intent() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,
@@ -161,11 +148,10 @@ async fn authorized_attempt_keeps_its_workspace_and_intent() {
     assert_eq!(attempt.intent, "reauthorize");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn local_revocation_clears_tokens_and_unlinks_every_oauth_workspace() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    migrate(&pool).await;
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let stored = snaptrade_oauth_table::store_grant(
         &pool,

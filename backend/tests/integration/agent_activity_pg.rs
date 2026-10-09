@@ -4,7 +4,7 @@ use tradstry_backend::service::agents::{
     AgentActivityCategory, AgentActivityStatus, AgentActor, AgentError, AnswerBlock, AnswerDraft,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn completed_answer_links_and_replays_safe_activity() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("activity-completion").await;
@@ -102,7 +102,7 @@ async fn completed_answer_links_and_replays_safe_activity() {
     assert!(!serialized.contains("secret"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn activity_is_owned_and_bulk_summaries_are_bounded() {
     let fixture = AgentPgFixture::new().await;
     let run = fixture.create_run("activity-owned").await;

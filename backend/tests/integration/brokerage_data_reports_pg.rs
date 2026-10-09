@@ -1,4 +1,4 @@
-use crate::pg_support::{reset_schema, seed_user_workspace, test_pool};
+use crate::pg_support::{TestDb, seed_user_workspace};
 use serde_json::json;
 use tradstry_backend::service::db::schema::tables::{
     brokerage_data_report_table::{self, CreateBrokerageDataReport},
@@ -44,13 +44,10 @@ async fn connect_workspace(pool: &sqlx::PgPool, user_id: &str, workspace_id: &st
         .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn report_is_scoped_to_the_connected_workspace_and_rate_limited() {
-    let pool = test_pool().await;
-    let _guard = reset_schema(&pool).await;
-    tradstry_backend::service::db::schema::pg::migrate(&pool)
-        .await
-        .unwrap();
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
     let (user_id, workspace_id) = seed_user_workspace(&pool).await;
     let (other_user_id, _) = seed_user_workspace(&pool).await;
     connect_workspace(&pool, &user_id, &workspace_id).await;
