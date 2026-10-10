@@ -26,6 +26,7 @@ its GraphQL operations and its tests, and registers itself in `app/server.go`.
 | `journal/` | Starting the journal, listing trades, recording context, reviewing trades, fixing grouping, and resolving possible duplicates |
 | `analytics/` | `get_performance`, `get_daily_pnl`, `get_breakdown`, `get_mistake_costs` |
 | `playbooks/` | `list_playbooks`, `get_playbook`, `create_playbook`, `update_playbook`, `set_playbook_workspaces`, `delete_playbook` |
+| `calculator/` | `get_risk_rules`, `set_risk_rules`, `calculate_position`, `save_calculation`, `create_position_plan`, `list_position_plans`, `update_position_plan`, `delete_position_plan`, `list_calculator_history`, `delete_calculator_entry` |
 | `tags/` | `list_tags`, `create_tag`, `update_tag`, `merge_tags`, `delete_tag`, `create_tag_category`, `update_tag_category`, `move_tag_category`, `set_tag_category_workspaces`, `delete_tag_category` |
 | `principles/` | `list_principles`, `create_principle`, `update_principle`, `move_principle`, `delete_principle` |
 | `notebook/` | Reading, searching, writing and organising notes and folders, viewing note images, and restoring deleted notes |
@@ -84,6 +85,10 @@ Notes are read and written as Tradstry Markdown: Markdown with tables, `- [ ]` c
 - **Revisions.** `get_note` returns a revision. `edit_note` and `rewrite_note` send it, and the backend refuses with a conflict if the note changed since. `edit_note` re-reads and retries once when every `old_text` still matches; `rewrite_note` never retries.
 - **Deletes** are confirmed like workspace deletes, and a deleted note can be restored for 30 days.
 - **Images** are fetched from `/notebook/media/{hash}` with the user's token. Anything over 5 MB, and every video, is shown as its thumbnail.
+
+## Position sizing
+
+`calculate_position` sizes a trade the way the web calculator does: the risk budget is the balance times the risk percent, each entry gets its share, and shares round down to two decimals (or whole shares) so a stop-out never loses more than planned. The balance is the one given, else the broker's, else the saved rule's. Plans made with `create_position_plan` are what the journal matches to trades, so their stop gives those trades an R. When every entry of a plan is filled or skipped, the plan completes into the calculator's history, or is cancelled if nothing filled, as on the web. Options plans are read-only here.
 
 ## Rate limits
 

@@ -14,6 +14,7 @@ import (
 
 	"tradstry-mcp/analytics"
 	"tradstry-mcp/brokerage"
+	"tradstry-mcp/calculator"
 	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
@@ -38,6 +39,7 @@ Trades made outside a connected broker are recorded with add_manual_trade; take 
 A manual trade that overlaps a broker trade is left out of every total until the user says whether it is the same trade; ask them, then use resolve_possible_duplicate.
 To look into one playbook or tag, pass playbook or tag to list_trades or any analytics tool, then open trades with get_trade.
 Playbooks are the user's trading setups and principles their trading rules; take both from the user's own words. For principles, suggest switching one off rather than deleting it.
+To size a trade, use calculate_position; create_position_plan saves it so the journal can use the plan's stop for R. Take entries and stops from the user.
 Notes are Markdown. Read a note with get_note before changing it and prefer edit_note, which rewrites only what you change. Never invent media hashes or trade IDs, keep every <!-- tradstry:keep … --> line you do not mean to delete, and tell the user when an edit reports formatting_lost.`
 
 // Run serves until ctx is cancelled.
@@ -117,6 +119,7 @@ func newMCPServer(api *graphql.Client, publicURL string) (*mcp.Server, http.Hand
 	principles.Register(server, api, confirmer)
 	playbooks.Register(server, api, confirmer)
 	tags.Register(server, api, confirmer)
+	calculator.Register(server, api, confirmer)
 	return server, landing
 }
 
