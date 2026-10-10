@@ -201,9 +201,8 @@ services:
       - MCP_BIND_ADDR=0.0.0.0:7900
       - CLERK_ISSUER=https://clerk.tradstry.com
       - TRADSTRY_API_URL=http://backend:7899
-      # Tokens naming another server are always refused. Set true once Clerk's
-      # "Include Audience" is on and the logs show no tokens without an audience.
-      - MCP_REQUIRE_AUDIENCE=false
+      # Clerk's "Include Audience" is on, so every token must name this server.
+      - MCP_REQUIRE_AUDIENCE=true
       # The password is percent-encoded if it holds URL characters such as @ or /.
       - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
     networks:
