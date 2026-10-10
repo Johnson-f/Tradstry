@@ -74,6 +74,8 @@ async fn attached_trade_scope_overrides_model_filters() {
     let trade = journal::create_journal_entry(
         &user_db,
         CreateJournalEntryInput {
+            id: None,
+            fees: None,
             workspace_id: fixture.scope.workspace_id.clone(),
             open_date: "2026-08-01T14:00:00Z".into(),
             close_date: "2026-08-01T15:00:00Z".into(),

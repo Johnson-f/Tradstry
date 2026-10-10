@@ -58,6 +58,8 @@ export interface CreateJournalEntryInput {
   brokerageTransactionIds?: string[];
   /** 1 for equities; 100 (or 10 for minis) for option contracts. Drives dollar P&L. */
   contractMultiplier?: number;
+  /** Total fees and commissions. Leave it out when unknown; 0 means none. */
+  fees?: number | null;
 }
 
 export interface PublishBrokerageEpisodeReviewInput {

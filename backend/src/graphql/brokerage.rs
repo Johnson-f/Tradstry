@@ -18,6 +18,7 @@ use crate::service::brokerage::history_policy::{
     self, TransactionImportMode, TransactionImportPolicy,
 };
 use crate::service::brokerage::oauth::{self, SnapTradeOAuthConfig};
+use crate::service::brokerage::portal::PortalRedirects;
 use crate::service::brokerage::transaction;
 use crate::service::db::schema::tables::brokerage_table::{
     BrokerageBalance, BrokerageHolding, BrokerageTransaction, TransactionFilters,
@@ -1216,6 +1217,11 @@ impl BrokerageMutation {
         custom_redirect: Option<String>,
         reconnect: Option<bool>,
     ) -> Result<ConnectionPortal> {
+        if let Some(redirect) = custom_redirect.as_deref() {
+            ctx.data::<PortalRedirects>()?
+                .check(redirect)
+                .map_err(|error| async_graphql::Error::new(format!("{error:#}")))?;
+        }
         let user_db = get_user_db(ctx).await?;
         let brokerage_client = ctx.data::<Arc<BrokerageClient>>()?;
 

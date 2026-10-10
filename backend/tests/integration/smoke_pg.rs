@@ -95,6 +95,8 @@ async fn end_to_end_user_account_journal_tags() {
 
     // --- journal: create (timestamptz bind) + read back (to_char) + aggregate ---
     let input = journal_table::CreateJournalEntryInput {
+        id: None,
+        fees: None,
         workspace_id: workspace.id.clone(),
         open_date: "2026-01-02T14:30:00Z".to_string(),
         close_date: "2026-01-05T15:00:00Z".to_string(),

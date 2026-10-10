@@ -594,33 +594,6 @@ pub async fn principles_for_trades(
     Ok(map)
 }
 
-/// Batch per-trade principle-violation counts for the given journal entries,
-/// one query. Trades with zero violations are simply absent from the map
-/// (mirrors `tags_table::tags_for_trades`).
-pub async fn violation_counts_for_trades(
-    pool: &PgPool,
-    journal_entry_ids: &[String],
-) -> Result<HashMap<String, usize>> {
-    let mut map: HashMap<String, usize> = HashMap::new();
-    if journal_entry_ids.is_empty() {
-        return Ok(map);
-    }
-
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT journal_entry_id, COUNT(*) FROM trade_principle_violations \
-         WHERE journal_entry_id = ANY($1) GROUP BY journal_entry_id",
-    )
-    .bind(journal_entry_ids)
-    .fetch_all(pool)
-    .await
-    .context("Failed to batch-load principle violation counts for trades")?;
-
-    for (id, count) in rows {
-        map.insert(id, count as usize);
-    }
-    Ok(map)
-}
-
 // ---- Offline-first sync (whole-row LWW + soft-delete) --------------------
 
 /// The editable payload a `createPrinciple`/`updatePrinciple` mutation

@@ -7,5 +7,6 @@ pub mod notebook;
 pub mod playbook;
 pub mod principle;
 pub mod tags;
+pub mod trade_set;
 pub mod users;
 pub mod workspaces;

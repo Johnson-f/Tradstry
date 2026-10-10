@@ -317,6 +317,11 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                 .bind(&old.episode_id).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *tx).await?;
         }
     }
+    sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
+        .bind(&snapshot.user)
+        .bind(&snapshot.workspace)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("UPDATE journal_workspace_state SET projection_revision=$3,last_error=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2")
         .bind(&snapshot.workspace).bind(&snapshot.user).bind(snapshot.source_revision).execute(&mut *tx).await?;
     sqlx::query("UPDATE journal_projection_jobs SET state='complete',lease_owner=NULL,lease_until=NULL,last_error=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2 AND lease_owner=$3")
@@ -508,8 +513,18 @@ async fn legacy_link_match(
         WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.episode_id IS NULL AND l.brokerage_transaction_id=ANY($3)")
         .bind(&snapshot.user).bind(&snapshot.workspace).bind(&ids).fetch_all(&mut *connection).await?;
     if entries.is_empty() {
-        let duplicate:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM journal_entries j WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.source_kind='manual' AND j.deleted_at IS NULL AND j.retired_at IS NULL AND upper(j.symbol)=$3 AND j.open_date::date<=$5::timestamptz::date AND j.close_date::date>=$4::timestamptz::date AND NOT EXISTS(SELECT 1 FROM journal_brokerage_links WHERE journal_entry_id=j.id))")
-            .bind(&snapshot.user).bind(&snapshot.workspace).bind(match &draft.instrument {crate::service::trade_review::types::ExecutionInstrument::Equity{symbol}=>symbol.clone(),crate::service::trade_review::types::ExecutionInstrument::Option{underlying,..}=>underlying.clone()}).bind(draft.opened_at).bind(draft.closed_at.unwrap_or(draft.opened_at)).fetch_one(&mut *connection).await?;
+        let symbols = match &draft.instrument {
+            crate::service::trade_review::types::ExecutionInstrument::Equity { symbol } => {
+                vec![symbol.clone()]
+            }
+            crate::service::trade_review::types::ExecutionInstrument::Option {
+                underlying, ..
+            } => {
+                vec![underlying.clone()]
+            }
+        };
+        let duplicate:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM journal_entries j WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.source_kind='manual' AND j.deleted_at IS NULL AND j.retired_at IS NULL AND journal_trades_overlap(ARRAY[j.symbol],j.open_date,j.close_date,$3,$4,$5) AND NOT EXISTS(SELECT 1 FROM journal_brokerage_links WHERE journal_entry_id=j.id))")
+            .bind(&snapshot.user).bind(&snapshot.workspace).bind(&symbols).bind(draft.opened_at).bind(draft.closed_at.unwrap_or(draft.opened_at)).fetch_one(&mut *connection).await?;
         if duplicate {
             return Ok(LegacyLinkMatch::Ambiguous);
         }
@@ -591,7 +606,7 @@ async fn record_unassigned_issue(
     )
     .await?;
     let id = existing.unwrap_or_else(|| crate::ids::new_uuid_v7().to_string());
-    let duplicates:Vec<String>=sqlx::query_scalar("SELECT id FROM journal_entries WHERE user_id=$1 AND workspace_id=$2 AND source_kind='manual' AND upper(symbol)=upper($3) AND deleted_at IS NULL AND retired_at IS NULL AND open_date::date<=$5::timestamptz::date AND close_date::date>=$4::timestamptz::date ORDER BY id")
+    let duplicates:Vec<String>=sqlx::query_scalar("SELECT id FROM journal_entries WHERE user_id=$1 AND workspace_id=$2 AND source_kind='manual' AND deleted_at IS NULL AND retired_at IS NULL AND journal_trades_overlap(ARRAY[symbol],open_date,close_date,ARRAY[$3],$4,$5) ORDER BY id")
         .bind(&snapshot.user).bind(&snapshot.workspace).bind(&group.symbol).bind(group.fills.iter().map(|fill|fill.executed_at).min()).bind(group.fills.iter().map(|fill|fill.executed_at).max()).fetch_all(&mut *connection).await?;
     let issue = json!({"code":"incomplete_history","instrument_key":group.key,"source_ids":group.source_ids,"possible_duplicates":duplicates,"message":group.issue.as_deref().unwrap_or("Confirm opening inventory or grouping before calculating this trade")});
     sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,currency,issue_json,materialized_revision,record_version)

@@ -54,6 +54,7 @@ type TradeFormState = {
   exitPrice: string;
   positionSize: string;
   stopLoss: string;
+  fees: string;
   tradeType: TradeType;
   playbookId: string;
   notes: string;
@@ -74,6 +75,7 @@ const initialFormState: TradeFormState = {
   exitPrice: "",
   positionSize: "",
   stopLoss: "",
+  fees: "",
   tradeType: "long",
   playbookId: "",
   notes: "",
@@ -201,6 +203,8 @@ export function CreateTrades({
     if (!form.exitPrice.trim()) return "Exit price is required";
     if (!form.positionSize.trim()) return "Position size is required";
     if (!form.stopLoss.trim()) return "Stop loss is required";
+    if (form.fees.trim() && !(Number(form.fees) >= 0))
+      return "Fees must be zero or more";
     return "";
   }
 
@@ -239,6 +243,7 @@ export function CreateTrades({
       exitPrice: Number(form.exitPrice),
       positionSize: Number(form.positionSize),
       stopLoss: Number(form.stopLoss),
+      fees: form.fees.trim() ? Number(form.fees) : undefined,
       playbookId: form.playbookId || undefined,
       tradeType: form.tradeType,
       tagIds,
@@ -475,6 +480,18 @@ export function CreateTrades({
                   value={form.stopLoss}
                   onChange={(event) => setField("stopLoss", event.target.value)}
                   placeholder="0.00"
+                />
+              </Field>
+
+              <Field label="Fees (optional)" htmlFor="trade-fees">
+                <Input
+                  id="trade-fees"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.fees}
+                  onChange={(event) => setField("fees", event.target.value)}
+                  placeholder="Commissions and fees"
                 />
               </Field>
 

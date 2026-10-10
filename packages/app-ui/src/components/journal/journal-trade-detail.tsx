@@ -297,6 +297,9 @@ function TradeEditor({
 	const contentViewport = React.useRef<HTMLDivElement>(null);
 	const [marking, setMarking] = React.useState(false);
 	const [creatingNote, setCreatingNote] = React.useState(false);
+	const [separating, setSeparating] = React.useState<"ask" | "saving" | null>(
+		null,
+	);
 	const [grouping, setGrouping] = React.useState<
 		"split" | "undo" | "resolve" | null
 	>(null);
@@ -450,6 +453,34 @@ function TradeEditor({
 			}
 		} finally {
 			setMarking(false);
+		}
+	};
+	const keepSeparate = async () => {
+		setSeparating("saving");
+		setError(null);
+		try {
+			await flow.execute(
+				fetcher,
+				flow.command(
+					flow.KEEP_SEPARATE,
+					"keepManualTradeSeparate",
+					{
+						workspaceId: props.workspaceId,
+						entryId: trade.id,
+						expectedVersion: trade.recordVersion,
+					},
+					owner,
+				),
+			);
+			await refresh();
+		} catch (reason) {
+			setError(
+				reason instanceof Error
+					? reason.message
+					: "Could not keep this trade separate",
+			);
+		} finally {
+			setSeparating(null);
 		}
 	};
 	const openNotes = async () => {
@@ -759,9 +790,44 @@ function TradeEditor({
 						{!!trade.possibleDuplicates?.length && (
 							<div className="rounded-lg border border-amber-500/20 px-4 py-3 text-sm">
 								<p>
-									Compare these existing entries before recording a separate
-									trade.
+									{trade.issueCode === "possible_duplicate"
+										? "This trade is left out of your totals until you decide. If it is the broker trade below, merge them; if you made both trades, keep it separate."
+										: "Compare these existing entries before recording a separate trade."}
 								</p>
+								{!readOnly && trade.issueCode === "possible_duplicate" && (
+									<div className="mt-2 flex flex-wrap items-center gap-2">
+										{separating === null ? (
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => setSeparating("ask")}
+											>
+												Keep as a separate trade
+											</Button>
+										) : (
+											<>
+												<span className="text-muted-foreground">
+													Both trades will count in every total.
+												</span>
+												<Button
+													size="sm"
+													disabled={separating === "saving"}
+													onClick={() => void keepSeparate()}
+												>
+													Yes, I made both trades
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled={separating === "saving"}
+													onClick={() => setSeparating(null)}
+												>
+													Cancel
+												</Button>
+											</>
+										)}
+									</div>
+								)}
 								{trade.possibleDuplicates.map((id) => (
 									<Button
 										key={id}

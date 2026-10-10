@@ -43,10 +43,24 @@ pub struct JournalEntry {
     /// Immutable insertion time (RFC3339, microsecond precision). The stable
     /// keyset-pagination cursor field (close_date is user-editable, so unsafe).
     pub created_at: String,
+    /// Broker trades this manual trade may duplicate. While any are listed the
+    /// trade is held for review and left out of every total.
+    #[serde(default)]
+    pub possible_duplicates: Vec<String>,
+    /// Fees paid on the trade. `None` means they were never entered.
+    #[serde(default)]
+    pub fees: Option<f64>,
+    /// Changes with every save; pass it back as `expectedVersion` to refuse an
+    /// update based on a stale read.
+    #[serde(default)]
+    pub record_version: i64,
 }
 
 #[derive(Debug, InputObject)]
 pub struct CreateJournalEntryInput {
+    /// A UUID the client chose for the new trade. Sending the same id again
+    /// returns the trade it already created instead of adding another.
+    pub id: Option<String>,
     pub workspace_id: String,
     pub open_date: String,
     pub close_date: String,
@@ -66,6 +80,8 @@ pub struct CreateJournalEntryInput {
     pub revenge_trade: Option<bool>,
     pub rule_adherence_score: Option<i32>,
     pub contract_multiplier: Option<f64>,
+    /// Total fees and commissions. Leave it out when unknown; 0 means none.
+    pub fees: Option<f64>,
     pub brokerage_transaction_ids: Option<Vec<String>>,
     /// Tag ids to attach to this trade. Persisted separately via
     /// `tags_table::set_trade_tags`; ignored by the journal_entries writer.
@@ -102,6 +118,13 @@ pub struct UpdateJournalEntryInput {
     pub is_planned_pre_market: Option<bool>,
     pub revenge_trade: Option<bool>,
     pub rule_adherence_score: Option<i32>,
+    pub fees: Option<f64>,
+    /// Marks the fees as unknown again.
+    #[graphql(default)]
+    pub clear_fees: bool,
+    /// The `recordVersion` the change is based on. When it no longer matches,
+    /// the update is refused with CONFLICT instead of overwriting another save.
+    pub expected_version: Option<i64>,
     /// Tag ids to attach to this trade. Persisted separately via
     /// `tags_table::set_trade_tags`; ignored by the journal_entries writer.
     /// `None` (field omitted) leaves the trade's tags untouched; `Some([])`
@@ -140,15 +163,16 @@ struct PreparedJournalEntry {
     revenge_trade: Option<bool>,
     rule_adherence_score: Option<i32>,
     contract_multiplier: f64,
+    fees: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
-struct DerivedMetrics {
-    status: String,
-    total_pl: f64,
-    net_roi: f64,
-    duration: i64,
-    risk_reward: Option<f64>,
+pub(crate) struct DerivedMetrics {
+    pub(crate) status: String,
+    pub(crate) total_pl: f64,
+    pub(crate) net_roi: f64,
+    pub(crate) duration: i64,
+    pub(crate) risk_reward: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,14 +200,6 @@ pub struct TradeOutcomeRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CalendarDayAggregateRow {
-    pub date: String,
-    pub profit: f64,
-    pub trade_count: i64,
-    pub winning_trade_count: i64,
-}
-
-#[derive(Debug, Clone)]
 pub struct PlaybookStatsRow {
     pub playbook_id: String,
     pub total_trades: i64,
@@ -206,16 +222,15 @@ pub struct PrincipleStatsRow {
     pub cumulative_roi: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtremeKind {
-    Best,
-    Worst,
-}
-
-const SELECT_COLS: &str = "id, user_id, workspace_id, to_char(open_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS open_date, to_char(close_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS created_at, contract_multiplier";
+const SELECT_COLS: &str = "id, user_id, workspace_id, to_char(open_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS open_date, to_char(close_date AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS created_at, contract_multiplier, ARRAY(SELECT jsonb_array_elements_text(CASE WHEN issue_json->>'code' = 'possible_duplicate' THEN issue_json->'possible_duplicates' END)) AS possible_duplicates, fees_paid::float8 AS fees, record_version";
 
 const DOLLAR_PL_EXPR: &str = "COALESCE(realized_net::double precision, position_size * entry_price * total_pl / 100.0 * contract_multiplier)";
+const DOLLAR_PL_NUMERIC: &str = "COALESCE(realized_net, (position_size * entry_price * total_pl / 100.0 * contract_multiplier)::numeric)";
 const LEGACY_COMPLETE: &str = "lifecycle_state='closed' AND retired_at IS NULL AND open_date IS NOT NULL AND close_date IS NOT NULL AND entry_price IS NOT NULL AND exit_price IS NOT NULL AND position_size IS NOT NULL AND status IS NOT NULL AND total_pl IS NOT NULL AND net_roi IS NOT NULL AND duration IS NOT NULL AND (currency IS NULL OR currency=(SELECT currency FROM workspaces WHERE id=journal_entries.workspace_id AND user_id=journal_entries.user_id))";
+/// A manual trade held as a possible duplicate: not counted, but still the
+/// user's to open, edit and delete.
+const HELD_MANUAL: &str =
+    "source_kind='manual' AND retired_at IS NULL AND issue_json->>'code'='possible_duplicate'";
 const ALIASED_COMPLETE: &str = "e.lifecycle_state='closed' AND e.retired_at IS NULL AND e.open_date IS NOT NULL AND e.close_date IS NOT NULL AND e.entry_price IS NOT NULL AND e.exit_price IS NOT NULL AND e.position_size IS NOT NULL AND e.status IS NOT NULL AND e.total_pl IS NOT NULL AND e.net_roi IS NOT NULL AND e.duration IS NOT NULL AND (e.currency IS NULL OR e.currency=(SELECT currency FROM workspaces WHERE id=e.workspace_id AND user_id=e.user_id))";
 
 fn row_to_journal_entry(row: &sqlx::postgres::PgRow) -> Result<JournalEntry> {
@@ -250,6 +265,9 @@ fn row_to_journal_entry(row: &sqlx::postgres::PgRow) -> Result<JournalEntry> {
         rule_adherence_score: row.try_get::<Option<i32>, _>(27)?,
         created_at: row.try_get::<String, _>(28)?,
         contract_multiplier: row.try_get::<f64, _>(29).unwrap_or(1.0),
+        possible_duplicates: row.try_get::<Vec<String>, _>(30)?,
+        fees: row.try_get::<Option<f64>, _>(31)?,
+        record_version: row.try_get::<i64, _>(32)?,
     })
 }
 
@@ -337,7 +355,7 @@ fn ensure_non_negative_price(value: f64, field: &str) -> Result<f64> {
     Ok(value)
 }
 
-fn calculate_derived_metrics(
+pub(crate) fn derived_metrics(
     open_date: &str,
     close_date: &str,
     entry_price: f64,
@@ -394,6 +412,31 @@ fn calculate_derived_metrics(
     })
 }
 
+/// With fees known, the outcome and return follow the money after fees, as they
+/// do for broker trades. The price return (`total_pl`) stays before fees.
+fn settle_fees(
+    metrics: &mut DerivedMetrics,
+    entry_price: f64,
+    position_size: f64,
+    contract_multiplier: f64,
+    fees: Option<f64>,
+) {
+    let Some(fees) = fees else { return };
+    let cost = entry_price * position_size * contract_multiplier;
+    let net = cost * metrics.total_pl / 100.0 - fees;
+    metrics.status = if net < 0.0 { "loss" } else { "profit" }.to_string();
+    if cost > 0.0 {
+        metrics.net_roi = net / cost * 100.0;
+    }
+}
+
+fn ensure_fees(fees: Option<f64>) -> Result<Option<f64>> {
+    if let Some(fees) = fees {
+        ensure!(fees.is_finite() && fees >= 0.0, "fees cannot be negative");
+    }
+    Ok(fees)
+}
+
 async fn prepare_new_entry(input: CreateJournalEntryInput) -> Result<PreparedJournalEntry> {
     let workspace_id = normalize_required_text(&input.workspace_id, "workspace_id")?;
     let open_date = normalize_required_text(&input.open_date, "open_date")?;
@@ -423,7 +466,7 @@ async fn prepare_new_entry(input: CreateJournalEntryInput) -> Result<PreparedJou
         );
     }
     let symbol_name = resolve_symbol_name(&symbol, input.symbol_name).await?;
-    let metrics = calculate_derived_metrics(
+    let mut metrics = derived_metrics(
         &open_date,
         &close_date,
         entry_price,
@@ -431,6 +474,15 @@ async fn prepare_new_entry(input: CreateJournalEntryInput) -> Result<PreparedJou
         stop_loss,
         &trade_type,
     )?;
+    let fees = ensure_fees(input.fees)?;
+    let contract_multiplier = input.contract_multiplier.unwrap_or(1.0);
+    settle_fees(
+        &mut metrics,
+        entry_price,
+        position_size,
+        contract_multiplier,
+        fees,
+    );
 
     Ok(PreparedJournalEntry {
         workspace_id,
@@ -461,7 +513,8 @@ async fn prepare_new_entry(input: CreateJournalEntryInput) -> Result<PreparedJou
         is_planned_pre_market: input.is_planned_pre_market,
         revenge_trade: input.revenge_trade,
         rule_adherence_score: input.rule_adherence_score,
-        contract_multiplier: input.contract_multiplier.unwrap_or(1.0),
+        contract_multiplier,
+        fees,
     })
 }
 
@@ -523,8 +576,14 @@ async fn prepare_updated_entry(
         .or(current.is_planned_pre_market);
     let revenge_trade = input.revenge_trade.or(current.revenge_trade);
     let rule_adherence_score = input.rule_adherence_score.or(current.rule_adherence_score);
+    let fees = if input.clear_fees {
+        None
+    } else {
+        input.fees.or(current.fees)
+    };
 
     prepare_new_entry(CreateJournalEntryInput {
+        id: None,
         workspace_id,
         open_date,
         close_date,
@@ -544,6 +603,7 @@ async fn prepare_updated_entry(
         revenge_trade,
         rule_adherence_score,
         contract_multiplier: Some(current.contract_multiplier),
+        fees,
         brokerage_transaction_ids: None,
         tag_ids: Vec::new(),
         violated_principle_ids: Vec::new(),
@@ -791,14 +851,14 @@ pub async fn aggregate_journal_analytics(
         "
         SELECT
             COUNT(*) AS total_trades,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
             COALESCE(SUM({DOLLAR_PL_EXPR}), 0.0) AS cumulative_profit,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss,
             COALESCE(SUM(CASE WHEN NOT EXISTS(SELECT 1 FROM journal_workspace_state s WHERE s.workspace_id=journal_entries.workspace_id AND s.user_id=journal_entries.user_id AND s.enabled) THEN risk_reward END), 0.0) AS sum_risk_reward,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN total_pl ELSE 0.0 END), 0.0) AS sum_win_pct,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS(total_pl) ELSE 0.0 END), 0.0) AS sum_loss_pct,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN total_pl ELSE 0.0 END), 0.0) AS sum_win_pct,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN ABS(total_pl) ELSE 0.0 END), 0.0) AS sum_loss_pct,
             COUNT(CASE WHEN NOT EXISTS(SELECT 1 FROM journal_workspace_state s WHERE s.workspace_id=journal_entries.workspace_id AND s.user_id=journal_entries.user_id AND s.enabled) THEN risk_reward END) AS risk_reward_count
         FROM journal_entries
         WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
@@ -832,95 +892,6 @@ pub async fn aggregate_journal_analytics(
     })
 }
 
-/// Returns `None` if no profitable (Best) or losing (Worst) trade exists in the window.
-pub async fn find_extreme_trade(
-    pool: &PgPool,
-    user_id: &str,
-    workspace_id: &str,
-    start_iso: &str,
-    end_iso: &str,
-    kind: ExtremeKind,
-) -> Result<Option<TradeOutcomeRow>> {
-    let (sign_filter, order) = match kind {
-        ExtremeKind::Best => ("> 0", "DESC"),
-        ExtremeKind::Worst => ("< 0", "ASC"),
-    };
-
-    let sql = format!(
-        "SELECT symbol, symbol_name, {DOLLAR_PL_EXPR} AS amount
-         FROM journal_entries
-         WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
-           AND workspace_id = $2
-           AND close_date >= $3
-           AND close_date <= $4
-           AND total_pl {sign_filter}
-         ORDER BY amount {order}
-         LIMIT 1"
-    );
-
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .bind(parse_flexible_datetime(start_iso)?)
-        .bind(parse_flexible_datetime(end_iso)?)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to query extreme trade")?;
-
-    match row {
-        Some(row) => Ok(Some(TradeOutcomeRow {
-            symbol: row.try_get::<String, _>(0)?,
-            symbol_name: row.try_get::<String, _>(1)?,
-            amount: row.try_get::<f64, _>(2)?,
-        })),
-        None => Ok(None),
-    }
-}
-
-pub async fn aggregate_calendar_days(
-    pool: &PgPool,
-    user_id: &str,
-    workspace_id: &str,
-    month_start_iso: &str,
-    month_end_iso: &str,
-) -> Result<Vec<CalendarDayAggregateRow>> {
-    let sql = format!(
-        "
-        SELECT
-            to_char(close_date AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
-            COALESCE(SUM({DOLLAR_PL_EXPR}), 0.0) AS profit,
-            COUNT(*) AS trade_count,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trade_count
-        FROM journal_entries
-        WHERE user_id = $1 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
-          AND workspace_id = $2
-          AND close_date >= $3
-          AND close_date <= $4
-        GROUP BY to_char(close_date AT TIME ZONE 'UTC', 'YYYY-MM-DD')
-    "
-    );
-
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .bind(parse_flexible_datetime(month_start_iso)?)
-        .bind(parse_flexible_datetime(month_end_iso)?)
-        .fetch_all(pool)
-        .await
-        .context("Failed to aggregate calendar days")?;
-
-    let mut days = Vec::new();
-    for row in &rows {
-        days.push(CalendarDayAggregateRow {
-            date: row.try_get::<String, _>(0)?,
-            profit: row.try_get::<f64, _>(1)?,
-            trade_count: row.try_get::<i64, _>(2)?,
-            winning_trade_count: row.try_get::<i64, _>(3)?,
-        });
-    }
-    Ok(days)
-}
-
 pub async fn find_journal_entry<'e, E>(
     executor: E,
     id: &str,
@@ -930,7 +901,7 @@ where
     E: sqlx::PgExecutor<'e>,
 {
     let sql = format!(
-        "SELECT {SELECT_COLS} FROM journal_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND {LEGACY_COMPLETE}"
+        "SELECT {SELECT_COLS} FROM journal_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND (({LEGACY_COMPLETE}) OR ({HELD_MANUAL}))"
     );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(id)
@@ -950,7 +921,28 @@ pub async fn create_journal_entry(
     user_id: &str,
     input: CreateJournalEntryInput,
 ) -> Result<JournalEntry> {
-    let id = crate::ids::new_uuid_v7().to_string();
+    let id = match input.id.as_deref() {
+        Some(id) => uuid::Uuid::parse_str(id)
+            .map_err(|_| anyhow!("id must be a UUID"))?
+            .to_string(),
+        None => crate::ids::new_uuid_v7().to_string(),
+    };
+    if input.id.is_some() {
+        let owner: Option<String> =
+            sqlx::query_scalar("SELECT user_id FROM journal_entries WHERE id = $1")
+                .bind(&id)
+                .fetch_optional(pool)
+                .await?;
+        match owner {
+            Some(owner) if owner == user_id => {
+                return find_journal_entry(pool, &id, user_id)
+                    .await?
+                    .context("This trade was already created and then removed");
+            }
+            Some(_) => return Err(anyhow!("id is already in use")),
+            None => {}
+        }
+    }
     let brokerage_tx_ids = input.brokerage_transaction_ids.clone();
     let mut entry = prepare_new_entry(input).await?;
     entry.playbook_id =
@@ -965,7 +957,7 @@ pub async fn create_journal_entry(
     }
 
     sqlx::query(
-        "INSERT INTO journal_entries (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, contract_multiplier, hlc) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
+        "INSERT INTO journal_entries (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, contract_multiplier, hlc, fees_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31::float8::numeric)",
     )
     .bind(id.as_str())
     .bind(user_id)
@@ -997,6 +989,7 @@ pub async fn create_journal_entry(
     .bind(entry.rule_adherence_score)
     .bind(entry.contract_multiplier)
     .bind(crate::service::hlc::stamp())
+    .bind(entry.fees)
     .execute(&mut *transaction)
     .await
     .context("Failed to insert journal entry")?;
@@ -1023,6 +1016,9 @@ pub async fn update_journal_entry(
     let current = find_journal_entry(pool, id, user_id)
         .await?
         .context("Journal entry not found")?;
+    // Checked by the UPDATE itself, so a save between this read and the write
+    // is caught too.
+    let expected_version = input.expected_version;
     let entry = prepare_updated_entry(&current, input).await?;
     let entry = PreparedJournalEntry {
         playbook_id: validate_playbook_exists(
@@ -1038,10 +1034,10 @@ pub async fn update_journal_entry(
     let open_ts = parse_flexible_datetime(&entry.open_date)?;
     let close_ts = parse_flexible_datetime(&entry.close_date)?;
 
-    sqlx::query(
+    let updated = sqlx::query(
         // Legacy freeform columns (mistakes/entry_tactics/edges_spotted) are
         // intentionally omitted from the UPDATE set so they stay frozen.
-        "UPDATE journal_entries SET workspace_id = $1, open_date = $2, close_date = $3, entry_price = $4, exit_price = $5, position_size = $6, symbol = $7, symbol_name = $8, status = $9, total_pl = $10, net_roi = $11, duration = $12, stop_loss = $13, risk_reward = $14, trade_type = $15, playbook_id = $16, notes = $17, broke_30min_rule = $18, pre_trade_conviction = $19, market_regime = $20, is_planned_pre_market = $21, revenge_trade = $22, rule_adherence_score = $23, hlc = $24 WHERE id = $25 AND user_id = $26",
+        "UPDATE journal_entries SET workspace_id = $1, open_date = $2, close_date = $3, entry_price = $4, exit_price = $5, position_size = $6, symbol = $7, symbol_name = $8, status = $9, total_pl = $10, net_roi = $11, duration = $12, stop_loss = $13, risk_reward = $14, trade_type = $15, playbook_id = $16, notes = $17, broke_30min_rule = $18, pre_trade_conviction = $19, market_regime = $20, is_planned_pre_market = $21, revenge_trade = $22, rule_adherence_score = $23, hlc = $24, fees_paid = $27::float8::numeric WHERE id = $25 AND user_id = $26 AND ($28::bigint IS NULL OR record_version = $28)",
     )
     .bind(entry.workspace_id.as_str())
     .bind(open_ts)
@@ -1069,9 +1065,15 @@ pub async fn update_journal_entry(
     .bind(crate::service::hlc::stamp())
     .bind(id)
     .bind(user_id)
+    .bind(entry.fees)
+    .bind(expected_version)
     .execute(pool)
     .await
     .context("Failed to update journal entry")?;
+    ensure!(
+        updated.rows_affected() > 0,
+        "CONFLICT: this trade changed on another device"
+    );
 
     find_journal_entry(pool, id, user_id)
         .await?
@@ -1226,6 +1228,77 @@ pub async fn list_linked_brokerage_transaction_ids(
     Ok(ids)
 }
 
+/// Where a counted trade came from and the money it realized.
+pub struct TradeSource {
+    pub id: String,
+    pub manual: bool,
+    pub episode_id: Option<String>,
+    pub money: rust_decimal::Decimal,
+}
+
+pub async fn trade_sources(
+    pool: &PgPool,
+    user_id: &str,
+    entry_ids: &[String],
+) -> Result<Vec<TradeSource>> {
+    if entry_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "SELECT id, source_kind, episode_id, ({DOLLAR_PL_NUMERIC})::text FROM journal_entries WHERE user_id = $1 AND id = ANY($2)"
+    );
+    let rows: Vec<(String, String, Option<String>, Option<String>)> =
+        sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .bind(user_id)
+            .bind(entry_ids)
+            .fetch_all(pool)
+            .await
+            .context("Failed to load trade sources")?;
+    rows.into_iter()
+        .map(|(id, kind, episode_id, money)| {
+            Ok(TradeSource {
+                money: money.as_deref().unwrap_or("0").parse()?,
+                manual: kind == "manual",
+                episode_id,
+                id,
+            })
+        })
+        .collect()
+}
+
+/// Journal trades that are not counted yet: open positions, and trades waiting
+/// for the user, possible duplicates among them.
+pub struct AttentionCounts {
+    pub open: usize,
+    pub needs_review: usize,
+    pub possible_duplicates: usize,
+}
+
+pub async fn attention_counts(
+    pool: &PgPool,
+    user_id: &str,
+    workspace_id: &str,
+) -> Result<AttentionCounts> {
+    let sql = format!(
+        "SELECT count(*) FILTER (WHERE lifecycle_state = 'open'),
+                count(*) FILTER (WHERE lifecycle_state = 'incomplete' OR (lifecycle_state = 'closed' AND NOT ({LEGACY_COMPLETE}))),
+                count(*) FILTER (WHERE {HELD_MANUAL})
+         FROM journal_entries WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND retired_at IS NULL"
+    );
+    let (open, needs_review, possible_duplicates): (i64, i64, i64) =
+        sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .bind(user_id)
+            .bind(workspace_id)
+            .fetch_one(pool)
+            .await
+            .context("Failed to count journal trades needing attention")?;
+    Ok(AttentionCounts {
+        open: open.try_into()?,
+        needs_review: needs_review.try_into()?,
+        possible_duplicates: possible_duplicates.try_into()?,
+    })
+}
+
 /// Load all journal entries for `workspace_id` whose `close_date` falls within
 /// [`start_iso`, `end_iso`] (inclusive), using the same `datetime()` comparison
 /// convention as `aggregate_journal_analytics`. Results are ordered by
@@ -1270,11 +1343,11 @@ pub async fn aggregate_stats_per_playbook(
         "SELECT
             playbook_id,
             COUNT(*) AS total_trades,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
             COALESCE(SUM({DOLLAR_PL_EXPR}), 0.0) AS cumulative_profit,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
          FROM journal_entries
          WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND {LEGACY_COMPLETE}
            AND playbook_id IS NOT NULL
@@ -1313,11 +1386,11 @@ pub async fn aggregate_stats_for_playbook(
         "SELECT
             playbook_id,
             COUNT(*) AS total_trades,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
             COALESCE(SUM({DOLLAR_PL_EXPR}), 0.0) AS cumulative_profit,
-            COALESCE(SUM(CASE WHEN total_pl > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
-            COALESCE(SUM(CASE WHEN total_pl < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) > 0 THEN {DOLLAR_PL_EXPR} ELSE 0.0 END), 0.0) AS gross_profit,
+            COALESCE(SUM(CASE WHEN ({DOLLAR_PL_EXPR}) < 0 THEN ABS({DOLLAR_PL_EXPR}) ELSE 0.0 END), 0.0) AS gross_loss
          FROM journal_entries
          WHERE user_id = $1 AND workspace_id = $2 AND playbook_id = $3
            AND deleted_at IS NULL AND {LEGACY_COMPLETE}
@@ -1360,8 +1433,8 @@ pub async fn aggregate_violation_stats_per_principle(
         "SELECT
             v.principle_id,
             COUNT(*) AS total_trades,
-            COALESCE(SUM(CASE WHEN e.total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
-            COALESCE(SUM(CASE WHEN e.total_pl < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
+            COALESCE(SUM(CASE WHEN ({ALIASED_DOLLAR_PL}) > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
+            COALESCE(SUM(CASE WHEN ({ALIASED_DOLLAR_PL}) < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
             COALESCE(SUM({ALIASED_DOLLAR_PL}), 0.0) AS cumulative_profit,
             COALESCE(SUM(e.total_pl), 0.0) AS cumulative_roi
          FROM trade_principle_violations v
@@ -1404,8 +1477,8 @@ pub async fn aggregate_violation_stats_for_principle(
         "SELECT
             v.principle_id,
             COUNT(*) AS total_trades,
-            COALESCE(SUM(CASE WHEN e.total_pl > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
-            COALESCE(SUM(CASE WHEN e.total_pl < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
+            COALESCE(SUM(CASE WHEN ({ALIASED_DOLLAR_PL}) > 0 THEN 1 ELSE 0 END), 0) AS winning_trades,
+            COALESCE(SUM(CASE WHEN ({ALIASED_DOLLAR_PL}) < 0 THEN 1 ELSE 0 END), 0) AS losing_trades,
             COALESCE(SUM({ALIASED_DOLLAR_PL}), 0.0) AS cumulative_profit,
             COALESCE(SUM(e.total_pl), 0.0) AS cumulative_roi
          FROM trade_principle_violations v
@@ -1439,7 +1512,7 @@ pub async fn aggregate_violation_stats_for_principle(
 /// The editable payload a `createJournalEntry`/`updateJournalEntry` mutation
 /// carries. The server recomputes the derived fields
 /// (status/total_pl/net_roi/duration/risk_reward) from these raw fields via
-/// `calculate_derived_metrics` and writes them + the client's `hlc`; clients
+/// `derived_metrics` and writes them + the client's `hlc`; clients
 /// never send derived fields and all conflict resolution is client-side.
 pub struct JournalWriteArgs {
     pub id: String,
@@ -1464,6 +1537,9 @@ pub struct JournalWriteArgs {
     pub tag_ids: Vec<String>,
     pub violated_principle_ids: Vec<String>,
     pub contract_multiplier: f64,
+    /// `None` on an update keeps the fees already saved, so a client that does
+    /// not know about fees never clears them.
+    pub fees: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -1633,7 +1709,8 @@ pub async fn create_journal_entry_tx(
             "playbook '{playbook_id}' was not found in this workspace"
         );
     }
-    let metrics = calculate_derived_metrics(
+    let fees = ensure_fees(args.fees)?;
+    let mut metrics = derived_metrics(
         &args.open_date,
         &args.close_date,
         args.entry_price,
@@ -1641,12 +1718,19 @@ pub async fn create_journal_entry_tx(
         args.stop_loss,
         &args.trade_type,
     )?;
+    settle_fees(
+        &mut metrics,
+        args.entry_price,
+        args.position_size,
+        args.contract_multiplier,
+        fees,
+    );
     let open_ts = parse_flexible_datetime(&args.open_date)?;
     let close_ts = parse_flexible_datetime(&args.close_date)?;
 
     sqlx::query(
-        "INSERT INTO journal_entries (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, contract_multiplier, hlc) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, '', '', '', $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) \
+        "INSERT INTO journal_entries (id, user_id, workspace_id, open_date, close_date, entry_price, exit_price, position_size, symbol, symbol_name, status, total_pl, net_roi, duration, stop_loss, risk_reward, trade_type, mistakes, entry_tactics, edges_spotted, playbook_id, notes, broke_30min_rule, pre_trade_conviction, market_regime, is_planned_pre_market, revenge_trade, rule_adherence_score, contract_multiplier, hlc, fees_paid) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, '', '', '', $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28::float8::numeric) \
          ON CONFLICT (id) DO NOTHING",
     )
     .bind(&args.id)
@@ -1676,6 +1760,7 @@ pub async fn create_journal_entry_tx(
     .bind(args.rule_adherence_score)
     .bind(args.contract_multiplier)
     .bind(hlc)
+    .bind(fees)
     .execute(&mut *conn)
     .await
     .context("create_journal_entry_tx")?;
@@ -1716,7 +1801,18 @@ pub async fn update_journal_entry_tx(
             "playbook '{playbook_id}' was not found in this workspace"
         );
     }
-    let metrics = calculate_derived_metrics(
+    let fees = match ensure_fees(args.fees)? {
+        Some(fees) => Some(fees),
+        None => sqlx::query_scalar::<_, Option<f64>>(
+            "SELECT fees_paid::float8 FROM journal_entries WHERE id = $1 AND user_id = $2",
+        )
+        .bind(&args.id)
+        .bind(user_id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .flatten(),
+    };
+    let mut metrics = derived_metrics(
         &args.open_date,
         &args.close_date,
         args.entry_price,
@@ -1724,6 +1820,13 @@ pub async fn update_journal_entry_tx(
         args.stop_loss,
         &args.trade_type,
     )?;
+    settle_fees(
+        &mut metrics,
+        args.entry_price,
+        args.position_size,
+        args.contract_multiplier,
+        fees,
+    );
     let open_ts = parse_flexible_datetime(&args.open_date)?;
     let close_ts = parse_flexible_datetime(&args.close_date)?;
 
@@ -1734,8 +1837,8 @@ pub async fn update_journal_entry_tx(
          exit_price = $5, position_size = $6, symbol = $7, symbol_name = $8, status = $9, total_pl = $10, \
          net_roi = $11, duration = $12, stop_loss = $13, risk_reward = $14, trade_type = $15, playbook_id = $16, \
          notes = $17, broke_30min_rule = $18, pre_trade_conviction = $19, market_regime = $20, \
-         is_planned_pre_market = $21, revenge_trade = $22, rule_adherence_score = $23, hlc = $24, updated_at = now() \
-         WHERE id = $25 AND user_id = $26",
+         is_planned_pre_market = $21, revenge_trade = $22, rule_adherence_score = $23, hlc = $24, updated_at = now(), \
+         fees_paid = $27::float8::numeric WHERE id = $25 AND user_id = $26",
     )
     .bind(&args.workspace_id)
     .bind(open_ts)
@@ -1763,6 +1866,7 @@ pub async fn update_journal_entry_tx(
     .bind(hlc)
     .bind(&args.id)
     .bind(user_id)
+    .bind(fees)
     .execute(&mut *conn)
     .await
     .context("update_journal_entry_tx")?;
@@ -1874,13 +1978,12 @@ pub async fn journal_entries_since(
 
 #[cfg(test)]
 mod tests {
-    use super::calculate_derived_metrics;
+    use super::derived_metrics;
 
     #[test]
     fn calculates_metrics_for_long_trade() {
         let metrics =
-            calculate_derived_metrics("2026-01-01", "2026-01-03", 100.0, 110.0, Some(95.0), "long")
-                .unwrap();
+            derived_metrics("2026-01-01", "2026-01-03", 100.0, 110.0, Some(95.0), "long").unwrap();
 
         assert_eq!(metrics.status, "profit");
         assert_eq!(metrics.total_pl, 10.0);
@@ -1891,7 +1994,7 @@ mod tests {
 
     #[test]
     fn calculates_metrics_for_short_trade() {
-        let metrics = calculate_derived_metrics(
+        let metrics = derived_metrics(
             "2026-01-01T09:00:00Z",
             "2026-01-01T11:30:00Z",
             100.0,
@@ -1910,7 +2013,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_stop_loss_position() {
-        let error = calculate_derived_metrics(
+        let error = derived_metrics(
             "2026-01-01",
             "2026-01-02",
             100.0,

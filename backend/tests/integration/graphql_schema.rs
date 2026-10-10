@@ -162,3 +162,68 @@ fn schema_builds_without_duplicate_type_names() {
     assert!(!sdl.contains("accountEquityHistory("));
     assert!(!sdl.contains("rebuildAccountEquityHistory("));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_connection_portal_only_returns_to_allowed_origins() {
+    use tradstry_backend::service::brokerage::portal::PortalRedirects;
+
+    let schema = Schema::build(
+        Query::default(),
+        Mutation::default(),
+        Subscription::default(),
+    )
+    .data(PortalRedirects::new(["https://tradstry.com"]).unwrap())
+    .finish();
+    let initiate = |redirect: &str| {
+        async_graphql::Request::new(
+            "mutation($r: String) { initiateBrokerageConnection(workspaceId: \"ws1\", customRedirect: $r) { redirectUrl } }",
+        )
+        .variables(async_graphql::Variables::from_json(
+            serde_json::json!({ "r": redirect }),
+        ))
+    };
+
+    let refused = schema.execute(initiate("https://evil.example/steal")).await;
+    assert!(
+        refused.errors[0]
+            .message
+            .contains("not allowed to return to https://evil.example"),
+        "{:?}",
+        refused.errors
+    );
+
+    // An allowed address passes the check and only fails later, for want of a
+    // signed-in user in this schema.
+    let allowed = schema
+        .execute(initiate(
+            "https://tradstry.com/dashboard/brokerage/callback",
+        ))
+        .await;
+    assert!(!allowed.errors[0].message.contains("not allowed"));
+}
+
+/// Clients outside this crate, such as the Go MCP server, validate their queries
+/// against this file, so it must match the schema the backend serves. Regenerate
+/// it with `UPDATE_GRAPHQL_SCHEMA=1 cargo test --test integration graphql_schema::`.
+#[test]
+fn exported_schema_matches_the_served_schema() {
+    let sdl = Schema::build(
+        Query::default(),
+        Mutation::default(),
+        Subscription::default(),
+    )
+    .finish()
+    .sdl();
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/graphql/schema.graphql");
+    if std::env::var_os("UPDATE_GRAPHQL_SCHEMA").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, &sdl).unwrap();
+    }
+    let exported = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        exported == sdl,
+        "{} is out of date; regenerate it with UPDATE_GRAPHQL_SCHEMA=1",
+        path.display()
+    );
+}

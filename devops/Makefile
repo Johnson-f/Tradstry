@@ -165,6 +165,11 @@ done
 docker exec "$$TEST_PG_CONTAINER" psql -U postgres -q \
   -c "CREATE ROLE tradstry LOGIN SUPERUSER PASSWORD 'tradstry'" \
   -c "CREATE DATABASE tradstry_test OWNER tradstry" >/dev/null
+# Installed up front because test processes bootstrapping schemas in parallel
+# would otherwise race to create them.
+docker exec "$$TEST_PG_CONTAINER" psql -U postgres -d tradstry_test -q \
+  -c "CREATE EXTENSION IF NOT EXISTS vector" \
+  -c "CREATE EXTENSION IF NOT EXISTS pg_search" >/dev/null
 echo -e "$${GREEN}Test Postgres ready: postgres://tradstry:tradstry@localhost:$${TEST_PG_PORT}/tradstry_test$${NC}"
 endef
 export TEST_DB_SCRIPT

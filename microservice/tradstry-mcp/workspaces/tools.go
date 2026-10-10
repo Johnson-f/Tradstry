@@ -47,6 +47,7 @@ type view struct {
 
 	BrokerageConnected          bool `json:"brokerage_connected"`
 	BrokerageConnectionDisabled bool `json:"brokerage_connection_disabled" jsonschema:"true when the broker link needs to be reconnected"`
+	BrokerageSetupComplete      bool `json:"brokerage_setup_complete" jsonschema:"false while a connected broker still needs its accounts chosen with set_up_brokerage_accounts"`
 }
 
 func toView(w workspace) view {
@@ -58,6 +59,7 @@ func toView(w workspace) view {
 		RiskProfile:                 w.RiskProfile,
 		BrokerageConnected:          w.SnaptradeConnectionID != nil,
 		BrokerageConnectionDisabled: w.SnaptradeConnectionDisabled,
+		BrokerageSetupComplete:      w.BrokerageSetupComplete,
 	}
 	if w.Broker != nil {
 		v.Broker = *w.Broker

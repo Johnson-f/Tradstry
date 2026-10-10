@@ -202,3 +202,36 @@ async fn local_revocation_clears_tokens_and_unlinks_every_oauth_workspace() {
     assert_eq!(replacement.id, stored.id);
     assert_eq!(replacement.snaptrade_user_id, "personal-b");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn attempts_record_which_client_started_them() {
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
+    let (user_id, workspace_id) = seed_user_workspace(&pool).await;
+    let scopes = vec!["read".to_string()];
+    let attempt = |platform: &'static str, state_hash: &'static str| CreateAttempt {
+        user_id: &user_id,
+        workspace_id: &workspace_id,
+        state_hash,
+        code_verifier_encrypted: "encrypted-verifier",
+        requested_scopes: &scopes,
+        platform,
+        intent: "connect",
+        expires_at: Utc::now() + Duration::minutes(10),
+    };
+
+    let mcp = snaptrade_oauth_table::create_attempt(&pool, attempt("mcp", "state-mcp"))
+        .await
+        .expect("an MCP client can start SnapTrade OAuth");
+    let status = snaptrade_oauth_table::attempt_status(&pool, &user_id, &mcp)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.platform, "mcp");
+    assert!(
+        snaptrade_oauth_table::create_attempt(&pool, attempt("fax", "state-fax"))
+            .await
+            .is_err(),
+        "unknown platforms stay rejected"
+    );
+}

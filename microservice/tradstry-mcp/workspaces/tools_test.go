@@ -339,8 +339,10 @@ func TestToolsDescribeThemselvesForTheAssistant(t *testing.T) {
 	for _, tool := range listed.Tools {
 		tools[tool.Name] = tool
 	}
-	if len(tools) != 4 {
-		t.Fatalf("tools = %v", tools)
+	for _, name := range []string{"list_workspaces", "create_workspace", "update_workspace", "delete_workspace"} {
+		if tools[name] == nil {
+			t.Fatalf("%s is not registered", name)
+		}
 	}
 	if !tools["list_workspaces"].Annotations.ReadOnlyHint {
 		t.Error("list_workspaces must be read-only")

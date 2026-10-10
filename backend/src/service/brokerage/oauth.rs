@@ -19,6 +19,9 @@ const OAUTH_SCOPES: &[&str] = &["read", "webhook"];
 pub struct SnapTradeOAuthConfig {
     pub redirect_uri: Arc<str>,
     pub frontend_return_url: Arc<str>,
+    /// Where attempts started from an MCP client return the browser. Optional:
+    /// without it, MCP clients cannot use SnapTrade OAuth.
+    pub mcp_return_url: Option<Arc<str>>,
     pub enabled: bool,
 }
 
@@ -34,15 +37,23 @@ impl SnapTradeOAuthConfig {
                 "SNAPTRADE_OAUTH_REDIRECT_URI and SNAPTRADE_OAUTH_FRONTEND_RETURN_URL must both be set"
             );
             anyhow::ensure!(
-                redirect_uri.starts_with("https://")
-                    || redirect_uri.starts_with("http://localhost:")
-                    || redirect_uri.starts_with("http://127.0.0.1:"),
+                is_secure_or_loopback(&redirect_uri),
                 "SnapTrade OAuth redirect URI must use HTTPS or a loopback development origin"
+            );
+        }
+        let mcp_return_url = std::env::var("SNAPTRADE_OAUTH_MCP_RETURN_URL")
+            .ok()
+            .filter(|value| !value.is_empty());
+        if let Some(url) = &mcp_return_url {
+            anyhow::ensure!(
+                is_secure_or_loopback(url),
+                "SNAPTRADE_OAUTH_MCP_RETURN_URL must use HTTPS or a loopback development origin"
             );
         }
         Ok(Self {
             redirect_uri: Arc::from(redirect_uri),
             frontend_return_url: Arc::from(frontend_return_url),
+            mcp_return_url: mcp_return_url.map(Arc::from),
             enabled,
         })
     }
@@ -52,9 +63,26 @@ impl SnapTradeOAuthConfig {
         Ok(())
     }
 
-    pub fn return_url(&self, attempt_id: &str, status: &str) -> Result<String> {
-        let mut url = reqwest::Url::parse(&self.frontend_return_url)
-            .context("invalid SnapTrade OAuth frontend return URL")?;
+    /// Whether attempts from `platform` can be started and returned.
+    pub fn supports(&self, platform: &str) -> bool {
+        match platform {
+            "web" => true,
+            "mcp" => self.mcp_return_url.is_some(),
+            _ => false,
+        }
+    }
+
+    /// Where the browser goes once SnapTrade has finished with an attempt that
+    /// `platform` started.
+    pub fn return_url(&self, platform: &str, attempt_id: &str, status: &str) -> Result<String> {
+        let base = match platform {
+            "mcp" => self
+                .mcp_return_url
+                .as_deref()
+                .context("SnapTrade OAuth for MCP clients is not configured")?,
+            _ => &self.frontend_return_url,
+        };
+        let mut url = reqwest::Url::parse(base).context("invalid SnapTrade OAuth return URL")?;
         url.query_pairs_mut()
             .append_pair("attempt", attempt_id)
             .append_pair("status", status);
@@ -87,7 +115,10 @@ pub async fn start(
 ) -> Result<OAuthStart> {
     config.require_enabled()?;
     oauth_table::cleanup_attempts(pool).await?;
-    anyhow::ensure!(platform == "web", "invalid OAuth platform");
+    anyhow::ensure!(
+        config.supports(platform),
+        "SnapTrade OAuth is not available for this app"
+    );
     anyhow::ensure!(
         matches!(intent, "connect" | "reauthorize"),
         "invalid OAuth intent"
@@ -244,6 +275,12 @@ pub async fn callback(
     })
 }
 
+fn is_secure_or_loopback(url: &str) -> bool {
+    url.starts_with("https://")
+        || url.starts_with("http://localhost:")
+        || url.starts_with("http://127.0.0.1:")
+}
+
 fn random_base64url(bytes: usize) -> String {
     let mut value = vec![0u8; bytes];
     OsRng.fill_bytes(&mut value);
@@ -276,19 +313,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn frontend_return_url_contains_only_attempt_and_status() {
-        let config = SnapTradeOAuthConfig {
+    fn config(mcp_return_url: Option<&str>) -> SnapTradeOAuthConfig {
+        SnapTradeOAuthConfig {
             redirect_uri: Arc::from("http://localhost:7899/oauth/snaptrade/callback"),
             frontend_return_url: Arc::from(
                 "http://localhost:3038/dashboard/brokerage/oauth/callback",
             ),
+            mcp_return_url: mcp_return_url.map(Arc::from),
             enabled: true,
-        };
-        let value = config.return_url("attempt-1", "authorized").unwrap();
+        }
+    }
+
+    #[test]
+    fn frontend_return_url_contains_only_attempt_and_status() {
+        let value = config(None)
+            .return_url("web", "attempt-1", "authorized")
+            .unwrap();
+        assert!(value.starts_with("http://localhost:3038/dashboard/brokerage/oauth/callback?"));
         assert!(value.contains("attempt=attempt-1"));
         assert!(value.contains("status=authorized"));
         assert!(!value.contains("token"));
         assert!(!value.contains("code="));
+    }
+
+    #[test]
+    fn mcp_attempts_return_to_the_mcp_server() {
+        let config = config(Some(
+            "https://mcp.tradstry.com/brokerage/snaptrade-authorized",
+        ));
+        assert!(config.supports("mcp"));
+        let value = config.return_url("mcp", "attempt-1", "denied").unwrap();
+        assert!(value.starts_with("https://mcp.tradstry.com/brokerage/snaptrade-authorized?"));
+        assert!(value.contains("status=denied"));
+    }
+
+    #[test]
+    fn mcp_needs_its_own_return_url() {
+        let config = config(None);
+        assert!(config.supports("web"));
+        assert!(!config.supports("mcp"));
+        assert!(!config.supports("desktop"));
+        assert!(config.return_url("mcp", "attempt-1", "authorized").is_err());
     }
 }

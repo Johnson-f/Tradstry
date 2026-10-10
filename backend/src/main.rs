@@ -11,6 +11,7 @@ use tradstry_backend::service::agents::knowledge::VoyageClient;
 use tradstry_backend::service::auth::create_jwks_provider;
 use tradstry_backend::service::brokerage::client::BrokerageClient;
 use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
+use tradstry_backend::service::brokerage::portal::PortalRedirects;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::redis::client::RedisClient;
 use tradstry_backend::service::upload::r2::R2Client;
@@ -120,14 +121,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clerk_secret = std::env::var("CLERK_SECRET_KEY")?;
     let jwks_provider_data = Arc::new(create_jwks_provider(&clerk_secret));
     info!("Clerk authentication configured");
+    let allowed_origins = cors_allowed_origins();
+    let portal_redirects = PortalRedirects::from_env(&allowed_origins)?;
     let schema = graphql::build_schema(
         agent_service.clone(),
         brokerage_client.clone(),
         snaptrade_oauth_config.clone(),
+        portal_redirects,
         redis_client.clone(),
         notification_events_tx.clone(),
     );
-    let allowed_origins = cors_allowed_origins();
 
     // Cooperative shutdown signal for the background tasks. On SIGTERM/SIGINT we
     // flip this to `true`; each task stops at a safe point (between jobs/ticks,

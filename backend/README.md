@@ -157,6 +157,7 @@ NEXT_PUBLIC_DASHBOARD_COMPACT_METRICS=false
 # Server
 RUST_LOG=info,sqlx=warn,hyper=warn,h2=warn,rustls=warn
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+SNAPTRADE_PORTAL_REDIRECT_ORIGINS=http://localhost:7910   # extra origins SnapTrade's portal may return to (the MCP server)
 DB_MAX_CONNECTIONS=12                     # must be at least 2 for schema bootstrap
 DB_MIN_CONNECTIONS=1
 DB_ACQUIRE_TIMEOUT_SECS=10
@@ -332,6 +333,12 @@ Each test gets its own database from `TestDb` (`tests/integration/test_db.rs`):
 - Write database tests as `#[tokio::test(flavor = "multi_thread")]`. Dropping a test's database needs its runtime to keep running; on a single-threaded runtime the drop can stall for a minute.
 
 cargo-nextest (`cargo install cargo-nextest --locked`) runs each test in its own process, so one crash or hang cannot hide the other results; its settings are in `.config/nextest.toml`. Notebook tests spawn the Bun projector, so run `(cd projector && bun install --frozen-lockfile)` once first.
+
+`schema/graphql/schema.graphql` is the GraphQL schema the backend serves, exported for clients outside this crate. The Go MCP server checks its queries against it. A test fails when a GraphQL change leaves it stale; regenerate it with:
+
+```bash
+UPDATE_GRAPHQL_SCHEMA=1 cargo test --test integration graphql_schema::
+```
 
 Projector tests run under Bun:
 

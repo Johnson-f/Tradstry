@@ -451,6 +451,29 @@ impl JournalFlowMutation {
         )
         .await?)
     }
+    /// Keeps a manual trade held as a possible duplicate as its own trade, so it
+    /// counts from now on and is not flagged against those broker trades again.
+    async fn keep_manual_trade_separate(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        expected_version: i64,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<JournalTrade> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(journal_flow::duplicates::keep_separate(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &entry_id,
+            expected_version,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
     async fn mark_journal_trade_reviewed(
         &self,
         ctx: &Context<'_>,

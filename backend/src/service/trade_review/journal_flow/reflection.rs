@@ -187,7 +187,10 @@ pub async fn save_context(
     }
     sqlx::query("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id) VALUES ($1,$2,$3) ON CONFLICT(entry_id) DO NOTHING")
         .bind(&input.entry_id).bind(user).bind(workspace).execute(&mut *tx).await?;
-    let row=sqlx::query("UPDATE journal_trade_context SET stop_state=$4,stop_price=$5,playbook_id=$6,record_version=record_version+1,updated_at=now() WHERE entry_id=$1 AND user_id=$2 AND workspace_id=$3 AND record_version=$7 RETURNING record_version,companion_note_id")
+    // A review covers the risk and strategy it was written against, so only a change
+    // to them moves the version that reviews are checked against. Notes, tags and
+    // principle flags are saved without making an existing review outdated.
+    let row=sqlx::query("UPDATE journal_trade_context SET stop_state=$4,stop_price=$5,playbook_id=$6,record_version=record_version+CASE WHEN (stop_state,stop_price,playbook_id) IS DISTINCT FROM ($4,$5,$6) THEN 1 ELSE 0 END,updated_at=now() WHERE entry_id=$1 AND user_id=$2 AND workspace_id=$3 AND record_version=$7 RETURNING record_version,companion_note_id")
         .bind(&input.entry_id).bind(user).bind(workspace).bind(&input.stop_state).bind(price).bind(&input.playbook_id).bind(input.expected_version).fetch_optional(&mut *tx).await?.ok_or_else(||anyhow!("CONFLICT: context changed on another device"))?;
     let version: i64 = row.try_get("record_version")?;
     sqlx::query("UPDATE journal_entries SET playbook_id=$4,notes=CASE WHEN $5::text IS NULL THEN notes ELSE $5 END WHERE id=$1 AND user_id=$2 AND workspace_id=$3")

@@ -10,9 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
-const maxResponseBytes = 8 << 20
+const (
+	maxResponseBytes = 8 << 20
+	defaultTimeout   = 30 * time.Second
+)
 
 var (
 	ErrAccountRequired = errors.New("no Tradstry account exists for this login. Sign up at tradstry.com, then try again")
@@ -59,8 +63,15 @@ type response struct {
 	} `json:"errors"`
 }
 
-// Do runs a GraphQL operation as the user who owns token and decodes its data into out.
+// Do runs a GraphQL operation as the user who owns token and decodes its data
+// into out. Calls without a deadline on ctx get a 30-second one; slow operations
+// such as a brokerage sync set their own.
 func (c *Client) Do(ctx context.Context, token, query string, variables map[string]any, out any) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+	}
 	body, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
 		return err

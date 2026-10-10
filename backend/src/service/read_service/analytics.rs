@@ -1,10 +1,10 @@
 use crate::service::db::client::UserDb;
-use crate::service::db::schema::tables::journal_table::{
-    self, ExtremeKind, JournalAggregateRow, TradeOutcomeRow,
-};
+use crate::service::db::schema::tables::journal_table::{JournalAggregateRow, TradeOutcomeRow};
 use crate::service::db::schema::tables::tags_table;
 use crate::service::db::schema::tables::trading_principle_table;
 use crate::service::db::schema::tables::workspaces_table;
+use crate::service::read_service::trade_set;
+use rust_decimal::prelude::ToPrimitive;
 
 pub use crate::service::trading_performance::{
     CalendarDaySummary, CalendarWeekSummary, TradingCalendar as CalendarAnalytics,
@@ -62,65 +62,71 @@ pub async fn get_journal_analytics(
     time_filter: &AnalyticsTimeFilter,
 ) -> Result<JournalAnalytics> {
     let bounds = resolve_range_bounds(time_filter, Utc::now())?;
-    // `All` is unbounded; widen to cover every stored and forward-dated trade.
-    let start_iso = bounds
-        .start
-        .map_or_else(|| "1970-01-01T00:00:00Z".to_string(), |d| d.to_rfc3339());
-    let end_iso = bounds
-        .end
-        .map_or_else(|| "9999-12-31T23:59:59Z".to_string(), |d| d.to_rfc3339());
-    let range_start = bounds
+    let set = trade_set::load(
+        user_db.pool(),
+        user_db.user_id(),
+        workspace_id,
+        bounds.start,
+        bounds.end,
+    )
+    .await?;
+    let mut analytics = journal_analytics_of(&set);
+    analytics.range_start = bounds
         .start_date_et
         .map(|d| d.format("%Y-%m-%d").to_string());
-    let range_end = bounds.end_date_et.map(|d| d.format("%Y-%m-%d").to_string());
-
-    let (agg, biggest_win, biggest_loss) = tokio::try_join!(
-        journal_table::aggregate_journal_analytics(
-            user_db.pool(),
-            user_db.user_id(),
-            workspace_id,
-            &start_iso,
-            &end_iso,
-        ),
-        journal_table::find_extreme_trade(
-            user_db.pool(),
-            user_db.user_id(),
-            workspace_id,
-            &start_iso,
-            &end_iso,
-            ExtremeKind::Best,
-        ),
-        journal_table::find_extreme_trade(
-            user_db.pool(),
-            user_db.user_id(),
-            workspace_id,
-            &start_iso,
-            &end_iso,
-            ExtremeKind::Worst,
-        ),
-    )?;
-
-    if agg.total_trades == 0 {
-        return Ok(JournalAnalytics {
-            win_rate: 0.0,
-            cumulative_profit: 0.0,
-            average_risk_to_reward: 0.0,
-            average_gain: 0.0,
-            average_loss: 0.0,
-            average_gain_pct: 0.0,
-            average_loss_pct: 0.0,
-            profit_factor: None,
-            biggest_win: None,
-            biggest_loss: None,
-            range_start,
-            range_end,
-        });
-    }
-
-    let mut analytics = build_journal_analytics(agg, biggest_win, biggest_loss);
-    analytics.range_start = range_start;
-    analytics.range_end = range_end;
+    analytics.range_end = bounds.end_date_et.map(|d| d.format("%Y-%m-%d").to_string());
     Ok(analytics)
+}
+
+/// The journal page's summary, decided by each trade's money like every other report.
+fn journal_analytics_of(set: &trade_set::TradeSet) -> JournalAnalytics {
+    let mut agg = JournalAggregateRow {
+        total_trades: 0,
+        winning_trades: 0,
+        losing_trades: 0,
+        cumulative_profit: 0.0,
+        gross_profit: 0.0,
+        gross_loss: 0.0,
+        sum_risk_reward: 0.0,
+        sum_win_pct: 0.0,
+        sum_loss_pct: 0.0,
+        risk_reward_count: 0,
+    };
+    let mut biggest_win: Option<TradeOutcomeRow> = None;
+    let mut biggest_loss: Option<TradeOutcomeRow> = None;
+    for entry in &set.entries {
+        let money = set.money_of(entry).to_f64().unwrap_or_default();
+        agg.total_trades += 1;
+        agg.cumulative_profit += money;
+        if let Some(risk_reward) = entry.risk_reward {
+            agg.sum_risk_reward += risk_reward;
+            agg.risk_reward_count += 1;
+        }
+        let outcome = || TradeOutcomeRow {
+            symbol: entry.symbol.clone(),
+            symbol_name: entry.symbol_name.clone(),
+            amount: money,
+        };
+        if money > 0.0 {
+            agg.winning_trades += 1;
+            agg.gross_profit += money;
+            agg.sum_win_pct += entry.total_pl;
+            if biggest_win.as_ref().is_none_or(|best| money > best.amount) {
+                biggest_win = Some(outcome());
+            }
+        } else if money < 0.0 {
+            agg.losing_trades += 1;
+            agg.gross_loss += money.abs();
+            agg.sum_loss_pct += entry.total_pl.abs();
+            if biggest_loss
+                .as_ref()
+                .is_none_or(|worst| money < worst.amount)
+            {
+                biggest_loss = Some(outcome());
+            }
+        }
+    }
+    build_journal_analytics(agg, biggest_win, biggest_loss)
 }
 
 pub async fn get_trading_performance(
@@ -215,57 +221,51 @@ pub async fn get_advanced_analytics(
     time_filter: &AnalyticsTimeFilter,
 ) -> Result<crate::service::read_service::analytics_advanced::AdvancedAnalytics> {
     let bounds = resolve_range_bounds(time_filter, Utc::now())?;
-    // `All` is unbounded; widen to cover every stored and forward-dated trade.
-    let start_iso = bounds
-        .start
-        .map_or_else(|| "1970-01-01T00:00:00Z".to_string(), |d| d.to_rfc3339());
-    let end_iso = bounds
-        .end
-        .map_or_else(|| "9999-12-31T23:59:59Z".to_string(), |d| d.to_rfc3339());
     let range_start = bounds
         .start_date_et
         .map(|d| d.format("%Y-%m-%d").to_string());
     let range_end = bounds.end_date_et.map(|d| d.format("%Y-%m-%d").to_string());
 
-    let (mut entries, workspace) = tokio::try_join!(
-        journal_table::list_journal_entries_for_account_in_range(
+    let (set, workspace) = tokio::try_join!(
+        trade_set::load(
             user_db.pool(),
             user_db.user_id(),
             workspace_id,
-            &start_iso,
-            &end_iso,
+            bounds.start,
+            bounds.end
         ),
         workspaces_table::find_workspace(user_db.pool(), workspace_id, user_db.user_id()),
     )?;
-    if crate::service::trade_review::journal_flow::is_enabled(
-        user_db.pool(),
-        user_db.user_id(),
-        workspace_id,
-    )
-    .await?
-    {
-        for entry in &mut entries {
-            entry.stop_loss = None;
-            entry.risk_reward = None;
-        }
-    }
-    let current_equity = workspace.and_then(|account| account.total_value);
-
-    // Hydrate per-trade tags for the behavioral (clean/flawed, per-category)
-    // metrics. Trades with no tags are simply absent from the map.
-    let entry_ids: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
-    let (trade_tags, violation_counts) = tokio::try_join!(
+    let entry_ids: Vec<String> = set.entries.iter().map(|e| e.id.clone()).collect();
+    let (trade_tags, violations) = tokio::try_join!(
         tags_table::tags_for_trades(user_db.pool(), &entry_ids),
-        trading_principle_table::violation_counts_for_trades(user_db.pool(), &entry_ids),
+        trading_principle_table::principles_for_trades(
+            user_db.pool(),
+            user_db.user_id(),
+            &entry_ids
+        ),
     )?;
-
     let mut analytics =
         crate::service::read_service::analytics_advanced::compute_advanced_analytics(
-            &entries,
-            current_equity,
-            &trade_tags,
-            &violation_counts,
+            &set.entries,
+            &crate::service::read_service::analytics_advanced::AnalysisContext {
+                current_equity: workspace.and_then(|account| account.total_value),
+                trade_tags,
+                violations,
+                money: set.money_f64(),
+                timezone: set.timezone,
+            },
         );
+    analytics.r_typed_stop_count = set
+        .entries
+        .iter()
+        .filter(|entry| {
+            set.stop_sources.get(&entry.id) == Some(&trade_set::StopSource::Typed)
+                && trade_set::r_multiple(entry, set.money_of(entry).to_f64().unwrap_or_default())
+                    .is_some()
+        })
+        .count();
+    analytics.coverage = set.coverage;
     analytics.range_start = range_start;
     analytics.range_end = range_end;
     Ok(analytics)

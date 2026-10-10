@@ -71,6 +71,7 @@ pub fn build_schema(
     agent_service: std::sync::Arc<crate::service::agents::AgentService>,
     brokerage_client: std::sync::Arc<crate::service::brokerage::client::BrokerageClient>,
     snaptrade_oauth_config: crate::service::brokerage::oauth::SnapTradeOAuthConfig,
+    portal_redirects: crate::service::brokerage::portal::PortalRedirects,
     redis_client: Option<std::sync::Arc<crate::service::redis::client::RedisClient>>,
     notification_events: notifications::NotificationEventBus,
 ) -> AppSchema {
@@ -86,6 +87,7 @@ pub fn build_schema(
     .data(agent_service)
     .data(brokerage_client)
     .data(snaptrade_oauth_config)
+    .data(portal_redirects)
     .data(notification_events);
 
     if let Some(redis) = redis_client {

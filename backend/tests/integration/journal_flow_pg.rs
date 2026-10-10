@@ -1471,3 +1471,909 @@ async fn split_preview_is_read_only_and_confirmation_preserves_the_holding() {
             .unwrap();
     assert_eq!(count, 3);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_risk_and_strategy_changes_outdate_a_review() {
+    use journal_flow::reflection;
+
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    let amounts = |price| FillAmounts {
+        quantity: 10.0,
+        price,
+        fee: 0.0,
+    };
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "buy",
+        "BUY",
+        amounts(100.0),
+        "2026-09-01T14:00:00Z",
+    )
+    .await;
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "sell",
+        "SELL",
+        amounts(105.0),
+        "2026-09-01T15:00:00Z",
+    )
+    .await;
+    project(&pool, &user, &workspace).await;
+    let trade = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(trade.lifecycle_state, "closed");
+
+    let context = |expected_version, stop: &str, notes: &str| reflection::ContextInput {
+        entry_id: trade.id.clone(),
+        expected_version,
+        stop_state: "price".into(),
+        stop_price: Some(stop.into()),
+        playbook_id: None,
+        claimed_at: None,
+        notes: Some(notes.into()),
+        tag_ids: None,
+        violated_principle_ids: None,
+    };
+    let saved = reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context(0, "98", "First thoughts"),
+        "test",
+        "stop",
+    )
+    .await
+    .unwrap();
+    let draft = reflection::save_draft(
+        &pool,
+        &user,
+        &workspace,
+        reflection::DraftInput {
+            entry_id: trade.id.clone(),
+            expected_version: 0,
+            takeaway: "Waited for the pullback".into(),
+            choice_ids: vec![],
+            plan_adherence: Some("yes".into()),
+        },
+        "test",
+        "draft",
+    )
+    .await
+    .unwrap();
+    reflection::finalize(
+        &pool,
+        &user,
+        &workspace,
+        reflection::ReviewInput {
+            entry_id: trade.id.clone(),
+            expected_entry_revision: trade.materialized_revision,
+            expected_context_version: saved.version,
+            expected_draft_version: draft.version,
+            session_id: None,
+        },
+        "test",
+        "review",
+    )
+    .await
+    .unwrap();
+    let review_state = || async {
+        journal_flow::get_trade(&pool, &user, &workspace, &trade.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .review_state
+    };
+    assert_eq!(review_state().await, "reviewed");
+
+    let noted = reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context(saved.version, "98", "Added later"),
+        "test",
+        "notes",
+    )
+    .await
+    .unwrap();
+    assert_eq!(noted.notes.as_deref(), Some("Added later"));
+    assert_eq!(
+        noted.version, saved.version,
+        "notes alone must not change the context version"
+    );
+    assert_eq!(
+        review_state().await,
+        "reviewed",
+        "adding notes must not outdate the review"
+    );
+
+    let moved = reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context(saved.version, "97", "Added later"),
+        "test",
+        "move-stop",
+    )
+    .await
+    .unwrap();
+    assert_eq!(moved.version, saved.version + 1);
+    assert_eq!(
+        review_state().await,
+        "outdated",
+        "a different stop changes what was reviewed"
+    );
+
+    let stale = reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context(saved.version, "97", "From another device"),
+        "test",
+        "stale",
+    )
+    .await;
+    assert!(
+        stale.is_err_and(|error| error.to_string().starts_with("CONFLICT")),
+        "a save based on an old version is still refused"
+    );
+}
+
+mod analytics {
+    use super::*;
+    use tradstry_backend::service::db::Db;
+    use tradstry_backend::service::read_service::analytics::{
+        AnalyticsTimeFilter, get_advanced_analytics, get_journal_analytics,
+    };
+
+    /// Two closed ACME trades: +50 on 2026-09-01 and -20 on 2026-09-02, both
+    /// closing at 16:00 UTC.
+    async fn two_closed_trades(pool: &PgPool) -> (String, String, Vec<journal_flow::JournalTrade>) {
+        let (user, workspace) = enabled_workspace(pool).await;
+        let fills = [
+            ("buy-a", "BUY", 100.0, "2026-09-01T14:00:00Z"),
+            ("sell-a", "SELL", 105.0, "2026-09-01T16:00:00Z"),
+            ("buy-b", "BUY", 100.0, "2026-09-02T14:00:00Z"),
+            ("sell-b", "SELL", 98.0, "2026-09-02T16:00:00Z"),
+        ];
+        for (name, side, price, at) in fills {
+            let amounts = FillAmounts {
+                quantity: 10.0,
+                price,
+                fee: 0.0,
+            };
+            fill(pool, &user, &workspace, name, side, amounts, at).await;
+        }
+        project(pool, &user, &workspace).await;
+        let mut trades = journal_flow::list_trades(pool, &user, &workspace)
+            .await
+            .unwrap();
+        trades.sort_by(|a, b| a.open_date.cmp(&b.open_date));
+        assert_eq!(trades.len(), 2);
+        (user, workspace, trades)
+    }
+
+    /// Record context saves directly, so each can carry the phase a test needs.
+    async fn stop_saved(
+        pool: &PgPool,
+        user: &str,
+        workspace: &str,
+        entry: &str,
+        stop: &str,
+        phase: &str,
+        at: &str,
+    ) {
+        sqlx::query("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id,stop_state,stop_price) VALUES ($1,$2,$3,'price',$4::numeric)
+                     ON CONFLICT(entry_id) DO UPDATE SET stop_state='price',stop_price=$4::numeric,updated_at=now()")
+            .bind(entry).bind(user).bind(workspace).bind(stop)
+            .execute(pool).await.unwrap();
+        sqlx::query("INSERT INTO journal_trade_context_events(id,entry_id,user_id,workspace_id,record_version,kind,phase,payload_json,recorded_at)
+                     VALUES ($1,$2,$3,$4,1,'risk_strategy',$5,$6,$7::timestamptz)")
+            .bind(tradstry_backend::ids::new_uuid_v7().to_string()).bind(entry).bind(user).bind(workspace).bind(phase)
+            .bind(serde_json::json!({"stop_state": "price", "stop_price": stop})).bind(at)
+            .execute(pool).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn analytics_use_journal_money_stops_and_time_zone() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace, trades) = two_closed_trades(&pool).await;
+        stop_saved(
+            &pool,
+            &user,
+            &workspace,
+            &trades[0].id,
+            "95",
+            "pre_entry",
+            "2026-09-01T13:00:00Z",
+        )
+        .await;
+        stop_saved(
+            &pool,
+            &user,
+            &workspace,
+            &trades[1].id,
+            "99",
+            "retrospective",
+            "2026-09-03T13:00:00Z",
+        )
+        .await;
+        sqlx::query("UPDATE workspaces SET journal_timezone='Asia/Tokyo' WHERE id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
+        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+        let journal = get_journal_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+
+        let realized: f64 = trades
+            .iter()
+            .map(|t| t.realized_net.as_deref().unwrap().parse::<f64>().unwrap())
+            .sum();
+        assert!(
+            (advanced.net_profit - realized).abs() < 1e-9,
+            "{} vs {realized}",
+            advanced.net_profit
+        );
+        assert!((journal.cumulative_profit - realized).abs() < 1e-9);
+        assert!((advanced.net_profit - 30.0).abs() < 1e-9);
+
+        // Only the stop recorded before entry counts: risk 5 x 10 = 50 against +50.
+        assert_eq!(advanced.r_trade_count, 1);
+        assert!((advanced.expectancy_r.unwrap() - 1.0).abs() < 1e-9);
+
+        // 16:00 UTC is 01:00 the next day in Tokyo.
+        let days: Vec<&str> = advanced.by_day.iter().map(|d| d.key.as_str()).collect();
+        assert_eq!(days, ["2026-09-02", "2026-09-03"]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn wins_and_losses_are_decided_by_money_not_the_percent() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace, trades) = two_closed_trades(&pool).await;
+        // The winner's percent stays positive while its money turns negative, as
+        // a later fee correction would leave it. Only the journal owner may
+        // change broker results, so act as it.
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query("SELECT set_config('tradstry.journal_writer','on',true)")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE journal_entries SET realized_net=-5 WHERE id=$1")
+            .bind(&trades[0].id)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
+        let journal = get_journal_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+        assert_eq!(journal.win_rate, 0.0, "both trades lost money");
+        assert_eq!(advanced.win_rate, 0.0, "both trades lost money");
+        assert!((advanced.net_profit + 25.0).abs() < 1e-9);
+    }
+
+    /// R from analytics and from the dashboard, which must always agree.
+    async fn r_on_both_screens(pool: &PgPool, user: &str, workspace: &str) -> (usize, Option<f64>) {
+        let user_db = Db::from_pool(pool.clone()).get_user_db(user);
+        let analytics = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+        let dashboard = tradstry_backend::service::trading_performance::load_trading_performance(
+            pool, user, workspace, None, None,
+        )
+        .await
+        .unwrap();
+        let round = |r: Option<f64>| r.map(|r| (r * 1000.0).round() / 1000.0);
+        assert_eq!(
+            (analytics.r_trade_count, round(analytics.expectancy_r)),
+            (
+                dashboard.risk_defined_trade_count,
+                round(dashboard.average_realized_r)
+            ),
+            "analytics and the dashboard disagree on R"
+        );
+        (analytics.r_trade_count, round(analytics.expectancy_r))
+    }
+
+    async fn plan_saved(
+        pool: &PgPool,
+        user: &str,
+        workspace: &str,
+        episode: &str,
+        stop: f64,
+        at: &str,
+    ) {
+        let plan = format!("plan-{episode}-{stop}");
+        sqlx::query("INSERT INTO position_calculator_plans(id,user_id,workspace_id,symbol,position_type,entry_price,stop_loss,account_balance,account_risk,total_shares,position_value,updated_at)
+                     VALUES ($1,$2,$3,'ACME','long',100,$4,10000,1,10,1000,$5::timestamptz)")
+            .bind(&plan).bind(user).bind(workspace).bind(stop).bind(at)
+            .execute(pool).await.unwrap();
+        sqlx::query("INSERT INTO trade_episode_matches(id,user_id,workspace_id,episode_id,plan_id,score,status,evidence_json) VALUES ($1,$2,$3,$4,$5,1,'confirmed','{}')")
+            .bind(format!("match-{plan}")).bind(user).bind(workspace).bind(episode).bind(&plan)
+            .execute(pool).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn r_uses_the_stop_in_force_when_the_trade_opened() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace, trades) = two_closed_trades(&pool).await;
+        let (winner, loser) = (&trades[0].id, &trades[1].id);
+
+        // The winner (+50 on 10 shares from 100): 95 set before entry, trailed to
+        // 98 while open, moved to 97 after the close. Its risk was 5 a share.
+        for (stop, phase, at) in [
+            ("95", "pre_entry", "2026-09-01T13:00:00Z"),
+            ("98", "during_trade", "2026-09-01T15:00:00Z"),
+            ("97", "retrospective", "2026-09-05T13:00:00Z"),
+        ] {
+            stop_saved(&pool, &user, &workspace, winner, stop, phase, at).await;
+        }
+        assert_eq!(
+            r_on_both_screens(&pool, &user, &workspace).await,
+            (1, Some(1.0))
+        );
+
+        // The loser (-20) had no stop at entry; the first one set while open counts.
+        for (stop, at) in [
+            ("99", "2026-09-02T15:00:00Z"),
+            ("99.5", "2026-09-02T15:30:00Z"),
+        ] {
+            stop_saved(&pool, &user, &workspace, loser, stop, "during_trade", at).await;
+        }
+        assert_eq!(
+            r_on_both_screens(&pool, &user, &workspace).await,
+            (2, Some(-0.5))
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_calculator_plan_counts_by_when_it_was_saved() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace, trades) = two_closed_trades(&pool).await;
+        let episode = |i: usize| trades[i].episode_id.clone().unwrap();
+
+        // A plan saved after the close is hindsight.
+        plan_saved(
+            &pool,
+            &user,
+            &workspace,
+            &episode(1),
+            99.0,
+            "2026-09-03T12:00:00Z",
+        )
+        .await;
+        assert_eq!(r_on_both_screens(&pool, &user, &workspace).await, (0, None));
+
+        // A plan before entry counts, on the dashboard and in analytics alike.
+        plan_saved(
+            &pool,
+            &user,
+            &workspace,
+            &episode(0),
+            97.0,
+            "2026-09-01T12:00:00Z",
+        )
+        .await;
+        assert_eq!(
+            r_on_both_screens(&pool, &user, &workspace).await,
+            (1, Some(1.667))
+        );
+
+        // A journal stop changed later, still before entry, is the one in force.
+        stop_saved(
+            &pool,
+            &user,
+            &workspace,
+            &trades[0].id,
+            "95",
+            "pre_entry",
+            "2026-09-01T13:00:00Z",
+        )
+        .await;
+        assert_eq!(
+            r_on_both_screens(&pool, &user, &workspace).await,
+            (1, Some(1.0))
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_analytics_cache_sees_every_input_change() {
+        use tradstry_backend::service::redis::analytics::workspace_version;
+
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace, trades) = two_closed_trades(&pool).await;
+        let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
+        let entry = &trades[0].id;
+        let new_id = || tradstry_backend::ids::new_uuid_v7().to_string();
+        let mut seen = vec![workspace_version(&user_db, &workspace).await.unwrap()];
+        let mut changed = |label: &str, version: String| {
+            assert!(
+                !seen.contains(&version),
+                "{label} did not change the cache version"
+            );
+            seen.push(version);
+        };
+
+        let (category, tag) = (new_id(), new_id());
+        sqlx::query("INSERT INTO tag_categories(id,user_id,workspace_id,name,created_at,updated_at) VALUES ($1,$2,$3,'Mistakes',now(),now())")
+            .bind(&category).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tags(id,user_id,workspace_id,category_id,name,created_at,updated_at) VALUES ($1,$2,$3,$4,'FOMO',now(),now())")
+            .bind(&tag).bind(&user).bind(&workspace).bind(&category).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO trade_tags(journal_entry_id,tag_id) VALUES ($1,$2)")
+            .bind(entry)
+            .bind(&tag)
+            .execute(&pool)
+            .await
+            .unwrap();
+        changed(
+            "tagging a trade",
+            workspace_version(&user_db, &workspace).await.unwrap(),
+        );
+
+        let principle = new_id();
+        sqlx::query("INSERT INTO trading_principles(id,user_id,workspace_id,title,the_rule,why) VALUES ($1,$2,$3,'Wait','Wait for confirmation','Chasing loses')")
+            .bind(&principle).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO trade_principle_violations(journal_entry_id,principle_id) VALUES ($1,$2)",
+        )
+        .bind(entry)
+        .bind(&principle)
+        .execute(&pool)
+        .await
+        .unwrap();
+        changed(
+            "flagging a broken principle",
+            workspace_version(&user_db, &workspace).await.unwrap(),
+        );
+
+        stop_saved(
+            &pool,
+            &user,
+            &workspace,
+            entry,
+            "95",
+            "pre_entry",
+            "2026-09-01T13:00:00Z",
+        )
+        .await;
+        changed(
+            "recording a stop",
+            workspace_version(&user_db, &workspace).await.unwrap(),
+        );
+
+        sqlx::query("UPDATE workspaces SET journal_timezone='Asia/Tokyo' WHERE id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+        changed(
+            "changing the journal time zone",
+            workspace_version(&user_db, &workspace).await.unwrap(),
+        );
+
+        sqlx::query("DELETE FROM trade_tags WHERE journal_entry_id=$1")
+            .bind(entry)
+            .execute(&pool)
+            .await
+            .unwrap();
+        changed(
+            "removing a tag",
+            workspace_version(&user_db, &workspace).await.unwrap(),
+        );
+    }
+}
+
+mod duplicates {
+    use super::*;
+    use journal_flow::duplicates;
+    use journal_flow::grouping::{self, AllocationInput, GroupInput, GroupingInput};
+    use tradstry_backend::service::db::Db;
+    use tradstry_backend::service::db::schema::tables::journal_table::{
+        self, CreateJournalEntryInput, UpdateJournalEntryInput,
+    };
+    use tradstry_backend::service::read_service::analytics::{
+        AnalyticsTimeFilter, get_advanced_analytics,
+    };
+
+    /// ACME bought at 100 and sold at 105 on 2026-09-01: +50 in either source.
+    const OPEN: &str = "2026-09-01T14:00:00Z";
+    const CLOSE: &str = "2026-09-01T16:00:00Z";
+
+    async fn broker_acme(pool: &PgPool, user: &str, workspace: &str) -> String {
+        for (name, side, price, at) in [
+            ("buy-a", "BUY", 100.0, OPEN),
+            ("sell-a", "SELL", 105.0, CLOSE),
+        ] {
+            let amounts = FillAmounts {
+                quantity: 10.0,
+                price,
+                fee: 0.0,
+            };
+            fill(pool, user, workspace, name, side, amounts, at).await;
+        }
+        project(pool, user, workspace).await;
+        sqlx::query_scalar("SELECT id FROM journal_entries WHERE workspace_id=$1 AND source_kind='broker' AND lifecycle_state='closed' AND retired_at IS NULL")
+            .bind(workspace)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn manual_acme(
+        pool: &PgPool,
+        user: &str,
+        workspace: &str,
+    ) -> journal_table::JournalEntry {
+        let input = CreateJournalEntryInput {
+            id: None,
+            fees: None,
+            workspace_id: workspace.to_string(),
+            open_date: OPEN.to_string(),
+            close_date: CLOSE.to_string(),
+            entry_price: 100.0,
+            exit_price: 105.0,
+            position_size: 10.0,
+            symbol: "acme".to_string(),
+            symbol_name: Some("Acme".to_string()),
+            stop_loss: 95.0,
+            trade_type: "long".to_string(),
+            playbook_id: None,
+            notes: Some("My notes on the ACME breakout".to_string()),
+            broke_30min_rule: None,
+            pre_trade_conviction: None,
+            market_regime: None,
+            is_planned_pre_market: None,
+            revenge_trade: None,
+            rule_adherence_score: None,
+            contract_multiplier: None,
+            brokerage_transaction_ids: None,
+            tag_ids: Vec::new(),
+            violated_principle_ids: Vec::new(),
+        };
+        journal_table::create_journal_entry(pool, user, input)
+            .await
+            .unwrap()
+    }
+
+    async fn counted(pool: &PgPool, user: &str, workspace: &str) -> (usize, f64) {
+        let user_db = Db::from_pool(pool.clone()).get_user_db(user);
+        let a = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All)
+            .await
+            .unwrap();
+        (a.trade_count as usize, a.net_profit)
+    }
+
+    async fn trade(
+        pool: &PgPool,
+        user: &str,
+        workspace: &str,
+        id: &str,
+    ) -> journal_flow::JournalTrade {
+        journal_flow::get_trade(pool, user, workspace, id)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_manual_copy_of_a_broker_trade_waits_instead_of_counting_twice() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        let broker = broker_acme(&pool, &user, &workspace).await;
+
+        let manual = manual_acme(&pool, &user, &workspace).await;
+
+        assert_eq!(manual.possible_duplicates, vec![broker.clone()]);
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+        let held = trade(&pool, &user, &workspace, &manual.id).await;
+        assert_eq!(held.lifecycle_state, "incomplete");
+        assert_eq!(held.issue_code.as_deref(), Some("possible_duplicate"));
+        assert_eq!(held.possible_duplicates, vec![broker]);
+
+        project(&pool, &user, &workspace).await;
+        assert_eq!(
+            counted(&pool, &user, &workspace).await,
+            (1, 50.0),
+            "a sync must not release the hold"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_trade_kept_separate_counts_and_is_not_flagged_again() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        broker_acme(&pool, &user, &workspace).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+        let version = trade(&pool, &user, &workspace, &manual.id)
+            .await
+            .record_version;
+
+        let stale = duplicates::keep_separate(
+            &pool,
+            &user,
+            &workspace,
+            &manual.id,
+            version - 1,
+            "test",
+            "stale",
+        )
+        .await;
+        assert!(stale.unwrap_err().to_string().starts_with("CONFLICT"));
+
+        let kept = duplicates::keep_separate(
+            &pool, &user, &workspace, &manual.id, version, "test", "keep",
+        )
+        .await
+        .unwrap();
+        assert_eq!(kept.lifecycle_state, "closed");
+        assert!(kept.possible_duplicates.is_empty());
+        let replayed = duplicates::keep_separate(
+            &pool, &user, &workspace, &manual.id, version, "test", "keep",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            replayed.record_version, kept.record_version,
+            "a retried call changes nothing"
+        );
+        assert_eq!(counted(&pool, &user, &workspace).await, (2, 100.0));
+
+        project(&pool, &user, &workspace).await;
+        let notes = UpdateJournalEntryInput {
+            notes: Some("edited".into()),
+            ..Default::default()
+        };
+        journal_table::update_journal_entry(&pool, &manual.id, &user, notes)
+            .await
+            .unwrap();
+        assert_eq!(counted(&pool, &user, &workspace).await, (2, 100.0));
+        assert!(
+            duplicates::keep_separate(
+                &pool,
+                &user,
+                &workspace,
+                &manual.id,
+                kept.record_version + 1,
+                "test",
+                "again"
+            )
+            .await
+            .is_err(),
+            "a trade that is not held has nothing to keep separate"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn merging_a_held_trade_keeps_one_trade_with_the_users_notes() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        let broker = broker_acme(&pool, &user, &workspace).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+
+        let allocation = |name: &str| AllocationInput {
+            transaction_id: format!("{workspace}:{name}"),
+            quantity: "10".into(),
+        };
+        let preview = grouping::preview(
+            &pool,
+            &user,
+            &workspace,
+            GroupingInput {
+                direction: Some("long".into()),
+                entry_ids: vec![broker.clone(), manual.id.clone()],
+                groups: vec![GroupInput {
+                    entry_id: Some(manual.id.clone()),
+                    allocations: vec![allocation("buy-a"), allocation("sell-a")],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+        grouping::confirm(
+            &pool,
+            &user,
+            &workspace,
+            &preview.token,
+            "test",
+            "same-trade",
+        )
+        .await
+        .unwrap();
+
+        let merged = trade(&pool, &user, &workspace, &manual.id).await;
+        assert_eq!(
+            (merged.source_kind.as_str(), merged.lifecycle_state.as_str()),
+            ("broker", "closed")
+        );
+        assert_eq!(merged.realized_net.as_deref(), Some("50"));
+        let notes: String = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
+            .bind(&manual.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(notes, "My notes on the ACME breakout");
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn editing_a_manual_trade_into_or_out_of_an_overlap_holds_or_releases_it() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        broker_acme(&pool, &user, &workspace).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+
+        let elsewhere = UpdateJournalEntryInput {
+            open_date: Some("2026-09-08T14:00:00Z".into()),
+            close_date: Some("2026-09-08T16:00:00Z".into()),
+            ..Default::default()
+        };
+        let moved = journal_table::update_journal_entry(&pool, &manual.id, &user, elsewhere)
+            .await
+            .unwrap();
+        assert!(moved.possible_duplicates.is_empty());
+        assert_eq!(counted(&pool, &user, &workspace).await, (2, 100.0));
+
+        let back = UpdateJournalEntryInput {
+            open_date: Some(OPEN.into()),
+            close_date: Some(CLOSE.into()),
+            ..Default::default()
+        };
+        let held = journal_table::update_journal_entry(&pool, &manual.id, &user, back)
+            .await
+            .unwrap();
+        assert_eq!(held.possible_duplicates.len(), 1);
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+
+        assert!(
+            journal_table::delete_journal_entry(&pool, &manual.id, &user)
+                .await
+                .unwrap(),
+            "a held trade can still be deleted"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn existing_duplicates_are_flagged_without_changing_money() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        broker_acme(&pool, &user, &workspace).await;
+        // A duplicate saved before the hold existed.
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query("SELECT set_config('tradstry.journal_writer','on',true)")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,total_pl,net_roi,duration,status) VALUES('old-copy',$1,$2,'ACME','Acme','long',$3::timestamptz,$4::timestamptz,100,105,10,5,5,7200,'profit')")
+            .bind(&user).bind(&workspace).bind(OPEN).bind(CLOSE)
+            .execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(counted(&pool, &user, &workspace).await, (2, 100.0));
+        let money_before: Decimal =
+            sqlx::query_scalar("SELECT realized_net FROM journal_entries WHERE id='old-copy'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let flagged: i32 = sqlx::query_scalar("SELECT journal_refresh_manual_holds($1,$2)")
+            .bind(&user)
+            .bind(&workspace)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        assert_eq!(flagged, 1);
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+        let money_after: Decimal =
+            sqlx::query_scalar("SELECT realized_net FROM journal_entries WHERE id='old-copy'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(money_before, money_after);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn whichever_copy_arrives_second_waits() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+        assert!(manual.possible_duplicates.is_empty());
+        for (name, side, price, at) in [
+            ("buy-a", "BUY", 100.0, OPEN),
+            ("sell-a", "SELL", 105.0, CLOSE),
+        ] {
+            fill(
+                &pool,
+                &user,
+                &workspace,
+                name,
+                side,
+                FillAmounts {
+                    quantity: 10.0,
+                    price,
+                    fee: 0.0,
+                },
+                at,
+            )
+            .await;
+        }
+        project(&pool, &user, &workspace).await;
+
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+        assert_eq!(
+            trade(&pool, &user, &workspace, &manual.id)
+                .await
+                .lifecycle_state,
+            "closed"
+        );
+        let waiting: Vec<(String, String)> = sqlx::query_as("SELECT source_kind,lifecycle_state FROM journal_entries WHERE workspace_id=$1 AND id<>$2 AND retired_at IS NULL")
+            .bind(&workspace).bind(&manual.id).fetch_all(&pool).await.unwrap();
+        assert_eq!(
+            waiting,
+            vec![("broker".to_string(), "incomplete".to_string())]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_sync_that_removes_the_broker_trade_releases_the_hold() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        broker_acme(&pool, &user, &workspace).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+        assert_eq!(manual.possible_duplicates.len(), 1);
+
+        sqlx::query("DELETE FROM brokerage_transactions WHERE workspace_id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+        project(&pool, &user, &workspace).await;
+
+        assert_eq!(
+            trade(&pool, &user, &workspace, &manual.id)
+                .await
+                .lifecycle_state,
+            "closed"
+        );
+        assert_eq!(counted(&pool, &user, &workspace).await, (1, 50.0));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn manual_trades_are_not_held_while_the_journal_is_off() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = crate::pg_support::seed_user_workspace(&pool).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+        assert!(manual.possible_duplicates.is_empty());
+    }
+}

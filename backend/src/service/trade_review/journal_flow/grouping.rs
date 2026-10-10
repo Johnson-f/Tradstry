@@ -603,6 +603,11 @@ pub async fn confirm(
         )
         .await?;
     }
+    sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
+        .bind(user)
+        .bind(workspace)
+        .execute(&mut *tx)
+        .await?;
     commands::changed(
         &mut tx,
         user,

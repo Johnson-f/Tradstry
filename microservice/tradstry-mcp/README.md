@@ -22,7 +22,54 @@ its GraphQL operations and its tests, and registers itself in `app/server.go`.
 | `graphql/` | Client for the Tradstry API and its error handling |
 | `confirm/` | User confirmation before actions that cannot be undone |
 | `workspaces/` | `list_workspaces`, `create_workspace`, `update_workspace`, `delete_workspace` |
+| `brokerage/` | Connecting, setting up, syncing and disconnecting a broker through SnapTrade |
+| `journal/` | Starting the journal, listing trades, recording context, reviewing trades, fixing grouping, and resolving possible duplicates |
+| `analytics/` | `get_performance`, `get_daily_pnl`, `get_breakdown`, `get_mistake_costs` |
 | `mcptest/` | Test support: the real server in front of a fake Tradstry API |
+| `gqlcheck/` | Test support: validates GraphQL operations against `backend/schema/graphql/schema.graphql` |
+
+## Connecting a broker
+
+SnapTrade's connection portal runs in the user's browser, so connecting takes three steps:
+
+1. `connect_brokerage` asks the backend for a portal link whose return address is this server's `/brokerage/connected` page, tagged with a random one-time `state`.
+2. After the user signs in to their broker, SnapTrade sends the browser to that page with the outcome. The page records it and tells the user to go back to the chat.
+3. `finish_brokerage_connection` completes the connection with the user's own token (the backend checks the connection belongs to them), and `set_up_brokerage_accounts` imports the accounts and history the user chooses, then runs the first sync.
+
+Visits in progress are kept in memory for 30 minutes. A restart only means the user starts again.
+
+The backend only lets the portal return to origins it trusts, so its `SNAPTRADE_PORTAL_REDIRECT_ORIGINS` must include this server's `MCP_PUBLIC_URL` origin.
+
+Users who already have a SnapTrade Personal account can pass `method: "snaptrade_account"` instead. That uses SnapTrade OAuth: the backend handles SnapTrade's callback and records the outcome itself, then sends the browser to this server's `/brokerage/snaptrade-authorized` page. A broken link is always repaired the way it was made. This needs `SNAPTRADE_OAUTH_MCP_RETURN_URL` set on the backend (see `backend/SNAPTRADE_OAUTH.md`); without it the tool tells the assistant to use the broker login instead.
+
+## Manual trades
+
+Traders without a connected broker record trades with `add_manual_trade`, correct them with `update_manual_trade` and remove them with `delete_manual_trade` (after the user approves). These work whether or not the journal is on.
+
+- **Retries:** the trade's id is a hash of the details sent, so a retried call returns the trade already recorded. Two genuinely identical trades need a different time to be recorded twice.
+- **Edits** send only the fields the user corrected, with the version they read. If another device saved in between, the tool re-reads and tries once more.
+- **Fees** are optional. Left out, they are unknown and the trade's result is before fees; 0 means there were none. The answer says which.
+- A manual trade that overlaps a broker trade is held as a possible duplicate, and the answer says so.
+
+## Journal writes
+
+The backend's journal writes need version checks and an idempotency key. The tools handle both, so the assistant never sees them.
+
+- **Versions:** each write reads the current versions just before saving. If another device saved in between, the tool re-reads and tries once more, keeping that device's change.
+- **Retries:** each write's `mutationId` is a hash of the tool, its input and the state it read. A retried call replays the stored result instead of writing twice, while the same input after the state moved is a new write.
+- **What stays the user's:** the takeaway, stop, plan timing and the "account was flat" answer. A flat answer of yes goes through the same confirmation as deleting a workspace.
+- **Grouping:** every change is previewed first; previews change nothing. `confirm_grouping_change` shows the user the previewed before-and-after and applies it only once they approve. Merges send every execution the trades hold, adding up an execution two trades share, so no quantity is lost.
+
+## Analytics
+
+The analytics tools are read-only and take a period: a preset such as `this_month` or `last_30_days` (the default), a `month` like `2026-09`, or `from`/`to` dates. Periods are whole days in the journal's time zone, which is also how the backend groups days. Trading sessions use New York time.
+
+Every answer states its period, currency and coverage, which comes from the backend with the figures: how many trades were counted and how many of them were entered by hand, plus the open positions and the trades waiting for the user. The backend counts the same trades for every report, so chat, the dashboard, the calendar and the analytics page agree, with the journal on or off. Broker results are net of fees; manual results are before fees, and the answer says when manual trades are included.
+
+- **R multiples** use the stop in place when each trade opened: the latest stop committed before entry, from a position-calculator plan or the journal, or else the first one set while the trade was open. Stops set after the close never count. The dashboard uses the same rule. The answer says how many trades that covers, how many rely on a stop typed with a manual trade (whose timing is unknown), or why R is unknown; it is never reported as zero.
+- **Mistake costs** list mistake tags and violated principles worst first. A figure is what those trades netted, not money the mistake itself lost.
+- **Daily P&L** covers at most 92 days so answers stay short; longer questions use `get_performance` or `get_breakdown`.
+- **Possible duplicates.** A manual trade that overlaps a broker trade is held out of every total until the user decides. `list_trades` shows which broker trades it may repeat, and `resolve_possible_duplicate` either previews merging it into the broker trade (keeping the user's notes, confirmed with `confirm_grouping_change`) or, after the user approves, keeps it as a separate trade.
 
 ## Confirming destructive actions
 
@@ -55,6 +102,8 @@ MCP_BIND_ADDR=127.0.0.1:7910
 | --- | --- |
 | `/mcp` | Streamable HTTP MCP endpoint; requires a Clerk OAuth access token |
 | `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | RFC 9728 metadata pointing clients at Clerk |
+| `/brokerage/connected` | Page SnapTrade's connection portal returns the browser to |
+| `/brokerage/snaptrade-authorized` | Page the backend sends the browser to after SnapTrade OAuth |
 | `/health` | Liveness |
 
 ## Development
@@ -66,5 +115,7 @@ go test -race ./...
 go vet ./...
 govulncheck ./...
 ```
+
+Every GraphQL operation is validated against the backend's exported schema, both directly in each feature's `schema_test.go` and for every request the fake API receives in tool tests. After changing the backend's GraphQL, regenerate the schema (see `backend/README.md`) and rerun these tests.
 
 The module pins `toolchain go1.27.2`, which fixes standard-library vulnerabilities the server reaches in 1.27.1.

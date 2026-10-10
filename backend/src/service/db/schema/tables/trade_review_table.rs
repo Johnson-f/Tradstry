@@ -765,6 +765,13 @@ pub async fn publish_review(pool: &PgPool, user_id: &str, match_id: &str) -> Res
         tag_ids,
         violated_principle_ids,
         contract_multiplier: multiplier.to_f64().unwrap_or(1.0),
+        fees: episode
+            .draft
+            .allocations
+            .iter()
+            .map(|fill| fill.fee)
+            .sum::<Decimal>()
+            .to_f64(),
     };
     let transaction_ids: Vec<String> = episode
         .draft
@@ -1063,6 +1070,13 @@ async fn publish_unplanned_episode(
         tag_ids: input.tag_ids,
         violated_principle_ids: input.violated_principle_ids,
         contract_multiplier: multiplier.to_f64().unwrap_or(1.0),
+        fees: episode
+            .draft
+            .allocations
+            .iter()
+            .map(|fill| fill.fee)
+            .sum::<Decimal>()
+            .to_f64(),
     };
     let link_ids: Vec<String> = transaction_ids
         .iter()
@@ -1172,7 +1186,7 @@ pub async fn list_workspace_episodes(
     load_episodes(pool, user_id, workspace_id).await
 }
 
-fn weighted_price<'a>(
+pub(crate) fn weighted_price<'a>(
     fills: impl Iterator<Item = &'a FillAllocation>,
     quantity: Decimal,
 ) -> Result<Decimal> {
@@ -1427,7 +1441,7 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
         .ok()
         .map(|date| date.with_timezone(&Utc))
 }
-fn direction_str(direction: EpisodeDirection) -> &'static str {
+pub(crate) fn direction_str(direction: EpisodeDirection) -> &'static str {
     if direction == EpisodeDirection::Long {
         "long"
     } else {

@@ -1,6 +1,7 @@
 pub mod backfill;
 pub mod chart;
 mod commands;
+pub mod duplicates;
 pub mod grouping;
 mod projection;
 pub mod reflection;

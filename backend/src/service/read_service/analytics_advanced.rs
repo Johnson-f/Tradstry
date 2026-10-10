@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, NaiveDate, Timelike};
+use chrono::{DateTime, Datelike, NaiveDate, Timelike};
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::service::db::schema::tables::journal_table::JournalEntry;
@@ -15,6 +16,9 @@ pub struct AdvancedAnalytics {
     pub expectancy_dollars: f64,
     pub expectancy_r: Option<f64>,
     pub r_trade_count: usize, // trades with a valid initial risk
+    /// Of those, trades whose stop was typed with a manual trade, so when it was set is unknown.
+    #[serde(default)]
+    pub r_typed_stop_count: usize,
     pub profit_factor: Option<f64>,
     pub sqn: Option<f64>,
     /// Average realized $ on winning trades (sum winner $ / number of winners).
@@ -61,6 +65,14 @@ pub struct AdvancedAnalytics {
     /// Pre-trade conviction (1–5) vs outcome, and market-regime performance.
     pub by_conviction: Vec<DimensionStat>,
     pub by_market_regime: Vec<DimensionStat>,
+    /// One group per trading day (`YYYY-MM-DD`, journal time zone) with closed trades.
+    pub by_day: Vec<DimensionStat>,
+    /// One group per trading principle (keyed by principle ID) broken on trades
+    /// in the range. A trade counts toward each principle it broke.
+    pub by_violated_principle: Vec<DimensionStat>,
+    /// What the figures cover: broker and manual trades counted, and trades left out.
+    #[serde(default)]
+    pub coverage: crate::service::read_service::trade_set::TradeCoverage,
     // behavioral / process (Task 5)
     pub clean_vs_flawed: CleanFlawed,
     /// Discipline / process-adherence block: mistake cost plus the
@@ -158,26 +170,63 @@ pub struct RBucket {
     pub count: usize,
 }
 
-/// Realized dollar P/L for a trade. `total_pl` is stored as a percentage return
-/// (`(exit-entry)/entry * 100`), so the dollar value is the trade's notional
-/// times that fractional return. Mirrors the journal/dashboard SQL
-/// (`position_size * entry_price * total_pl / 100`) so the analytics page and
-/// the dashboard report the same dollars.
-fn dollar_pl(e: &JournalEntry) -> f64 {
+/// Everything besides the trades that the analytics depend on.
+#[derive(Debug, Clone)]
+pub struct AnalysisContext {
+    /// The workspace's current account value, if the broker reports one.
+    pub current_equity: Option<f64>,
+    pub trade_tags: HashMap<String, Vec<TradeTag>>,
+    /// Principle IDs each trade violated.
+    pub violations: HashMap<String, Vec<String>>,
+    /// Realized money per trade (`realized_net`, the journal's money). Trades
+    /// without an entry fall back to the percent-derived amount.
+    pub money: HashMap<String, f64>,
+    /// The journal's time zone; trading days and weekdays are counted in it.
+    pub timezone: Tz,
+}
+
+impl Default for AnalysisContext {
+    fn default() -> Self {
+        Self {
+            current_equity: None,
+            trade_tags: HashMap::new(),
+            violations: HashMap::new(),
+            money: HashMap::new(),
+            timezone: chrono_tz::America::New_York,
+        }
+    }
+}
+
+impl AnalysisContext {
+    /// A trade's realized money: what wins, losses and every total are based on.
+    fn pl(&self, e: &JournalEntry) -> f64 {
+        self.money
+            .get(&e.id)
+            .copied()
+            .unwrap_or_else(|| percent_dollars(e))
+    }
+
+    /// The trading day a trade closed on, in the journal's time zone. A close
+    /// recorded as a bare date is already a day and is not shifted.
+    fn close_day(&self, e: &JournalEntry) -> Option<NaiveDate> {
+        match DateTime::parse_from_rfc3339(&e.close_date) {
+            Ok(closed) => Some(closed.with_timezone(&self.timezone).date_naive()),
+            Err(_) => parse_day(&e.close_date),
+        }
+    }
+}
+
+/// Dollar P/L reconstructed from the percent `total_pl` (`(exit-entry)/entry *
+/// 100`) times notional. Only for trades with no recorded realized money, such
+/// as entries written before the journal stored it.
+fn percent_dollars(e: &JournalEntry) -> f64 {
     e.position_size * e.entry_price * e.total_pl / 100.0 * e.contract_multiplier
 }
 
-/// Per-trade R-multiple: realized dollar P/L over initial dollar risk. None when
-/// initial dollar risk is not determinable (stop_loss is zero/unset, or the
-/// computed risk is zero or negative).
-fn r_multiple(e: &JournalEntry) -> Option<f64> {
-    let stop = e.stop_loss?;
-    let risk = (e.entry_price - stop).abs() * e.position_size * e.contract_multiplier;
-    if risk > 0.0 {
-        Some(dollar_pl(e) / risk)
-    } else {
-        None
-    }
+/// Per-trade R-multiple: realized dollar P/L over the risk taken at entry. The
+/// trade set has already put the stop in force at entry on the trade.
+fn r_multiple(c: &AnalysisContext, e: &JournalEntry) -> Option<f64> {
+    crate::service::read_service::trade_set::r_multiple(e, c.pl(e))
 }
 
 /// Mean of an `i32` iterator as `f64`, or `None` when the iterator is empty.
@@ -197,24 +246,23 @@ fn mean_option<I: Iterator<Item = i32>>(iter: I) -> Option<f64> {
 
 pub fn compute_advanced_analytics(
     entries: &[JournalEntry],
-    current_equity: Option<f64>,
-    trade_tags: &HashMap<String, Vec<TradeTag>>,
-    violation_counts: &HashMap<String, usize>,
+    c: &AnalysisContext,
 ) -> AdvancedAnalytics {
+    let trade_tags = &c.trade_tags;
     // A broker that reports no balance stores 0, not NULL. Treating that as a real $0
     // account makes it the drawdown denominator and yields impossible values (>100%).
-    let current_equity = current_equity.filter(|e| *e > 0.0);
+    let current_equity = c.current_equity.filter(|e| *e > 0.0);
     let n = entries.len();
     if n == 0 {
         return AdvancedAnalytics::default();
     }
 
-    let net_profit: f64 = entries.iter().map(dollar_pl).sum();
+    let net_profit: f64 = entries.iter().map(|e| c.pl(e)).sum();
 
     // Average gain / loss in dollars and percent. Denominators are winners-only
     // and losers-only (breakeven excluded); loss is a positive magnitude.
-    let winners: Vec<&JournalEntry> = entries.iter().filter(|e| e.total_pl > 0.0).collect();
-    let losers: Vec<&JournalEntry> = entries.iter().filter(|e| e.total_pl < 0.0).collect();
+    let winners: Vec<&JournalEntry> = entries.iter().filter(|e| c.pl(e) > 0.0).collect();
+    let losers: Vec<&JournalEntry> = entries.iter().filter(|e| c.pl(e) < 0.0).collect();
     let mean_or_zero = |vals: &[f64]| -> f64 {
         if vals.is_empty() {
             0.0
@@ -222,26 +270,21 @@ pub fn compute_advanced_analytics(
             vals.iter().sum::<f64>() / vals.len() as f64
         }
     };
-    let average_gain = mean_or_zero(&winners.iter().map(|e| dollar_pl(e)).collect::<Vec<_>>());
-    let average_loss = mean_or_zero(
-        &losers
-            .iter()
-            .map(|e| dollar_pl(e).abs())
-            .collect::<Vec<_>>(),
-    );
+    let average_gain = mean_or_zero(&winners.iter().map(|e| c.pl(e)).collect::<Vec<_>>());
+    let average_loss = mean_or_zero(&losers.iter().map(|e| c.pl(e).abs()).collect::<Vec<_>>());
     let average_gain_pct = mean_or_zero(&winners.iter().map(|e| e.total_pl).collect::<Vec<_>>());
     let average_loss_pct =
         mean_or_zero(&losers.iter().map(|e| e.total_pl.abs()).collect::<Vec<_>>());
 
     // Six core metrics computed by the single shared implementation.
     let refs: Vec<&JournalEntry> = entries.iter().collect();
-    let core = core_metrics(&refs);
+    let core = core_metrics(c, &refs);
     let win_rate = core.win_rate;
     let expectancy_dollars = core.expectancy_dollars;
     let expectancy_r = core.expectancy_r;
     let profit_factor = core.profit_factor;
 
-    let rs: Vec<f64> = entries.iter().filter_map(r_multiple).collect();
+    let rs: Vec<f64> = entries.iter().filter_map(|e| r_multiple(c, e)).collect();
     let r_trade_count = rs.len();
     let sqn = sqn(&rs);
 
@@ -249,7 +292,7 @@ pub fn compute_advanced_analytics(
     let mut planned: Vec<f64> = Vec::new();
     let mut actual: Vec<f64> = Vec::new();
     for e in entries.iter() {
-        if let (Some(r), Some(planned_r)) = (r_multiple(e), e.risk_reward) {
+        if let (Some(r), Some(planned_r)) = (r_multiple(c, e), e.risk_reward) {
             planned.push(planned_r);
             actual.push(r);
         }
@@ -275,7 +318,7 @@ pub fn compute_advanced_analytics(
     let mut max_drawdown_dollars = 0.0_f64;
     let mut peak_at_trough = 0.0_f64; // running peak captured at the deepest trough
     for e in sorted.iter() {
-        equity += dollar_pl(e);
+        equity += c.pl(e);
         if equity > peak {
             peak = equity;
         }
@@ -317,22 +360,22 @@ pub fn compute_advanced_analytics(
     } else {
         None
     };
-    let longest_drawdown_days = longest_drawdown_days(&sorted);
+    let longest_drawdown_days = longest_drawdown_days(c, &sorted);
 
     // R-distribution over R-valid trades (reuse `rs`). Always 5 buckets in order.
     let r_distribution = r_distribution(&rs);
 
     // Streaks over entries ordered by close_date ASC (reuse `sorted`).
-    let (longest_win_streak, longest_loss_streak, current_streak) = streaks(&sorted);
+    let (longest_win_streak, longest_loss_streak, current_streak) = streaks(c, &sorted);
 
     // Holding time (seconds) split by winners/losers, over `sorted`.
     let mut hold_winners: Vec<f64> = Vec::new();
     let mut hold_losers: Vec<f64> = Vec::new();
     for e in sorted.iter() {
         if let Some(secs) = holding_secs(e) {
-            if e.total_pl > 0.0 {
+            if c.pl(e) > 0.0 {
                 hold_winners.push(secs);
-            } else if e.total_pl < 0.0 {
+            } else if c.pl(e) < 0.0 {
                 hold_losers.push(secs);
             }
         }
@@ -341,18 +384,27 @@ pub fn compute_advanced_analytics(
     let avg_hold_losers_secs = mean(&hold_losers);
 
     // Monthly win-rate consistency: sample stdev of per-month win rates (0..100).
-    let monthly_win_rate_stdev = monthly_win_rate_stdev(&sorted);
+    let monthly_win_rate_stdev = monthly_win_rate_stdev(c, &sorted);
 
     // Breakdown dimensions (Task 4).
-    let by_symbol = breakdown(entries, |e| Some(e.symbol.clone()));
-    let by_day_of_week = breakdown(entries, |e| Some(day_of_week_key(&e.close_date)));
-    let by_session = breakdown(entries, |e| Some(session_key(&e.close_date)));
-    let by_holding = breakdown(entries, |e| Some(holding_key(e)));
-    let by_direction = breakdown(entries, |e| Some(e.trade_type.clone()));
-    let by_position_size = breakdown(entries, |e| Some(position_size_key(e.position_size)));
-    let by_playbook = breakdown(entries, |e| e.playbook_id.clone().or(Some("none".into())));
-    let by_conviction = breakdown(entries, |e| e.pre_trade_conviction.map(conviction_key));
-    let by_market_regime = breakdown(entries, |e| {
+    let by_symbol = breakdown(c, entries, |e| Some(e.symbol.clone()));
+    let by_day_of_week = breakdown(c, entries, |e| {
+        Some(
+            c.close_day(e)
+                .map_or_else(|| "unknown".into(), |d| d.format("%A").to_string()),
+        )
+    });
+    let by_session = breakdown(c, entries, |e| Some(session_key(&e.close_date)));
+    let by_day = breakdown(c, entries, |e| c.close_day(e).map(|d| d.to_string()));
+    let by_violated_principle = principle_breakdown(c, entries);
+    let by_holding = breakdown(c, entries, |e| Some(holding_key(e)));
+    let by_direction = breakdown(c, entries, |e| Some(e.trade_type.clone()));
+    let by_position_size = breakdown(c, entries, |e| Some(position_size_key(e.position_size)));
+    let by_playbook = breakdown(c, entries, |e| {
+        e.playbook_id.clone().or(Some("none".into()))
+    });
+    let by_conviction = breakdown(c, entries, |e| e.pre_trade_conviction.map(conviction_key));
+    let by_market_regime = breakdown(c, entries, |e| {
         e.market_regime
             .as_ref()
             .map(|s| s.trim().to_string())
@@ -369,8 +421,8 @@ pub fn compute_advanced_analytics(
     };
     let flawed_refs: Vec<&JournalEntry> = entries.iter().filter(|e| is_flawed(e)).collect();
     let clean_refs: Vec<&JournalEntry> = entries.iter().filter(|e| !is_flawed(e)).collect();
-    let clean = core_metrics(&clean_refs);
-    let flawed = core_metrics(&flawed_refs);
+    let clean = core_metrics(c, &clean_refs);
+    let flawed = core_metrics(c, &flawed_refs);
     let flawed_trade_count = flawed_refs.len();
     let mistake_cost = if flawed_trade_count == 0 {
         0.0
@@ -392,11 +444,12 @@ pub fn compute_advanced_analytics(
             .count(),
         trades_with_violations: entries
             .iter()
-            .filter(|e| violation_counts.get(&e.id).is_some_and(|&c| c > 0))
+            .filter(|e| c.violations.get(&e.id).is_some_and(|v| !v.is_empty()))
             .count(),
         total_violations: entries
             .iter()
-            .filter_map(|e| violation_counts.get(&e.id))
+            .filter_map(|e| c.violations.get(&e.id))
+            .map(Vec::len)
             .sum(),
     };
     let clean_vs_flawed = CleanFlawed { clean, flawed };
@@ -404,9 +457,9 @@ pub fn compute_advanced_analytics(
     // Per-category tag expectancy: group trades by each tag within each tag
     // category present across `trade_tags`. The seeded tactic/edge categories
     // appear as breakdowns; custom categories appear automatically.
-    let tag_breakdowns = tag_breakdowns(entries, trade_tags);
+    let tag_breakdowns = tag_breakdowns(c, entries, trade_tags);
 
-    let trades_per_day = trades_per_day(entries);
+    let trades_per_day = trades_per_day(c, entries);
 
     AdvancedAnalytics {
         trade_count: n,
@@ -415,6 +468,7 @@ pub fn compute_advanced_analytics(
         expectancy_dollars,
         expectancy_r,
         r_trade_count,
+        r_typed_stop_count: 0,
         profit_factor,
         sqn,
         average_gain,
@@ -447,6 +501,9 @@ pub fn compute_advanced_analytics(
         by_playbook,
         by_conviction,
         by_market_regime,
+        by_day,
+        by_violated_principle,
+        coverage: Default::default(),
         clean_vs_flawed,
         discipline,
         tag_breakdowns,
@@ -465,6 +522,7 @@ pub fn compute_advanced_analytics(
 /// through. Trades absent from `trade_tags` (e.g. legacy untagged trades)
 /// contribute to no tag metric.
 fn tag_breakdowns(
+    c: &AnalysisContext,
     entries: &[JournalEntry],
     trade_tags: &HashMap<String, Vec<TradeTag>>,
 ) -> Vec<CategoryBreakdown> {
@@ -505,7 +563,7 @@ fn tag_breakdowns(
                 .into_iter()
                 .map(|(key, group)| DimensionStat {
                     key,
-                    metrics: core_metrics(&group),
+                    metrics: core_metrics(c, &group),
                 })
                 .collect(),
         })
@@ -518,12 +576,13 @@ fn tag_breakdowns(
 /// mean trades across active days, `max` = busiest day, `stdev` = sample stdev
 /// of per-day counts (None when fewer than 2 active days). Empty input yields
 /// the default (avg 0, max 0, stdev None).
-fn trades_per_day(entries: &[JournalEntry]) -> TradesPerDay {
+fn trades_per_day(c: &AnalysisContext, entries: &[JournalEntry]) -> TradesPerDay {
     use std::collections::BTreeMap;
     let mut by_day: BTreeMap<String, usize> = BTreeMap::new();
     for e in entries.iter() {
-        let end = 10.min(e.close_date.len());
-        let day = e.close_date[..end].to_string();
+        let day = c
+            .close_day(e)
+            .map_or_else(|| e.close_date.clone(), |d| d.to_string());
         *by_day.entry(day).or_insert(0) += 1;
     }
     if by_day.is_empty() {
@@ -540,15 +599,15 @@ fn trades_per_day(entries: &[JournalEntry]) -> TradesPerDay {
 /// Compute the six shared core metrics over a set of entries. The single
 /// implementation of these formulas; both `compute_advanced_analytics` and
 /// `breakdown` call it. Returns `Default` (all-zero / None) for empty input.
-fn core_metrics(entries: &[&JournalEntry]) -> GroupMetrics {
+fn core_metrics(c: &AnalysisContext, entries: &[&JournalEntry]) -> GroupMetrics {
     let n = entries.len();
     if n == 0 {
         return GroupMetrics::default();
     }
 
-    let net_profit: f64 = entries.iter().map(|e| dollar_pl(e)).sum();
-    let winners: Vec<&&JournalEntry> = entries.iter().filter(|e| e.total_pl > 0.0).collect();
-    let losers: Vec<&&JournalEntry> = entries.iter().filter(|e| e.total_pl < 0.0).collect();
+    let net_profit: f64 = entries.iter().map(|e| c.pl(e)).sum();
+    let winners: Vec<&&JournalEntry> = entries.iter().filter(|e| c.pl(e) > 0.0).collect();
+    let losers: Vec<&&JournalEntry> = entries.iter().filter(|e| c.pl(e) < 0.0).collect();
 
     // Win rate excludes breakeven (scratch) trades from both sides — the
     // journal-software standard: wins / (wins + losses).
@@ -562,12 +621,12 @@ fn core_metrics(entries: &[&JournalEntry]) -> GroupMetrics {
     let avg_win = if winners.is_empty() {
         0.0
     } else {
-        winners.iter().map(|e| dollar_pl(e)).sum::<f64>() / winners.len() as f64
+        winners.iter().map(|e| c.pl(e)).sum::<f64>() / winners.len() as f64
     };
     let avg_loss = if losers.is_empty() {
         0.0
     } else {
-        losers.iter().map(|e| dollar_pl(e).abs()).sum::<f64>() / losers.len() as f64
+        losers.iter().map(|e| c.pl(e).abs()).sum::<f64>() / losers.len() as f64
     };
     // Expectancy is average $ realized per trade over ALL trades (breakeven
     // included as zero) = net_profit / n. Expressed via the win/loss fractions
@@ -575,15 +634,15 @@ fn core_metrics(entries: &[&JournalEntry]) -> GroupMetrics {
     let expectancy_dollars =
         (winners.len() as f64 / n as f64) * avg_win - (losers.len() as f64 / n as f64) * avg_loss;
 
-    let gross_profit: f64 = winners.iter().map(|e| dollar_pl(e)).sum();
-    let gross_loss: f64 = losers.iter().map(|e| dollar_pl(e).abs()).sum();
+    let gross_profit: f64 = winners.iter().map(|e| c.pl(e)).sum();
+    let gross_loss: f64 = losers.iter().map(|e| c.pl(e).abs()).sum();
     let profit_factor = if gross_loss > 0.0 {
         Some(gross_profit / gross_loss)
     } else {
         None
     };
 
-    let rs: Vec<f64> = entries.iter().filter_map(|e| r_multiple(e)).collect();
+    let rs: Vec<f64> = entries.iter().filter_map(|e| r_multiple(c, e)).collect();
     let expectancy_r = if rs.is_empty() {
         None
     } else {
@@ -600,10 +659,30 @@ fn core_metrics(entries: &[&JournalEntry]) -> GroupMetrics {
     }
 }
 
+/// Groups trades by each principle they broke, so a trade with two broken
+/// principles counts toward both.
+fn principle_breakdown(c: &AnalysisContext, entries: &[JournalEntry]) -> Vec<DimensionStat> {
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<&str, Vec<&JournalEntry>> = BTreeMap::new();
+    for e in entries.iter() {
+        for principle in c.violations.get(&e.id).into_iter().flatten() {
+            groups.entry(principle).or_default().push(e);
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(key, group)| DimensionStat {
+            key: key.to_string(),
+            metrics: core_metrics(c, &group),
+        })
+        .collect()
+}
+
 /// Generic group-by breakdown. Groups `entries` by `key(e)`, skipping entries
 /// whose key is `None`, computes `core_metrics` per group, and returns the
 /// groups sorted by key ascending for determinism.
 fn breakdown<F: Fn(&JournalEntry) -> Option<String>>(
+    c: &AnalysisContext,
     entries: &[JournalEntry],
     key: F,
 ) -> Vec<DimensionStat> {
@@ -618,25 +697,16 @@ fn breakdown<F: Fn(&JournalEntry) -> Option<String>>(
         .into_iter()
         .map(|(key, group)| DimensionStat {
             key,
-            metrics: core_metrics(&group),
+            metrics: core_metrics(c, &group),
         })
         .collect()
 }
 
-/// Weekday name of `close_date` ("Monday".."Sunday"); "unknown" if unparseable.
-fn day_of_week_key(s: &str) -> String {
-    match parse_day(s) {
-        Some(d) => d.format("%A").to_string(),
-        None => "unknown".into(),
-    }
-}
-
-/// Session bucket from the TIME-of-day of `close_date` (RFC3339 only). Uses the
-/// stored offset's local time (no timezone conversion). "unknown" when the
-/// value is date-only / has no time component.
+/// Market session of a close time, judged on the exchange clock (New York),
+/// whatever the journal's time zone. "unknown" when the time is not recorded.
 fn session_key(s: &str) -> String {
     let dt = match DateTime::parse_from_rfc3339(s) {
-        Ok(dt) => dt,
+        Ok(dt) => dt.with_timezone(&chrono_tz::America::New_York),
         Err(_) => return "unknown".into(),
     };
     let t = dt.time();
@@ -722,19 +792,19 @@ fn r_distribution(rs: &[f64]) -> Vec<RBucket> {
 /// loser = total_pl < 0; breakeven (== 0) breaks both and counts as neither.
 /// Returns (longest_win, longest_loss, current_streak). current_streak is
 /// signed: +k trailing winners, -k trailing losers, 0 if last is breakeven/empty.
-fn streaks(sorted: &[JournalEntry]) -> (usize, usize, i32) {
+fn streaks(c: &AnalysisContext, sorted: &[JournalEntry]) -> (usize, usize, i32) {
     let mut longest_win = 0usize;
     let mut longest_loss = 0usize;
     let mut cur_win = 0usize;
     let mut cur_loss = 0usize;
     for e in sorted.iter() {
-        if e.total_pl > 0.0 {
+        if c.pl(e) > 0.0 {
             cur_win += 1;
             cur_loss = 0;
             if cur_win > longest_win {
                 longest_win = cur_win;
             }
-        } else if e.total_pl < 0.0 {
+        } else if c.pl(e) < 0.0 {
             cur_loss += 1;
             cur_win = 0;
             if cur_loss > longest_loss {
@@ -786,21 +856,21 @@ fn parse_dt(s: &str) -> Option<DateTime<chrono::Utc>> {
 
 /// Sample stdev (n-1) of monthly win rates (winners/total * 100 per `YYYY-MM`
 /// prefix of close_date). None when fewer than 2 distinct months.
-fn monthly_win_rate_stdev(sorted: &[JournalEntry]) -> Option<f64> {
+fn monthly_win_rate_stdev(c: &AnalysisContext, sorted: &[JournalEntry]) -> Option<f64> {
     use std::collections::BTreeMap;
     // (winners, decisive) per month, in month order. Decisive = wins + losses;
     // breakeven (scratch) trades are excluded from the win rate on both sides.
     let mut by_month: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     for e in sorted.iter() {
-        if e.close_date.len() < 7 {
+        let Some(day) = c.close_day(e) else {
             continue;
-        }
-        let key = e.close_date[..7].to_string();
+        };
+        let key = format!("{}-{:02}", day.year(), day.month());
         let entry = by_month.entry(key).or_insert((0, 0));
-        if e.total_pl > 0.0 {
+        if c.pl(e) > 0.0 {
             entry.0 += 1;
             entry.1 += 1;
-        } else if e.total_pl < 0.0 {
+        } else if c.pl(e) < 0.0 {
             entry.1 += 1;
         }
     }
@@ -846,13 +916,13 @@ fn parse_day(s: &str) -> Option<NaiveDate> {
 /// later point whose equity meets/exceeds that peak. Unrecovered drawdowns are
 /// measured to the last trade's date. Points with unparseable dates are skipped
 /// for the duration calc. Returns 0 when there is no drawdown.
-fn longest_drawdown_days(sorted: &[JournalEntry]) -> i64 {
+fn longest_drawdown_days(c: &AnalysisContext, sorted: &[JournalEntry]) -> i64 {
     // Build (date, equity) pairs, skipping entries whose date can't parse.
     let mut points: Vec<(NaiveDate, f64)> = Vec::with_capacity(sorted.len());
     let mut equity = 0.0_f64;
     for e in sorted.iter() {
-        equity += e.total_pl;
-        if let Some(d) = parse_day(&e.close_date) {
+        equity += c.pl(e);
+        if let Some(d) = c.close_day(e) {
             points.push((d, equity));
         }
     }
@@ -943,6 +1013,9 @@ mod tests {
             rule_adherence_score: None,
             contract_multiplier: 1.0,
             created_at: close.into(),
+            possible_duplicates: Vec::new(),
+            fees: None,
+            record_version: 0,
         }
     }
 
@@ -988,7 +1061,7 @@ mod tests {
             t(15.0, 100.0, 90.0, 1.0, "2026-01-01"),
             t(-5.0, 100.0, 90.0, 1.0, "2026-01-02"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.expectancy_r.unwrap() - 0.5).abs() < 1e-9); // (1.5 + -0.5)/2
     }
 
@@ -998,7 +1071,7 @@ mod tests {
             t(100.0, 100.0, 0.0, 1.0, "2026-01-01"), // no stop => $100, R-invalid
             t(60.0, 100.0, 99.0, 1.0, "2026-01-02"), // $60, R-valid
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.r_trade_count, 1); // only the stop'd trade
         assert!((a.net_profit - 160.0).abs() < 1e-9); // both count in $
     }
@@ -1010,7 +1083,7 @@ mod tests {
             t(100.0, 100.0, 99.0, 1.0, "2026-01-01"),
             t(-40.0, 100.0, 99.0, 1.0, "2026-01-02"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.expectancy_dollars - 30.0).abs() < 1e-9);
     }
 
@@ -1025,7 +1098,7 @@ mod tests {
             t(-10.0, 100.0, 99.0, 1.0, "2026-01-03"), // loss
             t(0.0, 100.0, 99.0, 1.0, "2026-01-04"),   // breakeven (scratch)
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.win_rate - (2.0 / 3.0 * 100.0)).abs() < 1e-9);
         assert!((a.expectancy_dollars - 5.0).abs() < 1e-9);
     }
@@ -1037,7 +1110,7 @@ mod tests {
             t(-150.0, 100.0, 99.0, 1.0, "2026-01-02"),
             t(50.0, 100.0, 99.0, 1.0, "2026-01-03"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.max_drawdown_dollars - 150.0).abs() < 1e-9);
         assert!((a.current_drawdown_dollars - 100.0).abs() < 1e-9); // peak 100, final 0
     }
@@ -1053,8 +1126,14 @@ mod tests {
             t(50.0, 100.0, 99.0, 1.0, "2026-01-03"),
         ];
 
-        let zero = compute_advanced_analytics(&e, Some(0.0), &HashMap::new(), &HashMap::new());
-        let none = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let zero = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                current_equity: Some(0.0),
+                ..Default::default()
+            },
+        );
+        let none = compute_advanced_analytics(&e, &AnalysisContext::default());
 
         // Zero must behave exactly like "no equity reported", not like a $0 account.
         assert_eq!(zero.max_drawdown_pct, none.max_drawdown_pct);
@@ -1075,7 +1154,7 @@ mod tests {
         ];
 
         // Fallback (None): denominator is peak cumulative PnL = 100.
-        let none = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let none = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((none.max_drawdown_dollars - 150.0).abs() < 1e-9);
         assert!((none.max_drawdown_pct - 150.0).abs() < 1e-9); // 150/100*100
         assert!(none.starting_equity.is_none());
@@ -1084,7 +1163,13 @@ mod tests {
         // With real equity 10000 and net_profit 0 => starting_equity = 10000.
         // peak_account_equity_at_trough = 10000 + 100 = 10100.
         // expected pct = 150 / 10100 * 100 = 1.4851485148514851
-        let some = compute_advanced_analytics(&e, Some(10000.0), &HashMap::new(), &HashMap::new());
+        let some = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                current_equity: Some(10000.0),
+                ..Default::default()
+            },
+        );
         assert!((some.max_drawdown_dollars - 150.0).abs() < 1e-9); // unchanged
         let expected = 150.0 / 10100.0 * 100.0;
         assert!((some.max_drawdown_pct - expected).abs() < 1e-9);
@@ -1098,7 +1183,7 @@ mod tests {
             t(10.0, 10.0, 9.0, 1.0, "2026-01-01"),
             t(20.0, 10.0, 9.0, 1.0, "2026-01-02"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.max_drawdown_dollars, 0.0);
     }
 
@@ -1120,7 +1205,7 @@ mod tests {
             t(1.5, 100.0, 99.0, 1.0, "2026-01-04"),  // 1.5
             t(2.5, 100.0, 99.0, 1.0, "2026-01-05"),  // 2.5
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.r_distribution.len(), 5);
         let labels: Vec<&str> = a.r_distribution.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(labels, vec!["<=-1R", "-1..0R", "0..1R", "1..2R", ">=2R"]);
@@ -1130,12 +1215,12 @@ mod tests {
 
     #[test]
     fn r_distribution_always_five_buckets_when_empty() {
-        let a = compute_advanced_analytics(&[], None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&[], &AnalysisContext::default());
         // empty input => default => empty distribution
         assert!(a.r_distribution.is_empty());
         // a trade with no stop is R-invalid => all-zero counts but 5 buckets
         let e = vec![t(100.0, 50.0, 0.0, 5.0, "2026-01-01")];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.r_distribution.len(), 5);
         assert!(a.r_distribution.iter().all(|b| b.count == 0));
     }
@@ -1148,7 +1233,7 @@ mod tests {
             t(-10.0, 1.0, 0.5, 1.0, "2026-01-03"),
             t(10.0, 1.0, 0.5, 1.0, "2026-01-04"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.longest_win_streak, 2);
         assert_eq!(a.longest_loss_streak, 1);
         assert_eq!(a.current_streak, 1); // last trade is a win
@@ -1161,7 +1246,7 @@ mod tests {
             t(-10.0, 1.0, 0.5, 1.0, "2026-01-02"),
             t(-10.0, 1.0, 0.5, 1.0, "2026-01-03"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.longest_win_streak, 1);
         assert_eq!(a.longest_loss_streak, 2);
         assert_eq!(a.current_streak, -2);
@@ -1174,7 +1259,7 @@ mod tests {
             t(0.0, 1.0, 0.5, 1.0, "2026-01-02"), // breakeven: counts as neither
             t(10.0, 1.0, 0.5, 1.0, "2026-01-03"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.longest_win_streak, 1);
         assert_eq!(a.longest_loss_streak, 0);
         assert_eq!(a.current_streak, 1);
@@ -1186,7 +1271,7 @@ mod tests {
             t(10.0, 1.0, 0.5, 1.0, "2026-01-01"),
             t(0.0, 1.0, 0.5, 1.0, "2026-01-02"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.current_streak, 0);
     }
 
@@ -1197,7 +1282,7 @@ mod tests {
             t_oc(50.0, "2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z"),
             t_oc(-50.0, "2026-01-02T09:00:00Z", "2026-01-02T11:00:00Z"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.avg_hold_winners_secs.unwrap() - 3600.0).abs() < 1e-9);
         assert!((a.avg_hold_losers_secs.unwrap() - 7200.0).abs() < 1e-9);
     }
@@ -1206,7 +1291,7 @@ mod tests {
     fn holding_time_date_only_zero_diff() {
         // date-only parse: same day => 0 seconds held
         let e = vec![t_oc(50.0, "2026-01-01", "2026-01-01")];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.avg_hold_winners_secs.unwrap() - 0.0).abs() < 1e-9);
         assert!(a.avg_hold_losers_secs.is_none());
     }
@@ -1221,7 +1306,7 @@ mod tests {
             t(10.0, 1.0, 0.5, 1.0, "2026-02-01"),
             t(10.0, 1.0, 0.5, 1.0, "2026-02-15"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.monthly_win_rate_stdev.unwrap() - 1250.0_f64.sqrt()).abs() < 1e-9);
     }
 
@@ -1231,7 +1316,7 @@ mod tests {
             t(10.0, 1.0, 0.5, 1.0, "2026-01-01"),
             t(-10.0, 1.0, 0.5, 1.0, "2026-01-15"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!(a.monthly_win_rate_stdev.is_none());
     }
 
@@ -1250,7 +1335,7 @@ mod tests {
             t_sym(-40.0, "AAPL", "2026-01-02"),
             t_sym(60.0, "MSFT", "2026-01-03"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.by_symbol.len(), 2);
         // sorted ascending by key => AAPL first, MSFT second.
         let aapl = &a.by_symbol[0];
@@ -1276,7 +1361,7 @@ mod tests {
         let mut short_a = t(50.0, 100.0, 99.0, 1.0, "2026-01-03");
         short_a.trade_type = "short".into();
         let e = vec![long_a, long_b, short_a];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert_eq!(a.by_direction.len(), 2);
         let long = &a.by_direction[0]; // "long" < "short"
         let short = &a.by_direction[1];
@@ -1329,7 +1414,13 @@ mod tests {
             )],
         );
 
-        let a = compute_advanced_analytics(&e, None, &trade_tags, &HashMap::new());
+        let a = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                trade_tags: trade_tags.clone(),
+                ..Default::default()
+            },
+        );
         assert_eq!(a.clean_vs_flawed.flawed.trade_count, 2);
         assert!((a.clean_vs_flawed.flawed.net_profit - 20.0).abs() < 1e-9);
         assert_eq!(a.clean_vs_flawed.clean.trade_count, 1);
@@ -1363,7 +1454,13 @@ mod tests {
             )],
         );
 
-        let a = compute_advanced_analytics(&e, None, &trade_tags, &HashMap::new());
+        let a = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                trade_tags: trade_tags.clone(),
+                ..Default::default()
+            },
+        );
         assert_eq!(a.tag_breakdowns.len(), 1);
         let tactics = &a.tag_breakdowns[0];
         assert_eq!(tactics.category_name, "Tactics");
@@ -1393,7 +1490,13 @@ mod tests {
             ],
         );
 
-        let a = compute_advanced_analytics(&e, None, &trade_tags, &HashMap::new());
+        let a = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                trade_tags: trade_tags.clone(),
+                ..Default::default()
+            },
+        );
         // Two categories, ordered by name: "Mood" then "Tactics".
         assert_eq!(a.tag_breakdowns.len(), 2);
         let mood = &a.tag_breakdowns[0];
@@ -1409,7 +1512,7 @@ mod tests {
     fn untagged_trades_yield_no_tag_breakdowns() {
         // Legacy untagged trades (absent from the map) contribute to nothing.
         let e = vec![t_id("t1", 100.0, "2026-01-01")];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!(a.tag_breakdowns.is_empty());
         // No mistake tag => all trades clean.
         assert_eq!(a.clean_vs_flawed.clean.trade_count, 1);
@@ -1425,7 +1528,7 @@ mod tests {
             t(10.0, 1.0, 0.5, 1.0, "2026-01-01"),
             t(10.0, 1.0, 0.5, 1.0, "2026-01-02"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.trades_per_day.avg - 2.0).abs() < 1e-9);
         assert_eq!(a.trades_per_day.max, 3);
         // sample stdev of [3,1] = sqrt(((3-2)^2 + (1-2)^2)/1) = sqrt(2)
@@ -1438,9 +1541,123 @@ mod tests {
             t(10.0, 1.0, 0.5, 1.0, "2026-01-01"),
             t(10.0, 1.0, 0.5, 1.0, "2026-01-01"),
         ];
-        let a = compute_advanced_analytics(&e, None, &HashMap::new(), &HashMap::new());
+        let a = compute_advanced_analytics(&e, &AnalysisContext::default());
         assert!((a.trades_per_day.avg - 2.0).abs() < 1e-9);
         assert_eq!(a.trades_per_day.max, 2);
         assert!(a.trades_per_day.stdev.is_none());
+    }
+
+    fn with_money(pairs: &[(&str, f64)]) -> AnalysisContext {
+        AnalysisContext {
+            money: pairs.iter().map(|(id, m)| (id.to_string(), *m)).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn realized_money_decides_totals_and_wins_over_the_percent() {
+        // The percent says +2%, but the trade lost money after fees.
+        let e = vec![t_id("a", 2.0, "2026-09-01T15:00:00Z")];
+        let a = compute_advanced_analytics(&e, &with_money(&[("a", -5.0)]));
+        assert!((a.net_profit + 5.0).abs() < 1e-9);
+        assert_eq!(a.win_rate, 0.0);
+        assert_eq!(a.current_streak, -1);
+        assert!((a.average_loss - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn drawdown_days_follow_the_money_curve() {
+        // Money: +100, -10, +20 peaks on the 1st and recovers on the 20th (19 days).
+        // The percents (+1, +5, -1) would peak on the 5th instead.
+        let e = vec![
+            t_id("a", 1.0, "2026-01-01T15:00:00Z"),
+            t_id("b", 5.0, "2026-01-05T15:00:00Z"),
+            t_id("c", -1.0, "2026-01-20T15:00:00Z"),
+        ];
+        let a =
+            compute_advanced_analytics(&e, &with_money(&[("a", 100.0), ("b", -10.0), ("c", 20.0)]));
+        assert_eq!(a.longest_drawdown_days, 19);
+    }
+
+    #[test]
+    fn days_follow_the_journal_time_zone_and_sessions_the_exchange() {
+        // 21:30 New York on Thursday 2026-10-01, and 10:00 New York the same day.
+        let e = vec![
+            t_id("late", 10.0, "2026-10-02T01:30:00Z"),
+            t_id("morning", 10.0, "2026-10-01T14:00:00Z"),
+        ];
+        let new_york = compute_advanced_analytics(&e, &AnalysisContext::default());
+        let keys = |groups: &[DimensionStat]| {
+            groups
+                .iter()
+                .map(|g| (g.key.clone(), g.metrics.trade_count))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys(&new_york.by_day), vec![("2026-10-01".to_string(), 2)]);
+        assert_eq!(
+            keys(&new_york.by_day_of_week),
+            vec![("Thursday".to_string(), 2)]
+        );
+        assert_eq!(
+            keys(&new_york.by_session),
+            vec![("after-hours".to_string(), 1), ("morning".to_string(), 1)]
+        );
+
+        // In Tokyo the late trade falls on the 2nd and the morning one on the 1st,
+        // but sessions are still judged on the New York clock.
+        let tokyo = compute_advanced_analytics(
+            &e,
+            &AnalysisContext {
+                timezone: chrono_tz::Asia::Tokyo,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            keys(&tokyo.by_day),
+            vec![("2026-10-01".to_string(), 1), ("2026-10-02".to_string(), 1)]
+        );
+        assert_eq!(keys(&tokyo.by_session), keys(&new_york.by_session));
+    }
+
+    #[test]
+    fn days_add_up_to_the_total() {
+        let e = vec![
+            t_id("a", 1.0, "2026-09-01T15:00:00Z"),
+            t_id("b", -3.0, "2026-09-01T19:00:00Z"),
+            t_id("c", 4.0, "2026-09-02T15:00:00Z"),
+        ];
+        let a =
+            compute_advanced_analytics(&e, &with_money(&[("a", 50.0), ("b", -30.0), ("c", 45.5)]));
+        let days: f64 = a.by_day.iter().map(|d| d.metrics.net_profit).sum();
+        assert!((days - a.net_profit).abs() < 1e-9);
+        assert_eq!(a.by_day.len(), 2);
+    }
+
+    #[test]
+    fn each_broken_principle_groups_the_trades_that_broke_it() {
+        let e = vec![
+            t_id("a", 1.0, "2026-09-01T15:00:00Z"),
+            t_id("b", -2.0, "2026-09-02T15:00:00Z"),
+            t_id("c", 3.0, "2026-09-03T15:00:00Z"),
+        ];
+        let context = AnalysisContext {
+            violations: HashMap::from([
+                ("a".into(), vec!["p1".into(), "p2".into()]),
+                ("b".into(), vec!["p1".into()]),
+            ]),
+            ..with_money(&[("a", 10.0), ("b", -20.0), ("c", 30.0)])
+        };
+        let a = compute_advanced_analytics(&e, &context);
+        let groups: Vec<(String, usize, f64)> = a
+            .by_violated_principle
+            .iter()
+            .map(|g| (g.key.clone(), g.metrics.trade_count, g.metrics.net_profit))
+            .collect();
+        assert_eq!(
+            groups,
+            vec![("p1".into(), 2, -10.0), ("p2".into(), 1, 10.0)]
+        );
+        assert_eq!(a.discipline.trades_with_violations, 2);
+        assert_eq!(a.discipline.total_violations, 3);
     }
 }

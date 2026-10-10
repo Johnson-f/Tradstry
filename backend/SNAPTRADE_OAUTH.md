@@ -23,6 +23,12 @@ The adapter also needs `SNAPTRADE_OAUTH_CLIENT_ID`. The Rust backend needs:
 If the two backend OAuth URLs are absent, OAuth is disabled and the UI exposes
 only the existing Commercial connection path.
 
+`SNAPTRADE_OAUTH_MCP_RETURN_URL` is optional. Set it to the MCP server's
+`/brokerage/snaptrade-authorized` page (production:
+`https://mcp.tradstry.com/brokerage/snaptrade-authorized`) to let MCP clients
+use SnapTrade OAuth. The SnapTrade redirect URI does not change: the backend
+still handles the callback and only sends the browser on to that page.
+
 ## Test flow
 
 Use a separate SnapTrade Personal test identity with Personal OAuth enabled.

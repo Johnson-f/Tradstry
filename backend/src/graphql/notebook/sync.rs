@@ -942,6 +942,8 @@ struct JournalArgs {
     violated_principle_ids: Vec<String>,
     #[serde(default = "default_contract_multiplier")]
     contract_multiplier: f64,
+    #[serde(default)]
+    fees: Option<f64>,
 }
 
 fn default_contract_multiplier() -> f64 {
@@ -973,6 +975,7 @@ impl JournalArgs {
             tag_ids: self.tag_ids,
             violated_principle_ids: self.violated_principle_ids,
             contract_multiplier: self.contract_multiplier,
+            fees: self.fees,
         }
     }
 }

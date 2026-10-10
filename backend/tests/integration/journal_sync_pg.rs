@@ -59,6 +59,7 @@ fn args(
     tag_ids: Vec<String>,
 ) -> jt::JournalWriteArgs {
     jt::JournalWriteArgs {
+        fees: None,
         id: id.into(),
         workspace_id: workspace_id.into(),
         open_date: "2026-01-01T09:00:00Z".into(),

@@ -9,6 +9,9 @@ mod m20260830_000006_requeue_media_derivatives;
 mod m20260902_000007_uuid_v7_defaults;
 mod m20261003_000008_journal_first_flow;
 mod m20261005_000009_recent_trade_notes;
+mod m20261009_000010_mcp_oauth_platform;
+mod m20261009_000011_manual_duplicate_hold;
+mod m20261009_000012_manual_trade_fees;
 
 pub struct Migrator;
 
@@ -25,6 +28,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260902_000007_uuid_v7_defaults::Migration),
             Box::new(m20261003_000008_journal_first_flow::Migration),
             Box::new(m20261005_000009_recent_trade_notes::Migration),
+            Box::new(m20261009_000010_mcp_oauth_platform::Migration),
+            Box::new(m20261009_000011_manual_duplicate_hold::Migration),
+            Box::new(m20261009_000012_manual_trade_fees::Migration),
         ]
     }
 }

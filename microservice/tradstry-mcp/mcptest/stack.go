@@ -12,6 +12,7 @@ import (
 
 	"tradstry-mcp/app"
 	"tradstry-mcp/clerk"
+	"tradstry-mcp/gqlcheck"
 	"tradstry-mcp/graphql"
 )
 
@@ -33,6 +34,7 @@ type Stack struct {
 }
 
 // Start runs a Stack whose fake API answers each request with respond's JSON body.
+// Every request is first validated against the backend's real schema.
 func Start(t *testing.T, respond func(Request) string) *Stack {
 	t.Helper()
 	s := &Stack{Signer: NewSigner(t)}
@@ -44,6 +46,9 @@ func Start(t *testing.T, respond func(Request) string) *Stack {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Errorf("fake API: decode request: %v", err)
+		}
+		if err := gqlcheck.Operation(body.Query, body.Variables); err != nil {
+			t.Errorf("invalid GraphQL sent to the Tradstry API: %v\n%s", err, body.Query)
 		}
 		req := Request{Query: body.Query, Variables: body.Variables, Authorization: r.Header.Get("Authorization")}
 		s.mu.Lock()

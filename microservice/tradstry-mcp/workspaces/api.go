@@ -16,9 +16,10 @@ type workspace struct {
 	TotalValue                  *float64 `json:"totalValue"`
 	SnaptradeConnectionID       *string  `json:"snaptradeConnectionId"`
 	SnaptradeConnectionDisabled bool     `json:"snaptradeConnectionDisabled"`
+	BrokerageSetupComplete      bool     `json:"brokerageSetupComplete"`
 }
 
-const fields = `id name currency assetClass riskProfile broker totalValue snaptradeConnectionId snaptradeConnectionDisabled`
+const fields = `id name currency assetClass riskProfile broker totalValue snaptradeConnectionId snaptradeConnectionDisabled brokerageSetupComplete`
 
 const (
 	listQuery      = `query Workspaces { workspaces { ` + fields + ` } }`

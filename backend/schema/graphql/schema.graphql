@@ -1,0 +1,2361 @@
+"""
+One update row, tagged with the note it belongs to.
+"""
+type AccountNotebookUpdate {
+	noteId: String!
+	seq: Int!
+	"""
+	base64 of the raw update bytes — the only place they are a `String`.
+	"""
+	update: String!
+}
+
+type AdvancedAnalytics {
+	tradeCount: Int!
+	netProfit: Float!
+	winRate: Float!
+	expectancyDollars: Float!
+	expectancyR: Float
+	rTradeCount: Int!
+	"""
+	Of those, trades whose stop was typed with a manual trade, so when it was set is unknown.
+	"""
+	rTypedStopCount: Int!
+	profitFactor: Float
+	sqn: Float
+	"""
+	Average realized $ on winning trades (sum winner $ / number of winners).
+	"""
+	averageGain: Float!
+	"""
+	Average realized $ on losing trades, as a positive magnitude.
+	"""
+	averageLoss: Float!
+	"""
+	Average percent return on winning trades.
+	"""
+	averageGainPct: Float!
+	"""
+	Average percent loss on losing trades, as a positive magnitude.
+	"""
+	averageLossPct: Float!
+	maxDrawdownDollars: Float!
+	maxDrawdownPct: Float!
+	currentDrawdownDollars: Float!
+	recoveryFactor: Float
+	longestDrawdownDays: Int!
+	equityCurve: [EquityPoint!]!
+	"""
+	Workspace equity at the start of the loaded window (`account_equity -
+	net_profit`). Set only when real account equity was supplied; the
+	`equity_curve` itself stays in cumulative-PnL terms.
+	"""
+	startingEquity: Float
+	"""
+	The account's current total equity passed in (SnapTrade `total_value`).
+	None for manual accounts with no synced equity (drawdown % then falls
+	back to the peak-cumulative-PnL denominator).
+	"""
+	accountEquity: Float
+	avgPlannedR: Float
+	avgActualR: Float
+	rDistribution: [Rbucket!]!
+	longestWinStreak: Int!
+	longestLossStreak: Int!
+	currentStreak: Int!
+	avgHoldWinnersSecs: Float
+	avgHoldLosersSecs: Float
+	monthlyWinRateStdev: Float
+	bySymbol: [DimensionStat!]!
+	byDayOfWeek: [DimensionStat!]!
+	bySession: [DimensionStat!]!
+	byHolding: [DimensionStat!]!
+	byDirection: [DimensionStat!]!
+	byPositionSize: [DimensionStat!]!
+	byPlaybook: [DimensionStat!]!
+	"""
+	Pre-trade conviction (1–5) vs outcome, and market-regime performance.
+	"""
+	byConviction: [DimensionStat!]!
+	byMarketRegime: [DimensionStat!]!
+	"""
+	One group per trading day (`YYYY-MM-DD`, journal time zone) with closed trades.
+	"""
+	byDay: [DimensionStat!]!
+	"""
+	One group per trading principle (keyed by principle ID) broken on trades
+	in the range. A trade counts toward each principle it broke.
+	"""
+	byViolatedPrinciple: [DimensionStat!]!
+	"""
+	What the figures cover: broker and manual trades counted, and trades left out.
+	"""
+	coverage: TradeCoverage!
+	cleanVsFlawed: CleanFlawed!
+	"""
+	Discipline / process-adherence block: mistake cost plus the
+	self-reported behavioral fields and principle-violation tallies.
+	"""
+	discipline: Discipline!
+	"""
+	Per-category tag expectancy. One entry per distinct tag category present
+	across the trades' tags (seeded tactic/edge categories + any custom
+	category). Replaces the old freeform tactic/edge expectancy.
+	"""
+	tagBreakdowns: [CategoryBreakdown!]!
+	tradesPerDay: TradesPerDay!
+	"""
+	Resolved ET calendar start/end of the active range (`YYYY-MM-DD`).
+	`None` for the unbounded `All` range. Set by `get_advanced_analytics`.
+	"""
+	rangeStart: String
+	rangeEnd: String
+}
+
+type AgentActionProposalGql {
+	id: String!
+	runId: String!
+	conversationId: String!
+	kind: String!
+	payloadJson: String!
+	previewJson: String!
+	status: String!
+	expiresAt: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+enum AgentActivityCategoryGql {
+	MODEL
+	TOOL
+	SUBAGENT
+	SYSTEM
+}
+
+type AgentActivityEntryGql {
+	sequence: Int!
+	activityId: String!
+	parentActivityId: String
+	category: AgentActivityCategoryGql!
+	status: AgentActivityStatusGql!
+	label: String!
+	detail: String
+	durationMs: Int
+	metadata: AgentActivityMetadataGql!
+	createdAt: String!
+}
+
+type AgentActivityMetadataGql {
+	symbol: String
+	recordCount: Int
+	dateRangeLabel: String
+	sourceCount: Int
+	retryable: Boolean
+}
+
+enum AgentActivityStatusGql {
+	STARTED
+	COMPLETED
+	FAILED
+	CANCELLED
+	INTERRUPTED
+}
+
+type AgentActivitySummaryGql {
+	messageId: String!
+	status: AgentRunStatusGql!
+	durationMs: Int
+	modelCalls: Int!
+	toolCalls: Int!
+	subagentCount: Int!
+	sourceCount: Int!
+	hasFailures: Boolean!
+}
+
+type AgentCapabilitiesGql {
+	enabled: Boolean!
+	runtimeVersion: String!
+	turnRuntime: Boolean!
+	modelRolesReady: Boolean!
+	memory: Boolean!
+	actions: Boolean!
+	notebookAssistance: Boolean!
+}
+
+enum AgentContextKindGql {
+	TRADE
+	PLAYBOOK
+	NOTE
+	MEDIA
+	MARKET
+	DATE_RANGE
+}
+
+input AgentContextReferenceInput {
+	key: String!
+	kind: AgentContextKindGql!
+	id: String
+	title: String!
+	subtitle: String!
+}
+
+type AgentContextSearchResultGql {
+	key: String!
+	kind: AgentContextKindGql!
+	id: String
+	title: String!
+	subtitle: String!
+	metadataJson: String!
+}
+
+type AgentConversationGql {
+	id: String!
+	workspaceId: String!
+	title: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+input AgentDateRangeInput {
+	from: String!
+	to: String!
+}
+
+enum AgentIntentInput {
+	PERFORMANCE_SNAPSHOT
+	TRADE_LOOKUP
+	PLAYBOOK_LOOKUP
+	MARKET_QUOTE
+	MARKET_NEWS
+}
+
+type AgentMemoryGql {
+	id: String!
+	workspaceId: String
+	kind: String!
+	subjectKey: String!
+	text: String!
+	status: String!
+	pinned: Boolean!
+	provenanceExcerpt: String!
+	confidence: Float!
+	userEdited: Boolean!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type AgentMessageActivityGql {
+	summary: AgentActivitySummaryGql!
+	entries: [AgentActivityEntryGql!]!
+}
+
+input AgentMessageContextInput {
+	explicitIntent: AgentIntentInput
+	tradeIds: [String!]
+	playbookIds: [String!]
+	noteIds: [String!]
+	dateRange: AgentDateRangeInput
+	marketSymbol: String
+	mediaIds: [String!]
+	references: [AgentContextReferenceInput!]!
+}
+
+type AgentMessageGql {
+	id: String!
+	conversationId: String!
+	sequence: Int!
+	role: String!
+	contentJson: String!
+	sources: [AgentSourceGql!]!
+	createdAt: String!
+}
+
+enum AgentRewriteAction {
+	SUMMARIZE
+	FIX_SPELLING
+	SIMPLIFY
+	EXPAND
+}
+
+type AgentRunGql {
+	id: String!
+	conversationId: String!
+	status: AgentRunStatusGql!
+	modelCalls: Int!
+	toolCalls: Int!
+	errorCode: String
+	createdAt: String!
+	updatedAt: String!
+	completedAt: String
+}
+
+type AgentRunHandleGql {
+	runId: String!
+	conversationId: String!
+	status: AgentRunStatusGql!
+}
+
+enum AgentRunStatusGql {
+	QUEUED
+	RUNNING
+	COMPLETED
+	FAILED
+	CANCELLED
+}
+
+type AgentSourceGql {
+	title: String!
+	sourceType: String!
+	excerpt: String!
+	sourceUrl: String
+	freshness: String!
+}
+
+enum AnalyticsRange {
+	TODAY
+	LAST_7_DAYS
+	LAST_1_MONTH
+	LAST_3_MONTHS
+	LAST_6_MONTHS
+	YEAR_TO_DATE
+	LAST_1_YEAR
+	ALL
+	CUSTOM
+}
+
+input AnalyticsTimeFilterInput {
+	range: AnalyticsRange!
+	startDate: String
+	endDate: String
+}
+
+input BrokerageAccountImportInput {
+	snaptradeAccountId: String!
+	policy: TransactionImportPolicyInput!
+}
+
+type BrokerageBalance {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	currency: String!
+	cash: Float
+	buyingPower: Float
+	syncedAt: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type BrokerageConnectionAccount {
+	id: String!
+	name: String!
+	institutionName: String
+	linkedWorkspaceId: String
+	linkedWorkspaceName: String
+	current: Boolean!
+}
+
+type BrokerageDataIssueReport {
+	id: String!
+	diagnosticId: String!
+	createdAt: String!
+}
+
+type BrokerageHolding {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	snaptradeSymbolId: String
+	symbol: String!
+	symbolDescription: String
+	rawSymbol: String
+	currency: String!
+	units: Float!
+	price: Float!
+	marketValue: Float
+	openPnl: Float
+	averagePurchasePrice: Float
+	isOption: Boolean!
+	optionType: String
+	strikePrice: Float
+	expirationDate: String
+	rawJson: String!
+	syncedAt: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type BrokerageReconciliation {
+	diagnosticId: String!
+	transactionStatus: String!
+	transactionCheckedAt: String
+	brokerTransactionCount: Int!
+	mappedTransactionCount: Int!
+	importedTransactionCount: Int!
+	duplicateTransactionCount: Int!
+	skippedTransactionCount: Int!
+	pendingTransactionCount: Int!
+	failedTransactionCount: Int!
+	localTransactionCount: Int!
+	missingTransactionCount: Int!
+	extraTransactionCount: Int!
+	portfolioStatus: String!
+	portfolioCheckedAt: String
+	brokerHoldingCount: Int!
+	mappedHoldingCount: Int!
+	localHoldingCount: Int!
+	brokerBalanceCount: Int!
+	localBalanceCount: Int!
+	balanceDiscrepancyCount: Int!
+	transactionError: String
+	portfolioError: String
+	transactionImportStartDate: String
+}
+
+type BrokerageSyncOutcome {
+	diagnosticId: String
+	status: String!
+	error: String
+	startedAt: String
+	finishedAt: String
+	succeededAt: String
+	nextScheduledAt: String
+	transactionsSynced: Int!
+	holdingsSynced: Int!
+	balancesSynced: Int!
+}
+
+type BrokerageTransaction {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	snaptradeId: String!
+	symbol: String
+	symbolDescription: String
+	rawSymbol: String
+	currency: String!
+	transactionType: String!
+	optionType: String
+	price: Float!
+	units: Float!
+	amount: Float
+	fee: Float!
+	fxRate: Float
+	description: String
+	tradeDate: String
+	settlementDate: String!
+	institution: String!
+	externalReferenceId: String
+	rawJson: String!
+	contractMultiplier: Float!
+	underlyingSymbol: String
+	optionKind: String
+	strikePrice: Float
+	optionExpiration: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+type BrokerageTransactionsPage {
+	data: [BrokerageTransaction!]!
+	total: Int!
+	offset: Int!
+	limit: Int!
+}
+
+type CalculatorPullResult {
+	cookie: String!
+	lastMutationId: Int!
+	rules: [RuleDeltaGql!]!
+	plans: [PlanDeltaGql!]!
+	history: [HistoryDeltaGql!]!
+}
+
+type CalendarAnalyticsGql {
+	year: Int!
+	month: Int!
+	monthProfit: Float!
+	tradeCount: Int!
+	tradingDays: Int!
+	winRate: Float!
+	winningTradeCount: Int!
+	breakevenTradeCount: Int!
+	losingTradeCount: Int!
+	gridStart: String!
+	gridEnd: String!
+	days: [CalendarDaySummaryGql!]!
+	weeks: [CalendarWeekSummaryGql!]!
+}
+
+type CalendarDaySummaryGql {
+	date: String!
+	profit: Float!
+	tradeCount: Int!
+	winRate: Float!
+	winningTradeCount: Int!
+	breakevenTradeCount: Int!
+	losingTradeCount: Int!
+}
+
+type CalendarWeekSummaryGql {
+	weekIndex: Int!
+	weekStart: String!
+	weekEnd: String!
+	profit: Float!
+	tradeCount: Int!
+	tradingDays: Int!
+	winRate: Float!
+	winningTradeCount: Int!
+	breakevenTradeCount: Int!
+	losingTradeCount: Int!
+}
+
+"""
+Per-tag expectancy grouped within a single tag category. `role` is the
+category's analytic role (`mistake`/`tactic`/`edge`) when it is a seeded
+category, else None for user-defined categories.
+"""
+type CategoryBreakdown {
+	categoryName: String!
+	role: String
+	tags: [DimensionStat!]!
+}
+
+"""
+Clean (no mistake-role tag) vs flawed (>=1 mistake-role tag) core metrics,
+to expose the $ cost of mistakes (compare net_profit / expectancy).
+"""
+type CleanFlawed {
+	clean: GroupMetrics!
+	flawed: GroupMetrics!
+}
+
+type ConnectionPortal {
+	redirectUrl: String!
+}
+
+input CreateHistoryTrancheInput {
+	id: String!
+	percent: Float!
+	shares: Float!
+	targetPrice: Float!
+	status: String!
+	filledAt: String
+}
+
+input CreateJournalEntryInput {
+	"""
+	A UUID the client chose for the new trade. Sending the same id again
+	returns the trade it already created instead of adding another.
+	"""
+	id: String
+	workspaceId: String!
+	openDate: String!
+	closeDate: String!
+	entryPrice: Float!
+	exitPrice: Float!
+	positionSize: Float!
+	symbol: String!
+	symbolName: String
+	stopLoss: Float!
+	tradeType: String!
+	playbookId: String
+	notes: String
+	broke30MinRule: Boolean
+	preTradeConviction: Int
+	marketRegime: String
+	isPlannedPreMarket: Boolean
+	revengeTrade: Boolean
+	ruleAdherenceScore: Int
+	contractMultiplier: Float
+	"""
+	Total fees and commissions. Leave it out when unknown; 0 means none.
+	"""
+	fees: Float
+	brokerageTransactionIds: [String!]
+	"""
+	Tag ids to attach to this trade. Persisted separately via
+	`tags_table::set_trade_tags`; ignored by the journal_entries writer.
+	"""
+	tagIds: [String!]! = []
+	"""
+	Principle ids this trade violated. Persisted separately via
+	`trading_principle_table::set_trade_principle_violations`; ignored by the
+	`journal_entries` writer.
+	"""
+	violatedPrincipleIds: [String!]! = []
+}
+
+input CreateMarketMonitorInput {
+	symbol: String!
+	name: String!
+	condition: String!
+	threshold: Float!
+}
+
+input CreateNotebookFolderInput {
+	id: String
+	workspaceId: String!
+	parentFolderId: String
+	name: String!
+}
+
+input CreateNotebookNoteInput {
+	"""
+	Client-minted UUID for offline creation; the server mints one when absent
+	so a note can be referenced before it ever reaches the server.
+	"""
+	id: String
+	workspaceId: String!
+	documentJson: String!
+	tradeIds: [String!]! = []
+	folderId: String
+}
+
+input CreatePlaybookInput {
+	workspaceId: String!
+	name: String!
+	edgeName: String!
+	entryRules: String!
+	exitRules: String!
+	positionSizingRules: String!
+	additionalRules: String
+}
+
+input CreatePositionCalculatorHistoryInput {
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	shares: Float!
+	positionValue: Float!
+	accountPct: Float!
+	stopLossPct: Float!
+	planId: String
+	tranches: [CreateHistoryTrancheInput!]
+}
+
+input CreatePositionCalculatorPlanInput {
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	totalShares: Float!
+	positionValue: Float!
+	tranches: [CreateTrancheInput!]!
+	notes: String
+	instrumentJson: String
+}
+
+input CreatePrincipleInput {
+	workspaceId: String!
+	title: String!
+	theRule: String!
+	why: String!
+	intervention: String
+	playbookId: String
+	evidenceNoteId: String
+}
+
+input CreateTrancheInput {
+	percent: Float!
+	shares: Float!
+	targetPrice: Float!
+}
+
+input CreateWorkspaceInput {
+	name: String!
+	icon: String! = "chart-line-data-01"
+	currency: String! = "USD"
+	assetClass: String! = "mixed"
+	broker: String
+	riskProfile: String! = "moderate"
+}
+
+"""
+One group of a breakdown dimension: its key plus the shared core metrics.
+"""
+type DimensionStat {
+	key: String!
+	metrics: GroupMetrics!
+}
+
+"""
+Discipline / process-adherence metrics: the $ cost of flawed trades plus
+the self-reported behavioral fields and principle-violation tallies.
+"""
+type Discipline {
+	flawedTradeCount: Int!
+	"""
+	`clean.expectancy_dollars * flawed_trade_count - flawed.net_profit`: the
+	$ the flawed trades cost relative to performing at the clean-trade
+	average. Zero when there are no flawed trades.
+	"""
+	mistakeCost: Float!
+	avgRuleAdherence: Float
+	avgConviction: Float
+	revengeTradeCount: Int!
+	broke30MinCount: Int!
+	tradesWithViolations: Int!
+	totalViolations: Int!
+}
+
+type EquityPoint {
+	closeDate: String!
+	equity: Float!
+}
+
+input FinalizeBrokerageSetupInput {
+	workspaceId: String!
+	primarySnaptradeAccountId: String!
+	accounts: [BrokerageAccountImportInput!]!
+}
+
+"""
+Six core metrics shared by the overall analytics and every breakdown group.
+"""
+type GroupMetrics {
+	tradeCount: Int!
+	netProfit: Float!
+	winRate: Float!
+	expectancyDollars: Float!
+	expectancyR: Float
+	profitFactor: Float
+}
+
+type HistoryDeltaGql {
+	id: String!
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	shares: Float!
+	positionValue: Float!
+	accountPct: Float!
+	stopLossPct: Float!
+	planId: String
+	tranchesJson: String!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type HistoryTranche {
+	id: String!
+	percent: Float!
+	shares: Float!
+	targetPrice: Float!
+	status: String!
+	filledAt: String
+}
+
+"""
+A scalar that can represent any JSON value.
+"""
+scalar JSON
+
+type JournalActivationV2 {
+	enabled: Boolean!
+	sourceRevision: Int!
+	queued: Boolean!
+}
+
+input JournalAllocationInputV2 {
+	transactionId: String!
+	quantity: String!
+}
+
+type JournalAnalyticsGql {
+	winRate: Float!
+	cumulativeProfit: Float!
+	averageRiskToReward: Float!
+	averageGain: Float!
+	averageLoss: Float!
+	averageGainPct: Float!
+	averageLossPct: Float!
+	profitFactor: Float
+	biggestWin: TradeOutcomeGql
+	biggestLoss: TradeOutcomeGql
+	rangeStart: String
+	rangeEnd: String
+}
+
+type JournalChartBarV2 {
+	timestamp: Int!
+	open: Float!
+	high: Float!
+	low: Float!
+	close: Float!
+	volume: Int!
+}
+
+type JournalChartMarkerV2 {
+	transactionId: String!
+	timestamp: Int
+	precision: String!
+	side: String!
+	price: String!
+	quantity: String!
+}
+
+input JournalContextInputV2 {
+	entryId: String!
+	expectedVersion: Int!
+	stopState: String!
+	stopPrice: String
+	playbookId: String
+	claimedAt: String
+	notes: String
+	tagIds: [String!]
+	violatedPrincipleIds: [String!]
+}
+
+type JournalContextV2 {
+	entryId: String!
+	version: Int!
+	stopState: String!
+	stopPrice: String
+	legacyStopPrice: String
+	playbookId: String
+	noteId: String
+	phase: String
+	recordedAt: String
+	claimedAt: String
+	notes: String
+	tagIds: [String!]!
+	violatedPrincipleIds: [String!]!
+}
+
+type JournalEntry {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	openDate: String!
+	closeDate: String!
+	entryPrice: Float!
+	exitPrice: Float!
+	positionSize: Float!
+	symbol: String!
+	symbolName: String!
+	status: String!
+	totalPl: Float!
+	netRoi: Float!
+	duration: Int!
+	stopLoss: Float
+	riskReward: Float
+	tradeType: String!
+	mistakes: String!
+	entryTactics: String!
+	edgesSpotted: String!
+	playbookId: String
+	notes: String
+	broke30MinRule: Boolean
+	preTradeConviction: Int
+	marketRegime: String
+	isPlannedPreMarket: Boolean
+	revengeTrade: Boolean
+	ruleAdherenceScore: Int
+	contractMultiplier: Float!
+	"""
+	Immutable insertion time (RFC3339, microsecond precision). The stable
+	keyset-pagination cursor field (close_date is user-editable, so unsafe).
+	"""
+	createdAt: String!
+	"""
+	Broker trades this manual trade may duplicate. While any are listed the
+	trade is held for review and left out of every total.
+	"""
+	possibleDuplicates: [String!]!
+	"""
+	Fees paid on the trade. `None` means they were never entered.
+	"""
+	fees: Float
+	"""
+	Changes with every save; pass it back as `expectedVersion` to refuse an
+	update based on a stale read.
+	"""
+	recordVersion: Int!
+	"""
+	Tags attached to this trade (replacement for the legacy freeform
+	mistakes/entry_tactics/edges_spotted fields, which remain for legacy
+	display).
+	"""
+	tags: [TagGql!]!
+}
+
+type JournalEntryDeltaGql {
+	id: String!
+	openDate: String!
+	closeDate: String!
+	entryPrice: Float!
+	exitPrice: Float!
+	positionSize: Float!
+	symbol: String!
+	symbolName: String!
+	status: String!
+	totalPl: Float!
+	netRoi: Float!
+	duration: Int!
+	stopLoss: Float
+	riskReward: Float
+	tradeType: String!
+	mistakes: String!
+	entryTactics: String!
+	edgesSpotted: String!
+	playbookId: String
+	notes: String
+	broke30MinRule: Boolean
+	preTradeConviction: Int
+	marketRegime: String
+	isPlannedPreMarket: Boolean
+	revengeTrade: Boolean
+	ruleAdherenceScore: Int
+	tagIds: [String!]!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type JournalExecutionV2 {
+	transactionId: String!
+	role: String!
+	side: String!
+	quantity: String!
+	price: String!
+	fee: String
+	executedAt: String
+	precision: String!
+	sourceQuantity: String!
+}
+
+input JournalFinalizeReviewInputV2 {
+	entryId: String!
+	expectedEntryRevision: Int!
+	expectedContextVersion: Int!
+	expectedDraftVersion: Int!
+	sessionId: String
+}
+
+type JournalFlowStatus {
+	apiVersion: Int!
+	enabled: Boolean!
+	sourceRevision: Int!
+	projectionRevision: Int!
+	importState: String!
+	lastError: String
+	timezone: String!
+	changeCursor: String!
+}
+
+input JournalGroupInputV2 {
+	entryId: String
+	allocations: [JournalAllocationInputV2!]!
+}
+
+type JournalGroupingHistoryV2 {
+	id: String!
+	kind: String!
+	state: String!
+	createdAt: String!
+	entryIds: [String!]!
+}
+
+input JournalGroupingInputV2 {
+	entryIds: [String!]!
+	groups: [JournalGroupInputV2!]!
+	direction: String
+}
+
+type JournalGroupingPreviewV2 {
+	token: String!
+	entryIds: [String!]!
+	realizedNet: [String]!
+	beforeGroups: [JournalPreviewGroupV2!]!
+	groups: [JournalPreviewGroupV2!]!
+}
+
+type JournalGroupingResultV2 {
+	operationId: String!
+	entryIds: [String!]!
+}
+
+type JournalGroupingSuggestionV2 {
+	id: String!
+	entryId: String!
+	explanation: String!
+	previousConfirmations: Int!
+}
+
+type JournalPreparationV2 {
+	sourceRevision: Int!
+	brokerRecords: Int!
+	existingEntries: Int!
+	linkedEntries: Int!
+	readyTrades: Int!
+	attentionGroups: Int!
+	conflictingLinks: Int!
+	firstExecution: String
+	timezone: String!
+	enabled: Boolean!
+}
+
+type JournalPreviewAllocationV2 {
+	transactionId: String!
+	role: String!
+	quantity: String!
+	price: String!
+	fee: String
+	executedAt: String!
+}
+
+type JournalPreviewGroupV2 {
+	entryId: String!
+	direction: String!
+	remainingQuantity: String!
+	enteredQuantity: String!
+	feesPaid: String
+	realizedNet: String
+	allocations: [JournalPreviewAllocationV2!]!
+}
+
+type JournalPullResult {
+	cookie: String!
+	lastMutationId: Int!
+	entries: [JournalEntryDeltaGql!]!
+}
+
+input JournalReviewDraftInputV2 {
+	entryId: String!
+	expectedVersion: Int!
+	takeaway: String!
+	choiceIds: [String!]!
+	planAdherence: String
+}
+
+type JournalReviewDraftV2 {
+	entryId: String!
+	version: Int!
+	takeaway: String!
+	choiceIds: [String!]!
+	planAdherence: String
+}
+
+type JournalReviewSessionV2 {
+	id: String!
+	date: String!
+	timezone: String!
+	queue: [String!]!
+	completed: [String!]!
+	cursorEntryId: String
+	version: Int!
+	refreshAvailable: Boolean!
+}
+
+type JournalReviewV2 {
+	id: String!
+	entryId: String!
+	version: Int!
+	entryRevision: Int!
+	contextRevision: Int!
+	takeaway: String!
+	choiceIds: [String!]!
+	planAdherence: String
+	createdAt: String!
+}
+
+type JournalSnapshotV2 {
+	cursor: String!
+	reset: Boolean!
+	trades: [JournalTradeV2!]!
+	tombstones: [String!]!
+}
+
+type JournalTagV2 {
+	id: String!
+	name: String!
+	color: String
+}
+
+type JournalTradeChartV2 {
+	availability: String!
+	message: String
+	seriesKind: String!
+	symbol: String!
+	provider: String
+	interval: String!
+	priceBasis: String!
+	currency: String
+	timezone: String!
+	start: Int!
+	end: Int!
+	bars: [JournalChartBarV2!]!
+	markers: [JournalChartMarkerV2!]!
+}
+
+type JournalTradeV2 {
+	id: String!
+	workspaceId: String!
+	sourceKind: String!
+	episodeId: String
+	symbol: String!
+	symbolName: String!
+	direction: String!
+	currency: String
+	openDate: String
+	entryPrice: String
+	exitPrice: String
+	enteredQuantity: String
+	contractMultiplier: String!
+	recordVersion: Int!
+	materializedRevision: Int!
+	issueCode: String
+	issueMessage: String
+	possibleDuplicates: [String!]!
+	retiredAt: String
+	successorId: String
+	lifecycleState: String!
+	outcome: String!
+	tags: [JournalTagV2!]!
+	remainingQuantity: String
+	realizedNet: String
+	feesPaid: String
+	closeDate: String
+	reviewState: String!
+}
+
+type ManualExecutionClaimGql {
+	id: String!
+	workspaceId: String!
+	planId: String!
+	trancheId: String!
+	quantity: String!
+	price: String!
+	executedAt: String!
+	status: String!
+	reconciledMatchId: String
+	createdAt: String!
+}
+
+type MarketArticleGql {
+	title: String!
+	url: String!
+	source: String!
+	publishedAt: String!
+	imageUrl: String
+}
+
+type MarketCandleGql {
+	timestamp: Int!
+	open: Float!
+	high: Float!
+	low: Float!
+	close: Float!
+	volume: Int!
+}
+
+type MarketMonitorGql {
+	id: String!
+	symbol: String!
+	name: String!
+	condition: String!
+	threshold: Float!
+	enabled: Boolean!
+	lastTriggeredAt: String
+	createdAt: String!
+}
+
+type MarketPriceUpdateGql {
+	symbol: String!
+	price: Float!
+	change: Float!
+	changePercent: Float!
+	currency: String!
+	exchange: String!
+	marketState: String!
+	marketTime: String!
+}
+
+type MarketQuoteErrorGql {
+	symbol: String!
+	message: String!
+}
+
+type MarketQuoteGql {
+	symbol: String!
+	name: String!
+	price: Float
+	change: Float
+	changePercent: Float
+	regularMarketPrice: Float
+	preMarketPrice: Float
+	postMarketPrice: Float
+	currency: String
+	currencySymbol: String
+	exchange: String
+	marketState: String!
+	marketTime: String
+	isStale: Boolean!
+}
+
+type MarketQuotesGql {
+	quotes: [MarketQuoteGql!]!
+	errors: [MarketQuoteErrorGql!]!
+	fetchedAt: String!
+}
+
+type MarketReportGql {
+	id: String!
+	symbol: String!
+	title: String!
+	body: String!
+	sources: [String!]!
+	createdAt: String!
+}
+
+type MarketSearchResultGql {
+	symbol: String!
+	name: String!
+	exchange: String
+	securityType: String
+}
+
+type MarketTranscriptGql {
+	symbol: String!
+	quarter: Int!
+	year: Int!
+	date: String
+	content: String!
+	sourceUrl: String!
+}
+
+type MarketTranscriptRefGql {
+	symbol: String!
+	quarter: Int!
+	year: Int!
+	date: String
+}
+
+type MarketWatchlistGql {
+	id: String!
+	name: String!
+	symbols: [String!]!
+	createdAt: String!
+}
+
+input MoveNotebookNodeInput {
+	workspaceId: String!
+	nodeId: String!
+	nodeType: NotebookNodeTypeGql!
+	newParentFolderId: String
+	newSortOrder: Int!
+}
+
+type Mutation {
+	createAgentConversation(workspaceId: String!): AgentConversationGql!
+	renameAgentConversation(conversationId: String!, title: String!): AgentConversationGql!
+	deleteAgentConversation(conversationId: String!): Boolean!
+	sendAgentMessage(input: SendAgentMessageInput!): AgentRunHandleGql!
+	cancelAgentRun(runId: String!): Boolean!
+	updateAgentMemory(id: String!, text: String!): AgentMemoryGql!
+	setAgentMemoryPinned(id: String!, pinned: Boolean!): AgentMemoryGql!
+	forgetAgentMemory(id: String!): Boolean!
+	approveAgentAction(proposalId: String!, idempotencyKey: String!): AgentActionProposalGql!
+	rejectAgentAction(proposalId: String!): AgentActionProposalGql!
+	agentNotebookAutocomplete(title: String!, text: String!): String!
+	agentNotebookRewrite(action: AgentRewriteAction!, text: String!): String!
+	initiateSnaptradeOauth(workspaceId: String!, platform: String!): SnapTradeOAuthStart!
+	finalizeSnaptradeOauthSetup(attemptId: String!, input: FinalizeBrokerageSetupInput!): [Workspace!]!
+	completeSnaptradeOauthReauthorization(attemptId: String!): Workspace!
+	revokeSnaptradeOauth: SnapTradeOAuthRevocation!
+	"""
+	Records a user-confirmed data issue with a server-built, sanitized
+	diagnostic snapshot. The client never supplies broker payloads, counts,
+	account identifiers, or credentials.
+	"""
+	reportBrokerageDataIssue(input: ReportBrokerageDataIssueInput!): BrokerageDataIssueReport!
+	"""
+	Replaces an automatic trade grouping with the user's selected broker
+	fills. The executions remain immutable; only episode membership changes.
+	"""
+	regroupBrokerageEpisode(episodeId: String!, transactionIds: [String!]!): String!
+	"""
+	Removes a manual grouping and returns its fills to deterministic
+	brokerage grouping.
+	"""
+	resetBrokerageEpisodeGrouping(episodeId: String!): Boolean!
+	"""
+	Registers a SnapTrade user and initiates a brokerage connection.
+	Returns only the short-lived portal URL. SnapTrade credentials never leave the backend.
+	"""
+	initiateBrokerageConnection(workspaceId: String!, brokerageId: String, customRedirect: String, reconnect: Boolean): ConnectionPortal!
+	"""
+	Completes the connection by storing the connection ID after the user returns from the SnapTrade portal.
+	"""
+	completeBrokerageConnection(workspaceId: String!, connectionId: String!): Boolean!
+	finalizeBrokerageSetup(input: FinalizeBrokerageSetupInput!): [Workspace!]!
+	expandBrokerageTransactionHistory(workspaceId: String!, policy: TransactionImportPolicyInput!): TransactionImportPolicy!
+	"""
+	Creates separate workspaces for selected, currently unlinked accounts
+	exposed by the same brokerage authorization as the source workspace.
+	"""
+	createBrokerageAccountWorkspaces(workspaceId: String!, snaptradeAccountIds: [String!]!): [Workspace!]!
+	"""
+	Removes the upstream connection before clearing local credentials.
+	"""
+	disconnectBrokerage(workspaceId: String!): Boolean!
+	syncBrokerageData(workspaceId: String!): SyncResult!
+	createWorkspace(input: CreateWorkspaceInput!): Workspace!
+	updateWorkspace(id: String!, input: UpdateWorkspaceInput!): Workspace!
+	deleteWorkspace(id: String!): Boolean!
+	createPlaybook(input: CreatePlaybookInput!): PlaybookWithStats!
+	updatePlaybook(id: String!, input: UpdatePlaybookInput!): PlaybookWithStats!
+	setPlaybookApplicability(id: String!, input: StrategyApplicabilityInput!): PlaybookWithStats!
+	deletePlaybook(id: String!): Boolean!
+	createPrinciple(input: CreatePrincipleInput!): PrincipleWithStats!
+	updatePrinciple(id: String!, input: UpdatePrincipleInput!): PrincipleWithStats!
+	deletePrinciple(id: String!): Boolean!
+	reorderPrinciples(orderedIds: [String!]!): Boolean!
+	createUserPrompt(name: String!, content: String!): UserPrompt!
+	updateUserPrompt(id: String!, name: String, content: String): UserPrompt!
+	deleteUserPrompt(id: String!): Boolean!
+	"""
+	Publishes a closed broker-derived episode. Execution facts are loaded
+	server-side; only review context is accepted from the client.
+	"""
+	publishBrokerageEpisodeReview(input: PublishBrokerageEpisodeReviewInput!): String!
+	createJournalEntry(input: CreateJournalEntryInput!): JournalEntry!
+	updateJournalEntry(id: String!, input: UpdateJournalEntryInput!): JournalEntry!
+	deleteJournalEntry(id: String!): Boolean!
+	enableJournalFlow(workspaceId: String!, expectedRevision: Int!, flatBefore: String, timezone: String!, clientId: String!, mutationId: String!): JournalActivationV2!
+	previewJournalSuggestion(workspaceId: String!, suggestionId: String!, adjustment: JournalGroupingInputV2): JournalGroupingPreviewV2!
+	dismissJournalSuggestion(workspaceId: String!, suggestionId: String!, clientId: String!, mutationId: String!): Boolean!
+	resetJournalLearning(workspaceId: String!, clientId: String!, mutationId: String!): Boolean!
+	previewJournalGrouping(workspaceId: String!, input: JournalGroupingInputV2!): JournalGroupingPreviewV2!
+	confirmJournalGrouping(workspaceId: String!, token: String!, clientId: String!, mutationId: String!): JournalGroupingResultV2!
+	previewUndoJournalGrouping(workspaceId: String!, operationId: String!): JournalGroupingPreviewV2!
+	saveJournalContext(workspaceId: String!, input: JournalContextInputV2!, clientId: String!, mutationId: String!): JournalContextV2!
+	ensureJournalContextNote(workspaceId: String!, entryId: String!, clientId: String!, mutationId: String!): String!
+	saveJournalReviewDraft(workspaceId: String!, input: JournalReviewDraftInputV2!, clientId: String!, mutationId: String!): JournalReviewDraftV2!
+	"""
+	Keeps a manual trade held as a possible duplicate as its own trade, so it
+	counts from now on and is not flagged against those broker trades again.
+	"""
+	keepManualTradeSeparate(workspaceId: String!, entryId: String!, expectedVersion: Int!, clientId: String!, mutationId: String!): JournalTradeV2!
+	markJournalTradeReviewed(workspaceId: String!, input: JournalFinalizeReviewInputV2!, clientId: String!, mutationId: String!): JournalReviewV2!
+	openJournalReviewSession(workspaceId: String!, date: String, refresh: Boolean! = false, expectedVersion: Int, clientId: String!, mutationId: String!): JournalReviewSessionV2
+	moveJournalReviewCursor(workspaceId: String!, sessionId: String!, entryId: String!, expectedVersion: Int!, clientId: String!, mutationId: String!): Int!
+	createNotebookNote(input: CreateNotebookNoteInput!): NotebookNote!
+	updateNotebookNote(id: String!, input: UpdateNotebookNoteInput!): NotebookNote!
+	"""
+	Toggle a note's star and/or pin flags. Metadata only — leave a flag null to keep it.
+	No reindex: star/pin don't change the note's searchable content.
+	"""
+	setNotebookNoteFlags(id: String!, isStarred: Boolean, isPinned: Boolean): NotebookNote!
+	deleteNotebookNote(id: String!): Boolean!
+	createNotebookFolder(input: CreateNotebookFolderInput!): NotebookFolder!
+	renameNotebookFolder(id: String!, name: String!): NotebookFolder!
+	deleteNotebookFolder(id: String!): Boolean!
+	moveNotebookNode(input: MoveNotebookNodeInput!): Boolean!
+	pushNotebook(input: NotebookPushInput!): NotebookPushResult!
+	appendNotebookUpdates(noteId: String!, updates: [String!]!): Int!
+	"""
+	Records a user assertion without changing tranche status or creating
+	broker-derived history. It remains unverified until reconciliation.
+	"""
+	recordManualExecution(planId: String!, trancheId: String!, quantity: String!, price: String!, executedAt: String!): ManualExecutionClaimGql!
+	dismissManualExecution(id: String!): Boolean!
+	"""
+	Records that the trader entered the planned trade and asks the broker
+	reconciliation engine to look for executions. This does not mark any
+	tranche filled.
+	"""
+	requestPlanExecutionCheck(planId: String!): Int!
+	confirmTradeEpisodeMatch(episodeId: String!, planId: String!): String!
+	finalizeTradeReview(matchId: String!, reflectionJson: String!, journalDraftJson: String, noAdditionalContext: Boolean! = false): String!
+	"""
+	Publishes the latest finalized immutable review as a normal journal
+	entry and links every source broker fill. Idempotent per review version.
+	"""
+	publishTradeReview(matchId: String!): String!
+	upsertPositionCalculatorRule(input: UpsertPositionCalculatorRuleInput!): PositionCalculatorRule!
+	createPositionCalculatorHistory(input: CreatePositionCalculatorHistoryInput!): PositionCalculatorHistoryEntry!
+	deletePositionCalculatorHistory(id: String!): Boolean!
+	createPositionCalculatorPlan(input: CreatePositionCalculatorPlanInput!): PositionCalculatorPlan!
+	updatePositionCalculatorPlan(id: String!, input: UpdatePositionCalculatorPlanInput!): PositionCalculatorPlan!
+	deletePositionCalculatorPlan(id: String!): Boolean!
+	createTagCategory(name: String!, color: String, workspaceId: String!): TagCategoryGql!
+	renameTagCategory(id: String!, name: String!): TagCategoryGql!
+	setTagCategoryColor(id: String!, color: String): TagCategoryGql!
+	reorderTagCategories(order: [ReorderTagCategoryInput!]!): Boolean!
+	setTagCategoryApplicability(id: String!, input: TagCategoryApplicabilityInput!): TagCategoryGql!
+	deleteTagCategory(id: String!): Boolean!
+	createTag(categoryId: String!, name: String!, color: String, workspaceId: String!): TagGql!
+	renameTag(id: String!, name: String!): TagGql!
+	setTagColor(id: String!, color: String): TagGql!
+	deleteTag(id: String!): Boolean!
+	mergeTags(fromId: String!, intoId: String!): Boolean!
+	createMarketWatchlist(workspaceId: String!, name: String!): MarketWatchlistGql!
+	addMarketWatchlistSymbol(watchlistId: String!, symbol: String!): Boolean!
+	removeMarketWatchlistSymbol(watchlistId: String!, symbol: String!): Boolean!
+	createMarketMonitor(workspaceId: String!, input: CreateMarketMonitorInput!): MarketMonitorGql!
+	deleteMarketMonitor(id: String!): Boolean!
+	generateMarketReport(workspaceId: String!, symbol: String!, focus: String): MarketReportGql!
+	evaluateMarketMonitors(workspaceId: String!): Int!
+	markNotificationRead(id: String!): Boolean!
+	markAllNotificationsRead: Int!
+	setNotificationPreference(eventType: String!, enabled: Boolean!): Boolean!
+	setNotificationSettings(timezone: String, dailyRecapMinute: Int, weeklyReviewDow: Int, weeklyReviewMinute: Int, quietStartMinute: Int, quietEndMinute: Int): NotificationSettingsGql!
+	registerPushSubscription(endpoint: String!, p256Dh: String!, auth: String!, userAgent: String): Boolean!
+	deletePushSubscription(endpoint: String!): Boolean!
+}
+
+type NotebookFolder {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	parentFolderId: String
+	name: String!
+	sortOrder: Int!
+	"""
+	System-owned: managed folders for agent and trade notes. Cannot be renamed or
+	deleted. Its *contents* are ordinary notes and remain fully deletable.
+	"""
+	isSystem: Boolean!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type NotebookFolderDeltaGql {
+	id: String!
+	parentFolderId: String
+	name: String!
+	sortOrder: Int!
+	isSystem: Boolean!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type NotebookImage {
+	id: String!
+	noteId: String!
+	userId: String!
+	workspaceId: String!
+	secureUrl: String!
+	width: Int!
+	height: Int!
+	format: String!
+	bytes: Int!
+	originalFilename: String!
+	mediaType: String!
+	contentType: String!
+	durationSeconds: Float!
+	createdAt: String!
+	contentHash: String!
+}
+
+"""
+`graphql(name)` is required: `notebook::NotebookMutation` is the notebook's
+mutation root, and async-graphql panics at schema build on a duplicate type name.
+"""
+input NotebookMutationInput {
+	id: Int!
+	name: String!
+	"""
+	JSON payload. Every generated id and timestamp is inside here, because
+	mutations are replayed during rebase and must be deterministic.
+	"""
+	args: String!
+	hlc: String!
+}
+
+"""
+GraphQL-facing mirror of the table-layer `NotebookNodeType` enum.
+"""
+enum NotebookNodeTypeGql {
+	FOLDER
+	NOTE
+}
+
+type NotebookNote {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	folderId: String
+	sortOrder: Int!
+	title: String!
+	documentJson: String!
+	tradeIds: [String!]!
+	images: [NotebookImage!]!
+	createdAt: String!
+	updatedAt: String!
+	isStarred: Boolean!
+	isPinned: Boolean!
+}
+
+type NotebookNoteDeltaGql {
+	purpose: String!
+	id: String!
+	folderId: String
+	title: String!
+	documentJson: String!
+	sortOrder: Int!
+	tradeIds: [String!]!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type NotebookPullResult {
+	cookie: String!
+	lastMutationId: Int!
+	notes: [NotebookNoteDeltaGql!]!
+	folders: [NotebookFolderDeltaGql!]!
+}
+
+input NotebookPushInput {
+	clientId: String!
+	workspaceId: String!
+	mutations: [NotebookMutationInput!]!
+}
+
+type NotebookPushResult {
+	lastMutationId: Int!
+}
+
+type NotebookUpdate {
+	seq: Int!
+	"""
+	base64 of the raw update bytes — the only place they are a `String`.
+	"""
+	update: String!
+}
+
+type NotificationGql {
+	id: String!
+	eventType: String!
+	title: String!
+	body: String!
+	deepLink: String
+	groupCount: Int!
+	read: Boolean!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type NotificationPreferenceGql {
+	eventType: String!
+	enabled: Boolean!
+}
+
+type NotificationSettingsGql {
+	timezone: String!
+	dailyRecapMinute: Int!
+	weeklyReviewDow: Int!
+	weeklyReviewMinute: Int!
+	quietStartMinute: Int
+	quietEndMinute: Int
+}
+
+type PendingTrade {
+	id: String!
+	episodeId: String!
+	symbol: String!
+	direction: String!
+	status: String!
+	openDate: String!
+	closeDate: String
+	entryUnits: Float!
+	avgEntryPrice: Float!
+	avgExitPrice: Float
+	realizedPnl: Float
+	transactionIds: [String!]!
+	fillCount: Int!
+	isFullyLinked: Boolean!
+	isPartiallyLinked: Boolean!
+	multiplier: Float!
+	isOption: Boolean!
+	underlying: String
+	optionKind: String
+	strike: Float
+	expiration: String
+	symbolName: String
+	requiresManualGrouping: Boolean!
+	blockReason: String
+	isManuallyGrouped: Boolean!
+}
+
+type PerformanceBreakdownGql {
+	key: String!
+	netPnl: Float!
+	winRate: Float!
+	tradeCount: Int!
+}
+
+type PlanDeltaGql {
+	id: String!
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	totalShares: Float!
+	positionValue: Float!
+	status: String!
+	tranchesJson: String!
+	notes: String
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type PlaybookDeltaGql {
+	id: String!
+	name: String!
+	edgeName: String!
+	entryRules: String!
+	exitRules: String!
+	positionSizingRules: String!
+	additionalRules: String
+	availability: String!
+	workspaceIds: [String!]!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type PlaybookPullResult {
+	cookie: String!
+	lastMutationId: Int!
+	playbooks: [PlaybookDeltaGql!]!
+}
+
+type PlaybookWithStats {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	name: String!
+	edgeName: String!
+	entryRules: String!
+	exitRules: String!
+	positionSizingRules: String!
+	additionalRules: String
+	availability: String!
+	workspaceIds: [String!]!
+	createdAt: String!
+	updatedAt: String!
+	winRate: Float!
+	cumulativeProfit: Float!
+	averageGain: Float!
+	averageLoss: Float!
+	tradeCount: Int!
+}
+
+type PositionCalculatorHistoryEntry {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	shares: Float!
+	positionValue: Float!
+	accountPct: Float!
+	stopLossPct: Float!
+	planId: String
+	tranches: [HistoryTranche!]!
+	createdAt: String!
+}
+
+type PositionCalculatorPlan {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	symbol: String!
+	positionType: String!
+	entryPrice: Float!
+	stopLoss: Float!
+	accountBalance: Float!
+	accountRisk: Float!
+	totalShares: Float!
+	positionValue: Float!
+	status: String!
+	tranches: [Tranche!]!
+	notes: String
+	"""
+	Exact contract identity for non-equity plans. `None` means the legacy
+	equity instrument represented by `symbol`.
+	"""
+	instrumentJson: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+type PositionCalculatorRule {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	accountBalance: Float!
+	accountRisk: Float!
+	maxStopLossPct: Float!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type PrincipleDeltaGql {
+	id: String!
+	workspaceId: String!
+	playbookId: String
+	evidenceNoteId: String
+	title: String!
+	theRule: String!
+	why: String!
+	intervention: String
+	priority: Int!
+	isActive: Boolean!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type PrinciplePullResult {
+	cookie: String!
+	lastMutationId: Int!
+	principles: [PrincipleDeltaGql!]!
+}
+
+type PrincipleWithStats {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	playbookId: String
+	evidenceNoteId: String
+	evidenceNoteTitle: String
+	title: String!
+	theRule: String!
+	why: String!
+	intervention: String
+	priority: Int!
+	isActive: Boolean!
+	createdAt: String!
+	updatedAt: String!
+	violationCount: Int!
+	violatedCumulativeProfit: Float!
+	violatedCumulativeRoi: Float!
+	violatedWinRate: Float!
+}
+
+input PublishBrokerageEpisodeReviewInput {
+	episodeId: String!
+	planId: String
+	stopLoss: Float
+	playbookId: String
+	notes: String
+	planAdherence: String
+	lesson: String
+	tagIds: [String!]! = []
+	violatedPrincipleIds: [String!]! = []
+}
+
+type PushSubscriptionGql {
+	endpoint: String!
+}
+
+type Query {
+	agentCapabilities: AgentCapabilitiesGql!
+	agentConversations(workspaceId: String!, limit: Int): [AgentConversationGql!]!
+	agentContextSearch(workspaceId: String!, query: String!, limit: Int): [AgentContextSearchResultGql!]!
+	agentMessages(conversationId: String!, limit: Int): [AgentMessageGql!]!
+	agentRun(runId: String!): AgentRunGql!
+	agentMessageActivity(messageId: String!): AgentMessageActivityGql
+	agentMessageActivitySummaries(messageIds: [String!]!): [AgentActivitySummaryGql!]!
+	agentMemories(workspaceId: String, includeInactive: Boolean): [AgentMemoryGql!]!
+	agentActionProposal(id: String!): AgentActionProposalGql!
+	snaptradeOauthAvailable: Boolean!
+	snaptradeOauthStatus(attemptId: String!): SnapTradeOAuthStatus
+	snaptradeOauthAccounts(attemptId: String!): [BrokerageConnectionAccount!]!
+	brokerageTransactionImportPolicy(workspaceId: String!): TransactionImportPolicy
+	brokerageReconciliation(workspaceId: String!): BrokerageReconciliation
+	brokerageSyncOutcome(workspaceId: String!): BrokerageSyncOutcome
+	brokerageTransactions(workspaceId: String!, range: AnalyticsRange, startDate: String, endDate: String, episodeClosedDate: String, transactionType: String, symbol: String, offset: Int, limit: Int, sortBy: String, isJournalled: Boolean): BrokerageTransactionsPage!
+	brokerageTransaction(id: String!): BrokerageTransaction
+	"""
+	Fetch a batch of transactions by id (scoped to the requesting user).
+	Used by the pending-trade prefill in the MergeTradesModal.
+	"""
+	brokerageTransactionsByIds(ids: [String!]!): [BrokerageTransaction!]!
+	"""
+	Round-trip trade lifecycles that haven't been fully journaled. Groups
+	fills across months/years so a position opened in April and closed
+	in May shows up as one journaling target.
+	"""
+	pendingTrades(workspaceId: String!): [PendingTrade!]!
+	brokerageHoldings(workspaceId: String!): [BrokerageHolding!]!
+	brokerageBalances(workspaceId: String!): [BrokerageBalance!]!
+	"""
+	Lists every upstream account exposed by this workspace's brokerage
+	authorization and whether it is already linked to a Tradstry workspace.
+	"""
+	brokerageConnectionAccounts(workspaceId: String!): [BrokerageConnectionAccount!]!
+	"""
+	Returns the current authenticated user.
+	Creates the user record and a default account on first access.
+	"""
+	me: User!
+	workspaces: [Workspace!]!
+	workspace(id: String!): Workspace
+	journalAnalytics(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): JournalAnalyticsGql!
+	tradingPerformance(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): TradingPerformanceGql!
+	calendarAnalytics(workspaceId: String!, year: Int!, month: Int!): CalendarAnalyticsGql!
+	advancedAnalytics(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): AdvancedAnalytics!
+	playbooks(workspaceId: String!): [PlaybookWithStats!]!
+	playbook(id: String!): PlaybookWithStats
+	strategyLibraryPlaybooks(statsWorkspaceId: String!): [PlaybookWithStats!]!
+	"""
+	Offline-first pull for one workspace, with its own cursor. It is separate
+	from the notebook pull, while `lastMutationId` remains the shared per-client watermark because
+	playbook mutations ride the same outbox/mutation log as the notebook.
+	"""
+	pullPlaybook(cookie: String, clientId: String!, workspaceId: String!): PlaybookPullResult!
+	principles(workspaceId: String!): [PrincipleWithStats!]!
+	principle(id: String!): PrincipleWithStats
+	"""
+	Offline-first pull for the desktop. Workspace-scoped (principles belong
+	to one account), with its own cursor. Mirrors `journal::pull_journal`;
+	`lastMutationId` is the shared per-client watermark because principle
+	mutations ride the same outbox/mutation log as the notebook.
+	"""
+	pullPrinciple(cookie: String, workspaceId: String!, clientId: String!): PrinciplePullResult!
+	userPrompts: [UserPrompt!]!
+	journalEntries(workspaceId: String, limit: Int, afterCreatedAt: String, afterId: String): [JournalEntry!]!
+	journalEntry(id: String!): JournalEntry
+	linkedBrokerageTransactionIds(workspaceId: String!): [String!]!
+	tradeViolatedPrincipleIds(journalEntryId: String!): [String!]!
+	"""
+	Offline-first pull for the desktop. Workspace-scoped (journal entries
+	belong to one account, unlike playbooks), with its own cursor.
+	`lastMutationId` is the shared per-client watermark because journal
+	mutations ride the same outbox/mutation log as the notebook.
+	"""
+	pullJournal(cookie: String, workspaceId: String!, clientId: String!): JournalPullResult!
+	journalSnapshotV2(workspaceId: String!, cursor: String): JournalSnapshotV2!
+	journalReviewHistoryV2(workspaceId: String!, entryId: String!): [JournalReviewV2!]!
+	journalTradeChartV2(workspaceId: String!, entryId: String!, from: Int, to: Int): JournalTradeChartV2!
+	prepareJournalFlow(workspaceId: String!, flatBefore: String): JournalPreparationV2!
+	journalGroupingSuggestionsV2(workspaceId: String!, entryId: String, offset: Int! = 0): [JournalGroupingSuggestionV2!]!
+	journalFlowStatus(workspaceId: String!): JournalFlowStatus!
+	journalTradesV2(workspaceId: String!): [JournalTradeV2!]!
+	journalTradeV2(workspaceId: String!, entryId: String!): JournalTradeV2
+	journalContextV2(workspaceId: String!, entryId: String!): JournalContextV2!
+	journalReviewDraftV2(workspaceId: String!, entryId: String!): JournalReviewDraftV2!
+	journalExecutionsV2(workspaceId: String!, entryId: String!): [JournalExecutionV2!]!
+	journalGroupingHistoryV2(workspaceId: String!, entryId: String!): [JournalGroupingHistoryV2!]!
+	notebookNotes(workspaceId: String): [NotebookNote!]!
+	notebookNote(id: String!): NotebookNote
+	notebookFolders(workspaceId: String!): [NotebookFolder!]!
+	pullNotebook(cookie: String, workspaceId: String!, clientId: String!): NotebookPullResult!
+	notebookAccountUpdatesSince(workspaceId: String!, sinceSeq: Int!): [AccountNotebookUpdate!]!
+	notebookUpdatesSince(noteId: String!, sinceSeq: Int!): [NotebookUpdate!]!
+	"""
+	Offline-first pull for the desktop. User-scoped, with one cursor
+	spanning all three tables (rules + plans + history) — the desktop's
+	calculator store syncs all three in a single cycle, exactly like
+	`pull_tags`. All three calculator tables are pulled for one workspace.
+	"""
+	pullCalculator(cookie: String, clientId: String!, workspaceId: String!): CalculatorPullResult!
+	positionCalculatorRule(workspaceId: String!): PositionCalculatorRule
+	positionCalculatorHistory(workspaceId: String!): [PositionCalculatorHistoryEntry!]!
+	positionCalculatorPlans(workspaceId: String!): [PositionCalculatorPlan!]!
+	"""
+	Broker-derived trade episodes and their explainable plan-match
+	suggestions. Suggestions are never applied without confirmation.
+	"""
+	tradeReviewInbox(workspaceId: String!): [TradeReviewInboxItemGql!]!
+	"""
+	Read-only calculation preview for a user-selected eligible plan. This
+	does not confirm the match or create an immutable review version.
+	"""
+	tradeReviewPreview(episodeId: String!, planId: String!): String!
+	manualExecutionClaims(workspaceId: String!): [ManualExecutionClaimGql!]!
+	tagCategories(workspaceId: String!): [TagCategoryGql!]!
+	tags(workspaceId: String!, categoryId: String): [TagGql!]!
+	strategyLibraryTagCategories: [TagCategoryGql!]!
+	strategyLibraryTags(categoryId: String): [TagGql!]!
+	"""
+	Offline-first pull for the desktop. User-scoped, with one cursor spanning
+	BOTH tables (categories + tags) — the desktop's tag store syncs both in a
+	single cycle. `lastMutationId` is the shared per-client watermark because
+	tag mutations ride the same outbox/mutation log as the notebook/playbook.
+	"""
+	pullTags(cookie: String, clientId: String!, workspaceId: String!): TagsPullResult!
+	marketQuotes(symbols: [String!]!): MarketQuotesGql!
+	marketSearch(query: String!): [MarketSearchResultGql!]!
+	marketChart(symbol: String!, range: String): [MarketCandleGql!]!
+	marketNews(symbol: String!): [MarketArticleGql!]!
+	marketFinancials(symbol: String!): JSON!
+	marketCompany(symbol: String!): JSON!
+	marketTranscriptList(symbol: String!): [MarketTranscriptRefGql!]!
+	marketTranscript(symbol: String!, quarter: Int!, year: Int!): MarketTranscriptGql!
+	marketWatchlists(workspaceId: String!): [MarketWatchlistGql!]!
+	marketReports(workspaceId: String!): [MarketReportGql!]!
+	marketMonitors(workspaceId: String!): [MarketMonitorGql!]!
+	notifications(limit: Int, before: String): [NotificationGql!]!
+	unreadNotificationCount: Int!
+	notificationPreferences: [NotificationPreferenceGql!]!
+	"""
+	Served from the server so the key lives in one place instead of being
+	duplicated into frontend build config.
+	"""
+	webPushPublicKey: String
+	notificationSettings: NotificationSettingsGql!
+	pushSubscriptions: [PushSubscriptionGql!]!
+}
+
+type Rbucket {
+	label: String!
+	count: Int!
+}
+
+input ReorderTagCategoryInput {
+	id: String!
+	sortOrder: Int!
+}
+
+input ReportBrokerageDataIssueInput {
+	workspaceId: String!
+	category: String!
+	note: String
+}
+
+type RuleDeltaGql {
+	id: String!
+	workspaceId: String!
+	accountBalance: Float!
+	accountRisk: Float!
+	maxStopLossPct: Float!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+input SendAgentMessageInput {
+	conversationId: String!
+	content: String!
+	context: AgentMessageContextInput
+	idempotencyKey: String!
+}
+
+type SnapTradeOAuthRevocation {
+	revoked: Boolean!
+	upstreamConfirmed: Boolean!
+	unlinkedWorkspaces: Int!
+}
+
+type SnapTradeOAuthStart {
+	attemptId: String!
+	authorizationUrl: String!
+}
+
+type SnapTradeOAuthStatus {
+	status: String!
+	errorCode: String
+	workspaceId: String!
+	platform: String!
+	intent: String!
+}
+
+input StrategyApplicabilityInput {
+	availability: String!
+	workspaceIds: [String!]!
+}
+
+type Subscription {
+	agentRunActivity(runId: String!, afterSequence: Int!): AgentActivityEntryGql!
+	marketPriceUpdates(symbols: [String!]!): MarketPriceUpdateGql!
+	"""
+	A UI convenience only. The feed query stays the source of truth, so a
+	dropped broadcast message costs nothing but a delayed badge.
+	"""
+	notificationEvents: String!
+}
+
+type SyncResult {
+	status: String!
+	transactionsSynced: Int!
+	holdingsSynced: Int!
+	balancesSynced: Int!
+}
+
+input TagCategoryApplicabilityInput {
+	availability: String!
+	workspaceIds: [String!]!
+}
+
+type TagCategoryDeltaGql {
+	id: String!
+	name: String!
+	role: String
+	color: String
+	sortOrder: Int!
+	availability: String!
+	workspaceIds: [String!]!
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type TagCategoryGql {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	name: String!
+	role: TagRoleGql
+	color: String
+	sortOrder: Int!
+	availability: String!
+	workspaceIds: [String!]!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type TagDeltaGql {
+	id: String!
+	categoryId: String!
+	name: String!
+	color: String
+	hlc: String!
+	deletedAt: String
+	updatedAt: String!
+}
+
+type TagGql {
+	id: String!
+	userId: String!
+	workspaceId: String!
+	categoryId: String!
+	name: String!
+	color: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+enum TagRoleGql {
+	MISTAKE
+	TACTIC
+	EDGE
+}
+
+type TagsPullResult {
+	cookie: String!
+	lastMutationId: Int!
+	categories: [TagCategoryDeltaGql!]!
+	tags: [TagDeltaGql!]!
+}
+
+"""
+What a report covers besides the trades it counted.
+"""
+type TradeCoverage {
+	"""
+	Counted trades whose results come from broker history, net of fees.
+	"""
+	brokerTrades: Int!
+	"""
+	Counted trades entered by hand.
+	"""
+	manualTrades: Int!
+	"""
+	Of those, trades with no fees entered, so their results are before fees.
+	"""
+	manualWithoutFees: Int!
+	openPositions: Int!
+	"""
+	Trades left out until the user resolves them, possible duplicates included.
+	"""
+	needsReview: Int!
+	"""
+	Manual trades waiting for the user to say whether they repeat a broker trade.
+	"""
+	possibleDuplicates: Int!
+}
+
+type TradeOutcomeGql {
+	symbol: String!
+	symbolName: String!
+	amount: Float!
+}
+
+type TradeReviewInboxItemGql {
+	episodeId: String!
+	instrumentKey: String!
+	direction: String!
+	openedAt: String!
+	closedAt: String
+	currentQuantity: String!
+	status: String!
+	blockReason: String
+	matchStatus: String
+	confirmedMatchId: String
+	confirmedPlanId: String
+	suggestionsJson: String!
+	latestReviewJson: String
+}
+
+"""
+Trades-per-active-day distribution. An overtrading signal.
+"""
+type TradesPerDay {
+	avg: Float!
+	max: Int!
+	stdev: Float
+}
+
+type TradingPerformanceGql {
+	totalRealizedPnl: Float!
+	grossProfit: Float!
+	grossLoss: Float!
+	averageWin: Float!
+	averageLoss: Float!
+	profitFactor: Float
+	winRate: Float!
+	closedTradeCount: Int!
+	winningTradeCount: Int!
+	breakevenTradeCount: Int!
+	losingTradeCount: Int!
+	averageRealizedR: Float
+	riskDefinedTradeCount: Int!
+	openPositionCount: Int!
+	needsReviewCount: Int!
+	peakRealizedPnl: Float!
+	currentDrawdown: Float!
+	maxDrawdown: Float!
+	currentStreak: Int!
+	longestLossStreak: Int!
+	bestSymbol: PerformanceBreakdownGql
+	worstSymbol: PerformanceBreakdownGql
+	bestDay: PerformanceBreakdownGql
+	worstDay: PerformanceBreakdownGql
+	points: [TradingPerformancePointGql!]!
+}
+
+type TradingPerformancePointGql {
+	date: String!
+	dailyPnl: Float!
+	cumulativePnl: Float!
+	drawdown: Float!
+	closedTradeCount: Int!
+	winningTradeCount: Int!
+	breakevenTradeCount: Int!
+	losingTradeCount: Int!
+}
+
+type Tranche {
+	id: String!
+	percent: Float!
+	shares: Float!
+	targetPrice: Float!
+	status: String!
+	filledAt: String
+}
+
+enum TransactionImportMode {
+	one_year
+	two_years
+	all
+	custom
+}
+
+type TransactionImportPolicy {
+	mode: TransactionImportMode!
+	startDate: String
+	configuredAt: String!
+	initialImportCompletedAt: String
+}
+
+input TransactionImportPolicyInput {
+	mode: TransactionImportMode!
+	customStartDate: String
+}
+
+input UpdateJournalEntryInput {
+	workspaceId: String
+	openDate: String
+	closeDate: String
+	entryPrice: Float
+	exitPrice: Float
+	positionSize: Float
+	symbol: String
+	symbolName: String
+	stopLoss: Float
+	tradeType: String
+	playbookId: String
+	clearPlaybook: Boolean! = false
+	notes: String
+	clearNotes: Boolean! = false
+	broke30MinRule: Boolean
+	preTradeConviction: Int
+	marketRegime: String
+	isPlannedPreMarket: Boolean
+	revengeTrade: Boolean
+	ruleAdherenceScore: Int
+	fees: Float
+	"""
+	Marks the fees as unknown again.
+	"""
+	clearFees: Boolean! = false
+	"""
+	The `recordVersion` the change is based on. When it no longer matches,
+	the update is refused with CONFLICT instead of overwriting another save.
+	"""
+	expectedVersion: Int
+	"""
+	Tag ids to attach to this trade. Persisted separately via
+	`tags_table::set_trade_tags`; ignored by the journal_entries writer.
+	`None` (field omitted) leaves the trade's tags untouched; `Some([])`
+	explicitly clears all tags.
+	"""
+	tagIds: [String!]
+	"""
+	`None` leaves existing violation links untouched; `Some(_)` replaces them.
+	"""
+	violatedPrincipleIds: [String!]
+}
+
+input UpdateNotebookNoteInput {
+	workspaceId: String
+	documentJson: String
+	tradeIds: [String!]
+	folderId: String
+	"""
+	The caller's last-known `updated_at`. When set, the update only lands if
+	the row still carries it; otherwise the write is stale and is rejected.
+	"""
+	expectedUpdatedAt: String
+}
+
+input UpdatePlaybookInput {
+	name: String
+	edgeName: String
+	entryRules: String
+	exitRules: String
+	positionSizingRules: String
+	additionalRules: String
+	clearAdditionalRules: Boolean! = false
+}
+
+input UpdatePositionCalculatorPlanInput {
+	status: String
+	tranches: [UpdateTrancheInput!]
+	notes: String
+	clearNotes: Boolean! = false
+}
+
+"""
+`workspace_id` is deliberately absent: moving a principle between workspaces
+would invalidate its violation history and its evidence-note link.
+"""
+input UpdatePrincipleInput {
+	title: String
+	theRule: String
+	why: String
+	intervention: String
+	clearIntervention: Boolean! = false
+	playbookId: String
+	clearPlaybook: Boolean! = false
+	evidenceNoteId: String
+	clearEvidenceNote: Boolean! = false
+	isActive: Boolean
+}
+
+input UpdateTrancheInput {
+	id: String!
+	percent: Float
+	shares: Float
+	targetPrice: Float
+	status: String
+}
+
+input UpdateWorkspaceInput {
+	name: String
+	icon: String
+	currency: String
+	assetClass: String
+	broker: String
+	riskProfile: String
+}
+
+input UpsertPositionCalculatorRuleInput {
+	workspaceId: String!
+	accountBalance: Float!
+	accountRisk: Float!
+	maxStopLossPct: Float!
+}
+
+type User {
+	id: String!
+	clerkUuid: String!
+	fullName: String!
+	email: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type UserPrompt {
+	id: String!
+	userId: String!
+	name: String!
+	content: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type Workspace {
+	id: String!
+	userId: String!
+	name: String!
+	icon: String!
+	currency: String!
+	riskProfile: String!
+	assetClass: String!
+	broker: String
+	snaptradeUserId: String
+	snaptradeConnectionId: String
+	snaptradeAccountId: String
+	totalValue: Float
+	totalValueCurrency: String
+	snaptradeConnectionDisabled: Boolean!
+	snaptradeConnectionDisabledAt: String
+	brokerageSetupComplete: Boolean!
+	brokerageSetupCompletedAt: String
+	snaptradeAuthMode: String!
+	createdAt: String!
+	updatedAt: String!
+}
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+schema {
+	query: Query
+	mutation: Mutation
+	subscription: Subscription
+}

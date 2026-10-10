@@ -31,7 +31,8 @@ pub async fn callback(
     )
     .await;
     match result {
-        Ok(result) => match config.return_url(&result.attempt_id, &result.status) {
+        Ok(result) => match config.return_url(&result.platform, &result.attempt_id, &result.status)
+        {
             Ok(location) => HttpResponse::Found()
                 .append_header(("Location", location))
                 .finish(),
