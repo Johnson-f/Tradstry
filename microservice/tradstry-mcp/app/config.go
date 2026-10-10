@@ -19,6 +19,9 @@ type Config struct {
 	APIURL string
 	// RedisURL is where per-user rate limits are counted, e.g. redis://:password@redis:6379.
 	RedisURL string
+	// RequireAudience rejects access tokens that name no audience, not just
+	// tokens issued for another one.
+	RequireAudience bool
 }
 
 func LoadConfig() (Config, error) {
@@ -39,6 +42,13 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.RedisURL = os.Getenv("REDIS_URL"); cfg.RedisURL == "" {
 		return Config{}, fmt.Errorf("REDIS_URL must be set")
+	}
+	switch os.Getenv("MCP_REQUIRE_AUDIENCE") {
+	case "", "false":
+	case "true":
+		cfg.RequireAudience = true
+	default:
+		return Config{}, fmt.Errorf("MCP_REQUIRE_AUDIENCE must be true or false")
 	}
 	return cfg, nil
 }

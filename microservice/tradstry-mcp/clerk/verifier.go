@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,12 @@ const bearerTokenKey = "bearer_token"
 type Verifier struct {
 	issuer string
 	keys   jwt.Keyfunc
+	// audiences are the identifiers this server answers to. A token that names
+	// an audience must name one of them.
+	audiences []string
+	// requireAudience also rejects tokens that name no audience, once Clerk is
+	// set to include one and every client sends the resource parameter.
+	requireAudience bool
 }
 
 func NewVerifier(ctx context.Context, issuer string) (*Verifier, error) {
@@ -35,6 +42,13 @@ func NewVerifier(ctx context.Context, issuer string) (*Verifier, error) {
 
 func NewVerifierWithKeys(issuer string, keys jwt.Keyfunc) *Verifier {
 	return &Verifier{issuer: issuer, keys: keys}
+}
+
+// WithAudience makes v accept only tokens issued for one of audiences. Without
+// require, a token naming no audience is still accepted, and logged.
+func (v *Verifier) WithAudience(audiences []string, require bool) *Verifier {
+	v.audiences, v.requireAudience = audiences, require
+	return v
 }
 
 // Verify accepts only a JWT access token from the configured Clerk issuer. A
@@ -69,11 +83,33 @@ func (v *Verifier) verify(token string) (*sdkauth.TokenInfo, error) {
 	if claims.Subject == "" {
 		return nil, fmt.Errorf("%w: missing subject", sdkauth.ErrInvalidToken)
 	}
+	if err := v.checkAudience(claims.Audience); err != nil {
+		return nil, err
+	}
 	return &sdkauth.TokenInfo{
 		UserID:     claims.Subject,
 		Expiration: claims.ExpiresAt.Time,
 		Extra:      map[string]any{bearerTokenKey: token},
 	}, nil
+}
+
+func (v *Verifier) checkAudience(audience jwt.ClaimStrings) error {
+	if len(v.audiences) == 0 {
+		return nil
+	}
+	if len(audience) == 0 {
+		if v.requireAudience {
+			return fmt.Errorf("%w: the token names no audience; turn on Include Audience for OAuth applications in Clerk", sdkauth.ErrInvalidToken)
+		}
+		slog.Info("accepted an MCP access token that names no audience")
+		return nil
+	}
+	for _, aud := range audience {
+		if slices.Contains(v.audiences, aud) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: the token was issued for %v, not this server", sdkauth.ErrInvalidToken, []string(audience))
 }
 
 // isAccessToken reports whether the JOSE typ header marks an RFC 9068 access

@@ -52,6 +52,8 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Clients name the server by its origin or its /mcp endpoint (RFC 8707).
+	verifier.WithAudience([]string{cfg.PublicURL, cfg.PublicURL + "/mcp"}, cfg.RequireAudience)
 	api := graphql.NewClient(cfg.APIURL, &http.Client{})
 	redisOptions, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {

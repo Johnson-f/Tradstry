@@ -75,3 +75,38 @@ func TestCallerOfRequiresAVerifiedToken(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyChecksTheAudienceTheTokenNames(t *testing.T) {
+	signer := mcptest.NewSigner(t)
+	audiences := []string{"https://mcp.tradstry.com", "https://mcp.tradstry.com/mcp"}
+	lenient := clerk.NewVerifierWithKeys(mcptest.Issuer, signer.Keyfunc).WithAudience(audiences, false)
+	strict := clerk.NewVerifierWithKeys(mcptest.Issuer, signer.Keyfunc).WithAudience(audiences, true)
+
+	cases := []struct {
+		name            string
+		aud             any
+		lenient, strict bool
+	}{
+		{"this server's endpoint", "https://mcp.tradstry.com/mcp", true, true},
+		{"this server's origin", []string{"https://mcp.tradstry.com"}, true, true},
+		{"one of several", []string{"https://other.example.com", "https://mcp.tradstry.com/mcp"}, true, true},
+		{"another server", "https://other.example.com/mcp", false, false},
+		{"no audience", nil, true, false},
+	}
+	for _, c := range cases {
+		claims := jwt.MapClaims{}
+		if c.aud != nil {
+			claims["aud"] = c.aud
+		}
+		token := signer.Token(t, "at+jwt", claims)
+		for verifier, want := range map[*clerk.Verifier]bool{lenient: c.lenient, strict: c.strict} {
+			_, err := verifier.Verify(context.Background(), token, nil)
+			if got := err == nil; got != want {
+				t.Errorf("%s (strict %v): accepted = %v, err = %v", c.name, verifier == strict, got, err)
+			}
+			if err != nil && !errors.Is(err, sdkauth.ErrInvalidToken) {
+				t.Errorf("%s: err = %v, want ErrInvalidToken", c.name, err)
+			}
+		}
+	}
+}

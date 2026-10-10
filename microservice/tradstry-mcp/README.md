@@ -119,6 +119,7 @@ REDIS_URL=redis://localhost:6379
 - `CLERK_ISSUER`: the Clerk instance that issues OAuth access tokens. Signing keys load from its `/.well-known/jwks.json` at startup.
 - `TRADSTRY_API_URL`: the backend origin, without `/graphql`.
 - `MCP_BIND_ADDR`: defaults to `0.0.0.0:7900`.
+- `MCP_REQUIRE_AUDIENCE`: `false` by default. A token that names an audience must always name this server (`MCP_PUBLIC_URL` or `MCP_PUBLIC_URL/mcp`). Set `true` to also refuse tokens that name none, after turning on "Include Audience" for OAuth applications in Clerk; until then, each such token is logged.
 - `REDIS_URL`: where rate limits are counted, shared by every copy of the server. In production use the Compose Redis with its password, `redis://:<REDIS_PASSWORD>@redis:6379`.
 
 ## Endpoints
