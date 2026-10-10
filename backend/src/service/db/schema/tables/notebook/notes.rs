@@ -438,49 +438,6 @@ pub async fn list_notebook_notes(
 /// is edited, so pages never skip or repeat a note. `after_note_id` is the last id of
 /// the previous page; a tombstoned note still anchors the page because its row stays.
 /// Returns at most `limit` notes plus whether more follow.
-pub async fn list_notebook_notes_page(
-    pool: &PgPool,
-    user_id: &str,
-    workspace_id: Option<&str>,
-    after_note_id: Option<&str>,
-    limit: usize,
-) -> Result<(Vec<NotebookNote>, bool)> {
-    if let Some(after) = after_note_id {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM notebook_notes WHERE id = $1 AND user_id = $2)",
-        )
-        .bind(after)
-        .bind(user_id)
-        .fetch_one(pool)
-        .await
-        .context("Failed to resolve notebook page cursor")?;
-        ensure!(exists, "unknown notebook page cursor '{after}'");
-    }
-
-    let sql = format!(
-        "SELECT {SELECT_COLS} FROM notebook_notes \
-         WHERE user_id = $1 AND deleted_at IS NULL \
-           AND ($2::text IS NULL OR workspace_id = $2) \
-           AND ($3::text IS NULL OR (created_at, id) < \
-                (SELECT created_at, id FROM notebook_notes WHERE id = $3 AND user_id = $1)) \
-         ORDER BY created_at DESC, id DESC \
-         LIMIT $4"
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-        .bind(user_id)
-        .bind(workspace_id)
-        .bind(after_note_id)
-        .bind(limit as i64 + 1)
-        .fetch_all(pool)
-        .await
-        .context("Failed to page notebook notes")?;
-
-    let has_more = rows.len() > limit;
-    let mut notes = hydrate_notes(pool, user_id, &rows[..rows.len().min(limit)]).await?;
-    notes.truncate(limit);
-    Ok((notes, has_more))
-}
-
 /// Materialize the note rows once (preserving the query's order), then fetch all
 /// trade links and images for the whole set in two batched queries instead of 2N
 /// per-note round-trips.

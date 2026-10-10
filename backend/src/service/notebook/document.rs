@@ -78,7 +78,12 @@ pub fn trade_ids(document_json: &str) -> BTreeSet<String> {
                 }
             }
             Some("trade-table") => {
-                for id in node.get("tradeIds").and_then(Value::as_array).into_iter().flatten() {
+                for id in node
+                    .get("tradeIds")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
                     if let Some(id) = id.as_str() {
                         ids.insert(id.to_string());
                     }
@@ -86,7 +91,12 @@ pub fn trade_ids(document_json: &str) -> BTreeSet<String> {
             }
             _ => {}
         }
-        for child in node.get("children").and_then(Value::as_array).into_iter().flatten() {
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             collect(child, ids);
         }
     }

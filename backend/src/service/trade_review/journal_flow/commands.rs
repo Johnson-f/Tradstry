@@ -45,7 +45,6 @@ pub(super) async fn lock_workspace(
     })
 }
 
-
 pub(super) async fn changed(
     connection: &mut PgConnection,
     user: &str,

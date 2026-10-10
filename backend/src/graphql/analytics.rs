@@ -430,11 +430,19 @@ impl AnalyticsQuery {
                 &workspace_id,
                 "advanced",
                 &cache_key,
-                || analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter, &scope),
+                || {
+                    analytics_service::get_advanced_analytics(
+                        &user_db,
+                        &workspace_id,
+                        &time_filter,
+                        &scope,
+                    )
+                },
             )
             .await?
         } else {
-            analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter, &scope).await?
+            analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter, &scope)
+                .await?
         };
 
         Ok(analytics)

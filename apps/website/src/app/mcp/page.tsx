@@ -9,25 +9,25 @@ const content: SourcePageContent = {
   eyebrow: "MCP source",
   title: "Tradstry MCP server",
   summary:
-    "Tradstry exposes an authenticated Model Context Protocol server so Claude and other MCP clients can read and write supported parts of a trader's own journal.",
+    "Tradstry exposes an authenticated Model Context Protocol server so Claude, ChatGPT and other MCP clients can run a trader's own journal: connect a broker, review trades, read analytics, keep notes and size positions.",
   facts: [
     "Endpoint: https://mcp.tradstry.com/mcp",
-    "Authentication: Bearer token through the user's Tradstry account",
-    "Tool count: 27 read and write tools",
+    "Authentication: OAuth sign-in with an existing Tradstry account",
+    "Tool count: 83 read and write tools",
     "Trading safety: No order placement, withdrawals, or brokerage account control",
   ],
   sections: [
     {
       heading: "What the MCP server is for",
       body: [
-        "The MCP server lets an AI client query the user's own Tradstry data through structured tools instead of pasted screenshots or exported spreadsheets. It can read trades, analytics, playbooks, principles, tags, notebook content, workspaces, and media metadata.",
-        "The server also offers write tools for supported journal objects such as notes, folders, tags, playbooks, principles, and trade tagging. These writes affect the Tradstry journal, not the connected brokerage account.",
+        "The MCP server lets an AI client work with the user's own Tradstry data through structured tools instead of pasted screenshots or exported spreadsheets. It covers workspaces, brokerage connection and sync, the trade journal and reviews, manual trades, analytics by period, playbook or tag, notebook notes and folders, playbooks, principles, tags and position sizing.",
+        "Write tools change the Tradstry journal, not the connected brokerage account. Deletions and other changes that cannot be undone ask the user to confirm first, and each user's tool calls are rate limited.",
       ],
     },
     {
       heading: "How to connect",
       body: [
-        "Use the remote MCP endpoint https://mcp.tradstry.com/mcp in an MCP-compatible client and authenticate with the same Tradstry account that owns the journal data.",
+        "Use the remote MCP endpoint https://mcp.tradstry.com/mcp in an MCP-compatible client and sign in with the same Tradstry account that owns the journal data. Accounts are created on tradstry.com; signing in through an AI client never creates one.",
         "The server returns OAuth protected-resource metadata at https://mcp.tradstry.com/.well-known/oauth-protected-resource/mcp so clients can discover the authorization server.",
       ],
     },

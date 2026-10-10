@@ -301,15 +301,18 @@ pub async fn write_projection_tx(
     seq: i64,
 ) -> Result<()> {
     let title = crate::service::notebook::document::derive_note_title(document);
-    let document_json =
-        serde_json::to_string(document).context("write_projection: failed to serialize document")?;
-    let previous: String = sqlx::query_scalar("SELECT document_json FROM notebook_notes WHERE id = $1")
-        .bind(note_id)
-        .fetch_one(&mut *tx)
-        .await
-        .context("write_projection: failed to read the previous projection")?;
+    let document_json = serde_json::to_string(document)
+        .context("write_projection: failed to serialize document")?;
+    let previous: String =
+        sqlx::query_scalar("SELECT document_json FROM notebook_notes WHERE id = $1")
+            .bind(note_id)
+            .fetch_one(&mut *tx)
+            .await
+            .context("write_projection: failed to read the previous projection")?;
     let removed: Vec<String> = crate::service::notebook::document::trade_ids(&previous)
-        .difference(&crate::service::notebook::document::trade_ids(&document_json))
+        .difference(&crate::service::notebook::document::trade_ids(
+            &document_json,
+        ))
         .cloned()
         .collect();
     // The projection is a server-derived write, not a client body edit, so it must

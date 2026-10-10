@@ -131,6 +131,10 @@ REDIS_URL=redis://localhost:6379
 | `/brokerage/snaptrade-authorized` | Page the backend sends the browser to after SnapTrade OAuth |
 | `/health` | Liveness |
 
+## Deployment
+
+`devops/docker/mcp.Dockerfile` builds a static binary on Alpine, run as a non-root user with a `/health` check. Compose runs it as `mcp-server` (container `tradstry-mcp`) on `tradstry-network`, where Caddy serves it at `mcp.tradstry.com`. It reaches the backend at `http://backend:7899` and Redis with the Compose `REDIS_PASSWORD`; it holds no database or storage credentials. The backend's Compose environment sets `SNAPTRADE_PORTAL_REDIRECT_ORIGINS` and `SNAPTRADE_OAUTH_MCP_RETURN_URL` to this server so broker connections return to it.
+
 ## Development
 
 ```bash

@@ -131,7 +131,10 @@ async fn ensure_crdt(pool: &PgPool, note_id: &str) -> Result<()> {
                 tokio::time::sleep(SEEDING_POLL).await
             }
             NoteState::Seeding => {
-                return Err(reject("RETRY", "the note is being prepared; try again shortly"));
+                return Err(reject(
+                    "RETRY",
+                    "the note is being prepared; try again shortly",
+                ));
             }
         }
     }
@@ -140,7 +143,10 @@ async fn ensure_crdt(pool: &PgPool, note_id: &str) -> Result<()> {
 async fn load_chain(pool: &PgPool, user_id: &str, note_id: &str) -> Result<(Vec<Vec<u8>>, i64)> {
     let rows = crdt_api::updates_since(pool, user_id, note_id, 0).await?;
     let max_seq = rows.last().map(|(seq, _)| *seq).unwrap_or(0);
-    Ok((rows.into_iter().map(|(_, update)| update).collect(), max_seq))
+    Ok((
+        rows.into_iter().map(|(_, update)| update).collect(),
+        max_seq,
+    ))
 }
 
 /// `trade:<id>` and `media:<hash>` references written in Markdown.
@@ -277,7 +283,10 @@ async fn document_view(
             .iter()
             .map(|id| NoteTradeLink {
                 id: id.clone(),
-                label: labels.get(id).cloned().unwrap_or_else(|| "deleted trade".into()),
+                label: labels
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| "deleted trade".into()),
             })
             .collect(),
         media: note
@@ -308,7 +317,11 @@ async fn document_view(
 
 /// The note as it is now, built from its update log rather than a projection that
 /// may lag behind the editor.
-pub async fn read_document(pool: &PgPool, user_id: &str, note_id: &str) -> Result<NotebookNoteDocument> {
+pub async fn read_document(
+    pool: &PgPool,
+    user_id: &str,
+    note_id: &str,
+) -> Result<NotebookNoteDocument> {
     let mut note = owned_note(pool, user_id, note_id).await?;
     ensure_crdt(pool, note_id).await?;
     let (updates, _) = load_chain(pool, user_id, note_id).await?;
@@ -337,7 +350,10 @@ pub async fn read_document(pool: &PgPool, user_id: &str, note_id: &str) -> Resul
 }
 
 fn body_with_title(title: &str, markdown: &str) -> String {
-    let heading = format!("# {}", title.split_whitespace().collect::<Vec<_>>().join(" "));
+    let heading = format!(
+        "# {}",
+        title.split_whitespace().collect::<Vec<_>>().join(" ")
+    );
     let markdown = markdown.trim();
     if markdown.lines().next().map(str::trim) == Some(heading.as_str()) {
         markdown.to_string()
@@ -365,7 +381,15 @@ pub async fn create_from_markdown(
     });
     let replayed = {
         let mut tx = pool.begin().await?;
-        mutations::replay(&mut tx, user_id, &input.workspace_id, &input.client_id, &input.mutation_id, &payload).await?
+        mutations::replay(
+            &mut tx,
+            user_id,
+            &input.workspace_id,
+            &input.client_id,
+            &input.mutation_id,
+            &payload,
+        )
+        .await?
     };
     if let Some(stored) = replayed {
         return read_document(pool, user_id, stored_note_id(&stored)?).await;
@@ -389,8 +413,15 @@ pub async fn create_from_markdown(
     }
 
     let mut tx = pool.begin().await?;
-    if let Some(stored) =
-        mutations::replay(&mut tx, user_id, &input.workspace_id, &input.client_id, &input.mutation_id, &payload).await?
+    if let Some(stored) = mutations::replay(
+        &mut tx,
+        user_id,
+        &input.workspace_id,
+        &input.client_id,
+        &input.mutation_id,
+        &payload,
+    )
+    .await?
     {
         drop(tx);
         return read_document(pool, user_id, stored_note_id(&stored)?).await;
@@ -464,7 +495,15 @@ pub async fn edit_document(
     });
     let replayed = {
         let mut tx = pool.begin().await?;
-        mutations::replay(&mut tx, user_id, &workspace_id, client_id, mutation_id, &payload).await?
+        mutations::replay(
+            &mut tx,
+            user_id,
+            &workspace_id,
+            client_id,
+            mutation_id,
+            &payload,
+        )
+        .await?
     };
     if let Some(stored) = replayed {
         return replayed_result(pool, user_id, note_id, &stored).await;
@@ -486,8 +525,15 @@ pub async fn edit_document(
             projector::edit_note(&updates, &edit, expected_revision.as_deref(), &context).await?;
 
         let mut tx = pool.begin().await?;
-        if let Some(stored) =
-            mutations::replay(&mut tx, user_id, &workspace_id, client_id, mutation_id, &payload).await?
+        if let Some(stored) = mutations::replay(
+            &mut tx,
+            user_id,
+            &workspace_id,
+            client_id,
+            mutation_id,
+            &payload,
+        )
+        .await?
         {
             drop(tx);
             return replayed_result(pool, user_id, note_id, &stored).await;
@@ -517,7 +563,14 @@ pub async fn edit_document(
             .context("Failed to append the note edit")?;
             let document: Value = serde_json::from_str(&edited.document_json)?;
             crdt::write_projection_tx(&mut tx, note_id, &document, seq).await?;
-            link_trades(&mut tx, user_id, &workspace_id, note_id, &edited.references.trades).await?;
+            link_trades(
+                &mut tx,
+                user_id,
+                &workspace_id,
+                note_id,
+                &edited.references.trades,
+            )
+            .await?;
         }
         let changes = NotebookEditChanges::from(edited.changes);
         mutations::acknowledge(
@@ -552,7 +605,10 @@ pub async fn edit_document(
             replayed: false,
         });
     }
-    Err(reject("RETRY", "the note kept changing while saving; try again"))
+    Err(reject(
+        "RETRY",
+        "the note kept changing while saving; try again",
+    ))
 }
 
 async fn replayed_result(

@@ -1,0 +1,15 @@
+# Built binaries
+tradstry-mcp
+*.test
+*.out
+
+# Secrets stay out of the image; Compose passes configuration in.
+.env
+.env.*
+
+# Not needed to build
+*.md
+.git/
+.idea/
+.vscode/
+.DS_Store

@@ -127,9 +127,14 @@ async fn totals(pool: &PgPool, user: &str, workspace: &str) -> Totals {
     let calendar = load_trading_calendar(pool, user, workspace, 2026, 9)
         .await
         .unwrap();
-    let analytics = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All, &Default::default())
-        .await
-        .unwrap();
+    let analytics = get_advanced_analytics(
+        &user_db,
+        workspace,
+        &AnalyticsTimeFilter::All,
+        &Default::default(),
+    )
+    .await
+    .unwrap();
     let journal = get_journal_analytics(&user_db, workspace, &AnalyticsTimeFilter::All)
         .await
         .unwrap();
@@ -463,9 +468,14 @@ async fn a_manual_trades_own_stop_counts_and_is_reported_with_the_journal_off() 
         .unwrap();
 
     let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
-    let analytics = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &Default::default())
-        .await
-        .unwrap();
+    let analytics = get_advanced_analytics(
+        &user_db,
+        &workspace,
+        &AnalyticsTimeFilter::All,
+        &Default::default(),
+    )
+    .await
+    .unwrap();
     let dashboard = load_trading_performance(&pool, &user, &workspace, None, None)
         .await
         .unwrap();
@@ -493,22 +503,55 @@ async fn analytics_for_one_playbook_count_only_its_trades() {
     .execute(&pool)
     .await
     .unwrap();
-    manual(&pool, &user, &workspace, "with", trip("AAPL", "2026-09-01", 100.0, 110.0)).await;
-    manual(&pool, &user, &workspace, "without", trip("MSFT", "2026-09-02", 100.0, 90.0)).await;
+    manual(
+        &pool,
+        &user,
+        &workspace,
+        "with",
+        trip("AAPL", "2026-09-01", 100.0, 110.0),
+    )
+    .await;
+    manual(
+        &pool,
+        &user,
+        &workspace,
+        "without",
+        trip("MSFT", "2026-09-02", 100.0, 90.0),
+    )
+    .await;
     sqlx::query("UPDATE journal_entries SET playbook_id = 'orb' WHERE id = 'with'")
         .execute(&pool)
         .await
         .unwrap();
 
     let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
-    let all = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &Default::default()).await.unwrap();
-    let orb = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &TradeScope { playbook: Some("orb".into()), tag: None }).await.unwrap();
+    let all = get_advanced_analytics(
+        &user_db,
+        &workspace,
+        &AnalyticsTimeFilter::All,
+        &Default::default(),
+    )
+    .await
+    .unwrap();
+    let orb = get_advanced_analytics(
+        &user_db,
+        &workspace,
+        &AnalyticsTimeFilter::All,
+        &TradeScope {
+            playbook: Some("orb".into()),
+            tag: None,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(all.trade_count, 2);
     assert_eq!(orb.trade_count, 1);
     assert!(orb.net_profit > 0.0, "only the winning ORB trade counts");
     assert_eq!(orb.coverage.manual_trades, 1);
 
-    let listed = journal_flow::list_trades(&pool, &user, &workspace).await.unwrap();
+    let listed = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap();
     let with = listed.iter().find(|t| t.id == "with").unwrap();
     assert_eq!(with.playbook_id.as_deref(), Some("orb"));
 }
@@ -520,10 +563,28 @@ async fn analytics_for_one_tag_count_only_trades_with_it() {
     let db = crate::test_db::TestDb::new().await;
     let pool = db.pool();
     let (user, workspace) = crate::pg_support::seed_user_workspace(&pool).await;
-    let category = tags_table::create_category(&pool, &user, &workspace, "Setups", None).await.unwrap();
-    let fomo = tags_table::create_tag(&pool, &user, &workspace, &category.id, "FOMO", None).await.unwrap();
-    manual(&pool, &user, &workspace, "chased", trip("AAPL", "2026-09-01", 100.0, 90.0)).await;
-    manual(&pool, &user, &workspace, "patient", trip("MSFT", "2026-09-02", 100.0, 110.0)).await;
+    let category = tags_table::create_category(&pool, &user, &workspace, "Setups", None)
+        .await
+        .unwrap();
+    let fomo = tags_table::create_tag(&pool, &user, &workspace, &category.id, "FOMO", None)
+        .await
+        .unwrap();
+    manual(
+        &pool,
+        &user,
+        &workspace,
+        "chased",
+        trip("AAPL", "2026-09-01", 100.0, 90.0),
+    )
+    .await;
+    manual(
+        &pool,
+        &user,
+        &workspace,
+        "patient",
+        trip("MSFT", "2026-09-02", 100.0, 110.0),
+    )
+    .await;
     sqlx::query("INSERT INTO trade_tags (journal_entry_id, tag_id) VALUES ('chased', $1)")
         .bind(&fomo.id)
         .execute(&pool)
@@ -531,8 +592,13 @@ async fn analytics_for_one_tag_count_only_trades_with_it() {
         .unwrap();
 
     let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
-    let scope = TradeScope { playbook: None, tag: Some(fomo.id.clone()) };
-    let tagged = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &scope).await.unwrap();
+    let scope = TradeScope {
+        playbook: None,
+        tag: Some(fomo.id.clone()),
+    };
+    let tagged = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &scope)
+        .await
+        .unwrap();
     assert_eq!(tagged.trade_count, 1);
     assert!(tagged.net_profit < 0.0, "only the FOMO trade counts");
 }

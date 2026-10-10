@@ -1,5 +1,5 @@
-// Library entry point for the main server binary, the migration binary, and any
-// future crates (e.g. mcp-server) that need access to backend functionality.
+// Library entry point for the main server binary, the migration binary and the
+// integration tests.
 pub mod graphql;
 pub mod ids;
 pub mod routes;

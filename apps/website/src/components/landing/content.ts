@@ -102,11 +102,12 @@ export function getOrbitMode({
 
 /**
  * Product facts, not adoption claims — every one is checkable.
- * 27 = tools in mcp-server/src/tools; 36 = ANALYTICS_SECTIONS + ADVANCED_SECTIONS.
+ * 83 = tools the MCP server registers (microservice/tradstry-mcp, app/server.go);
+ * 36 = ANALYTICS_SECTIONS + ADVANCED_SECTIONS.
  */
 export const METRICS: Metric[] = [
   {
-    value: "27",
+    value: "83",
     label: "MCP tools",
     note: "Connect your journal to compatible AI clients",
   },

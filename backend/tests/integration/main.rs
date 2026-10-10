@@ -44,7 +44,6 @@ mod notebook_media_routes;
 mod notebook_soft_delete;
 mod notebook_sync;
 mod notebook_system_folder_pg;
-mod notebook_write_tools_pg;
 mod notifications_delivery_pg;
 mod notifications_graphql_pg;
 mod notifications_outbox_pg;

@@ -27,7 +27,7 @@ The repository also contains an authenticated MCP server for AI clients and a na
 | Media storage | Cloudflare R2 through the S3-compatible API |
 | Market data | `finance-query`, with Polygon and Financial Modeling Prep integrations |
 | Brokerage adapter | Go and gRPC over a private Unix socket |
-| MCP server | Rust, Axum, rmcp; authenticated Streamable HTTP at `/mcp` |
+| MCP server | Go, MCP Go SDK; Clerk OAuth, Streamable HTTP at `/mcp`, a client of the backend's GraphQL API |
 | Cache and rate limits | Redis; optional for the main backend, required by the MCP server |
 | Desktop prototype | Swift 6, AppKit, macOS 26+, XcodeGen |
 | Tooling and hosting | Bun, Biome, Docker Compose, Caddy, GitHub Actions; Vercel configuration for the website |
@@ -46,12 +46,12 @@ backend/
   src/                     HTTP server, GraphQL, domain services, background workers
   database/                SeaORM entities, connection setup, and schema bootstrap
   migration/               Database migrations and schema support
-  mcp-server/              Standalone MCP server
   projector/               Bun helpers that turn notebook updates into document data
   proto/                   Versioned SnapTrade protobuf contract
   tests/                   Backend integration checks
 microservice/
   snaptrade-service/       Go SnapTrade adapter
+  tradstry-mcp/            Go MCP server
 devops/
   Makefile                 Local service and deployment commands
   compose.yml              Production service stack
@@ -70,7 +70,7 @@ Run commands from the repository root unless a block changes directories.
 ### Prerequisites
 
 - Bun **1.3.13**, matching the root package manager declaration and container builds.
-- Rust and Cargo; production images build with **Rust 1.95**, and CI uses stable Rust.
+- Rust and Cargo; production images build with **Rust 1.99**, and CI uses stable Rust.
 - Docker with a running daemon for the local Postgres image, which includes both search extensions.
 - Go **1.26.5** for the SnapTrade adapter.
 - Clerk, R2, and SnapTrade development credentials for the connected web app.
@@ -172,14 +172,14 @@ For an existing external database, run `cargo run --bin tradstry-backend` from `
 
 ### MCP server
 
-The MCP server runs separately. Configure `MCP_PUBLIC_URL`, `MCP_BIND_ADDR`, and `CLERK_ISSUER` in `backend/.env`, plus working Postgres, Clerk, R2, Voyage, and Redis settings. Redis and Voyage are required for this process even when in-app AI workers are disabled.
+The MCP server lives in `microservice/tradstry-mcp` and talks only to the backend's GraphQL API. `make mcp` starts Redis, the backend unless one is running, and the server on `http://localhost:7910/mcp`, signed in through the local Clerk instance:
 
 ```bash
-cd backend
-cargo run -p mcp-server --bin mcp-server
+make mcp
+claude mcp add --transport http tradstry http://localhost:7910/mcp
 ```
 
-The default local MCP endpoint is `http://localhost:7900/mcp`. Its `/health` and OAuth discovery routes are public; MCP tool requests require authentication.
+See [microservice/tradstry-mcp/README.md](microservice/tradstry-mcp/README.md) for its tools and configuration. Its `/health` and OAuth discovery routes are public; tool calls require a Clerk OAuth access token.
 
 ### Native macOS prototype
 

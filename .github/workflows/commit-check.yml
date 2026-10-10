@@ -52,3 +52,32 @@ jobs:
         run: |
           cd backend
           cargo clippy --all-targets --all-features -- -D warnings
+
+  mcp-checks:
+    name: MCP Server Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: microservice/tradstry-mcp/go.mod
+          cache-dependency-path: microservice/tradstry-mcp/go.sum
+
+      - name: Go Format Check
+        working-directory: microservice/tradstry-mcp
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Go Vet
+        working-directory: microservice/tradstry-mcp
+        run: go vet ./...
+
+      # The tests check every GraphQL operation against backend/schema/graphql,
+      # which this checkout includes.
+      - name: Go Tests
+        working-directory: microservice/tradstry-mcp
+        run: go test -race ./...

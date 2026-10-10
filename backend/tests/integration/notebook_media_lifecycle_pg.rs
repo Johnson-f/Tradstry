@@ -313,8 +313,8 @@ async fn foreign_user_cannot_delete_a_notebook_folder() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged() -> anyhow::Result<()>
-{
+async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged()
+-> anyhow::Result<()> {
     use anyhow::ensure;
     use async_graphql::{Request, Schema, Variables};
     use clerk_rs::validators::authorizer::ClerkJwt;

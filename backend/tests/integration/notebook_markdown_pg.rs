@@ -15,7 +15,13 @@ use tradstry_backend::service::notebook::projector::{self, ExchangeRejection, No
 
 const CLIENT: &str = "mcp-test";
 
-async fn create(pool: &PgPool, user: &str, workspace: &str, title: &str, markdown: &str) -> NotebookNoteDocument {
+async fn create(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    title: &str,
+    markdown: &str,
+) -> NotebookNoteDocument {
     exchange::create_from_markdown(
         pool,
         user,
@@ -41,12 +47,24 @@ async fn edit(
     revision: Option<&str>,
     mutation: &str,
 ) -> anyhow::Result<NotebookEditResult> {
-    exchange::edit_document(pool, user, note, change, revision.map(str::to_string), CLIENT, mutation).await
+    exchange::edit_document(
+        pool,
+        user,
+        note,
+        change,
+        revision.map(str::to_string),
+        CLIENT,
+        mutation,
+    )
+    .await
 }
 
 fn replace(old: &str, new: &str) -> NoteEdit {
     NoteEdit::ReplaceText {
-        edits: vec![TextEdit { old: old.into(), new: new.into() }],
+        edits: vec![TextEdit {
+            old: old.into(),
+            new: new.into(),
+        }],
     }
 }
 
@@ -101,7 +119,14 @@ async fn a_note_created_from_markdown_reads_back_unfiled_with_its_title() {
     let pool = db.pool();
     let (user, workspace) = seed_user_workspace(&pool).await;
 
-    let note = create(&pool, &user, &workspace, "FOMC playbook", "- [ ] read the statement\n\n---\n\nWait.").await;
+    let note = create(
+        &pool,
+        &user,
+        &workspace,
+        "FOMC playbook",
+        "- [ ] read the statement\n\n---\n\nWait.",
+    )
+    .await;
     assert_eq!(note.title, "FOMC playbook");
     assert_eq!(note.folder_id, None);
     assert_eq!(note.placeholders, 0);
@@ -109,7 +134,10 @@ async fn a_note_created_from_markdown_reads_back_unfiled_with_its_title() {
         note.markdown,
         "# FOMC playbook\n\n- [ ] read the statement\n\n---\n\nWait."
     );
-    assert_eq!(crdt::note_state(&pool, &note.id).await.unwrap(), crdt::NoteState::Crdt);
+    assert_eq!(
+        crdt::note_state(&pool, &note.id).await.unwrap(),
+        crdt::NoteState::Crdt
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -135,26 +163,60 @@ async fn an_edit_changes_only_its_block_and_keeps_the_projection_fresh() {
     let pool = db.pool();
     let (user, workspace) = seed_user_workspace(&pool).await;
 
-    let note = create(&pool, &user, &workspace, "Log", "First entry.\n\nSecond entry.").await;
-    let result = edit(&pool, &user, &note.id, replace("Second entry.", "Second entry, revised."), Some(&note.revision), "e1")
-        .await
-        .unwrap();
+    let note = create(
+        &pool,
+        &user,
+        &workspace,
+        "Log",
+        "First entry.\n\nSecond entry.",
+    )
+    .await;
+    let result = edit(
+        &pool,
+        &user,
+        &note.id,
+        replace("Second entry.", "Second entry, revised."),
+        Some(&note.revision),
+        "e1",
+    )
+    .await
+    .unwrap();
     assert_eq!(result.changes.changed, 1);
     assert_eq!(result.changes.kept, 2);
     assert!(!result.replayed);
-    assert_eq!(result.note.markdown, "# Log\n\nFirst entry.\n\nSecond entry, revised.");
+    assert_eq!(
+        result.note.markdown,
+        "# Log\n\nFirst entry.\n\nSecond entry, revised."
+    );
 
-    let row = notes::find_notebook_note(&pool, &note.id, &user).await.unwrap().unwrap();
-    assert!(row.document_json.contains("Second entry, revised."), "projection updated in the same write");
+    let row = notes::find_notebook_note(&pool, &note.id, &user)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.document_json.contains("Second entry, revised."),
+        "projection updated in the same write"
+    );
     assert!(crdt::is_projection_fresh(&pool, &note.id).await.unwrap());
 
-    let read = exchange::read_document(&pool, &user, &note.id).await.unwrap();
+    let read = exchange::read_document(&pool, &user, &note.id)
+        .await
+        .unwrap();
     assert_eq!(read.markdown, result.note.markdown);
     assert_eq!(read.revision, result.note.revision);
 
-    let renamed = edit(&pool, &user, &note.id, NoteEdit::SetTitle { title: "Trading log".into() }, Some(&read.revision), "e2")
-        .await
-        .unwrap();
+    let renamed = edit(
+        &pool,
+        &user,
+        &note.id,
+        NoteEdit::SetTitle {
+            title: "Trading log".into(),
+        },
+        Some(&read.revision),
+        "e2",
+    )
+    .await
+    .unwrap();
     assert_eq!(renamed.note.title, "Trading log");
 }
 
@@ -165,12 +227,28 @@ async fn a_stale_revision_is_a_conflict() {
     let (user, workspace) = seed_user_workspace(&pool).await;
 
     let note = create(&pool, &user, &workspace, "Log", "one").await;
-    edit(&pool, &user, &note.id, NoteEdit::Append { markdown: "two".into() }, None, "a1")
-        .await
-        .unwrap();
-    let error = edit(&pool, &user, &note.id, replace("one", "uno"), Some(&note.revision), "r1")
-        .await
-        .unwrap_err();
+    edit(
+        &pool,
+        &user,
+        &note.id,
+        NoteEdit::Append {
+            markdown: "two".into(),
+        },
+        None,
+        "a1",
+    )
+    .await
+    .unwrap();
+    let error = edit(
+        &pool,
+        &user,
+        &note.id,
+        replace("one", "uno"),
+        Some(&note.revision),
+        "r1",
+    )
+    .await
+    .unwrap_err();
     assert_eq!(rejection(error), "CONFLICT");
 }
 
@@ -181,18 +259,33 @@ async fn a_replayed_edit_is_applied_once_and_a_reused_identity_is_refused() {
     let (user, workspace) = seed_user_workspace(&pool).await;
 
     let note = create(&pool, &user, &workspace, "Log", "one").await;
-    let change = || NoteEdit::Append { markdown: "two".into() };
-    let first = edit(&pool, &user, &note.id, change(), None, "same").await.unwrap();
+    let change = || NoteEdit::Append {
+        markdown: "two".into(),
+    };
+    let first = edit(&pool, &user, &note.id, change(), None, "same")
+        .await
+        .unwrap();
     let updates = update_count(&pool, &note.id).await;
-    let again = edit(&pool, &user, &note.id, change(), None, "same").await.unwrap();
+    let again = edit(&pool, &user, &note.id, change(), None, "same")
+        .await
+        .unwrap();
     assert!(again.replayed);
     assert_eq!(again.changes.inserted, first.changes.inserted);
     assert_eq!(update_count(&pool, &note.id).await, updates);
     assert_eq!(again.note.markdown, "# Log\n\none\n\ntwo");
 
-    let error = edit(&pool, &user, &note.id, NoteEdit::Append { markdown: "three".into() }, None, "same")
-        .await
-        .unwrap_err();
+    let error = edit(
+        &pool,
+        &user,
+        &note.id,
+        NoteEdit::Append {
+            markdown: "three".into(),
+        },
+        None,
+        "same",
+    )
+    .await
+    .unwrap_err();
     assert!(format!("{error:#}").contains("IDEMPOTENCY_CONFLICT"));
 }
 
@@ -204,11 +297,22 @@ async fn another_users_note_cannot_be_read_or_edited() {
     let (intruder, _) = seed_user_workspace(&pool).await;
 
     let note = create(&pool, &owner, &workspace, "Private", "secret").await;
-    let read = exchange::read_document(&pool, &intruder, &note.id).await.unwrap_err();
-    assert_eq!(rejection(read), "NOT_FOUND");
-    let write = edit(&pool, &intruder, &note.id, NoteEdit::Append { markdown: "x".into() }, None, "x")
+    let read = exchange::read_document(&pool, &intruder, &note.id)
         .await
         .unwrap_err();
+    assert_eq!(rejection(read), "NOT_FOUND");
+    let write = edit(
+        &pool,
+        &intruder,
+        &note.id,
+        NoteEdit::Append {
+            markdown: "x".into(),
+        },
+        None,
+        "x",
+    )
+    .await
+    .unwrap_err();
     assert_eq!(rejection(write), "NOT_FOUND");
 }
 
@@ -231,9 +335,16 @@ async fn references_must_be_the_users_and_chips_link_their_trades() {
         ("[x](trade:trade-theirs)".to_string(), "m2"),
         ("[x](trade:no-such-trade)".to_string(), "m3"),
     ] {
-        let error = edit(&pool, &user, &note.id, NoteEdit::Append { markdown }, None, mutation)
-            .await
-            .unwrap_err();
+        let error = edit(
+            &pool,
+            &user,
+            &note.id,
+            NoteEdit::Append { markdown },
+            None,
+            mutation,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(rejection(error), "INVALID_REFERENCE");
     }
 
@@ -241,26 +352,32 @@ async fn references_must_be_the_users_and_chips_link_their_trades() {
         &pool,
         &user,
         &note.id,
-        NoteEdit::Append { markdown: format!("Entry [x](trade:trade-mine) looked like this:\n\n![chart](media:{mine})") },
+        NoteEdit::Append {
+            markdown: format!(
+                "Entry [x](trade:trade-mine) looked like this:\n\n![chart](media:{mine})"
+            ),
+        },
         None,
         "ok",
     )
     .await
     .unwrap();
     assert!(
-        result.note.markdown.contains("[AAPL · 2026-10-03](trade:trade-mine)"),
+        result
+            .note
+            .markdown
+            .contains("[AAPL · 2026-10-03](trade:trade-mine)"),
         "{}",
         result.note.markdown
     );
     assert_eq!(result.note.linked_trades.len(), 1);
     assert_eq!(result.note.linked_trades[0].label, "AAPL · 2026-10-03");
-    let attached: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM notebook_media_references WHERE note_id = $1",
-    )
-    .bind(&note.id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let attached: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE note_id = $1")
+            .bind(&note.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(attached, 1, "the image is referenced by the note");
 }
 
@@ -270,7 +387,9 @@ async fn a_note_no_client_has_opened_is_seeded_when_read() {
     let pool = db.pool();
     let (user, workspace) = seed_user_workspace(&pool).await;
 
-    let document_json = projector::markdown_to_json("# Old note\n\nWritten before CRDT.").await.unwrap();
+    let document_json = projector::markdown_to_json("# Old note\n\nWritten before CRDT.")
+        .await
+        .unwrap();
     let note = notes::create_notebook_note(
         &pool,
         &user,
@@ -284,11 +403,19 @@ async fn a_note_no_client_has_opened_is_seeded_when_read() {
     )
     .await
     .unwrap();
-    assert_eq!(crdt::note_state(&pool, &note.id).await.unwrap(), crdt::NoteState::Legacy);
+    assert_eq!(
+        crdt::note_state(&pool, &note.id).await.unwrap(),
+        crdt::NoteState::Legacy
+    );
 
-    let read = exchange::read_document(&pool, &user, &note.id).await.unwrap();
+    let read = exchange::read_document(&pool, &user, &note.id)
+        .await
+        .unwrap();
     assert_eq!(read.markdown, "# Old note\n\nWritten before CRDT.");
-    assert_eq!(crdt::note_state(&pool, &note.id).await.unwrap(), crdt::NoteState::Crdt);
+    assert_eq!(
+        crdt::note_state(&pool, &note.id).await.unwrap(),
+        crdt::NoteState::Crdt
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -303,9 +430,18 @@ async fn a_note_stuck_seeding_asks_the_caller_to_retry() {
         .execute(&pool)
         .await
         .unwrap();
-    let error = edit(&pool, &user, &note.id, NoteEdit::Append { markdown: "y".into() }, None, "s")
-        .await
-        .unwrap_err();
+    let error = edit(
+        &pool,
+        &user,
+        &note.id,
+        NoteEdit::Append {
+            markdown: "y".into(),
+        },
+        None,
+        "s",
+    )
+    .await
+    .unwrap_err();
     assert_eq!(rejection(error), "RETRY");
 }
 
@@ -317,11 +453,22 @@ async fn compaction_between_read_and_edit_is_not_a_conflict() {
 
     let note = create(&pool, &user, &workspace, "Log", "one").await;
     for i in 0..3 {
-        edit(&pool, &user, &note.id, NoteEdit::Append { markdown: format!("line {i}") }, None, &format!("a{i}"))
-            .await
-            .unwrap();
+        edit(
+            &pool,
+            &user,
+            &note.id,
+            NoteEdit::Append {
+                markdown: format!("line {i}"),
+            },
+            None,
+            &format!("a{i}"),
+        )
+        .await
+        .unwrap();
     }
-    let read = exchange::read_document(&pool, &user, &note.id).await.unwrap();
+    let read = exchange::read_document(&pool, &user, &note.id)
+        .await
+        .unwrap();
 
     let chain: Vec<Vec<u8>> = crdt_api::updates_since(&pool, &user, &note.id, 0)
         .await
@@ -344,9 +491,16 @@ async fn compaction_between_read_and_edit_is_not_a_conflict() {
         .unwrap();
     tx.commit().await.unwrap();
 
-    let result = edit(&pool, &user, &note.id, replace("line 1", "line one"), Some(&read.revision), "after-compaction")
-        .await
-        .unwrap();
+    let result = edit(
+        &pool,
+        &user,
+        &note.id,
+        replace("line 1", "line one"),
+        Some(&read.revision),
+        "after-compaction",
+    )
+    .await
+    .unwrap();
     assert_eq!(result.changes.changed, 1);
 }
 
@@ -365,7 +519,12 @@ async fn a_client_append_racing_an_edit_is_never_lost() {
         .collect();
     let from_device = projector::edit_note(
         &chain,
-        &NoteEdit::ReplaceText { edits: vec![TextEdit { old: "alpha".into(), new: "alpha from the web".into() }] },
+        &NoteEdit::ReplaceText {
+            edits: vec![TextEdit {
+                old: "alpha".into(),
+                new: "alpha from the web".into(),
+            }],
+        },
         None,
         &Default::default(),
     )
@@ -377,15 +536,29 @@ async fn a_client_append_racing_an_edit_is_never_lost() {
     let device = {
         let pool = pool.clone();
         let (user, id) = (user.clone(), note.id.clone());
-        tokio::spawn(async move { crdt_api::append_updates(&pool, &user, &id, &[from_device]).await })
+        tokio::spawn(
+            async move { crdt_api::append_updates(&pool, &user, &id, &[from_device]).await },
+        )
     };
-    edit(&pool, &user, &note.id, replace("beta", "beta from chat"), None, "race")
-        .await
-        .unwrap();
+    edit(
+        &pool,
+        &user,
+        &note.id,
+        replace("beta", "beta from chat"),
+        None,
+        "race",
+    )
+    .await
+    .unwrap();
     device.await.unwrap().unwrap();
 
-    let read = exchange::read_document(&pool, &user, &note.id).await.unwrap();
-    assert_eq!(read.markdown, "# Race\n\nalpha from the web\n\nbeta from chat");
+    let read = exchange::read_document(&pool, &user, &note.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        read.markdown,
+        "# Race\n\nalpha from the web\n\nbeta from chat"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -415,14 +588,32 @@ async fn removing_a_trade_chip_unlinks_its_trade_but_not_one_linked_without_a_ch
     linked.sort();
     assert_eq!(linked, vec!["chipped", "plain"]);
 
-    let read = exchange::read_document(&pool, &user, &note.id).await.unwrap();
-    let chip = "[AAPL · 2026-10-03](trade:chipped)";
-    assert!(read.markdown.contains(chip), "{}", read.markdown);
-    let result = edit(&pool, &user, &note.id, replace(&format!("Entry {chip} was early."), "Entry was early."), Some(&read.revision), "unchip")
+    let read = exchange::read_document(&pool, &user, &note.id)
         .await
         .unwrap();
-    let linked: Vec<&str> = result.note.linked_trades.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(linked, vec!["plain"], "the chip's trade is unlinked; the plain link stays");
+    let chip = "[AAPL · 2026-10-03](trade:chipped)";
+    assert!(read.markdown.contains(chip), "{}", read.markdown);
+    let result = edit(
+        &pool,
+        &user,
+        &note.id,
+        replace(&format!("Entry {chip} was early."), "Entry was early."),
+        Some(&read.revision),
+        "unchip",
+    )
+    .await
+    .unwrap();
+    let linked: Vec<&str> = result
+        .note
+        .linked_trades
+        .iter()
+        .map(|t| t.id.as_str())
+        .collect();
+    assert_eq!(
+        linked,
+        vec!["plain"],
+        "the chip's trade is unlinked; the plain link stays"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -444,9 +635,19 @@ async fn the_sweep_converts_notes_no_one_has_opened() {
     )
     .await
     .unwrap();
-    assert_eq!(crdt::note_state(&pool, &note.id).await.unwrap(), crdt::NoteState::Legacy);
+    assert_eq!(
+        crdt::note_state(&pool, &note.id).await.unwrap(),
+        crdt::NoteState::Legacy
+    );
 
     assert_eq!(crdt::sweep_legacy_notes(&pool, 50).await.unwrap(), 1);
-    assert_eq!(crdt::note_state(&pool, &note.id).await.unwrap(), crdt::NoteState::Crdt);
-    assert_eq!(crdt::sweep_legacy_notes(&pool, 50).await.unwrap(), 0, "nothing left to convert");
+    assert_eq!(
+        crdt::note_state(&pool, &note.id).await.unwrap(),
+        crdt::NoteState::Crdt
+    );
+    assert_eq!(
+        crdt::sweep_legacy_notes(&pool, 50).await.unwrap(),
+        0,
+        "nothing left to convert"
+    );
 }

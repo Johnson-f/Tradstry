@@ -1,95 +1,11 @@
-//! Behaviour the MCP tools rely on: stable notebook paging, self-healing user
-//! provisioning, and mistake search over mistake-role tags.
+//! Self-healing user provisioning and mistake search over mistake-role tags.
 
-use sqlx::PgPool;
 use tradstry_backend::service::db::Db;
-use tradstry_backend::service::db::schema::tables::notebook::notes;
 use tradstry_backend::service::db::schema::tables::{journal_table, tags_table, users_table};
 use tradstry_backend::service::read_service::journal::JournalFilter;
 use tradstry_backend::service::read_service::users::ensure_user;
 
 use crate::pg_support::{TestDb, seed_user_workspace};
-
-const EMPTY_DOC: &str = r#"{"root":{"children":[]}}"#;
-
-async fn make_note(pool: &PgPool, user_id: &str, workspace_id: &str) -> String {
-    notes::create_notebook_note(
-        pool,
-        user_id,
-        notes::CreateNotebookNoteInput {
-            id: None,
-            workspace_id: workspace_id.to_string(),
-            document_json: EMPTY_DOC.into(),
-            trade_ids: vec![],
-            folder_id: None,
-        },
-    )
-    .await
-    .expect("create note")
-    .id
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn notebook_pages_cover_every_note_once_even_if_the_cursor_note_is_deleted() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
-    let (user, ws) = seed_user_workspace(&pool).await;
-    let mut created = Vec::new();
-    for _ in 0..5 {
-        created.push(make_note(&pool, &user, &ws).await);
-    }
-
-    let (first, more) = notes::list_notebook_notes_page(&pool, &user, Some(&ws), None, 2)
-        .await
-        .unwrap();
-    assert_eq!(first.len(), 2);
-    assert!(more);
-
-    // Editing must not reorder pages, and deleting the cursor note must not
-    // restart the listing.
-    let cursor = first.last().unwrap().id.clone();
-    notes::delete_notebook_note(&pool, &cursor, &user)
-        .await
-        .unwrap();
-
-    let mut seen: Vec<String> = first.iter().map(|n| n.id.clone()).collect();
-    let mut after = Some(cursor);
-    loop {
-        let (page, more) =
-            notes::list_notebook_notes_page(&pool, &user, Some(&ws), after.as_deref(), 2)
-                .await
-                .unwrap();
-        seen.extend(page.iter().map(|n| n.id.clone()));
-        if !more {
-            break;
-        }
-        after = page.last().map(|n| n.id.clone());
-    }
-
-    let mut expected = created.clone();
-    expected.sort();
-    let mut got = seen.clone();
-    got.sort();
-    assert_eq!(got, expected, "every note exactly once");
-    assert!(
-        seen.windows(2).all(|w| w[0] > w[1]),
-        "newest first by uuid v7 id: {seen:?}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn an_unknown_notebook_cursor_is_an_error_not_page_one() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
-    let (user, ws) = seed_user_workspace(&pool).await;
-    make_note(&pool, &user, &ws).await;
-    let missing = tradstry_backend::ids::new_uuid_v7().to_string();
-    assert!(
-        notes::list_notebook_notes_page(&pool, &user, Some(&ws), Some(&missing), 10)
-            .await
-            .is_err()
-    );
-}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {

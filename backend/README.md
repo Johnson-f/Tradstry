@@ -25,13 +25,14 @@ shared Unix socket.
 
 ## Architecture
 
-This crate is a Cargo workspace producing two binaries plus a JS sidecar:
+This crate is a Cargo workspace producing the backend binary plus a JS sidecar:
 
 | Component | Path | Port | Role |
 |---|---|---|---|
 | `tradstry-backend` | `src/` | 7899 | The GraphQL API server and background workers |
-| `mcp-server` | `mcp-server/` | 7900 | Streamable-HTTP MCP server (rmcp), Clerk-authed, reuses this crate as a library |
-| `projector` | `projector/` | — | Bun sidecar spawned per call for Yjs CRDT ops (project, seed, compact, markdown) |
+| `projector` | `projector/` | — | Bun sidecar spawned per call for Yjs CRDT ops (project, seed, compact, Markdown exchange) |
+
+The MCP server is a separate Go service in `microservice/tradstry-mcp`, a client of this API.
 
 The projector is the only place Yjs updates are interpreted. Rust treats CRDT updates as opaque `Vec<u8>` end to end and only base64-encodes them at the GraphQL boundary — routing a Yjs update through any other `String` corrupts the document.
 
@@ -179,11 +180,6 @@ VAPID_SUBJECT=mailto:support@tradstry.com
 # keep their rows and R2 objects. Clerk Dashboard → Webhooks → signing secret.
 CLERK_WEBHOOK_SECRET=whsec_...            # required
 
-# MCP server only
-MCP_PUBLIC_URL=https://mcp.tradstry.com   # required, advertised in OAuth metadata
-CLERK_ISSUER=https://clerk.tradstry.com   # required
-MCP_BIND_ADDR=0.0.0.0:7900                # optional
-
 # Overrides
 PROJECTOR_DIR=                        # defaults to ./projector, or beside the binary
 TEST_DATABASE_URL=                    # integration tests only, see Tests below
@@ -199,9 +195,6 @@ make backend
 
 # Or directly
 RUST_BACKTRACE=1 cargo run --bin tradstry-backend
-
-# MCP server
-cargo run --bin mcp-server
 
 # Production build
 cargo build --release
@@ -286,7 +279,6 @@ src/
     auth/                    # Clerk JWKS provider
     hlc.rs                   # Server Hybrid Logical Clock
     telemetry.rs             # tracing subscriber + Sentry
-mcp-server/                  # MCP binary (read + write tools over the same services)
 database/                    # tradstry-database crate: Db, entities, bootstrap, contract
 migration/                   # Ordered SeaORM migrations
 schema/postgres/             # PostgreSQL support DDL and catalog contract
@@ -368,4 +360,4 @@ docker build --target backend -f ../devops/docker/backend.Dockerfile \
   --build-context notebook-core=../packages/notebook-core -t tradstry-backend .
 ```
 
-The Dockerfile is multi-stage: `cargo-chef` caches dependencies, one builder produces both Rust binaries, a Bun stage bundles the projector against `packages/notebook-core`, and two thin Debian stages (`backend`, `mcp`) each carry a binary, the Bun runtime, and the projector. Both run as a non-root user with a healthcheck. The backend exposes 7899, the MCP server 7900.
+The Dockerfile is multi-stage: `cargo-chef` caches dependencies, a builder produces the backend binary, a Bun stage bundles the projector against `packages/notebook-core`, and a thin Debian `backend` stage carries the binary, the Bun runtime, and the projector. It runs as a non-root user with a healthcheck and exposes 7899.

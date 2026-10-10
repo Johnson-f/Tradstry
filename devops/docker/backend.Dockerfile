@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-# Multistage: Build Rust binaries, JS projector, then produce thin backend/mcp images.
+# Multistage: build the Rust backend and the JS projector, then a thin runtime image.
 
-FROM rust:1.95-bookworm AS chef
+FROM rust:1.99-bookworm AS chef
 RUN cargo install cargo-chef --locked
 RUN apt-get update && apt-get install -y pkg-config libssl-dev mold && rm -rf /var/lib/apt/lists/*
-# mold links the two large binaries far faster than the default GNU ld. Set here so
+# mold links the large backend binary far faster than the default GNU ld. Set here so
 # the dependency cook and the final build share identical flags; any difference
 # would make cargo rebuild every dependency.
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
@@ -16,7 +16,6 @@ COPY build.rs ./
 COPY proto ./proto
 COPY src ./src
 COPY database ./database
-COPY mcp-server ./mcp-server
 COPY migration ./migration
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -28,7 +27,7 @@ COPY --from=planner /app/recipe.json recipe.json
 # workspace resolves different dependency features, and the final build would then
 # recompile every dependency whose features differ.
 RUN cargo chef cook --release --recipe-path recipe.json \
-    -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
+    -p tradstry-backend --bin tradstry-backend
 
 FROM deps AS builder
 COPY Cargo.toml Cargo.lock ./
@@ -36,10 +35,9 @@ COPY build.rs ./
 COPY proto ./proto
 COPY src ./src
 COPY database ./database
-COPY mcp-server ./mcp-server
 COPY migration ./migration
 COPY schema ./schema
-RUN cargo build --release -p tradstry-backend --bin tradstry-backend -p mcp-server --bin mcp-server
+RUN cargo build --release -p tradstry-backend --bin tradstry-backend
 
 # Projector: Build JS projection (needs bun, node_modules, shared schema).
 FROM oven/bun:1.3.13-slim AS projector-deps
@@ -74,19 +72,3 @@ EXPOSE 7899
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -sf http://localhost:7899/ || test $? -eq 22
 CMD ["./tradstry-backend"]
-
-FROM debian:bookworm-slim AS mcp
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
-# Also needs bun+projector for notebook tool support.
-COPY --from=oven/bun:1.3.13-slim /usr/local/bin/bun /usr/local/bin/bun
-RUN useradd --create-home appuser
-USER appuser
-WORKDIR /home/appuser
-COPY --from=builder /app/target/release/mcp-server .
-COPY --from=projector-deps --chown=appuser:appuser /projector ./projector
-ENV RUST_LOG=info
-ENV RUST_BACKTRACE=1
-EXPOSE 7900
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -sf http://localhost:7900/health || exit 1
-CMD ["./mcp-server"]

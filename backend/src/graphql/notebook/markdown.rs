@@ -50,7 +50,10 @@ impl EditNotebookNoteInput {
             edits.push(NoteEdit::ReplaceText {
                 edits: replace
                     .into_iter()
-                    .map(|e| TextEdit { old: e.old, new: e.new })
+                    .map(|e| TextEdit {
+                        old: e.old,
+                        new: e.new,
+                    })
                     .collect(),
             });
         }

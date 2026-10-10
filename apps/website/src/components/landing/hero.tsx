@@ -4,7 +4,7 @@ import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { HeroSignalField } from "./hero-signal-field";
 
-const FACTS = ["35+ brokerages", "27 MCP tools", "0% used for training"];
+const FACTS = ["35+ brokerages", "83 MCP tools", "0% used for training"];
 
 export function Hero() {
   return (

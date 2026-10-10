@@ -97,6 +97,9 @@ services:
       - LOG_FORMAT=json
       - SNAPTRADE_GRPC_SOCKET=/run/tradstry/snaptrade.sock
       - SNAPTRADE_INTERNAL_SECRET=${SNAPTRADE_INTERNAL_SECRET:?SNAPTRADE_INTERNAL_SECRET must be set}
+      # Broker connections started from the MCP server return the browser to it.
+      - SNAPTRADE_PORTAL_REDIRECT_ORIGINS=https://mcp.tradstry.com
+      - SNAPTRADE_OAUTH_MCP_RETURN_URL=https://mcp.tradstry.com/brokerage/snaptrade-authorized
     env_file:
       - ../backend/.env
     volumes:
@@ -176,16 +179,14 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # The Go MCP server. It holds no database or storage credentials: it calls the
+  # backend's GraphQL API with each user's own token, so it needs only the
+  # backend, Redis for rate limits, and Clerk's public signing keys.
   mcp-server:
     image: johnsonf/tradstry-mcp:${DEPLOY_TAG:-latest}
     build:
-      context: ../backend
-      dockerfile: ../devops/docker/backend.Dockerfile
-      target: mcp
-      # The mcp stage copies from projector-deps (for its notebook tools), which needs the
-      # shared schema — same named context as the backend service above.
-      additional_contexts:
-        notebook-core: ../packages/notebook-core
+      context: ../microservice/tradstry-mcp
+      dockerfile: ../../devops/docker/mcp.Dockerfile
     container_name: tradstry-mcp
     restart: unless-stopped
     # Autoheal restarts this container if healthcheck fails.
@@ -195,33 +196,30 @@ services:
     stop_grace_period: 30s
     expose:
       - "7900"
-    env_file:
-      - ../backend/.env
     environment:
-      - RUST_ENV=production
-      - RUST_LOG=info
-      - RUST_BACKTRACE=1
       - MCP_PUBLIC_URL=https://mcp.tradstry.com
+      - MCP_BIND_ADDR=0.0.0.0:7900
       - CLERK_ISSUER=https://clerk.tradstry.com
+      - TRADSTRY_API_URL=http://backend:7899
+      # The password is percent-encoded if it holds URL characters such as @ or /.
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
     networks:
       - tradstry-network
-      - qdrant-net
-    # The MCP server connects to Postgres eagerly at boot, so it must not start first.
     depends_on:
-      postgres:
+      backend:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:7900/health"]
+      test: ["CMD", "curl", "-fsS", "--max-time", "3", "http://localhost:7900/health"]
       interval: 30s
-      timeout: 3s
+      timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 256M
           cpus: "0.5"
     logging:
       driver: "json-file"

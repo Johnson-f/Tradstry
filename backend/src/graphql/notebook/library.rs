@@ -53,7 +53,10 @@ impl NotebookLibraryQuery {
             user_id: db.user_id().to_string(),
             clerk_id: ctx.data::<ClerkJwt>()?.sub.clone(),
         };
-        Ok(library::search_notes(db.pool(), &knowledge, &actor, &workspace_id, &query, limit).await?)
+        Ok(
+            library::search_notes(db.pool(), &knowledge, &actor, &workspace_id, &query, limit)
+                .await?,
+        )
     }
 
     async fn notebook_folder_note_counts(
@@ -74,8 +77,14 @@ impl NotebookLibraryQuery {
         after: Option<String>,
     ) -> Result<DeletedNotebookNotePage> {
         let db = user_db(ctx).await?;
-        Ok(library::deleted_notes(db.pool(), db.user_id(), &workspace_id, first, after.as_deref())
-            .await?)
+        Ok(library::deleted_notes(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            first,
+            after.as_deref(),
+        )
+        .await?)
     }
 }
 

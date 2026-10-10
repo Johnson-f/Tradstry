@@ -98,7 +98,8 @@ fn decode_cursor(raw: &str) -> Result<Cursor> {
     let bytes = URL_SAFE_NO_PAD
         .decode(raw)
         .map_err(|_| anyhow!("INVALID_CURSOR: start again without a cursor"))?;
-    serde_json::from_slice(&bytes).map_err(|_| anyhow!("INVALID_CURSOR: start again without a cursor"))
+    serde_json::from_slice(&bytes)
+        .map_err(|_| anyhow!("INVALID_CURSOR: start again without a cursor"))
 }
 
 fn page_size(first: Option<i32>) -> i64 {
@@ -244,13 +245,14 @@ pub async fn search_notes(
         .into_iter()
         .filter_map(|hit| {
             let folder_id = live.iter().find(|(id, _)| *id == hit.source_id)?.1.clone();
-            seen.insert(hit.source_id.clone()).then(|| NotebookSearchHit {
-                note_id: hit.source_id,
-                title: hit.title,
-                folder_id,
-                excerpt: hit.excerpt,
-                trade_ids: hit.relationships.trade_ids,
-            })
+            seen.insert(hit.source_id.clone())
+                .then_some(NotebookSearchHit {
+                    note_id: hit.source_id,
+                    title: hit.title,
+                    folder_id,
+                    excerpt: hit.excerpt,
+                    trade_ids: hit.relationships.trade_ids,
+                })
         })
         .collect())
 }
@@ -367,7 +369,10 @@ pub async fn restore_note(pool: &PgPool, user_id: &str, note_id: &str) -> Result
     .await
     .context("Failed to restore notebook note")?
     .rows_affected();
-    ensure!(restored == 1, "NOT_FOUND: no deleted note with that id can be restored");
+    ensure!(
+        restored == 1,
+        "NOT_FOUND: no deleted note with that id can be restored"
+    );
 
     let document_json: String =
         sqlx::query_scalar("SELECT document_json FROM notebook_notes WHERE id = $1")
@@ -492,7 +497,12 @@ mod tests {
 
     #[test]
     fn cursors_round_trip() {
-        let raw = encode_cursor(&Cursor { p: true, t: "2026-10-10T00:00:00.000001Z".into(), i: "n".into() }).unwrap();
+        let raw = encode_cursor(&Cursor {
+            p: true,
+            t: "2026-10-10T00:00:00.000001Z".into(),
+            i: "n".into(),
+        })
+        .unwrap();
         let back = decode_cursor(&raw).unwrap();
         assert!(back.p);
         assert_eq!(back.i, "n");
