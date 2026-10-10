@@ -21,7 +21,7 @@ func TestBucketsArePerUserAndRefill(t *testing.T) {
 	ctx := context.Background()
 	small := ratelimit.Bucket{Name: "test", Capacity: 2, PerSecond: 1}
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if wait, err := limiter.Take(ctx, "alice", small); err != nil || wait != 0 {
 			t.Fatalf("call %d: wait %v, err %v", i, wait, err)
 		}

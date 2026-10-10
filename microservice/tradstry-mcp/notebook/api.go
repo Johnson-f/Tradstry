@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"strings"
@@ -224,9 +225,7 @@ func (a api) edit(ctx context.Context, token, id string, edit map[string]any, re
 	if enforce {
 		input["expectedRevision"] = revision
 	}
-	for key, value := range edit {
-		input[key] = value
-	}
+	maps.Copy(input, edit)
 	var data struct {
 		Result editResult `json:"editNotebookNote"`
 	}

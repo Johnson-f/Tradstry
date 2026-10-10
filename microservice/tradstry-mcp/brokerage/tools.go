@@ -454,12 +454,7 @@ func (t *tools) sync(ctx context.Context, req *mcp.CallToolRequest, in workspace
 	if err != nil {
 		return nil, syncOutput{}, graphql.ForUser(err)
 	}
-	return nil, syncOutput{
-		Status:             result.Status,
-		TransactionsSynced: result.TransactionsSynced,
-		HoldingsSynced:     result.HoldingsSynced,
-		BalancesSynced:     result.BalancesSynced,
-	}, nil
+	return nil, syncOutput(result), nil
 }
 
 func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, statusOutput, error) {

@@ -325,8 +325,7 @@ func forUser(err error) error {
 	if err == nil {
 		return nil
 	}
-	var apiErr *graphql.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*graphql.Error](err); ok {
 		switch message := apiErr.Error(); {
 		case strings.Contains(message, "REPREVIEW_REQUIRED: wait"):
 			return errUpdating

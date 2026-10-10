@@ -4,6 +4,7 @@ package mcptest
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"maps"
 	"testing"
 	"time"
 
@@ -42,9 +43,7 @@ func (s *Signer) Token(t *testing.T, typ string, claims jwt.MapClaims) string {
 		"sub": Subject,
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}
-	for k, v := range claims {
-		all[k] = v
-	}
+	maps.Copy(all, claims)
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, all)
 	token.Header["typ"] = typ
 	signed, err := token.SignedString(s.key)

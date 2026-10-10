@@ -56,7 +56,7 @@ func parse(query string) (*ast.QueryDocument, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, errs := gqlparser.LoadQuery(loaded, query)
+	doc, errs := gqlparser.LoadQueryWithRules(loaded, query, nil)
 	if len(errs) > 0 {
 		messages := make([]string, len(errs))
 		for i, e := range errs {

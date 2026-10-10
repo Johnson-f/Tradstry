@@ -90,6 +90,8 @@ func Run(ctx context.Context) error {
 func NewHandler(cfg Config, verifier *clerk.Verifier, api *graphql.Client, limiter *ratelimit.Limiter) http.Handler {
 	mcpServer, landing := newMCPServer(api, cfg.PublicURL)
 	mcpServer.AddReceivingMiddleware(limiter.Middleware(readOnlyTools(mcpServer)))
+	// Added last so it wraps the rate limiter and logs limited calls too.
+	mcpServer.AddReceivingMiddleware(logMethods)
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)
 	requireToken := sdkauth.RequireBearerToken(verifier.Verify, &sdkauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: cfg.PublicURL + clerk.MetadataPath,
@@ -102,7 +104,7 @@ func NewHandler(cfg Config, verifier *clerk.Verifier, api *graphql.Client, limit
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
-	return mux
+	return logRequests(mux)
 }
 
 func newMCPServer(api *graphql.Client, publicURL string) (*mcp.Server, http.Handler) {

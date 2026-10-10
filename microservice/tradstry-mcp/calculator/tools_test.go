@@ -3,6 +3,7 @@ package calculator_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -66,9 +67,7 @@ func (f *fakeAPI) respond(req mcptest.Request) string {
 			for _, t := range p["tranches"].([]any) {
 				tr := t.(map[string]any)
 				if tr["id"] == change["id"] {
-					for key, value := range change {
-						tr[key] = value
-					}
+					maps.Copy(tr, change)
 				}
 			}
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -146,9 +147,7 @@ func returnFromSnapTrade(t *testing.T, s *mcptest.Stack, outcome url.Values) (in
 		t.Fatal(err)
 	}
 	query := target.Query()
-	for key, values := range outcome {
-		query[key] = values
-	}
+	maps.Copy(query, outcome)
 	target.RawQuery = query.Encode()
 	resp, err := http.Get(target.String())
 	if err != nil {

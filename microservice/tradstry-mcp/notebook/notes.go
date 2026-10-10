@@ -128,7 +128,7 @@ func toNoteView(d document, paths map[string]string) noteView {
 func links(d document) []linkedTrade {
 	out := make([]linkedTrade, 0, len(d.LinkedTrades))
 	for _, l := range d.LinkedTrades {
-		out = append(out, linkedTrade{ID: l.ID, Label: l.Label})
+		out = append(out, linkedTrade(l))
 	}
 	return out
 }

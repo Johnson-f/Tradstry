@@ -21,7 +21,7 @@ const (
 var (
 	ErrAccountRequired = errors.New("no Tradstry account exists for this login. Sign up at tradstry.com, then try again")
 	ErrUnauthorized    = errors.New("the Tradstry API rejected the login. Reconnect Tradstry in this app and try again")
-	ErrUnavailable     = errors.New("Tradstry is unavailable right now. Try again shortly")
+	ErrUnavailable     = errors.New("the Tradstry service is unavailable right now. Try again shortly")
 )
 
 // Error is a non-auth error reported by the Tradstry API, such as a failed validation.
@@ -97,7 +97,7 @@ func (c *Client) Do(ctx context.Context, token, query string, variables map[stri
 		return ErrUnauthorized
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Tradstry API returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("the Tradstry API returned HTTP %d", resp.StatusCode)
 	}
 
 	var decoded response
@@ -153,7 +153,7 @@ func (c *Client) Get(ctx context.Context, token, path string, limit int64) ([]by
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, "", ErrNotFound
 	case resp.StatusCode != http.StatusOK:
-		return nil, "", fmt.Errorf("Tradstry API returned HTTP %d for %s", resp.StatusCode, path)
+		return nil, "", fmt.Errorf("the Tradstry API returned HTTP %d for %s", resp.StatusCode, path)
 	}
 	if resp.ContentLength > limit {
 		return nil, "", ErrTooLarge

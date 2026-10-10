@@ -3,6 +3,7 @@ package playbooks_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -50,9 +51,7 @@ func (f *fakeAPI) respond(req mcptest.Request) string {
 		return data(map[string]any{"createPlaybook": p})
 	case strings.Contains(req.Query, "updatePlaybook"):
 		p := f.playbooks[fmt.Sprint(v["id"])]
-		for key, value := range input {
-			p[key] = value
-		}
+		maps.Copy(p, input)
 		return data(map[string]any{"updatePlaybook": p})
 	case strings.Contains(req.Query, "setPlaybookApplicability"):
 		f.applied = input
