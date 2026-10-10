@@ -17,16 +17,18 @@ PG_DATABASE  ?= postgres
 BACKEND_PORT ?= 7899
 TEST_PG_CONTAINER := tradstry-test-postgres
 TEST_PG_PORT      ?= 5435
+REDIS_CONTAINER   := tradstry-redis
+MCP_PORT          ?= 7910
 -include $(DEVOPS)/local.mk
 export PG_CONTAINER PG_IMAGE PG_VOLUME PG_PORT PG_PASSWORD PG_DATABASE
 export TEST_PG_CONTAINER TEST_PG_PORT
-export BACKEND_PORT
+export BACKEND_PORT REDIS_CONTAINER MCP_PORT
 
 SERVER     := myserver
 REMOTE_DIR := /opt/tradstry
 export SERVER REMOTE_DIR
 
-.PHONY: help backend postgres test-db test-db-stop frontend desktop micro cleanup deploy tag sync-oauth-env test-oauth-env-sync sync-agent-env test-agent-env-sync
+.PHONY: help backend postgres test-db test-db-stop frontend desktop micro mcp cleanup deploy tag sync-oauth-env test-oauth-env-sync sync-agent-env test-agent-env-sync
 
 help:
 	@echo "Tradstry"
@@ -40,6 +42,8 @@ help:
 	@echo "  make frontend   Start the web frontend (bun dev)"
 	@echo "  make desktop    Build and launch the native SwiftUI macOS app"
 	@echo "  make micro      Start the SnapTrade Go microservice"
+	@echo "  make mcp        Start Redis, the backend (unless running) and the MCP server on :$(MCP_PORT),"
+	@echo "                  for testing with Claude Code"
 	@echo "  make cleanup    Remove JS, Next, test, and Rust build artifacts"
 	@echo "  make deploy     Emergency redeploy of the current origin/master build"
 	@echo "  make tag        Create a release tag (not required for deployment)"
@@ -201,6 +205,72 @@ cd "$$ROOT/apps/website"
 exec bun run dev
 endef
 export FRONTEND_SCRIPT
+
+# ---------------------------------------------------------------------------
+# The Go MCP server for local testing with Claude Code. Brings up Redis for its
+# rate limits, starts the backend in the background unless one already answers,
+# and stops that backend again when the MCP server exits.
+# ---------------------------------------------------------------------------
+define MCP_SCRIPT
+set -e
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; NC='\033[0m'
+setting() { grep -E "^$$1=" "$$ROOT/backend/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+
+redis_url="$$(setting REDIS_URL)"
+redis_url="$${redis_url:-redis://localhost:6381}"
+redis_port="$$(echo "$$redis_url" | sed -E 's#.*:([0-9]+)/?.*$$#\1#')"
+if ! docker ps --format '{{.Names}}' | grep -q "^$${REDIS_CONTAINER}$$"; then
+  if docker container inspect "$$REDIS_CONTAINER" >/dev/null 2>&1; then
+    docker start "$$REDIS_CONTAINER" >/dev/null
+  else
+    docker run -d --name "$$REDIS_CONTAINER" -p "127.0.0.1:$${redis_port}:6379" redis:8-alpine >/dev/null
+  fi
+fi
+echo -e "$${GREEN}Redis '$${REDIS_CONTAINER}' running on port $${redis_port}.$${NC}"
+
+backend_pid=""
+if curl -fsS "http://localhost:$${BACKEND_PORT}/health" >/dev/null 2>&1; then
+  echo -e "$${GREEN}Backend already running on :$${BACKEND_PORT}.$${NC}"
+else
+  log="$${TMPDIR:-/tmp}/tradstry-backend.log"
+  echo -e "$${BLUE}Starting the backend; its log is $${log}$${NC}"
+  make -C "$$ROOT" backend >"$$log" 2>&1 &
+  backend_pid=$$!
+  trap '[ -n "$$backend_pid" ] && pkill -P "$$backend_pid" 2>/dev/null; kill "$$backend_pid" 2>/dev/null' EXIT
+  until curl -fsS "http://localhost:$${BACKEND_PORT}/health" >/dev/null 2>&1; do
+    if ! kill -0 "$$backend_pid" 2>/dev/null; then
+      echo "The backend stopped while starting; see $${log}" >&2
+      exit 1
+    fi
+    sleep 2
+  done
+  echo -e "$${GREEN}Backend ready on :$${BACKEND_PORT}.$${NC}"
+fi
+
+export MCP_PUBLIC_URL="http://localhost:$${MCP_PORT}"
+export MCP_BIND_ADDR="127.0.0.1:$${MCP_PORT}"
+export TRADSTRY_API_URL="http://localhost:$${BACKEND_PORT}"
+# Sign in against the Clerk instance the local web app uses (its publishable key
+# names it), not backend/.env's CLERK_ISSUER, which is the production one the
+# Rust MCP server advertises. MCP_CLERK_ISSUER overrides both.
+publishable="$$(grep -E '^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=' "$$ROOT/apps/website/.env.local" 2>/dev/null | cut -d= -f2-)"
+local_clerk=""
+if [ -n "$$publishable" ]; then
+  local_clerk="https://$$(python3 -c 'import base64,sys; k=sys.argv[1].split("_",2)[2]; print(base64.b64decode(k+"="*(-len(k)%4)).decode().rstrip("$$"))' "$$publishable")"
+fi
+export CLERK_ISSUER="$${MCP_CLERK_ISSUER:-$${local_clerk:-$$(setting CLERK_ISSUER)}}"
+export REDIS_URL="$$redis_url"
+
+echo ""
+echo -e "$${GREEN}MCP server on $${MCP_PUBLIC_URL}/mcp, signing in with $${CLERK_ISSUER}$${NC}"
+echo "Connect Claude Code once with:"
+echo "  claude mcp add --transport http tradstry $${MCP_PUBLIC_URL}/mcp"
+echo "then run /mcp in Claude Code and authenticate tradstry."
+echo ""
+cd "$$ROOT/microservice/tradstry-mcp"
+go run .
+endef
+export MCP_SCRIPT
 
 define MICRO_SCRIPT
 cd "$$ROOT/microservice/snaptrade-service"
@@ -364,6 +434,9 @@ desktop:
 
 micro:
 	@bash -c "$$MICRO_SCRIPT"
+
+mcp:
+	@bash -c "$$MCP_SCRIPT"
 
 sync-oauth-env:
 	@bash "$(DEVOPS)/scripts/sync-oauth-env.sh"

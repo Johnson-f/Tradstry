@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -36,7 +37,22 @@ func NewVerifierWithKeys(issuer string, keys jwt.Keyfunc) *Verifier {
 	return &Verifier{issuer: issuer, keys: keys}
 }
 
-func (v *Verifier) Verify(_ context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
+// Verify accepts only a JWT access token from the configured Clerk issuer. A
+// rejection is logged with its reason, never the token, because the client only
+// sees a bare 401.
+func (v *Verifier) Verify(ctx context.Context, token string, r *http.Request) (*sdkauth.TokenInfo, error) {
+	info, err := v.verify(token)
+	if err != nil {
+		reason := err.Error()
+		if strings.Count(token, ".") != 2 {
+			reason = "the token is not a JWT; turn on JWT access tokens for OAuth applications in Clerk"
+		}
+		slog.Warn("rejected an MCP access token", "reason", reason, "issuer", v.issuer)
+	}
+	return info, err
+}
+
+func (v *Verifier) verify(token string) (*sdkauth.TokenInfo, error) {
 	var claims jwt.RegisteredClaims
 	parsed, err := jwt.ParseWithClaims(token, &claims, v.keys,
 		jwt.WithValidMethods([]string{"RS256"}),
