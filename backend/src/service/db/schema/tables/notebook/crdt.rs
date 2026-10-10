@@ -269,9 +269,6 @@ pub async fn refresh_projection(pool: &PgPool, note_id: &str) -> Result<()> {
         .context("refresh_projection: projector failed")?;
     let parsed: Value = serde_json::from_str(&projected)
         .context("refresh_projection: projector emitted invalid JSON")?;
-    let title = crate::service::notebook::document::derive_note_title(&parsed);
-    let document_json = serde_json::to_string(&parsed)
-        .context("refresh_projection: failed to serialize document")?;
 
     let mut tx = pool.begin().await.context("refresh_projection: begin tx")?;
     // FOR UPDATE serializes concurrent refreshes: an older refresh that read fewer
@@ -287,6 +284,34 @@ pub async fn refresh_projection(pool: &PgPool, note_id: &str) -> Result<()> {
         return Ok(());
     }
 
+    write_projection_tx(&mut tx, note_id, &parsed, max_seq).await?;
+    tx.commit()
+        .await
+        .context("refresh_projection: commit failed")?;
+    Ok(())
+}
+
+/// Stores `document` as the note's projection of its updates up to `seq`: the body,
+/// its derived title, its media references and the trades its chips link. The caller holds the note's
+/// `notebook_note_crdt` row lock.
+pub async fn write_projection_tx(
+    tx: &mut sqlx::PgConnection,
+    note_id: &str,
+    document: &Value,
+    seq: i64,
+) -> Result<()> {
+    let title = crate::service::notebook::document::derive_note_title(document);
+    let document_json =
+        serde_json::to_string(document).context("write_projection: failed to serialize document")?;
+    let previous: String = sqlx::query_scalar("SELECT document_json FROM notebook_notes WHERE id = $1")
+        .bind(note_id)
+        .fetch_one(&mut *tx)
+        .await
+        .context("write_projection: failed to read the previous projection")?;
+    let removed: Vec<String> = crate::service::notebook::document::trade_ids(&previous)
+        .difference(&crate::service::notebook::document::trade_ids(&document_json))
+        .cloned()
+        .collect();
     // The projection is a server-derived write, not a client body edit, so it must
     // NOT route through the CRDT_NOTE-guarded update paths — it writes document_json
     // directly, keyed by note id, which is the projection's own private door.
@@ -296,22 +321,55 @@ pub async fn refresh_projection(pool: &PgPool, note_id: &str) -> Result<()> {
         .bind(note_id)
         .execute(&mut *tx)
         .await
-        .context("refresh_projection: failed to write document_json")?;
+        .context("write_projection: failed to write document_json")?;
     sqlx::query(
         "UPDATE notebook_note_crdt SET projected_seq = $2, projected_at = now() WHERE note_id = $1",
     )
     .bind(note_id)
-    .bind(max_seq)
+    .bind(seq)
     .execute(&mut *tx)
     .await
-    .context("refresh_projection: failed to advance projected_seq")?;
-    crate::service::notebook::media::reconcile_note_references_tx(&mut tx, note_id, &parsed)
+    .context("write_projection: failed to advance projected_seq")?;
+    crate::service::notebook::media::reconcile_note_references_tx(tx, note_id, document)
         .await
-        .context("refresh_projection: failed to reconcile media references")?;
-    tx.commit()
+        .context("write_projection: failed to reconcile media references")?;
+    // A trade whose chip left the body is unlinked. Trades linked without a chip,
+    // and a trade note's own trade, stay linked.
+    if !removed.is_empty() {
+        sqlx::query(
+            "DELETE FROM notebook_note_trades WHERE note_id = $1 AND trade_id = ANY($2)
+               AND trade_id NOT IN (SELECT entry_id FROM journal_trade_context WHERE companion_note_id = $1)",
+        )
+        .bind(note_id)
+        .bind(&removed)
+        .execute(&mut *tx)
         .await
-        .context("refresh_projection: commit failed")?;
+        .context("write_projection: failed to unlink removed trade chips")?;
+    }
     Ok(())
+}
+
+/// Converts up to `batch` notes no client has opened since notes moved to the
+/// update log, so nobody waits on the conversion when they first open one.
+pub async fn sweep_legacy_notes(pool: &PgPool, batch: i64) -> Result<usize> {
+    let legacy: Vec<String> = sqlx::query_scalar(
+        "SELECT n.id FROM notebook_notes n
+         WHERE n.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM notebook_note_crdt c WHERE c.note_id = n.id)
+         ORDER BY n.updated_at DESC LIMIT $1",
+    )
+    .bind(batch)
+    .fetch_all(pool)
+    .await
+    .context("failed to find notes to convert")?;
+    let mut converted = 0;
+    for note_id in legacy {
+        match seed_note(pool, &note_id).await {
+            Ok(()) => converted += 1,
+            Err(error) => log::error!("note {note_id}: conversion failed, will retry: {error:#}"),
+        }
+    }
+    Ok(converted)
 }
 
 /// Test/seeder helper. Real seeding goes through the projector.

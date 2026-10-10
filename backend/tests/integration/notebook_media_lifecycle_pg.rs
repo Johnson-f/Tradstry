@@ -313,7 +313,7 @@ async fn foreign_user_cannot_delete_a_notebook_folder() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn migrated_hashless_media_survives_edits_until_explicit_note_deletion() -> anyhow::Result<()>
+async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged() -> anyhow::Result<()>
 {
     use anyhow::ensure;
     use async_graphql::{Request, Schema, Variables};
@@ -382,9 +382,15 @@ async fn migrated_hashless_media_survives_edits_until_explicit_note_deletion() -
             ensure!(response.errors.is_empty(), "Delete failed: {:?}", response.errors);
             ensure!(response.data.into_json()?["deleteNotebookNote"] == expected, "Delete authorization/idempotency failed");
         }
+        let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM notebook_media_references WHERE note_id=$1")
+            .bind(&note).fetch_one(&pool).await?;
+        ensure!(kept == 1, "A deleted note keeps its media while it can still be restored");
+        sqlx::query("UPDATE notebook_notes SET deleted_at = now() - interval '31 days' WHERE id=$1")
+            .bind(&note).execute(&pool).await?;
+        tradstry_backend::service::notebook::library::purge_deleted_notes(&pool, 100).await?;
         let deleted: (i64, i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM notebook_media_references WHERE note_id=$1),(SELECT count(*) FROM notebook_media_blobs WHERE state='gc_pending'),(SELECT count(*) FROM notebook_media_outbox WHERE action='delete' AND available_at>now()+interval '23 hours')")
             .bind(&note).fetch_one(&pool).await?;
-        ensure!(deleted == (0, 2, 2), "Explicit note deletion must clean up both blobs once after the grace period: {deleted:?}");
+        ensure!(deleted == (0, 2, 2), "Purging a deleted note must clean up both blobs once after the grace period: {deleted:?}");
         Ok(())
     }.await;
     cleanup(admin, pool, &database).await;

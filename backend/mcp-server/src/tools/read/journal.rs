@@ -412,6 +412,7 @@ impl TradstryMcp {
                     workspace_id,
                     query: params.query,
                     date_range,
+                    source_types: Vec::new(),
                     limit: params.limit.unwrap_or(10).min(20) as usize,
                     ..Default::default()
                 },

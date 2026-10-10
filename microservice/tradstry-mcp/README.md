@@ -25,6 +25,10 @@ its GraphQL operations and its tests, and registers itself in `app/server.go`.
 | `brokerage/` | Connecting, setting up, syncing and disconnecting a broker through SnapTrade |
 | `journal/` | Starting the journal, listing trades, recording context, reviewing trades, fixing grouping, and resolving possible duplicates |
 | `analytics/` | `get_performance`, `get_daily_pnl`, `get_breakdown`, `get_mistake_costs` |
+| `playbooks/` | `list_playbooks`, `get_playbook`, `create_playbook`, `update_playbook`, `set_playbook_workspaces`, `delete_playbook` |
+| `tags/` | `list_tags`, `create_tag`, `update_tag`, `merge_tags`, `delete_tag`, `create_tag_category`, `update_tag_category`, `move_tag_category`, `set_tag_category_workspaces`, `delete_tag_category` |
+| `principles/` | `list_principles`, `create_principle`, `update_principle`, `move_principle`, `delete_principle` |
+| `notebook/` | Reading, searching, writing and organising notes and folders, viewing note images, and restoring deleted notes |
 | `mcptest/` | Test support: the real server in front of a fake Tradstry API |
 | `gqlcheck/` | Test support: validates GraphQL operations against `backend/schema/graphql/schema.graphql` |
 
@@ -71,6 +75,20 @@ Every answer states its period, currency and coverage, which comes from the back
 - **Daily P&L** covers at most 92 days so answers stay short; longer questions use `get_performance` or `get_breakdown`.
 - **Possible duplicates.** A manual trade that overlaps a broker trade is held out of every total until the user decides. `list_trades` shows which broker trades it may repeat, and `resolve_possible_duplicate` either previews merging it into the broker trade (keeping the user's notes, confirmed with `confirm_grouping_change`) or, after the user approves, keeps it as a separate trade.
 
+## Notebook
+
+Notes are read and written as Tradstry Markdown: Markdown with tables, `- [ ]` check lists and `---` dividers, plus `![alt](media:<hash>)` for a note's image or video, `[label](trade:<id>)` for a trade chip and a ```` ```trades <label> ```` block of trade IDs for a trade table. The backend's projector does every conversion.
+
+- **Edits change only what differs.** Every write becomes the note's new Markdown, and the backend rewrites only the blocks that changed. Untouched blocks keep formatting Markdown cannot express, such as underline, alignment and image size, and the user can type elsewhere in the note at the same time.
+- **Nothing is lost silently.** A block Markdown cannot carry is shown as a `<!-- tradstry:keep … -->` line; leaving it keeps the block exactly. An edit that drops formatting from a rewritten block reports it in `formatting_lost`.
+- **Revisions.** `get_note` returns a revision. `edit_note` and `rewrite_note` send it, and the backend refuses with a conflict if the note changed since. `edit_note` re-reads and retries once when every `old_text` still matches; `rewrite_note` never retries.
+- **Deletes** are confirmed like workspace deletes, and a deleted note can be restored for 30 days.
+- **Images** are fetched from `/notebook/media/{hash}` with the user's token. Anything over 5 MB, and every video, is shown as its thumbnail.
+
+## Rate limits
+
+Each user's tool calls are limited in Redis with the same token bucket the Rust server uses: 60 calls at once, then one a second. Tools that change or delete data also draw on a second bucket of 20, refilling at 20 a minute. A limited call returns a tool error telling the assistant how long to wait, and never reaches the Tradstry API. If Redis cannot be reached, calls go ahead and the error is logged.
+
 ## Confirming destructive actions
 
 Tools such as `delete_workspace` never act on the assistant's word alone.
@@ -89,12 +107,14 @@ MCP_PUBLIC_URL=http://localhost:7910
 CLERK_ISSUER=https://clerk.your-dev-instance.example
 TRADSTRY_API_URL=http://localhost:7901
 MCP_BIND_ADDR=127.0.0.1:7910
+REDIS_URL=redis://localhost:6379
 ```
 
 - `MCP_PUBLIC_URL`: the origin clients reach this server at. Production is `https://mcp.tradstry.com`.
 - `CLERK_ISSUER`: the Clerk instance that issues OAuth access tokens. Signing keys load from its `/.well-known/jwks.json` at startup.
 - `TRADSTRY_API_URL`: the backend origin, without `/graphql`.
 - `MCP_BIND_ADDR`: defaults to `0.0.0.0:7900`.
+- `REDIS_URL`: where rate limits are counted, shared by every copy of the server. In production use the Compose Redis with its password, `redis://:<REDIS_PASSWORD>@redis:6379`.
 
 ## Endpoints
 

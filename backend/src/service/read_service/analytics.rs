@@ -219,6 +219,7 @@ pub async fn get_advanced_analytics(
     user_db: &UserDb,
     workspace_id: &str,
     time_filter: &AnalyticsTimeFilter,
+    scope: &trade_set::TradeScope,
 ) -> Result<crate::service::read_service::analytics_advanced::AdvancedAnalytics> {
     let bounds = resolve_range_bounds(time_filter, Utc::now())?;
     let range_start = bounds
@@ -227,12 +228,13 @@ pub async fn get_advanced_analytics(
     let range_end = bounds.end_date_et.map(|d| d.format("%Y-%m-%d").to_string());
 
     let (set, workspace) = tokio::try_join!(
-        trade_set::load(
+        trade_set::load_scoped(
             user_db.pool(),
             user_db.user_id(),
             workspace_id,
             bounds.start,
-            bounds.end
+            bounds.end,
+            scope,
         ),
         workspaces_table::find_workspace(user_db.pool(), workspace_id, user_db.user_id()),
     )?;

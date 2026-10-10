@@ -34,6 +34,8 @@ func (f *fakeAPI) respond(req mcptest.Request) string {
 			return data(map[string]any{"workspace": nil, "journalFlowStatus": map[string]any{"timezone": "America/New_York"}})
 		}
 		return data(map[string]any{"workspace": map[string]any{"currency": "USD"}, "journalFlowStatus": map[string]any{"timezone": "America/New_York"}})
+	case strings.Contains(req.Query, "AnalyticsTags"):
+		return data(map[string]any{"tags": []any{map[string]any{"id": "tag1", "name": "FOMO"}}})
 	case strings.Contains(req.Query, "AnalyticsNames"):
 		return data(map[string]any{
 			"playbooks":  []any{map[string]any{"id": "pb1", "name": "Breakout"}},
@@ -254,5 +256,49 @@ func TestUnknownWorkspace(t *testing.T) {
 	session := s.Connect(t, nil)
 	if result, _ := mcptest.Call[any](t, session, "get_performance", map[string]any{"workspace_id": "missing"}); !strings.Contains(mcptest.Text(result), "workspace not found") {
 		t.Errorf("unknown workspace: %q", mcptest.Text(result))
+	}
+}
+
+func TestAnalyticsForOnePlaybook(t *testing.T) {
+	s := start(t, &fakeAPI{})
+	session := s.Connect(t, nil)
+
+	result, out := mcptest.Call[struct {
+		common
+		Playbook string `json:"playbook"`
+	}](t, session, "get_performance", map[string]any{"workspace_id": "ws1", "month": "2026-09", "playbook": "breakout"})
+	if result.IsError {
+		t.Fatal(mcptest.Text(result))
+	}
+	if got := requests(s, "advancedAnalytics")[0].Variables["playbookId"]; got != "pb1" {
+		t.Errorf("playbookId sent = %v", got)
+	}
+	if out.Playbook != "Breakout" {
+		t.Errorf("the answer must say which playbook it covers: %+v", out)
+	}
+
+	_, _ = mcptest.Call[any](t, session, "get_daily_pnl", map[string]any{"workspace_id": "ws1", "month": "2026-09"})
+	if _, sent := requests(s, "advancedAnalytics")[1].Variables["playbookId"]; sent {
+		t.Error("a playbook was sent although none was asked for")
+	}
+	result, _ = mcptest.Call[any](t, session, "get_breakdown", map[string]any{"workspace_id": "ws1", "by": "symbol", "playbook": "Scalping"})
+	if !result.IsError || !strings.Contains(mcptest.Text(result), "Breakout") {
+		t.Errorf("unknown playbook: %q", mcptest.Text(result))
+	}
+}
+
+func TestAnalyticsForOneTag(t *testing.T) {
+	s := start(t, &fakeAPI{})
+	session := s.Connect(t, nil)
+
+	result, out := mcptest.Call[struct {
+		common
+		Tag string `json:"tag"`
+	}](t, session, "get_daily_pnl", map[string]any{"workspace_id": "ws1", "month": "2026-09", "tag": "fomo"})
+	if result.IsError {
+		t.Fatal(mcptest.Text(result))
+	}
+	if got := requests(s, "advancedAnalytics")[0].Variables["tagId"]; got != "tag1" || out.Tag != "FOMO" {
+		t.Errorf("tagId sent = %v, tag = %q", got, out.Tag)
 	}
 }

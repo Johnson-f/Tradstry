@@ -12,6 +12,7 @@ func TestOperationsMatchTheBackendSchema(t *testing.T) {
 	operations := map[string]string{
 		"contextQuery":     contextQuery,
 		"namesQuery":       namesQuery,
+		"tagsQuery":        tagsQuery,
 		"performanceQuery": performanceQuery,
 		"dailyQuery":       dailyQuery,
 		"mistakesQuery":    mistakesQuery,

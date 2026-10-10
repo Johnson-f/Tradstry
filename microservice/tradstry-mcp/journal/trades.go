@@ -26,9 +26,11 @@ type listInput struct {
 	WorkspaceID string      `json:"workspace_id" jsonschema:"ID from list_workspaces"`
 	State       lifecycle   `json:"state,omitempty" jsonschema:"open, closed, or incomplete (history missing, so results are unknown)"`
 	Review      reviewState `json:"review,omitempty" jsonschema:"unreviewed, reviewed, or outdated (reviewed before the trade or its stop/playbook changed)"`
-	Symbol      string      `json:"symbol,omitempty"`
+	Symbol      string      `json:"symbol,omitempty" jsonschema:"ticker, such as AAPL"`
 	From        string      `json:"from,omitempty" jsonschema:"YYYY-MM-DD; trades closed (or, if open, opened) on or after this UTC date"`
 	To          string      `json:"to,omitempty" jsonschema:"YYYY-MM-DD; trades closed (or, if open, opened) on or before this UTC date"`
+	Playbook    string      `json:"playbook,omitempty" jsonschema:"only trades that used this playbook, by name or ID from list_playbooks"`
+	Tag         string      `json:"tag,omitempty" jsonschema:"only trades carrying this tag, by name or ID from list_tags"`
 	Limit       int         `json:"limit,omitempty" jsonschema:"at most 100; defaults to 25, newest first"`
 }
 
@@ -50,6 +52,7 @@ type tradeView struct {
 	Fees                string   `json:"fees,omitempty"`
 	Currency            string   `json:"currency,omitempty"`
 	Tags                []string `json:"tags,omitempty"`
+	Playbook            string   `json:"playbook,omitempty"`
 	Issue               string   `json:"issue,omitempty"`
 	PossibleDuplicateOf []string `json:"possible_duplicate_of,omitempty" jsonschema:"broker trades this manual trade may repeat; it is not counted until the user answers through resolve_possible_duplicate"`
 	ReplacedBy          string   `json:"replaced_by,omitempty" jsonschema:"this trade was regrouped; use this trade ID instead"`
@@ -142,6 +145,21 @@ func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput
 	if err != nil {
 		return nil, listOutput{}, forUser(err)
 	}
+	lookup, err := t.api.names(ctx, caller.Token, in.WorkspaceID)
+	if err != nil {
+		return nil, listOutput{}, forUser(err)
+	}
+	playbook, tagged := "", ""
+	if in.Playbook != "" {
+		if playbook, err = playbookID(lookup.Playbooks, in.Playbook); err != nil {
+			return nil, listOutput{}, err
+		}
+	}
+	if in.Tag != "" {
+		if tagged, err = tagID(lookup.Tags, in.Tag); err != nil {
+			return nil, listOutput{}, err
+		}
+	}
 
 	out := listOutput{Trades: []tradeView{}}
 	if !st.ready() {
@@ -167,12 +185,16 @@ func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput
 			(in.Review != "" && tr.ReviewState != string(in.Review)) ||
 			(in.Symbol != "" && !strings.EqualFold(tr.Symbol, in.Symbol)) ||
 			(in.From != "" && day(tr) < in.From) ||
-			(in.To != "" && day(tr) > in.To) {
+			(in.To != "" && day(tr) > in.To) ||
+			(playbook != "" && str(tr.PlaybookID) != playbook) ||
+			(tagged != "" && !slices.ContainsFunc(tr.Tags, func(t tag) bool { return t.ID == tagged })) {
 			continue
 		}
 		out.Matching++
 		if len(out.Trades) < limit {
-			out.Trades = append(out.Trades, toView(tr))
+			view := toView(tr)
+			view.Playbook = strings.Join(namesOf(nonEmpty(tr.PlaybookID), lookup.Playbooks), "")
+			out.Trades = append(out.Trades, view)
 		}
 	}
 	return nil, out, nil
@@ -302,4 +324,41 @@ func resolve(kind string, wanted []string, options []named) ([]string, error) {
 		ids = append(ids, options[i].ID)
 	}
 	return ids, nil
+}
+
+// playbookID resolves a playbook given by ID or by name.
+func playbookID(playbooks []named, given string) (string, error) {
+	given = strings.TrimSpace(given)
+	var names []string
+	for _, p := range playbooks {
+		if p.ID == given || strings.EqualFold(p.Name, given) {
+			return p.ID, nil
+		}
+		names = append(names, p.Name)
+	}
+	if len(names) == 0 {
+		return "", fmt.Errorf("there is no playbook %q; this workspace has no playbooks", given)
+	}
+	return "", fmt.Errorf("there is no playbook %q; the playbooks are: %s", given, strings.Join(names, ", "))
+}
+
+// tagID resolves a tag given by ID or by name.
+func tagID(tags []named, given string) (string, error) {
+	given = strings.TrimSpace(given)
+	var matches []string
+	for _, t := range tags {
+		if t.ID == given {
+			return t.ID, nil
+		}
+		if strings.EqualFold(t.Name, given) {
+			matches = append(matches, t.ID)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return "", fmt.Errorf("there is no tag %q; list_tags shows them", given)
+	}
+	return "", fmt.Errorf("%q is the name of more than one tag; pass its ID from list_tags", given)
 }

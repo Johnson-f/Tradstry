@@ -541,3 +541,46 @@ func toStrings(value any) []string {
 	}
 	return out
 }
+
+func TestListTradesForOnePlaybook(t *testing.T) {
+	s, api := start(t)
+	api.trades[0]["playbookId"] = "pb-1"
+	session := s.Connect(t, nil)
+	type listed struct {
+		Matching int `json:"matching"`
+		Trades   []struct {
+			ID       string `json:"id"`
+			Playbook string `json:"playbook"`
+		} `json:"trades"`
+	}
+
+	result, out := mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "playbook": "breakout"})
+	if result.IsError {
+		t.Fatal(mcptest.Text(result))
+	}
+	if out.Matching != 1 || out.Trades[0].ID != api.trades[0]["id"] || out.Trades[0].Playbook != "Breakout" {
+		t.Errorf("listed = %+v", out)
+	}
+	result, _ = mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "playbook": "Scalping"})
+	if !strings.Contains(mcptest.Text(result), "the playbooks are: Breakout") {
+		t.Errorf("unknown playbook: %q", mcptest.Text(result))
+	}
+}
+
+func TestListTradesWithOneTag(t *testing.T) {
+	s, api := start(t)
+	api.trades[0]["tags"] = []any{map[string]any{"id": "tag-fomo", "name": "FOMO"}}
+	session := s.Connect(t, nil)
+	result, out := mcptest.Call[struct {
+		Matching int `json:"matching"`
+	}](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "tag": "fomo"})
+	if result.IsError {
+		t.Fatal(mcptest.Text(result))
+	}
+	_, all := mcptest.Call[struct {
+		Matching int `json:"matching"`
+	}](t, session, "list_trades", map[string]any{"workspace_id": "ws1"})
+	if out.Matching != 1 || all.Matching != 3 {
+		t.Errorf("FOMO trades = %d of %d", out.Matching, all.Matching)
+	}
+}

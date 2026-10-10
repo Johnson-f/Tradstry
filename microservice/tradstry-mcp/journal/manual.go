@@ -75,13 +75,13 @@ type addManualInput struct {
 	Direction          direction `json:"direction"`
 	OpenedAt           string    `json:"opened_at" jsonschema:"RFC 3339 with the UTC offset, such as 2026-09-01T09:35:00-04:00"`
 	ClosedAt           string    `json:"closed_at" jsonschema:"RFC 3339 with the UTC offset"`
-	EntryPrice         float64   `json:"entry_price"`
-	ExitPrice          float64   `json:"exit_price"`
+	EntryPrice         float64   `json:"entry_price" jsonschema:"average price paid or received per share or contract when opening"`
+	ExitPrice          float64   `json:"exit_price" jsonschema:"average price per share or contract when closing"`
 	Quantity           float64   `json:"quantity" jsonschema:"shares, or contracts for options"`
 	ContractMultiplier float64   `json:"contract_multiplier,omitempty" jsonschema:"options only, usually 100; leave out for shares"`
 	Stop               *float64  `json:"stop,omitempty" jsonschema:"the stop in place when the trade opened, if the user had one"`
 	Fees               *float64  `json:"fees,omitempty" jsonschema:"total fees and commissions; leave out when the user does not know them, and 0 only when there were none"`
-	Notes              string    `json:"notes,omitempty"`
+	Notes              string    `json:"notes,omitempty" jsonschema:"the user's own words about the trade"`
 }
 
 type manualOutput struct {
@@ -163,15 +163,15 @@ func (t *tools) addManual(ctx context.Context, req *mcp.CallToolRequest, in addM
 type updateManualInput struct {
 	WorkspaceID string     `json:"workspace_id" jsonschema:"ID from list_workspaces"`
 	TradeID     string     `json:"trade_id" jsonschema:"a manual trade's ID"`
-	Symbol      string     `json:"symbol,omitempty"`
+	Symbol      string     `json:"symbol,omitempty" jsonschema:"corrected ticker"`
 	Direction   *direction `json:"direction,omitempty"`
 	OpenedAt    string     `json:"opened_at,omitempty" jsonschema:"RFC 3339 with the UTC offset"`
 	ClosedAt    string     `json:"closed_at,omitempty" jsonschema:"RFC 3339 with the UTC offset"`
-	EntryPrice  *float64   `json:"entry_price,omitempty"`
-	ExitPrice   *float64   `json:"exit_price,omitempty"`
-	Quantity    *float64   `json:"quantity,omitempty"`
+	EntryPrice  *float64   `json:"entry_price,omitempty" jsonschema:"corrected price per share or contract when opening"`
+	ExitPrice   *float64   `json:"exit_price,omitempty" jsonschema:"corrected price per share or contract when closing"`
+	Quantity    *float64   `json:"quantity,omitempty" jsonschema:"corrected shares, or contracts for options"`
 	Stop        *float64   `json:"stop,omitempty" jsonschema:"0 removes the stop"`
-	Fees        *float64   `json:"fees,omitempty"`
+	Fees        *float64   `json:"fees,omitempty" jsonschema:"corrected total fees and commissions; 0 only when there were none"`
 	FeesUnknown bool       `json:"fees_unknown,omitempty" jsonschema:"true when the user says the fees entered are wrong and unknown"`
 	Notes       *string    `json:"notes,omitempty" jsonschema:"replaces the notes; an empty string removes them"`
 }

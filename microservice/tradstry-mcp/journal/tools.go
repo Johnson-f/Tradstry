@@ -168,7 +168,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 		Description: "Record a closed trade the user made outside a connected broker. Use only what the user said: never invent prices, times, stops or fees. " +
 			"Works whether or not the journal is on. Calling again with the same details returns the trade already recorded.",
 		InputSchema: inputSchema[addManualInput](),
-		Annotations: &mcp.ToolAnnotations{IdempotentHint: true, OpenWorldHint: new(false)},
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)},
 	}, t.addManual)
 
 	mcp.AddTool(server, &mcp.Tool{

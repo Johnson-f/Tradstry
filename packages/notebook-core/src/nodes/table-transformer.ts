@@ -1,6 +1,12 @@
 import {
+	$createHorizontalRuleNode,
+	$isHorizontalRuleNode,
+	HorizontalRuleNode,
+} from "@lexical/react/LexicalHorizontalRuleNode";
+import {
 	$convertFromMarkdownString,
 	$convertToMarkdownString,
+	CHECK_LIST,
 	type ElementTransformer,
 	isTableRowDivider,
 	TRANSFORMERS,
@@ -177,8 +183,30 @@ export const TABLE: ElementTransformer = {
 	type: "element",
 };
 
-/** Base markdown transformers plus tables — the one list every side shares. */
+export const HORIZONTAL_RULE: ElementTransformer = {
+	dependencies: [HorizontalRuleNode],
+	export: (node: LexicalNode) => ($isHorizontalRuleNode(node) ? "---" : null),
+	regExp: /^(?:---|\*\*\*|___)\s?$/,
+	replace: (parentNode, _children, _match, isImport) => {
+		const rule = $createHorizontalRuleNode();
+		if (isImport || parentNode.getNextSibling() != null) {
+			parentNode.replace(rule);
+		} else {
+			parentNode.insertBefore(rule);
+		}
+		rule.selectNext();
+	},
+	type: "element",
+};
+
+/**
+ * Base markdown transformers plus tables, dividers and check lists — the one list
+ * every side shares. CHECK_LIST must precede the bullet list it would otherwise
+ * be read as.
+ */
 export const MARKDOWN_TRANSFORMERS: Array<Transformer> = [
 	TABLE,
+	HORIZONTAL_RULE,
+	CHECK_LIST,
 	...TRANSFORMERS,
 ];

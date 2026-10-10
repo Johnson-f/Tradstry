@@ -127,6 +127,7 @@ async fn retrieval_prefilters_scope_relationships_and_discards_stale_sources() {
                 workspace_id: fixture.scope.workspace_id.clone(),
                 query: "discipline confirmation".into(),
                 symbols: vec!["aapl".into()],
+                source_types: Vec::new(),
                 limit: 10,
                 ..Default::default()
             },
@@ -143,6 +144,7 @@ async fn retrieval_prefilters_scope_relationships_and_discards_stale_sources() {
             KnowledgeSearchRequest {
                 workspace_id: other_workspace,
                 query: "discipline".into(),
+                source_types: Vec::new(),
                 limit: 5,
                 ..Default::default()
             },

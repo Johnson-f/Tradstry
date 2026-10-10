@@ -2,6 +2,7 @@
 
 import { $createCodeNode } from "@lexical/code";
 import {
+  INSERT_CHECK_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
   INSERT_UNORDERED_LIST_COMMAND,
 } from "@lexical/list";
@@ -164,6 +165,15 @@ export function SlashCommandPlugin({
         ["list", "bullet", "unordered"],
         (editor) => {
           editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+        },
+      ),
+      new SlashCommandOption(
+        "Check List",
+        "Lists",
+        "Start a to-do list",
+        ["list", "check", "todo", "task"],
+        (editor) => {
+          editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
         },
       ),
       new SlashCommandOption(

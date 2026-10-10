@@ -246,6 +246,32 @@ pub async fn load(
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
 ) -> Result<TradeSet> {
+    load_scoped(pool, user, workspace, start, end, &TradeScope::default()).await
+}
+
+/// Narrows the counted trades to those with a playbook, a tag, or both.
+#[derive(Debug, Clone, Default)]
+pub struct TradeScope {
+    pub playbook: Option<String>,
+    pub tag: Option<String>,
+}
+
+impl TradeScope {
+    fn is_all(&self) -> bool {
+        self.playbook.is_none() && self.tag.is_none()
+    }
+}
+
+/// The trades every report counts, narrowed to `scope`. Coverage counts are
+/// narrowed the same way.
+pub async fn load_scoped(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    start: Option<DateTime<Utc>>,
+    end: Option<DateTime<Utc>>,
+    scope: &TradeScope,
+) -> Result<TradeSet> {
     let start_iso = start.map_or_else(|| "1970-01-01T00:00:00Z".to_string(), |d| d.to_rfc3339());
     let end_iso = end.map_or_else(|| "9999-12-31T23:59:59Z".to_string(), |d| d.to_rfc3339());
     let (enabled, timezone, entries) = tokio::try_join!(
@@ -255,6 +281,20 @@ pub async fn load(
             pool, user, workspace, &start_iso, &end_iso
         ),
     )?;
+    let mut entries = entries;
+    if let Some(playbook) = &scope.playbook {
+        entries.retain(|entry| entry.playbook_id.as_ref() == Some(playbook));
+    }
+    if let Some(tag) = &scope.tag {
+        let tagged: HashSet<String> =
+            sqlx::query_scalar("SELECT journal_entry_id FROM trade_tags WHERE tag_id = $1")
+                .bind(tag)
+                .fetch_all(pool)
+                .await?
+                .into_iter()
+                .collect();
+        entries.retain(|entry| tagged.contains(&entry.id));
+    }
     let ids: Vec<String> = entries.iter().map(|entry| entry.id.clone()).collect();
     let sources = journal_table::trade_sources(pool, user, &ids).await?;
     let mut set = TradeSet {
@@ -284,7 +324,14 @@ pub async fn load(
                 set.episodes.insert((*entry).to_string(), episode);
             }
         }
-        let attention = journal_table::attention_counts(pool, user, workspace).await?;
+        let attention = journal_table::attention_counts(
+            pool,
+            user,
+            workspace,
+            scope.playbook.as_deref(),
+            scope.tag.as_deref(),
+        )
+        .await?;
         set.coverage.open_positions = attention.open;
         set.coverage.needs_review = attention.needs_review;
         set.coverage.possible_duplicates = attention.possible_duplicates;
@@ -309,7 +356,10 @@ pub async fn load(
                 manual.remove(entry_id);
             }
         }
-        set.add_episodes(&episodes, &journaled.represented, start, end, user);
+        // Broker trades nobody journaled have no playbook or tags.
+        if scope.is_all() {
+            set.add_episodes(&episodes, &journaled.represented, start, end, user);
+        }
     }
     let candidates = stop_candidates(pool, user, workspace, &set, enabled).await?;
     // With the journal on, a broker trade's stop lives in the journal; the stop

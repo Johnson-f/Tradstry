@@ -8,12 +8,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/redis/go-redis/v9"
 
 	"tradstry-mcp/app"
 	"tradstry-mcp/clerk"
 	"tradstry-mcp/gqlcheck"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/ratelimit"
 )
 
 // Request is one GraphQL request the fake Tradstry API received.
@@ -28,9 +31,17 @@ type Request struct {
 type Stack struct {
 	URL    string
 	Signer *Signer
+	// Redis holds the rate limit counts; tests can inspect or break it.
+	Redis *miniredis.Miniredis
 
 	mu       sync.Mutex
 	requests []Request
+	files    map[string]file
+}
+
+type file struct {
+	contentType string
+	body        []byte
 }
 
 // Start runs a Stack whose fake API answers each request with respond's JSON body.
@@ -40,6 +51,18 @@ func Start(t *testing.T, respond func(Request) string) *Stack {
 	s := &Stack{Signer: NewSigner(t)}
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			s.mu.Lock()
+			f, ok := s.files[r.URL.Path]
+			s.mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", f.contentType)
+			_, _ = w.Write(f.body)
+			return
+		}
 		var body struct {
 			Query     string         `json:"query"`
 			Variables map[string]any `json:"variables"`
@@ -65,12 +88,24 @@ func Start(t *testing.T, respond func(Request) string) *Stack {
 		APIURL:      api.URL,
 	}
 	verifier := clerk.NewVerifierWithKeys(Issuer, s.Signer.Keyfunc)
-	server.Config.Handler = app.NewHandler(cfg, verifier, graphql.NewClient(api.URL, api.Client()))
+	s.Redis = miniredis.RunT(t)
+	limiter := ratelimit.New(redis.NewClient(&redis.Options{Addr: s.Redis.Addr()}))
+	server.Config.Handler = app.NewHandler(cfg, verifier, graphql.NewClient(api.URL, api.Client()), limiter)
 	server.Start()
 	t.Cleanup(server.Close)
 
 	s.URL = server.URL
 	return s
+}
+
+// ServeFile makes the fake API answer GET path with body, as it serves notebook media.
+func (s *Stack) ServeFile(path, contentType string, body []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.files == nil {
+		s.files = map[string]file{}
+	}
+	s.files[path] = file{contentType: contentType, body: body}
 }
 
 func (s *Stack) Requests() []Request {

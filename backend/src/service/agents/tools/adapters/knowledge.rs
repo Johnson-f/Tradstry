@@ -85,6 +85,7 @@ impl Tool<AgentRuntimeState> for KnowledgeSearchTool {
                     trade_ids: state.message_context.trade_ids.clone(),
                     playbook_ids: state.message_context.playbook_ids.clone(),
                     note_ids: state.message_context.note_ids.clone(),
+                    source_types: Vec::new(),
                     limit: args.limit.unwrap_or(8).min(20),
                 },
             )

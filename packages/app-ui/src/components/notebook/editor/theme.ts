@@ -18,6 +18,12 @@ export const notebookEditorTheme: EditorThemeClasses = {
     ol: "my-3 list-decimal pl-6 text-[15px] text-foreground/80",
     ul: "my-3 list-disc pl-6 text-[15px] text-foreground/80",
     listitem: "my-1 pl-1",
+    checklist: "list-none pl-0",
+    // CheckListPlugin toggles an item when a click lands on its ::before box.
+    listitemUnchecked:
+      "relative my-1 list-none pl-7 before:absolute before:top-1.5 before:left-0 before:size-4 before:cursor-pointer before:rounded before:border before:border-border before:content-['']",
+    listitemChecked:
+      "relative my-1 list-none pl-7 text-foreground/50 line-through before:absolute before:top-1.5 before:left-0 before:size-4 before:cursor-pointer before:rounded before:border before:border-primary before:bg-primary before:content-[''] after:absolute after:top-[9px] after:left-[5px] after:h-2 after:w-1 after:rotate-45 after:border-r-2 after:border-b-2 after:border-primary-foreground after:content-['']",
     nested: {
       list: "mt-1",
     },

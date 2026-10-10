@@ -401,15 +401,28 @@ impl AnalyticsQuery {
         )
     }
 
+    /// With `playbookId` or `tagId`, only trades with that playbook or tag count.
     async fn advanced_analytics(
         &self,
         ctx: &Context<'_>,
         workspace_id: String,
         time_filter: AnalyticsTimeFilterInput,
+        playbook_id: Option<String>,
+        tag_id: Option<String>,
     ) -> Result<AdvancedAnalytics> {
         let user_db = get_user_db(ctx).await?;
         let time_filter = map_time_filter(time_filter)?;
-        let cache_key = time_filter_cache_key(&time_filter);
+        let mut cache_key = time_filter_cache_key(&time_filter);
+        if let Some(playbook) = &playbook_id {
+            cache_key.push_str(&format!("|playbook={playbook}"));
+        }
+        if let Some(tag) = &tag_id {
+            cache_key.push_str(&format!("|tag={tag}"));
+        }
+        let scope = crate::service::read_service::trade_set::TradeScope {
+            playbook: playbook_id,
+            tag: tag_id,
+        };
         let analytics = if let Ok(redis) = ctx.data::<Arc<RedisClient>>() {
             analytics_cache::get_or_load(
                 redis,
@@ -417,11 +430,11 @@ impl AnalyticsQuery {
                 &workspace_id,
                 "advanced",
                 &cache_key,
-                || analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter),
+                || analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter, &scope),
             )
             .await?
         } else {
-            analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter).await?
+            analytics_service::get_advanced_analytics(&user_db, &workspace_id, &time_filter, &scope).await?
         };
 
         Ok(analytics)

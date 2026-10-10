@@ -63,6 +63,13 @@ pub async fn append_updates_tx(
     if crdt::note_state(&mut *conn, note_id).await? != NoteState::Crdt {
         bail!("only crdt notes accept updates (note {note_id} is not crdt)");
     }
+    // Shares the row lock a server-side edit takes FOR UPDATE, so its check that no
+    // append landed after it read the chain cannot interleave with this insert.
+    sqlx::query("SELECT 1 FROM notebook_note_crdt WHERE note_id = $1 FOR SHARE")
+        .bind(note_id)
+        .execute(&mut *conn)
+        .await
+        .context("failed to lock note for append")?;
 
     if !updates.is_empty() {
         let mut query =

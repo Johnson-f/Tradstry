@@ -81,6 +81,9 @@ pub struct KnowledgeSearchRequest {
     pub trade_ids: Vec<String>,
     pub playbook_ids: Vec<String>,
     pub note_ids: Vec<String>,
+    /// Only these kinds of source; all kinds when empty.
+    #[serde(default)]
+    pub source_types: Vec<KnowledgeSourceType>,
     pub limit: usize,
 }
 

@@ -10,6 +10,7 @@ const PROJECT_ENTRY: &str = "project.mjs";
 const SEED_ENTRY: &str = "seed.mjs";
 const COMPACT_ENTRY: &str = "compact.mjs";
 const MARKDOWN_ENTRY: &str = "markdown.mjs";
+const EXCHANGE_ENTRY: &str = "exchange.mjs";
 const GENERATED_BUNDLES: [&str; 2] = ["notebook-core.gen.mjs", "notebook-seed.gen.mjs"];
 static PREPARE_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -279,4 +280,170 @@ pub async fn apply_markdown(
     BASE64
         .decode(raw.update.trim())
         .context("markdown emitted invalid base64 update")
+}
+
+/// What Tradstry Markdown may reference beyond what the note already holds, and
+/// how trades are labelled when exported.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ExchangeContext {
+    pub trades: std::collections::HashMap<String, String>,
+    pub media: std::collections::HashMap<String, ExchangeMedia>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExchangeMedia {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+}
+
+/// A refusal the caller can act on, such as a stale revision or an unknown
+/// reference. `message` starts with `code`.
+#[derive(Debug, Clone, thiserror::Error, serde::Deserialize)]
+#[error("{message}")]
+pub struct ExchangeRejection {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct ExchangeReferences {
+    pub media: Vec<String>,
+    pub trades: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExportedNote {
+    pub markdown: String,
+    pub placeholders: i32,
+    pub revision: String,
+    pub references: ExchangeReferences,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownDocument {
+    pub document_json: String,
+    pub references: ExchangeReferences,
+}
+
+/// A whole-note edit. Every kind becomes "the note's new Markdown", applied by
+/// changing only the blocks that differ.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum NoteEdit {
+    ReplaceText { edits: Vec<TextEdit> },
+    Append { markdown: String },
+    Rewrite { markdown: String },
+    SetTitle { title: String },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TextEdit {
+    pub old: String,
+    pub new: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct EditChanges {
+    pub kept: i32,
+    pub changed: i32,
+    pub inserted: i32,
+    pub removed: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct EditedNote {
+    /// The incremental Yjs update to append; None when the edit changed nothing.
+    pub update: Option<Vec<u8>>,
+    pub revision: String,
+    pub markdown: String,
+    pub placeholders: i32,
+    pub document_json: String,
+    pub changes: EditChanges,
+    pub formatting_lost: Vec<String>,
+    pub references: ExchangeReferences,
+}
+
+async fn exchange<T: serde::de::DeserializeOwned>(input: serde_json::Value) -> Result<T> {
+    #[derive(serde::Deserialize)]
+    struct Rejected {
+        error: Option<ExchangeRejection>,
+    }
+
+    let stdout = run(EXCHANGE_ENTRY, serde_json::to_vec(&input)?).await?;
+    if let Ok(Rejected { error: Some(rejection) }) = serde_json::from_slice::<Rejected>(&stdout) {
+        return Err(rejection.into());
+    }
+    serde_json::from_slice(&stdout).context("exchange emitted invalid JSON")
+}
+
+fn encode_updates(updates: &[Vec<u8>]) -> Vec<String> {
+    updates.iter().map(|u| BASE64.encode(u)).collect()
+}
+
+/// The note as Tradstry Markdown, with its revision.
+pub async fn export_note(updates: &[Vec<u8>], context: &ExchangeContext) -> Result<ExportedNote> {
+    if updates.is_empty() {
+        return Err(anyhow!("export_note: note has no updates"));
+    }
+    exchange(serde_json::json!({
+        "op": "export",
+        "updates": encode_updates(updates),
+        "context": context,
+    }))
+    .await
+}
+
+/// A new note's `document_json` from Tradstry Markdown.
+pub async fn markdown_document(markdown: &str, context: &ExchangeContext) -> Result<MarkdownDocument> {
+    exchange(serde_json::json!({ "op": "create", "markdown": markdown, "context": context })).await
+}
+
+/// Applies `edit` to a CRDT note, refusing when its revision is not `expected_revision`.
+pub async fn edit_note(
+    updates: &[Vec<u8>],
+    edit: &NoteEdit,
+    expected_revision: Option<&str>,
+    context: &ExchangeContext,
+) -> Result<EditedNote> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Raw {
+        update: Option<String>,
+        revision: String,
+        markdown: String,
+        placeholders: i32,
+        document_json: String,
+        changes: EditChanges,
+        formatting_lost: Vec<String>,
+        references: ExchangeReferences,
+    }
+
+    if updates.is_empty() {
+        return Err(anyhow!("edit_note: note has no updates"));
+    }
+    let raw: Raw = exchange(serde_json::json!({
+        "op": "edit",
+        "updates": encode_updates(updates),
+        "edit": edit,
+        "expectedRevision": expected_revision,
+        "context": context,
+    }))
+    .await?;
+    Ok(EditedNote {
+        update: raw
+            .update
+            .map(|u| BASE64.decode(u.trim()))
+            .transpose()
+            .context("exchange emitted an invalid base64 update")?,
+        revision: raw.revision,
+        markdown: raw.markdown,
+        placeholders: raw.placeholders,
+        document_json: raw.document_json,
+        changes: raw.changes,
+        formatting_lost: raw.formatting_lost,
+        references: raw.references,
+    })
 }

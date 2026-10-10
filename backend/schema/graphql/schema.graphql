@@ -600,6 +600,22 @@ input CreateNotebookFolderInput {
 	name: String!
 }
 
+input CreateNotebookNoteFromMarkdownInput {
+	workspaceId: String!
+	title: String!
+	"""
+	Tradstry Markdown. A leading `# title` is added unless the body starts with it.
+	"""
+	markdown: String! = ""
+	"""
+	Unfiled when absent.
+	"""
+	folderId: String
+	tradeIds: [String!]! = []
+	clientId: String!
+	mutationId: String!
+}
+
 input CreateNotebookNoteInput {
 	"""
 	Client-minted UUID for offline creation; the server mints one when absent
@@ -678,6 +694,19 @@ input CreateWorkspaceInput {
 	riskProfile: String! = "moderate"
 }
 
+type DeletedNotebookNote {
+	id: String!
+	title: String!
+	folderId: String
+	deletedAt: String!
+	restorableUntil: String!
+}
+
+type DeletedNotebookNotePage {
+	notes: [DeletedNotebookNote!]!
+	nextCursor: String
+}
+
 """
 One group of a breakdown dimension: its key plus the shared core metrics.
 """
@@ -704,6 +733,29 @@ type Discipline {
 	broke30MinCount: Int!
 	tradesWithViolations: Int!
 	totalViolations: Int!
+}
+
+"""
+Exactly one of `replaceText`, `append`, `rewrite` and `setTitle`.
+"""
+input EditNotebookNoteInput {
+	id: String!
+	"""
+	The revision the edit was based on. Required for every edit but `append`.
+	"""
+	expectedRevision: String
+	clientId: String!
+	mutationId: String!
+	"""
+	Each `old` must appear exactly once in the note's Markdown.
+	"""
+	replaceText: [NotebookTextEditInput!]
+	append: String
+	"""
+	The whole note in Tradstry Markdown; only blocks that differ change.
+	"""
+	rewrite: String
+	setTitle: String
 }
 
 type EquityPoint {
@@ -1130,6 +1182,7 @@ type JournalTradeV2 {
 	feesPaid: String
 	closeDate: String
 	reviewState: String!
+	playbookId: String
 }
 
 type ManualExecutionClaimGql {
@@ -1360,6 +1413,10 @@ type Mutation {
 	No reindex: star/pin don't change the note's searchable content.
 	"""
 	setNotebookNoteFlags(id: String!, isStarred: Boolean, isPinned: Boolean): NotebookNote!
+	"""
+	Soft delete. The note can be restored for 30 days and keeps its media until
+	it is purged.
+	"""
 	deleteNotebookNote(id: String!): Boolean!
 	createNotebookFolder(input: CreateNotebookFolderInput!): NotebookFolder!
 	renameNotebookFolder(id: String!, name: String!): NotebookFolder!
@@ -1367,6 +1424,19 @@ type Mutation {
 	moveNotebookNode(input: MoveNotebookNodeInput!): Boolean!
 	pushNotebook(input: NotebookPushInput!): NotebookPushResult!
 	appendNotebookUpdates(noteId: String!, updates: [String!]!): Int!
+	createNotebookNoteFromMarkdown(input: CreateNotebookNoteFromMarkdownInput!): NotebookNoteDocument!
+	"""
+	Edits a note's body, changing only the blocks that differ.
+	"""
+	editNotebookNote(input: EditNotebookNoteInput!): NotebookEditResult!
+	"""
+	Links and unlinks trades in one step and returns the note's linked trade ids.
+	"""
+	linkNotebookNoteTrades(id: String!, add: [String!]! = [], remove: [String!]! = []): [String!]!
+	"""
+	Brings back a note deleted within the last 30 days.
+	"""
+	restoreNotebookNote(id: String!): Boolean!
 	"""
 	Records a user assertion without changing tranche status or creating
 	broker-derived history. It remains unverified until reconciliation.
@@ -1418,6 +1488,44 @@ type Mutation {
 	deletePushSubscription(endpoint: String!): Boolean!
 }
 
+type NoteMedia {
+	hash: String!
+	mediaType: String!
+	width: Int!
+	height: Int!
+	bytes: Int!
+	originalFilename: String!
+	durationSeconds: Float!
+}
+
+type NoteTradeLink {
+	id: String!
+	"""
+	Symbol and opening day in the journal's time zone, e.g. `AAPL · 2026-10-03`.
+	"""
+	label: String!
+}
+
+type NotebookEditChanges {
+	kept: Int!
+	changed: Int!
+	inserted: Int!
+	removed: Int!
+}
+
+type NotebookEditResult {
+	note: NotebookNoteDocument!
+	changes: NotebookEditChanges!
+	"""
+	Formatting Markdown cannot express that was dropped from rewritten blocks.
+	"""
+	formattingLost: [String!]!
+	"""
+	True when this mutation had already been applied and its stored result was returned.
+	"""
+	replayed: Boolean!
+}
+
 type NotebookFolder {
 	id: String!
 	userId: String!
@@ -1443,6 +1551,14 @@ type NotebookFolderDeltaGql {
 	hlc: String!
 	deletedAt: String
 	updatedAt: String!
+}
+
+type NotebookFolderNoteCount {
+	"""
+	Absent for notes in no folder.
+	"""
+	folderId: String
+	noteCount: Int!
 }
 
 type NotebookImage {
@@ -1515,6 +1631,66 @@ type NotebookNoteDeltaGql {
 	updatedAt: String!
 }
 
+type NotebookNoteDocument {
+	id: String!
+	workspaceId: String!
+	folderId: String
+	title: String!
+	"""
+	The body in Tradstry Markdown. Leave `<!-- tradstry:keep … -->` lines as they are.
+	"""
+	markdown: String!
+	"""
+	Pass back as `expectedRevision` so an edit based on stale text is refused.
+	"""
+	revision: String!
+	"""
+	Blocks shown as keep placeholders because Markdown cannot carry them.
+	"""
+	placeholders: Int!
+	isStarred: Boolean!
+	isPinned: Boolean!
+	updatedAt: String!
+	linkedTrades: [NoteTradeLink!]!
+	media: [NoteMedia!]!
+}
+
+input NotebookNoteFilter {
+	folderId: String
+	"""
+	Only notes in no folder.
+	"""
+	unfiled: Boolean! = false
+	starred: Boolean
+	pinned: Boolean
+	"""
+	Only notes linked to this trade.
+	"""
+	tradeId: String
+}
+
+type NotebookNoteSummary {
+	id: String!
+	title: String!
+	folderId: String
+	"""
+	The start of the body after its title, as plain text.
+	"""
+	preview: String!
+	isStarred: Boolean!
+	isPinned: Boolean!
+	tradeIds: [String!]!
+	updatedAt: String!
+}
+
+type NotebookNoteSummaryPage {
+	notes: [NotebookNoteSummary!]!
+	"""
+	Pass as `after` for the next page; absent on the last page.
+	"""
+	nextCursor: String
+}
+
 type NotebookPullResult {
 	cookie: String!
 	lastMutationId: Int!
@@ -1530,6 +1706,22 @@ input NotebookPushInput {
 
 type NotebookPushResult {
 	lastMutationId: Int!
+}
+
+type NotebookSearchHit {
+	noteId: String!
+	title: String!
+	folderId: String
+	"""
+	The passage that matched.
+	"""
+	excerpt: String!
+	tradeIds: [String!]!
+}
+
+input NotebookTextEditInput {
+	old: String!
+	new: String!
 }
 
 type NotebookUpdate {
@@ -1821,7 +2013,10 @@ type Query {
 	journalAnalytics(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): JournalAnalyticsGql!
 	tradingPerformance(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): TradingPerformanceGql!
 	calendarAnalytics(workspaceId: String!, year: Int!, month: Int!): CalendarAnalyticsGql!
-	advancedAnalytics(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): AdvancedAnalytics!
+	"""
+	With `playbookId` or `tagId`, only trades with that playbook or tag count.
+	"""
+	advancedAnalytics(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!, playbookId: String, tagId: String): AdvancedAnalytics!
 	playbooks(workspaceId: String!): [PlaybookWithStats!]!
 	playbook(id: String!): PlaybookWithStats
 	strategyLibraryPlaybooks(statsWorkspaceId: String!): [PlaybookWithStats!]!
@@ -1870,6 +2065,23 @@ type Query {
 	pullNotebook(cookie: String, workspaceId: String!, clientId: String!): NotebookPullResult!
 	notebookAccountUpdatesSince(workspaceId: String!, sinceSeq: Int!): [AccountNotebookUpdate!]!
 	notebookUpdatesSince(noteId: String!, sinceSeq: Int!): [NotebookUpdate!]!
+	"""
+	The note's body as Tradstry Markdown, read from its update log.
+	"""
+	notebookNoteDocument(id: String!): NotebookNoteDocument!
+	"""
+	Live notes without their bodies, pinned first then most recently updated.
+	"""
+	notebookNoteSummaries(workspaceId: String!, filter: NotebookNoteFilter, first: Int, after: String): NotebookNoteSummaryPage!
+	"""
+	Notes whose content matches `query`, best first.
+	"""
+	searchNotebook(workspaceId: String!, query: String!, limit: Int): [NotebookSearchHit!]!
+	notebookFolderNoteCounts(workspaceId: String!): [NotebookFolderNoteCount!]!
+	"""
+	Notes deleted recently enough to restore, most recent first.
+	"""
+	deletedNotebookNotes(workspaceId: String!, first: Int, after: String): DeletedNotebookNotePage!
 	"""
 	Offline-first pull for the desktop. User-scoped, with one cursor
 	spanning all three tables (rules + plans + history) — the desktop's

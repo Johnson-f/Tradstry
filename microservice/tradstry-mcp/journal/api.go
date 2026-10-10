@@ -2,27 +2,11 @@ package journal
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 
 	"tradstry-mcp/graphql"
 )
-
-// clientID scopes this server's journal writes in the backend's idempotency log,
-// which is already per user.
-const clientID = "tradstry-mcp"
-
-// mutationID names one logical write: the same tool, input and state observed
-// just before it. A retried call replays the stored result instead of writing
-// twice, while the same input sent again after the state moved writes again.
-func mutationID(parts ...any) string {
-	raw, _ := json.Marshal(parts)
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:16])
-}
 
 type flowStatus struct {
 	Enabled            bool    `json:"enabled"`
@@ -79,6 +63,7 @@ type trade struct {
 	PossibleDuplicates   []string `json:"possibleDuplicates"`
 	RetiredAt            *string  `json:"retiredAt"`
 	SuccessorID          *string  `json:"successorId"`
+	PlaybookID           *string  `json:"playbookId"`
 }
 
 type tradeContext struct {
@@ -144,7 +129,7 @@ type named struct {
 }
 
 const (
-	tradeFields   = `id sourceKind symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid lifecycleState outcome reviewState tags { id name } materializedRevision recordVersion issueCode issueMessage possibleDuplicates retiredAt successorId`
+	tradeFields   = `id sourceKind symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid lifecycleState outcome reviewState tags { id name } materializedRevision recordVersion issueCode issueMessage possibleDuplicates retiredAt successorId playbookId`
 	contextFields = `version stopState stopPrice playbookId phase recordedAt claimedAt notes tagIds violatedPrincipleIds`
 	draftFields   = `version takeaway choiceIds planAdherence`
 	sessionFields = `id date queue completed cursorEntryId version refreshAvailable`
@@ -237,7 +222,7 @@ func (a api) prepare(ctx context.Context, token, ws string, flatBefore *string) 
 func (a api) enable(ctx context.Context, token, ws string, revision int, flatBefore *string, timezone string) error {
 	return a.client.Do(ctx, token, enableMutation, map[string]any{
 		"workspaceId": ws, "expectedRevision": revision, "flatBefore": flatBefore, "timezone": timezone,
-		"clientId": clientID, "mutationId": mutationID("enable", ws, revision, flatBefore, timezone),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("enable", ws, revision, flatBefore, timezone),
 	}, nil)
 }
 
@@ -261,7 +246,7 @@ func (a api) saveContext(ctx context.Context, token, ws string, input map[string
 	}
 	err := a.client.Do(ctx, token, saveContextMutation, map[string]any{
 		"workspaceId": ws, "input": input,
-		"clientId": clientID, "mutationId": mutationID("context", ws, input, observed),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("context", ws, input, observed),
 	}, &data)
 	return data.Context, err
 }
@@ -272,7 +257,7 @@ func (a api) saveDraft(ctx context.Context, token, ws string, input map[string]a
 	}
 	err := a.client.Do(ctx, token, saveDraftMutation, map[string]any{
 		"workspaceId": ws, "input": input,
-		"clientId": clientID, "mutationId": mutationID("draft", ws, input, observed),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("draft", ws, input, observed),
 	}, &data)
 	return data.Draft, err
 }
@@ -283,7 +268,7 @@ func (a api) markReviewed(ctx context.Context, token, ws string, input map[strin
 	}
 	err := a.client.Do(ctx, token, markReviewedMutation, map[string]any{
 		"workspaceId": ws, "input": input,
-		"clientId": clientID, "mutationId": mutationID("review", ws, input),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("review", ws, input),
 	}, &data)
 	return data.Review, err
 }
@@ -296,7 +281,7 @@ func (a api) openSession(ctx context.Context, token, ws string, date *string, re
 	}
 	err := a.client.Do(ctx, token, openSessionMutation, map[string]any{
 		"workspaceId": ws, "date": date, "refresh": refresh, "expectedVersion": expectedVersion,
-		"clientId": clientID, "mutationId": nonce,
+		"clientId": graphql.ClientID, "mutationId": nonce,
 	}, &data)
 	return data.Session, err
 }
@@ -304,7 +289,7 @@ func (a api) openSession(ctx context.Context, token, ws string, date *string, re
 func (a api) moveCursor(ctx context.Context, token, ws, sessionID, entryID string, expectedVersion int) error {
 	return a.client.Do(ctx, token, moveCursorMutation, map[string]any{
 		"workspaceId": ws, "sessionId": sessionID, "entryId": entryID, "expectedVersion": expectedVersion,
-		"clientId": clientID, "mutationId": mutationID("cursor", ws, sessionID, entryID, expectedVersion),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("cursor", ws, sessionID, entryID, expectedVersion),
 	}, nil)
 }
 
@@ -446,7 +431,7 @@ func (a api) confirmGrouping(ctx context.Context, token, ws, previewToken string
 	}
 	err := a.client.Do(ctx, token, confirmGroupingMutation, map[string]any{
 		"workspaceId": ws, "token": previewToken,
-		"clientId": clientID, "mutationId": mutationID("confirm-grouping", ws, previewToken),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("confirm-grouping", ws, previewToken),
 	}, &data)
 	return data.Result.EntryIDs, err
 }
@@ -454,7 +439,7 @@ func (a api) confirmGrouping(ctx context.Context, token, ws, previewToken string
 func (a api) dismissSuggestion(ctx context.Context, token, ws, suggestionID string) error {
 	return a.client.Do(ctx, token, dismissSuggestionMutation, map[string]any{
 		"workspaceId": ws, "suggestionId": suggestionID,
-		"clientId": clientID, "mutationId": mutationID("dismiss-suggestion", ws, suggestionID),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("dismiss-suggestion", ws, suggestionID),
 	}, nil)
 }
 
@@ -464,7 +449,7 @@ func (a api) keepSeparate(ctx context.Context, token, ws string, t trade) (trade
 	}
 	err := a.client.Do(ctx, token, keepSeparateMutation, map[string]any{
 		"workspaceId": ws, "entryId": t.ID, "expectedVersion": t.RecordVersion,
-		"clientId": clientID, "mutationId": mutationID("keep_manual_trade_separate", ws, t.ID, t.RecordVersion),
+		"clientId": graphql.ClientID, "mutationId": graphql.MutationID("keep_manual_trade_separate", ws, t.ID, t.RecordVersion),
 	}, &data)
 	return data.Trade, err
 }

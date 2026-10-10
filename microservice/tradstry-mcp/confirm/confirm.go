@@ -1,5 +1,5 @@
-// Package confirm gets the user's approval before a tool does something that
-// cannot be undone.
+// Package confirm gets the user's approval before a tool deletes something or
+// otherwise acts in a way the user must agree to first.
 //
 // Clients that support form elicitation ask the user directly, so the assistant
 // cannot approve on the user's behalf. Other clients get a short-lived token:
@@ -56,7 +56,7 @@ type Outcome struct {
 var formSchema = &jsonschema.Schema{
 	Type: "object",
 	Properties: map[string]*jsonschema.Schema{
-		"confirm": {Type: "boolean", Title: "Yes, I understand this cannot be undone"},
+		"confirm": {Type: "boolean", Title: "Yes, go ahead"},
 	},
 	Required: []string{"confirm"},
 }

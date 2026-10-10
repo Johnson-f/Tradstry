@@ -164,26 +164,11 @@ impl NotebookMutation {
         Ok(note)
     }
 
+    /// Soft delete. The note can be restored for 30 days and keeps its media until
+    /// it is purged.
     async fn delete_notebook_note(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let user_db = get_user_db(ctx).await?;
-        let mut tx = user_db.pool().begin().await?;
-        let deleted = notes::delete_notebook_note_tx(
-            &mut tx,
-            &id,
-            user_db.user_id(),
-            &crate::service::hlc::stamp(),
-        )
-        .await?;
-        if deleted {
-            crate::service::notebook::media::remove_note_references_tx(
-                &mut tx,
-                user_db.user_id(),
-                std::slice::from_ref(&id),
-            )
-            .await?;
-        }
-        tx.commit().await?;
-        Ok(deleted)
+        Ok(notes::delete_notebook_note(user_db.pool(), &id, user_db.user_id()).await?)
     }
 
     async fn create_notebook_folder(

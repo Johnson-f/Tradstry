@@ -116,6 +116,10 @@ fn append_filters(
             .push_bind(&range.to)
             .push("::timestamptz");
     }
+    if !request.source_types.is_empty() {
+        let kinds: Vec<&str> = request.source_types.iter().map(|kind| kind.as_str()).collect();
+        query.push(" AND source_type = ANY(").push_bind(kinds).push(")");
+    }
     for (column, values) in [
         ("symbols", &request.symbols),
         ("trade_ids", &request.trade_ids),

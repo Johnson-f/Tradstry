@@ -1278,17 +1278,23 @@ pub async fn attention_counts(
     pool: &PgPool,
     user_id: &str,
     workspace_id: &str,
+    playbook_id: Option<&str>,
+    tag_id: Option<&str>,
 ) -> Result<AttentionCounts> {
     let sql = format!(
         "SELECT count(*) FILTER (WHERE lifecycle_state = 'open'),
                 count(*) FILTER (WHERE lifecycle_state = 'incomplete' OR (lifecycle_state = 'closed' AND NOT ({LEGACY_COMPLETE}))),
                 count(*) FILTER (WHERE {HELD_MANUAL})
-         FROM journal_entries WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND retired_at IS NULL"
+         FROM journal_entries WHERE user_id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND retired_at IS NULL
+           AND ($3::text IS NULL OR playbook_id = $3)
+           AND ($4::text IS NULL OR EXISTS (SELECT 1 FROM trade_tags tt WHERE tt.journal_entry_id = journal_entries.id AND tt.tag_id = $4))"
     );
     let (open, needs_review, possible_duplicates): (i64, i64, i64) =
         sqlx::query_as(sqlx::AssertSqlSafe(sql))
             .bind(user_id)
             .bind(workspace_id)
+            .bind(playbook_id)
+            .bind(tag_id)
             .fetch_one(pool)
             .await
             .context("Failed to count journal trades needing attention")?;

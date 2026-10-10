@@ -1713,7 +1713,7 @@ mod analytics {
             .unwrap();
 
         let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
-        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &Default::default())
             .await
             .unwrap();
         let journal = get_journal_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
@@ -1765,7 +1765,7 @@ mod analytics {
         let journal = get_journal_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
             .await
             .unwrap();
-        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+        let advanced = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &Default::default())
             .await
             .unwrap();
         assert_eq!(journal.win_rate, 0.0, "both trades lost money");
@@ -1776,7 +1776,7 @@ mod analytics {
     /// R from analytics and from the dashboard, which must always agree.
     async fn r_on_both_screens(pool: &PgPool, user: &str, workspace: &str) -> (usize, Option<f64>) {
         let user_db = Db::from_pool(pool.clone()).get_user_db(user);
-        let analytics = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All)
+        let analytics = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All, &Default::default())
             .await
             .unwrap();
         let dashboard = tradstry_backend::service::trading_performance::load_trading_performance(
@@ -2061,7 +2061,7 @@ mod duplicates {
 
     async fn counted(pool: &PgPool, user: &str, workspace: &str) -> (usize, f64) {
         let user_db = Db::from_pool(pool.clone()).get_user_db(user);
-        let a = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All)
+        let a = get_advanced_analytics(&user_db, workspace, &AnalyticsTimeFilter::All, &Default::default())
             .await
             .unwrap();
         (a.trade_count as usize, a.net_profit)

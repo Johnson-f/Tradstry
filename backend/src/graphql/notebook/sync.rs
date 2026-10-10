@@ -369,14 +369,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "deleteNote" => {
             let a: IdArgs = serde_json::from_str(&m.args)?;
-            if notes::delete_notebook_note_tx(conn, &a.id, user_id, &m.hlc).await? {
-                crate::service::notebook::media::remove_note_references_tx(
-                    conn,
-                    user_id,
-                    std::slice::from_ref(&a.id),
-                )
-                .await?;
-            }
+            notes::delete_notebook_note_tx(conn, &a.id, user_id, &m.hlc).await?;
         }
         "createFolder" => {
             let a: CreateFolderArgs = serde_json::from_str(&m.args)?;
@@ -401,10 +394,7 @@ async fn apply_effect(conn: &mut PgConnection, user_id: &str, m: &NotebookMutati
         }
         "deleteFolder" => {
             let a: IdArgs = serde_json::from_str(&m.args)?;
-            let note_ids =
-                folders::delete_notebook_folder_subtree_tx(conn, &a.id, user_id, &m.hlc).await?;
-            crate::service::notebook::media::remove_note_references_tx(conn, user_id, &note_ids)
-                .await?;
+            folders::delete_notebook_folder_subtree_tx(conn, &a.id, user_id, &m.hlc).await?;
         }
         "moveNode" => {
             let a: MoveNodeArgs = serde_json::from_str(&m.args)?;

@@ -10,7 +10,11 @@ use crate::service::db::schema::tables::notebook::crdt;
 /// interval only bounds how long a note stays stuck or oversized.
 const SWEEP_INTERVAL_SECS: u64 = 60;
 
-/// Heals notes stranded mid-seed and compacts overgrown update chains.
+const PURGE_BATCH: i64 = 100;
+const LEGACY_BATCH: i64 = 50;
+
+/// Heals notes stranded mid-seed, compacts overgrown update chains and purges
+/// notes deleted longer ago than they can be restored.
 ///
 /// Neither job belongs on the write path: seeding and compaction each spawn the
 /// projector subprocess (~130ms), and a user's keystroke must never wait on one.
@@ -39,6 +43,12 @@ pub async fn run_notebook_maintenance(
             Err(error) => error!("[notebook] stale-seeding sweep failed: {error:#}"),
         }
 
+        match crdt::sweep_legacy_notes(db.pool(), LEGACY_BATCH).await {
+            Ok(0) => {}
+            Ok(n) => info!("[notebook] converted {n} note(s) to the update log"),
+            Err(error) => error!("[notebook] legacy conversion sweep failed: {error:#}"),
+        }
+
         match crdt::sweep_compaction(db.pool()).await {
             Ok(0) => {}
             Ok(n) => info!("[notebook] compacted {n} note(s)"),
@@ -51,6 +61,12 @@ pub async fn run_notebook_maintenance(
             Ok(0) => {}
             Ok(n) => info!("[notebook] re-projected {n} note(s)"),
             Err(error) => error!("[notebook] projection sweep failed: {error:#}"),
+        }
+
+        match super::library::purge_deleted_notes(db.pool(), PURGE_BATCH).await {
+            Ok(0) => {}
+            Ok(n) => info!("[notebook] purged {n} note(s) past their restore window"),
+            Err(error) => error!("[notebook] purge sweep failed: {error:#}"),
         }
     }
 }

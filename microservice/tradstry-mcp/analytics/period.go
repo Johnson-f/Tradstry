@@ -28,6 +28,12 @@ type window struct {
 	last     time.Time // midnight starting the last day
 	location *time.Location
 	label    string
+	// playbookID narrows the answer to one playbook's trades when set.
+	playbookID   string
+	playbookName string
+	// tagID narrows the answer to trades carrying one tag when set.
+	tagID   string
+	tagName string
 }
 
 func (w window) days() int {

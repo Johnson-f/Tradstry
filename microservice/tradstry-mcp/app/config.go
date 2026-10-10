@@ -17,6 +17,8 @@ type Config struct {
 	ClerkIssuer string
 	// APIURL is the Tradstry backend origin, e.g. https://backend.tradstry.com.
 	APIURL string
+	// RedisURL is where per-user rate limits are counted, e.g. redis://:password@redis:6379.
+	RedisURL string
 }
 
 func LoadConfig() (Config, error) {
@@ -34,6 +36,9 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.APIURL, err = origin("TRADSTRY_API_URL"); err != nil {
 		return Config{}, err
+	}
+	if cfg.RedisURL = os.Getenv("REDIS_URL"); cfg.RedisURL == "" {
+		return Config{}, fmt.Errorf("REDIS_URL must be set")
 	}
 	return cfg, nil
 }

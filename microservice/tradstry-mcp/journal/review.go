@@ -32,7 +32,7 @@ type contextInput struct {
 	AddTags                []string `json:"add_tags,omitempty" jsonschema:"tag names to add"`
 	RemoveTags             []string `json:"remove_tags,omitempty" jsonschema:"tag names to remove"`
 	AddBrokenPrinciples    []string `json:"add_broken_principles,omitempty" jsonschema:"titles of trading principles the user broke on this trade"`
-	RemoveBrokenPrinciples []string `json:"remove_broken_principles,omitempty"`
+	RemoveBrokenPrinciples []string `json:"remove_broken_principles,omitempty" jsonschema:"titles of principles to clear from this trade"`
 	ClaimedAt              string   `json:"claimed_at,omitempty" jsonschema:"RFC 3339 time the user says they made this decision; only when they state it, never to make a plan look made before entry"`
 }
 

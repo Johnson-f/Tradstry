@@ -11,4 +11,8 @@ export {
   stripGhostText,
   DOC_ID,
   NAMESPACE,
+  LinkedTradeNode,
+  NotebookImageNode,
+  NotebookVideoNode,
+  TradeTableNode,
 } from "./notebook-core.gen.mjs";

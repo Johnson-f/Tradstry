@@ -77,7 +77,7 @@ async fn fees_reach_every_report_and_decide_the_outcome() {
     assert_eq!(unknown.fees, None);
 
     let user_db = Db::from_pool(pool.clone()).get_user_db(&user);
-    let analytics = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)
+    let analytics = get_advanced_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All, &Default::default())
         .await
         .unwrap();
     let journal = get_journal_analytics(&user_db, &workspace, &AnalyticsTimeFilter::All)

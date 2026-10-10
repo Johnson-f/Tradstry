@@ -111,6 +111,7 @@ async fn run_eval(knowledge: &KnowledgeService, fixtures: &Fixtures) -> Result<(
                 KnowledgeSearchRequest {
                     workspace_id: fixtures.workspace_id.clone(),
                     query: case.query.clone(),
+                    source_types: Vec::new(),
                     limit: 10,
                     ..Default::default()
                 },

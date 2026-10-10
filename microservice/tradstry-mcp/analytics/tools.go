@@ -58,6 +58,8 @@ type coverage struct {
 }
 
 type common struct {
+	Playbook string     `json:"playbook,omitempty" jsonschema:"only trades that used this playbook were counted"`
+	Tag      string     `json:"tag,omitempty" jsonschema:"only trades carrying this tag were counted"`
 	Period   periodView `json:"period"`
 	Currency string     `json:"currency"`
 	Coverage coverage   `json:"coverage"`
@@ -119,6 +121,8 @@ func Register(server *mcp.Server, client *graphql.Client) {
 
 type performanceInput struct {
 	WorkspaceID string `json:"workspace_id" jsonschema:"ID from list_workspaces"`
+	Playbook    string `json:"playbook,omitempty" jsonschema:"only trades that used this playbook, by name or ID from list_playbooks"`
+	Tag         string `json:"tag,omitempty" jsonschema:"only trades carrying this tag, by name or ID from list_tags"`
 	periodInput
 }
 
@@ -126,11 +130,13 @@ type breakdownInput struct {
 	WorkspaceID string    `json:"workspace_id" jsonschema:"ID from list_workspaces"`
 	By          dimension `json:"by" jsonschema:"how to group the trades"`
 	Limit       int       `json:"limit,omitempty" jsonschema:"groups to return, at most 25; defaults to 10"`
+	Playbook    string    `json:"playbook,omitempty" jsonschema:"only trades that used this playbook, by name or ID from list_playbooks"`
+	Tag         string    `json:"tag,omitempty" jsonschema:"only trades carrying this tag, by name or ID from list_tags"`
 	periodInput
 }
 
 // prepare resolves everything an answer needs before the analytics call.
-func (t *tools) prepare(ctx context.Context, req *mcp.CallToolRequest, ws string, in periodInput) (string, workspaceContext, window, error) {
+func (t *tools) prepare(ctx context.Context, req *mcp.CallToolRequest, ws string, in periodInput, playbook, tag string) (string, workspaceContext, window, error) {
 	caller, err := clerk.CallerOf(req)
 	if err != nil {
 		return "", workspaceContext{}, window{}, err
@@ -143,13 +149,67 @@ func (t *tools) prepare(ctx context.Context, req *mcp.CallToolRequest, ws string
 		return "", workspaceContext{}, window{}, graphql.ForUser(err)
 	}
 	w, err := resolvePeriod(in, t.now(), wc.Location)
+	if err == nil && playbook != "" {
+		w.playbookID, w.playbookName, err = t.playbook(ctx, caller.Token, ws, playbook)
+	}
+	if err == nil && tag != "" {
+		w.tagID, w.tagName, err = t.tag(ctx, caller.Token, ws, tag)
+	}
 	return caller.Token, wc, w, err
+}
+
+// tag resolves a tag given by ID or by name.
+func (t *tools) tag(ctx context.Context, token, ws, given string) (string, string, error) {
+	tags, err := t.api.tags(ctx, token, ws)
+	if err != nil {
+		return "", "", graphql.ForUser(err)
+	}
+	given = strings.TrimSpace(given)
+	var matches []named
+	for _, tg := range tags {
+		if tg.ID == given {
+			return tg.ID, tg.Name, nil
+		}
+		if strings.EqualFold(tg.Name, given) {
+			matches = append(matches, tg)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0].ID, matches[0].Name, nil
+	case 0:
+		return "", "", fmt.Errorf("there is no tag %q; list_tags shows them", given)
+	}
+	return "", "", fmt.Errorf("%q is the name of more than one tag; pass its ID from list_tags", given)
+}
+
+// playbook resolves a playbook given by ID or by name.
+func (t *tools) playbook(ctx context.Context, token, ws, given string) (string, string, error) {
+	playbooks, _, err := t.api.names(ctx, token, ws)
+	if err != nil {
+		return "", "", graphql.ForUser(err)
+	}
+	given = strings.TrimSpace(given)
+	var names []string
+	for id, name := range playbooks {
+		if id == given || strings.EqualFold(name, given) {
+			return id, name, nil
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	if len(names) == 0 {
+		return "", "", fmt.Errorf("there is no playbook %q; this workspace has no playbooks", given)
+	}
+	return "", "", fmt.Errorf("there is no playbook %q; the playbooks are: %s", given, strings.Join(names, ", "))
 }
 
 // describe builds the period, currency and coverage every answer carries.
 func describe(wc workspaceContext, w window, a analytics) common {
 	cv := a.Coverage
 	out := common{
+		Playbook: w.playbookName,
+		Tag:      w.tagName,
 		Period:   periodView{Timezone: wc.Location.String(), Label: w.label},
 		Currency: wc.Currency,
 		Coverage: coverage{
@@ -250,7 +310,7 @@ func duration(seconds *float64) string {
 }
 
 func (t *tools) performance(ctx context.Context, req *mcp.CallToolRequest, in performanceInput) (*mcp.CallToolResult, performanceOutput, error) {
-	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput)
+	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput, in.Playbook, in.Tag)
 	if err != nil {
 		return nil, performanceOutput{}, err
 	}
@@ -296,7 +356,7 @@ type dailyOutput struct {
 }
 
 func (t *tools) daily(ctx context.Context, req *mcp.CallToolRequest, in performanceInput) (*mcp.CallToolResult, dailyOutput, error) {
-	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput)
+	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput, in.Playbook, in.Tag)
 	if err != nil {
 		return nil, dailyOutput{}, err
 	}
@@ -332,7 +392,7 @@ func (t *tools) breakdown(ctx context.Context, req *mcp.CallToolRequest, in brea
 	if limit > maxGroups {
 		return nil, breakdownOutput{}, fmt.Errorf("limit can be at most %d", maxGroups)
 	}
-	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput)
+	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput, in.Playbook, in.Tag)
 	if err != nil {
 		return nil, breakdownOutput{}, err
 	}
@@ -425,7 +485,7 @@ type mistakesOutput struct {
 }
 
 func (t *tools) mistakes(ctx context.Context, req *mcp.CallToolRequest, in performanceInput) (*mcp.CallToolResult, mistakesOutput, error) {
-	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput)
+	token, wc, w, err := t.prepare(ctx, req, in.WorkspaceID, in.periodInput, in.Playbook, in.Tag)
 	if err != nil {
 		return nil, mistakesOutput{}, err
 	}

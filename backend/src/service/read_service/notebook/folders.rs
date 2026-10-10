@@ -32,17 +32,11 @@ pub async fn move_notebook_node(user_db: &UserDb, input: MoveNotebookNodeInput) 
 ///
 pub async fn delete_notebook_folder(user_db: &UserDb, folder_id: &str) -> Result<bool> {
     let mut tx = user_db.pool().begin().await?;
-    let note_ids = folders::delete_notebook_folder_subtree_tx(
+    folders::delete_notebook_folder_subtree_tx(
         &mut tx,
         folder_id,
         user_db.user_id(),
         &crate::service::hlc::stamp(),
-    )
-    .await?;
-    crate::service::notebook::media::remove_note_references_tx(
-        &mut tx,
-        user_db.user_id(),
-        &note_ids,
     )
     .await?;
     tx.commit().await?;

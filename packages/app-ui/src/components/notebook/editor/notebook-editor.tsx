@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin";
 import { LexicalCollaboration } from "@lexical/react/LexicalCollaborationContext";
 import { CollaborationPlugin } from "@lexical/react/LexicalCollaborationPlugin";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -351,6 +352,7 @@ export function NotebookEditor({
                   <TitleHeadingPlugin />
                   <TrailingParagraphPlugin />
                   <ListPlugin />
+                  <CheckListPlugin />
                   <LinkPlugin />
                   <TablePlugin hasHorizontalScroll hasTabHandler />
                   <TableScrollAreaPlugin />

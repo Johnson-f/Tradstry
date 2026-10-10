@@ -630,6 +630,28 @@ fn validate_reservation(input: &ReserveMediaUploadInput) -> MediaLifecycleResult
     Ok(())
 }
 
+/// Media a deleted note still holds stays stored so the note can be restored, but
+/// the user gets its space back as soon as the note is deleted. The bytes leave
+/// `media_bytes_used` for good when the note is purged and its files collected.
+async fn bytes_held_only_by_deleted_notes(
+    connection: &mut PgConnection,
+    user_id: &str,
+) -> MediaLifecycleResult<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT COALESCE(sum(blob.bytes),0)::bigint FROM notebook_media_blobs blob
+         WHERE blob.user_id=$1 AND blob.quota_counted
+           AND EXISTS (SELECT 1 FROM notebook_media_references r WHERE r.blob_id=blob.id)
+           AND NOT EXISTS (
+               SELECT 1 FROM notebook_media_references r
+               JOIN notebook_notes note ON note.id=r.note_id
+               WHERE r.blob_id=blob.id AND note.deleted_at IS NULL
+           )",
+    )
+    .bind(user_id)
+    .fetch_one(connection)
+    .await?)
+}
+
 async fn reserve_quota(
     connection: &mut PgConnection,
     user_id: &str,
@@ -647,6 +669,7 @@ async fn reserve_quota(
     .await?
     .ok_or(MediaLifecycleError::NotFound)?;
     let used: i64 = row.try_get("media_bytes_used")?;
+    let used = used - bytes_held_only_by_deleted_notes(&mut *connection, user_id).await?;
     let reserved: i64 = row.try_get("media_bytes_reserved")?;
     let limit: Option<i64> = row.try_get("media_bytes")?;
     let founder: bool = row.try_get("founder")?;

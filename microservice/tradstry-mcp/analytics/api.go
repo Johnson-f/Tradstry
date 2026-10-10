@@ -16,12 +16,13 @@ const (
   workspace(id: $id) { currency }
   journalFlowStatus(workspaceId: $id) { timezone }
 }`
+	tagsQuery  = `query AnalyticsTags($workspaceId: String!) { tags(workspaceId: $workspaceId) { id name } }`
 	namesQuery = `query AnalyticsNames($workspaceId: String!) {
   playbooks(workspaceId: $workspaceId) { id name }
   principles(workspaceId: $workspaceId) { id title }
 }`
-	performanceQuery = `query Performance($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!) {
-  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter) {
+	performanceQuery = `query Performance($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!, $playbookId: String, $tagId: String) {
+  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter, playbookId: $playbookId, tagId: $tagId) {
     ` + coverageFields + `
     tradeCount netProfit winRate profitFactor averageGain averageLoss expectancyDollars
     maxDrawdownDollars currentDrawdownDollars longestWinStreak longestLossStreak currentStreak
@@ -29,15 +30,15 @@ const (
     byDay { ` + groupFields + ` }
   }
 }`
-	dailyQuery = `query DailyPnl($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!) {
-  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter) {
+	dailyQuery = `query DailyPnl($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!, $playbookId: String, $tagId: String) {
+  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter, playbookId: $playbookId, tagId: $tagId) {
     ` + coverageFields + `
     tradeCount netProfit
     byDay { ` + groupFields + ` }
   }
 }`
-	mistakesQuery = `query MistakeCosts($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!) {
-  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter) {
+	mistakesQuery = `query MistakeCosts($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!, $playbookId: String, $tagId: String) {
+  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter, playbookId: $playbookId, tagId: $tagId) {
     ` + coverageFields + `
     tradeCount
     tagBreakdowns { categoryName role tags { ` + groupFields + ` } }
@@ -62,8 +63,8 @@ var breakdownFields = map[string]string{
 }
 
 func breakdownQuery(dimension string) string {
-	return `query Breakdown($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!) {
-  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter) { ` + coverageFields + ` tradeCount netProfit ` + breakdownFields[dimension] + ` }
+	return `query Breakdown($workspaceId: String!, $timeFilter: AnalyticsTimeFilterInput!, $playbookId: String, $tagId: String) {
+  advancedAnalytics(workspaceId: $workspaceId, timeFilter: $timeFilter, playbookId: $playbookId, tagId: $tagId) { ` + coverageFields + ` tradeCount netProfit ` + breakdownFields[dimension] + ` }
 }`
 }
 
@@ -175,7 +176,14 @@ func (a api) analytics(ctx context.Context, token, ws, query string, w window) (
 	var data struct {
 		Analytics analytics `json:"advancedAnalytics"`
 	}
-	err := a.client.Do(ctx, token, query, map[string]any{"workspaceId": ws, "timeFilter": w.filter()}, &data)
+	vars := map[string]any{"workspaceId": ws, "timeFilter": w.filter()}
+	if w.playbookID != "" {
+		vars["playbookId"] = w.playbookID
+	}
+	if w.tagID != "" {
+		vars["tagId"] = w.tagID
+	}
+	err := a.client.Do(ctx, token, query, vars, &data)
 	return data.Analytics, err
 }
 
@@ -195,4 +203,12 @@ func (a api) names(ctx context.Context, token, ws string) (playbooks, principles
 		principles[p.ID] = p.Title
 	}
 	return playbooks, principles, nil
+}
+
+func (a api) tags(ctx context.Context, token, ws string) ([]named, error) {
+	var data struct {
+		Tags []named `json:"tags"`
+	}
+	err := a.client.Do(ctx, token, tagsQuery, map[string]any{"workspaceId": ws}, &data)
+	return data.Tags, err
 }

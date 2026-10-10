@@ -4,6 +4,7 @@ pub mod brokerage;
 pub mod db;
 pub mod hlc;
 pub mod market;
+pub mod mutations;
 pub mod notebook;
 pub mod notifications;
 pub mod read_service;

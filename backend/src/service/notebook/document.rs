@@ -68,6 +68,36 @@ pub fn normalize_document_json(document_json: &str) -> Result<(String, String)> 
     Ok((normalized, title))
 }
 
+/// Trades the document shows as chips or in trade tables.
+pub fn trade_ids(document_json: &str) -> BTreeSet<String> {
+    fn collect(node: &Value, ids: &mut BTreeSet<String>) {
+        match node.get("type").and_then(Value::as_str) {
+            Some("linked-trade") => {
+                if let Some(id) = node.get("tradeId").and_then(Value::as_str) {
+                    ids.insert(id.to_string());
+                }
+            }
+            Some("trade-table") => {
+                for id in node.get("tradeIds").and_then(Value::as_array).into_iter().flatten() {
+                    if let Some(id) = id.as_str() {
+                        ids.insert(id.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+        for child in node.get("children").and_then(Value::as_array).into_iter().flatten() {
+            collect(child, ids);
+        }
+    }
+
+    let mut ids = BTreeSet::new();
+    if let Ok(document) = serde_json::from_str::<Value>(document_json) {
+        collect(document.get("root").unwrap_or(&document), &mut ids);
+    }
+    ids
+}
+
 pub fn media_hashes(document: &Value) -> BTreeSet<String> {
     fn collect(node: &Value, hashes: &mut BTreeSet<String>) {
         let media_node = matches!(

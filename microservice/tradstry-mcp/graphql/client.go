@@ -36,6 +36,9 @@ func (e *Error) Error() string {
 // ForUser returns err when the user can act on it. Anything else is logged and
 // replaced with ErrUnavailable so transport details stay out of the conversation.
 func ForUser(err error) error {
+	if err == nil {
+		return nil
+	}
 	var apiErr *Error
 	if errors.Is(err, ErrAccountRequired) || errors.Is(err, ErrUnauthorized) || errors.As(err, &apiErr) {
 		return err
@@ -45,12 +48,13 @@ func ForUser(err error) error {
 }
 
 type Client struct {
+	base string
 	url  string
 	http *http.Client
 }
 
 func NewClient(apiURL string, httpClient *http.Client) *Client {
-	return &Client{url: apiURL + "/graphql", http: httpClient}
+	return &Client{base: apiURL, url: apiURL + "/graphql", http: httpClient}
 }
 
 type response struct {
@@ -114,4 +118,52 @@ func (c *Client) Do(ctx context.Context, token, query string, variables map[stri
 		return nil
 	}
 	return json.Unmarshal(decoded.Data, out)
+}
+
+// ErrTooLarge is returned by Get when the body exceeds the caller's limit.
+var ErrTooLarge = errors.New("the file is too large to show here")
+
+// ErrNotFound is returned by Get when the Tradstry API has nothing at path.
+var ErrNotFound = errors.New("not found")
+
+// Get fetches a REST resource such as notebook media as the user who owns token.
+// It returns the body and its content type, or ErrTooLarge past limit bytes.
+func (c *Client) Get(ctx context.Context, token, path string, limit int64) ([]byte, string, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("reach Tradstry API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, "", ErrUnauthorized
+	case resp.StatusCode == http.StatusForbidden:
+		return nil, "", ErrAccountRequired
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, "", ErrNotFound
+	case resp.StatusCode != http.StatusOK:
+		return nil, "", fmt.Errorf("Tradstry API returned HTTP %d for %s", resp.StatusCode, path)
+	}
+	if resp.ContentLength > limit {
+		return nil, "", ErrTooLarge
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", path, err)
+	}
+	if int64(len(body)) > limit {
+		return nil, "", ErrTooLarge
+	}
+	return body, resp.Header.Get("Content-Type"), nil
 }

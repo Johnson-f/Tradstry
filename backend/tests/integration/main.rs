@@ -36,6 +36,8 @@ mod manual_trades_pg;
 mod mcp_readiness_pg;
 mod migration_sequence;
 mod notebook_crdt;
+mod notebook_library_pg;
+mod notebook_markdown_pg;
 mod notebook_media_lifecycle_pg;
 mod notebook_media_pg;
 mod notebook_media_routes;
