@@ -9,10 +9,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Row};
 
 pub fn hash(payload: &Value) -> Result<String> {
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(payload)?)
-    ))
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(payload)?)))
 }
 
 /// The stored result of this mutation, if it already ran. Takes a transaction

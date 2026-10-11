@@ -131,7 +131,7 @@ fn item_key(message: &Message) -> AgentResult<String> {
                 return Ok(format!("assistant-tool:{}", call.id));
             }
             let bytes = serde_json::to_vec(message).map_err(|_| AgentError::Internal)?;
-            Ok(format!("assistant:{:x}", Sha256::digest(bytes)))
+            Ok(format!("assistant:{}", hex::encode(Sha256::digest(bytes))))
         }
         Message::Tool(tool) => Ok(format!("tool:{}", tool.tool_call_id)),
         Message::System(_) | Message::User(_) => Err(AgentError::Validation(

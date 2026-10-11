@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use aes_gcm::aead::OsRng;
-use aes_gcm::aead::rand_core::RngCore;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
@@ -283,7 +281,7 @@ fn is_secure_or_loopback(url: &str) -> bool {
 
 fn random_base64url(bytes: usize) -> String {
     let mut value = vec![0u8; bytes];
-    OsRng.fill_bytes(&mut value);
+    getrandom::fill(&mut value).expect("the operating system's random source is available");
     URL_SAFE_NO_PAD.encode(value)
 }
 

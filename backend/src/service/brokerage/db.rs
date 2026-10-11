@@ -1,8 +1,4 @@
-use aes_gcm::aead::rand_core::RngCore;
-use aes_gcm::{
-    Aes256Gcm, KeyInit, Nonce,
-    aead::{Aead, OsRng},
-};
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 
@@ -28,11 +24,11 @@ pub fn encrypt_secret(plaintext: &str) -> Result<String> {
     let cipher = Aes256Gcm::new_from_slice(&key).context("Failed to create cipher")?;
 
     let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    getrandom::fill(&mut nonce_bytes).map_err(|e| anyhow!("No randomness for the nonce: {e}"))?;
+    let nonce = Nonce::from(nonce_bytes);
 
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
+        .encrypt(&nonce, plaintext.as_bytes())
         .map_err(|e| anyhow!("Encryption failed: {e}"))?;
 
     // Format: base64(nonce || ciphertext)
@@ -100,10 +96,11 @@ pub fn decrypt_secret(encoded: &str) -> Result<String> {
     }
 
     let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce =
+        Nonce::try_from(nonce_bytes).map_err(|_| anyhow!("Encrypted secret has a bad nonce"))?;
 
     let plaintext = cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|e| anyhow!("Decryption failed: {e}"))?;
 
     String::from_utf8(plaintext).context("Decrypted secret is not valid UTF-8")

@@ -367,16 +367,13 @@ fn evidence_idempotency_key(
     source_id: &str,
     source_version: &str,
 ) -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(
-            format!(
-                "{tool_call_id}\0{}\0{}\0{}",
-                source_type.trim(),
-                source_id.trim(),
-                source_version.trim()
-            )
-            .as_bytes()
+    hex::encode(Sha256::digest(
+        format!(
+            "{tool_call_id}\0{}\0{}\0{}",
+            source_type.trim(),
+            source_id.trim(),
+            source_version.trim()
         )
-    )
+        .as_bytes(),
+    ))
 }

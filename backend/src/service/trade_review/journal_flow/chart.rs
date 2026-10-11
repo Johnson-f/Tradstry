@@ -95,8 +95,8 @@ async fn series(
     ensure!(data.candles.len() <= 5000, "range_too_wide");
     let provider = data
         .provider_id
-        .and_then(|id| serde_json::to_value(id).ok())
-        .and_then(|value| value.as_str().map(str::to_owned));
+        // Debug gives the display name ("Yahoo"); Display gives the lowercase id.
+        .map(|id| format!("{id:?}"));
     let mut bars: Vec<Bar> = data
         .candles
         .into_iter()

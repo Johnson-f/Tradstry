@@ -163,7 +163,7 @@ fn fingerprint(episode: &TradeEpisodeDraft) -> String {
             allocation.fee.normalize()
         ));
     }
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 #[cfg(test)]
