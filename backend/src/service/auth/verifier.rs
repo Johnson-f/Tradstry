@@ -93,11 +93,12 @@ mod tests {
     const MCP: &str = "https://mcp.tradstry.com/mcp";
 
     // A throwaway 2048-bit key used only by these tests.
-    const PRIVATE_KEY: &str = include_str!("testdata/rsa_private.pem");
-    const MODULUS: &str = include_str!("testdata/rsa_modulus.txt");
+    const PRIVATE_KEY: &str = include_str!("testdata/test_only_rsa_private_key.txt");
+    const MODULUS: &str = include_str!("testdata/test_only_rsa_modulus.txt");
 
     struct StaticJwks;
 
+    #[async_trait::async_trait]
     impl JwksProvider for StaticJwks {
         type Error = ClerkError;
 
