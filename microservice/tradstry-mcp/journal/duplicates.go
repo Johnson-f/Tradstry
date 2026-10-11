@@ -96,7 +96,7 @@ func (t *tools) resolveDuplicate(ctx context.Context, req *mcp.CallToolRequest, 
 			if outcome.Token != "" {
 				status = "needs_confirmation"
 			}
-			return nil, resolveDuplicateOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+			return outcome.Ask, resolveDuplicateOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 		}
 		kept, err := t.api.keepSeparate(ctx, caller.Token, in.WorkspaceID, held)
 		if err != nil {

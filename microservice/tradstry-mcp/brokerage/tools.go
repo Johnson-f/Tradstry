@@ -511,7 +511,7 @@ func (t *tools) disconnect(ctx context.Context, req *mcp.CallToolRequest, in dis
 		if outcome.Token != "" {
 			status = "needs_confirmation"
 		}
-		return nil, disconnectOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+		return outcome.Ask, disconnectOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 	}
 
 	if err := t.api.disconnect(ctx, caller.Token, ws.ID); err != nil {

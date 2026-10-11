@@ -118,11 +118,17 @@ func (s *Stack) Requests() []Request {
 // set an ElicitationHandler to act as a client that asks the user directly.
 func (s *Stack) Connect(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
+	return s.ConnectAt(t, opts, "")
+}
+
+// ConnectAt is Connect asking for a protocol version, where "" means the latest.
+func (s *Stack) ConnectAt(t *testing.T, opts *mcp.ClientOptions, version string) *mcp.ClientSession {
+	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, opts)
 	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint:   s.URL + "/mcp",
 		HTTPClient: &http.Client{Transport: bearer{s.Signer.AccessToken(t)}},
-	}, nil)
+	}, &mcp.ClientSessionOptions{ProtocolVersion: version})
 	if err != nil {
 		t.Fatal(err)
 	}

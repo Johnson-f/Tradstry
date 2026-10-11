@@ -29,6 +29,8 @@ import (
 
 const version = "0.1.0"
 
+const statelessProtocol = "2026-07-28"
+
 const instructions = `Tradstry is a trading journal. You act for a user who already has a Tradstry account; accounts are created only by signing up at tradstry.com.
 Call list_workspaces first: a workspace is one trading account, and most tools need its workspace_id.
 Never pass a confirmation_token unless the user explicitly agreed, in this conversation, to the action it confirms.
@@ -94,7 +96,7 @@ func NewHandler(cfg Config, verifier *clerk.Verifier, api *graphql.Client, limit
 	mcpServer.AddReceivingMiddleware(limiter.Middleware(readOnlyTools(mcpServer)))
 	// Added last so it wraps the rate limiter and logs limited calls too.
 	mcpServer.AddReceivingMiddleware(logMethods)
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)
+	mcpHandler := byProtocol(mcpServer)
 	requireToken := sdkauth.RequireBearerToken(verifier.Verify, &sdkauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: cfg.PublicURL + clerk.MetadataPath,
 	})
@@ -107,6 +109,22 @@ func NewHandler(cfg Config, verifier *clerk.Verifier, api *graphql.Client, limit
 		_, _ = w.Write([]byte("ok"))
 	})
 	return logRequests(mux)
+}
+
+// byProtocol serves clients on the 2026-07-28 protocol, which has no sessions,
+// statelessly: the SDK only accepts that protocol in stateless mode. Older
+// clients keep their sessions, which elicitation needs.
+func byProtocol(server *mcp.Server) http.Handler {
+	getServer := func(*http.Request) *mcp.Server { return server }
+	sessions := mcp.NewStreamableHTTPHandler(getServer, nil)
+	stateless := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("MCP-Protocol-Version") >= statelessProtocol {
+			stateless.ServeHTTP(w, r)
+			return
+		}
+		sessions.ServeHTTP(w, r)
+	})
 }
 
 func newMCPServer(api *graphql.Client, publicURL string) (*mcp.Server, http.Handler) {

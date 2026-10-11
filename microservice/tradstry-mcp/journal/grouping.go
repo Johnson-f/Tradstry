@@ -348,7 +348,7 @@ func (t *tools) confirmGrouping(ctx context.Context, req *mcp.CallToolRequest, i
 		if outcome.Token != "" {
 			status = "needs_confirmation"
 		}
-		return nil, confirmGroupingOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+		return outcome.Ask, confirmGroupingOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 	}
 
 	trades, err := t.api.confirmGrouping(ctx, caller.Token, in.WorkspaceID, in.PreviewID)

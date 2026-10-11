@@ -138,7 +138,7 @@ func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startInp
 			if outcome.Token != "" {
 				status = "needs_confirmation"
 			}
-			return nil, startOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+			return outcome.Ask, startOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 		}
 		flatBefore = baseline.FirstExecution
 	}

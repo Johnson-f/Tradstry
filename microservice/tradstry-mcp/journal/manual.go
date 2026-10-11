@@ -319,7 +319,7 @@ func (t *tools) deleteManual(ctx context.Context, req *mcp.CallToolRequest, in d
 		if outcome.Token != "" {
 			status = "needs_confirmation"
 		}
-		return nil, deleteManualOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+		return outcome.Ask, deleteManualOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 	}
 	if err := t.api.deleteManual(ctx, caller.Token, trade.ID); err != nil {
 		var apiErr *graphql.Error

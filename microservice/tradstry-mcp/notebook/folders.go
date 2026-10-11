@@ -190,7 +190,7 @@ func (t *tools) deleteFolder(ctx context.Context, req *mcp.CallToolRequest, in d
 		return nil, deleteOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.deleteFolder(ctx, caller.Token, target.ID); err != nil {
 		return nil, deleteOutput{}, forUser(err)

@@ -533,7 +533,7 @@ func (t *tools) deleteNote(ctx context.Context, req *mcp.CallToolRequest, in del
 		return nil, deleteOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if _, err := t.api.deleteNote(ctx, caller.Token, d.ID); err != nil {
 		return nil, deleteOutput{}, forUser(err)

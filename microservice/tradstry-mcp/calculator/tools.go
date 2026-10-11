@@ -454,7 +454,7 @@ func (t *tools) deleteEntry(ctx context.Context, req *mcp.CallToolRequest, in de
 		return nil, confirmOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.deleteEntry(ctx, caller.Token, found.ID); err != nil {
 		return nil, confirmOutput{}, graphql.ForUser(err)

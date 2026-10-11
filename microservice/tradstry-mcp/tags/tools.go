@@ -435,7 +435,7 @@ func (t *tools) merge(ctx context.Context, req *mcp.CallToolRequest, in mergeInp
 		return nil, confirmOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.merge(ctx, caller.Token, from.ID, into.ID); err != nil {
 		return nil, confirmOutput{}, graphql.ForUser(err)
@@ -477,7 +477,7 @@ func (t *tools) deleteTag(ctx context.Context, req *mcp.CallToolRequest, in dele
 		return nil, confirmOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.deleteTag(ctx, caller.Token, tg.ID); err != nil {
 		return nil, confirmOutput{}, graphql.ForUser(err)
@@ -666,7 +666,7 @@ func (t *tools) deleteCategory(ctx context.Context, req *mcp.CallToolRequest, in
 		return nil, confirmOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.deleteCategory(ctx, caller.Token, cat.ID); err != nil {
 		return nil, confirmOutput{}, graphql.ForUser(err)

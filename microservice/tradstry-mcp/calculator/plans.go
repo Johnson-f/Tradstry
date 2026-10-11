@@ -309,7 +309,7 @@ func (t *tools) deletePlan(ctx context.Context, req *mcp.CallToolRequest, in del
 		return nil, confirmOutput{}, err
 	}
 	if !outcome.Approved {
-		return nil, unapproved(outcome), nil
+		return outcome.Ask, unapproved(outcome), nil
 	}
 	if err := t.api.deletePlan(ctx, caller.Token, p.ID); err != nil {
 		return nil, confirmOutput{}, graphql.ForUser(err)

@@ -47,11 +47,16 @@ type Action struct {
 
 type Outcome struct {
 	Approved bool
+	// Ask, when set, is the tool's result: it asks the client to show the
+	// user the question and call again with their answer.
+	Ask *mcp.CallToolResult
 	// Token is set when the assistant must ask the user and call again.
 	Token string
 	// Message explains an outcome that is not approved, for the tool result.
 	Message string
 }
+
+const askID = "confirm"
 
 var formSchema = &jsonschema.Schema{
 	Type: "object",
@@ -65,18 +70,17 @@ var formSchema = &jsonschema.Schema{
 // back from an earlier call, if anything.
 func (c *Confirmer) Confirm(ctx context.Context, req *mcp.CallToolRequest, subject string, action Action, token string) (Outcome, error) {
 	if supportsForm(req.Session) {
-		res, err := req.Session.Elicit(ctx, &mcp.ElicitParams{
+		if answer, ok := req.Params.InputResponses[askID].(*mcp.ElicitResult); ok {
+			if answer.Action == "accept" && answer.Content["confirm"] == true {
+				return Outcome{Approved: true}, nil
+			}
+			return Outcome{Message: "The user did not confirm, so nothing was changed."}, nil
+		}
+		return Outcome{Ask: &mcp.CallToolResult{InputRequests: mcp.InputRequestMap{askID: &mcp.ElicitParams{
 			Mode:            "form",
 			Message:         action.Question,
 			RequestedSchema: formSchema,
-		})
-		if err != nil {
-			return Outcome{}, fmt.Errorf("ask the user to confirm: %w", err)
-		}
-		if res.Action == "accept" && res.Content["confirm"] == true {
-			return Outcome{Approved: true}, nil
-		}
-		return Outcome{Message: "The user did not confirm, so nothing was changed."}, nil
+		}}}}, nil
 	}
 
 	if token != "" && c.valid(token, subject, action) {

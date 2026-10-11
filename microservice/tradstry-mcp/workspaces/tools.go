@@ -248,7 +248,7 @@ func (t *tools) delete(ctx context.Context, req *mcp.CallToolRequest, in deleteI
 		if outcome.Token != "" {
 			status = "needs_confirmation"
 		}
-		return nil, deleteOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
+		return outcome.Ask, deleteOutput{Status: status, Message: outcome.Message, ConfirmationToken: outcome.Token}, nil
 	}
 
 	deleted, err := t.api.delete(ctx, caller.Token, target.ID)
