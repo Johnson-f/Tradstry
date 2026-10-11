@@ -396,7 +396,7 @@ pub fn normalized_hash(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase();
-    format!("{:x}", Sha256::digest(normalized.as_bytes()))
+    hex::encode(Sha256::digest(normalized.as_bytes()))
 }
 
 fn memory_from_row(row: &sqlx::postgres::PgRow) -> AgentResult<AgentMemoryRecord> {

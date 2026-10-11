@@ -75,7 +75,7 @@ impl Tool<AgentRuntimeState> for PlaybookContextTool {
                     tool_call_id: None,
                     source_type: "playbook".into(),
                     source_id: value.id.clone(),
-                    source_version: format!("{:x}", Sha256::digest(serialized)),
+                    source_version: hex::encode(Sha256::digest(serialized)),
                     title: value.name.clone(),
                     excerpt: format!(
                         "{}: canonical entry, exit, position sizing, and additional rules; {} linked trades.",

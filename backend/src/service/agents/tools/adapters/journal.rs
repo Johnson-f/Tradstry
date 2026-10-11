@@ -176,7 +176,7 @@ impl Tool<AgentRuntimeState> for JournalRecordsTool {
         for entry in &values {
             let serialized = serde_json::to_vec(entry)
                 .map_err(|error| tinyagents::TinyAgentsError::Tool(error.to_string()))?;
-            let version = format!("{:x}", Sha256::digest(serialized));
+            let version = hex::encode(Sha256::digest(serialized));
             evidence.push(NewAgentEvidence {
                 tool_call_id: None,
                 source_type: "journal_entry".into(),

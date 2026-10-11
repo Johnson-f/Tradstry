@@ -244,19 +244,16 @@ fn finalize(
     effective_from: Option<String>,
     effective_to: Option<String>,
 ) -> KnowledgeSource {
-    let content_hash = format!(
-        "{:x}",
-        Sha256::digest(
-            serde_json::to_vec(&serde_json::json!({
-                "title": title,
-                "blocks": blocks.iter().map(|block| &block.text).collect::<Vec<_>>(),
-                "relationships": relationships,
-                "effectiveFrom": effective_from,
-                "effectiveTo": effective_to,
-            }))
-            .unwrap_or_default()
-        )
-    );
+    let content_hash = hex::encode(Sha256::digest(
+        serde_json::to_vec(&serde_json::json!({
+            "title": title,
+            "blocks": blocks.iter().map(|block| &block.text).collect::<Vec<_>>(),
+            "relationships": relationships,
+            "effectiveFrom": effective_from,
+            "effectiveTo": effective_to,
+        }))
+        .unwrap_or_default(),
+    ));
     KnowledgeSource {
         user_id: record.user_id.clone(),
         workspace_id: record.workspace_id.clone(),

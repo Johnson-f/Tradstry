@@ -41,17 +41,15 @@ fn init_sentry() -> Option<ClientInitGuard> {
 
     Some(sentry::init((
         dsn,
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            environment: Some(environment().into()),
+        sentry::ClientOptions::new()
+            .maybe_release(sentry::release_name!())
+            .environment(environment())
             // Traces are sampled; errors are not. A trace per request is far
             // more volume than the free tier tolerates, and the value here is
             // in the errors.
-            traces_sample_rate: sample_rate("SENTRY_TRACES_SAMPLE_RATE", 0.0),
-            attach_stacktrace: true,
-            send_default_pii: false,
-            ..Default::default()
-        },
+            .traces_sample_rate(sample_rate("SENTRY_TRACES_SAMPLE_RATE", 0.0))
+            .attach_stacktrace(true)
+            .send_default_pii(false),
     )))
 }
 

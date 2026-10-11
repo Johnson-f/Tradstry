@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use hyper_util::rt::TokioIo;
 use prost::Message;
 use serde::{Deserialize, Serialize};
