@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
