@@ -3,12 +3,12 @@ use async_graphql::Data;
 use async_graphql::http::GraphiQLSource;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use clerk_rs::validators::authorizer::ClerkJwt;
-use clerk_rs::validators::{authorizer::validate_jwt, jwks::MemoryCacheJwksProvider};
 use log::{error, info};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::graphql::AppSchema;
+use crate::service::auth::TokenVerifier;
 use crate::service::db::Db;
 use crate::service::read_service::users::Provisioning;
 use crate::service::upload::r2::R2Client;
@@ -103,7 +103,7 @@ pub async fn graphql_ws_handler(
     http_req: HttpRequest,
     db: web::Data<Arc<Db>>,
     r2: web::Data<Arc<R2Client>>,
-    jwks: web::Data<Arc<MemoryCacheJwksProvider>>,
+    verifier: web::Data<TokenVerifier>,
     payload: web::Payload,
 ) -> Result<HttpResponse> {
     let mut data = Data::default();
@@ -119,9 +119,9 @@ pub async fn graphql_ws_handler(
     GraphQLSubscription::new(schema.get_ref().clone())
         .with_data(data)
         .on_connection_init({
-            let jwks = jwks.get_ref().clone();
+            let verifier = verifier.get_ref().clone();
             move |payload| {
-                let jwks = jwks.clone();
+                let verifier = verifier.clone();
                 async move {
                     let mut data = Data::default();
                     if let Some(token) = payload
@@ -130,7 +130,8 @@ pub async fn graphql_ws_handler(
                         .or_else(|| payload.get("token").and_then(|value| value.as_str()))
                     {
                         let token = token.trim().trim_start_matches("Bearer ").to_string();
-                        let jwt = validate_jwt(&token, jwks)
+                        let jwt = verifier
+                            .verify(&token)
                             .await
                             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
                         data.insert(jwt);
