@@ -100,6 +100,8 @@ services:
       # Broker connections started from the MCP server return the browser to it.
       - SNAPTRADE_PORTAL_REDIRECT_ORIGINS=https://mcp.tradstry.com
       - SNAPTRADE_OAUTH_MCP_RETURN_URL=https://mcp.tradstry.com/brokerage/snaptrade-authorized
+      # OAuth access tokens Clerk mints for the MCP server name it in `aud`.
+      - CLERK_ALLOWED_AUDIENCES=https://mcp.tradstry.com,https://mcp.tradstry.com/mcp
     env_file:
       - ../backend/.env
     volumes:

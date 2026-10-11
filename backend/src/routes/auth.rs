@@ -5,7 +5,7 @@ use clerk_rs::validators::authorizer::ClerkJwt;
 use crate::service::db::client::{Db, UserDb};
 use crate::service::read_service::users::{self, AccountRequired, Provisioning};
 
-/// The provisioning rule for the token `ClerkMiddleware` validated. It reads the
+/// The provisioning rule for the token `ClerkAuth` validated. It reads the
 /// `Authorization` header when present and only otherwise the `__session` cookie,
 /// so this must classify the same token or a connected app's token could be
 /// smuggled through the cookie to sign up.
@@ -24,7 +24,7 @@ pub(crate) fn provisioning(req: &HttpRequest) -> Provisioning {
     })
 }
 
-/// Resolve the caller of a REST route behind `ClerkMiddleware`.
+/// Resolve the caller of a REST route behind `ClerkAuth`.
 pub(crate) async fn request_user_db(req: &HttpRequest, db: &Db) -> actix_web::Result<UserDb> {
     let jwt = req
         .extensions()

@@ -1,6 +1,5 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, web};
-use clerk_rs::validators::actix::ClerkMiddleware;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -8,7 +7,9 @@ use tracing_actix_web::TracingLogger;
 use tradstry_backend::graphql;
 use tradstry_backend::routes;
 use tradstry_backend::service::agents::knowledge::VoyageClient;
-use tradstry_backend::service::auth::create_jwks_provider;
+use tradstry_backend::service::auth::{
+    ClerkAuth, TokenVerifier, allowed_audiences_from_env, create_jwks_provider,
+};
 use tradstry_backend::service::brokerage::client::BrokerageClient;
 use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
 use tradstry_backend::service::brokerage::portal::PortalRedirects;
@@ -119,7 +120,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.health_check().await?;
     info!("Database healthy and SeaORM schema contract verified");
     let clerk_secret = std::env::var("CLERK_SECRET_KEY")?;
-    let jwks_provider_data = Arc::new(create_jwks_provider(&clerk_secret));
+    let token_verifier = TokenVerifier::new(
+        create_jwks_provider(&clerk_secret),
+        allowed_audiences_from_env(),
+    );
     info!("Clerk authentication configured");
     let allowed_origins = cors_allowed_origins();
     let portal_redirects = PortalRedirects::from_env(&allowed_origins)?;
@@ -358,7 +362,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting server on {}", listener.local_addr()?);
     info!("Allowed CORS origins: {:?}", allowed_origins);
     let server = HttpServer::new(move || {
-        let jwks_provider = create_jwks_provider(&clerk_secret);
         let cors = allowed_origins
             .iter()
             .fold(Cors::default(), |cors, origin| cors.allowed_origin(origin))
@@ -375,16 +378,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Opens a span per request; every log emitted while handling it
             // inherits the method, path, and request id without being told.
             .wrap(TracingLogger::default())
-            .wrap(ClerkMiddleware::new(
-                jwks_provider,
-                Some(vec![
+            .wrap(ClerkAuth::new(
+                token_verifier.clone(),
+                vec![
                     "/graphql".to_string(),
                     "/export".to_string(),
                     "/notebook/media/upload".to_string(),
                     "/notebook/media/{hash}".to_string(),
                     "/notebook/media/{hash}/thumb".to_string(),
-                ]),
-                true,
+                ],
             ))
             .wrap(cors)
             .app_data(web::Data::new(schema.clone()))
@@ -393,7 +395,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .app_data(web::Data::new(brokerage_client.clone()))
             .app_data(web::Data::new(snaptrade_webhook_config.clone()))
             .app_data(web::Data::new(snaptrade_oauth_config.clone()))
-            .app_data(web::Data::new(jwks_provider_data.clone()))
+            .app_data(web::Data::new(token_verifier.clone()))
             .app_data(
                 actix_multipart::form::MultipartFormConfig::default()
                     .total_limit(260 * 1024 * 1024)
