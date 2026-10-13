@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_manual_trade_fees() {
+fn seaorm_migrations_end_with_stytch_identity() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 12);
+    assert_eq!(migrations.len(), 13);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261009_000012_manual_trade_fees"
+        "m20261013_000013_stytch_identity"
     );
 }

@@ -1,6 +1,6 @@
-import { SignIn } from "@clerk/nextjs";
 import type { Metadata } from "next";
-import { inkAppearance } from "@/components/auth/appearance";
+import { Suspense } from "react";
+import { AuthLogin } from "@/components/auth/auth-login";
 import { AuthShell } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
@@ -15,9 +15,11 @@ export default function SignInPage() {
   return (
     <AuthShell
       title="Welcome back."
-      subtitle="The record kept going without you."
+      subtitle="Sign in to pick up where you left off."
     >
-      <SignIn appearance={inkAppearance} />
+      <Suspense>
+        <AuthLogin />
+      </Suspense>
     </AuthShell>
   );
 }

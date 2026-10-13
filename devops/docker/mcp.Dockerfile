@@ -10,7 +10,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-w -s' -o tradstry-mcp .
 
 FROM alpine:3.24.1
-# Certificates for Clerk's signing keys and the Tradstry API; curl for the
+# Certificates for Stytch's signing keys and the Tradstry API; curl for the
 # healthcheck and the deploy script's health probe.
 RUN apk --no-cache add ca-certificates curl tzdata \
  && addgroup -g 1000 appuser \

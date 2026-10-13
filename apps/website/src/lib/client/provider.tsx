@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, useRef } from "react";
 import {
@@ -9,6 +8,7 @@ import {
   createGraphQLFetcher,
   createGraphQLSubscriber,
 } from "./backend-connection";
+import { useGetToken } from "./use-get-token";
 
 const GraphQLContext = createContext<GraphQLFetcher | null>(null);
 const GraphQLSubscriptionContext = createContext<GraphQLSubscriber | null>(null);
@@ -32,7 +32,7 @@ export function useGraphQLSubscription(): GraphQLSubscriber {
 }
 
 export function GraphQLProvider({ children }: { children: React.ReactNode }) {
-  const { getToken } = useAuth();
+  const getToken = useGetToken();
   const queryClientRef = useRef<QueryClient | null>(null);
 
   if (!queryClientRef.current) {
@@ -44,11 +44,11 @@ export function GraphQLProvider({ children }: { children: React.ReactNode }) {
   }
 
   const fetcher = useMemo(
-    () => createGraphQLFetcher(() => getToken()),
+    () => createGraphQLFetcher(getToken),
     [getToken],
   );
   const subscriber = useMemo(
-    () => createGraphQLSubscriber(() => getToken()),
+    () => createGraphQLSubscriber(getToken),
     [getToken],
   );
 

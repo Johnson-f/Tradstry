@@ -9,8 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/oauth"
 )
 
 type folderView struct {
@@ -32,7 +32,7 @@ type listFoldersOutput struct {
 }
 
 func (t *tools) listFolders(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, listFoldersOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listFoldersOutput{}, err
 	}
@@ -68,7 +68,7 @@ type createFolderInput struct {
 }
 
 func (t *tools) createFolder(ctx context.Context, req *mcp.CallToolRequest, in createFolderInput) (*mcp.CallToolResult, folderView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, folderView{}, err
 	}
@@ -119,7 +119,7 @@ type renameFolderInput struct {
 }
 
 func (t *tools) renameFolder(ctx context.Context, req *mcp.CallToolRequest, in renameFolderInput) (*mcp.CallToolResult, folderView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, folderView{}, err
 	}
@@ -141,7 +141,7 @@ type moveFolderInput struct {
 }
 
 func (t *tools) moveFolder(ctx context.Context, req *mcp.CallToolRequest, in moveFolderInput) (*mcp.CallToolResult, folderView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, folderView{}, err
 	}
@@ -165,7 +165,7 @@ type deleteFolderInput struct {
 }
 
 func (t *tools) deleteFolder(ctx context.Context, req *mcp.CallToolRequest, in deleteFolderInput) (*mcp.CallToolResult, deleteOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deleteOutput{}, err
 	}

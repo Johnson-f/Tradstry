@@ -139,7 +139,7 @@ async fn activity_is_owned_and_bulk_summaries_are_bounded() {
         .activity_for_message(
             &AgentActor {
                 user_id: other_user,
-                clerk_id: "other".into(),
+                subject: "other".into(),
             },
             &completed.message.id,
         )

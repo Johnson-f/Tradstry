@@ -10,9 +10,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 type tools struct {
@@ -240,7 +240,7 @@ type listOutput struct {
 }
 
 func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -301,7 +301,7 @@ type createTagInput struct {
 }
 
 func (t *tools) createTag(ctx context.Context, req *mcp.CallToolRequest, in createTagInput) (*mcp.CallToolResult, categoryView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, categoryView{}, err
 	}
@@ -337,7 +337,7 @@ type updateTagInput struct {
 }
 
 func (t *tools) updateTag(ctx context.Context, req *mcp.CallToolRequest, in updateTagInput) (*mcp.CallToolResult, categoryView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, categoryView{}, err
 	}
@@ -407,7 +407,7 @@ type mergeInput struct {
 }
 
 func (t *tools) merge(ctx context.Context, req *mcp.CallToolRequest, in mergeInput) (*mcp.CallToolResult, confirmOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmOutput{}, err
 	}
@@ -457,7 +457,7 @@ type deleteTagInput struct {
 }
 
 func (t *tools) deleteTag(ctx context.Context, req *mcp.CallToolRequest, in deleteTagInput) (*mcp.CallToolResult, confirmOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmOutput{}, err
 	}
@@ -492,7 +492,7 @@ type createCategoryInput struct {
 }
 
 func (t *tools) createCategory(ctx context.Context, req *mcp.CallToolRequest, in createCategoryInput) (*mcp.CallToolResult, categoryView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, categoryView{}, err
 	}
@@ -521,7 +521,7 @@ type updateCategoryInput struct {
 }
 
 func (t *tools) updateCategory(ctx context.Context, req *mcp.CallToolRequest, in updateCategoryInput) (*mcp.CallToolResult, categoryView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, categoryView{}, err
 	}
@@ -565,7 +565,7 @@ type moveCategoryInput struct {
 }
 
 func (t *tools) moveCategory(ctx context.Context, req *mcp.CallToolRequest, in moveCategoryInput) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -599,7 +599,7 @@ type workspacesInput struct {
 }
 
 func (t *tools) setWorkspaces(ctx context.Context, req *mcp.CallToolRequest, in workspacesInput) (*mcp.CallToolResult, categoryView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, categoryView{}, err
 	}
@@ -633,7 +633,7 @@ type deleteCategoryInput struct {
 }
 
 func (t *tools) deleteCategory(ctx context.Context, req *mcp.CallToolRequest, in deleteCategoryInput) (*mcp.CallToolResult, confirmOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmOutput{}, err
 	}

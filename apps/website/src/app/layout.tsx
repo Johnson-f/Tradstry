@@ -1,4 +1,3 @@
-import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@tradstry/app-ui/components/ui/tooltip";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
@@ -8,6 +7,7 @@ import "./globals.css";
 import "@designcodeio/threeui/style.css";
 import { Toaster } from "@tradstry/app-ui/components/ui/sonner";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import { AppStytchProvider } from "@/components/auth/stytch-provider";
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
@@ -68,15 +68,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      unsafe_disableDevelopmentModeConsoleWarning={
-        process.env.NODE_ENV === "development"
-      }
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      signInFallbackRedirectUrl="/dashboard"
-      signUpFallbackRedirectUrl="/dashboard"
-    >
+    <AppStytchProvider>
       <html
         lang="en"
         data-scroll-behavior="smooth"
@@ -100,6 +92,6 @@ export default function RootLayout({
           <Analytics />
         </body>
       </html>
-    </ClerkProvider>
+    </AppStytchProvider>
   );
 }

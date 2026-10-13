@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { TradstryMark } from "@tradstry/app-ui/components/logo";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { cn } from "@tradstry/app-ui/lib/utils";
@@ -64,19 +64,19 @@ export function Header() {
         />
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <SignInButton>
-            <Button
-              variant="ghost"
-              className="hidden h-11 rounded-xl px-3 text-[13px] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 sm:inline-flex"
-            >
-              Sign in
-            </Button>
-          </SignInButton>
-          <SignUpButton>
-            <Button className="h-11 rounded-xl bg-zinc-950 px-4 text-[13px] font-semibold text-white hover:bg-zinc-800 active:scale-[0.98]">
-              Start free
-            </Button>
-          </SignUpButton>
+          <Button
+            asChild
+            variant="ghost"
+            className="hidden h-11 rounded-xl px-3 text-[13px] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 sm:inline-flex"
+          >
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+          <Button
+            asChild
+            className="h-11 rounded-xl bg-zinc-950 px-4 text-[13px] font-semibold text-white hover:bg-zinc-800 active:scale-[0.98]"
+          >
+            <Link href="/sign-up">Start free</Link>
+          </Button>
           <details className="group relative lg:hidden">
             <summary className="flex size-11 cursor-pointer list-none items-center justify-center rounded-xl text-zinc-600 outline-none transition-colors hover:bg-zinc-100 hover:text-zinc-950 focus-visible:ring-2 focus-visible:ring-[#ff7a21]/50">
               <span className="sr-only">Open navigation</span>
@@ -100,14 +100,12 @@ export function Header() {
                   {item.label}
                 </a>
               ))}
-              <SignInButton>
-                <button
-                  type="button"
-                  className="flex min-h-11 items-center rounded-xl px-3 text-left text-sm text-zinc-600 outline-none hover:bg-zinc-100 hover:text-zinc-950 focus-visible:ring-2 focus-visible:ring-[#ff7a21]/50 sm:hidden"
-                >
-                  Sign in
-                </button>
-              </SignInButton>
+              <Link
+                href="/sign-in"
+                className="flex min-h-11 items-center rounded-xl px-3 text-left text-sm text-zinc-600 outline-none hover:bg-zinc-100 hover:text-zinc-950 focus-visible:ring-2 focus-visible:ring-[#ff7a21]/50 sm:hidden"
+              >
+                Sign in
+              </Link>
             </nav>
           </details>
         </div>

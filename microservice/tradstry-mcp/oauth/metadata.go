@@ -1,4 +1,4 @@
-package clerk
+package oauth
 
 import (
 	"net/http"
@@ -13,7 +13,7 @@ const (
 )
 
 // RegisterMetadata serves RFC 9728 protected-resource metadata pointing MCP
-// clients at Clerk. Some clients look it up at the origin, others at the path
+// clients at the OAuth issuer. Some clients look it up at the origin, others at the path
 // of the MCP endpoint, so both are served.
 func RegisterMetadata(mux *http.ServeMux, publicURL, issuer string) {
 	mux.Handle(rootMetadataPath, metadataHandler(publicURL, issuer))

@@ -1,6 +1,6 @@
 "use client";
 
-import { useReverification, useSession, useUser } from "@clerk/nextjs";
+import { useStytch, useStytchUser } from "@stytch/nextjs";
 import {
   Cancel01Icon,
   ComputerIcon,
@@ -12,13 +12,12 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
 import { toast } from "sonner";
+import { type AuthSession, useAccountApi } from "@/components/account/api";
 import {
-  type ClerkUser,
-  clerkError,
-  type DeviceSession,
   EmptyRow,
-  type ExternalAccount,
+  errorMessage,
   Field,
+  type OAuthProvider,
   Section,
   Spinner,
 } from "@/components/account/shared";
@@ -33,37 +32,34 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@tradstry/app-ui/components/ui/tooltip";
+import {
+  absoluteUrl,
+  SESSION_DURATION_MINUTES,
+  type StytchUser,
+  userEmail,
+} from "@/lib/stytch";
 
 const MIN_PASSWORD_LENGTH = 8;
 
-const PROVIDERS = [
-  { strategy: "oauth_google", id: "google", label: "Google" },
-  { strategy: "oauth_apple", id: "apple", label: "Apple" },
-  { strategy: "oauth_github", id: "github", label: "GitHub" },
-] as const;
+const GOOGLE = "google";
 
 export function SecuritySection() {
-  const { user } = useUser();
+  const { user } = useStytchUser();
   if (!user) return null;
   return (
     <div className="grid gap-4">
       <PasswordCard user={user} />
       <ConnectionsCard user={user} />
-      <DevicesCard user={user} />
+      <DevicesCard />
     </div>
   );
 }
 
-function PasswordCard({ user }: { user: ClerkUser }) {
-  const changePassword = useReverification(
-    (params: {
-      currentPassword?: string;
-      newPassword: string;
-      signOutOfOtherSessions: boolean;
-    }) => user.updatePassword(params),
-  );
+function PasswordCard({ user }: { user: StytchUser }) {
+  const stytch = useStytch();
+  const api = useAccountApi();
 
-  const hasPassword = user.passwordEnabled;
+  const hasPassword = user.password !== null;
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
@@ -77,6 +73,15 @@ function PasswordCard({ user }: { user: ClerkUser }) {
     next === confirm &&
     (!hasPassword || current.length > 0);
 
+  async function signOutOtherDevices() {
+    const sessions = await api.listSessions();
+    await Promise.all(
+      sessions
+        .filter((item) => !item.current)
+        .map((item) => api.revokeSession(item.id)),
+    );
+  }
+
   async function submit() {
     if (next !== confirm) {
       setError("The two passwords don't match.");
@@ -89,17 +94,27 @@ function PasswordCard({ user }: { user: ClerkUser }) {
     setBusy(true);
     setError(null);
     try {
-      await changePassword({
-        ...(hasPassword ? { currentPassword: current } : {}),
-        newPassword: next,
-        signOutOfOtherSessions: signOutOthers,
-      });
+      if (hasPassword) {
+        await stytch.passwords.resetByExistingPassword({
+          email: userEmail(user),
+          existing_password: current,
+          new_password: next,
+          session_duration_minutes: SESSION_DURATION_MINUTES,
+        });
+      } else {
+        await stytch.passwords.resetBySession({
+          password: next,
+          session_duration_minutes: SESSION_DURATION_MINUTES,
+        });
+      }
+      if (signOutOthers) await signOutOtherDevices();
+      await stytch.user.get();
       setCurrent("");
       setNext("");
       setConfirm("");
       toast.success(hasPassword ? "Password changed." : "Password set.");
     } catch (err) {
-      setError(clerkError(err, "Could not update your password."));
+      setError(errorMessage(err, "Could not update your password."));
     } finally {
       setBusy(false);
     }
@@ -205,35 +220,39 @@ function PasswordCard({ user }: { user: ClerkUser }) {
   );
 }
 
-function ConnectionsCard({ user }: { user: ClerkUser }) {
+function ConnectionsCard({ user }: { user: StytchUser }) {
+  const stytch = useStytch();
   const [busy, setBusy] = React.useState<string | null>(null);
-  const connected = new Set(user.externalAccounts.map((a) => a.provider));
-  const available = PROVIDERS.filter((p) => !connected.has(p.id));
+  const googleConnected = user.providers.some(
+    (p) => p.provider_type.toLowerCase() === GOOGLE,
+  );
 
-  async function connect(strategy: (typeof PROVIDERS)[number]["strategy"]) {
-    setBusy(strategy);
+  async function connect() {
+    setBusy(GOOGLE);
     try {
-      const account = await user.createExternalAccount({
-        strategy,
-        redirectUrl: window.location.href,
+      const { oauth_attach_token } = await stytch.oauth.attach(GOOGLE);
+      const redirect = absoluteUrl("/authenticate");
+      await stytch.oauth.google.start({
+        login_redirect_url: redirect,
+        signup_redirect_url: redirect,
+        oauth_attach_token,
       });
-      const url = account.verification?.externalVerificationRedirectURL;
-      if (!url) throw new Error("no redirect");
-      window.location.href = url.toString();
     } catch (err) {
-      toast.error(clerkError(err, "Could not start that connection."));
+      toast.error(errorMessage(err, "Could not start that connection."));
       setBusy(null);
     }
   }
 
-  async function disconnect(account: ExternalAccount) {
-    setBusy(account.id);
+  async function disconnect(provider: OAuthProvider) {
+    setBusy(provider.oauth_user_registration_id);
     try {
-      await account.destroy();
-      await user.reload();
+      await stytch.user.deleteOAuthRegistration(
+        provider.oauth_user_registration_id,
+      );
+      await stytch.user.get();
       toast.success("Account disconnected.");
     } catch (err) {
-      toast.error(clerkError(err, "Could not disconnect that account."));
+      toast.error(errorMessage(err, "Could not disconnect that account."));
     } finally {
       setBusy(null);
     }
@@ -245,18 +264,15 @@ function ConnectionsCard({ user }: { user: ClerkUser }) {
       description="Sign in to Tradstry with a provider you already trust."
     >
       <div className="grid gap-3">
-        {user.externalAccounts.length === 0 ? (
+        {user.providers.length === 0 ? (
           <EmptyRow>No providers connected yet.</EmptyRow>
         ) : (
           <ul className="grid gap-2">
-            {user.externalAccounts.map((account) => {
-              const label =
-                PROVIDERS.find((p) => p.id === account.provider)?.label ??
-                account.provider;
-              const pending = busy === account.id;
+            {user.providers.map((provider) => {
+              const pending = busy === provider.oauth_user_registration_id;
               return (
                 <li
-                  key={account.id}
+                  key={provider.oauth_user_registration_id}
                   className="flex items-center gap-2.5 rounded-lg border border-border/60 px-3 py-2.5"
                 >
                   <HugeiconsIcon
@@ -264,15 +280,9 @@ function ConnectionsCard({ user }: { user: ClerkUser }) {
                     strokeWidth={2}
                     className="size-4 shrink-0 text-muted-foreground"
                   />
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {account.emailAddress || account.username}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium capitalize">
+                    {provider.provider_type}
                   </span>
-                  {account.verification?.status === "verified" ? null : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Needs reconnect
-                    </Badge>
-                  )}
                   {pending ? (
                     <Spinner className="mx-2 text-muted-foreground" />
                   ) : (
@@ -281,8 +291,8 @@ function ConnectionsCard({ user }: { user: ClerkUser }) {
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label={`Disconnect ${label}`}
-                          onClick={() => disconnect(account)}
+                          aria-label={`Disconnect ${provider.provider_type}`}
+                          onClick={() => disconnect(provider)}
                           className="size-8 text-muted-foreground hover:text-destructive"
                         >
                           <HugeiconsIcon
@@ -301,36 +311,48 @@ function ConnectionsCard({ user }: { user: ClerkUser }) {
           </ul>
         )}
 
-        {available.length > 0 ? (
+        {googleConnected ? null : (
           <div className="flex flex-wrap gap-2">
-            {available.map((provider) => (
-              <Button
-                key={provider.id}
-                size="sm"
-                variant="outline"
-                disabled={busy !== null}
-                onClick={() => connect(provider.strategy)}
-              >
-                {busy === provider.strategy ? <Spinner /> : null}
-                Connect {provider.label}
-              </Button>
-            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy !== null}
+              onClick={connect}
+            >
+              {busy === GOOGLE ? <Spinner /> : null}
+              Connect Google
+            </Button>
           </div>
-        ) : null}
+        )}
       </div>
     </Section>
   );
 }
 
-function deviceLabel(session: DeviceSession): string {
-  const { browserName, deviceType, isMobile } = session.latestActivity;
-  const device = deviceType ?? (isMobile ? "Mobile device" : "Desktop");
-  return browserName ? `${browserName} on ${device}` : device;
-}
-
-function deviceLocation(session: DeviceSession): string {
-  const { city, country, ipAddress } = session.latestActivity;
-  return [city, country].filter(Boolean).join(", ") || (ipAddress ?? "Unknown");
+function describeUserAgent(userAgent: string | null): {
+  label: string;
+  isMobile: boolean;
+} {
+  if (!userAgent) return { label: "Unknown device", isMobile: false };
+  const browser =
+    /Edg\//.test(userAgent) ? "Edge"
+    : /Firefox\//.test(userAgent) ? "Firefox"
+    : /Chrome\//.test(userAgent) ? "Chrome"
+    : /Safari\//.test(userAgent) ? "Safari"
+    : null;
+  const system =
+    /iPhone|iPad/.test(userAgent) ? "iOS"
+    : /Android/.test(userAgent) ? "Android"
+    : /Mac OS X/.test(userAgent) ? "macOS"
+    : /Windows/.test(userAgent) ? "Windows"
+    : /Linux/.test(userAgent) ? "Linux"
+    : null;
+  const label =
+    browser && system ? `${browser} on ${system}` : (browser ?? system);
+  return {
+    label: label ?? "Unknown device",
+    isMobile: /Mobile|iPhone|Android/.test(userAgent),
+  };
 }
 
 const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -343,30 +365,30 @@ function lastActive(date: Date): string {
   return RELATIVE.format(Math.round(hours / 24), "day");
 }
 
-function DevicesCard({ user }: { user: ClerkUser }) {
-  const { session } = useSession();
-  const [sessions, setSessions] = React.useState<DeviceSession[] | null>(null);
+function DevicesCard() {
+  const api = useAccountApi();
+  const [sessions, setSessions] = React.useState<AuthSession[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let live = true;
-    user
-      .getSessions()
+    api
+      .listSessions()
       .then((result) => live && setSessions(result))
       .catch(() => live && setSessions([]));
     return () => {
       live = false;
     };
-  }, [user]);
+  }, [api]);
 
-  async function revoke(target: DeviceSession) {
+  async function revoke(target: AuthSession) {
     setBusy(target.id);
     try {
-      await target.revoke();
-      setSessions(await user.getSessions());
+      await api.revokeSession(target.id);
+      setSessions(await api.listSessions());
       toast.success("Device signed out.");
     } catch (err) {
-      toast.error(clerkError(err, "Could not sign out that device."));
+      toast.error(errorMessage(err, "Could not sign out that device."));
     } finally {
       setBusy(null);
     }
@@ -383,11 +405,11 @@ function DevicesCard({ user }: { user: ClerkUser }) {
           <Skeleton className="h-14 rounded-lg" />
         </div>
       ) : sessions.length === 0 ? (
-        <EmptyRow>No other active devices.</EmptyRow>
+        <EmptyRow>No active devices.</EmptyRow>
       ) : (
         <ul className="grid gap-2">
           {sessions.map((item) => {
-            const isCurrent = item.id === session?.id;
+            const device = describeUserAgent(item.userAgent);
             const pending = busy === item.id;
             return (
               <li
@@ -395,21 +417,18 @@ function DevicesCard({ user }: { user: ClerkUser }) {
                 className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2.5"
               >
                 <HugeiconsIcon
-                  icon={
-                    item.latestActivity.isMobile
-                      ? SmartPhone01Icon
-                      : ComputerIcon
-                  }
+                  icon={device.isMobile ? SmartPhone01Icon : ComputerIcon}
                   strokeWidth={2}
                   className="size-4 shrink-0 text-muted-foreground"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">{deviceLabel(item)}</p>
+                  <p className="truncate text-sm">{device.label}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {deviceLocation(item)} · {lastActive(item.lastActiveAt)}
+                    {item.ipAddress ?? "Unknown location"} ·{" "}
+                    {lastActive(new Date(item.lastAccessedAt))}
                   </p>
                 </div>
-                {isCurrent ? (
+                {item.current ? (
                   <Badge variant="secondary">This device</Badge>
                 ) : pending ? (
                   <Spinner className="mx-2 text-muted-foreground" />

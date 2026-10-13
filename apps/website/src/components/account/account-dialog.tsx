@@ -8,7 +8,7 @@ import {
   UserCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useUser } from "@clerk/nextjs";
+import { useStytchUser } from "@stytch/nextjs";
 import * as React from "react";
 import { DangerSection } from "@/components/account/danger-section";
 import { EmailSection } from "@/components/account/email-section";
@@ -25,6 +25,7 @@ import {
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@tradstry/app-ui/components/ui/tabs";
 import { useIsMobile } from "@tradstry/app-ui/hooks/use-mobile";
+import { userEmail, userFullName } from "@/lib/stytch";
 
 const TABS = [
   {
@@ -37,7 +38,7 @@ const TABS = [
   {
     value: "email",
     label: "Email",
-    description: "Manage your sign-in and contact email addresses.",
+    description: "Manage the email addresses you can sign in with.",
     icon: Mail01Icon,
     render: () => <EmailSection />,
   },
@@ -78,10 +79,10 @@ export function AccountDialog({
 }) {
   const [tab, setTab] = React.useState<string>("profile");
   const isMobile = useIsMobile();
-  const { user } = useUser();
+  const { user } = useStytchUser();
   const active = TABS.find((item) => item.value === tab) ?? TABS[0];
-  const fullName = user?.fullName ?? "Tradstry account";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const fullName = userFullName(user) || "Tradstry account";
+  const email = userEmail(user);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

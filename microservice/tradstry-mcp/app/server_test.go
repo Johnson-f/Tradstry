@@ -6,16 +6,18 @@ import (
 	"strings"
 	"testing"
 
-	"tradstry-mcp/clerk"
+	"github.com/golang-jwt/jwt/v5"
+
 	"tradstry-mcp/mcptest"
+	"tradstry-mcp/oauth"
 )
 
-func TestUnauthenticatedRequestsPointClientsAtClerk(t *testing.T) {
+func TestUnauthenticatedRequestsPointClientsAtTheIssuer(t *testing.T) {
 	s := mcptest.Start(t, func(mcptest.Request) string { return `{}` })
 
 	for name, token := range map[string]string{
-		"no token":          "",
-		"web session token": s.Signer.Token(t, "JWT", nil),
+		"no token":      "",
+		"session token": s.Signer.Token(t, "JWT", jwt.MapClaims{"client_id": ""}),
 	} {
 		req, _ := http.NewRequest(http.MethodPost, s.URL+"/mcp", strings.NewReader(`{}`))
 		if token != "" {
@@ -27,7 +29,7 @@ func TestUnauthenticatedRequestsPointClientsAtClerk(t *testing.T) {
 		}
 		resp.Body.Close()
 		challenge := resp.Header.Get("WWW-Authenticate")
-		if resp.StatusCode != http.StatusUnauthorized || !strings.Contains(challenge, s.URL+clerk.MetadataPath) {
+		if resp.StatusCode != http.StatusUnauthorized || !strings.Contains(challenge, s.URL+oauth.MetadataPath) {
 			t.Errorf("%s: status %d, WWW-Authenticate %q", name, resp.StatusCode, challenge)
 		}
 	}
@@ -36,7 +38,7 @@ func TestUnauthenticatedRequestsPointClientsAtClerk(t *testing.T) {
 	}
 }
 
-func TestMetadataNamesClerkAsTheAuthorizationServer(t *testing.T) {
+func TestMetadataNamesTheIssuerAsTheAuthorizationServer(t *testing.T) {
 	s := mcptest.Start(t, func(mcptest.Request) string { return `{}` })
 
 	for path, resource := range map[string]string{

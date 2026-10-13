@@ -59,7 +59,7 @@ async fn deleting_a_user_removes_their_tags_and_categories() {
     seed_tag(&pool, &user_id, &workspace_id).await;
     let actor = AgentActor {
         user_id: user_id.clone(),
-        clerk_id: "delete-agent-test".into(),
+        subject: "delete-agent-test".into(),
     };
     let store = AgentStore::new(pool.clone());
     let conversation = store

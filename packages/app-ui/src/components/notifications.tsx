@@ -246,7 +246,7 @@ export function NotificationsButton() {
 						Mark all read
 					</Button>
 				</header>
-				<ScrollArea className="min-h-0 [&>[data-radix-scroll-area-viewport]]:max-h-[min(28rem,calc(var(--radix-popover-content-available-height)-4rem))] [&>[data-radix-scroll-area-viewport]>div]:!block">
+				<ScrollArea className="min-h-0 [&>[data-radix-scroll-area-viewport]]:max-h-[min(28rem,calc(var(--radix-popover-content-available-height)-4rem))]">
 					{isLoading ? (
 						<div
 							role="status"

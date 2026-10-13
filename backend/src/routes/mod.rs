@@ -4,6 +4,7 @@ mod graphql;
 pub mod notebook_media;
 pub mod snaptrade_oauth;
 pub mod snaptrade_webhook;
+pub mod stytch_webhook;
 pub mod user_export;
 
 use actix_web::{HttpResponse, web};
@@ -31,6 +32,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::resource("/graphql/ws").route(web::get().to(graphql_ws_handler)))
         .service(
             web::resource("/webhooks/clerk").route(web::post().to(clerk_webhook::clerk_webhook)),
+        )
+        .service(
+            web::resource("/webhooks/stytch").route(web::post().to(stytch_webhook::stytch_webhook)),
         )
         .service(web::resource("/export").route(web::get().to(user_export::export_user_data)))
         .service(

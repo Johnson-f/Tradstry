@@ -4,6 +4,7 @@ export {
   createGraphQLSubscriber,
   type GraphQLSubscriber,
   getBackendBaseUrl,
+  GraphQLRequestError,
   getBackendWebSocketUrl,
 } from "./backend-connection";
 export {

@@ -14,9 +14,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 // A sync fetches the account's whole history from the broker, which can take minutes.
@@ -203,7 +203,7 @@ func (t *tools) findWorkspace(ctx context.Context, token, id string) (*workspace
 }
 
 func (t *tools) connect(ctx context.Context, req *mcp.CallToolRequest, in connectInput) (*mcp.CallToolResult, connectOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, connectOutput{}, err
 	}
@@ -239,7 +239,7 @@ func (t *tools) connect(ctx context.Context, req *mcp.CallToolRequest, in connec
 	}, nil
 }
 
-func (t *tools) connectOAuth(ctx context.Context, caller clerk.Caller, ws *workspace) (*mcp.CallToolResult, connectOutput, error) {
+func (t *tools) connectOAuth(ctx context.Context, caller oauth.Caller, ws *workspace) (*mcp.CallToolResult, connectOutput, error) {
 	started, err := t.api.initiateOAuth(ctx, caller.Token, ws.ID)
 	var apiErr *graphql.Error
 	if errors.As(err, &apiErr) && strings.Contains(apiErr.Error(), "SnapTrade OAuth is not") {
@@ -257,7 +257,7 @@ func (t *tools) connectOAuth(ctx context.Context, caller clerk.Caller, ws *works
 }
 
 func (t *tools) finish(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, finishOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, finishOutput{}, err
 	}
@@ -298,7 +298,7 @@ func (t *tools) finish(ctx context.Context, req *mcp.CallToolRequest, in workspa
 // finishOAuth reads the outcome the backend recorded for a SnapTrade OAuth
 // attempt. A first connection keeps its visit until set_up_brokerage_accounts,
 // which finalizes through the same attempt.
-func (t *tools) finishOAuth(ctx context.Context, caller clerk.Caller, v visit) (*mcp.CallToolResult, finishOutput, error) {
+func (t *tools) finishOAuth(ctx context.Context, caller oauth.Caller, v visit) (*mcp.CallToolResult, finishOutput, error) {
 	status, err := t.api.oauthStatus(ctx, caller.Token, v.attemptID)
 	if err != nil {
 		return nil, finishOutput{}, graphql.ForUser(err)
@@ -372,7 +372,7 @@ func accountViews(accounts []account) []accountView {
 }
 
 func (t *tools) listAccounts(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, finishOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, finishOutput{}, err
 	}
@@ -389,7 +389,7 @@ func (t *tools) listAccounts(ctx context.Context, req *mcp.CallToolRequest, in w
 }
 
 func (t *tools) setUp(ctx context.Context, req *mcp.CallToolRequest, in setUpInput) (*mcp.CallToolResult, setUpOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, setUpOutput{}, err
 	}
@@ -444,7 +444,7 @@ func (t *tools) setUp(ctx context.Context, req *mcp.CallToolRequest, in setUpInp
 }
 
 func (t *tools) sync(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, syncOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, syncOutput{}, err
 	}
@@ -458,7 +458,7 @@ func (t *tools) sync(ctx context.Context, req *mcp.CallToolRequest, in workspace
 }
 
 func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, statusOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, statusOutput{}, err
 	}
@@ -481,7 +481,7 @@ func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspa
 }
 
 func (t *tools) disconnect(ctx context.Context, req *mcp.CallToolRequest, in disconnectInput) (*mcp.CallToolResult, disconnectOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, disconnectOutput{}, err
 	}

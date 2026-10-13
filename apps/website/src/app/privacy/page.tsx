@@ -45,9 +45,9 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          <strong>Account details.</strong> Your name, email address, profile
-          photo and sign-in method. These are held by Clerk, our authentication
-          provider; we store only the identifier that links you to your data.
+          <strong>Account details.</strong> Your name, email address and sign-in
+          method. These are held by Stytch, our authentication provider; we
+          store only the identifier that links you to your data.
         </p>
         <p>
           <strong>Trading data.</strong> When you connect a brokerage, we import
@@ -61,7 +61,7 @@ const SECTIONS: LegalSection[] = [
         <p>
           <strong>Operational data.</strong> Logs needed to keep the service
           running and secure: IP address, browser and device type, timestamps,
-          and error traces. Session and device information is held by Clerk so
+          and error traces. Session and device information is held by Stytch so
           you can see and revoke your own sessions.
         </p>
         <p>
@@ -152,7 +152,7 @@ const SECTIONS: LegalSection[] = [
         </p>
         <ul>
           <li>
-            <strong>Clerk</strong> — authentication, sessions, profile photos.
+            <strong>Stytch</strong> — authentication and sessions.
           </li>
           <li>
             <strong>SnapTrade</strong> — the brokerage connection.

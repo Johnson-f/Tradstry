@@ -23,11 +23,11 @@ The repository also contains an authenticated MCP server for AI clients and a na
 | Backend | Rust 2024 edition, Actix Web, async-graphql, REST endpoints, GraphQL subscriptions |
 | Database | PostgreSQL 18, SeaORM and SQLx; pgvector and ParadeDB `pg_search` for search |
 | AI runtime | TinyAgents 2, configurable Gemini or Perplexity models; Voyage embeddings and reranking |
-| Authentication | Clerk |
+| Authentication | Stytch |
 | Media storage | Cloudflare R2 through the S3-compatible API |
 | Market data | `finance-query`, with Polygon and Financial Modeling Prep integrations |
 | Brokerage adapter | Go and gRPC over a private Unix socket |
-| MCP server | Go, MCP Go SDK; Clerk OAuth, Streamable HTTP at `/mcp`, a client of the backend's GraphQL API |
+| MCP server | Go, MCP Go SDK; Stytch Connected Apps OAuth, Streamable HTTP at `/mcp`, a client of the backend's GraphQL API |
 | Cache and rate limits | Redis; optional for the main backend, required by the MCP server |
 | Desktop prototype | Swift 6, AppKit, macOS 26+, XcodeGen |
 | Tooling and hosting | Bun, Biome, Docker Compose, Caddy, GitHub Actions; Vercel configuration for the website |
@@ -61,7 +61,7 @@ devops/
 .github/workflows/         Pull request checks and production image/deployment workflow
 ```
 
-The website calls the Rust backend over GraphQL and HTTP. The backend stores application data in Postgres, media in R2, and calls the Go adapter for SnapTrade operations. AI jobs and search also use Postgres. The MCP process shares backend services and database access, and uses Clerk authentication and Redis rate limits.
+The website calls the Rust backend over GraphQL and HTTP. The backend stores application data in Postgres, media in R2, and calls the Go adapter for SnapTrade operations. AI jobs and search also use Postgres. The MCP process shares backend services and database access, and uses Stytch authentication and Redis rate limits.
 
 ## Local development
 
@@ -73,7 +73,7 @@ Run commands from the repository root unless a block changes directories.
 - Rust and Cargo; production images build with **Rust 1.99**, and CI uses stable Rust.
 - Docker with a running daemon for the local Postgres image, which includes both search extensions.
 - Go **1.26.5** for the SnapTrade adapter.
-- Clerk, R2, and SnapTrade development credentials for the connected web app.
+- Stytch (test project), R2, and SnapTrade development credentials for the connected web app.
 - `ffmpeg` and `ffprobe` for video processing.
 - For the desktop prototype only: macOS 26+, Xcode with the macOS 26 SDK, and XcodeGen.
 
@@ -96,7 +96,7 @@ cp -n apps/website/.env.example apps/website/.env.local
 cp -n backend/.env.example backend/.env
 ```
 
-In `apps/website/.env.local`, fill in both Clerk keys and set the full GraphQL URL:
+In `apps/website/.env.local`, fill in the Stytch public token (and custom domain, if the test project has one) and set the full GraphQL URL:
 
 ```dotenv
 NEXT_PUBLIC_BACKEND_URL=http://localhost:7899/graphql
@@ -117,7 +117,7 @@ SNAPTRADE_OAUTH_FRONTEND_RETURN_URL=http://localhost:3038/dashboard/brokerage/oa
 
 Fill in the remaining settings in [backend/.env.example](backend/.env.example):
 
-- `CLERK_SECRET_KEY`, using the same Clerk instance as the website.
+- `STYTCH_PROJECT_ID` and `STYTCH_SECRET`, from the same Stytch test project as the website, and `STYTCH_ISSUER` if it has a custom domain.
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET` for notebook media.
 - `SNAPTRADE_INTERNAL_SECRET` with at least 32 bytes, shared with the Go adapter; `SNAPTRADE_CONSUMER_KEY`; and `BROKERAGE_ENCRYPTION_KEY`, a base64-encoded 32-byte key.
 - `POLYGON_API_KEY` and `FMP_API_KEY` for the corresponding market data providers.
@@ -172,14 +172,14 @@ For an existing external database, run `cargo run --bin tradstry-backend` from `
 
 ### MCP server
 
-The MCP server lives in `microservice/tradstry-mcp` and talks only to the backend's GraphQL API. `make mcp` starts Redis, the backend unless one is running, and the server on `http://localhost:7910/mcp`, signed in through the local Clerk instance:
+The MCP server lives in `microservice/tradstry-mcp` and talks only to the backend's GraphQL API. `make mcp` starts Redis, the backend unless one is running, and the server on `http://localhost:7910/mcp`, signed in through the Stytch test project:
 
 ```bash
 make mcp
 claude mcp add --transport http tradstry http://localhost:7910/mcp
 ```
 
-See [microservice/tradstry-mcp/README.md](microservice/tradstry-mcp/README.md) for its tools and configuration. Its `/health` and OAuth discovery routes are public; tool calls require a Clerk OAuth access token.
+See [microservice/tradstry-mcp/README.md](microservice/tradstry-mcp/README.md) for its tools and configuration. Its `/health` and OAuth discovery routes are public; tool calls require a Stytch Connected Apps access token.
 
 ### Native macOS prototype
 

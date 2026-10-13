@@ -12,8 +12,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/oauth"
 )
 
 // The backend's preview tokens expire after ten minutes.
@@ -130,7 +130,7 @@ type confirmGroupingOutput struct {
 }
 
 func (t *tools) listSuggestions(ctx context.Context, req *mcp.CallToolRequest, in suggestionsInput) (*mcp.CallToolResult, suggestionsOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, suggestionsOutput{}, err
 	}
@@ -252,7 +252,7 @@ func (t *tools) wholeTrades(ctx context.Context, token, ws string, tradeIDs []st
 }
 
 func (t *tools) previewWith(ctx context.Context, req *mcp.CallToolRequest, ws string, build func(token string) (groupingPreview, error)) (*mcp.CallToolResult, previewOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, previewOutput{}, err
 	}
@@ -327,7 +327,7 @@ func describe(symbol string, groups []groupView) string {
 }
 
 func (t *tools) confirmGrouping(ctx context.Context, req *mcp.CallToolRequest, in confirmGroupingInput) (*mcp.CallToolResult, confirmGroupingOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmGroupingOutput{}, err
 	}
@@ -367,7 +367,7 @@ type dismissOutput struct {
 }
 
 func (t *tools) dismissSuggestion(ctx context.Context, req *mcp.CallToolRequest, in suggestionInput) (*mcp.CallToolResult, dismissOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, dismissOutput{}, err
 	}

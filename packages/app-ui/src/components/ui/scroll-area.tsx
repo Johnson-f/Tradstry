@@ -14,6 +14,11 @@ import { cn } from "@tradstry/app-ui/lib/utils";
  * A `max-h-*` on the root does nothing: 100% of an auto height is auto, and the content just
  * grows. When you want "grow to fit, capped", put the cap on the viewport instead:
  * `[&>[data-radix-scroll-area-viewport]]:max-h-56`.
+ *
+ * Radix wraps children in a `display: table` div that grows to its content's width. With no
+ * horizontal scrollbar that overflow is clipped, so long text neither wraps nor truncates and
+ * runs off the right edge. Vertical areas therefore force the wrapper to `block`; horizontal
+ * ones keep the table so wide content can widen it and scroll.
  */
 function ScrollArea({
 	className,
@@ -34,7 +39,10 @@ function ScrollArea({
 			<ScrollAreaPrimitive.Viewport
 				ref={viewportRef}
 				data-slot="scroll-area-viewport"
-				className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+				className={cn(
+					"size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+					orientation === "vertical" && "[&>div]:block!",
+				)}
 			>
 				{children}
 			</ScrollAreaPrimitive.Viewport>

@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-use crate::service::auth::is_oauth_access_token;
+use crate::service::auth::{Subject, TokenKind};
 use crate::service::db::Db;
 use crate::service::db::schema::tables::tags_table;
 use crate::service::db::schema::tables::users_table::{self, User};
 use crate::service::db::schema::tables::workspaces_table;
 
-/// Whether a request may create the Tradstry account for a Clerk user it has not
+/// Whether a request may create the Tradstry account for an auth-provider user it has not
 /// seen before. Sign-up belongs to the web app; connected apps such as MCP
 /// clients act only for accounts that already exist.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,12 +16,11 @@ pub enum Provisioning {
     ExistingOnly,
 }
 
-impl Provisioning {
-    pub fn for_token(token: &str) -> Self {
-        if is_oauth_access_token(token) {
-            Self::ExistingOnly
-        } else {
-            Self::CreateIfMissing
+impl From<TokenKind> for Provisioning {
+    fn from(kind: TokenKind) -> Self {
+        match kind {
+            TokenKind::Session => Self::CreateIfMissing,
+            TokenKind::ConnectedApp => Self::ExistingOnly,
         }
     }
 }
@@ -32,34 +31,27 @@ impl Provisioning {
 )]
 pub struct AccountRequired;
 
-/// Find or create a user from Clerk JWT claims, and make sure they are provisioned
+/// Find or create a user from verified token claims, and make sure they are provisioned
 /// with a default "Main Workspace" and the default tag categories.
-pub async fn ensure_user(db: &Db, clerk_uuid: &str, full_name: &str, email: &str) -> Result<User> {
-    load_user(
-        db,
-        clerk_uuid,
-        full_name,
-        email,
-        Provisioning::CreateIfMissing,
-    )
-    .await
+pub async fn ensure_user(db: &Db, subject: &Subject, full_name: &str, email: &str) -> Result<User> {
+    load_user(db, subject, full_name, email, Provisioning::CreateIfMissing).await
 }
 
-/// Resolve the user for a Clerk subject. With [`Provisioning::ExistingOnly`] an
+/// Resolve the user for a verified subject. With [`Provisioning::ExistingOnly`] an
 /// unknown subject fails with [`AccountRequired`] and nothing is written.
 pub async fn load_user(
     db: &Db,
-    clerk_uuid: &str,
+    subject: &Subject,
     full_name: &str,
     email: &str,
     provisioning: Provisioning,
 ) -> Result<User> {
     let (user, created) = match provisioning {
         Provisioning::CreateIfMissing => {
-            users_table::find_or_create_user(db.connection(), clerk_uuid, full_name, email).await?
+            users_table::find_or_create_user(db.connection(), subject, full_name, email).await?
         }
         Provisioning::ExistingOnly => {
-            let user = users_table::find_by_clerk_uuid(db.connection(), clerk_uuid)
+            let user = users_table::find_user(db.connection(), subject)
                 .await?
                 .ok_or(AccountRequired)?;
             (user, false)

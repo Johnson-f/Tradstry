@@ -612,7 +612,7 @@ export function AgentPanel() {
 
 					<ScrollArea
 						viewportRef={threadViewportRef}
-						className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!h-full"
+						className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!h-full"
 					>
 						<div className="h-full px-4 py-5">
 							<AnimatePresence initial={false} mode="wait">
@@ -718,7 +718,7 @@ export function AgentPanel() {
 									)
 								}
 							/>
-							<ScrollArea className="w-full [&>[data-radix-scroll-area-viewport]]:max-h-48 [&>[data-radix-scroll-area-viewport]>div]:!block">
+							<ScrollArea className="w-full [&>[data-radix-scroll-area-viewport]]:max-h-48">
 								<textarea
 									ref={textareaRef}
 									value={draft}

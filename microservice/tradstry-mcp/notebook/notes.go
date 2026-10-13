@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/oauth"
 )
 
 const unfiled = "Unfiled"
@@ -157,7 +157,7 @@ type noteInput struct {
 }
 
 func (t *tools) getNote(ctx context.Context, req *mcp.CallToolRequest, in noteInput) (*mcp.CallToolResult, noteView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, noteView{}, err
 	}
@@ -199,7 +199,7 @@ type listNotesOutput struct {
 }
 
 func (t *tools) listNotes(ctx context.Context, req *mcp.CallToolRequest, in listNotesInput) (*mcp.CallToolResult, listNotesOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listNotesOutput{}, err
 	}
@@ -253,7 +253,7 @@ type searchOutput struct {
 }
 
 func (t *tools) searchNotes(ctx context.Context, req *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, searchOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, searchOutput{}, err
 	}
@@ -291,7 +291,7 @@ type createInput struct {
 }
 
 func (t *tools) createNote(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -326,7 +326,7 @@ type editInput struct {
 }
 
 func (t *tools) editNote(ctx context.Context, req *mcp.CallToolRequest, in editInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -384,7 +384,7 @@ type appendInput struct {
 }
 
 func (t *tools) appendToNote(ctx context.Context, req *mcp.CallToolRequest, in appendInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -412,7 +412,7 @@ type rewriteInput struct {
 }
 
 func (t *tools) rewriteNote(ctx context.Context, req *mcp.CallToolRequest, in rewriteInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -441,7 +441,7 @@ type updateInput struct {
 }
 
 func (t *tools) updateNote(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -516,7 +516,7 @@ type deleteOutput struct {
 }
 
 func (t *tools) deleteNote(ctx context.Context, req *mcp.CallToolRequest, in deleteNoteInput) (*mcp.CallToolResult, deleteOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deleteOutput{}, err
 	}
@@ -550,7 +550,7 @@ func unapproved(outcome confirm.Outcome) deleteOutput {
 }
 
 func (t *tools) restoreNote(ctx context.Context, req *mcp.CallToolRequest, in noteInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -589,7 +589,7 @@ type deletedOutput struct {
 }
 
 func (t *tools) listDeleted(ctx context.Context, req *mcp.CallToolRequest, in deletedInput) (*mcp.CallToolResult, deletedOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deletedOutput{}, err
 	}
@@ -613,7 +613,7 @@ type tradeNoteInput struct {
 }
 
 func (t *tools) openTradeNote(ctx context.Context, req *mcp.CallToolRequest, in tradeNoteInput) (*mcp.CallToolResult, noteView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, noteView{}, err
 	}

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject, Subscription};
-use clerk_rs::validators::authorizer::ClerkJwt;
 use futures_util::stream;
 
 use crate::service::agents::{
@@ -13,12 +12,13 @@ use crate::service::agents::{
     AgentMessage, AgentMessageActivity, AgentMessageContext, AgentRun, AgentRunEvent,
     AgentRunHandle, AgentRunStatus, AgentScope, AgentService, SendAgentMessage,
 };
+use crate::service::auth::AuthClaims;
 
 async fn actor_and_service(ctx: &Context<'_>) -> Result<(AgentActor, Arc<AgentService>)> {
     let (_, user_id) = crate::graphql::auth::resolve_user(ctx).await?;
-    let clerk_id = ctx.data::<ClerkJwt>()?.sub.clone();
+    let subject = ctx.data::<AuthClaims>()?.sub.clone();
     Ok((
-        AgentActor { user_id, clerk_id },
+        AgentActor { user_id, subject },
         ctx.data::<Arc<AgentService>>()?.clone(),
     ))
 }

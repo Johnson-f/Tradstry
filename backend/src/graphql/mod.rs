@@ -1,3 +1,4 @@
+mod account;
 mod agents;
 mod analytics;
 pub(crate) mod auth;
@@ -21,6 +22,7 @@ use async_graphql::{MergedObject, MergedSubscription, Schema};
 
 #[derive(MergedObject, Default)]
 pub struct Query(
+    account::AccountQuery,
     agents::AgentQuery,
     brokerage::BrokerageQuery,
     users::UserQuery,
@@ -45,6 +47,7 @@ pub struct Query(
 
 #[derive(MergedObject, Default)]
 pub struct Mutation(
+    account::AccountMutation,
     agents::AgentMutation,
     brokerage::BrokerageMutation,
     workspaces::WorkspaceMutation,
@@ -78,6 +81,7 @@ pub fn build_schema(
     portal_redirects: crate::service::brokerage::portal::PortalRedirects,
     redis_client: Option<std::sync::Arc<crate::service::redis::client::RedisClient>>,
     notification_events: notifications::NotificationEventBus,
+    stytch: Option<std::sync::Arc<crate::service::stytch::StytchClient>>,
 ) -> AppSchema {
     let mut builder = Schema::build(
         Query::default(),
@@ -96,6 +100,9 @@ pub fn build_schema(
 
     if let Some(redis) = redis_client {
         builder = builder.data(redis);
+    }
+    if let Some(stytch) = stytch {
+        builder = builder.data(stytch);
     }
 
     builder.finish()

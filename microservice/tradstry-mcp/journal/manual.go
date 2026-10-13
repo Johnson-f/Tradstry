@@ -11,9 +11,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 const (
@@ -118,7 +118,7 @@ func manualMessage(m manualTrade, verb string) string {
 }
 
 func (t *tools) addManual(ctx context.Context, req *mcp.CallToolRequest, in addManualInput) (*mcp.CallToolResult, manualOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, manualOutput{}, err
 	}
@@ -216,7 +216,7 @@ func (t *tools) readManual(ctx context.Context, token, ws, id string) (manualTra
 }
 
 func (t *tools) updateManual(ctx context.Context, req *mcp.CallToolRequest, in updateManualInput) (*mcp.CallToolResult, manualOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, manualOutput{}, err
 	}
@@ -297,7 +297,7 @@ type deleteManualOutput struct {
 }
 
 func (t *tools) deleteManual(ctx context.Context, req *mcp.CallToolRequest, in deleteManualInput) (*mcp.CallToolResult, deleteManualOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deleteManualOutput{}, err
 	}

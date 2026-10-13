@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/oauth"
 )
 
 type duplicateAnswer string
@@ -31,7 +31,7 @@ type resolveDuplicateOutput struct {
 }
 
 func (t *tools) resolveDuplicate(ctx context.Context, req *mcp.CallToolRequest, in resolveDuplicateInput) (*mcp.CallToolResult, resolveDuplicateOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, resolveDuplicateOutput{}, err
 	}

@@ -1,6 +1,6 @@
-import { SignUp } from "@clerk/nextjs";
 import type { Metadata } from "next";
-import { inkAppearance } from "@/components/auth/appearance";
+import { Suspense } from "react";
+import { AuthLogin } from "@/components/auth/auth-login";
 import { AuthShell } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
@@ -14,10 +14,12 @@ export const metadata: Metadata = {
 export default function SignUpPage() {
   return (
     <AuthShell
-      title="Start the record."
-      subtitle="Connect a broker and it fills itself."
+      title="Start your trading journal."
+      subtitle="Your trades tell a story. Start making sense of it."
     >
-      <SignUp appearance={inkAppearance} />
+      <Suspense>
+        <AuthLogin />
+      </Suspense>
     </AuthShell>
   );
 }

@@ -37,7 +37,7 @@ pub async fn execute(
         knowledge: service.knowledge().cloned(),
         actor: AgentActor {
             user_id: run.user_id.clone(),
-            clerk_id: String::new(),
+            subject: String::new(),
         },
         scope: AgentScope {
             workspace_id: run.workspace_id.clone(),

@@ -1,5 +1,6 @@
 //! Self-healing user provisioning and mistake search over mistake-role tags.
 
+use tradstry_backend::service::auth::Subject;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::db::schema::tables::{journal_table, tags_table, users_table};
 use tradstry_backend::service::read_service::journal::JournalFilter;
@@ -12,7 +13,7 @@ async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
-    let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
+    let clerk_uuid = Subject::Clerk(tradstry_backend::ids::new_uuid_v7().to_string());
 
     // Simulates provisioning failing right after the user row was inserted.
     let (_, created) = users_table::find_or_create_user(db.connection(), &clerk_uuid, "", "")
@@ -56,7 +57,7 @@ async fn blank_profile_fields_are_filled_but_never_overwritten() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
-    let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
+    let clerk_uuid = Subject::Clerk(tradstry_backend::ids::new_uuid_v7().to_string());
 
     let user = ensure_user(&db, &clerk_uuid, "", "").await.unwrap();
     assert_eq!(user.email, "");

@@ -1,15 +1,15 @@
 use async_graphql::{Context, Error, ErrorExtensions, Result};
-use clerk_rs::validators::authorizer::ClerkJwt;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
+use crate::service::auth::{AuthClaims, Subject};
 use crate::service::db::Db;
 use crate::service::db::client::UserDb;
 use crate::service::db::schema::tables::users_table::User;
 use crate::service::read_service::users::{self, AccountRequired, Provisioning};
 
 /// Request-local authenticated principal. A single GraphQL document can execute
-/// many root resolvers, but resolving the Clerk subject must hit Postgres once.
+/// many root resolvers, but resolving the token's subject must hit Postgres once.
 #[derive(Default)]
 pub(crate) struct RequestUser(OnceCell<AuthenticatedUser>);
 
@@ -19,34 +19,29 @@ struct AuthenticatedUser {
 }
 
 async fn load_user(ctx: &Context<'_>) -> Result<AuthenticatedUser> {
-    let jwt = ctx.data::<ClerkJwt>()?;
+    let claims = ctx.data::<AuthClaims>()?;
     let db = ctx.data::<Arc<Db>>()?;
-    let full_name = jwt
-        .other
-        .get("full_name")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-    let email = jwt
-        .other
-        .get("email")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
     // A context that never states its rule is treated as a connected app: only
     // the web request path may sign users up.
     let provisioning = ctx
         .data_opt::<Provisioning>()
         .copied()
         .unwrap_or(Provisioning::ExistingOnly);
-    let user = users::load_user(db, &jwt.sub, full_name, email, provisioning)
-        .await
-        .map_err(|err| {
-            if err.is::<AccountRequired>() {
-                Error::new(err.to_string())
-                    .extend_with(|_, ext| ext.set("code", "ACCOUNT_REQUIRED"))
-            } else {
-                err.into()
-            }
-        })?;
+    let user = users::load_user(
+        db,
+        &Subject::from(claims),
+        claims.full_name(),
+        claims.email(),
+        provisioning,
+    )
+    .await
+    .map_err(|err| {
+        if err.is::<AccountRequired>() {
+            Error::new(err.to_string()).extend_with(|_, ext| ext.set("code", "ACCOUNT_REQUIRED"))
+        } else {
+            err.into()
+        }
+    })?;
 
     let user_db = db.get_user_db(&user.id);
     Ok(AuthenticatedUser { user, db: user_db })

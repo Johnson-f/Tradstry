@@ -11,7 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
+	"tradstry-mcp/oauth"
 )
 
 type (
@@ -37,7 +37,7 @@ type contextInput struct {
 }
 
 func (t *tools) updateContext(ctx context.Context, req *mcp.CallToolRequest, in contextInput) (*mcp.CallToolResult, contextView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, contextView{}, err
 	}
@@ -188,7 +188,7 @@ type reviewInput struct {
 }
 
 func (t *tools) saveReview(ctx context.Context, req *mcp.CallToolRequest, in reviewInput) (*mcp.CallToolResult, draftView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, draftView{}, err
 	}
@@ -257,7 +257,7 @@ type markOutput struct {
 }
 
 func (t *tools) markReviewed(ctx context.Context, req *mcp.CallToolRequest, in markInput) (*mcp.CallToolResult, markOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, markOutput{}, err
 	}
@@ -308,7 +308,7 @@ type nextOutput struct {
 }
 
 func (t *tools) next(ctx context.Context, req *mcp.CallToolRequest, in nextInput) (*mcp.CallToolResult, nextOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, nextOutput{}, err
 	}

@@ -9,9 +9,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 // activePlan is an open plan's status; its entries start as "planned".
@@ -72,7 +72,7 @@ type createPlanInput struct {
 }
 
 func (t *tools) createPlan(ctx context.Context, req *mcp.CallToolRequest, in createPlanInput) (*mcp.CallToolResult, planView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, planView{}, err
 	}
@@ -118,7 +118,7 @@ func (t *tools) listPlans(ctx context.Context, req *mcp.CallToolRequest, in list
 	var out struct {
 		Plans []planView `json:"plans"`
 	}
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, out, err
 	}
@@ -172,7 +172,7 @@ type updatePlanInput struct {
 }
 
 func (t *tools) updatePlan(ctx context.Context, req *mcp.CallToolRequest, in updatePlanInput) (*mcp.CallToolResult, planView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, planView{}, err
 	}
@@ -292,7 +292,7 @@ type deletePlanInput struct {
 }
 
 func (t *tools) deletePlan(ctx context.Context, req *mcp.CallToolRequest, in deletePlanInput) (*mcp.CallToolResult, confirmOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmOutput{}, err
 	}

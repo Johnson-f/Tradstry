@@ -2,13 +2,12 @@ use actix_web::{HttpMessage, HttpRequest, HttpResponse, Result, web};
 use async_graphql::Data;
 use async_graphql::http::GraphiQLSource;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
-use clerk_rs::validators::authorizer::ClerkJwt;
 use log::{error, info};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::graphql::AppSchema;
-use crate::service::auth::TokenVerifier;
+use crate::service::auth::{AuthClaims, TokenVerifier};
 use crate::service::db::Db;
 use crate::service::read_service::users::Provisioning;
 use crate::service::upload::r2::R2Client;
@@ -45,10 +44,10 @@ pub async fn graphql_handler(
         .unwrap_or("")
         .trim()
         .to_string();
-    let auth = http_req.extensions().get::<ClerkJwt>().cloned();
+    let auth = http_req.extensions().get::<AuthClaims>().cloned();
     let auth_subject = auth
         .as_ref()
-        .map(|jwt| jwt.sub.clone())
+        .map(|claims| claims.sub.clone())
         .unwrap_or_else(|| "anonymous".to_string());
 
     info!(
@@ -60,10 +59,10 @@ pub async fn graphql_handler(
         query_preview
     );
 
-    if let Some(jwt) = auth {
-        request = request.data(jwt);
+    if let Some(claims) = auth {
+        request = request.data(Provisioning::from(claims.kind));
+        request = request.data(claims);
     }
-    request = request.data(super::auth::provisioning(&http_req));
     request = request.data(db.get_ref().clone());
     request = request.data(r2.get_ref().clone());
     request = request.data(async_graphql::dataloader::DataLoader::new(
@@ -108,10 +107,10 @@ pub async fn graphql_ws_handler(
 ) -> Result<HttpResponse> {
     let mut data = Data::default();
 
-    if let Some(jwt) = http_req.extensions().get::<ClerkJwt>().cloned() {
-        data.insert(jwt);
+    if let Some(claims) = http_req.extensions().get::<AuthClaims>().cloned() {
+        data.insert(Provisioning::from(claims.kind));
+        data.insert(claims);
     }
-    data.insert(super::auth::provisioning(&http_req));
     data.insert(db.get_ref().clone());
     data.insert(r2.get_ref().clone());
     data.insert(crate::graphql::auth::RequestUser::default());
@@ -130,12 +129,12 @@ pub async fn graphql_ws_handler(
                         .or_else(|| payload.get("token").and_then(|value| value.as_str()))
                     {
                         let token = token.trim().trim_start_matches("Bearer ").to_string();
-                        let jwt = verifier
+                        let claims = verifier
                             .verify(&token)
                             .await
                             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-                        data.insert(jwt);
-                        data.insert(Provisioning::for_token(&token));
+                        data.insert(Provisioning::from(claims.kind));
+                        data.insert(claims);
                     }
                     Ok(data)
                 }

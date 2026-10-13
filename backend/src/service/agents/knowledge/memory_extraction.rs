@@ -114,7 +114,7 @@ async fn process_job(
         knowledge: service.knowledge().cloned(),
         actor: AgentActor {
             user_id: job.user_id.clone(),
-            clerk_id: String::new(),
+            subject: String::new(),
         },
         scope: AgentScope {
             workspace_id: job.workspace_id.clone(),
