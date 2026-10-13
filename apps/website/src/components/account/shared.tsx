@@ -1,24 +1,21 @@
 "use client";
 
-import type { useUser } from "@clerk/nextjs";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type * as React from "react";
 import { Label } from "@tradstry/app-ui/components/ui/label";
 import { cn } from "@tradstry/app-ui/lib/utils";
+import type { StytchUser } from "@/lib/stytch";
 
-export type ClerkUser = NonNullable<ReturnType<typeof useUser>["user"]>;
-export type EmailResource = ClerkUser["emailAddresses"][number];
-export type ExternalAccount = ClerkUser["externalAccounts"][number];
-export type DeviceSession = Awaited<
-  ReturnType<ClerkUser["getSessions"]>
->[number];
+export type EmailResource = StytchUser["emails"][number];
+export type OAuthProvider = StytchUser["providers"][number];
 
-export function clerkError(err: unknown, fallback: string): string {
-  const errors = (
-    err as { errors?: Array<{ longMessage?: string; message?: string }> } | null
-  )?.errors;
-  return errors?.[0]?.longMessage ?? errors?.[0]?.message ?? fallback;
+export function errorMessage(err: unknown, fallback: string): string {
+  const { error_message, message } = (err ?? {}) as {
+    error_message?: string;
+    message?: string;
+  };
+  return error_message ?? message ?? fallback;
 }
 
 export function Section({

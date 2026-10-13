@@ -329,6 +329,16 @@ input AnalyticsTimeFilterInput {
 	endDate: String
 }
 
+type AuthSession {
+	id: String!
+	startedAt: String!
+	lastAccessedAt: String!
+	expiresAt: String
+	ipAddress: String
+	userAgent: String
+	current: Boolean!
+}
+
 input BrokerageAccountImportInput {
 	snaptradeAccountId: String!
 	policy: TransactionImportPolicyInput!
@@ -1313,6 +1323,15 @@ input MoveNotebookNodeInput {
 }
 
 type Mutation {
+	"""
+	Signs out one of the caller's sessions.
+	"""
+	revokeAuthSession(id: String!): Boolean!
+	"""
+	Permanently deletes the caller's account and data. Needs a sign-in within
+	the last five minutes.
+	"""
+	deleteAccount: Boolean!
 	createAgentConversation(workspaceId: String!): AgentConversationGql!
 	renameAgentConversation(conversationId: String!, title: String!): AgentConversationGql!
 	deleteAgentConversation(conversationId: String!): Boolean!
@@ -1968,6 +1987,10 @@ type PushSubscriptionGql {
 }
 
 type Query {
+	"""
+	Active sign-in sessions for the caller.
+	"""
+	authSessions: [AuthSession!]!
 	agentCapabilities: AgentCapabilitiesGql!
 	agentConversations(workspaceId: String!, limit: Int): [AgentConversationGql!]!
 	agentContextSearch(workspaceId: String!, query: String!, limit: Int): [AgentContextSearchResultGql!]!
@@ -2519,7 +2542,8 @@ input UpsertPositionCalculatorRuleInput {
 
 type User {
 	id: String!
-	clerkUuid: String!
+	clerkUuid: String
+	stytchUserId: String
 	fullName: String!
 	email: String!
 	createdAt: String!

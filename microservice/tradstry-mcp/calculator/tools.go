@@ -10,9 +10,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 type direction string
@@ -152,7 +152,7 @@ func (t *tools) rulesOf(ctx context.Context, token, ws string) (settings, rulesV
 }
 
 func (t *tools) getRules(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, rulesView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, rulesView{}, err
 	}
@@ -168,7 +168,7 @@ type setRulesInput struct {
 }
 
 func (t *tools) setRules(ctx context.Context, req *mcp.CallToolRequest, in setRulesInput) (*mcp.CallToolResult, rulesView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, rulesView{}, err
 	}
@@ -313,7 +313,7 @@ func (t *tools) sizeFor(ctx context.Context, token string, in sizeInput) (sizing
 }
 
 func (t *tools) calculate(ctx context.Context, req *mcp.CallToolRequest, in sizeInput) (*mcp.CallToolResult, calculationView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, calculationView{}, err
 	}
@@ -332,7 +332,7 @@ type savedView struct {
 }
 
 func (t *tools) saveCalculation(ctx context.Context, req *mcp.CallToolRequest, in saveInput) (*mcp.CallToolResult, savedView, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, savedView{}, err
 	}
@@ -382,7 +382,7 @@ func (t *tools) listHistory(ctx context.Context, req *mcp.CallToolRequest, in hi
 	var out struct {
 		Entries []historyView `json:"entries"`
 	}
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, out, err
 	}
@@ -429,7 +429,7 @@ func unapproved(outcome confirm.Outcome) confirmOutput {
 }
 
 func (t *tools) deleteEntry(ctx context.Context, req *mcp.CallToolRequest, in deleteEntryInput) (*mcp.CallToolResult, confirmOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, confirmOutput{}, err
 	}

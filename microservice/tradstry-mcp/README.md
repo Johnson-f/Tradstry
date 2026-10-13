@@ -5,7 +5,7 @@ of the tradstry.com UI. The plan is
 `docs/plans/2026-10-09-feature-tradstry-mcp-go-plan.md`.
 
 The server holds no database or storage credentials. It verifies the caller's
-Clerk OAuth access token, then calls the backend's GraphQL API with that same
+Stytch OAuth access token, then calls the backend's GraphQL API with that same
 token, so the backend enforces ownership exactly as it does for the web app.
 Accounts are created only by signing up on tradstry.com; the backend answers
 `ACCOUNT_REQUIRED` for anyone else, and tools relay that as a sign-up message.
@@ -18,7 +18,7 @@ its GraphQL operations and its tests, and registers itself in `app/server.go`.
 | Folder | Contents |
 | --- | --- |
 | `app/` | Configuration, HTTP server and MCP server setup |
-| `clerk/` | Token verification and sign-in discovery metadata |
+| `oauth/` | Token verification and sign-in discovery metadata |
 | `graphql/` | Client for the Tradstry API and its error handling |
 | `confirm/` | User confirmation before actions that cannot be undone |
 | `workspaces/` | `list_workspaces`, `create_workspace`, `update_workspace`, `delete_workspace` |
@@ -103,31 +103,36 @@ Tools such as `delete_workspace` never act on the assistant's word alone.
 
 The signing key is generated at startup, so outstanding tokens stop working when the server restarts.
 
+## Authentication
+
+Sign-in runs through Stytch Connected Apps with Dynamic Client Registration turned on, so MCP clients register themselves. The server only verifies tokens: RS256, `iss` equal to `OAUTH_ISSUER`, `aud` containing `OAUTH_AUDIENCE`, and non-empty `sub` and `client_id` (session JWTs have no `client_id`, so they are refused). The bearer token is forwarded to the backend.
+
 ## Configuration
 
 Create `microservice/tradstry-mcp/.env`:
 
 ```bash
 MCP_PUBLIC_URL=http://localhost:7910
-CLERK_ISSUER=https://clerk.your-dev-instance.example
+OAUTH_ISSUER=https://auth.your-dev-instance.example
+OAUTH_AUDIENCE=project-test-00000000-0000-0000-0000-000000000000
 TRADSTRY_API_URL=http://localhost:7901
 MCP_BIND_ADDR=127.0.0.1:7910
 REDIS_URL=redis://localhost:6379
 ```
 
 - `MCP_PUBLIC_URL`: the origin clients reach this server at. Production is `https://mcp.tradstry.com`.
-- `CLERK_ISSUER`: the Clerk instance that issues OAuth access tokens. Signing keys load from its `/.well-known/jwks.json` at startup.
+- `OAUTH_ISSUER`: the Stytch project domain that issues OAuth access tokens (no trailing slash). Signing keys load from its `/.well-known/jwks.json` at startup. It is the Stytch project domain, e.g. `https://{noun}-{verb}-{number}.customers.stytch.com`.
+- `OAUTH_AUDIENCE`: the Stytch project ID. Connected Apps put it first in every access token's `aud`, and tokens that don't name it are refused.
 - `TRADSTRY_API_URL`: the backend origin, without `/graphql`.
 - `MCP_BIND_ADDR`: defaults to `0.0.0.0:7900`.
-- `MCP_REQUIRE_AUDIENCE`: `false` by default. A token that names an audience must always name this server (`MCP_PUBLIC_URL` or `MCP_PUBLIC_URL/mcp`). Set `true` to also refuse tokens that name none, after turning on "Include Audience" for OAuth applications in Clerk; until then, each such token is logged.
 - `REDIS_URL`: where rate limits are counted, shared by every copy of the server. In production use the Compose Redis with its password, `redis://:<REDIS_PASSWORD>@redis:6379`.
 
 ## Endpoints
 
 | Path | Purpose |
 | --- | --- |
-| `/mcp` | Streamable HTTP MCP endpoint; requires a Clerk OAuth access token |
-| `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | RFC 9728 metadata pointing clients at Clerk |
+| `/mcp` | Streamable HTTP MCP endpoint; requires a Stytch OAuth access token |
+| `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | RFC 9728 metadata pointing clients at Stytch |
 | `/brokerage/connected` | Page SnapTrade's connection portal returns the browser to |
 | `/brokerage/snaptrade-authorized` | Page the backend sends the browser to after SnapTrade OAuth |
 | `/health` | Liveness |

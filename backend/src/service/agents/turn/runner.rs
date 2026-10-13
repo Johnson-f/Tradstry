@@ -49,7 +49,7 @@ impl<'a> AgentTurnRunner<'a> {
         }
         let actor = AgentActor {
             user_id: run.user_id.clone(),
-            clerk_id: String::new(),
+            subject: String::new(),
         };
         self.service
             .budget()

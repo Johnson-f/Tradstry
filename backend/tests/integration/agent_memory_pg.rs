@@ -110,7 +110,7 @@ async fn memory_controls_are_owned_and_conversation_delete_cascades() {
     let (other_user, _) = crate::pg_support::seed_user_workspace(&fixture.pool).await;
     let other = tradstry_backend::service::agents::AgentActor {
         user_id: other_user,
-        clerk_id: "other".into(),
+        subject: "other".into(),
     };
     assert!(
         fixture

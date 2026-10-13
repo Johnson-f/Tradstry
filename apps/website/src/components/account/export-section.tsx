@@ -1,14 +1,14 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import * as React from "react";
 import { toast } from "sonner";
 import { Section, Spinner } from "@/components/account/shared";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { getBackendBaseUrl } from "@/lib/client/backend-connection";
+import { useGetToken } from "@/lib/client/use-get-token";
 
 export function ExportSection() {
-  const { getToken } = useAuth();
+  const getToken = useGetToken();
   const [busy, setBusy] = React.useState(false);
 
   async function download() {

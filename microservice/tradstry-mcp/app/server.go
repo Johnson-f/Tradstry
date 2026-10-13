@@ -15,11 +15,11 @@ import (
 	"tradstry-mcp/analytics"
 	"tradstry-mcp/brokerage"
 	"tradstry-mcp/calculator"
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
 	"tradstry-mcp/journal"
 	"tradstry-mcp/notebook"
+	"tradstry-mcp/oauth"
 	"tradstry-mcp/playbooks"
 	"tradstry-mcp/principles"
 	"tradstry-mcp/ratelimit"
@@ -50,12 +50,10 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	verifier, err := clerk.NewVerifier(ctx, cfg.ClerkIssuer)
+	verifier, err := oauth.NewVerifier(ctx, cfg.OAuthIssuer, cfg.OAuthAudience)
 	if err != nil {
 		return err
 	}
-	// Clients name the server by its origin or its /mcp endpoint (RFC 8707).
-	verifier.WithAudience([]string{cfg.PublicURL, cfg.PublicURL + "/mcp"}, cfg.RequireAudience)
 	api := graphql.NewClient(cfg.APIURL, &http.Client{})
 	redisOptions, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
@@ -91,18 +89,18 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func NewHandler(cfg Config, verifier *clerk.Verifier, api *graphql.Client, limiter *ratelimit.Limiter) http.Handler {
+func NewHandler(cfg Config, verifier *oauth.Verifier, api *graphql.Client, limiter *ratelimit.Limiter) http.Handler {
 	mcpServer, landing := newMCPServer(api, cfg.PublicURL)
 	mcpServer.AddReceivingMiddleware(limiter.Middleware(readOnlyTools(mcpServer)))
 	// Added last so it wraps the rate limiter and logs limited calls too.
 	mcpServer.AddReceivingMiddleware(logMethods)
 	mcpHandler := byProtocol(mcpServer)
 	requireToken := sdkauth.RequireBearerToken(verifier.Verify, &sdkauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: cfg.PublicURL + clerk.MetadataPath,
+		ResourceMetadataURL: cfg.PublicURL + oauth.MetadataPath,
 	})
 
 	mux := http.NewServeMux()
-	clerk.RegisterMetadata(mux, cfg.PublicURL, cfg.ClerkIssuer)
+	oauth.RegisterMetadata(mux, cfg.PublicURL, cfg.OAuthIssuer)
 	mux.Handle("/mcp", requireToken(mcpHandler))
 	mux.Handle(brokerage.RoutePrefix, landing)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {

@@ -9,6 +9,7 @@ pub mod notebook;
 pub mod notifications;
 pub mod read_service;
 pub mod redis;
+pub mod stytch;
 pub mod telemetry;
 pub mod trade_review;
 pub mod trading_performance;

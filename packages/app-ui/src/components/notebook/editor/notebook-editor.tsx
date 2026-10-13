@@ -229,8 +229,8 @@ export function NotebookEditor({
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
-  // `fetcher` must NOT be a dependency. It is memoized on Clerk's `getToken`, whose
-  // identity churns; a new fetcher re-runs this effect, whose cleanup cancels the
+  // `fetcher` must NOT be a dependency. It is memoized on the platform's `getToken`, whose
+  // identity can churn; a new fetcher re-runs this effect, whose cleanup cancels the
   // in-flight request before it resolves — so `setState` never fires and the editor
   // loads forever. Every other caller passes `fetcher` into a queryFn, never a dep.
   useEffect(() => {

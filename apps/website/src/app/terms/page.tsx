@@ -62,7 +62,7 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          Accounts are handled by Clerk, our authentication provider. You are
+          Accounts are handled by Stytch, our authentication provider. You are
           responsible for keeping your credentials safe and for everything that
           happens under your account. Tell us promptly if you think it's been
           compromised.
@@ -216,7 +216,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         We work hard to keep Tradstry up, but we don't promise uninterrupted
         service. We may take it down for maintenance, and features may change or
-        be withdrawn. Parts of Tradstry depend on third parties — Clerk,
+        be withdrawn. Parts of Tradstry depend on third parties — Stytch,
         SnapTrade, your broker, market-data providers, AI model providers — and
         when they fail, we may fail with them.
       </p>

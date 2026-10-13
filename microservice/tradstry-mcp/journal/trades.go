@@ -9,7 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
+	"tradstry-mcp/oauth"
 )
 
 const (
@@ -126,7 +126,7 @@ func (t *tools) requireJournal(ctx context.Context, token, ws string) (flowStatu
 }
 
 func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -240,7 +240,7 @@ type tradeDetail struct {
 }
 
 func (t *tools) get(ctx context.Context, req *mcp.CallToolRequest, in tradeInput) (*mcp.CallToolResult, tradeDetail, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, tradeDetail{}, err
 	}

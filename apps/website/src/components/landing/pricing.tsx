@@ -1,11 +1,11 @@
 "use client";
 
-import { SignUpButton } from "@clerk/nextjs";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import Link from "next/link";
 import { useState } from "react";
 import { PLANS } from "./content";
 import { Reveal } from "./motion";
@@ -124,18 +124,17 @@ export function Pricing() {
                 <p className="mt-2 min-h-10 text-xs leading-5 text-zinc-400">
                   {billingNote}
                 </p>
-                <SignUpButton>
-                  <Button
-                    className={cn(
-                      "mt-5 h-11 w-full rounded-xl active:scale-[0.97]",
-                      isPro
-                        ? "bg-zinc-950 text-white hover:bg-zinc-800"
-                        : "border border-zinc-300 bg-white text-zinc-950 hover:bg-zinc-100",
-                    )}
-                  >
-                    {plan.cta}
-                  </Button>
-                </SignUpButton>
+                <Button
+                  asChild
+                  className={cn(
+                    "mt-5 h-11 w-full rounded-xl active:scale-[0.97]",
+                    isPro
+                      ? "bg-zinc-950 text-white hover:bg-zinc-800"
+                      : "border border-zinc-300 bg-white text-zinc-950 hover:bg-zinc-100",
+                  )}
+                >
+                  <Link href="/sign-up">{plan.cta}</Link>
+                </Button>
                 <ul className="mt-7 space-y-3 border-t border-zinc-200 pt-6">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3">

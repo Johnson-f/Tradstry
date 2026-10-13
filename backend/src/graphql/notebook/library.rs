@@ -2,11 +2,11 @@ use async_graphql::{Context, Object, Result};
 
 use crate::graphql::auth::user_db;
 use crate::service::agents::{AgentActor, AgentService};
+use crate::service::auth::AuthClaims;
 use crate::service::notebook::library::{
     self, DeletedNotebookNotePage, NotebookFolderNoteCount, NotebookNoteFilter,
     NotebookNoteSummaryPage, NotebookSearchHit,
 };
-use clerk_rs::validators::authorizer::ClerkJwt;
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -51,7 +51,7 @@ impl NotebookLibraryQuery {
             .ok_or("SEARCH_UNAVAILABLE: note search is not configured")?;
         let actor = AgentActor {
             user_id: db.user_id().to_string(),
-            clerk_id: ctx.data::<ClerkJwt>()?.sub.clone(),
+            subject: ctx.data::<AuthClaims>()?.sub.clone(),
         };
         Ok(
             library::search_notes(db.pool(), &knowledge, &actor, &workspace_id, &query, limit)

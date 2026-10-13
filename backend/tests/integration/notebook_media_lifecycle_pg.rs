@@ -317,10 +317,10 @@ async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged
 -> anyhow::Result<()> {
     use anyhow::ensure;
     use async_graphql::{Request, Schema, Variables};
-    use clerk_rs::validators::authorizer::ClerkJwt;
     use serde_json::json;
     use sqlx::migrate::Migrator;
     use std::{path::PathBuf, sync::Arc};
+    use tradstry_backend::service::auth::{AuthClaims, AuthProvider, TokenKind};
     use tradstry_backend::{
         graphql::{Mutation, Query, Subscription},
         service::db::Db,
@@ -378,7 +378,7 @@ async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged
                 .bind(actor).fetch_one(&pool).await?;
             let response = api.execute(Request::new("mutation($id:String!){deleteNotebookNote(id:$id)}")
                 .variables(Variables::from_json(json!({"id":note})))
-                .data(ClerkJwt {sub:subject,azp:None,exp:i32::MAX,iat:0,iss:"test".into(),nbf:0,sid:None,act:None,org:None,other:Default::default()})).await;
+                .data(AuthClaims {sub:subject,iss:"test".into(),provider:AuthProvider::Clerk,kind:TokenKind::Session,other:Default::default()})).await;
             ensure!(response.errors.is_empty(), "Delete failed: {:?}", response.errors);
             ensure!(response.data.into_json()?["deleteNotebookNote"] == expected, "Delete authorization/idempotency failed");
         }

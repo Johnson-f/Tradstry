@@ -1,6 +1,6 @@
 "use client";
 
-import { SignUpButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Reveal } from "./motion";
 
@@ -20,14 +20,13 @@ export function Cta() {
               One connected record for every plan, execution, and review.
             </p>
           </div>
-          <SignUpButton>
-            <Button
-              size="lg"
-              className="h-12 rounded-xl bg-zinc-950 px-8 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
-            >
-              Start free
-            </Button>
-          </SignUpButton>
+          <Button
+            asChild
+            size="lg"
+            className="h-12 rounded-xl bg-zinc-950 px-8 text-sm font-semibold text-white hover:bg-zinc-800 active:scale-[0.97]"
+          >
+            <Link href="/sign-up">Start free</Link>
+          </Button>
         </div>
       </Reveal>
     </section>

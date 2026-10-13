@@ -39,7 +39,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub approved_by_user_id: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
-    pub approved_by_clerk_id: Option<String>,
+    pub approved_by_subject: Option<String>,
     pub approved_at: Option<DateTimeWithTimeZone>,
     pub rejected_at: Option<DateTimeWithTimeZone>,
     pub executed_at: Option<DateTimeWithTimeZone>,

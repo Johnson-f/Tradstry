@@ -208,10 +208,10 @@ impl AgentStore {
         .map_err(|_| AgentError::Conflict)?;
         row = sqlx::query(
             "UPDATE agent_action_proposals SET status='approved',approved_by_user_id=$1,
-             approved_by_clerk_id=$2,approved_at=now(),updated_at=now() WHERE id=$3 RETURNING *",
+             approved_by_subject=$2,approved_at=now(),updated_at=now() WHERE id=$3 RETURNING *",
         )
         .bind(&actor.user_id)
-        .bind(&actor.clerk_id)
+        .bind(&actor.subject)
         .bind(proposal_id)
         .fetch_one(&mut *tx)
         .await?;

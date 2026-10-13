@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 type viewMediaInput struct {
@@ -24,7 +24,7 @@ type viewMediaOutput struct {
 }
 
 func (t *tools) viewMedia(ctx context.Context, req *mcp.CallToolRequest, in viewMediaInput) (*mcp.CallToolResult, viewMediaOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, viewMediaOutput{}, err
 	}

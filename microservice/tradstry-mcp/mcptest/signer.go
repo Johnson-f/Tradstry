@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	Issuer  = "https://clerk.test.tradstry.com"
-	Subject = "user_123"
+	Issuer   = "https://quiet-river-1234.customers.stytch.dev"
+	Audience = "project-test-123"
+	Subject  = "user-test-123"
 )
 
-// Signer mints Clerk-shaped tokens with a throwaway key.
+// Signer mints Stytch-shaped tokens with a throwaway key.
 type Signer struct {
 	key *rsa.PrivateKey
 }
@@ -35,13 +36,16 @@ func (s *Signer) Keyfunc(*jwt.Token) (any, error) {
 }
 
 // Token returns a token with the given JOSE typ header. Claims left unset
-// default to a valid Clerk OAuth access token for Subject.
+// default to a valid Stytch Connected Apps access token for Subject.
 func (s *Signer) Token(t *testing.T, typ string, claims jwt.MapClaims) string {
 	t.Helper()
 	all := jwt.MapClaims{
-		"iss": Issuer,
-		"sub": Subject,
-		"exp": time.Now().Add(time.Hour).Unix(),
+		"iss":       Issuer,
+		"aud":       []string{Audience},
+		"sub":       Subject,
+		"client_id": "connected-app-test",
+		"scope":     "openid profile email offline_access",
+		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
 	maps.Copy(all, claims)
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, all)
@@ -54,5 +58,5 @@ func (s *Signer) Token(t *testing.T, typ string, claims jwt.MapClaims) string {
 }
 
 func (s *Signer) AccessToken(t *testing.T) string {
-	return s.Token(t, "at+jwt", nil)
+	return s.Token(t, "JWT", nil)
 }

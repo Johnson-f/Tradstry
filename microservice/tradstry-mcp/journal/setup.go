@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/oauth"
 )
 
 // How long start_journal waits for the first trades before reporting that the
@@ -54,7 +54,7 @@ type startOutput struct {
 }
 
 func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, statusOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, statusOutput{}, err
 	}
@@ -96,7 +96,7 @@ func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspa
 }
 
 func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startInput) (*mcp.CallToolResult, startOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, startOutput{}, err
 	}

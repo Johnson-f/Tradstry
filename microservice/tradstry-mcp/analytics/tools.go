@@ -13,8 +13,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 const (
@@ -137,7 +137,7 @@ type breakdownInput struct {
 
 // prepare resolves everything an answer needs before the analytics call.
 func (t *tools) prepare(ctx context.Context, req *mcp.CallToolRequest, ws string, in periodInput, playbook, tag string) (string, workspaceContext, window, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return "", workspaceContext{}, window{}, err
 	}

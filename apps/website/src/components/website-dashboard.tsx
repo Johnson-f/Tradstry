@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth, useClerk, useUser } from "@clerk/nextjs";
+import { useStytch, useStytchSession, useStytchUser } from "@stytch/nextjs";
 import {
   createHttpGraphQLFetcher,
   createWebSocketGraphQLSubscriber,
@@ -12,7 +12,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import * as React from "react";
 import { AccountDialog } from "@/components/account";
+import { useGetToken } from "@/lib/client/use-get-token";
 import { SITE_URL } from "@/lib/site";
+import { userAvatarUrl, userEmail, userFullName } from "@/lib/stytch";
 
 const GRAPHQL_ENDPOINT =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:7899/graphql";
@@ -23,40 +25,41 @@ const DASHBOARD_COMPACT_METRICS =
 export function WebsiteDashboard() {
   const pathname = usePathname();
   const router = useRouter();
-  const auth = useAuth();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const stytch = useStytch();
+  const { session, isInitialized } = useStytchSession();
+  const { user } = useStytchUser();
+  const getToken = useGetToken();
   const { theme = "system", setTheme } = useTheme();
 
   const fetcher = React.useMemo(
     () =>
       createHttpGraphQLFetcher({
         endpoint: GRAPHQL_ENDPOINT,
-        getToken: auth.getToken,
+        getToken,
       }),
-    [auth.getToken],
+    [getToken],
   );
   const subscriber = React.useMemo(
     () =>
       createWebSocketGraphQLSubscriber({
         endpoint: GRAPHQL_ENDPOINT,
-        getToken: auth.getToken,
+        getToken,
       }),
-    [auth.getToken],
+    [getToken],
   );
 
   const platform = React.useMemo<TradstryPlatform>(
     () => ({
       kind: "web",
       auth: {
-        isLoaded: auth.isLoaded,
-        isSignedIn: auth.isSignedIn ?? false,
-        getToken: auth.getToken,
+        isLoaded: isInitialized,
+        isSignedIn: session !== null,
+        getToken,
       },
       user: {
-        fullName: user?.fullName ?? "User",
-        email: user?.primaryEmailAddress?.emailAddress ?? "",
-        imageUrl: user?.imageUrl,
+        fullName: userFullName(user) || "User",
+        email: userEmail(user),
+        imageUrl: userAvatarUrl(user),
       },
       pathname,
       appBaseUrl:
@@ -66,7 +69,10 @@ export function WebsiteDashboard() {
       openExternal: (url) => {
         window.location.href = url;
       },
-      signOut: () => signOut({ redirectUrl: "/" }),
+      signOut: async () => {
+        await stytch.session.revoke({ forceClear: true });
+        window.location.assign("/");
+      },
       theme: theme === "light" || theme === "dark" ? theme : "system",
       setTheme,
       features: {
@@ -77,17 +83,27 @@ export function WebsiteDashboard() {
       ),
     }),
     [
-      auth.getToken,
-      auth.isLoaded,
-      auth.isSignedIn,
+      getToken,
+      isInitialized,
       pathname,
       router.push,
+      session,
       setTheme,
-      signOut,
+      stytch,
       theme,
       user,
     ],
   );
+
+  React.useEffect(() => {
+    if (!isInitialized || session) return;
+    // The proxy treats any session cookie as signed in, so a stale one left behind
+    // would bounce /sign-in straight back here.
+    stytch.session
+      .revoke({ forceClear: true })
+      .catch(() => {})
+      .finally(() => router.replace("/sign-in"));
+  }, [isInitialized, session, router, stytch]);
 
   return (
     <TradstryProvider

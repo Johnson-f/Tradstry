@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
         knowledge: None,
         actor: AgentActor {
             user_id: "live-smoke".into(),
-            clerk_id: "live-smoke".into(),
+            subject: "live-smoke".into(),
         },
         scope: AgentScope {
             workspace_id: "live-smoke".into(),

@@ -13,9 +13,9 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"tradstry-mcp/app"
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/gqlcheck"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 	"tradstry-mcp/ratelimit"
 )
 
@@ -83,11 +83,12 @@ func Start(t *testing.T, respond func(Request) string) *Stack {
 
 	server := httptest.NewUnstartedServer(nil)
 	cfg := app.Config{
-		PublicURL:   "http://" + server.Listener.Addr().String(),
-		ClerkIssuer: Issuer,
-		APIURL:      api.URL,
+		PublicURL:     "http://" + server.Listener.Addr().String(),
+		OAuthIssuer:   Issuer,
+		OAuthAudience: Audience,
+		APIURL:        api.URL,
 	}
-	verifier := clerk.NewVerifierWithKeys(Issuer, s.Signer.Keyfunc)
+	verifier := oauth.NewVerifierWithKeys(Issuer, Audience, s.Signer.Keyfunc)
 	s.Redis = miniredis.RunT(t)
 	limiter := ratelimit.New(redis.NewClient(&redis.Options{Addr: s.Redis.Addr()}))
 	server.Config.Handler = app.NewHandler(cfg, verifier, graphql.NewClient(api.URL, api.Client()), limiter)

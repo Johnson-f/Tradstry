@@ -74,7 +74,7 @@ async fn proposal_approval_and_rejection_are_owned() {
     let (other_user, _) = crate::pg_support::seed_user_workspace(&fixture.pool).await;
     let other = tradstry_backend::service::agents::AgentActor {
         user_id: other_user,
-        clerk_id: "forged".into(),
+        subject: "forged".into(),
     };
     assert!(
         fixture

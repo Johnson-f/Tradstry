@@ -100,7 +100,8 @@ services:
       # Broker connections started from the MCP server return the browser to it.
       - SNAPTRADE_PORTAL_REDIRECT_ORIGINS=https://mcp.tradstry.com
       - SNAPTRADE_OAUTH_MCP_RETURN_URL=https://mcp.tradstry.com/brokerage/snaptrade-authorized
-      # OAuth access tokens Clerk mints for the MCP server name it in `aud`.
+      # Until Clerk is removed: OAuth access tokens Clerk mints for the MCP
+      # server name it in `aud`.
       - CLERK_ALLOWED_AUDIENCES=https://mcp.tradstry.com,https://mcp.tradstry.com/mcp
     env_file:
       - ../backend/.env
@@ -183,7 +184,7 @@ services:
 
   # The Go MCP server. It holds no database or storage credentials: it calls the
   # backend's GraphQL API with each user's own token, so it needs only the
-  # backend, Redis for rate limits, and Clerk's public signing keys.
+  # backend, Redis for rate limits, and Stytch's public signing keys.
   mcp-server:
     image: johnsonf/tradstry-mcp:${DEPLOY_TAG:-latest}
     build:
@@ -201,10 +202,12 @@ services:
     environment:
       - MCP_PUBLIC_URL=https://mcp.tradstry.com
       - MCP_BIND_ADDR=0.0.0.0:7900
-      - CLERK_ISSUER=https://clerk.tradstry.com
+      # The Stytch project domain (Dashboard → Project settings), no trailing slash.
+      - OAUTH_ISSUER=${STYTCH_PROJECT_DOMAIN:?set STYTCH_PROJECT_DOMAIN in .env}
+      # Stytch can't put this server's URL in `aud` for dynamically registered
+      # clients, so tokens are bound to the project instead.
+      - OAUTH_AUDIENCE=${STYTCH_PROJECT_ID:?set STYTCH_PROJECT_ID in .env}
       - TRADSTRY_API_URL=http://backend:7899
-      # Clerk's "Include Audience" is on, so every token must name this server.
-      - MCP_REQUIRE_AUDIENCE=true
       # The password is percent-encoded if it holds URL characters such as @ or /.
       - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
     networks:

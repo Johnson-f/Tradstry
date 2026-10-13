@@ -36,7 +36,7 @@ pub enum AgentIntent {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentActor {
     pub user_id: String,
-    pub clerk_id: String,
+    pub subject: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

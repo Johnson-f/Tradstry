@@ -7,14 +7,13 @@ use tracing_actix_web::TracingLogger;
 use tradstry_backend::graphql;
 use tradstry_backend::routes;
 use tradstry_backend::service::agents::knowledge::VoyageClient;
-use tradstry_backend::service::auth::{
-    ClerkAuth, TokenVerifier, allowed_audiences_from_env, create_jwks_provider,
-};
+use tradstry_backend::service::auth::{AuthMiddleware, TokenVerifier};
 use tradstry_backend::service::brokerage::client::BrokerageClient;
 use tradstry_backend::service::brokerage::oauth::SnapTradeOAuthConfig;
 use tradstry_backend::service::brokerage::portal::PortalRedirects;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::redis::client::RedisClient;
+use tradstry_backend::service::stytch::StytchClient;
 use tradstry_backend::service::upload::r2::R2Client;
 fn cors_allowed_origins() -> Vec<String> {
     let defaults = [
@@ -119,12 +118,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     db.health_check().await?;
     info!("Database healthy and SeaORM schema contract verified");
-    let clerk_secret = std::env::var("CLERK_SECRET_KEY")?;
-    let token_verifier = TokenVerifier::new(
-        create_jwks_provider(&clerk_secret),
-        allowed_audiences_from_env(),
-    );
-    info!("Clerk authentication configured");
+    let token_verifier = TokenVerifier::from_env()?;
+    let stytch_client = StytchClient::from_env()?.map(Arc::new);
+    info!("Authentication configured");
     let allowed_origins = cors_allowed_origins();
     let portal_redirects = PortalRedirects::from_env(&allowed_origins)?;
     let schema = graphql::build_schema(
@@ -134,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         portal_redirects,
         redis_client.clone(),
         notification_events_tx.clone(),
+        stytch_client,
     );
 
     // Cooperative shutdown signal for the background tasks. On SIGTERM/SIGINT we
@@ -378,7 +375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Opens a span per request; every log emitted while handling it
             // inherits the method, path, and request id without being told.
             .wrap(TracingLogger::default())
-            .wrap(ClerkAuth::new(
+            .wrap(AuthMiddleware::new(
                 token_verifier.clone(),
                 vec![
                     "/graphql".to_string(),

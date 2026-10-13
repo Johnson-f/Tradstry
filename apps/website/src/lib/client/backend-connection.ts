@@ -16,6 +16,16 @@ export function getBackendWebSocketUrl(): string {
   return wsUrl.toString();
 }
 
+export class GraphQLRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "GraphQLRequestError";
+  }
+}
+
 export type GraphQLFetcher = <T>(
   query: string,
   variables?: Record<string, unknown>,
@@ -88,7 +98,10 @@ export function createGraphQLFetcher(
           errors: json.errors,
         });
       }
-      throw new Error(json.errors[0].message);
+      throw new GraphQLRequestError(
+        json.errors[0].message,
+        json.errors[0].extensions?.code,
+      );
     }
 
     if (DEBUG_GRAPHQL) {

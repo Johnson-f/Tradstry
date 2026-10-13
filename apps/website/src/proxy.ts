@@ -1,12 +1,14 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { safeReturnPath } from "@/lib/auth-redirect";
 import { PUBLIC_ROUTES } from "@/lib/site";
 
-// Next 16 renamed the `middleware` convention to `proxy`; Clerk deprecated
-// `createRouteMatcher` in favour of resource-level auth. These redirects are a UX/perf
+// Next 16 renamed the `middleware` convention to `proxy`. These redirects are a UX/perf
 // optimization — bounce signed-out users to sign-in and signed-in users off the entry
-// pages — NOT the security boundary. Real data protection is enforced by the backend's
-// JWT validation, so plain path matching here is sufficient.
+// pages — NOT the security boundary. "Signed in" is only the presence of Stytch's session
+// cookie; real data protection is enforced by the backend's JWT validation, so plain path
+// matching here is sufficient.
+
+const SESSION_COOKIE = "stytch_session";
 
 const isEntry = (path: string): boolean =>
   path === "/" ||
@@ -26,23 +28,33 @@ const CRAWLER_PATHS = new Set([
 
 const PUBLIC_PATHS = new Set<string>(PUBLIC_ROUTES.map((route) => route.path));
 
+// Reachable signed in or out: /authenticate finishes sign-in and also the OAuth link flow
+// for an existing session, and a password reset can start from either state.
+const AUTH_FLOW_PATHS = new Set(["/authenticate", "/reset-password"]);
+
 const isPublic = (path: string): boolean =>
   isEntry(path) ||
+  AUTH_FLOW_PATHS.has(path) ||
   PUBLIC_PATHS.has(path) ||
   CRAWLER_PATHS.has(path);
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
-  const { pathname } = req.nextUrl;
+export default function proxy(req: NextRequest) {
+  const signedIn = req.cookies.has(SESSION_COOKIE);
+  const { pathname, search, searchParams } = req.nextUrl;
 
-  if (userId && isEntry(pathname)) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+  if (signedIn && isEntry(pathname)) {
+    const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
+    return NextResponse.redirect(new URL(next, req.url));
   }
 
-  if (!userId && !isPublic(pathname)) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+  if (!signedIn && !isPublic(pathname)) {
+    const signIn = new URL("/sign-in", req.url);
+    signIn.searchParams.set("next", `${pathname}${search}`);
+    return NextResponse.redirect(signIn);
   }
-});
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [

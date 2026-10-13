@@ -10,9 +10,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 type (
@@ -142,7 +142,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 }
 
 func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -158,7 +158,7 @@ func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) 
 }
 
 func (t *tools) create(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -177,7 +177,7 @@ func (t *tools) create(ctx context.Context, req *mcp.CallToolRequest, in createI
 }
 
 func (t *tools) update(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -212,7 +212,7 @@ func settings(c currency, a assetClass, r riskProfile) map[string]any {
 }
 
 func (t *tools) delete(ctx context.Context, req *mcp.CallToolRequest, in deleteInput) (*mcp.CallToolResult, deleteOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deleteOutput{}, err
 	}

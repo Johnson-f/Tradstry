@@ -112,7 +112,7 @@ async fn another_user_cannot_read_run_events() {
         .events_after(
             &AgentActor {
                 user_id: other_user,
-                clerk_id: "other".into(),
+                subject: "other".into(),
             },
             &run.id,
             0,

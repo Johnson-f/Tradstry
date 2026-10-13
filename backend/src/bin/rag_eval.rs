@@ -97,7 +97,7 @@ fn reject_placeholders(fixtures: &Fixtures) -> Result<()> {
 async fn run_eval(knowledge: &KnowledgeService, fixtures: &Fixtures) -> Result<()> {
     let actor = AgentActor {
         user_id: fixtures.user_id.clone(),
-        clerk_id: "rag-eval".into(),
+        subject: "rag-eval".into(),
     };
     let ks = [1usize, 3, 5, 10];
     let mut hits = [0u32; 4];

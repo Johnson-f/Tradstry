@@ -13,15 +13,14 @@ type Config struct {
 	BindAddr string
 	// PublicURL is the origin MCP clients reach this server at, e.g. https://mcp.tradstry.com.
 	PublicURL string
-	// ClerkIssuer is the Clerk Frontend API origin that signs OAuth access tokens.
-	ClerkIssuer string
+	// OAuthIssuer is the Stytch project domain that signs OAuth access tokens.
+	OAuthIssuer string
+	// OAuthAudience is the Stytch project ID, which Connected Apps put in every access token's aud.
+	OAuthAudience string
 	// APIURL is the Tradstry backend origin, e.g. https://backend.tradstry.com.
 	APIURL string
 	// RedisURL is where per-user rate limits are counted, e.g. redis://:password@redis:6379.
 	RedisURL string
-	// RequireAudience rejects access tokens that name no audience, not just
-	// tokens issued for another one.
-	RequireAudience bool
 }
 
 func LoadConfig() (Config, error) {
@@ -34,21 +33,17 @@ func LoadConfig() (Config, error) {
 	if cfg.PublicURL, err = origin("MCP_PUBLIC_URL"); err != nil {
 		return Config{}, err
 	}
-	if cfg.ClerkIssuer, err = origin("CLERK_ISSUER"); err != nil {
+	if cfg.OAuthIssuer, err = origin("OAUTH_ISSUER"); err != nil {
 		return Config{}, err
+	}
+	if cfg.OAuthAudience = os.Getenv("OAUTH_AUDIENCE"); cfg.OAuthAudience == "" {
+		return Config{}, fmt.Errorf("OAUTH_AUDIENCE must be set")
 	}
 	if cfg.APIURL, err = origin("TRADSTRY_API_URL"); err != nil {
 		return Config{}, err
 	}
 	if cfg.RedisURL = os.Getenv("REDIS_URL"); cfg.RedisURL == "" {
 		return Config{}, fmt.Errorf("REDIS_URL must be set")
-	}
-	switch os.Getenv("MCP_REQUIRE_AUDIENCE") {
-	case "", "false":
-	case "true":
-		cfg.RequireAudience = true
-	default:
-		return Config{}, fmt.Errorf("MCP_REQUIRE_AUDIENCE must be true or false")
 	}
 	return cfg, nil
 }

@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use async_graphql::{Context, Error, InputObject, Json, Object, Result, SimpleObject};
 use chrono::Utc;
-use clerk_rs::validators::authorizer::ClerkJwt;
 use serde_json::Value;
 use sqlx::Row;
 
 use crate::service::agents::{AgentActor, AgentService};
+use crate::service::auth::AuthClaims;
 use crate::service::db::Db;
 use crate::service::market::research;
 use crate::service::notifications::{NotificationEvent, outbox};
@@ -540,7 +540,7 @@ impl MarketResearchMutation {
             .synthesize_market_report(
                 &AgentActor {
                     user_id: user_id.clone(),
-                    clerk_id: ctx.data::<ClerkJwt>()?.sub.clone(),
+                    subject: ctx.data::<AuthClaims>()?.sub.clone(),
                 },
                 &prompt,
             )

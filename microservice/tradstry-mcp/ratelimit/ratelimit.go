@@ -12,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/redis/go-redis/v9"
 
-	"tradstry-mcp/clerk"
+	"tradstry-mcp/oauth"
 )
 
 // Bucket is a token bucket: Capacity calls at once, refilled at PerSecond.
@@ -95,7 +95,7 @@ func (l *Limiter) Middleware(readOnly map[string]bool) mcp.Middleware {
 			if method != "tools/call" || !ok {
 				return next(ctx, method, req)
 			}
-			caller, err := clerk.CallerOf(call)
+			caller, err := oauth.CallerOf(call)
 			if err != nil {
 				return next(ctx, method, req)
 			}

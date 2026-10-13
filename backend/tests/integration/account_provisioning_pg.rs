@@ -2,9 +2,9 @@
 //! as MCP clients holding Clerk OAuth access tokens, act for existing accounts.
 
 use async_graphql::{Request, Schema};
-use clerk_rs::validators::authorizer::ClerkJwt;
 use std::sync::Arc;
 use tradstry_backend::graphql::{Mutation, Query, Subscription};
+use tradstry_backend::service::auth::{AuthClaims, AuthProvider, Subject, TokenKind};
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::read_service::users::{
     AccountRequired, Provisioning, ensure_user, load_user,
@@ -12,17 +12,12 @@ use tradstry_backend::service::read_service::users::{
 
 use crate::pg_support::TestDb;
 
-fn jwt(subject: &str) -> ClerkJwt {
-    ClerkJwt {
+fn claims(subject: &str) -> AuthClaims {
+    AuthClaims {
         sub: subject.to_string(),
-        azp: None,
-        exp: i32::MAX,
-        iat: 0,
         iss: "test".into(),
-        nbf: 0,
-        sid: None,
-        act: None,
-        org: None,
+        provider: AuthProvider::Clerk,
+        kind: TokenKind::Session,
         other: Default::default(),
     }
 }
@@ -43,7 +38,7 @@ async fn a_connected_app_cannot_create_an_account() {
 
     let err = load_user(
         &db,
-        &clerk_uuid,
+        &Subject::Clerk(clerk_uuid.clone()),
         "Ada",
         "ada@example.com",
         Provisioning::ExistingOnly,
@@ -60,13 +55,24 @@ async fn a_connected_app_acts_for_an_account_created_on_the_web() {
     let test_db = TestDb::new().await;
     let db = Db::from_pool(test_db.pool());
     let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
-    let signed_up = ensure_user(&db, &clerk_uuid, "Ada", "ada@example.com")
-        .await
-        .unwrap();
+    let signed_up = ensure_user(
+        &db,
+        &Subject::Clerk(clerk_uuid.clone()),
+        "Ada",
+        "ada@example.com",
+    )
+    .await
+    .unwrap();
 
-    let user = load_user(&db, &clerk_uuid, "", "", Provisioning::ExistingOnly)
-        .await
-        .unwrap();
+    let user = load_user(
+        &db,
+        &Subject::Clerk(clerk_uuid.clone()),
+        "",
+        "",
+        Provisioning::ExistingOnly,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(user.id, signed_up.id);
 }
@@ -83,7 +89,7 @@ async fn graphql_refuses_unknown_users_unless_the_request_may_sign_up() {
     .data(db.clone())
     .finish();
     let clerk_uuid = tradstry_backend::ids::new_uuid_v7().to_string();
-    let me = || Request::new("{ me { id } }").data(jwt(&clerk_uuid));
+    let me = || Request::new("{ me { id } }").data(claims(&clerk_uuid));
 
     for request in [me(), me().data(Provisioning::ExistingOnly)] {
         let response = schema.execute(request).await;

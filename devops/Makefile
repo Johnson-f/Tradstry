@@ -250,19 +250,15 @@ fi
 export MCP_PUBLIC_URL="http://localhost:$${MCP_PORT}"
 export MCP_BIND_ADDR="127.0.0.1:$${MCP_PORT}"
 export TRADSTRY_API_URL="http://localhost:$${BACKEND_PORT}"
-# Sign in against the Clerk instance the local web app uses (its publishable key
-# names it), not backend/.env's CLERK_ISSUER, which is the production one the
-# Rust MCP server advertises. MCP_CLERK_ISSUER overrides both.
-publishable="$$(grep -E '^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=' "$$ROOT/apps/website/.env.local" 2>/dev/null | cut -d= -f2-)"
-local_clerk=""
-if [ -n "$$publishable" ]; then
-  local_clerk="https://$$(python3 -c 'import base64,sys; k=sys.argv[1].split("_",2)[2]; print(base64.b64decode(k+"="*(-len(k)%4)).decode().rstrip("$$"))' "$$publishable")"
-fi
-export CLERK_ISSUER="$${MCP_CLERK_ISSUER:-$${local_clerk:-$$(setting CLERK_ISSUER)}}"
+# Sign in against the Stytch project the local web app uses (its custom domain),
+# not a production one. MCP_OAUTH_ISSUER overrides it.
+local_stytch="$$(grep -E '^NEXT_PUBLIC_STYTCH_DOMAIN=' "$$ROOT/apps/website/.env.local" 2>/dev/null | cut -d= -f2-)"
+export OAUTH_ISSUER="$${MCP_OAUTH_ISSUER:-$${local_stytch:-$$(setting STYTCH_ISSUER)}}"
+export OAUTH_AUDIENCE="$$(setting STYTCH_PROJECT_ID)"
 export REDIS_URL="$$redis_url"
 
 echo ""
-echo -e "$${GREEN}MCP server on $${MCP_PUBLIC_URL}/mcp, signing in with $${CLERK_ISSUER}$${NC}"
+echo -e "$${GREEN}MCP server on $${MCP_PUBLIC_URL}/mcp, signing in with $${OAUTH_ISSUER}$${NC}"
 echo "Connect Claude Code once with:"
 echo "  claude mcp add --transport http tradstry $${MCP_PUBLIC_URL}/mcp"
 echo "then run /mcp in Claude Code and authenticate tradstry."

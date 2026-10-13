@@ -10,7 +10,7 @@ Rust backend built with Actix-Web and async-graphql. All data lives in a single 
 - **Database:** Postgres through SeaORM 2 — entity-first schema sync plus SeaORM migrations for PostgreSQL-only objects
 - **Vector search:** pgvector `halfvec` + PostgreSQL full-text search
 - **AI:** TinyAgents, Gemini or Perplexity model roles, Voyage embeddings (`voyage-3.5`) + reranker (`rerank-2.5`)
-- **Auth:** Clerk (JWT validation via JWKS)
+- **Auth:** Stytch session and Connected Apps JWTs, plus Clerk during the migration window (RS256 validation via JWKS)
 - **Media:** Cloudflare R2 (S3-compatible)
 - **Cache:** Redis (optional — the server runs without it)
 - **Brokerage:** SnapTrade, via the Go microservice in `../microservice/snaptrade-service`
@@ -42,7 +42,7 @@ The projector is the only place Yjs updates are interpreted. Rust treats CRDT up
 - [Bun](https://bun.sh) — required at runtime for the projector, not just to build
 - Postgres 18 with `pgvector` and `pg_search` extensions. `make postgres` from the repo root builds and runs the right image (`devops/docker/postgres/Dockerfile`).
 - A SnapTrade microservice sharing `SNAPTRADE_GRPC_SOCKET` (`make micro` from the repo root)
-- API keys: Clerk, Gemini, Voyage, Cloudflare R2, SnapTrade
+- API keys: Stytch, Gemini, Voyage, Cloudflare R2, SnapTrade
 
 ## Setup
 
@@ -80,6 +80,14 @@ The non-mutating provider/Voyage smoke is opt-in because it makes paid external 
 cargo run --bin agent_live_smoke
 ```
 
+The one-time Clerk to Stytch user import is resumable and throttled to 50 requests per second. The Clerk export holds password hashes, so keep it out of the repo:
+
+```bash
+cargo run --bin stytch_import -- --csv clerk_export.csv --out mapping.csv --dry-run
+cargo run --bin stytch_import -- --csv clerk_export.csv --out mapping.csv   # needs STYTCH_PROJECT_ID, STYTCH_SECRET
+cargo run --bin stytch_import -- --backfill --out mapping.csv --dry-run    # needs POSTGRES_URL
+```
+
 ### Environment Variables
 
 ```bash
@@ -93,8 +101,14 @@ POSTGRES_URL=postgres://user:pass@localhost:5432/postgres
 # Leave unset to use the default `public` schema.
 POSTGRES_DATABASE=dev
 
-# Auth — Clerk
-CLERK_SECRET_KEY=sk_live_...
+# Auth — at least one of Stytch or Clerk must be configured.
+STYTCH_PROJECT_ID=project-live-...
+STYTCH_SECRET=
+STYTCH_ISSUER=https://<project>.customers.stytch.com   # project domain; stytch.com/<project id> is always accepted
+# STYTCH_API_URL=                         # defaults from the project id
+# Clerk is trusted only while CLERK_ISSUER is set (transition; JWKS is public).
+CLERK_ISSUER=https://clerk.tradstry.com
+CLERK_ALLOWED_AUDIENCES=                  # `aud` values accepted on Clerk OAuth access tokens
 
 # Market data — Polygon powers snapshots, charts, financials, news, and live prices.
 POLYGON_API_KEY=
@@ -176,9 +190,10 @@ VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:support@tradstry.com
 
-# Clerk webhooks. Unset, POST /webhooks/clerk returns 500 and deleted accounts
-# keep their rows and R2 objects. Clerk Dashboard → Webhooks → signing secret.
-CLERK_WEBHOOK_SECRET=whsec_...            # required
+# Account-deletion webhooks (Svix). Unset, the endpoint returns 500 and deleted
+# accounts keep their rows and R2 objects.
+STYTCH_WEBHOOK_SECRET=whsec_...           # POST /webhooks/stytch; Dashboard → Webhooks
+CLERK_WEBHOOK_SECRET=whsec_...            # POST /webhooks/clerk; transition only
 
 # Overrides
 PROJECTOR_DIR=                        # defaults to ./projector, or beside the binary
@@ -220,7 +235,7 @@ Nearly everything flows through one GraphQL endpoint. The REST routes exist only
 - **Media:** `POST /notebook/media/upload`, `GET|DELETE /notebook/media/{hash}`, `GET /notebook/media/{hash}/thumb`
 - **Assistance:** `POST /notebook/assist/autocomplete`, `POST /notebook/assist/transform`
 
-All routes are Clerk-authenticated. `/health` is not in the middleware's exclusion list, so a liveness probe should accept any HTTP response rather than only 200.
+All routes are authenticated with a Stytch (or, during the transition, Clerk) JWT, read from `Authorization: Bearer`, else the `stytch_session_jwt` cookie, else `__session`. Stytch web sessions may sign up; Connected Apps (MCP) tokens only act for existing accounts. `/health` is not in the middleware's exclusion list, so a liveness probe should accept any HTTP response rather than only 200.
 
 Notebook media is content-addressed per user. PostgreSQL stores one immutable blob plus separate note references, reserves plan quota before R2 writes, and queues thumbnails and deletion durably. Uploads spool to disk and use a conditional streamed R2 write, so cancellation cannot leave multipart fragments. Removing the last reference schedules physical deletion after 24 hours, and a new reference during that window cancels deletion.
 
@@ -276,7 +291,8 @@ src/
     notebook/                # Lexical document logic, projector, block extraction, maintenance loop
     upload/                  # Notebook file validation, hashing, quota, R2 transfer, finalization
     read_service/            # Shared read helpers and analytics
-    auth/                    # Clerk JWKS provider
+    auth/                    # Multi-issuer JWT verifier, JWKS cache, middleware
+    stytch/                  # Stytch backend API client
     hlc.rs                   # Server Hybrid Logical Clock
     telemetry.rs             # tracing subscriber + Sentry
 database/                    # tradstry-database crate: Db, entities, bootstrap, contract

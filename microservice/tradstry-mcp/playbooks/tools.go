@@ -9,9 +9,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"tradstry-mcp/clerk"
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/oauth"
 )
 
 type tools struct {
@@ -143,7 +143,7 @@ type listOutput struct {
 }
 
 func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -165,7 +165,7 @@ type playbookInput struct {
 var errNotFound = errors.New("playbook not found; call list_playbooks for valid IDs")
 
 func (t *tools) get(ctx context.Context, req *mcp.CallToolRequest, in playbookInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -190,7 +190,7 @@ type createInput struct {
 }
 
 func (t *tools) create(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -235,7 +235,7 @@ type updateInput struct {
 }
 
 func (t *tools) update(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -276,7 +276,7 @@ type workspacesInput struct {
 }
 
 func (t *tools) setWorkspaces(ctx context.Context, req *mcp.CallToolRequest, in workspacesInput) (*mcp.CallToolResult, view, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, view{}, err
 	}
@@ -306,7 +306,7 @@ type deleteOutput struct {
 }
 
 func (t *tools) delete(ctx context.Context, req *mcp.CallToolRequest, in deleteInput) (*mcp.CallToolResult, deleteOutput, error) {
-	caller, err := clerk.CallerOf(req)
+	caller, err := oauth.CallerOf(req)
 	if err != nil {
 		return nil, deleteOutput{}, err
 	}

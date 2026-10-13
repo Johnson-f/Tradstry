@@ -61,6 +61,8 @@ mod smoke_pg;
 mod snaptrade_oauth_pg;
 mod snaptrade_webhook_targets_pg;
 mod strategy_library_pg;
+mod stytch_identity_pg;
+mod stytch_webhook;
 mod svix_signature;
 mod tags_sync_pg;
 mod test_db;
