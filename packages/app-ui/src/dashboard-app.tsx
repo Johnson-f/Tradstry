@@ -44,7 +44,7 @@ function DashboardHome() {
 			<PageCanvas>
 				<ScrollArea
 					type="auto"
-					className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain [&>[data-slot=scroll-area-viewport]>div]:block!"
+					className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain"
 				>
 					{workspaces.isLoading || workspaces.isPending ? (
 						<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">
@@ -172,7 +172,7 @@ function FeatureScroll({ children }: { children: React.ReactNode }) {
 	return (
 		<ScrollArea
 			type="auto"
-			className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain [&>[data-slot=scroll-area-viewport]>div]:block!"
+			className="min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain"
 		>
 			<div className="@container/main flex flex-1 flex-col gap-2">
 				<div className="flex flex-col gap-3 p-3 md:gap-4 md:p-4">

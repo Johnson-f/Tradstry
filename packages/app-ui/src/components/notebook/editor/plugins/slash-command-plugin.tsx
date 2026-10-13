@@ -435,7 +435,7 @@ function TradePickerOverlay({
             autoFocus
           />
         </div>
-        <ScrollArea className="max-h-64">
+        <ScrollArea className="[&>[data-slot=scroll-area-viewport]]:max-h-64">
           {trades.length === 0 ? (
             <div className="px-3 py-4 text-center text-xs text-muted-foreground">
               No trades found

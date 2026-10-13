@@ -564,7 +564,7 @@ export function FolderList({
         />
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-0.5 px-2 pb-2">
           {systemNode ? (
             <FolderRow

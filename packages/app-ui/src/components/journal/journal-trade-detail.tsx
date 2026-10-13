@@ -727,7 +727,7 @@ function TradeEditor({
 				<ScrollArea
 					viewportRef={contentViewport}
 					className={cn(
-						"min-h-0 min-w-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:block!",
+						"min-h-0 min-w-0 flex-1",
 						props.embedded ? "-mr-[29px] md:-mr-[41px]" : "-mr-3 md:-mr-5",
 					)}
 				>

@@ -406,7 +406,7 @@ export function GroupingDialog({
 										: "Review the original grouping before restoring it."}
 					</DialogDescription>
 				</DialogHeader>
-				<ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]]:max-h-[60dvh] [&>[data-slot=scroll-area-viewport]>div]:block!">
+				<ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]]:max-h-[60dvh]">
 					<div className="space-y-5 p-5">
 						{error && (
 							<p

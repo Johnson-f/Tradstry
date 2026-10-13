@@ -632,7 +632,7 @@ function HistoryTab() {
   }
 
   return (
-    <ScrollArea className="max-h-[28rem] py-2">
+    <ScrollArea className="py-2 [&>[data-slot=scroll-area-viewport]]:max-h-[28rem]">
       <div className="grid gap-2 pr-3">
         {reviewedTrades.length > 0 ? (
           <section className="mb-2 grid gap-2">
@@ -2600,7 +2600,7 @@ function PlansTab({
   });
 
   return (
-    <ScrollArea className="max-h-[26rem] py-2">
+    <ScrollArea className="py-2 [&>[data-slot=scroll-area-viewport]]:max-h-[26rem]">
       <div className="grid gap-3 pr-3">
         {brokerageConnected && reviewItems.length > 0 ? (
           <section className="grid gap-2">

@@ -94,7 +94,7 @@ export function NoteList({
 
       {/* Radix wraps viewport content in a `display: table` div, which sizes to content —
           so `truncate` never gets a width to work against. Force it back to block. */}
-      <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block">
+      <ScrollArea className="min-h-0 flex-1">
         {notes.length === 0 ? (
           <p className="px-3 py-10 text-center text-xs text-muted-foreground">
             No notes here yet.
