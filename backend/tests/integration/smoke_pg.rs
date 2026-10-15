@@ -5,7 +5,6 @@
 
 use crate::pg_support::TestDb;
 use sea_orm::SqlxPostgresConnector;
-use tradstry_backend::service::auth::Subject;
 
 use tradstry_backend::service::db::schema::tables::{
     journal_table, tags_table, user_prompts_table, users_table, workspaces_table,
@@ -17,30 +16,21 @@ async fn end_to_end_user_account_journal_tags() {
     let pool = test_db.pool();
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
 
-    // --- users: upsert path (ON CONFLICT clerk_uuid) ---
-    let (user, created) = users_table::find_or_create_user(
-        &db,
-        &Subject::Clerk("clerk-smoke".into()),
-        "Jo",
-        "jo@x.com",
-    )
-    .await
-    .expect("find_or_create_user");
+    // --- users: upsert path (ON CONFLICT stytch_user_id) ---
+    let (user, created) = users_table::find_or_create_user(&db, "stytch-smoke", "Jo", "jo@x.com")
+        .await
+        .expect("find_or_create_user");
     assert!(created, "first call creates the user");
-    let (_again, created2) = users_table::find_or_create_user(
-        &db,
-        &Subject::Clerk("clerk-smoke".into()),
-        "Jo",
-        "jo@x.com",
-    )
-    .await
-    .expect("find_or_create_user idempotent");
+    let (_again, created2) =
+        users_table::find_or_create_user(&db, "stytch-smoke", "Jo", "jo@x.com")
+            .await
+            .expect("find_or_create_user idempotent");
     assert!(!created2, "second call finds the existing user");
 
-    let race = Subject::Clerk("clerk-race".into());
+    let race = "stytch-race";
     let (left, right) = tokio::join!(
-        users_table::find_or_create_user(&db, &race, "Race", "race@x.com"),
-        users_table::find_or_create_user(&db, &race, "Race", "race@x.com")
+        users_table::find_or_create_user(&db, race, "Race", "race@x.com"),
+        users_table::find_or_create_user(&db, race, "Race", "race@x.com")
     );
     let (left, left_created) = left.expect("first concurrent user lookup");
     let (right, right_created) = right.expect("second concurrent user lookup");

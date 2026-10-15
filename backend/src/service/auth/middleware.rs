@@ -10,7 +10,7 @@ use futures_util::future::LocalBoxFuture;
 
 use super::{AuthError, TokenVerifier};
 
-const SESSION_COOKIES: [&str; 2] = ["stytch_session_jwt", "__session"];
+const SESSION_COOKIE: &str = "stytch_session_jwt";
 
 /// Puts the request's verified `AuthClaims` in its extensions, or answers 401,
 /// on the listed paths. Paths match exactly.
@@ -107,9 +107,8 @@ fn request_token(request: &ServiceRequest) -> Option<String> {
             .to_str()
             .ok()
             .map(|value| value.trim_start_matches("Bearer ").to_string()),
-        None => SESSION_COOKIES
-            .iter()
-            .find_map(|name| request.cookie(name))
+        None => request
+            .cookie(SESSION_COOKIE)
             .map(|cookie| cookie.value().to_string()),
     }
 }

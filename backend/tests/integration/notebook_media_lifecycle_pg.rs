@@ -64,14 +64,17 @@ async fn migrate(pool: &PgPool, _database: &str) {
 async fn seed_user_workspace(pool: &PgPool) -> (String, String) {
     let user_id = tradstry_backend::ids::new_uuid_v7().to_string();
     let workspace_id = tradstry_backend::ids::new_uuid_v7().to_string();
-    sqlx::query("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES($1,$2,$3,$4)")
-        .bind(&user_id)
-        .bind(tradstry_backend::ids::new_uuid_v7().to_string())
-        .bind(format!("{user_id}@test.local"))
-        .bind("Test User")
-        .execute(pool)
-        .await
-        .expect("seed user");
+    let identity = crate::pg_support::users_identity_column(pool).await;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "INSERT INTO users(id,{identity},email,full_name) VALUES($1,$2,$3,$4)"
+    )))
+    .bind(&user_id)
+    .bind(tradstry_backend::ids::new_uuid_v7().to_string())
+    .bind(format!("{user_id}@test.local"))
+    .bind("Test User")
+    .execute(pool)
+    .await
+    .expect("seed user");
     sqlx::query("INSERT INTO workspaces(id,user_id,name) VALUES($1,$2,'Main')")
         .bind(&workspace_id)
         .bind(&user_id)
@@ -320,7 +323,7 @@ async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged
     use serde_json::json;
     use sqlx::migrate::Migrator;
     use std::{path::PathBuf, sync::Arc};
-    use tradstry_backend::service::auth::{AuthClaims, AuthProvider, TokenKind};
+    use tradstry_backend::service::auth::{AuthClaims, TokenKind};
     use tradstry_backend::{
         graphql::{Mutation, Query, Subscription},
         service::db::Db,
@@ -374,11 +377,11 @@ async fn migrated_hashless_media_survives_edits_until_the_deleted_note_is_purged
         let api = Schema::build(Query::default(), Mutation::default(), Subscription::default())
             .data(Arc::new(Db::from_pool(pool.clone()))).finish();
         for (actor, expected) in [(&other_user, false), (&user, true), (&user, false)] {
-            let subject: String = sqlx::query_scalar("SELECT clerk_uuid FROM users WHERE id=$1")
+            let subject: String = sqlx::query_scalar("UPDATE users SET stytch_user_id = COALESCE(stytch_user_id, id) WHERE id=$1 RETURNING stytch_user_id")
                 .bind(actor).fetch_one(&pool).await?;
             let response = api.execute(Request::new("mutation($id:String!){deleteNotebookNote(id:$id)}")
                 .variables(Variables::from_json(json!({"id":note})))
-                .data(AuthClaims {sub:subject,iss:"test".into(),provider:AuthProvider::Clerk,kind:TokenKind::Session,other:Default::default()})).await;
+                .data(AuthClaims {sub:subject,iss:"test".into(),kind:TokenKind::Session,other:Default::default()})).await;
             ensure!(response.errors.is_empty(), "Delete failed: {:?}", response.errors);
             ensure!(response.data.into_json()?["deleteNotebookNote"] == expected, "Delete authorization/idempotency failed");
         }

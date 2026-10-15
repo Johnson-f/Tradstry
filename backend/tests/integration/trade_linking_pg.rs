@@ -28,7 +28,7 @@ async fn seed_trade(pool: &PgPool, id: &str, user_id: &str, workspace_id: &str) 
 }
 
 async fn seed_user_and_account(pool: &PgPool, user: &str, account: &str) {
-    sqlx::query("INSERT INTO users (id, clerk_uuid) VALUES ($1, $1)")
+    sqlx::query("INSERT INTO users (id, stytch_user_id) VALUES ($1, $1)")
         .bind(user)
         .execute(pool)
         .await

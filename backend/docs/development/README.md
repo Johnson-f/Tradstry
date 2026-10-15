@@ -32,7 +32,7 @@ Development guide for the Tradstry backend — a Rust trading journal platform w
 │    ├── Qdrant — vector search (hybrid + memories)    │
 │    ├── Groq — LLM (gpt-oss-120b)                    │
 │    ├── Jina — text embeddings (v3, 1024d)            │
-│    └── Clerk — authentication                        │
+│    └── Stytch — authentication                       │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
@@ -113,7 +113,7 @@ Development guide for the Tradstry backend — a Rust trading journal platform w
     - `transaction.rs` — Sync transactions and holdings from SnapTrade
     - `sync.rs` — Background sync scheduler (market hours, weekends)
     - `db.rs` — Encryption for SnapTrade credentials
-  - `auth/` — Clerk JWT validation
+  - `auth/` — Stytch JWT validation
   - `cloudinary/` — Image upload for notebook
   - `read_service/` — Thin wrappers around table functions for GraphQL resolvers
 
@@ -148,7 +148,7 @@ Thin adapter around the SnapTrade Go SDK:
 - **Qdrant instance** — Vector search
 - **Groq API key** — LLM
 - **Jina API key** — Text embeddings
-- **Clerk account** — Authentication
+- **Stytch project** — Authentication
 
 ## Environment Variables
 
@@ -158,7 +158,7 @@ Create `.env` from `.env.example`. Key variables:
 |----------|---------|
 | `TURSO_DATABASE_URL` | Turso database URL |
 | `TURSO_AUTH_TOKEN` | Turso auth token |
-| `CLERK_SECRET_KEY` | Clerk JWT validation |
+| `STYTCH_PROJECT_ID` | Stytch JWT validation |
 | `GROQ_API_KEY` | Groq LLM API |
 | `JINA_API_KEY` | Jina embeddings API |
 | `JINA_EMBEDDING_MODEL` | Model name (default: `jina-embeddings-v3`) |
