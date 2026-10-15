@@ -1062,6 +1062,8 @@ type JournalPreparationV2 {
 	brokerRecords: Int!
 	existingEntries: Int!
 	linkedEntries: Int!
+	overlappingEntries: Int!
+	heldByEarlierEntries: Int!
 	readyTrades: Int!
 	attentionGroups: Int!
 	conflictingLinks: Int!
@@ -1193,6 +1195,11 @@ type JournalTradeV2 {
 	closeDate: String
 	reviewState: String!
 	playbookId: String
+	firstExecutionAt: String
+	lastExecutionAt: String
+	executionCount: Int!
+	boughtQuantity: String
+	soldQuantity: String
 }
 
 type ManualExecutionClaimGql {

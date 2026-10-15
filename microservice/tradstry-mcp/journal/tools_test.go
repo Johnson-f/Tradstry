@@ -70,12 +70,13 @@ func (f *fakeAPI) respond(req mcptest.Request) string {
 		return data(map[string]any{"journalFlowStatus": map[string]any{
 			"enabled": f.enabled, "sourceRevision": 4, "projectionRevision": 4, "importState": "idle", "timezone": "America/New_York"}})
 	case strings.Contains(req.Query, "prepareJournalFlow"):
-		ready, attention := 7, 3
+		ready, attention, held := 7, 3, 0
 		if req.Variables["flatBefore"] != nil {
-			ready, attention = 10, 0
+			ready, attention, held = 8, 2, 2
 		}
 		return data(map[string]any{"prepareJournalFlow": map[string]any{
-			"sourceRevision": 4, "brokerRecords": 40, "existingEntries": 0, "readyTrades": ready, "attentionGroups": attention,
+			"sourceRevision": 4, "brokerRecords": 40, "existingEntries": 5, "linkedEntries": 1, "overlappingEntries": 2, "heldByEarlierEntries": held,
+			"readyTrades": ready, "attentionGroups": attention,
 			"conflictingLinks": 0, "firstExecution": "2026-01-05T14:30:00Z", "timezone": "America/New_York"}})
 	case strings.Contains(req.Query, "enableJournalFlow"):
 		f.enabled = true
@@ -242,7 +243,7 @@ func TestStatusShowsWhatTheFlatAnswerChanges(t *testing.T) {
 			NeedsAttention int `json:"needs_attention"`
 		} `json:"if_not_flat"`
 	}](t, session, "get_journal_status", map[string]any{"workspace_id": "ws1"})
-	if out.Enabled || out.IfFlat.ReadyTrades != 10 || out.IfNotFlat.ReadyTrades != 7 || out.IfNotFlat.NeedsAttention != 3 {
+	if out.Enabled || out.IfFlat.ReadyTrades != 8 || out.IfNotFlat.ReadyTrades != 7 || out.IfNotFlat.NeedsAttention != 3 {
 		t.Errorf("status = %+v", out)
 	}
 }
@@ -344,7 +345,7 @@ func TestListTradesFiltersAndCounts(t *testing.T) {
 	if todo.Matching != 1 || todo.Trades[0].ID != "t1" {
 		t.Errorf("to review = %+v", todo)
 	}
-	_, dated := mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "symbol": "aapl", "from": "2026-10-08", "limit": 1})
+	_, dated := mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "symbol": "aapl", "closed_from": "2026-10-08", "limit": 1})
 	if dated.Matching != 1 || len(dated.Trades) != 1 || dated.Trades[0].ID != "t1" {
 		t.Errorf("dated = %+v", dated)
 	}
@@ -406,7 +407,7 @@ func TestGetTradeNamesItsContext(t *testing.T) {
 			QuickChoices []string `json:"quick_choices"`
 		} `json:"review_draft"`
 	}](t, session, "get_trade", map[string]any{"workspace_id": "ws1", "trade_id": "t1"})
-	if out.Trade.Symbol != "AAPL" || out.Trade.RealizedNet != "125.5" || len(out.Executions) != 1 ||
+	if out.Trade.Symbol != "AAPL" || out.Trade.RealizedNet != "125.50" || len(out.Executions) != 1 ||
 		out.Context.Stop != "180" || !slices.Equal(out.Context.Tags, []string{"FOMO"}) || out.Draft.QuickChoices[0] != "entered_late" {
 		t.Errorf("trade = %+v", out)
 	}

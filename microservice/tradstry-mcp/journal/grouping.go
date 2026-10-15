@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"tradstry-mcp/confirm"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -286,14 +287,17 @@ func groupViews(groups []previewGroup, existing []string) []groupView {
 	views := make([]groupView, 0, len(groups))
 	for _, g := range groups {
 		view := groupView{
-			Trade: g.EntryID, Direction: g.Direction, Quantity: g.EnteredQuantity,
-			RealizedNet: str(g.RealizedNet), Fees: str(g.FeesPaid), Executions: len(g.Allocations),
+			Trade: g.EntryID, Direction: g.Direction, Quantity: tidy(g.EnteredQuantity),
+			RealizedNet: numfmt.Money(str(g.RealizedNet)), Executions: len(g.Allocations),
+		}
+		if fees := str(g.FeesPaid); !numfmt.IsZero(fees) {
+			view.Fees = numfmt.Money(fees)
 		}
 		if existing != nil && !slices.Contains(existing, g.EntryID) {
 			view.Trade = "new"
 		}
 		if g.RemainingQuantity != "0" {
-			view.StillOpen = g.RemainingQuantity
+			view.StillOpen = tidy(g.RemainingQuantity)
 		}
 		for _, a := range g.Allocations {
 			if date := a.ExecutedAt; date != "" {

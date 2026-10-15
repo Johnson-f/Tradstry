@@ -9,12 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
-)
-
-const (
-	defaultListLimit = 25
-	maxListLimit     = 100
 )
 
 type (
@@ -22,34 +18,27 @@ type (
 	reviewState string
 )
 
-type listInput struct {
-	WorkspaceID string      `json:"workspace_id" jsonschema:"ID from list_workspaces"`
-	State       lifecycle   `json:"state,omitempty" jsonschema:"open, closed, or incomplete (history missing, so results are unknown)"`
-	Review      reviewState `json:"review,omitempty" jsonschema:"unreviewed, reviewed, or outdated (reviewed before the trade or its stop/playbook changed)"`
-	Symbol      string      `json:"symbol,omitempty" jsonschema:"ticker, such as AAPL"`
-	From        string      `json:"from,omitempty" jsonschema:"YYYY-MM-DD; trades closed (or, if open, opened) on or after this UTC date"`
-	To          string      `json:"to,omitempty" jsonschema:"YYYY-MM-DD; trades closed (or, if open, opened) on or before this UTC date"`
-	Playbook    string      `json:"playbook,omitempty" jsonschema:"only trades that used this playbook, by name or ID from list_playbooks"`
-	Tag         string      `json:"tag,omitempty" jsonschema:"only trades carrying this tag, by name or ID from list_tags"`
-	Limit       int         `json:"limit,omitempty" jsonschema:"at most 100; defaults to 25, newest first"`
-}
-
 type tradeView struct {
 	ID                  string   `json:"id"`
-	Symbol              string   `json:"symbol"`
+	Symbol              string   `json:"symbol,omitempty"`
 	Name                string   `json:"name,omitempty"`
-	Direction           string   `json:"direction"`
-	State               string   `json:"state"`
-	Outcome             string   `json:"outcome" jsonschema:"profit, loss, breakeven, or unknown"`
-	Review              string   `json:"review"`
+	Direction           string   `json:"direction,omitempty"`
+	State               string   `json:"state,omitempty"`
+	Outcome             string   `json:"outcome,omitempty" jsonschema:"profit, loss, breakeven, or unknown"`
+	Review              string   `json:"review,omitempty"`
 	OpenedAt            string   `json:"opened_at,omitempty"`
 	ClosedAt            string   `json:"closed_at,omitempty"`
+	FirstExecutionAt    string   `json:"first_execution_at,omitempty" jsonschema:"when the trade's first broker execution happened; present even when the trade is incomplete and has no opened_at"`
+	LastExecutionAt     string   `json:"last_execution_at,omitempty"`
+	ExecutionCount      int      `json:"execution_count,omitempty"`
 	EntryPrice          string   `json:"entry_price,omitempty"`
 	ExitPrice           string   `json:"exit_price,omitempty"`
 	Quantity            string   `json:"quantity,omitempty"`
 	RemainingQuantity   string   `json:"remaining_quantity,omitempty"`
-	RealizedNet         string   `json:"realized_net,omitempty" jsonschema:"realized profit or loss after fees, in currency; absent means unknown, not zero"`
-	Fees                string   `json:"fees,omitempty"`
+	BoughtQuantity      string   `json:"bought_quantity,omitempty" jsonschema:"incomplete trades only: total quantity bought across its executions"`
+	SoldQuantity        string   `json:"sold_quantity,omitempty" jsonschema:"incomplete trades only: total quantity sold across its executions"`
+	RealizedNet         string   `json:"realized_net,omitempty" jsonschema:"realized profit or loss after fees, in currency, to the cent; absent means unknown, not zero"`
+	Fees                string   `json:"fees,omitempty" jsonschema:"total fees, to the cent; absent means none"`
 	Currency            string   `json:"currency,omitempty"`
 	Tags                []string `json:"tags,omitempty"`
 	Playbook            string   `json:"playbook,omitempty"`
@@ -66,13 +55,6 @@ type counts struct {
 	Outdated   int `json:"outdated"`
 }
 
-type listOutput struct {
-	Matching int         `json:"matching"`
-	Trades   []tradeView `json:"trades"`
-	Journal  counts      `json:"journal" jsonschema:"totals across the whole journal"`
-	Note     string      `json:"note,omitempty"`
-}
-
 func str(value *string) string {
 	if value == nil {
 		return ""
@@ -85,12 +67,19 @@ func toView(t trade) tradeView {
 		ID: t.ID, Symbol: t.Symbol, Name: str(t.SymbolName), Direction: t.Direction,
 		State: t.LifecycleState, Outcome: t.Outcome, Review: t.ReviewState,
 		OpenedAt: str(t.OpenDate), ClosedAt: str(t.CloseDate),
-		EntryPrice: str(t.EntryPrice), ExitPrice: str(t.ExitPrice),
-		Quantity: str(t.EnteredQuantity), RealizedNet: str(t.RealizedNet), Fees: str(t.FeesPaid),
-		Currency: str(t.Currency), Issue: str(t.IssueMessage), ReplacedBy: str(t.SuccessorID),
+		FirstExecutionAt: str(t.FirstExecutionAt), LastExecutionAt: str(t.LastExecutionAt), ExecutionCount: t.ExecutionCount,
+		EntryPrice: tidy(str(t.EntryPrice)), ExitPrice: tidy(str(t.ExitPrice)), Quantity: tidy(str(t.EnteredQuantity)),
+		RealizedNet: numfmt.Money(str(t.RealizedNet)),
+		Currency:    str(t.Currency), Issue: str(t.IssueMessage), ReplacedBy: str(t.SuccessorID),
+	}
+	if fees := str(t.FeesPaid); !numfmt.IsZero(fees) {
+		view.Fees = numfmt.Money(fees)
 	}
 	if t.LifecycleState == "open" {
-		view.RemainingQuantity = str(t.RemainingQuantity)
+		view.RemainingQuantity = tidy(str(t.RemainingQuantity))
+	}
+	if t.LifecycleState == "incomplete" {
+		view.BoughtQuantity, view.SoldQuantity = tidy(str(t.BoughtQuantity)), tidy(str(t.SoldQuantity))
 	}
 	if str(t.IssueCode) == "possible_duplicate" {
 		view.PossibleDuplicateOf = t.PossibleDuplicates
@@ -99,19 +88,6 @@ func toView(t trade) tradeView {
 		view.Tags = append(view.Tags, tag.Name)
 	}
 	return view
-}
-
-// day is the UTC date a trade belongs to for filtering: when it closed, or
-// when it opened if it is still open.
-func day(t trade) string {
-	date := str(t.CloseDate)
-	if date == "" {
-		date = str(t.OpenDate)
-	}
-	if len(date) >= 10 {
-		return date[:10]
-	}
-	return ""
 }
 
 // The website still shows a workspace's trades while the automatic journal is off,
@@ -135,84 +111,6 @@ func (t *tools) requireJournal(ctx context.Context, token, ws string) (flowStatu
 		return st, errors.New("the journal is off for this workspace; see get_journal_status and start_journal")
 	}
 	return st, nil
-}
-
-func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, listOutput, error) {
-	caller, err := oauth.CallerOf(req)
-	if err != nil {
-		return nil, listOutput{}, err
-	}
-	limit := in.Limit
-	if limit <= 0 {
-		limit = defaultListLimit
-	}
-	if limit > maxListLimit {
-		return nil, listOutput{}, fmt.Errorf("limit can be at most %d", maxListLimit)
-	}
-	st, err := t.journalStatus(ctx, caller.Token, in.WorkspaceID)
-	if err != nil {
-		return nil, listOutput{}, err
-	}
-	all, err := t.api.trades(ctx, caller.Token, in.WorkspaceID)
-	if err != nil {
-		return nil, listOutput{}, forUser(err)
-	}
-	lookup, err := t.api.names(ctx, caller.Token, in.WorkspaceID)
-	if err != nil {
-		return nil, listOutput{}, forUser(err)
-	}
-	playbook, tagged := "", ""
-	if in.Playbook != "" {
-		if playbook, err = playbookID(lookup.Playbooks, in.Playbook); err != nil {
-			return nil, listOutput{}, err
-		}
-	}
-	if in.Tag != "" {
-		if tagged, err = tagID(lookup.Tags, in.Tag); err != nil {
-			return nil, listOutput{}, err
-		}
-	}
-
-	out := listOutput{Trades: []tradeView{}}
-	switch {
-	case !st.Enabled:
-		out.Note = journalOffNote
-	case !st.ready():
-		out.Note = "The journal is still building trades from the latest broker sync, so this list may be incomplete."
-	}
-	for _, tr := range all {
-		switch tr.LifecycleState {
-		case "open":
-			out.Journal.Open++
-		case "closed":
-			out.Journal.Closed++
-			if tr.ReviewState == "unreviewed" {
-				out.Journal.ToReview++
-			}
-		case "incomplete":
-			out.Journal.Incomplete++
-		}
-		if tr.ReviewState == "outdated" {
-			out.Journal.Outdated++
-		}
-
-		if (in.State != "" && tr.LifecycleState != string(in.State)) ||
-			(in.Review != "" && tr.ReviewState != string(in.Review)) ||
-			(in.Symbol != "" && !strings.EqualFold(tr.Symbol, in.Symbol)) ||
-			(in.From != "" && day(tr) < in.From) ||
-			(in.To != "" && day(tr) > in.To) ||
-			(playbook != "" && str(tr.PlaybookID) != playbook) ||
-			(tagged != "" && !slices.ContainsFunc(tr.Tags, func(t tag) bool { return t.ID == tagged })) {
-			continue
-		}
-		out.Matching++
-		if len(out.Trades) < limit {
-			view := toView(tr)
-			view.Playbook = strings.Join(namesOf(nonEmpty(tr.PlaybookID), lookup.Playbooks), "")
-			out.Trades = append(out.Trades, view)
-		}
-	}
-	return nil, out, nil
 }
 
 type tradeInput struct {

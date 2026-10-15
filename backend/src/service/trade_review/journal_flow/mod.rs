@@ -50,6 +50,11 @@ pub struct JournalTrade {
     pub close_date: Option<String>,
     pub review_state: String,
     pub playbook_id: Option<String>,
+    pub first_execution_at: Option<String>,
+    pub last_execution_at: Option<String>,
+    pub execution_count: i32,
+    pub bought_quantity: Option<String>,
+    pub sold_quantity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
@@ -125,11 +130,16 @@ async fn query_trades_connection(
     workspace: &str,
     entry: Option<&str>,
 ) -> Result<Vec<JournalTrade>> {
-    let rows = sqlx::query("SELECT e.id,e.workspace_id,e.source_kind,e.episode_id,e.symbol,e.symbol_name,e.trade_type,coalesce(e.currency,(SELECT currency FROM workspaces WHERE id=e.workspace_id)) AS currency,e.open_date,e.entry_price::text,e.exit_price::text,e.position_size::text,e.contract_multiplier::text,e.record_version,e.materialized_revision,e.issue_json->>'code' AS issue_code,e.issue_json->>'message' AS issue_message,coalesce(e.issue_json->'possible_duplicates','[]') AS possible_duplicates,e.retired_at,e.successor_id,e.playbook_id,e.lifecycle_state,e.outcome,e.remaining_quantity,COALESCE(e.realized_net,CASE WHEN e.source_kind='manual' THEN e.position_size::text::numeric*e.entry_price::text::numeric*e.total_pl::text::numeric/100*e.contract_multiplier::text::numeric END) AS realized_net,e.fees_paid,e.close_date,
+    let rows = sqlx::query("SELECT e.id,e.workspace_id,e.source_kind,e.episode_id,e.symbol,e.symbol_name,e.trade_type,coalesce(e.currency,(SELECT currency FROM workspaces WHERE id=e.workspace_id)) AS currency,e.open_date,e.entry_price::text,e.exit_price::text,e.position_size::text,e.contract_multiplier::text,e.record_version,e.materialized_revision,e.issue_json->>'code' AS issue_code,e.issue_json->>'message' AS issue_message,coalesce(e.issue_json->'possible_duplicates','[]') AS possible_duplicates,e.retired_at,e.successor_id,e.playbook_id,e.lifecycle_state,e.outcome,e.remaining_quantity,COALESCE(e.realized_net,CASE WHEN e.source_kind='manual' THEN e.position_size::text::numeric*e.entry_price::text::numeric*e.total_pl::text::numeric/100*e.contract_multiplier::text::numeric END) AS realized_net,e.fees_paid,e.close_date,x.first_execution_at,x.last_execution_at,coalesce(x.execution_count,0)::int AS execution_count,x.bought_quantity,x.sold_quantity,
         (SELECT coalesce(jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color)),'[]') FROM trade_tags link JOIN tags t ON t.id=link.tag_id AND t.user_id=e.user_id WHERE link.journal_entry_id=e.id AND t.deleted_at IS NULL) AS tags,
         CASE WHEN r.id IS NULL THEN 'unreviewed' WHEN r.entry_revision=e.materialized_revision AND r.context_revision=coalesce(c.record_version,0) THEN 'reviewed' ELSE 'outdated' END AS review_state
         FROM journal_entries e LEFT JOIN journal_trade_context c ON c.entry_id=e.id
         LEFT JOIN LATERAL (SELECT id,entry_revision,context_revision FROM journal_trade_reviews WHERE entry_id=e.id AND user_id=e.user_id AND workspace_id=e.workspace_id ORDER BY review_version DESC LIMIT 1) r ON true
+        LEFT JOIN LATERAL (SELECT count(*) AS execution_count,min(t) AS first_execution_at,max(t) AS last_execution_at,sum(q) FILTER (WHERE buy) AS bought_quantity,sum(q) FILTER (WHERE NOT buy) AS sold_quantity FROM (
+            SELECT f.executed_at AS t,f.quantity AS q,NULL::boolean AS buy FROM trade_episode_fills f WHERE f.episode_id=e.episode_id
+            UNION ALL
+            SELECT b.trade_date,abs(b.units::text::numeric),upper(b.transaction_type) LIKE 'BUY%' FROM brokerage_transactions b WHERE e.episode_id IS NULL AND jsonb_typeof(e.issue_json->'source_ids')='array' AND b.user_id=e.user_id AND b.workspace_id=e.workspace_id AND (e.issue_json->'source_ids') ? b.id
+        ) fills) x ON true
         WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.deleted_at IS NULL AND (e.retired_at IS NULL OR $3::text IS NOT NULL) AND ($3::text IS NULL OR e.id=$3) ORDER BY e.open_date DESC NULLS LAST,e.id")
         .bind(user).bind(workspace).bind(entry).fetch_all(connection).await?;
     rows.into_iter()
@@ -170,6 +180,15 @@ async fn query_trades_connection(
                     .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("close_date")?
                     .map(|date| date.to_rfc3339()),
                 review_state: row.try_get("review_state")?,
+                first_execution_at: row
+                    .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("first_execution_at")?
+                    .map(|date| date.to_rfc3339()),
+                last_execution_at: row
+                    .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_execution_at")?
+                    .map(|date| date.to_rfc3339()),
+                execution_count: row.try_get("execution_count")?,
+                bought_quantity: decimal_string(&row, "bought_quantity")?,
+                sold_quantity: decimal_string(&row, "sold_quantity")?,
             })
         })
         .collect()

@@ -2397,3 +2397,141 @@ mod duplicates {
         assert!(manual.possible_duplicates.is_empty());
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trades_report_their_executions_even_when_incomplete() {
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    for (name, side, quantity, at) in [
+        ("buy", "BUY", 100.0, "2026-09-01T14:00:00Z"),
+        ("sell", "SELL", 100.0, "2026-09-03T15:00:00Z"),
+    ] {
+        fill(
+            &pool,
+            &user,
+            &workspace,
+            name,
+            side,
+            FillAmounts {
+                quantity,
+                price: 10.0,
+                fee: 0.0,
+            },
+            at,
+        )
+        .await;
+    }
+    for (name, quantity, at) in [
+        ("odd1", 2.0, "2026-09-05T14:00:00Z"),
+        ("odd2", 3.0, "2026-09-07T14:00:00Z"),
+    ] {
+        fill(
+            &pool,
+            &user,
+            &workspace,
+            name,
+            "BUY",
+            FillAmounts {
+                quantity,
+                price: 1.0,
+                fee: 0.0,
+            },
+            at,
+        )
+        .await;
+        sqlx::query(
+            "UPDATE brokerage_transactions SET symbol='STRIKE',strike_price=37 WHERE id=$1",
+        )
+        .bind(format!("{workspace}:{name}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    project(&pool, &user, &workspace).await;
+    let trades = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap();
+
+    let closed = trades.iter().find(|t| t.symbol == "ACME").unwrap();
+    assert_eq!(closed.lifecycle_state, "closed");
+    assert_eq!(closed.execution_count, 2);
+    assert_eq!(
+        closed.first_execution_at.as_deref(),
+        closed.open_date.as_deref()
+    );
+    assert_eq!(
+        closed.last_execution_at.as_deref(),
+        closed.close_date.as_deref()
+    );
+
+    let incomplete = trades.iter().find(|t| t.symbol == "STRIKE").unwrap();
+    assert_eq!(incomplete.lifecycle_state, "incomplete");
+    assert!(incomplete.open_date.is_none());
+    assert_eq!(incomplete.execution_count, 2);
+    assert_eq!(
+        incomplete.first_execution_at.as_deref(),
+        Some("2026-09-05T14:00:00+00:00")
+    );
+    assert_eq!(
+        incomplete.last_execution_at.as_deref(),
+        Some("2026-09-07T14:00:00+00:00")
+    );
+    assert_eq!(incomplete.bought_quantity.as_deref(), Some("5"));
+    assert_eq!(incomplete.sold_quantity, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn preparation_counts_earlier_entries_that_hold_back_new_trades() {
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    sqlx::query("UPDATE journal_workspace_state SET enabled=false WHERE workspace_id=$1")
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (name, side, at) in [
+        ("buy", "BUY", "2026-09-01T14:00:00Z"),
+        ("sell", "SELL", "2026-09-01T15:00:00Z"),
+    ] {
+        fill(
+            &pool,
+            &user,
+            &workspace,
+            name,
+            side,
+            FillAmounts {
+                quantity: 10.0,
+                price: 10.0,
+                fee: 0.0,
+            },
+            at,
+        )
+        .await;
+    }
+    let flat = Some("2026-09-01T00:00:00Z");
+    let before = journal_flow::backfill::prepare(&pool, &user, &workspace, flat)
+        .await
+        .unwrap();
+    assert_eq!((before.ready_trades, before.attention_groups), (1, 0));
+    assert_eq!(before.existing_entries, 0);
+
+    for (suffix, symbol, day) in [
+        ("same", "ACME", "2026-09-01"),
+        ("other", "OTHER", "2026-09-01"),
+        ("later", "ACME", "2026-09-20"),
+    ] {
+        sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,status,total_pl,net_roi,duration)
+            VALUES ($1,$2,$3,$4,$4,'long',$5::text::timestamptz,$5::text::timestamptz,1,2,1,'profit',1,1,1)")
+            .bind(format!("{workspace}:{suffix}")).bind(&user).bind(&workspace).bind(symbol).bind(day)
+            .execute(&pool).await.unwrap();
+    }
+    let after = journal_flow::backfill::prepare(&pool, &user, &workspace, flat)
+        .await
+        .unwrap();
+    assert_eq!(after.existing_entries, 3);
+    assert_eq!(after.overlapping_entries, 1);
+    assert_eq!(after.held_by_earlier_entries, 1);
+    assert_eq!((after.ready_trades, after.attention_groups), (0, 1));
+}
