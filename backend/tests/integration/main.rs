@@ -27,7 +27,6 @@ mod brokerage_reconciliation_pg;
 mod brokerage_sync_gate_pg;
 mod brokerage_workspace_binding_pg;
 mod calculator_sync_pg;
-mod clerk_webhook;
 mod cross_account_isolation_pg;
 mod graphql_schema;
 mod journal_flow_pg;

@@ -2542,7 +2542,6 @@ input UpsertPositionCalculatorRuleInput {
 
 type User {
 	id: String!
-	clerkUuid: String
 	stytchUserId: String
 	fullName: String!
 	email: String!

@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_stytch_identity() {
+fn seaorm_migrations_end_with_drop_clerk_uuid() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 13);
+    assert_eq!(migrations.len(), 14);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261013_000013_stytch_identity"
+        "m20261015_000014_drop_clerk_uuid"
     );
 }

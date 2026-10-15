@@ -7429,7 +7429,6 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "chrono-tz",
- "csv",
  "dotenvy",
  "finance-query",
  "futures-util",

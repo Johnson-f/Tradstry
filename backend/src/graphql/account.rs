@@ -5,7 +5,7 @@ use chrono::{Duration, Utc};
 use tracing::error;
 
 use crate::graphql::auth::current_user;
-use crate::service::auth::{AuthClaims, AuthProvider, StytchSession, TokenKind};
+use crate::service::auth::{AuthClaims, StytchSession, TokenKind};
 use crate::service::db::Db;
 use crate::service::stytch::{Session, StytchClient, StytchError};
 use crate::service::upload::r2::R2Client;
@@ -49,7 +49,7 @@ struct StytchCaller<'a> {
 /// session. Connected-app tokens, which carry no session, are refused.
 fn stytch_caller<'a>(ctx: &Context<'a>) -> Result<StytchCaller<'a>> {
     let claims = ctx.data::<AuthClaims>()?;
-    let session = (claims.provider == AuthProvider::Stytch && claims.kind == TokenKind::Session)
+    let session = (claims.kind == TokenKind::Session)
         .then(|| claims.stytch_session())
         .flatten()
         .ok_or_else(|| {

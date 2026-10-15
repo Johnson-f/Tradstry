@@ -9,7 +9,7 @@ const TOLERANCE_SECONDS: i64 = 300;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Verifies a Svix-signed webhook, the scheme Clerk uses.
+/// Verifies a Svix-signed webhook.
 ///
 /// `now_unix` is a parameter rather than read from the clock so the replay window is testable.
 pub fn verify_svix_signature(

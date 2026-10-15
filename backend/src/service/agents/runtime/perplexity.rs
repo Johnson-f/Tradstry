@@ -885,7 +885,7 @@ mod tests {
             knowledge: None,
             actor: AgentActor {
                 user_id: "smoke-user".into(),
-                subject: "smoke-clerk".into(),
+                subject: "smoke-user".into(),
             },
             scope: AgentScope {
                 workspace_id: "smoke-workspace".into(),

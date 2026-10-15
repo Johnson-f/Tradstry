@@ -1,20 +1,17 @@
 use anyhow::{Context, Result};
 use async_graphql::SimpleObject;
 use chrono::Utc;
-use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::service::auth::Subject;
 use crate::service::db::entities::core::users;
 use crate::service::db::error::is_unique_violation;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 pub struct User {
     pub id: String,
-    pub clerk_uuid: Option<String>,
     pub stytch_user_id: Option<String>,
     pub full_name: String,
     pub email: String,
@@ -26,7 +23,6 @@ impl From<users::Model> for User {
     fn from(model: users::Model) -> Self {
         Self {
             id: model.id,
-            clerk_uuid: model.clerk_uuid,
             stytch_user_id: model.stytch_user_id,
             full_name: model.full_name,
             email: model.email,
@@ -43,15 +39,6 @@ fn format_timestamp(value: chrono::DateTime<chrono::FixedOffset>) -> String {
         .to_string()
 }
 
-pub async fn find_by_clerk_uuid(db: &DatabaseConnection, clerk_uuid: &str) -> Result<Option<User>> {
-    Ok(users::Entity::find()
-        .filter(users::Column::ClerkUuid.eq(clerk_uuid))
-        .one(db)
-        .await
-        .context("Failed to query user by clerk_uuid")?
-        .map(Into::into))
-}
-
 pub async fn find_by_stytch_user_id(
     db: &DatabaseConnection,
     stytch_user_id: &str,
@@ -64,69 +51,19 @@ pub async fn find_by_stytch_user_id(
         .map(Into::into))
 }
 
-/// Resolve the account for a verified subject without creating one. A Stytch
-/// user that carries the Clerk ID it was imported under is matched to the
-/// existing Clerk row once, and the row keeps the Stytch ID from then on.
-pub async fn find_user(db: &DatabaseConnection, subject: &Subject) -> Result<Option<User>> {
-    match subject {
-        Subject::Clerk(clerk_uuid) => find_by_clerk_uuid(db, clerk_uuid).await,
-        Subject::Stytch { user_id, clerk_id } => {
-            if let Some(user) = find_by_stytch_user_id(db, user_id).await? {
-                return Ok(Some(user));
-            }
-            match clerk_id {
-                Some(clerk_id) => link_imported_user(db, user_id, clerk_id).await,
-                None => Ok(None),
-            }
-        }
-    }
-}
-
-async fn link_imported_user(
-    db: &DatabaseConnection,
-    stytch_user_id: &str,
-    clerk_id: &str,
-) -> Result<Option<User>> {
-    let Some(user) = find_by_clerk_uuid(db, clerk_id).await? else {
-        return Ok(None);
-    };
-    if user.stytch_user_id.is_some() {
-        return Ok(None);
-    }
-
-    let linked = users::Entity::update_many()
-        .col_expr(users::Column::StytchUserId, Expr::value(stytch_user_id))
-        .col_expr(
-            users::Column::UpdatedAt,
-            Expr::value(Utc::now().fixed_offset()),
-        )
-        .filter(users::Column::Id.eq(&user.id))
-        .filter(users::Column::StytchUserId.is_null())
-        .exec(db)
-        .await;
-    match linked {
-        Ok(_) => find_by_stytch_user_id(db, stytch_user_id).await,
-        Err(error) if is_unique_violation(&error) => {
-            find_by_stytch_user_id(db, stytch_user_id).await
-        }
-        Err(error) => Err(error).context("Failed to link the Stytch user to the Clerk user"),
-    }
+pub async fn find_user(db: &DatabaseConnection, stytch_user_id: &str) -> Result<Option<User>> {
+    find_by_stytch_user_id(db, stytch_user_id).await
 }
 
 async fn create_user(
     db: &DatabaseConnection,
-    subject: &Subject,
+    stytch_user_id: &str,
     full_name: &str,
     email: &str,
 ) -> Result<User> {
-    let (clerk_uuid, stytch_user_id) = match subject {
-        Subject::Clerk(clerk_uuid) => (Some(clerk_uuid.clone()), None),
-        Subject::Stytch { user_id, .. } => (None, Some(user_id.clone())),
-    };
     let model = users::ActiveModel {
         id: Set(crate::ids::new_uuid_v7().to_string()),
-        clerk_uuid: Set(clerk_uuid),
-        stytch_user_id: Set(stytch_user_id),
+        stytch_user_id: Set(Some(stytch_user_id.to_owned())),
         full_name: Set(full_name.to_owned()),
         email: Set(email.to_owned()),
         ..Default::default()
@@ -172,22 +109,22 @@ pub async fn fill_blank_profile(
 
 pub async fn find_or_create_user(
     db: &DatabaseConnection,
-    subject: &Subject,
+    stytch_user_id: &str,
     full_name: &str,
     email: &str,
 ) -> Result<(User, bool)> {
-    if let Some(user) = find_user(db, subject).await? {
+    if let Some(user) = find_user(db, stytch_user_id).await? {
         return Ok((user, false));
     }
 
-    match create_user(db, subject, full_name, email).await {
+    match create_user(db, stytch_user_id, full_name, email).await {
         Ok(user) => Ok((user, true)),
         Err(error)
             if error
                 .downcast_ref::<DbErr>()
                 .is_some_and(is_unique_violation) =>
         {
-            find_user(db, subject)
+            find_user(db, stytch_user_id)
                 .await?
                 .context("User not found after concurrent insert")
                 .map(|user| (user, false))

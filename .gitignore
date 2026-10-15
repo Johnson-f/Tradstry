@@ -60,7 +60,6 @@ devops/deploy.env*
 !/apps/website/.yarn/plugins
 !/apps/website/.yarn/releases
 !/apps/website/.yarn/versions
-/apps/website/.clerk/
 /apps/website/.env*
 
 # typescript

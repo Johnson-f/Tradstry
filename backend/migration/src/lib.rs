@@ -13,6 +13,7 @@ mod m20261009_000010_mcp_oauth_platform;
 mod m20261009_000011_manual_duplicate_hold;
 mod m20261009_000012_manual_trade_fees;
 mod m20261013_000013_stytch_identity;
+mod m20261015_000014_drop_clerk_uuid;
 
 pub struct Migrator;
 
@@ -33,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261009_000011_manual_duplicate_hold::Migration),
             Box::new(m20261009_000012_manual_trade_fees::Migration),
             Box::new(m20261013_000013_stytch_identity::Migration),
+            Box::new(m20261015_000014_drop_clerk_uuid::Migration),
         ]
     }
 }

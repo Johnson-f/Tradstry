@@ -17,15 +17,6 @@ pub async fn collect_r2_keys(pool: &PgPool, user_id: &str) -> Result<Vec<String>
     Ok(keys)
 }
 
-pub async fn delete_user_by_clerk_uuid(pool: &PgPool, clerk_uuid: &str) -> Result<Option<String>> {
-    let deleted = query_scalar::<String>("DELETE FROM users WHERE clerk_uuid = $1 RETURNING id")
-        .bind(clerk_uuid)
-        .fetch_optional(pool)
-        .await?;
-
-    Ok(deleted)
-}
-
 /// Removes the user's R2 objects, then the user row and everything it owns. The
 /// keys are only reachable through rows the delete removes, so the objects go
 /// first and a failure leaves the account intact to retry.

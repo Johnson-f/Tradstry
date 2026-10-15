@@ -3,9 +3,9 @@ use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::journal_table as jt;
 
 async fn seed_user(pool: &PgPool, id: &str) {
-    sqlx::query("INSERT INTO users (id, clerk_uuid) VALUES ($1, $2)")
+    sqlx::query("INSERT INTO users (id, stytch_user_id) VALUES ($1, $2)")
         .bind(id)
-        .bind(format!("clerk_{id}"))
+        .bind(format!("stytch_{id}"))
         .execute(pool)
         .await
         .expect("seed user");
