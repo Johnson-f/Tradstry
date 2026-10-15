@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.health_check().await?;
     info!("Database healthy and SeaORM schema contract verified");
     let token_verifier = TokenVerifier::from_env()?;
-    let stytch_client = StytchClient::from_env()?.map(Arc::new);
+    let stytch_client = Arc::new(StytchClient::from_env()?);
     info!("Authentication configured");
     let allowed_origins = cors_allowed_origins();
     let portal_redirects = PortalRedirects::from_env(&allowed_origins)?;
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         portal_redirects,
         redis_client.clone(),
         notification_events_tx.clone(),
-        stytch_client,
+        Some(stytch_client),
     );
 
     // Cooperative shutdown signal for the background tasks. On SIGTERM/SIGINT we

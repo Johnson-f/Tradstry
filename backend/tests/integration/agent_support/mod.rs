@@ -31,7 +31,7 @@ impl AgentPgFixture {
             db,
             actor: AgentActor {
                 user_id,
-                subject: "clerk-agent-test".into(),
+                subject: "stytch-agent-test".into(),
             },
             scope: AgentScope { workspace_id },
             store,

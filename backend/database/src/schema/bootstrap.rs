@@ -65,6 +65,11 @@ async fn bootstrap_locked(pool: &PgPool, db: &DatabaseConnection) -> Result<()> 
 }
 
 pub async fn prepare_fresh_adoption_compatibility(db: &DatabaseConnection) -> Result<()> {
+    // Applied migrations still reference users.clerk_uuid, which the entity no
+    // longer declares; the drop-column migration removes it again.
+    db.execute_unprepared("ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_uuid text")
+        .await
+        .context("restore users.clerk_uuid for the applied migrations")?;
     // The released adoption migration replaces generated indexes. Reinstall these
     // new composite ownership constraints in the journal migration after adoption.
     db.execute_unprepared(

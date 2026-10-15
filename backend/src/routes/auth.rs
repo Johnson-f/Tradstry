@@ -1,6 +1,6 @@
 use actix_web::{HttpMessage, HttpRequest, error};
 
-use crate::service::auth::{AuthClaims, Subject};
+use crate::service::auth::AuthClaims;
 use crate::service::db::client::{Db, UserDb};
 use crate::service::read_service::users::{self, AccountRequired, Provisioning};
 
@@ -14,7 +14,7 @@ pub(crate) async fn request_user_db(req: &HttpRequest, db: &Db) -> actix_web::Re
 
     let user = users::load_user(
         db,
-        &Subject::from(&claims),
+        &claims.sub,
         claims.full_name(),
         claims.email(),
         Provisioning::from(claims.kind),

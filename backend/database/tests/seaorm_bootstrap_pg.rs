@@ -130,7 +130,7 @@ async fn journal_flow_schema_records_an_open_trade_without_inventing_a_close_or_
     bootstrap(&pool, &schema)
         .await
         .expect("bootstrap journal schema");
-    pool.execute("INSERT INTO users (id,clerk_uuid,email,full_name) VALUES ('journal-user','journal-clerk','journal@test.local','Journal User');
+    pool.execute("INSERT INTO users (id,stytch_user_id,email,full_name) VALUES ('journal-user','journal-stytch','journal@test.local','Journal User');
         INSERT INTO workspaces (id,user_id,name) VALUES ('journal-workspace','journal-user','Journal');
         INSERT INTO journal_entries (id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,remaining_quantity)
         VALUES ('open-trade','journal-user','journal-workspace','ACME','Acme','long','broker','open','unknown',100)")
@@ -146,7 +146,7 @@ async fn journal_flow_schema_records_an_open_trade_without_inventing_a_close_or_
     );
     pool.execute("INSERT INTO journal_trade_context(entry_id,user_id,workspace_id,stop_state) VALUES ('open-trade','journal-user','journal-workspace','unknown')")
         .await.expect("unknown stop remains valid");
-    pool.execute("INSERT INTO users(id,clerk_uuid,email,full_name) VALUES ('other','other-clerk','other@test.local','Other'); INSERT INTO workspaces(id,user_id,name) VALUES ('other-workspace','other','Other')")
+    pool.execute("INSERT INTO users(id,stytch_user_id,email,full_name) VALUES ('other','other-stytch','other@test.local','Other'); INSERT INTO workspaces(id,user_id,name) VALUES ('other-workspace','other','Other')")
         .await.expect("seed separate owner");
     let wrong_owner = pool.execute("INSERT INTO journal_review_drafts(entry_id,user_id,workspace_id) VALUES ('open-trade','other','other-workspace')").await;
     assert!(wrong_owner.is_err(), "draft must belong to the entry owner");
@@ -523,7 +523,7 @@ async fn media_derivative_recovery_requeues_exhausted_jobs() {
         .await
         .expect("bootstrap media schema");
     pool.execute(sqlx::AssertSqlSafe(
-        "INSERT INTO users(id,clerk_uuid,email,full_name)
+        "INSERT INTO users(id,stytch_user_id,email,full_name)
          VALUES ('u1','c1','u1@test.local','User One');
          INSERT INTO notebook_media_blobs
          (id,user_id,content_hash,object_key,state,content_type,media_type,format,bytes,

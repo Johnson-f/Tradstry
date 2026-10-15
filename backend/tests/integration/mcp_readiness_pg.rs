@@ -1,6 +1,5 @@
 //! Self-healing user provisioning and mistake search over mistake-role tags.
 
-use tradstry_backend::service::auth::Subject;
 use tradstry_backend::service::db::Db;
 use tradstry_backend::service::db::schema::tables::{journal_table, tags_table, users_table};
 use tradstry_backend::service::read_service::journal::JournalFilter;
@@ -13,15 +12,15 @@ async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
-    let clerk_uuid = Subject::Clerk(tradstry_backend::ids::new_uuid_v7().to_string());
+    let stytch_user_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
     // Simulates provisioning failing right after the user row was inserted.
-    let (_, created) = users_table::find_or_create_user(db.connection(), &clerk_uuid, "", "")
+    let (_, created) = users_table::find_or_create_user(db.connection(), &stytch_user_id, "", "")
         .await
         .unwrap();
     assert!(created);
 
-    let user = ensure_user(&db, &clerk_uuid, "", "").await.unwrap();
+    let user = ensure_user(&db, &stytch_user_id, "", "").await.unwrap();
     let workspaces: i64 = sqlx::query_scalar("SELECT count(*) FROM workspaces WHERE user_id = $1")
         .bind(&user.id)
         .fetch_one(&pool)
@@ -39,8 +38,8 @@ async fn a_user_left_unprovisioned_is_provisioned_on_the_next_request() {
 
     // Concurrent repeat requests stay idempotent.
     let (a, b) = tokio::join!(
-        ensure_user(&db, &clerk_uuid, "", ""),
-        ensure_user(&db, &clerk_uuid, "", "")
+        ensure_user(&db, &stytch_user_id, "", ""),
+        ensure_user(&db, &stytch_user_id, "", "")
     );
     a.unwrap();
     b.unwrap();
@@ -57,18 +56,18 @@ async fn blank_profile_fields_are_filled_but_never_overwritten() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
     let db = Db::from_pool(pool.clone());
-    let clerk_uuid = Subject::Clerk(tradstry_backend::ids::new_uuid_v7().to_string());
+    let stytch_user_id = tradstry_backend::ids::new_uuid_v7().to_string();
 
-    let user = ensure_user(&db, &clerk_uuid, "", "").await.unwrap();
+    let user = ensure_user(&db, &stytch_user_id, "", "").await.unwrap();
     assert_eq!(user.email, "");
 
-    let user = ensure_user(&db, &clerk_uuid, "Ada Trader", "ada@example.com")
+    let user = ensure_user(&db, &stytch_user_id, "Ada Trader", "ada@example.com")
         .await
         .unwrap();
     assert_eq!(user.full_name, "Ada Trader");
     assert_eq!(user.email, "ada@example.com");
 
-    let user = ensure_user(&db, &clerk_uuid, "Someone Else", "else@example.com")
+    let user = ensure_user(&db, &stytch_user_id, "Someone Else", "else@example.com")
         .await
         .unwrap();
     assert_eq!(user.full_name, "Ada Trader");

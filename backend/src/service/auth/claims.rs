@@ -5,12 +5,6 @@ use serde_json::{Map, Value};
 pub const STYTCH_SESSION_CLAIM: &str = "https://stytch.com/session";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AuthProvider {
-    Clerk,
-    Stytch,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     Session,
     ConnectedApp,
@@ -20,7 +14,6 @@ pub enum TokenKind {
 pub struct AuthClaims {
     pub sub: String,
     pub iss: String,
-    pub provider: AuthProvider,
     pub kind: TokenKind,
     pub other: Map<String, Value>,
 }
@@ -60,23 +53,12 @@ impl AuthClaims {
     }
 
     pub fn email(&self) -> &str {
-        match self.provider {
-            AuthProvider::Clerk => self.str_claim("email"),
-            AuthProvider::Stytch => self
-                .other
-                .get("emails")
-                .and_then(Value::as_array)
-                .and_then(|emails| emails.first())
-                .and_then(Value::as_str),
-        }
-        .unwrap_or("")
-    }
-
-    pub fn clerk_id(&self) -> Option<&str> {
-        match self.provider {
-            AuthProvider::Stytch => self.str_claim("clerk_id").filter(|id| !id.is_empty()),
-            AuthProvider::Clerk => None,
-        }
+        self.other
+            .get("emails")
+            .and_then(Value::as_array)
+            .and_then(|emails| emails.first())
+            .and_then(Value::as_str)
+            .unwrap_or("")
     }
 
     pub fn stytch_session(&self) -> Option<StytchSession> {
@@ -90,51 +72,32 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn claims(provider: AuthProvider, other: Value) -> AuthClaims {
+    fn claims(other: Value) -> AuthClaims {
         AuthClaims {
             sub: "sub".into(),
             iss: "iss".into(),
-            provider,
             kind: TokenKind::Session,
             other: other.as_object().unwrap().clone(),
         }
     }
 
     #[test]
-    fn reads_the_email_each_provider_puts_in_the_token() {
-        let clerk = claims(AuthProvider::Clerk, json!({"email": "a@x.com"}));
-        assert_eq!(clerk.email(), "a@x.com");
-        let stytch = claims(
-            AuthProvider::Stytch,
-            json!({"emails": ["b@x.com", "c@x.com"], "email": "ignored@x.com"}),
-        );
-        assert_eq!(stytch.email(), "b@x.com");
-        assert_eq!(claims(AuthProvider::Stytch, json!({})).email(), "");
-    }
-
-    #[test]
-    fn an_empty_clerk_id_is_absent() {
-        let empty = claims(AuthProvider::Stytch, json!({"clerk_id": ""}));
-        assert_eq!(empty.clerk_id(), None);
-        let set = claims(AuthProvider::Stytch, json!({"clerk_id": "user_1"}));
-        assert_eq!(set.clerk_id(), Some("user_1"));
-        let clerk = claims(AuthProvider::Clerk, json!({"clerk_id": "user_1"}));
-        assert_eq!(clerk.clerk_id(), None);
+    fn reads_the_first_email_in_the_token() {
+        let token = claims(json!({"emails": ["b@x.com", "c@x.com"], "email": "ignored@x.com"}));
+        assert_eq!(token.email(), "b@x.com");
+        assert_eq!(claims(json!({})).email(), "");
     }
 
     #[test]
     fn recent_authentication_factors_are_found() {
         let now = Utc::now();
         let session = |at: DateTime<Utc>| {
-            claims(
-                AuthProvider::Stytch,
-                json!({STYTCH_SESSION_CLAIM: {
-                    "id": "session-1",
-                    "authentication_factors": [
-                        {"type": "oauth", "last_authenticated_at": at.to_rfc3339()},
-                    ],
-                }}),
-            )
+            claims(json!({STYTCH_SESSION_CLAIM: {
+                "id": "session-1",
+                "authentication_factors": [
+                    {"type": "oauth", "last_authenticated_at": at.to_rfc3339()},
+                ],
+            }}))
             .stytch_session()
             .unwrap()
         };

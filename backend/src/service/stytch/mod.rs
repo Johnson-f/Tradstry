@@ -1,9 +1,6 @@
 mod client;
 
-pub use client::{
-    CreateUser, MigratePassword, MigrateResponse, PersonName, Session, SessionAttributes,
-    StytchClient, StytchError, StytchUser,
-};
+pub use client::{Session, SessionAttributes, StytchClient, StytchError};
 
 const TEST_API: &str = "https://test.stytch.com";
 const LIVE_API: &str = "https://api.stytch.com";

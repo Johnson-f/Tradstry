@@ -151,7 +151,7 @@ async fn migration_deduplicates_workspace_clones_and_preserves_trade_links() {
 
     sqlx::raw_sql(
         r#"
-        INSERT INTO users (id,clerk_uuid) VALUES ('u','clerk-u');
+        INSERT INTO users (id,clerk_uuid) VALUES ('u','legacy-u');
         INSERT INTO workspaces (id,user_id,name) VALUES ('w1','u','Cash'),('w2','u','Margin');
         INSERT INTO playbooks (id,user_id,workspace_id,name,edge_name,entry_rules,exit_rules,position_sizing_rules)
         VALUES

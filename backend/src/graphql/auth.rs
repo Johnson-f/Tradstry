@@ -2,7 +2,7 @@ use async_graphql::{Context, Error, ErrorExtensions, Result};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
-use crate::service::auth::{AuthClaims, Subject};
+use crate::service::auth::AuthClaims;
 use crate::service::db::Db;
 use crate::service::db::client::UserDb;
 use crate::service::db::schema::tables::users_table::User;
@@ -29,7 +29,7 @@ async fn load_user(ctx: &Context<'_>) -> Result<AuthenticatedUser> {
         .unwrap_or(Provisioning::ExistingOnly);
     let user = users::load_user(
         db,
-        &Subject::from(claims),
+        &claims.sub,
         claims.full_name(),
         claims.email(),
         provisioning,

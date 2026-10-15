@@ -1,5 +1,4 @@
 mod auth;
-pub mod clerk_webhook;
 mod graphql;
 pub mod notebook_media;
 pub mod snaptrade_oauth;
@@ -30,9 +29,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route(web::get().to(graphiql)),
         )
         .service(web::resource("/graphql/ws").route(web::get().to(graphql_ws_handler)))
-        .service(
-            web::resource("/webhooks/clerk").route(web::post().to(clerk_webhook::clerk_webhook)),
-        )
         .service(
             web::resource("/webhooks/stytch").route(web::post().to(stytch_webhook::stytch_webhook)),
         )
