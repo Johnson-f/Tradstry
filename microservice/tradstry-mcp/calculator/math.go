@@ -105,7 +105,3 @@ func size(direction string, stop, balance, riskPercent float64, entries []planne
 func stopDistance(price, stop float64) float64 {
 	return math.Abs(price-stop) / price * 100
 }
-
-func round2(v float64) float64 {
-	return math.Round(v*100) / 100
-}

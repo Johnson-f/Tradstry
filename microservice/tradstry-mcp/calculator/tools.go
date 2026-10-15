@@ -12,6 +12,7 @@ import (
 
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -41,7 +42,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "get_risk_rules",
 		Title: "Risk rules",
-		Description: "The user's position sizing rules for a workspace: account balance, percent risked per trade and widest stop allowed, " +
+		Description: "Get risk rules (position sizing rules) for a workspace: account balance, percent risked per trade and widest stop allowed, " +
 			"plus the balance their broker reports.",
 		Annotations: readOnly,
 	}, t.getRules)
@@ -49,14 +50,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_risk_rules",
 		Title:       "Set risk rules",
-		Description: "Change the user's position sizing rules. Fields left out stay as they are. Use only numbers the user gave.",
+		Description: "Set risk rules (position sizing rules: balance, risk percent, widest stop). Fields left out stay as they are. Use only numbers the user gave.",
 		Annotations: write,
 	}, t.setRules)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "calculate_position",
 		Title: "Size a position",
-		Description: "How many shares to buy or short so a stop-out loses only the planned risk. Saves nothing. " +
+		Description: "Calculate position size: how many shares to buy or short so a stop-out loses only the planned risk. Saves nothing. " +
 			"Uses the saved risk percent and the broker's balance unless given others. Shares round down so the loss never exceeds the budget. " +
 			"For a scale-in, give several entries and how the risk splits between them. Stocks and ETFs only.",
 		InputSchema: inputSchema[sizeInput](),
@@ -66,7 +67,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "save_calculation",
 		Title: "Save calculation to history",
-		Description: "Size a position as calculate_position does and record it in the calculator's history, " +
+		Description: "Save a position size calculation: size a position as calculate_position does and record it in the calculator's history, " +
 			"for when the user wants to keep the numbers but not plan the trade.",
 		InputSchema: inputSchema[saveInput](),
 		Annotations: write,
@@ -75,7 +76,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "create_position_plan",
 		Title: "Plan a position",
-		Description: "Size a position and save it as a plan before the trade. When the trade happens, the journal matches it to the plan, " +
+		Description: "Create a position plan: size a position and save it as a plan before the trade. When the trade happens, the journal matches it to the plan, " +
 			"and the plan's stop gives the trade its R. Take the symbol, entries and stop from the user.",
 		InputSchema: inputSchema[createPlanInput](),
 		Annotations: write,
@@ -84,14 +85,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_position_plans",
 		Title:       "List position plans",
-		Description: "The user's position plans, open ones first, with each entry's status.",
+		Description: "List position plans (planned trades), open ones first, with each entry's status.",
 		Annotations: readOnly,
 	}, t.listPlans)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "update_position_plan",
 		Title: "Update position plan",
-		Description: "Mark a plan's entries filled or skipped, change its notes, or cancel it. When every entry is filled or skipped, " +
+		Description: "Update a position plan: mark its entries filled or skipped, change its notes, or cancel it. When every entry is filled or skipped, " +
 			"the plan is completed and recorded in the calculator's history, or cancelled if nothing filled.",
 		Annotations: write,
 	}, t.updatePlan)
@@ -99,21 +100,21 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete_position_plan",
 		Title:       "Delete position plan",
-		Description: "Delete a plan. The user must confirm first. Cancelling with update_position_plan keeps it on record instead.",
+		Description: "Delete a position plan. The user must confirm first. Cancelling with update_position_plan keeps it on record instead.",
 		Annotations: destructive,
 	}, t.deletePlan)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_calculator_history",
 		Title:       "Calculator history",
-		Description: "Positions the user sized and saved, and plans they completed, newest first.",
+		Description: "List calculator history: positions the user sized and saved, and plans they completed, newest first.",
 		Annotations: readOnly,
 	}, t.listHistory)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete_calculator_entry",
 		Title:       "Delete calculator history entry",
-		Description: "Remove one entry from the calculator's history. The user must confirm first.",
+		Description: "Delete one entry from the calculator history. The user must confirm first.",
 		Annotations: destructive,
 	}, t.deleteEntry)
 }
@@ -141,7 +142,8 @@ func (t *tools) rulesOf(ctx context.Context, token, ws string) (settings, rulesV
 	}
 	v := rulesView{Currency: s.Workspace.Currency}
 	if b := s.Workspace.TotalValue; b != nil && *b > 0 {
-		v.BrokerBalance = b
+		rounded := numfmt.Round2(*b)
+		v.BrokerBalance = &rounded
 	}
 	if s.Rule == nil {
 		v.Note = "No sizing rules are saved yet; ask the user for their risk per trade and set them with set_risk_rules."
@@ -293,14 +295,14 @@ func (t *tools) sizeFor(ctx context.Context, token string, in sizeInput) (sizing
 	}
 
 	v := calculationView{
-		Direction: s.Direction, Stop: s.Stop, AccountBalance: round2(balance), BalanceSource: source, RiskPercent: risk,
-		RiskBudget: round2(s.RiskBudget), Currency: rules.Currency, TotalShares: s.TotalShares, TotalRisk: round2(s.TotalRisk),
-		PositionValue: round2(s.PositionValue), AverageEntry: round2(s.AverageEntry), AccountPercent: round2(s.PositionValue / balance * 100),
+		Direction: s.Direction, Stop: s.Stop, AccountBalance: numfmt.Round2(balance), BalanceSource: source, RiskPercent: risk,
+		RiskBudget: numfmt.Round2(s.RiskBudget), Currency: rules.Currency, TotalShares: s.TotalShares, TotalRisk: numfmt.Round2(s.TotalRisk),
+		PositionValue: numfmt.Round2(s.PositionValue), AverageEntry: numfmt.Round2(s.AverageEntry), AccountPercent: numfmt.Round2(s.PositionValue / balance * 100),
 	}
 	for i, e := range s.Entries {
 		v.Entries = append(v.Entries, entryView{
-			Number: i + 1, Price: e.Price, RiskSharePercent: e.RiskPercent, Shares: e.Shares, Risk: round2(e.ActualRisk),
-			PositionValue: round2(e.PositionValue), StopDistance: round2(e.StopDistance),
+			Number: i + 1, Price: e.Price, RiskSharePercent: e.RiskPercent, Shares: e.Shares, Risk: numfmt.Round2(e.ActualRisk),
+			PositionValue: numfmt.Round2(e.PositionValue), StopDistance: numfmt.Round2(e.StopDistance),
 		})
 		if rules.MaxStopPercent > 0 && e.StopDistance > rules.MaxStopPercent {
 			v.Warnings = append(v.Warnings, fmt.Sprintf("the stop is %.2f%% from the entry at %g, wider than the user's %g%% maximum", e.StopDistance, e.Price, rules.MaxStopPercent))
@@ -397,8 +399,8 @@ func (t *tools) listHistory(ctx context.Context, req *mcp.CallToolRequest, in hi
 	out.Entries = []historyView{}
 	for _, e := range entries[:min(limit, len(entries))] {
 		v := historyView{
-			ID: e.ID, Symbol: e.Symbol, Direction: e.PositionType, Entry: round2(e.EntryPrice), Stop: e.StopLoss, Shares: e.Shares,
-			PositionValue: round2(e.PositionValue), RiskPercent: e.AccountRisk, AccountPercent: round2(e.AccountPct), SavedAt: e.CreatedAt,
+			ID: e.ID, Symbol: e.Symbol, Direction: e.PositionType, Entry: numfmt.Round2(e.EntryPrice), Stop: e.StopLoss, Shares: e.Shares,
+			PositionValue: numfmt.Round2(e.PositionValue), RiskPercent: e.AccountRisk, AccountPercent: numfmt.Round2(e.AccountPct), SavedAt: e.CreatedAt,
 		}
 		if e.PlanID != nil {
 			v.FromPlan = *e.PlanID

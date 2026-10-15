@@ -21,6 +21,7 @@ its GraphQL operations and its tests, and registers itself in `app/server.go`.
 | `oauth/` | Token verification and sign-in discovery metadata |
 | `graphql/` | Client for the Tradstry API and its error handling |
 | `confirm/` | User confirmation before actions that cannot be undone |
+| `overview/` | `get_overview`: every workspace with its broker, last sync, journal status and journal trade counts, in one call |
 | `workspaces/` | `list_workspaces`, `create_workspace`, `update_workspace`, `delete_workspace` |
 | `brokerage/` | Connecting, setting up, syncing and disconnecting a broker through SnapTrade |
 | `journal/` | Starting the journal, listing trades, recording context, reviewing trades, fixing grouping, and resolving possible duplicates |
@@ -68,6 +69,8 @@ The backend's journal writes need version checks and an idempotency key. The too
 ## Analytics
 
 The analytics tools are read-only and take a period: a preset such as `this_month` or `last_30_days` (the default), a `month` like `2026-09`, or `from`/`to` dates. Periods are whole days in the journal's time zone, which is also how the backend groups days. Trading sessions use New York time.
+
+Money is rounded to cents. A ratio that is undefined, such as a profit factor with no losing trades or a win rate with no trades, is `null`, never `0`.
 
 Every answer states its period, currency and coverage, which comes from the backend with the figures: how many trades were counted and how many of them were entered by hand, plus the open positions and the trades waiting for the user. The backend counts the same trades for every report, so chat, the dashboard, the calendar and the analytics page agree, with the journal on or off. Broker results are net of fees; manual results are before fees, and the answer says when manual trades are included.
 

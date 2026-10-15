@@ -11,6 +11,7 @@ import (
 
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -46,8 +47,8 @@ type planView struct {
 func toPlanView(p plan) planView {
 	v := planView{
 		ID: p.ID, Symbol: p.Symbol, Direction: p.PositionType, Status: p.Status, Stop: p.StopLoss,
-		AverageEntry: round2(p.EntryPrice), TotalShares: p.TotalShares, PositionValue: round2(p.PositionValue),
-		RiskPercent: p.AccountRisk, Balance: round2(p.AccountBalance), CreatedAt: p.CreatedAt, Entries: []planEntryView{},
+		AverageEntry: numfmt.Round2(p.EntryPrice), TotalShares: p.TotalShares, PositionValue: numfmt.Round2(p.PositionValue),
+		RiskPercent: p.AccountRisk, Balance: numfmt.Round2(p.AccountBalance), CreatedAt: p.CreatedAt, Entries: []planEntryView{},
 	}
 	if p.Notes != nil {
 		v.Notes = *p.Notes

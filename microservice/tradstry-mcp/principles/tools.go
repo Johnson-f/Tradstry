@@ -11,6 +11,7 @@ import (
 
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -26,7 +27,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "list_principles",
 		Title: "List trading principles",
-		Description: "The user's trading rules in priority order, with how often each was broken and how those trades did, all time. " +
+		Description: "List principles (trading rules) in priority order, with how often each was broken and how those trades did, all time. " +
 			"For one period, use get_mistake_costs.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, t.list)
@@ -34,7 +35,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "create_principle",
 		Title: "Create principle",
-		Description: "Add a trading rule. Take the rule and why it matters from the user; never invent them. " +
+		Description: "Create a principle (trading rule). Take the rule and why it matters from the user; never invent them. " +
 			"It goes to the bottom of the list; use move_principle to change that.",
 		Annotations: write,
 	}, t.create)
@@ -42,7 +43,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_principle",
 		Title:       "Update principle",
-		Description: "Change a principle's wording, playbook or supporting note, or switch it off or on. Fields left out stay as they are.",
+		Description: "Update a principle (trading rule): change its wording, playbook or supporting note, or switch it off or on. Fields left out stay as they are.",
 		Annotations: write,
 	}, t.update)
 
@@ -111,7 +112,7 @@ func toView(p principle, position int, playbooks []playbook, currency string) vi
 		}
 	}
 	if p.ViolationCount > 0 {
-		v.WhenBroken = &brokenStats{Net: p.ViolatedCumulativeProfit, Currency: currency, WinRate: p.ViolatedWinRate}
+		v.WhenBroken = &brokenStats{Net: numfmt.Round2(p.ViolatedCumulativeProfit), Currency: currency, WinRate: numfmt.Round2(p.ViolatedWinRate)}
 	}
 	return v
 }
