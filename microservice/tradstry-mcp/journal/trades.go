@@ -114,10 +114,22 @@ func day(t trade) string {
 	return ""
 }
 
-func (t *tools) requireJournal(ctx context.Context, token, ws string) (flowStatus, error) {
+// The website still shows a workspace's trades while the automatic journal is off,
+// read-only, so listing and reading them must work too; changing them must not.
+const journalOffNote = "The automatic journal is off for this workspace, so these are only the trades recorded so far: new broker fills won't become trades, and trades can't be edited or reviewed until start_journal turns it on (see get_journal_status)."
+
+func (t *tools) journalStatus(ctx context.Context, token, ws string) (flowStatus, error) {
 	st, err := t.api.status(ctx, token, ws)
 	if err != nil {
 		return st, forUser(err)
+	}
+	return st, nil
+}
+
+func (t *tools) requireJournal(ctx context.Context, token, ws string) (flowStatus, error) {
+	st, err := t.journalStatus(ctx, token, ws)
+	if err != nil {
+		return st, err
 	}
 	if !st.Enabled {
 		return st, errors.New("the journal is off for this workspace; see get_journal_status and start_journal")
@@ -137,7 +149,7 @@ func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput
 	if limit > maxListLimit {
 		return nil, listOutput{}, fmt.Errorf("limit can be at most %d", maxListLimit)
 	}
-	st, err := t.requireJournal(ctx, caller.Token, in.WorkspaceID)
+	st, err := t.journalStatus(ctx, caller.Token, in.WorkspaceID)
 	if err != nil {
 		return nil, listOutput{}, err
 	}
@@ -162,7 +174,10 @@ func (t *tools) list(ctx context.Context, req *mcp.CallToolRequest, in listInput
 	}
 
 	out := listOutput{Trades: []tradeView{}}
-	if !st.ready() {
+	switch {
+	case !st.Enabled:
+		out.Note = journalOffNote
+	case !st.ready():
 		out.Note = "The journal is still building trades from the latest broker sync, so this list may be incomplete."
 	}
 	for _, tr := range all {
@@ -237,6 +252,7 @@ type tradeDetail struct {
 	Context      contextView     `json:"context"`
 	Draft        draftView       `json:"review_draft"`
 	LastReviewed string          `json:"last_reviewed_at,omitempty"`
+	Note         string          `json:"note,omitempty"`
 }
 
 func (t *tools) get(ctx context.Context, req *mcp.CallToolRequest, in tradeInput) (*mcp.CallToolResult, tradeDetail, error) {
@@ -244,14 +260,18 @@ func (t *tools) get(ctx context.Context, req *mcp.CallToolRequest, in tradeInput
 	if err != nil {
 		return nil, tradeDetail{}, err
 	}
+	st, err := t.journalStatus(ctx, caller.Token, in.WorkspaceID)
+	if err != nil {
+		return nil, tradeDetail{}, err
+	}
 	out, err := t.tradeDetail(ctx, caller.Token, in.WorkspaceID, in.TradeID)
+	if err == nil && !st.Enabled {
+		out.Note = journalOffNote
+	}
 	return nil, out, err
 }
 
 func (t *tools) tradeDetail(ctx context.Context, token, ws, tradeID string) (tradeDetail, error) {
-	if _, err := t.requireJournal(ctx, token, ws); err != nil {
-		return tradeDetail{}, err
-	}
 	d, err := t.api.detail(ctx, token, ws, tradeID)
 	if err != nil {
 		return tradeDetail{}, forUser(err)

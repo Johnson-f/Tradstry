@@ -350,13 +350,42 @@ func TestListTradesFiltersAndCounts(t *testing.T) {
 	}
 }
 
-func TestTheJournalMustBeOn(t *testing.T) {
+func TestTradesCanBeReadWithTheJournalOff(t *testing.T) {
 	s, api := start(t)
 	api.enabled = false
 	session := s.Connect(t, nil)
-	result, _ := mcptest.Call[any](t, session, "list_trades", map[string]any{"workspace_id": "ws1"})
+
+	_, listed := mcptest.Call[struct {
+		Matching int    `json:"matching"`
+		Note     string `json:"note"`
+	}](t, session, "list_trades", map[string]any{"workspace_id": "ws1"})
+	if listed.Matching != 3 || !strings.Contains(listed.Note, "start_journal") {
+		t.Errorf("list with the journal off = %+v", listed)
+	}
+
+	_, detail := mcptest.Call[struct {
+		Trade struct {
+			Symbol string `json:"symbol"`
+		} `json:"trade"`
+		Note string `json:"note"`
+	}](t, session, "get_trade", map[string]any{"workspace_id": "ws1", "trade_id": "t1"})
+	if detail.Trade.Symbol != "AAPL" || !strings.Contains(detail.Note, "start_journal") {
+		t.Errorf("trade with the journal off = %+v", detail)
+	}
+}
+
+func TestTradesCannotChangeWithTheJournalOff(t *testing.T) {
+	s, api := start(t)
+	api.enabled = false
+	session := s.Connect(t, nil)
+	result, _ := mcptest.Call[any](t, session, "update_trade_context", map[string]any{
+		"workspace_id": "ws1", "trade_id": "t1", "append_notes": "late entry",
+	})
 	if !result.IsError || !strings.Contains(mcptest.Text(result), "start_journal") {
-		t.Errorf("list with the journal off: %q", mcptest.Text(result))
+		t.Errorf("edit with the journal off: %q", mcptest.Text(result))
+	}
+	if len(requests(s, "saveJournalContext")) != 0 {
+		t.Error("the context was saved with the journal off")
 	}
 }
 
