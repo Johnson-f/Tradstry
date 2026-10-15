@@ -1,10 +1,12 @@
 use super::{commands, source};
+use crate::service::trade_review::types::{ExecutionInstrument, TradeEpisodeDraft};
 use anyhow::{Result, anyhow, ensure};
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgConnection, PgPool, Row};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 #[graphql(name = "JournalPreparationV2", rename_fields = "camelCase")]
@@ -13,6 +15,8 @@ pub struct Preparation {
     pub broker_records: i64,
     pub existing_entries: i64,
     pub linked_entries: i64,
+    pub overlapping_entries: i64,
+    pub held_by_earlier_entries: i64,
     pub ready_trades: i64,
     pub attention_groups: i64,
     pub conflicting_links: i64,
@@ -49,7 +53,7 @@ async fn prepare_connection(
     let row=sqlx::query("SELECT w.journal_timezone,coalesce(s.source_revision,0) AS revision,coalesce(s.enabled,false) AS enabled,
         (SELECT count(*) FROM brokerage_transactions WHERE user_id=w.user_id AND workspace_id=w.id) AS broker_records,
         (SELECT min(trade_date) FROM brokerage_transactions WHERE user_id=w.user_id AND workspace_id=w.id) AS first_execution,
-        (SELECT count(*) FROM journal_entries WHERE user_id=w.user_id AND workspace_id=w.id) AS existing_entries,
+        (SELECT count(*) FROM journal_entries WHERE user_id=w.user_id AND workspace_id=w.id AND deleted_at IS NULL AND retired_at IS NULL) AS existing_entries,
         (SELECT count(DISTINCT j.id) FROM journal_entries j JOIN journal_brokerage_links l ON l.journal_entry_id=j.id AND l.user_id=j.user_id WHERE j.user_id=w.user_id AND j.workspace_id=w.id) AS linked_entries,
         (SELECT count(DISTINCT j.id) FROM journal_entries j JOIN journal_brokerage_links l ON l.journal_entry_id=j.id LEFT JOIN brokerage_transactions b ON b.id=l.brokerage_transaction_id WHERE j.user_id=w.user_id AND j.workspace_id=w.id AND (b.id IS NULL OR b.user_id<>w.user_id OR b.workspace_id<>w.id OR l.user_id<>w.user_id)) AS conflicting_links,
         coalesce(s.opening_inventory,'{}') AS inventory
@@ -68,21 +72,34 @@ async fn prepare_connection(
         row.try_get("inventory")?
     };
     let groups = source::load(connection, user, workspace).await?;
-    let mut ready = 0;
-    let mut attention = 0;
+    let earlier = unlinked_entries(connection, user, workspace).await?;
+    let mut touched = HashSet::new();
+    let (mut ready, mut attention, mut held) = (0, 0, 0);
     for group in groups {
         let drafts = group.drafts(&inventory)?;
         if drafts.is_empty() {
             attention += 1;
-        } else {
-            ready += drafts.len() as i64;
+            continue;
         }
+        let clashing = drafts
+            .iter()
+            .filter(|draft| {
+                let hits = clashes(draft, &earlier);
+                touched.extend(hits.iter().copied());
+                !hits.is_empty()
+            })
+            .count() as i64;
+        ready += drafts.len() as i64 - clashing;
+        held += clashing;
+        attention += i64::from(clashing > 0);
     }
     Ok(Preparation {
         source_revision: row.try_get("revision")?,
         broker_records: row.try_get("broker_records")?,
         existing_entries: row.try_get("existing_entries")?,
         linked_entries: row.try_get("linked_entries")?,
+        overlapping_entries: touched.len() as i64,
+        held_by_earlier_entries: held,
         ready_trades: ready,
         attention_groups: attention,
         conflicting_links: row.try_get("conflicting_links")?,
@@ -90,6 +107,53 @@ async fn prepare_connection(
         timezone: row.try_get("journal_timezone")?,
         enabled: row.try_get("enabled")?,
     })
+}
+
+struct EarlierEntry {
+    symbol: String,
+    opened: DateTime<Utc>,
+    closed: Option<DateTime<Utc>>,
+}
+
+/// Manual entries with no broker links: a broker trade on the same symbol and
+/// UTC days cannot be built beside one, so projection holds it for review.
+async fn unlinked_entries(
+    connection: &mut PgConnection,
+    user: &str,
+    workspace: &str,
+) -> Result<Vec<EarlierEntry>> {
+    let rows = sqlx::query("SELECT upper(btrim(symbol)) AS symbol,open_date,close_date FROM journal_entries j WHERE user_id=$1 AND workspace_id=$2 AND source_kind='manual' AND episode_id IS NULL AND deleted_at IS NULL AND retired_at IS NULL AND open_date IS NOT NULL AND NOT EXISTS(SELECT 1 FROM journal_brokerage_links WHERE journal_entry_id=j.id)")
+        .bind(user).bind(workspace).fetch_all(connection).await?;
+    rows.iter()
+        .map(|row| {
+            Ok(EarlierEntry {
+                symbol: row.try_get("symbol")?,
+                opened: row.try_get("open_date")?,
+                closed: row.try_get("close_date")?,
+            })
+        })
+        .collect()
+}
+
+fn clashes(draft: &TradeEpisodeDraft, earlier: &[EarlierEntry]) -> Vec<usize> {
+    let symbol = match &draft.instrument {
+        ExecutionInstrument::Equity { symbol } => symbol,
+        ExecutionInstrument::Option { underlying, .. } => underlying,
+    };
+    let opened = draft.opened_at.date_naive();
+    let closed = draft.closed_at.unwrap_or(draft.opened_at).date_naive();
+    earlier
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| {
+            entry.symbol == symbol.trim().to_ascii_uppercase()
+                && entry.opened.date_naive() <= closed
+                && entry
+                    .closed
+                    .is_none_or(|entry_closed| entry_closed.date_naive() >= opened)
+        })
+        .map(|(index, _)| index)
+        .collect()
 }
 
 pub struct ActivationInput<'a> {

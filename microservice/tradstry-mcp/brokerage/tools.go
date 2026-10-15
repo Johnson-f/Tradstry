@@ -124,7 +124,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "connect_brokerage",
 		Title: "Connect brokerage",
-		Description: "Start connecting a broker to a workspace, or reconnect one whose link stopped working. " +
+		Description: "Connect a broker (brokerage account, SnapTrade) to a workspace: start the connection, or reconnect one whose link stopped working. " +
 			"Returns a SnapTrade link the user opens in their browser to sign in to their broker. " +
 			"When they say they are done, call finish_brokerage_connection.",
 		InputSchema: inputSchema[connectInput](),
@@ -134,7 +134,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "finish_brokerage_connection",
 		Title: "Finish brokerage connection",
-		Description: "Complete a connection after the user returns from the SnapTrade link. " +
+		Description: "Finish connecting a broker: complete a connection after the user returns from the SnapTrade link. " +
 			"Usually returns the broker's accounts so the user can choose what to import with set_up_brokerage_accounts.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(true)},
 	}, t.finish)
@@ -142,14 +142,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_brokerage_accounts",
 		Title:       "List brokerage accounts",
-		Description: "List the accounts at the broker connected to a workspace, and which workspace imports each.",
+		Description: "List brokerage accounts (broker accounts) at the broker connected to a workspace, and which workspace imports each.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)},
 	}, t.listAccounts)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "set_up_brokerage_accounts",
 		Title: "Set up brokerage accounts",
-		Description: "Choose which broker accounts to import and how much trade history, then run the first sync. " +
+		Description: "Set up brokerage accounts: choose which broker accounts to import and how much trade history, then run the first sync. " +
 			"Ask the user for both; do not choose for them.",
 		InputSchema: inputSchema[setUpInput](),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(true)},
@@ -158,21 +158,21 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sync_brokerage",
 		Title:       "Sync brokerage",
-		Description: "Import the latest trades, holdings and balances from the workspace's broker. Can take a few minutes.",
+		Description: "Sync brokerage data: import the latest trades, holdings and balances from the workspace's broker. Can take a few minutes.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(true)},
 	}, t.sync)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_brokerage_status",
 		Title:       "Brokerage status",
-		Description: "Whether a workspace's broker is connected, needs reconnecting or needs accounts chosen, and how the last sync went.",
+		Description: "Get brokerage status: whether a workspace's broker is connected, needs reconnecting or needs accounts chosen, and how the last sync went.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: new(false)},
 	}, t.status)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "disconnect_brokerage",
 		Title: "Disconnect brokerage",
-		Description: "Disconnect a workspace's broker so it stops syncing. Trades already imported stay. The user must confirm first: " +
+		Description: "Disconnect a workspace's broker (brokerage connection) so it stops syncing. Trades already imported stay. The user must confirm first: " +
 			"either the app asks them directly, or this returns needs_confirmation with a token to pass back only after the user agrees.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(true)},
 	}, t.disconnect)

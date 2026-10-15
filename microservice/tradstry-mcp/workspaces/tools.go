@@ -12,6 +12,7 @@ import (
 
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -66,7 +67,8 @@ func toView(w workspace) view {
 	}
 	// The backend stores 0 when the broker has not reported a value.
 	if w.TotalValue != nil && *w.TotalValue > 0 {
-		v.TotalValue = w.TotalValue
+		rounded := numfmt.Round2(*w.TotalValue)
+		v.TotalValue = &rounded
 	}
 	return v
 }
@@ -112,7 +114,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_workspaces",
 		Title:       "List workspaces",
-		Description: "List the user's workspaces. Each workspace is one trading account with its own currency and optional brokerage connection.",
+		Description: "List workspaces (broker accounts, portfolios): each is one trading account with its own currency and optional brokerage connection. Their IDs are needed by most other tools.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: new(false)},
 	}, t.list)
 

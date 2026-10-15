@@ -20,6 +20,7 @@ import (
 	"tradstry-mcp/journal"
 	"tradstry-mcp/notebook"
 	"tradstry-mcp/oauth"
+	"tradstry-mcp/overview"
 	"tradstry-mcp/playbooks"
 	"tradstry-mcp/principles"
 	"tradstry-mcp/ratelimit"
@@ -32,7 +33,7 @@ const version = "0.1.0"
 const statelessProtocol = "2026-07-28"
 
 const instructions = `Tradstry is a trading journal. You act for a user who already has a Tradstry account; accounts are created only by signing up at tradstry.com.
-Call list_workspaces first: a workspace is one trading account, and most tools need its workspace_id.
+Call get_overview first: it lists every workspace with its broker, sync and journal status in one call. A workspace is one trading account, and most tools need its workspace_id.
 Never pass a confirmation_token unless the user explicitly agreed, in this conversation, to the action it confirms.
 To connect a broker: connect_brokerage gives a link for the user to open; when they are back, finish_brokerage_connection, then set_up_brokerage_accounts with the accounts and history the user chooses.
 The journal turns broker executions into trades. To review, use next_trade_to_review or list_trades and get_trade, record context with update_trade_context, save the user's takeaway with save_trade_review, then mark_trade_reviewed. Takeaways, stops and plans are the user's: record what they say, never invent them.
@@ -131,6 +132,7 @@ func newMCPServer(api *graphql.Client, publicURL string) (*mcp.Server, http.Hand
 		&mcp.ServerOptions{Instructions: instructions},
 	)
 	confirmer := confirm.New()
+	overview.Register(server, api)
 	workspaces.Register(server, api, confirmer)
 	landing := brokerage.Register(server, api, confirmer, publicURL)
 	journal.Register(server, api, confirmer)

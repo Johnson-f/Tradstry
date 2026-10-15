@@ -2,6 +2,7 @@ package analytics_test
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -300,5 +301,45 @@ func TestAnalyticsForOneTag(t *testing.T) {
 	}
 	if got := requests(s, "advancedAnalytics")[0].Variables["tagId"]; got != "tag1" || out.Tag != "FOMO" {
 		t.Errorf("tagId sent = %v, tag = %q", got, out.Tag)
+	}
+}
+
+func TestNumbersAreRoundedAndUndefinedRatiosAreNull(t *testing.T) {
+	noisy := map[string]any{"key": "pb1", "metrics": map[string]any{
+		"tradeCount": 2, "netProfit": -3.0299999999999411, "winRate": 0, "expectancyDollars": -1.5149999999999706,
+		"expectancyR": nil, "profitFactor": math.Copysign(0, -1),
+	}}
+	empty := map[string]any{"key": "none", "metrics": map[string]any{
+		"tradeCount": 0, "netProfit": math.Copysign(0, -1), "winRate": 0, "expectancyDollars": 0, "expectancyR": nil, "profitFactor": 0,
+	}}
+	s := start(t, &fakeAPI{byPlaybook: []any{noisy, empty}})
+	session := s.Connect(t, nil)
+
+	result, _ := mcptest.Call[any](t, session, "get_breakdown", map[string]any{"workspace_id": "ws1", "month": "2026-09", "by": "playbook"})
+	var out struct {
+		Groups []map[string]any `json:"groups"`
+	}
+	if err := json.Unmarshal([]byte(mcptest.Text(result)), &out); err != nil {
+		t.Fatal(err)
+	}
+	text := mcptest.Text(result)
+	if strings.Contains(text, "-0,") || strings.Contains(text, "-0}") || strings.Contains(text, "0.0299999") {
+		t.Errorf("unrounded numbers in %s", text)
+	}
+	byName := map[string]map[string]any{}
+	for _, g := range out.Groups {
+		byName[g["name"].(string)] = g
+	}
+	if g := byName["Breakout"]; g["net_profit"] != -3.03 || g["expectancy"] != -1.51 || g["profit_factor"] != 0.0 {
+		t.Errorf("traded group = %v", g)
+	}
+	g := byName["no playbook"]
+	for _, field := range []string{"win_rate", "expectancy", "profit_factor"} {
+		if value, present := g[field]; !present || value != nil {
+			t.Errorf("%s of a group with no trades = %v, want null", field, value)
+		}
+	}
+	if g["net_profit"] != 0.0 {
+		t.Errorf("net_profit = %v", g["net_profit"])
 	}
 }

@@ -357,3 +357,17 @@ func TestToolsDescribeThemselvesForTheAssistant(t *testing.T) {
 		}
 	}
 }
+
+func TestListRoundsTheBrokerValueToCents(t *testing.T) {
+	api := &fakeAPI{workspaces: []workspace{{ID: "ws1", Name: "Main", TotalValue: 10234.560000000001}}}
+	session := mcptest.Start(t, api.respond).Connect(t, nil)
+
+	_, out := mcptest.Call[struct {
+		Workspaces []struct {
+			TotalValue float64 `json:"total_value"`
+		}
+	}](t, session, "list_workspaces", nil)
+	if out.Workspaces[0].TotalValue != 10234.56 {
+		t.Errorf("total_value = %v", out.Workspaces[0].TotalValue)
+	}
+}

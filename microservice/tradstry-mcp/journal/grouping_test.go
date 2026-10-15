@@ -47,7 +47,7 @@ func TestMergingWholeTrades(t *testing.T) {
 		t.Errorf("merge input = %s\nwant %s", input, want)
 	}
 	if preview.PreviewID != "pv-1" || len(preview.Before) != 2 || len(preview.After) != 1 || preview.After[0].Quantity != "27.5" ||
-		!strings.Contains(preview.Summary, "Before: 2 trades") || !strings.Contains(preview.Summary, "AAPL long 27.5 (realized 95.5)") {
+		!strings.Contains(preview.Summary, "Before: 2 trades") || !strings.Contains(preview.Summary, "AAPL long 27.5 (realized 95.50)") {
 		t.Errorf("preview = %+v", preview)
 	}
 	if len(requests(s, "confirmJournalGrouping")) != 0 {

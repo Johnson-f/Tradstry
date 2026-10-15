@@ -21,8 +21,11 @@ type workspaceInput struct {
 }
 
 type importPreview struct {
-	ReadyTrades    int `json:"ready_trades"`
-	NeedsAttention int `json:"needs_attention" jsonschema:"groups of executions that cannot become trades until their history is resolved"`
+	ReadyTrades    int    `json:"ready_trades" jsonschema:"new trades built from broker executions"`
+	NeedsAttention int    `json:"needs_attention" jsonschema:"groups of executions that become incomplete trades, because their history is missing or they overlap an earlier entry"`
+	HeldByEarlier  int    `json:"held_by_earlier_entries,omitempty" jsonschema:"part of needs_attention: broker trades not built because an earlier entry covers the same symbol and days"`
+	TotalAfter     int    `json:"total_trades_after" jsonschema:"earlier entries plus ready_trades plus needs_attention; lower by up to linked_to_broker when linked entries are reused"`
+	Outcome        string `json:"outcome"`
 }
 
 type statusOutput struct {
@@ -31,11 +34,19 @@ type statusOutput struct {
 	Timezone string `json:"timezone,omitempty"`
 	Message  string `json:"message"`
 
-	BrokerRecords   int            `json:"broker_records,omitempty"`
-	FirstExecution  string         `json:"first_execution,omitempty"`
-	IfAccountFlat   *importPreview `json:"if_account_was_flat,omitempty" jsonschema:"what starting the journal gives if the account held nothing before its first imported execution"`
-	IfNotFlat       *importPreview `json:"if_not_flat,omitempty" jsonschema:"what it gives otherwise"`
-	ConflictingLink int            `json:"conflicting_links,omitempty"`
+	BrokerRecords   int             `json:"broker_records,omitempty"`
+	FirstExecution  string          `json:"first_execution,omitempty"`
+	EarlierEntries  *earlierEntries `json:"earlier_entries,omitempty" jsonschema:"trades already in this workspace, which start_journal keeps"`
+	IfAccountFlat   *importPreview  `json:"if_account_was_flat,omitempty" jsonschema:"what starting the journal gives if the account held nothing before its first imported execution"`
+	IfNotFlat       *importPreview  `json:"if_not_flat,omitempty" jsonschema:"what it gives otherwise"`
+	ConflictingLink int             `json:"conflicting_links,omitempty"`
+}
+
+type earlierEntries struct {
+	Count             int    `json:"count" jsonschema:"manual entries: added by hand or by the journal before it read broker executions; every one stays"`
+	LinkedToBroker    int    `json:"linked_to_broker" jsonschema:"entries linked to broker executions; if the import rebuilds exactly those executions it reuses the entry, with its notes and reviews, instead of adding a second trade"`
+	OverlappingBroker int    `json:"overlapping_broker_history" jsonschema:"unlinked entries sharing a symbol and days with broker history; the broker trade is held as incomplete instead of counting the same trade twice"`
+	Note              string `json:"note"`
 }
 
 type flatAnswer string
@@ -80,9 +91,15 @@ func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspa
 	out := statusOutput{
 		Timezone:        notFlat.Timezone,
 		BrokerRecords:   notFlat.BrokerRecords,
-		IfNotFlat:       &importPreview{notFlat.ReadyTrades, notFlat.AttentionGroups},
+		IfNotFlat:       previewOf(notFlat),
 		ConflictingLink: notFlat.ConflictingLinks,
 		Message:         "The journal is off. start_journal turns it on; ask the user first whether the account was flat before its first imported execution.",
+	}
+	if notFlat.ExistingEntries > 0 {
+		out.EarlierEntries = &earlierEntries{
+			Count: notFlat.ExistingEntries, LinkedToBroker: notFlat.LinkedEntries, OverlappingBroker: notFlat.OverlapEntries,
+			Note: "start_journal keeps all of them as manual entries and never deletes or edits them.",
+		}
 	}
 	if notFlat.FirstExecution != nil {
 		out.FirstExecution = *notFlat.FirstExecution
@@ -90,9 +107,28 @@ func (t *tools) status(ctx context.Context, req *mcp.CallToolRequest, in workspa
 		if err != nil {
 			return nil, statusOutput{}, forUser(err)
 		}
-		out.IfAccountFlat = &importPreview{flat.ReadyTrades, flat.AttentionGroups}
+		out.IfAccountFlat = previewOf(flat)
 	}
 	return nil, out, nil
+}
+
+func previewOf(p preparation) *importPreview {
+	total := p.ExistingEntries + p.ReadyTrades + p.AttentionGroups
+	outcome := fmt.Sprintf("%d new trades are built from broker executions and %d groups of executions become incomplete trades", p.ReadyTrades, p.AttentionGroups)
+	if p.ExistingEntries > 0 {
+		outcome = fmt.Sprintf("The %d earlier entries stay; ", p.ExistingEntries) + outcome
+	}
+	outcome += fmt.Sprintf(", so the journal holds %d trades.", total)
+	if p.HeldByEarlierEntries > 0 {
+		outcome += fmt.Sprintf(" %d broker trades are held back because earlier entries cover the same symbol and days; compare them in the journal on tradstry.com.", p.HeldByEarlierEntries)
+	}
+	if p.LinkedEntries > 0 {
+		outcome += fmt.Sprintf(" Up to %d of the earlier entries are linked to broker executions and are reused instead of duplicated.", p.LinkedEntries)
+	}
+	return &importPreview{
+		ReadyTrades: p.ReadyTrades, NeedsAttention: p.AttentionGroups, HeldByEarlier: p.HeldByEarlierEntries,
+		TotalAfter: total, Outcome: outcome,
+	}
 }
 
 func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startInput) (*mcp.CallToolResult, startOutput, error) {
@@ -159,7 +195,7 @@ func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startInp
 	}
 
 	if t.waitUntilReady(ctx, caller.Token, in.WorkspaceID) {
-		return nil, startOutput{Status: "ready", Message: fmt.Sprintf("The journal is on, with %d trades ready. list_trades shows them.", plan.ReadyTrades)}, nil
+		return nil, startOutput{Status: "ready", Message: startedMessage(plan)}, nil
 	}
 	return nil, startOutput{Status: "updating", Message: "The journal is on and still building trades. Check again shortly with get_journal_status."}, nil
 }
@@ -179,4 +215,12 @@ func (t *tools) waitUntilReady(ctx context.Context, token, ws string) bool {
 		case <-time.After(t.pollEvery):
 		}
 	}
+}
+
+func startedMessage(plan preparation) string {
+	message := fmt.Sprintf("The journal is on: %d new trades built from broker executions and %d incomplete groups", plan.ReadyTrades, plan.AttentionGroups)
+	if plan.ExistingEntries > 0 {
+		message += fmt.Sprintf(", beside the %d earlier manual entries, which stay", plan.ExistingEntries)
+	}
+	return message + ". list_trades shows them."
 }

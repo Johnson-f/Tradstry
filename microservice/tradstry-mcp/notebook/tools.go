@@ -24,14 +24,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_folders",
 		Title:       "List notebook folders",
-		Description: "The workspace's notebook folders as a tree, with each folder's path and how many notes sit directly in it.",
+		Description: "List notebook folders as a tree, with each folder's path and how many notes sit directly in it.",
 		Annotations: readOnly,
 	}, t.listFolders)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "list_notes",
 		Title: "List notes",
-		Description: "Notes without their bodies, pinned first then most recently updated, 25 at a time. " +
+		Description: "List notes (notebook) without their bodies, pinned first then most recently updated, 25 at a time. " +
 			"Filter by folder, unfiled, starred, pinned or a linked trade; pass next_cursor to continue.",
 		Annotations: readOnly,
 	}, t.listNotes)
@@ -39,7 +39,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "get_note",
 		Title: "Read note",
-		Description: "A note's body as Tradstry Markdown, with the revision to pass when editing it, its linked trades and its media. " +
+		Description: "Get a note: its body as Tradstry Markdown, with the revision to pass when editing it, its linked trades and its media. " +
 			"Blocks Markdown cannot carry appear as <!-- tradstry:keep … --> lines: leave them exactly as they are. " + markdownGuide,
 		Annotations: readOnly,
 	}, t.getNote)
@@ -47,7 +47,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "search_notes",
 		Title: "Search notes",
-		Description: "Find notes by what they say, not just their titles, best match first. " +
+		Description: "Search notes by what they say, not just their titles, best match first. " +
 			"A note saved in the last minute or so may not be searchable yet.",
 		Annotations: readOnly,
 	}, t.searchNotes)
@@ -55,14 +55,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "view_note_media",
 		Title:       "View note image",
-		Description: "Show an image from a note so you can describe it. Videos return their thumbnail. Pass a hash from get_note's media list.",
+		Description: "View an image from a note so you can describe it. Videos return their thumbnail. Pass a hash from get_note's media list.",
 		Annotations: readOnly,
 	}, t.viewMedia)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_deleted_notes",
 		Title:       "Recently deleted notes",
-		Description: "Notes deleted in the last 30 days, which restore_note can bring back.",
+		Description: "List deleted notes (trash) from the last 30 days, which restore_note can bring back.",
 		Annotations: readOnly,
 	}, t.listDeleted)
 
@@ -77,7 +77,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "edit_note",
 		Title: "Edit note",
-		Description: "Change parts of a note. Each old_text must appear exactly once in get_note's markdown; include enough " +
+		Description: "Edit a note: change parts of it. Each old_text must appear exactly once in get_note's markdown; include enough " +
 			"surrounding text to make it unique. Only the blocks you change are rewritten, so the user's formatting elsewhere is kept. " +
 			"Prefer this to rewrite_note.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)},
@@ -153,7 +153,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "open_trade_note",
 		Title: "Open a trade's note",
-		Description: "The note that belongs to a journal trade, created on first use in the Recent Trades folder. " +
+		Description: "Open the note (trade note) that belongs to a journal trade, created on first use in the Recent Trades folder. " +
 			"Use it to record thoughts about one trade.",
 		Annotations: write,
 	}, t.openTradeNote)

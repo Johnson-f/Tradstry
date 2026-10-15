@@ -176,3 +176,22 @@ func TestDeleteIsRefusedWhilePrinciplesBelongToIt(t *testing.T) {
 		t.Errorf("confirmed = %+v, deleted %v", done, api.deleted)
 	}
 }
+
+func TestPlaybookResultsAreRoundedToCents(t *testing.T) {
+	api := newFake()
+	api.playbooks["pb1"]["cumulativeProfit"] = -3.0299999999999411
+	api.playbooks["pb1"]["averageGain"] = 100.0049999999
+	session := mcptest.Start(t, api.respond).Connect(t, nil)
+
+	_, out := mcptest.Call[struct {
+		Playbooks []struct {
+			Results struct {
+				Net        float64 `json:"net"`
+				AverageWin float64 `json:"average_win"`
+			} `json:"results"`
+		}
+	}](t, session, "list_playbooks", map[string]any{"workspace_id": "ws1"})
+	if r := out.Playbooks[0].Results; r.Net != -3.03 || r.AverageWin != 100 {
+		t.Errorf("results = %+v", r)
+	}
+}

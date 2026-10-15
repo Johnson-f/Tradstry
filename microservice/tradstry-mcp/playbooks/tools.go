@@ -11,6 +11,7 @@ import (
 
 	"tradstry-mcp/confirm"
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -27,21 +28,21 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_playbooks",
 		Title:       "List playbooks",
-		Description: "The playbooks (trading setups) available in a workspace, with their edge and how trades using each have done.",
+		Description: "List playbooks (trading setups, strategies) available in a workspace, with their edge and how trades using each have done.",
 		Annotations: readOnly,
 	}, t.list)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_playbook",
 		Title:       "Read playbook",
-		Description: "A playbook's full rules: entry, exit, position sizing and any others, with its results and the workspaces it is used in.",
+		Description: "Get a playbook (trading setup): its full rules (entry, exit, position sizing and others), with its results and the workspaces it is used in.",
 		Annotations: readOnly,
 	}, t.get)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "create_playbook",
 		Title: "Create playbook",
-		Description: "Add a playbook, available in every workspace unless set_playbook_workspaces says otherwise. " +
+		Description: "Create a playbook (trading setup), available in every workspace unless set_playbook_workspaces says otherwise. " +
 			"Take the edge and every rule from the user; never invent them.",
 		Annotations: write,
 	}, t.create)
@@ -49,14 +50,14 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_playbook",
 		Title:       "Update playbook",
-		Description: "Change a playbook's name, edge or rules. Fields left out stay as they are.",
+		Description: "Update a playbook: change its name, edge or rules. Fields left out stay as they are.",
 		Annotations: write,
 	}, t.update)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_playbook_workspaces",
 		Title:       "Choose playbook workspaces",
-		Description: "Make a playbook available in every workspace, or only in the ones listed.",
+		Description: "Set playbook workspaces: make a playbook available in every workspace, or only in the ones listed.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)},
 	}, t.setWorkspaces)
 
@@ -108,8 +109,8 @@ func toSummary(p playbook, workspaces []workspace) summary {
 	s := summary{ID: p.ID, Name: p.Name, Edge: p.EdgeName}
 	if p.TradeCount > 0 {
 		s.Results = &results{
-			Trades: p.TradeCount, Net: p.CumulativeProfit, Currency: currencyOf(workspaces, p.WorkspaceID),
-			WinRate: p.WinRate, AverageWin: p.AverageGain, AverageLoss: p.AverageLoss,
+			Trades: p.TradeCount, Net: numfmt.Round2(p.CumulativeProfit), Currency: currencyOf(workspaces, p.WorkspaceID),
+			WinRate: numfmt.Round2(p.WinRate), AverageWin: numfmt.Round2(p.AverageGain), AverageLoss: numfmt.Round2(p.AverageLoss),
 		}
 	}
 	return s

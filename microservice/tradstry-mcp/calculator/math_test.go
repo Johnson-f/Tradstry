@@ -3,6 +3,8 @@ package calculator
 import (
 	"strings"
 	"testing"
+
+	"tradstry-mcp/numfmt"
 )
 
 func TestSizingMatchesTheWebCalculator(t *testing.T) {
@@ -31,7 +33,7 @@ func TestScaleInsSplitTheRisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Entries[0].Shares != 10 || s.Entries[1].Shares != 20 || s.TotalShares != 30 || round2(s.AverageEntry) != 96.67 {
+	if s.Entries[0].Shares != 10 || s.Entries[1].Shares != 20 || s.TotalShares != 30 || numfmt.Round2(s.AverageEntry) != 96.67 {
 		t.Errorf("scale-in = %+v", s)
 	}
 }

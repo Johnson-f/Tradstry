@@ -22,14 +22,17 @@ func (s flowStatus) ready() bool {
 }
 
 type preparation struct {
-	SourceRevision   int     `json:"sourceRevision"`
-	BrokerRecords    int     `json:"brokerRecords"`
-	ExistingEntries  int     `json:"existingEntries"`
-	ReadyTrades      int     `json:"readyTrades"`
-	AttentionGroups  int     `json:"attentionGroups"`
-	ConflictingLinks int     `json:"conflictingLinks"`
-	FirstExecution   *string `json:"firstExecution"`
-	Timezone         string  `json:"timezone"`
+	SourceRevision       int     `json:"sourceRevision"`
+	BrokerRecords        int     `json:"brokerRecords"`
+	ExistingEntries      int     `json:"existingEntries"`
+	LinkedEntries        int     `json:"linkedEntries"`
+	OverlapEntries       int     `json:"overlappingEntries"`
+	HeldByEarlierEntries int     `json:"heldByEarlierEntries"`
+	ReadyTrades          int     `json:"readyTrades"`
+	AttentionGroups      int     `json:"attentionGroups"`
+	ConflictingLinks     int     `json:"conflictingLinks"`
+	FirstExecution       *string `json:"firstExecution"`
+	Timezone             string  `json:"timezone"`
 }
 
 type tag struct {
@@ -64,6 +67,11 @@ type trade struct {
 	RetiredAt            *string  `json:"retiredAt"`
 	SuccessorID          *string  `json:"successorId"`
 	PlaybookID           *string  `json:"playbookId"`
+	FirstExecutionAt     *string  `json:"firstExecutionAt"`
+	LastExecutionAt      *string  `json:"lastExecutionAt"`
+	ExecutionCount       int      `json:"executionCount"`
+	BoughtQuantity       *string  `json:"boughtQuantity"`
+	SoldQuantity         *string  `json:"soldQuantity"`
 }
 
 type tradeContext struct {
@@ -129,13 +137,13 @@ type named struct {
 }
 
 const (
-	tradeFields   = `id sourceKind symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid lifecycleState outcome reviewState tags { id name } materializedRevision recordVersion issueCode issueMessage possibleDuplicates retiredAt successorId playbookId`
+	tradeFields   = `id sourceKind symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid lifecycleState outcome reviewState tags { id name } materializedRevision recordVersion issueCode issueMessage possibleDuplicates retiredAt successorId playbookId firstExecutionAt lastExecutionAt executionCount boughtQuantity soldQuantity`
 	contextFields = `version stopState stopPrice playbookId phase recordedAt claimedAt notes tagIds violatedPrincipleIds`
 	draftFields   = `version takeaway choiceIds planAdherence`
 	sessionFields = `id date queue completed cursorEntryId version refreshAvailable`
 
 	statusQuery    = `query JournalFlowStatus($workspaceId: String!) { journalFlowStatus(workspaceId: $workspaceId) { enabled sourceRevision projectionRevision importState lastError timezone } }`
-	prepareQuery   = `query PrepareJournalFlow($workspaceId: String!, $flatBefore: String) { prepareJournalFlow(workspaceId: $workspaceId, flatBefore: $flatBefore) { sourceRevision brokerRecords existingEntries readyTrades attentionGroups conflictingLinks firstExecution timezone } }`
+	prepareQuery   = `query PrepareJournalFlow($workspaceId: String!, $flatBefore: String) { prepareJournalFlow(workspaceId: $workspaceId, flatBefore: $flatBefore) { sourceRevision brokerRecords existingEntries linkedEntries overlappingEntries heldByEarlierEntries readyTrades attentionGroups conflictingLinks firstExecution timezone } }`
 	enableMutation = `mutation EnableJournalFlow($workspaceId: String!, $expectedRevision: Int!, $flatBefore: String, $timezone: String!, $clientId: String!, $mutationId: String!) {
   enableJournalFlow(workspaceId: $workspaceId, expectedRevision: $expectedRevision, flatBefore: $flatBefore, timezone: $timezone, clientId: $clientId, mutationId: $mutationId) { enabled }
 }`

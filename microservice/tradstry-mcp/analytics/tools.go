@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"tradstry-mcp/graphql"
+	"tradstry-mcp/numfmt"
 	"tradstry-mcp/oauth"
 )
 
@@ -69,9 +69,9 @@ type groupView struct {
 	Name         string   `json:"name"`
 	Trades       int      `json:"trades"`
 	NetProfit    float64  `json:"net_profit"`
-	WinRate      float64  `json:"win_rate" jsonschema:"percent of wins among wins and losses; breakeven trades are left out"`
-	Expectancy   float64  `json:"expectancy" jsonschema:"average result per trade"`
-	ProfitFactor *float64 `json:"profit_factor,omitempty" jsonschema:"absent when there were no losses"`
+	WinRate      *float64 `json:"win_rate" jsonschema:"percent of wins among wins and losses; breakeven trades are left out; null when there were no trades"`
+	Expectancy   *float64 `json:"expectancy" jsonschema:"average result per trade; null when there were no trades"`
+	ProfitFactor *float64 `json:"profit_factor" jsonschema:"gross wins divided by gross losses; null when undefined: no trades, or no losing trades"`
 }
 
 type tools struct {
@@ -87,7 +87,7 @@ func Register(server *mcp.Server, client *graphql.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_performance",
 		Title:       "Trading performance",
-		Description: "How the user's trading went in a period: net profit, win rate, profit factor, average win and loss, expectancy, drawdown, streaks and holding times." + results,
+		Description: "Get trading performance (P&L, statistics) for a period: net profit, win rate, profit factor, average win and loss, expectancy, drawdown, streaks and holding times." + results,
 		InputSchema: inputSchema[performanceInput](),
 		Annotations: readOnly,
 	}, t.performance)
@@ -95,7 +95,7 @@ func Register(server *mcp.Server, client *graphql.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_daily_pnl",
 		Title:       "Daily P&L",
-		Description: "Profit and loss per trading day, at most 92 days. Days are counted in the journal's time zone and add up to the period total." + results,
+		Description: "Get daily P&L (profit and loss per trading day), at most 92 days. Days are counted in the journal's time zone and add up to the period total." + results,
 		InputSchema: inputSchema[performanceInput](),
 		Annotations: readOnly,
 	}, t.daily)
@@ -103,7 +103,7 @@ func Register(server *mcp.Server, client *graphql.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "get_breakdown",
 		Title: "Performance breakdown",
-		Description: "Results grouped one way: by symbol, playbook, tag, direction, holding time, weekday, market session or position size. " +
+		Description: "Get performance broken down one way (grouped by symbol, playbook, tag, direction, holding time, weekday, market session or position size). " +
 			"Best groups first; when cut short, the worst ones are kept too." + results,
 		InputSchema: inputSchema[breakdownInput](),
 		Annotations: readOnly,
@@ -112,7 +112,7 @@ func Register(server *mcp.Server, client *graphql.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "get_mistake_costs",
 		Title: "Mistake costs",
-		Description: "The user's mistake tags and broken trading principles in a period, worst first, with the trades that had each. " +
+		Description: "List mistake costs: the user's mistake tags and broken trading principles in a period, worst first, with the trades that had each. " +
 			"A mistake's figure is what those trades netted, not money lost because of the mistake; say it that way." + results,
 		InputSchema: inputSchema[performanceInput](),
 		Annotations: readOnly,
@@ -239,21 +239,29 @@ func describe(wc workspaceContext, w window, a analytics) common {
 	return out
 }
 
-func money(value float64) float64 {
-	return math.Round(value*100) / 100
+// whenTraded is nil when no trade was counted, since averages over nothing are unknown rather than zero.
+func whenTraded(trades int, value float64) *float64 {
+	if trades == 0 {
+		return nil
+	}
+	return &value
 }
 
-func percent(value float64) float64 {
-	return math.Round(value*10) / 10
+// profitFactor is nil when undefined: no trades, or no losing trades.
+func profitFactor(trades int, factor *float64) *float64 {
+	if trades == 0 || factor == nil {
+		return nil
+	}
+	return numfmt.Ratio(*factor)
 }
 
 func viewOf(name string, m metrics) groupView {
-	view := groupView{Name: name, Trades: m.TradeCount, NetProfit: money(m.NetProfit), WinRate: percent(m.WinRate), Expectancy: money(m.ExpectancyDollars)}
-	if m.ProfitFactor != nil {
-		factor := math.Round(*m.ProfitFactor*100) / 100
-		view.ProfitFactor = &factor
+	return groupView{
+		Name: name, Trades: m.TradeCount, NetProfit: numfmt.Round2(m.NetProfit),
+		WinRate:      whenTraded(m.TradeCount, numfmt.Round1(m.WinRate)),
+		Expectancy:   whenTraded(m.TradeCount, numfmt.Round2(m.ExpectancyDollars)),
+		ProfitFactor: profitFactor(m.TradeCount, m.ProfitFactor),
 	}
-	return view
 }
 
 // bestAndWorst sorts groups by net profit and, when there are more than limit,
@@ -279,11 +287,11 @@ type performanceOutput struct {
 	common
 	Trades          int      `json:"trades"`
 	NetProfit       float64  `json:"net_profit"`
-	WinRate         float64  `json:"win_rate" jsonschema:"percent of wins among wins and losses; breakeven trades are left out"`
-	ProfitFactor    *float64 `json:"profit_factor,omitempty" jsonschema:"absent when there were no losses"`
+	WinRate         *float64 `json:"win_rate" jsonschema:"percent of wins among wins and losses; breakeven trades are left out; null when there were no trades"`
+	ProfitFactor    *float64 `json:"profit_factor" jsonschema:"gross wins divided by gross losses; null when undefined: no trades, or no losing trades"`
 	AverageWin      float64  `json:"average_win"`
 	AverageLoss     float64  `json:"average_loss" jsonschema:"a positive amount"`
-	Expectancy      float64  `json:"expectancy" jsonschema:"average result per trade"`
+	Expectancy      *float64 `json:"expectancy" jsonschema:"average result per trade; null when there were no trades"`
 	MaxDrawdown     float64  `json:"max_drawdown"`
 	CurrentDrawdown float64  `json:"current_drawdown"`
 	CurrentStreak   int      `json:"current_streak" jsonschema:"positive for consecutive wins, negative for losses"`
@@ -320,16 +328,13 @@ func (t *tools) performance(ctx context.Context, req *mcp.CallToolRequest, in pe
 	}
 	c := describe(wc, w, a)
 	out := performanceOutput{
-		common: c, Trades: a.TradeCount, NetProfit: money(a.NetProfit), WinRate: percent(a.WinRate),
-		AverageWin: money(a.AverageGain), AverageLoss: money(a.AverageLoss), Expectancy: money(a.ExpectancyDollars),
-		MaxDrawdown: money(a.MaxDrawdownDollars), CurrentDrawdown: money(a.CurrentDrawdownDollars),
+		common: c, Trades: a.TradeCount, NetProfit: numfmt.Round2(a.NetProfit), WinRate: whenTraded(a.TradeCount, numfmt.Round1(a.WinRate)),
+		AverageWin: numfmt.Round2(a.AverageGain), AverageLoss: numfmt.Round2(a.AverageLoss), Expectancy: whenTraded(a.TradeCount, numfmt.Round2(a.ExpectancyDollars)),
+		ProfitFactor: profitFactor(a.TradeCount, a.ProfitFactor),
+		MaxDrawdown:  numfmt.Round2(a.MaxDrawdownDollars), CurrentDrawdown: numfmt.Round2(a.CurrentDrawdownDollars),
 		CurrentStreak: a.CurrentStreak, LongestWinning: a.LongestWinStreak, LongestLosing: a.LongestLossStreak,
 		AvgHoldWinners: duration(a.AvgHoldWinnersSecs), AvgHoldLosers: duration(a.AvgHoldLosersSecs),
 		R: "unknown: no trade in this period had a stop in place when it opened or set while it was open",
-	}
-	if a.ProfitFactor != nil {
-		factor := math.Round(*a.ProfitFactor*100) / 100
-		out.ProfitFactor = &factor
 	}
 	if a.ExpectancyR != nil && a.RTradeCount > 0 {
 		out.R = fmt.Sprintf("%.2fR on average, for %d of %d trades, measured against the stop in place when each trade opened", *a.ExpectancyR, a.RTradeCount, a.TradeCount)
@@ -338,7 +343,7 @@ func (t *tools) performance(ctx context.Context, req *mcp.CallToolRequest, in pe
 		}
 	}
 	for _, d := range a.ByDay {
-		day := &dayView{Date: d.Key, NetProfit: money(d.Metrics.NetProfit), Trades: d.Metrics.TradeCount}
+		day := &dayView{Date: d.Key, NetProfit: numfmt.Round2(d.Metrics.NetProfit), Trades: d.Metrics.TradeCount}
 		if out.BestDay == nil || day.NetProfit > out.BestDay.NetProfit {
 			out.BestDay = day
 		}
@@ -368,7 +373,7 @@ func (t *tools) daily(ctx context.Context, req *mcp.CallToolRequest, in performa
 		return nil, dailyOutput{}, graphql.ForUser(err)
 	}
 	c := describe(wc, w, a)
-	out := dailyOutput{common: c, NetProfit: money(a.NetProfit), Days: make([]groupView, 0, len(a.ByDay))}
+	out := dailyOutput{common: c, NetProfit: numfmt.Round2(a.NetProfit), Days: make([]groupView, 0, len(a.ByDay))}
 	for _, d := range a.ByDay {
 		out.Days = append(out.Days, viewOf(d.Key, d.Metrics))
 	}
@@ -478,8 +483,8 @@ type mistakesOutput struct {
 	common
 	Mistakes         []mistakeView `json:"mistakes" jsonschema:"worst net result first"`
 	FlawedTrades     int           `json:"trades_with_a_mistake_tag"`
-	CleanExpectancy  float64       `json:"clean_trade_expectancy" jsonschema:"average result of trades without a mistake tag"`
-	FlawedExpectancy float64       `json:"flawed_trade_expectancy"`
+	CleanExpectancy  *float64      `json:"clean_trade_expectancy" jsonschema:"average result of trades without a mistake tag; null when there were none"`
+	FlawedExpectancy *float64      `json:"flawed_trade_expectancy" jsonschema:"null when no trade had a mistake tag"`
 	ShortfallVsClean float64       `json:"shortfall_vs_clean_trades" jsonschema:"how much less the trades with mistake tags made than if they had averaged like the clean ones"`
 	Note             string        `json:"note"`
 }
@@ -502,9 +507,9 @@ func (t *tools) mistakes(ctx context.Context, req *mcp.CallToolRequest, in perfo
 	out := mistakesOutput{
 		common: c, Mistakes: []mistakeView{},
 		FlawedTrades:     a.Discipline.FlawedTradeCount,
-		CleanExpectancy:  money(a.CleanVsFlawed.Clean.ExpectancyDollars),
-		FlawedExpectancy: money(a.CleanVsFlawed.Flawed.ExpectancyDollars),
-		ShortfallVsClean: money(a.Discipline.MistakeCost),
+		CleanExpectancy:  whenTraded(a.CleanVsFlawed.Clean.TradeCount, numfmt.Round2(a.CleanVsFlawed.Clean.ExpectancyDollars)),
+		FlawedExpectancy: whenTraded(a.CleanVsFlawed.Flawed.TradeCount, numfmt.Round2(a.CleanVsFlawed.Flawed.ExpectancyDollars)),
+		ShortfallVsClean: numfmt.Round2(a.Discipline.MistakeCost),
 		Note: "Each figure is what the trades with that mistake netted, not money lost because of it. " +
 			"A trade with several mistakes counts toward each.",
 	}
@@ -528,7 +533,7 @@ func (t *tools) mistakes(ctx context.Context, req *mcp.CallToolRequest, in perfo
 		}
 		return strings.Compare(x.Name, y.Name)
 	})
-	if out.CleanExpectancy == 0 && out.FlawedTrades == a.TradeCount && a.TradeCount > 0 {
+	if out.CleanExpectancy == nil && out.FlawedTrades == a.TradeCount && a.TradeCount > 0 {
 		out.Note += " Every trade had a mistake tag, so there is no clean average to compare against."
 	}
 	return nil, out, nil

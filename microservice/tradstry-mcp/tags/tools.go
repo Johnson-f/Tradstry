@@ -28,7 +28,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "list_tags",
 		Title: "List tags",
-		Description: "The workspace's tag categories in order, each with its tags and how many journal trades carry each tag. " +
+		Description: "List tags and tag categories in order, each category with its tags and how many journal trades carry each tag. " +
 			"Mistakes, Tactics and Edges are built in; tags in Mistakes are what get_mistake_costs reports.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, t.list)
