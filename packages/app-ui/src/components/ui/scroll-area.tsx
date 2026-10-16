@@ -1,13 +1,12 @@
 "use client";
 
-import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
 import type * as React from "react";
 
 import { cn } from "@tradstry/app-ui/lib/utils";
 
 /**
- * `orientation` decides which scrollbars are mounted. Upstream hardcodes the vertical one,
- * so a horizontally-scrolling region (a wide table) would scroll but never show a bar.
+ * Native scrollbars move with the viewport, including compositor-driven wheel/touch
+ * scrolling. A separately positioned JavaScript thumb can lag behind that movement.
  *
  * Sizing gotcha: the viewport is `size-full` — `height: 100%` — so vertical scrolling needs
  * a parent with a *definite* height (`h-*`, or `flex-1 min-h-0` inside a bounded column).
@@ -15,68 +14,46 @@ import { cn } from "@tradstry/app-ui/lib/utils";
  * grows. When you want "grow to fit, capped", put the cap on the viewport instead:
  * `[&>[data-radix-scroll-area-viewport]]:max-h-56`.
  *
- * Radix wraps children in a `display: table` div that grows to its content's width. With no
- * horizontal scrollbar that overflow is clipped, so long text neither wraps nor truncates and
- * runs off the right edge. Vertical areas therefore force the wrapper to `block`; horizontal
- * ones keep the table so wide content can widen it and scroll.
+ * Keep the viewport marker and content wrapper used by existing sizing selectors and
+ * viewport refs. Vertical content wraps normally; horizontal content can grow wider.
  */
 function ScrollArea({
 	className,
 	children,
 	orientation = "vertical",
 	viewportRef,
+	type = "auto",
 	...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+}: React.ComponentProps<"div"> & {
 	orientation?: "vertical" | "horizontal" | "both";
 	viewportRef?: React.Ref<HTMLDivElement>;
+	/** Native visibility follows the browser/OS preference unless space is always reserved. */
+	type?: "auto" | "always";
 }) {
+	const overflow = type === "always" ? "scroll" : "auto";
 	return (
-		<ScrollAreaPrimitive.Root
+		<div
 			data-slot="scroll-area"
 			className={cn("relative", className)}
 			{...props}
 		>
-			<ScrollAreaPrimitive.Viewport
+			<div
 				ref={viewportRef}
+				tabIndex={0}
 				data-slot="scroll-area-viewport"
-				className={cn(
-					"size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
-					orientation === "vertical" && "[&>div]:block!",
-				)}
+				data-radix-scroll-area-viewport=""
+				className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]"
+				style={{
+					overflowX: orientation === "vertical" ? "hidden" : overflow,
+					overflowY: orientation === "horizontal" ? "hidden" : overflow,
+				}}
 			>
-				{children}
-			</ScrollAreaPrimitive.Viewport>
-			{orientation !== "horizontal" ? <ScrollBar /> : null}
-			{orientation !== "vertical" ? (
-				<ScrollBar orientation="horizontal" />
-			) : null}
-			<ScrollAreaPrimitive.Corner />
-		</ScrollAreaPrimitive.Root>
+				<div className={cn("min-w-full", orientation !== "vertical" && "table")}>
+					{children}
+				</div>
+			</div>
+		</div>
 	);
 }
 
-function ScrollBar({
-	className,
-	orientation = "vertical",
-	...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
-	return (
-		<ScrollAreaPrimitive.ScrollAreaScrollbar
-			data-slot="scroll-area-scrollbar"
-			data-orientation={orientation}
-			orientation={orientation}
-			className={cn(
-				"flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
-				className,
-			)}
-			{...props}
-		>
-			<ScrollAreaPrimitive.ScrollAreaThumb
-				data-slot="scroll-area-thumb"
-				className="relative flex-1 rounded-full bg-border"
-			/>
-		</ScrollAreaPrimitive.ScrollAreaScrollbar>
-	);
-}
-
-export { ScrollArea, ScrollBar };
+export { ScrollArea };
