@@ -9,6 +9,78 @@ use tradstry_migration::{Migrator, MigratorTrait};
 use uuid::Uuid;
 
 #[tokio::test]
+async fn linked_duplicate_upgrade_preserves_distinct_trades_and_still_holds_shared_records() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.unwrap();
+    let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, Some(15)).await.unwrap();
+    pool.execute("INSERT INTO users(id,stytch_user_id,email,full_name) VALUES ('linked-u','linked-stytch','linked@test.local','Linked');
+        INSERT INTO workspaces(id,user_id,name) VALUES ('linked-w','linked-u','Main');
+        INSERT INTO journal_workspace_state(workspace_id,user_id,enabled) VALUES ('linked-w','linked-u',false);
+        INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type,notes,source_kind)
+        VALUES ('linked-stock','linked-u','linked-w','ACME','Acme stock','2026-01-01T10:00:00Z','2026-01-02T10:00:00Z',100,105,1,'long','Keep stock note','manual'),
+               ('linked-option','linked-u','linked-w','ACME','Acme put','2026-01-01T10:00:00Z','2026-01-02T10:00:00Z',1,2,1,'long','Keep option note','broker');
+        INSERT INTO brokerage_transactions(id,user_id,workspace_id,snaptrade_id,symbol,currency,transaction_type,price,units,fee,trade_date,settlement_date,institution,raw_json,dedup_key)
+        VALUES ('stock-fill','linked-u','linked-w','stock-fill','ACME','USD','BUY',100,1,0,'2026-01-01T10:00:00Z','2026-01-01T10:00:00Z','test','{}','stock-fill'),
+               ('option-fill','linked-u','linked-w','option-fill','ACME 260116P00100000','USD','BUY',1,1,0,'2026-01-01T10:00:00Z','2026-01-01T10:00:00Z','test','{}','option-fill');
+        INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id)
+        VALUES ('stock-link','linked-stock','stock-fill','linked-u'),('option-link','linked-option','option-fill','linked-u');
+        UPDATE journal_workspace_state SET enabled=true WHERE workspace_id='linked-w';
+        SELECT journal_refresh_manual_holds('linked-u','linked-w');")
+        .await.unwrap();
+    let held: String =
+        sqlx::query_scalar("SELECT lifecycle_state FROM journal_entries WHERE id='linked-stock'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(held, "incomplete");
+    let source_before: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    bootstrap(&pool, &schema).await.unwrap();
+    pool.execute("SELECT journal_refresh_manual_holds('linked-u','linked-w')")
+        .await
+        .unwrap();
+    let stock: (String, Option<serde_json::Value>, String) = sqlx::query_as(
+        "SELECT lifecycle_state,issue_json,notes FROM journal_entries WHERE id='linked-stock'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stock, ("closed".into(), None, "Keep stock note".into()));
+    let source_after: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(source_before, source_after);
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('tradstry.journal_writer','on',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) VALUES ('shared-link','linked-option','stock-fill','linked-u')").execute(&mut *tx).await.unwrap();
+    sqlx::query("SELECT journal_refresh_manual_holds('linked-u','linked-w')")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let duplicates: serde_json::Value = sqlx::query_scalar(
+        "SELECT issue_json->'possible_duplicates' FROM journal_entries WHERE id='linked-stock'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(duplicates, serde_json::json!(["linked-option"]));
+    bootstrap(&pool, &schema).await.unwrap();
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
 async fn manual_identity_upgrade_preserves_existing_entries_and_blocks_repeated_trades() {
     let (admin, pool, schema) = isolated_pool().await;
     pg::migrate(&pool).await.unwrap();

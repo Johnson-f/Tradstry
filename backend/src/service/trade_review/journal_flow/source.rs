@@ -8,8 +8,19 @@ use sqlx::{PgConnection, Row};
 
 use crate::service::trade_review::{
     build_episodes,
-    types::{ExecutionFill, ExecutionInstrument, ExecutionSide, TradeEpisodeDraft},
+    types::{
+        EpisodeDirection, ExecutionFill, ExecutionInstrument, ExecutionSide, FillRole,
+        TradeEpisodeDraft,
+    },
 };
+
+#[derive(Clone)]
+struct LinkedTrade {
+    direction: EpisodeDirection,
+    closed: bool,
+    entered_quantity: Decimal,
+    source_ids: Vec<String>,
+}
 
 #[derive(Clone)]
 pub(super) struct SourceGroup {
@@ -22,6 +33,7 @@ pub(super) struct SourceGroup {
     pub fees_known: bool,
     pub issue: Option<String>,
     pub opening_effect: bool,
+    linked_trades: Vec<LinkedTrade>,
 }
 
 impl SourceGroup {
@@ -43,6 +55,22 @@ impl SourceGroup {
         if self.issue.is_some() {
             return Ok(vec![]);
         }
+        let mut drafts = build_episodes(self.fills.clone())?;
+        if !self.has_known_start(inventory)?
+            && !drafts.iter().all(|draft| self.has_exact_links(draft))
+        {
+            return Ok(vec![]);
+        }
+        for draft in &mut drafts {
+            draft.fingerprint = format!(
+                "{}:{}:fees_known={}",
+                draft.fingerprint, self.currency, self.fees_known
+            );
+        }
+        Ok(drafts)
+    }
+
+    pub fn has_known_start(&self, inventory: &Value) -> Result<bool> {
         let first = self
             .fills
             .iter()
@@ -56,17 +84,41 @@ impl SourceGroup {
             .and_then(|e| e["as_of"].as_str())
             .and_then(|date| DateTime::parse_from_rfc3339(date).ok())
             .is_some_and(|date| date <= first);
-        if !flat && !self.opening_effect {
-            return Ok(vec![]);
-        }
-        let mut drafts = build_episodes(self.fills.clone())?;
-        for draft in &mut drafts {
-            draft.fingerprint = format!(
-                "{}:{}:fees_known={}",
-                draft.fingerprint, self.currency, self.fees_known
-            );
-        }
-        Ok(drafts)
+        Ok(flat || self.opening_effect)
+    }
+
+    fn has_exact_links(&self, draft: &TradeEpisodeDraft) -> bool {
+        let entered_quantity: Decimal = draft
+            .allocations
+            .iter()
+            .filter(|fill| fill.role == FillRole::Entry)
+            .map(|fill| fill.quantity)
+            .sum();
+        let quantities = draft
+            .allocations
+            .iter()
+            .fold(BTreeMap::new(), |mut totals, fill| {
+                *totals
+                    .entry(fill.transaction_id.as_str())
+                    .or_insert(Decimal::ZERO) += fill.quantity;
+                totals
+            });
+        self.linked_trades
+            .iter()
+            .filter(|trade| {
+                trade.direction == draft.direction
+                    && trade.closed == draft.closed_at.is_some()
+                    && trade.entered_quantity == entered_quantity
+                    && trade.source_ids.len() == quantities.len()
+                    && trade.source_ids.iter().all(|id| {
+                        self.fills
+                            .iter()
+                            .find(|fill| &fill.transaction_id == id)
+                            .is_some_and(|fill| quantities.get(id.as_str()) == Some(&fill.quantity))
+                    })
+            })
+            .count()
+            == 1
     }
 }
 
@@ -174,6 +226,7 @@ pub(super) async fn load(
             fees_known: true,
             issue: None,
             opening_effect: matches!(kind.as_str(), "BUY_TO_OPEN" | "SELL_TO_OPEN" | "SELL_SHORT"),
+            linked_trades: vec![],
         });
         group.source_ids.push(id.clone());
         let Some(side) = side else {
@@ -224,6 +277,36 @@ pub(super) async fn load(
     if let Some(continuations) = continuations {
         for continuation in serde_json::from_value::<Vec<ConfirmedContinuation>>(continuations)? {
             apply_continuation(&mut groups, &continuation)?;
+        }
+    }
+    // Existing execution links preserve a previously recorded trade; they do
+    // not establish an empty account or authorize unrelated executions.
+    let linked = sqlx::query("SELECT j.trade_type,j.close_date IS NOT NULL AS closed,j.position_size::text AS entered_quantity,array_agg(l.brokerage_transaction_id ORDER BY l.brokerage_transaction_id) AS source_ids
+        FROM journal_entries j JOIN journal_brokerage_links l ON l.journal_entry_id=j.id AND l.user_id=j.user_id
+        LEFT JOIN brokerage_transactions b ON b.id=l.brokerage_transaction_id AND b.user_id=j.user_id AND b.workspace_id=j.workspace_id
+        WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.deleted_at IS NULL AND j.retired_at IS NULL AND j.trade_type IN ('long','short') AND j.position_size>0
+          AND (j.source_kind='manual' OR EXISTS(SELECT 1 FROM trade_episodes e WHERE e.id=j.episode_id AND e.user_id=j.user_id AND e.workspace_id=j.workspace_id AND e.grouping_source='manual' AND e.retired_at IS NULL))
+        GROUP BY j.id,j.trade_type
+        HAVING bool_and(b.id IS NOT NULL AND (l.allocated_quantity IS NULL OR l.allocated_quantity=abs(b.units::text::numeric)))")
+        .bind(user).bind(workspace).fetch_all(&mut *connection).await?;
+    for row in linked {
+        let source_ids: Vec<String> = row.try_get("source_ids")?;
+        if let Some(group) = groups
+            .values_mut()
+            .find(|group| source_ids.iter().all(|id| group.source_ids.contains(id)))
+        {
+            group.linked_trades.push(LinkedTrade {
+                direction: if row.try_get::<String, _>("trade_type")? == "long" {
+                    EpisodeDirection::Long
+                } else {
+                    EpisodeDirection::Short
+                },
+                closed: row.try_get("closed")?,
+                entered_quantity: Decimal::from_str(
+                    &row.try_get::<String, _>("entered_quantity")?,
+                )?,
+                source_ids,
+            });
         }
     }
     Ok(groups.into_values().collect())

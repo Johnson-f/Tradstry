@@ -15,6 +15,7 @@ mod m20261009_000012_manual_trade_fees;
 mod m20261013_000013_stytch_identity;
 mod m20261015_000014_drop_clerk_uuid;
 mod m20261016_000015_manual_trade_identity;
+mod m20261016_000016_linked_trade_duplicates;
 
 pub struct Migrator;
 
@@ -37,6 +38,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000013_stytch_identity::Migration),
             Box::new(m20261015_000014_drop_clerk_uuid::Migration),
             Box::new(m20261016_000015_manual_trade_identity::Migration),
+            Box::new(m20261016_000016_linked_trade_duplicates::Migration),
         ]
     }
 }
