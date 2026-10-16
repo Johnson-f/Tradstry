@@ -31,7 +31,7 @@ type sortOrder string
 type tradeFilter struct {
 	WorkspaceID string      `json:"workspace_id" jsonschema:"ID from list_workspaces"`
 	State       lifecycle   `json:"state,omitempty" jsonschema:"open, closed, or incomplete (history missing, so results are unknown)"`
-	Review      reviewState `json:"review,omitempty" jsonschema:"unreviewed, reviewed, or outdated (reviewed before the trade or its stop/playbook changed)"`
+	Review      reviewState `json:"review,omitempty" jsonschema:"unreviewed (unfinished, including in_progress), in_progress (saved review work), reviewed, or outdated (reviewed before the trade or its stop/playbook changed)"`
 	Symbol      string      `json:"symbol,omitempty" jsonschema:"ticker, such as AAPL"`
 	OpenedFrom  string      `json:"opened_from,omitempty" jsonschema:"YYYY-MM-DD; trades opened on or after this UTC date. A trade with no open date (incomplete) counts as opened at its first execution"`
 	OpenedTo    string      `json:"opened_to,omitempty" jsonschema:"YYYY-MM-DD; trades opened on or before this UTC date"`
@@ -278,7 +278,7 @@ func (t *tools) selectTrades(ctx context.Context, token string, in tradeFilter) 
 			sel.journal.Open++
 		case "closed":
 			sel.journal.Closed++
-			if tr.ReviewState == "unreviewed" {
+			if tr.ReviewState == "unreviewed" || tr.ReviewState == "in_progress" {
 				sel.journal.ToReview++
 			}
 		case "incomplete":
@@ -288,8 +288,9 @@ func (t *tools) selectTrades(ctx context.Context, token string, in tradeFilter) 
 			sel.journal.Outdated++
 		}
 
+		reviewMatches := in.Review == "" || tr.ReviewState == string(in.Review) || (in.Review == "unreviewed" && tr.ReviewState == "in_progress")
 		if (in.State != "" && tr.LifecycleState != string(in.State)) ||
-			(in.Review != "" && tr.ReviewState != string(in.Review)) ||
+			!reviewMatches ||
 			(in.Symbol != "" && !strings.EqualFold(tr.Symbol, in.Symbol)) ||
 			!withinDays(openedAt(tr), in.OpenedFrom, in.OpenedTo) ||
 			!withinDays(closedAt(tr), in.ClosedFrom, in.ClosedTo) ||

@@ -538,6 +538,14 @@ function TradeEditor({
 			context.useLatestVersion(latest.journalContextV2.version);
 		else draft.useLatestVersion(latest.journalReviewDraftV2.version);
 	};
+	const hasReviewWork = Boolean(
+		context.value.notes.trim() ||
+		context.value.tagIds.length ||
+		context.value.violatedPrincipleIds.length ||
+		draft.value.takeaway.trim() ||
+		draft.value.choiceIds.length ||
+		draft.value.planAdherence,
+	);
 	const reviewHint =
 		trade.lifecycleState !== "closed"
 			? "Finish your review after the trade closes."
@@ -629,7 +637,9 @@ function TradeEditor({
 								? "Reviewed"
 								: trade.reviewState === "outdated"
 									? "Review changed results"
-									: "Not reviewed"}
+									: trade.reviewState === "in_progress" || hasReviewWork
+										? "Review in progress"
+										: "Not reviewed"}
 						</span>
 					</div>
 				</div>

@@ -367,6 +367,28 @@ func TestListTradesFiltersAndCounts(t *testing.T) {
 	}
 }
 
+func TestInProgressReviewsCanBeFilteredAndStillCountAsUnfinished(t *testing.T) {
+	s, api := start(t)
+	api.mu.Lock()
+	api.trades[0]["reviewState"] = "in_progress"
+	api.mu.Unlock()
+	session := s.Connect(t, nil)
+	type listed struct {
+		Matching int `json:"matching"`
+		Journal  struct {
+			ToReview int `json:"closed_unreviewed"`
+		} `json:"journal"`
+	}
+	result, out := mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "state": "closed", "review": "in_progress"})
+	if result.IsError || out.Matching != 1 || out.Journal.ToReview != 1 {
+		t.Fatalf("in-progress review missing from pending work: %+v %s", out, mcptest.Text(result))
+	}
+	result, unfinished := mcptest.Call[listed](t, session, "list_trades", map[string]any{"workspace_id": "ws1", "state": "closed", "review": "unreviewed"})
+	if result.IsError || unfinished.Matching != 1 {
+		t.Fatalf("existing unfinished-review filter lost a saved draft: %+v %s", unfinished, mcptest.Text(result))
+	}
+}
+
 func TestTradesCanBeReadWithTheJournalOff(t *testing.T) {
 	s, api := start(t)
 	api.enabled = false

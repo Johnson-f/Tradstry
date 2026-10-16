@@ -29,7 +29,8 @@ const TRADE_STATUSES = [
 
 const REVIEW_STATUSES = [
   { value: "all", label: "Any review status", description: "Show every review state", icon: ListViewIcon },
-  { value: "unreviewed", label: "Not reviewed", description: "No completed review yet", icon: Clock01Icon },
+  { value: "unreviewed", label: "Not reviewed", description: "No review work added yet", icon: Clock01Icon },
+  { value: "in_progress", label: "Review in progress", description: "Work saved; not marked reviewed yet", icon: Clock01Icon },
   { value: "reviewed", label: "Reviewed", description: "Reviewed against the current results", icon: CheckmarkCircle02Icon },
   { value: "outdated", label: "Results changed", description: "Results or context changed after review", icon: RefreshIcon },
 ] as const;
@@ -144,7 +145,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
                 <td className="px-3 py-4 text-muted-foreground">{tradeDate(trade.closeDate ?? trade.openDate, status.data?.timezone)}</td>
                 <td className="px-3 py-4"><span className={`rounded-md px-2 py-1 text-xs ${trade.lifecycleState === "incomplete" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{trade.lifecycleState === "incomplete" ? "Needs attention" : trade.lifecycleState === "open" ? "Open" : "Closed"}</span></td>
                 <td className="px-3 py-4 text-right tabular-nums">{trade.remainingQuantity ?? "—"}</td><td className={`px-3 py-4 text-right font-medium tabular-nums ${Number(trade.realizedNet) < 0 ? "text-rose-600" : Number(trade.realizedNet) > 0 ? "text-emerald-600" : ""}`}>{money(trade.realizedNet, trade.currency)}</td>
-                <td className="px-3 py-4 text-xs text-muted-foreground">{trade.reviewState === "reviewed" ? "Reviewed" : trade.reviewState === "outdated" ? "Results changed" : trade.lifecycleState === "open" ? "When it closes" : "Not reviewed"}</td>
+                <td className="px-3 py-4 text-xs text-muted-foreground">{trade.reviewState === "reviewed" ? "Reviewed" : trade.reviewState === "outdated" ? "Results changed" : trade.reviewState === "in_progress" ? "Review in progress" : trade.lifecycleState === "open" ? "When it closes" : "Not reviewed"}</td>
               </tr>)}
             </tbody></table>
           </ScrollArea>}

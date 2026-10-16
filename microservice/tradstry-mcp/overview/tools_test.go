@@ -65,7 +65,7 @@ func respond(syncCalls *atomic.Int32) func(mcptest.Request) string {
 				return data(map[string]any{
 					"journalFlowStatus": map[string]any{"enabled": true, "sourceRevision": 4, "projectionRevision": 4, "importState": "idle", "lastError": nil},
 					"journalTradesV2": trades([2]string{"open", "unreviewed"}, [2]string{"closed", "unreviewed"}, [2]string{"closed", "reviewed"},
-						[2]string{"closed", "outdated"}, [2]string{"incomplete", "unreviewed"}),
+						[2]string{"closed", "outdated"}, [2]string{"incomplete", "unreviewed"}, [2]string{"closed", "in_progress"}),
 				})
 			case "ws2":
 				return data(map[string]any{
@@ -96,7 +96,7 @@ func TestOverviewSummarisesEveryWorkspaceInOneCall(t *testing.T) {
 		main.Brokerage.LastSync == nil || main.Brokerage.LastSync.At != "2026-10-14T10:00:00Z" {
 		t.Errorf("brokerage = %+v", main.Brokerage)
 	}
-	if j := main.Journal; j == nil || !j.Automatic || !j.UpToDate || j.Trades.Open != 1 || j.Trades.Closed != 3 || j.Trades.Incomplete != 1 || j.Trades.ClosedUnreviewed != 1 {
+	if j := main.Journal; j == nil || !j.Automatic || !j.UpToDate || j.Trades.Open != 1 || j.Trades.Closed != 4 || j.Trades.Incomplete != 1 || j.Trades.ClosedUnreviewed != 2 {
 		t.Errorf("journal = %+v", j)
 	}
 

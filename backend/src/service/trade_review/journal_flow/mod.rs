@@ -132,8 +132,18 @@ async fn query_trades_connection(
 ) -> Result<Vec<JournalTrade>> {
     let rows = sqlx::query("SELECT e.id,e.workspace_id,e.source_kind,e.episode_id,e.symbol,e.symbol_name,e.trade_type,coalesce(e.currency,(SELECT currency FROM workspaces WHERE id=e.workspace_id)) AS currency,e.open_date,e.entry_price::text,e.exit_price::text,e.position_size::text,e.contract_multiplier::text,e.record_version,e.materialized_revision,e.issue_json->>'code' AS issue_code,e.issue_json->>'message' AS issue_message,coalesce(e.issue_json->'possible_duplicates','[]') AS possible_duplicates,e.retired_at,e.successor_id,e.playbook_id,e.lifecycle_state,e.outcome,e.remaining_quantity,COALESCE(e.realized_net,CASE WHEN e.source_kind='manual' THEN e.position_size::text::numeric*e.entry_price::text::numeric*e.total_pl::text::numeric/100*e.contract_multiplier::text::numeric END) AS realized_net,e.fees_paid,e.close_date,x.first_execution_at,x.last_execution_at,coalesce(x.execution_count,0)::int AS execution_count,x.bought_quantity,x.sold_quantity,
         (SELECT coalesce(jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color)),'[]') FROM trade_tags link JOIN tags t ON t.id=link.tag_id AND t.user_id=e.user_id WHERE link.journal_entry_id=e.id AND t.deleted_at IS NULL) AS tags,
-        CASE WHEN r.id IS NULL THEN 'unreviewed' WHEN r.entry_revision=e.materialized_revision AND r.context_revision=coalesce(c.record_version,0) THEN 'reviewed' ELSE 'outdated' END AS review_state
+        CASE WHEN r.id IS NULL THEN CASE WHEN (e.notes ~ '[^[:space:]]'
+          OR regexp_replace(e.mistakes,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
+          OR regexp_replace(e.entry_tactics,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
+          OR regexp_replace(e.edges_spotted,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
+          OR d.takeaway ~ '[^[:space:]]'
+          OR (jsonb_typeof(d.choice_ids)='array' AND d.choice_ids<>'[]'::jsonb)
+          OR d.plan_adherence ~ '[^[:space:]]'
+          OR EXISTS(SELECT 1 FROM trade_tags link JOIN tags t ON t.id=link.tag_id AND t.user_id=e.user_id WHERE link.journal_entry_id=e.id AND t.deleted_at IS NULL)
+          OR EXISTS(SELECT 1 FROM trade_principle_violations v WHERE v.journal_entry_id=e.id)) IS TRUE THEN 'in_progress' ELSE 'unreviewed' END
+          WHEN r.entry_revision=e.materialized_revision AND r.context_revision=coalesce(c.record_version,0) THEN 'reviewed' ELSE 'outdated' END AS review_state
         FROM journal_entries e LEFT JOIN journal_trade_context c ON c.entry_id=e.id
+        LEFT JOIN journal_review_drafts d ON d.entry_id=e.id AND d.user_id=e.user_id AND d.workspace_id=e.workspace_id
         LEFT JOIN LATERAL (SELECT id,entry_revision,context_revision FROM journal_trade_reviews WHERE entry_id=e.id AND user_id=e.user_id AND workspace_id=e.workspace_id ORDER BY review_version DESC LIMIT 1) r ON true
         LEFT JOIN LATERAL (SELECT count(*) AS execution_count,min(t) AS first_execution_at,max(t) AS last_execution_at,sum(q) FILTER (WHERE buy) AS bought_quantity,sum(q) FILTER (WHERE NOT buy) AS sold_quantity FROM (
             SELECT f.executed_at AS t,f.quantity AS q,NULL::boolean AS buy FROM trade_episode_fills f WHERE f.episode_id=e.episode_id
