@@ -2,6 +2,72 @@ use crate::pg_support::TestDb;
 use sqlx::PgPool;
 use tradstry_backend::service::db::schema::tables::journal_table as jt;
 
+#[tokio::test]
+async fn manual_trade_duplicates_are_rejected_without_losing_the_original() {
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = crate::pg_support::seed_user_workspace(&pool).await;
+    let mut conn = pool.acquire().await.unwrap();
+    let original = args("original", &workspace, 105.0, vec![]);
+    jt::create_journal_entry_tx(&mut conn, &user, &original, "001:00001:test")
+        .await
+        .unwrap();
+    let mut duplicate = args("duplicate", &workspace, 105.0, vec![]);
+    duplicate.symbol = format!(" {} ", original.symbol.to_lowercase());
+    let error = jt::create_journal_entry_tx(&mut conn, &user, &duplicate, "001:00002:test")
+        .await
+        .expect_err("a different ID must not duplicate the same manual trade");
+    assert!(error.to_string().contains("already exists"), "{error:#}");
+    let mut distinct = args("distinct", &workspace, 106.0, vec![]);
+    jt::create_journal_entry_tx(&mut conn, &user, &distinct, "001:00003:test")
+        .await
+        .unwrap();
+    distinct.exit_price = 105.0;
+    assert!(
+        jt::update_journal_entry_tx(&mut conn, &user, &distinct, "001:00004:test")
+            .await
+            .is_err()
+    );
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND deleted_at IS NULL",
+    )
+    .bind(&workspace)
+    .fetch_one(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(count, 2);
+    jt::soft_delete_journal_entry_tx(&mut conn, &user, "original", "001:00005:test")
+        .await
+        .unwrap();
+    jt::create_journal_entry_tx(&mut conn, &user, &duplicate, "001:00006:test")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn concurrent_manual_submissions_count_the_trade_once() {
+    let test_db = TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = crate::pg_support::seed_user_workspace(&pool).await;
+    let first = args("first-request", &workspace, 105.0, vec![]);
+    let second = args("second-request", &workspace, 105.0, vec![]);
+    let mut a = pool.acquire().await.unwrap();
+    let mut b = pool.acquire().await.unwrap();
+    let results = tokio::join!(
+        jt::create_journal_entry_tx(&mut a, &user, &first, "001:00001:test"),
+        jt::create_journal_entry_tx(&mut b, &user, &second, "001:00002:test")
+    );
+    assert_ne!(results.0.is_ok(), results.1.is_ok());
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND deleted_at IS NULL",
+    )
+    .bind(&workspace)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}
+
 async fn seed_user(pool: &PgPool, id: &str) {
     sqlx::query("INSERT INTO users (id, stytch_user_id) VALUES ($1, $2)")
         .bind(id)

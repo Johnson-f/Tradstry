@@ -992,7 +992,7 @@ pub async fn create_journal_entry(
     .bind(entry.fees)
     .execute(&mut *transaction)
     .await
-    .context("Failed to insert journal entry")?;
+    .map_err(|error| manual_write_error(error, "Failed to insert journal entry"))?;
 
     if let Some(ref tx_ids) = brokerage_tx_ids
         && !tx_ids.is_empty()
@@ -1069,7 +1069,7 @@ pub async fn update_journal_entry(
     .bind(expected_version)
     .execute(pool)
     .await
-    .context("Failed to update journal entry")?;
+    .map_err(|error| manual_write_error(error, "Failed to update journal entry"))?;
     ensure!(
         updated.rows_affected() > 0,
         "CONFLICT: this trade changed on another device"
@@ -1693,6 +1693,20 @@ pub(crate) async fn replace_principle_violations_tx(
     Ok(())
 }
 
+fn manual_write_error(error: sqlx::Error, operation: &'static str) -> anyhow::Error {
+    if error
+        .as_database_error()
+        .and_then(|error| error.constraint())
+        == Some("journal_manual_trade_identity")
+    {
+        anyhow!(
+            "A manual trade with the same symbol, dates, prices and quantity already exists. Edit the existing trade instead."
+        )
+    } else {
+        anyhow::Error::new(error).context(operation)
+    }
+}
+
 pub async fn create_journal_entry_tx(
     conn: &mut PgConnection,
     user_id: &str,
@@ -1769,7 +1783,7 @@ pub async fn create_journal_entry_tx(
     .bind(fees)
     .execute(&mut *conn)
     .await
-    .context("create_journal_entry_tx")?;
+    .map_err(|error| manual_write_error(error, "create_journal_entry_tx"))?;
 
     replace_trade_tags_tx(conn, user_id, &args.workspace_id, &args.id, &args.tag_ids).await?;
     replace_principle_violations_tx(
@@ -1875,7 +1889,7 @@ pub async fn update_journal_entry_tx(
     .bind(fees)
     .execute(&mut *conn)
     .await
-    .context("update_journal_entry_tx")?;
+    .map_err(|error| manual_write_error(error, "update_journal_entry_tx"))?;
 
     replace_trade_tags_tx(conn, user_id, &args.workspace_id, &args.id, &args.tag_ids).await?;
     replace_principle_violations_tx(

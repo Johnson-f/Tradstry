@@ -59,7 +59,7 @@ type startInput struct {
 }
 
 type startOutput struct {
-	Status            string `json:"status" jsonschema:"ready, updating, needs_confirmation or cancelled"`
+	Status            string `json:"status" jsonschema:"ready, updating, unchanged, needs_confirmation or cancelled"`
 	Message           string `json:"message"`
 	ConfirmationToken string `json:"confirmation_token,omitempty"`
 }
@@ -140,8 +140,8 @@ func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startInp
 	if err != nil {
 		return nil, startOutput{}, forUser(err)
 	}
-	if st.Enabled {
-		return nil, startOutput{}, errors.New("the journal is already on for this workspace")
+	if st.Enabled && in.AccountWasFlat != "yes" {
+		return nil, startOutput{Status: "unchanged", Message: "The journal is already on. Starting holdings have not been changed. Import earlier broker history or confirm individual trades; only confirm an empty starting account if you know it held no positions."}, nil
 	}
 	if in.Timezone != "" {
 		if _, err := time.LoadLocation(in.Timezone); err != nil {
