@@ -1273,11 +1273,11 @@ async fn existing_published_entry_keeps_its_identity_and_notes() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn legacy_manual_merge_with_exact_links_is_adopted_once() {
+async fn legacy_manual_merge_with_exact_links_recovers_without_a_flat_account() {
     let test_db = crate::pg_support::TestDb::new().await;
     let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
-    sqlx::query("UPDATE journal_workspace_state SET enabled=false WHERE workspace_id=$1")
+    sqlx::query("UPDATE journal_workspace_state SET enabled=false,opening_inventory='{}' WHERE workspace_id=$1")
         .bind(&workspace)
         .execute(&pool)
         .await
@@ -1289,8 +1289,8 @@ async fn legacy_manual_merge_with_exact_links_is_adopted_once() {
         "buy",
         "BUY",
         FillAmounts {
-            quantity: 100.0,
-            price: 100.0,
+            quantity: 1.0,
+            price: 2.50,
             fee: 0.0,
         },
         "2026-09-01T14:00:00Z",
@@ -1303,40 +1303,322 @@ async fn legacy_manual_merge_with_exact_links_is_adopted_once() {
         "sell",
         "SELL",
         FillAmounts {
-            quantity: 100.0,
-            price: 110.0,
+            quantity: -1.0,
+            price: 1.75,
             fee: 0.0,
         },
         "2026-09-01T15:00:00Z",
     )
     .await;
+    sqlx::query("UPDATE brokerage_transactions SET symbol='ACME  260918P00037000',symbol_description='ACME $37 Put 2026-09-18',underlying_symbol='ACME',option_kind='PUT',option_expiration='2026-09-18',strike_price=37,contract_multiplier=100 WHERE workspace_id=$1")
+        .bind(&workspace).execute(&pool).await.unwrap();
     let id = format!("{workspace}:manual");
-    sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,status,total_pl,net_roi,duration,notes)
-        VALUES ($1,$2,$3,'ACME','Acme','long','2026-09-01T14:00:00Z','2026-09-01T15:00:00Z',100,110,100,'profit',10,10,3600,'Original manual merge')")
+    sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,status,total_pl,net_roi,duration,notes,contract_multiplier)
+        VALUES ($1,$2,$3,'ACME','ACME $37 Put 2026-09-18','long','2026-09-01T14:00:00Z','2026-09-01T15:00:00Z',2.50,1.75,1,'loss',-30,-30,3600,'Original manual merge',100)")
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) SELECT uuidv7()::text,$1,id,$2 FROM brokerage_transactions WHERE workspace_id=$3")
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
     trade_review_table::rebuild_workspace(&pool, &user, &workspace)
         .await
         .unwrap();
+    let episode: String = sqlx::query_scalar("SELECT id FROM trade_episodes WHERE workspace_id=$1")
+        .bind(&workspace)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE trade_episodes SET status='blocked',block_reason='Grouping needs confirmation' WHERE id=$1")
+        .bind(&episode).execute(&pool).await.unwrap();
+    let placeholder = format!("{workspace}:incomplete");
+    sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,issue_json,notes) VALUES ($1,$2,$3,'ACME  260918P00037000','ACME $37 Put 2026-09-18','unknown','broker','incomplete','unknown',$4,'Keep this placeholder note too')")
+        .bind(&placeholder).bind(&user).bind(&workspace)
+        .bind(serde_json::json!({"code":"incomplete_history","instrument_key":"option:ACME:2026-09-18:37:put:100|USD","source_ids":[format!("{workspace}:buy"),format!("{workspace}:sell")],"possible_duplicates":[]}))
+        .execute(&pool).await.unwrap();
+    let source_before: serde_json::Value = sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b WHERE workspace_id=$1")
+        .bind(&workspace).fetch_one(&pool).await.unwrap();
     sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
         .bind(&workspace)
         .execute(&pool)
         .await
         .unwrap();
     project(&pool, &user, &workspace).await;
-    project(&pool, &user, &workspace).await;
     let trades = journal_flow::list_trades(&pool, &user, &workspace)
         .await
         .unwrap();
     assert_eq!(trades.len(), 1);
     assert_eq!(trades[0].id, id);
+    assert_eq!(trades[0].episode_id.as_deref(), Some(episode.as_str()));
+    assert_eq!(trades[0].lifecycle_state, "closed");
+    assert_eq!(trades[0].realized_net.as_deref(), Some("-75"));
+    assert_eq!(trades[0].review_state, "unreviewed");
     let notes: String = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
         .bind(&id)
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(notes, "Original manual merge");
+    let retired: (bool, Option<String>, String) = sqlx::query_as(
+        "SELECT retired_at IS NOT NULL,successor_id,notes FROM journal_entries WHERE id=$1",
+    )
+    .bind(&placeholder)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        retired,
+        (
+            true,
+            Some(id.clone()),
+            "Keep this placeholder note too".into()
+        )
+    );
+    let source_after: serde_json::Value = sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b WHERE workspace_id=$1")
+        .bind(&workspace).fetch_one(&pool).await.unwrap();
+    assert_eq!(source_before, source_after);
+    let inventory: serde_json::Value = sqlx::query_scalar(
+        "SELECT opening_inventory FROM journal_workspace_state WHERE workspace_id=$1",
+    )
+    .bind(&workspace)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(inventory, serde_json::json!({}));
+    sqlx::query("UPDATE journal_projection_jobs SET state='pending',available_at=now() WHERE workspace_id=$1")
+        .bind(&workspace).execute(&pool).await.unwrap();
+    assert_eq!(
+        journal_flow::process_once(&pool, "legacy-retry")
+            .await
+            .unwrap(),
+        1
+    );
+    let retried = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&trades).unwrap(),
+        serde_json::to_value(retried).unwrap()
+    );
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "later",
+        "BUY",
+        FillAmounts {
+            quantity: 1.0,
+            price: 2.0,
+            fee: 0.0,
+        },
+        "2026-09-02T14:00:00Z",
+    )
+    .await;
+    sqlx::query("UPDATE brokerage_transactions SET symbol='ACME  260918P00037000',symbol_description='ACME $37 Put 2026-09-18',underlying_symbol='ACME',option_kind='PUT',option_expiration='2026-09-18',strike_price=37,contract_multiplier=100 WHERE id=$1")
+        .bind(format!("{workspace}:later")).execute(&pool).await.unwrap();
+    project(&pool, &user, &workspace).await;
+    let later = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap();
+    assert_eq!(later.len(), 2);
+    assert_eq!(
+        later
+            .iter()
+            .find(|trade| trade.id == id)
+            .unwrap()
+            .lifecycle_state,
+        "closed"
+    );
+    assert_eq!(
+        later
+            .iter()
+            .find(|trade| trade.id != id)
+            .unwrap()
+            .lifecycle_state,
+        "incomplete"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn uncertain_legacy_links_do_not_confirm_starting_history() {
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    for case in [
+        "partial",
+        "missing",
+        "wrong_direction",
+        "wrong_size",
+        "wrong_lifecycle",
+        "deleted",
+        "retired",
+        "competing",
+    ] {
+        let (user, workspace) = enabled_workspace(&pool).await;
+        sqlx::query(
+            "UPDATE journal_workspace_state SET enabled=false,opening_inventory='{}' WHERE workspace_id=$1",
+        )
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+        for (name, side, quantity, at) in [
+            ("buy", "BUY", 1.0, "2026-09-01T14:00:00Z"),
+            ("sell", "SELL", -1.0, "2026-09-01T15:00:00Z"),
+        ] {
+            fill(
+                &pool,
+                &user,
+                &workspace,
+                name,
+                side,
+                FillAmounts {
+                    quantity,
+                    price: 10.0,
+                    fee: 0.0,
+                },
+                at,
+            )
+            .await;
+        }
+        let id = format!("{workspace}:manual");
+        sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,notes,position_size,close_date) VALUES ($1,$2,$3,'ACME','Acme',$4,'Preserve legacy entry',1,'2026-09-01T15:00:00Z')")
+            .bind(&id).bind(&user).bind(&workspace).bind(if case == "wrong_direction" { "short" } else { "long" }).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id,allocated_quantity) SELECT uuidv7()::text,$1,id,$2,$4 FROM brokerage_transactions WHERE workspace_id=$3 AND ($5 OR transaction_type='BUY')")
+            .bind(&id).bind(&user).bind(&workspace).bind(if case == "partial" { Some(Decimal::new(5,1)) } else { None }).bind(case != "missing").execute(&pool).await.unwrap();
+        match case {
+            "wrong_size" => {
+                sqlx::query("UPDATE journal_entries SET position_size=2 WHERE id=$1")
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            "wrong_lifecycle" => {
+                sqlx::query("UPDATE journal_entries SET close_date=NULL WHERE id=$1")
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            "deleted" => {
+                sqlx::query("UPDATE journal_entries SET deleted_at=now() WHERE id=$1")
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            "retired" => {
+                sqlx::query("UPDATE journal_entries SET retired_at=now() WHERE id=$1")
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            "competing" => {
+                let other = format!("{workspace}:other");
+                sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,position_size,close_date) VALUES ($1,$2,$3,'ACME','Acme','long',1,'2026-09-01T15:00:00Z')")
+                    .bind(&other).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+                sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) SELECT uuidv7()::text,$1,id,$2 FROM brokerage_transactions WHERE workspace_id=$3")
+                    .bind(&other).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+            }
+            _ => {}
+        }
+        sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+        project(&pool, &user, &workspace).await;
+        let adopted: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND episode_id IS NOT NULL",
+        )
+        .bind(&workspace)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(adopted, 0, "{case} links must not authorize a trade");
+        let notes: String = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
+            .bind(&id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(notes, "Preserve legacy entry");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn adopting_an_option_does_not_hold_a_separately_linked_stock_trade() {
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    sqlx::query("UPDATE journal_workspace_state SET enabled=false,opening_inventory='{}' WHERE workspace_id=$1")
+        .bind(&workspace).execute(&pool).await.unwrap();
+    for (name, side, quantity, at) in [
+        ("stock-buy", "BUY", 1.0, "2026-09-01T14:00:00Z"),
+        ("stock-sell", "SELL", -1.0, "2026-09-02T14:00:00Z"),
+        ("later-stock", "BUY", 1.0, "2026-09-03T14:00:00Z"),
+        ("option-buy", "BUY", 1.0, "2026-09-01T14:30:00Z"),
+        ("option-sell", "SELL", -1.0, "2026-09-02T14:30:00Z"),
+    ] {
+        fill(
+            &pool,
+            &user,
+            &workspace,
+            name,
+            side,
+            FillAmounts {
+                quantity,
+                price: 10.0,
+                fee: 0.0,
+            },
+            at,
+        )
+        .await;
+    }
+    sqlx::query("UPDATE brokerage_transactions SET symbol='ACME  260918P00037000',underlying_symbol='ACME',option_kind='PUT',option_expiration='2026-09-18',strike_price=37,contract_multiplier=100 WHERE id=ANY($1)")
+        .bind(vec![format!("{workspace}:option-buy"),format!("{workspace}:option-sell")]).execute(&pool).await.unwrap();
+    let stock = format!("{workspace}:stock");
+    let option = format!("{workspace}:option");
+    for (id, names, multiplier) in [
+        (&stock, ["stock-buy", "stock-sell"], 1.0),
+        (&option, ["option-buy", "option-sell"], 100.0),
+    ] {
+        sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,contract_multiplier,notes) VALUES ($1,$2,$3,'ACME','Acme','long','2026-09-01T14:00:00Z','2026-09-02T15:00:00Z',10,10,1,$4,'Keep my trade')")
+            .bind(id).bind(&user).bind(&workspace).bind(multiplier).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) SELECT uuidv7()::text,$1,id,$2 FROM brokerage_transactions WHERE workspace_id=$3 AND id=ANY($4)")
+            .bind(id).bind(&user).bind(&workspace).bind(names.map(|name|format!("{workspace}:{name}"))).execute(&pool).await.unwrap();
+    }
+    sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+    project(&pool, &user, &workspace).await;
+    let trades = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap();
+    let original_stock = trades.iter().find(|trade| trade.id == stock).unwrap();
+    assert_eq!(original_stock.source_kind, "manual");
+    assert_eq!(original_stock.lifecycle_state, "closed");
+    assert_eq!(original_stock.issue_code, None);
+    assert_eq!(
+        trades
+            .iter()
+            .find(|trade| trade.id == option)
+            .unwrap()
+            .source_kind,
+        "broker"
+    );
+    sqlx::query("UPDATE journal_entries SET close_date=close_date+interval '1 minute' WHERE id=$1")
+        .bind(&stock)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        journal_flow::get_trade(&pool, &user, &workspace, &stock)
+            .await
+            .unwrap()
+            .unwrap()
+            .lifecycle_state,
+        "closed"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

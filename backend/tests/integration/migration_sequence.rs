@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_manual_trade_identity() {
+fn seaorm_migrations_end_with_linked_trade_duplicates() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 15);
+    assert_eq!(migrations.len(), 16);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261016_000015_manual_trade_identity"
+        "m20261016_000016_linked_trade_duplicates"
     );
 }

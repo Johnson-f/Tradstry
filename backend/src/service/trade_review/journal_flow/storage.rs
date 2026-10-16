@@ -108,6 +108,20 @@ pub(super) async fn materialize(
     sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id,allocated_quantity)
         SELECT uuidv7()::text,$1,brokerage_transaction_id,$2,sum(quantity) FROM trade_episode_fills WHERE episode_id=$3 GROUP BY brokerage_transaction_id")
         .bind(&id).bind(scope.user).bind(episode_id).execute(&mut *connection).await?;
+    if entry_id.is_some() {
+        let source_ids = draft
+            .allocations
+            .iter()
+            .map(|fill| &fill.transaction_id)
+            .collect::<Vec<_>>();
+        sqlx::query("UPDATE journal_entries SET retired_at=now(),successor_id=$1,record_version=record_version+1,updated_at=now()
+            WHERE user_id=$2 AND workspace_id=$3 AND id<>$1 AND source_kind='broker' AND lifecycle_state='incomplete' AND episode_id IS NULL AND deleted_at IS NULL AND retired_at IS NULL
+              AND jsonb_array_length(issue_json->'source_ids')>0 AND (issue_json->'source_ids') <@ $4::jsonb
+              AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(issue_json->'source_ids') s(source_id)
+                  LEFT JOIN brokerage_transactions b ON b.id=s.source_id AND b.user_id=$2 AND b.workspace_id=$3
+                  WHERE b.id IS NULL OR abs(b.units::text::numeric)<>(SELECT coalesce(sum(f.quantity),0) FROM trade_episode_fills f WHERE f.episode_id=$5 AND f.brokerage_transaction_id=s.source_id))")
+            .bind(&id).bind(scope.user).bind(scope.workspace).bind(json!(source_ids)).bind(episode_id).execute(&mut *connection).await?;
+    }
     sqlx::query("INSERT INTO journal_trade_reviews(id,entry_id,user_id,workspace_id,review_version,entry_revision,context_revision,takeaway,choice_ids,snapshot_json,created_at)
         SELECT v.id,j.id,j.user_id,j.workspace_id,1,0,0,coalesce(nullif(v.reflection_json->>'lesson',''),v.reflection_json->>'notes',''),'[]',jsonb_build_object('legacyReview',to_jsonb(v),'provenance','imported_final_review'),coalesce(v.finalized_at,p.created_at)
         FROM journal_entries j JOIN trade_review_publications p ON p.journal_entry_id=j.id JOIN trade_review_versions v ON v.id=p.review_version_id AND v.user_id=j.user_id AND v.workspace_id=j.workspace_id

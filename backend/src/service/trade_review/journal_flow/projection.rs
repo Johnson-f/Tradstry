@@ -278,13 +278,21 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                 continue;
             }
             let mut entry_id = old.and_then(|old| old.entry_id.clone());
+            let mut adopted_legacy = false;
             if entry_id.is_none() {
                 match legacy_link_match(&mut tx, snapshot, &draft).await? {
-                    LegacyLinkMatch::Entry(id) => entry_id = Some(id),
+                    LegacyLinkMatch::Entry(id) => {
+                        entry_id = Some(id);
+                        adopted_legacy = true;
+                    }
                     LegacyLinkMatch::Ambiguous => {
                         let mut ambiguous = group.clone();
                         ambiguous.issue=Some("This broker history overlaps existing journal entries. Compare them before confirming a separate trade.".into());
                         record_issue(&mut tx, snapshot, &ambiguous).await?;
+                        continue;
+                    }
+                    LegacyLinkMatch::None if !group.has_known_start(&snapshot.inventory)? => {
+                        record_issue(&mut tx, snapshot, group).await?;
                         continue;
                     }
                     LegacyLinkMatch::None => {}
@@ -303,6 +311,10 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                 entry_id.as_deref(),
             )
             .await?;
+            if adopted_legacy {
+                sqlx::query("UPDATE trade_episodes SET grouping_source='manual' WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
+                    .bind(&episode_id).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *tx).await?;
+            }
         }
     }
     for old in &snapshot.existing {
@@ -509,8 +521,10 @@ async fn legacy_link_match(
         .iter()
         .map(|f| f.transaction_id.clone())
         .collect::<Vec<_>>();
-    let entries:Vec<String>=sqlx::query_scalar("SELECT DISTINCT j.id FROM journal_entries j JOIN journal_brokerage_links l ON l.journal_entry_id=j.id AND l.user_id=j.user_id
-        WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.episode_id IS NULL AND l.brokerage_transaction_id=ANY($3)")
+    let entries=sqlx::query("SELECT j.id,j.trade_type,j.close_date IS NOT NULL AS closed,j.position_size::text AS entered_quantity FROM journal_entries j
+        WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.episode_id IS NULL AND j.deleted_at IS NULL AND j.retired_at IS NULL
+          AND EXISTS(SELECT 1 FROM journal_brokerage_links l WHERE l.journal_entry_id=j.id AND l.user_id=j.user_id AND l.brokerage_transaction_id=ANY($3))
+        ORDER BY j.id FOR UPDATE OF j")
         .bind(&snapshot.user).bind(&snapshot.workspace).bind(&ids).fetch_all(&mut *connection).await?;
     if entries.is_empty() {
         let symbols = match &draft.instrument {
@@ -533,10 +547,32 @@ async fn legacy_link_match(
     if entries.len() != 1 {
         return Ok(LegacyLinkMatch::Ambiguous);
     }
-    let links=sqlx::query("SELECT l.brokerage_transaction_id,b.units::text AS quantity FROM journal_brokerage_links l
+    let entry_id: String = entries[0].try_get("id")?;
+    let direction: String = entries[0].try_get("trade_type")?;
+    if !matches!(
+        (direction.as_str(), draft.direction),
+        ("long", EpisodeDirection::Long) | ("short", EpisodeDirection::Short)
+    ) {
+        return Ok(LegacyLinkMatch::Ambiguous);
+    }
+    let entered_quantity = entries[0]
+        .try_get::<Option<String>, _>("entered_quantity")?
+        .and_then(|quantity| quantity.parse::<Decimal>().ok());
+    let entered: Decimal = draft
+        .allocations
+        .iter()
+        .filter(|fill| fill.role == FillRole::Entry)
+        .map(|fill| fill.quantity)
+        .sum();
+    if entries[0].try_get::<bool, _>("closed")? != draft.closed_at.is_some()
+        || entered_quantity != Some(entered)
+    {
+        return Ok(LegacyLinkMatch::Ambiguous);
+    }
+    let links=sqlx::query("SELECT l.brokerage_transaction_id,coalesce(l.allocated_quantity,abs(b.units::text::numeric))::text AS quantity FROM journal_brokerage_links l
         LEFT JOIN brokerage_transactions b ON b.id=l.brokerage_transaction_id AND b.user_id=l.user_id AND b.workspace_id=$3
         WHERE l.journal_entry_id=$1 AND l.user_id=$2")
-        .bind(&entries[0]).bind(&snapshot.user).bind(&snapshot.workspace).fetch_all(&mut *connection).await?;
+        .bind(&entry_id).bind(&snapshot.user).bind(&snapshot.workspace).fetch_all(&mut *connection).await?;
     let exact = links.len() == ids.iter().collect::<HashSet<_>>().len()
         && links.iter().all(|row| {
             let Ok(id) = row.try_get::<String, _>("brokerage_transaction_id") else {
@@ -556,10 +592,10 @@ async fn legacy_link_match(
                 .filter(|fill| fill.transaction_id == id)
                 .map(|fill| fill.quantity)
                 .sum::<Decimal>();
-            allocated == quantity.abs()
+            allocated == quantity
         });
     Ok(if exact {
-        LegacyLinkMatch::Entry(entries[0].clone())
+        LegacyLinkMatch::Entry(entry_id)
     } else {
         LegacyLinkMatch::Ambiguous
     })
