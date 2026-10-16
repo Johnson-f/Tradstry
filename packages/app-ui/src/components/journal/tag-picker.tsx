@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@tradstry/app-ui/components/ui/badge";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import {
@@ -20,11 +22,6 @@ import { cn } from "@tradstry/app-ui/lib/utils";
 /** Fallback color when neither tag nor category has a color. */
 const DEFAULT_COLOR = "#6b7280";
 
-function colorStyle(color: string | null | undefined): React.CSSProperties {
-  const c = color ?? DEFAULT_COLOR;
-  return { backgroundColor: `${c}22`, borderColor: c, color: c };
-}
-
 // ---------------------------------------------------------------------------
 // TagPicker
 // ---------------------------------------------------------------------------
@@ -43,7 +40,7 @@ export interface TagPickerProps {
 /**
  * A multiselect chip/combobox for a single tag category.
  *
- * - Selected tags are shown as colored Badge chips with an ×-button.
+ * - Selected tags and the add button share a wrapping row.
  * - The popover lists all tags in the category, filtered by a search input.
  * - "Create tag" inline option appears when the search term doesn't match any
  *   existing tag; calls `useCreateTag` and auto-selects the new tag.
@@ -104,33 +101,44 @@ export function TagPicker({
   const categoryColor = category.color ?? null;
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      {/* Selected tag chips */}
-      {selectedTags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {selectedTags.map((tag) => {
-            const style = colorStyle(tag.color ?? categoryColor);
-            return (
-              <Badge
-                key={tag.id}
-                variant="outline"
-                className="gap-1 border pr-1 font-normal"
-                style={style}
-              >
-                {tag.name}
-                <button
-                  type="button"
-                  aria-label={`Remove ${tag.name}`}
-                  className="ml-0.5 cursor-pointer rounded-full opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  onClick={() => removeTag(tag.id)}
-                >
-                  ×
-                </button>
-              </Badge>
-            );
-          })}
-        </div>
+    <div
+      className={cn(
+        "flex min-h-7 min-w-0 flex-wrap items-center gap-1.5",
+        className,
       )}
+    >
+      {/* Selected tag chips */}
+      {selectedTags.map((tag) => (
+        <Badge
+          key={tag.id}
+          variant="outline"
+          className="h-7 min-w-0 max-w-full gap-1.5 border-border/70 bg-muted/60 pl-2.5 pr-0.5 text-xs font-normal text-foreground transition-colors"
+        >
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 rounded-full"
+            style={{
+              backgroundColor: tag.color ?? categoryColor ?? DEFAULT_COLOR,
+            }}
+          />
+          <span className="min-w-0 truncate" title={tag.name}>
+            {tag.name}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove ${tag.name}`}
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50"
+            onClick={() => removeTag(tag.id)}
+          >
+            <HugeiconsIcon
+              icon={Cancel01Icon}
+              className="size-3"
+              strokeWidth={2}
+              aria-hidden
+            />
+          </button>
+        </Badge>
+      ))}
 
       {/* Popover trigger */}
       <Popover open={open} onOpenChange={setOpen}>
@@ -139,16 +147,21 @@ export function TagPicker({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 justify-start text-xs font-normal text-muted-foreground"
+            className="h-7 w-fit gap-1 rounded-full border-dashed px-2.5 text-xs font-normal text-muted-foreground transition-colors"
             aria-label={`Add ${category.name} tag`}
           >
-            + Add {category.name} tag
+            <HugeiconsIcon
+              icon={PlusSignIcon}
+              className="size-3"
+              strokeWidth={2}
+              aria-hidden
+            />
+            Add tag
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-56 p-2"
+          className="w-64 max-w-[var(--radix-popover-content-available-width)] p-2"
           align="start"
-          onOpenAutoFocus={(e) => e.preventDefault()}
         >
           {/* Search input */}
           <input
@@ -156,10 +169,12 @@ export function TagPicker({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={`Search or create…`}
-            className="mb-2 h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+            className="mb-2 h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             aria-label={`Search ${category.name} tags`}
-            // Allow typing inside the popover without closing it
-            onKeyDown={(e) => e.stopPropagation()}
+            // Keep typing local while letting Escape dismiss the popover.
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") e.stopPropagation();
+            }}
           />
 
           {/* Tag list */}
@@ -180,7 +195,6 @@ export function TagPicker({
             ) : (
               filtered.map((tag) => {
                 const selected = selectedTagIds.includes(tag.id);
-                const style = colorStyle(tag.color ?? categoryColor);
                 return (
                   <button
                     key={tag.id}
@@ -188,7 +202,7 @@ export function TagPicker({
                     role="option"
                     aria-selected={selected}
                     className={cn(
-                      "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted",
+                      "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
                       selected && "bg-muted/60",
                     )}
                     onClick={() => toggleTag(tag.id)}
@@ -196,7 +210,10 @@ export function TagPicker({
                     {/* Color dot */}
                     <span
                       className="inline-block size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: style.color as string }}
+                      style={{
+                        backgroundColor:
+                          tag.color ?? categoryColor ?? DEFAULT_COLOR,
+                      }}
                     />
                     <span className="flex-1 truncate text-left">
                       {tag.name}

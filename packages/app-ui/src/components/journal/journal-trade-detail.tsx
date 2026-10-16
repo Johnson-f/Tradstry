@@ -990,13 +990,10 @@ function TradeEditor({
 											<SaveStatus state={draft.state} />
 										</div>
 										<section
-											className="space-y-4 border-b border-border/60 pb-4"
+											className="space-y-3 border-b border-border/60 pb-5"
 											aria-label="Trade tags"
 										>
-											<h3 className="text-xs font-medium text-muted-foreground">
-												Tags
-											</h3>
-											<div className="grid gap-3 sm:grid-cols-3">
+											<div className="grid items-start gap-x-6 gap-y-4 sm:grid-cols-3">
 												{(tagCategories.data ?? []).map((category) => {
 													const categoryIds = new Set(
 														(allTags.data ?? [])
@@ -1006,6 +1003,7 @@ function TradeEditor({
 													return (
 														<Field
 															key={category.id}
+															className="min-w-0"
 															label={category.name}
 															description={
 																tagHelp[category.name.toLowerCase()] ??
@@ -1013,6 +1011,7 @@ function TradeEditor({
 															}
 														>
 															<fieldset
+																className="min-w-0"
 																disabled={
 																	readOnly ||
 																	allTags.isLoading ||
