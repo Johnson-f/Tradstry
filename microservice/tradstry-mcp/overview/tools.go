@@ -156,7 +156,7 @@ func journalOf(j journal) *journalView {
 			v.Trades.Open++
 		case "closed":
 			v.Trades.Closed++
-			if tr.ReviewState == "unreviewed" {
+			if tr.ReviewState == "unreviewed" || tr.ReviewState == "in_progress" {
 				v.Trades.ClosedUnreviewed++
 			}
 		case "incomplete":

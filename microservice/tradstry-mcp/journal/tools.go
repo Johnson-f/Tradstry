@@ -16,7 +16,7 @@ var enums = map[reflect.Type]*jsonschema.Schema{
 	reflect.TypeFor[flatAnswer]():      {Type: "string", Enum: []any{"yes", "no", "not_sure"}},
 	reflect.TypeFor[lifecycle]():       {Type: "string", Enum: []any{"open", "closed", "incomplete"}},
 	reflect.TypeFor[sortOrder]():       {Type: "string", Enum: []any{"opened", "closed"}},
-	reflect.TypeFor[reviewState]():     {Type: "string", Enum: []any{"unreviewed", "reviewed", "outdated"}},
+	reflect.TypeFor[reviewState]():     {Type: "string", Enum: []any{"unreviewed", "in_progress", "reviewed", "outdated"}},
 	reflect.TypeFor[planFollowed]():    {Type: "string", Enum: []any{"yes", "partly", "no", "no_plan"}},
 	reflect.TypeFor[takeawaySource]():  {Type: "string", Enum: []any{"user_wrote", "user_approved"}},
 	reflect.TypeFor[direction]():       {Type: "string", Enum: []any{"long", "short"}},

@@ -6,7 +6,7 @@ export type JournalTrade = {
   openDate: string | null; closeDate: string | null; entryPrice: string | null;
   exitPrice: string | null; enteredQuantity: string | null; remainingQuantity: string | null;
   realizedNet: string | null; feesPaid: string | null; contractMultiplier: string;
-  lifecycleState: "open" | "closed" | "incomplete"; reviewState: "unreviewed" | "reviewed" | "outdated";
+  lifecycleState: "open" | "closed" | "incomplete"; reviewState: "unreviewed" | "in_progress" | "reviewed" | "outdated";
   outcome: "profit" | "loss" | "breakeven" | "unknown"; tags: { id: string; name: string; color: string | null }[];
   recordVersion: number; materializedRevision: number; issueCode: string | null;
   issueMessage: string | null; possibleDuplicates:string[]; retiredAt: string | null; successorId: string | null;

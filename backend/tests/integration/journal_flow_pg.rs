@@ -50,6 +50,156 @@ async fn project(pool: &PgPool, user: &str, workspace: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn saved_review_work_is_in_progress_until_explicitly_finalized() {
+    use journal_flow::reflection;
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    let entry = format!("{workspace}:review-progress");
+    sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,lifecycle_state,open_date,close_date,entry_price,exit_price,position_size) VALUES ($1,$2,$3,'ACME','Acme','long','closed','2026-09-01T14:00:00Z','2026-09-01T15:00:00Z',10,11,1)")
+        .bind(&entry).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+    let state = || async {
+        journal_flow::get_trade(&pool, &user, &workspace, &entry)
+            .await
+            .unwrap()
+            .unwrap()
+            .review_state
+    };
+    assert_eq!(state().await, "unreviewed");
+    for column in ["entry_tactics", "mistakes", "edges_spotted"] {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "UPDATE journal_entries SET {column}=$2 WHERE id=$1"
+        )))
+        .bind(&entry)
+        .bind("Inside day")
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            state().await,
+            "in_progress",
+            "legacy {column} counts as saved work"
+        );
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "UPDATE journal_entries SET {column}=$2 WHERE id=$1"
+        )))
+        .bind(&entry)
+        .bind(" [ ] \n")
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(state().await, "unreviewed");
+    }
+    let context_input = |notes: &str| reflection::ContextInput {
+        entry_id: entry.clone(),
+        expected_version: 0,
+        stop_state: "unknown".into(),
+        stop_price: None,
+        playbook_id: None,
+        claimed_at: None,
+        notes: Some(notes.into()),
+        tag_ids: None,
+        violated_principle_ids: None,
+    };
+    reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context_input("I followed my setup in a weak market."),
+        "test",
+        "progress-note",
+    )
+    .await
+    .unwrap();
+    assert_eq!(state().await, "in_progress");
+    reflection::save_context(
+        &pool,
+        &user,
+        &workspace,
+        context_input(" \n\t"),
+        "test",
+        "clear-progress-note",
+    )
+    .await
+    .unwrap();
+    assert_eq!(state().await, "unreviewed");
+    let category = format!("{workspace}:category");
+    let tag = format!("{workspace}:tag");
+    sqlx::query("INSERT INTO tag_categories(id,user_id,workspace_id,name,created_at,updated_at) VALUES ($1,$2,$3,'Tactics',now(),now())")
+        .bind(&category).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tags(id,user_id,workspace_id,category_id,name,created_at,updated_at) VALUES ($1,$2,$3,$4,'Inside day',now(),now())")
+        .bind(&tag).bind(&user).bind(&workspace).bind(&category).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO trade_tags(journal_entry_id,tag_id) VALUES ($1,$2)")
+        .bind(&entry)
+        .bind(&tag)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state().await, "in_progress");
+    sqlx::query("UPDATE tags SET deleted_at=now() WHERE id=$1")
+        .bind(&tag)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state().await, "unreviewed");
+    let mut version = 0;
+    for (index, takeaway) in [
+        " \n\t",
+        "Repeat the setup only when the market supports it.",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let draft = reflection::save_draft(
+            &pool,
+            &user,
+            &workspace,
+            reflection::DraftInput {
+                entry_id: entry.clone(),
+                expected_version: version,
+                takeaway: (*takeaway).into(),
+                choice_ids: vec![],
+                plan_adherence: None,
+            },
+            "test",
+            &format!("progress-draft-{index}"),
+        )
+        .await
+        .unwrap();
+        version = draft.version;
+        assert_eq!(
+            state().await,
+            if index == 0 {
+                "unreviewed"
+            } else {
+                "in_progress"
+            }
+        );
+    }
+    let trade = journal_flow::get_trade(&pool, &user, &workspace, &entry)
+        .await
+        .unwrap()
+        .unwrap();
+    reflection::finalize(
+        &pool,
+        &user,
+        &workspace,
+        reflection::ReviewInput {
+            entry_id: entry.clone(),
+            expected_entry_revision: trade.materialized_revision,
+            expected_context_version: 0,
+            expected_draft_version: version,
+            session_id: None,
+        },
+        "test",
+        "finish-progress-review",
+    )
+    .await
+    .unwrap();
+    assert_eq!(state().await, "reviewed");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn empty_option_metadata_recovers_stock_history_and_preserves_the_journal_entry() {
     let test_db = crate::pg_support::TestDb::new().await;
     let pool = test_db.pool();
@@ -757,7 +907,7 @@ async fn entry_identity_and_context_survive_partial_and_final_exits() {
     assert_eq!(entries[0].remaining_quantity.as_deref(), Some("0"));
     assert_eq!(entries[0].realized_net.as_deref(), Some("878"));
     assert_eq!(entries[0].fees_paid.as_deref(), Some("2"));
-    assert_eq!(entries[0].review_state, "unreviewed");
+    assert_eq!(entries[0].review_state, "in_progress");
     let row = sqlx::query("SELECT notes,(SELECT sum(allocated_quantity) FROM journal_brokerage_links WHERE journal_entry_id=$1) AS allocated FROM journal_entries WHERE id=$1").bind(&id).fetch_one(&pool).await.unwrap();
     assert_eq!(row.get::<String, _>("notes"), "Keep this context");
     assert_eq!(row.get::<Decimal, _>("allocated"), Decimal::from(200));
@@ -1257,7 +1407,7 @@ async fn existing_published_entry_keeps_its_identity_and_notes() {
         .unwrap();
     assert_eq!(trades.len(), 1);
     assert_eq!(trades[0].id, id);
-    assert_eq!(trades[0].review_state, "unreviewed");
+    assert_eq!(trades[0].review_state, "in_progress");
     let after: Option<String> = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
         .bind(&id)
         .fetch_one(&pool)
@@ -1349,7 +1499,7 @@ async fn legacy_manual_merge_with_exact_links_recovers_without_a_flat_account() 
     assert_eq!(trades[0].episode_id.as_deref(), Some(episode.as_str()));
     assert_eq!(trades[0].lifecycle_state, "closed");
     assert_eq!(trades[0].realized_net.as_deref(), Some("-75"));
-    assert_eq!(trades[0].review_state, "unreviewed");
+    assert_eq!(trades[0].review_state, "in_progress");
     let notes: String = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
         .bind(&id)
         .fetch_one(&pool)
