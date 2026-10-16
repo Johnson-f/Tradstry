@@ -17,7 +17,7 @@ async fn manual_identity_upgrade_preserves_existing_entries_and_blocks_repeated_
     pool.execute("INSERT INTO users(id,stytch_user_id,email,full_name) VALUES ('identity-u','identity-stytch','identity@test.local','Identity');
         INSERT INTO workspaces(id,user_id,name) VALUES ('identity-w','identity-u','Main');
         INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type,notes)
-        VALUES ('identity-original','identity-u','identity-w','BAND','Bandwidth','2026-05-28T17:31:00Z','2026-06-09T15:17:00Z',57.56,65.8,3,'long','Keep the original note');")
+        VALUES ('identity-original','identity-u','identity-w','ACME','Acme','2026-01-01T10:00:00Z','2026-01-02T10:00:00Z',100,105,10,'long','Keep the original note');")
         .await.unwrap();
     bootstrap(&pool, &schema).await.unwrap();
     let note: String =
@@ -27,7 +27,7 @@ async fn manual_identity_upgrade_preserves_existing_entries_and_blocks_repeated_
             .unwrap();
     assert_eq!(note, "Keep the original note");
     let duplicate = pool.execute("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type)
-        VALUES ('identity-copy','identity-u','identity-w',' band ','Bandwidth','2026-05-28T17:31:00Z','2026-06-09T15:17:00Z',57.56,65.8,3,'long')")
+        VALUES ('identity-copy','identity-u','identity-w',' acme ','Acme','2026-01-01T10:00:00Z','2026-01-02T10:00:00Z',100,105,10,'long')")
         .await.unwrap_err();
     assert_eq!(
         duplicate
