@@ -123,7 +123,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
         <CreateTrades trigger={<Button variant="outline" size="sm">Add a manual trade</Button>} />
         </div>}
       </div>
-      {view === "trades" && status.data && !status.data.enabled && <JournalSetup workspaceId={workspaceId} onDone={reload}/>}
+      {view === "trades" && status.data && (!status.data.enabled || entries.some((trade) => trade.lifecycleState === "incomplete")) && <JournalSetup workspaceId={workspaceId} enabled={status.data.enabled} onDone={reload}/>}
       {view === "trades" ? <>
         <div className="flex flex-wrap items-center gap-2">
           <Input ref={searchInput} aria-label="Search trades" placeholder="Search symbol or company…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-9 max-w-xs" />

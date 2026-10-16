@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_drop_clerk_uuid() {
+fn seaorm_migrations_end_with_manual_trade_identity() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 14);
+    assert_eq!(migrations.len(), 15);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261015_000014_drop_clerk_uuid"
+        "m20261016_000015_manual_trade_identity"
     );
 }

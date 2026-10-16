@@ -249,6 +249,22 @@ func TestStatusShowsWhatTheFlatAnswerChanges(t *testing.T) {
 }
 
 func TestStartingTheJournal(t *testing.T) {
+	t.Run("an enabled journal can receive a confirmed opening-history correction", func(t *testing.T) {
+		s, api := start(t)
+		api.enabled = true
+		_, out := mcptest.Call[struct{ Status string }](t, s.Connect(t, accept(true)), "start_journal", map[string]any{"workspace_id": "ws1", "account_was_flat": "yes"})
+		if out.Status != "ready" || len(requests(s, "enableJournalFlow")) != 1 {
+			t.Fatalf("correction = %+v", out)
+		}
+	})
+	t.Run("uncertain history on an enabled journal stays unchanged", func(t *testing.T) {
+		s, api := start(t)
+		api.enabled = true
+		_, out := mcptest.Call[struct{ Status string }](t, s.Connect(t, nil), "start_journal", map[string]any{"workspace_id": "ws1", "account_was_flat": "not_sure"})
+		if out.Status != "unchanged" || len(requests(s, "enableJournalFlow")) != 0 {
+			t.Fatalf("uncertain correction = %+v", out)
+		}
+	})
 	t.Run("a confirmed flat start", func(t *testing.T) {
 		s, api := start(t)
 		api.enabled = false

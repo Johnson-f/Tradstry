@@ -9,6 +9,37 @@ use tradstry_migration::{Migrator, MigratorTrait};
 use uuid::Uuid;
 
 #[tokio::test]
+async fn manual_identity_upgrade_preserves_existing_entries_and_blocks_repeated_trades() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.unwrap();
+    let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, Some(14)).await.unwrap();
+    pool.execute("INSERT INTO users(id,stytch_user_id,email,full_name) VALUES ('identity-u','identity-stytch','identity@test.local','Identity');
+        INSERT INTO workspaces(id,user_id,name) VALUES ('identity-w','identity-u','Main');
+        INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type,notes)
+        VALUES ('identity-original','identity-u','identity-w','BAND','Bandwidth','2026-05-28T17:31:00Z','2026-06-09T15:17:00Z',57.56,65.8,3,'long','Keep the original note');")
+        .await.unwrap();
+    bootstrap(&pool, &schema).await.unwrap();
+    let note: String =
+        sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id='identity-original'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(note, "Keep the original note");
+    let duplicate = pool.execute("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,open_date,close_date,entry_price,exit_price,position_size,trade_type)
+        VALUES ('identity-copy','identity-u','identity-w',' band ','Bandwidth','2026-05-28T17:31:00Z','2026-06-09T15:17:00Z',57.56,65.8,3,'long')")
+        .await.unwrap_err();
+    assert_eq!(
+        duplicate
+            .as_database_error()
+            .and_then(|error| error.constraint()),
+        Some("journal_manual_trade_identity")
+    );
+    bootstrap(&pool, &schema).await.unwrap();
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
 async fn recent_trades_upgrade_preserves_note_content_and_trade_links() {
     let (admin, pool, schema) = isolated_pool().await;
     pg::migrate(&pool).await.unwrap();

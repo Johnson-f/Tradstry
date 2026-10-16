@@ -62,7 +62,7 @@ func Register(server *mcp.Server, client *graphql.Client, confirmer *confirm.Con
 	mcp.AddTool(server, &mcp.Tool{
 		Name:  "start_journal",
 		Title: "Start journal",
-		Description: "Start journal (turn on the trade journal, import broker executions as trades). Ask the user whether the account held no positions before " +
+		Description: "Start journal, or correct its starting-history confirmation after it is already on. Ask the user whether the account held no positions before " +
 			"its first imported execution and pass their answer; if they are unsure, use not_sure. A yes must be confirmed by the user.",
 		InputSchema: inputSchema[startInput](),
 		Annotations: write,
