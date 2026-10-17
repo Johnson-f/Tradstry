@@ -4,6 +4,14 @@ import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@tradstry/app-ui/components/ui/empty";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import {
 	Select,
@@ -21,7 +29,11 @@ import {
 import { TradeFormField as Field, TradeFieldHelp } from "./trade-form-field";
 import { TagPicker } from "./tag-picker";
 import { PrinciplePicker } from "./principle-picker";
-import { ArrowDown01Icon, ArrowLeft01Icon } from "@hugeicons/core-free-icons";
+import {
+	ArrowDown01Icon,
+	ArrowLeft01Icon,
+	Notebook01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RiskOutcomePanel } from "@tradstry/app-ui/components/trade-review/risk-outcome";
 import { useTagCategories, useAllTags } from "@tradstry/app-ui/hooks/tags";
@@ -1503,31 +1515,37 @@ function TradeEditor({
 							className="m-0 data-[state=inactive]:hidden"
 						>
 							<section className="overflow-hidden rounded-xl border bg-card">
-								<div className="flex items-center justify-between border-b px-4 py-3">
+								<div className="border-b px-4 py-3">
 									<h2 className="text-sm font-semibold">Notes & screenshots</h2>
-									{!data.journalContextV2.noteId && (
-										<Button
-											size="sm"
-											variant="outline"
-											disabled={readOnly || creatingNote}
-											onClick={() => void openNotes()}
-										>
-											{creatingNote ? "Opening…" : "Add notes"}
-										</Button>
-									)}
 								</div>
 								{data.journalContextV2.noteId ? (
 									<ContextNotebook noteId={data.journalContextV2.noteId} />
 								) : (
-									<div className="px-4 py-6">
-										<p className="text-sm text-muted-foreground">
-											Keep the reasoning behind this trade.
-										</p>
-										<p className="mt-1 text-xs text-muted-foreground">
-											Add notes, chart screenshots, or anything you want to
-											remember.
-										</p>
-									</div>
+									<Empty className="min-h-64 py-10">
+										<EmptyHeader>
+											<EmptyMedia variant="icon" className="size-10 rounded-xl">
+												<HugeiconsIcon
+													icon={Notebook01Icon}
+													className="size-5"
+													strokeWidth={1.8}
+													aria-hidden="true"
+												/>
+											</EmptyMedia>
+											<EmptyTitle>No notes yet</EmptyTitle>
+											<EmptyDescription>
+												Add your reasoning, chart screenshots, or anything you
+												want to remember about this trade.
+											</EmptyDescription>
+										</EmptyHeader>
+										<EmptyContent>
+											<Button
+												disabled={readOnly || creatingNote}
+												onClick={() => void openNotes()}
+											>
+												{creatingNote ? "Opening…" : "Add notes"}
+											</Button>
+										</EmptyContent>
+									</Empty>
 								)}
 							</section>
 						</TabsContent>
