@@ -1665,7 +1665,8 @@ function TradeEditor({
 					<div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-card pt-3">
 						<p className="text-xs text-muted-foreground">{reviewHint}</p>
 						<Button
-							className="ml-auto h-9 rounded-lg px-5"
+							className="ml-auto h-9 min-w-44 rounded-lg px-5"
+							aria-busy={marking}
 							disabled={
 								readOnly ||
 								marking ||
@@ -1675,13 +1676,23 @@ function TradeEditor({
 							}
 							onClick={() => void markReviewed()}
 						>
-							{marking
-								? "Saving…"
-								: pendingReview
-									? "Check pending review"
-									: trade.reviewState === "reviewed"
-										? "Update review"
-										: "Mark reviewed"}
+							{marking ? (
+								<>
+									<HugeiconsIcon
+										icon={Loading03Icon}
+										className="size-4 motion-safe:animate-spin"
+										strokeWidth={2}
+										aria-hidden="true"
+									/>
+									<span className="sr-only">Saving review</span>
+								</>
+							) : pendingReview ? (
+								"Check pending review"
+							) : trade.reviewState === "reviewed" ? (
+								"Update review"
+							) : (
+								"Mark reviewed"
+							)}
 						</Button>
 					</div>
 				)}
