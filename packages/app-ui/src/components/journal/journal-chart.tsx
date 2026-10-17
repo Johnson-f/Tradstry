@@ -1,8 +1,18 @@
 "use client";
 import * as React from "react";
+import { ChartLineData01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Button } from "@tradstry/app-ui/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@tradstry/app-ui/components/ui/empty";
 import {
 	Popover,
 	PopoverContent,
@@ -173,21 +183,7 @@ export function JournalChart({
 						</div>
 					</div>
 				</div>
-			) : query.isError ? (
-				<div className="grid h-56 place-content-center gap-3 p-5 text-center">
-					<p className="text-sm text-muted-foreground">
-						Price history could not be loaded. Your executions and review are
-						still available.
-					</p>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => void query.refetch()}
-					>
-						Retry chart
-					</Button>
-				</div>
-			) : geometry && data && active ? (
+			) : !query.isError && geometry && data && active ? (
 				<div className="px-4 pt-3">
 					<div
 						className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1"
@@ -352,11 +348,39 @@ export function JournalChart({
 					</div>
 				</div>
 			) : (
-				<div className="grid h-48 place-content-center p-6 text-center text-sm text-muted-foreground">
-					No usable price history for this range.
-				</div>
+				<Empty className="min-h-64 py-8">
+					<EmptyHeader>
+						<EmptyMedia variant="icon" className="size-10 rounded-xl">
+							<HugeiconsIcon
+								icon={ChartLineData01Icon}
+								className="size-5"
+								strokeWidth={1.8}
+								aria-hidden="true"
+							/>
+						</EmptyMedia>
+						<EmptyTitle>
+							{query.isError
+								? "Couldn’t load price history"
+								: "No price history available"}
+						</EmptyTitle>
+						<EmptyDescription>
+							{query.isError
+								? "Try loading the chart again. You can still review your executions below."
+								: data?.message ||
+									"No prices were returned for this date range. Try another range or review your executions below."}
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button
+							disabled={query.isFetching}
+							onClick={() => void query.refetch()}
+						>
+							{query.isFetching ? "Loading…" : "Retry chart"}
+						</Button>
+					</EmptyContent>
+				</Empty>
 			)}
-			{data?.message && (
+			{!query.isError && geometry && data && active && data.message && (
 				<p className="border-t border-border/60 bg-muted/20 px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
 					{data.message}
 				</p>
