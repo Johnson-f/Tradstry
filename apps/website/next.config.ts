@@ -10,6 +10,8 @@ const nodeModules = path.dirname(
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Stop `next dev` from writing AGENTS.md and CLAUDE.md into the app.
+  agentRules: false,
   // Ships TypeScript source; Next must compile it rather than expect a built dist.
   transpilePackages: [
     "@tradstry/app-ui",
