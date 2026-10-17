@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  PlusSignIcon,
+  Search01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@tradstry/app-ui/components/ui/badge";
 import { Button } from "@tradstry/app-ui/components/ui/button";
@@ -14,13 +19,6 @@ import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import { useCreateTag, useTags } from "@tradstry/app-ui/hooks/tags";
 import type { TagCategory } from "@tradstry/app-ui/lib/types/tags";
 import { cn } from "@tradstry/app-ui/lib/utils";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Fallback color when neither tag nor category has a color. */
-const DEFAULT_COLOR = "#6b7280";
 
 // ---------------------------------------------------------------------------
 // TagPicker
@@ -98,7 +96,6 @@ export function TagPicker({
   }
 
   const selectedTags = allTags.filter((t) => selectedTagIds.includes(t.id));
-  const categoryColor = category.color ?? null;
 
   return (
     <div
@@ -114,13 +111,6 @@ export function TagPicker({
           variant="outline"
           className="h-7 min-w-0 max-w-full gap-1.5 border-border/70 bg-muted/60 pl-2.5 pr-0.5 text-xs font-normal text-foreground transition-colors"
         >
-          <span
-            aria-hidden="true"
-            className="size-1.5 shrink-0 rounded-full"
-            style={{
-              backgroundColor: tag.color ?? categoryColor ?? DEFAULT_COLOR,
-            }}
-          />
           <span className="min-w-0 truncate" title={tag.name}>
             {tag.name}
           </span>
@@ -141,7 +131,8 @@ export function TagPicker({
       ))}
 
       {/* Popover trigger */}
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* A nested modal owns its scroll lock, so a parent dialog cannot block this portal's wheel events. */}
+      <Popover modal open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -160,26 +151,35 @@ export function TagPicker({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-64 max-w-[var(--radix-popover-content-available-width)] p-2"
+          className="w-80 max-w-[var(--radix-popover-content-available-width)] p-2"
           align="start"
+          aria-label={`${category.name} tags`}
         >
           {/* Search input */}
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search or create…`}
-            className="mb-2 h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-            aria-label={`Search ${category.name} tags`}
-            // Keep typing local while letting Escape dismiss the popover.
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") e.stopPropagation();
-            }}
-          />
+          <div className="relative mb-2">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search or create a tag…"
+              className="h-8 w-full rounded-lg border border-input bg-background pr-2.5 pl-8 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
+              aria-label={`Search ${category.name} tags`}
+              // Keep typing local while letting Escape dismiss the popover.
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") e.stopPropagation();
+              }}
+            />
+          </div>
 
           {/* Tag list */}
           <ScrollArea
-            className="[&>[data-radix-scroll-area-viewport]]:max-h-48"
+            className="[&>[data-slot=scroll-area-viewport]]:max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3.5rem))] [&>[data-slot=scroll-area-viewport]]:overscroll-contain"
             role="listbox"
             aria-multiselectable="true"
             aria-label={`${category.name} tags`}
@@ -202,30 +202,32 @@ export function TagPicker({
                     role="option"
                     aria-selected={selected}
                     className={cn(
-                      "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
+                      "flex min-h-9 w-full cursor-pointer items-start gap-2.5 rounded-md px-2 py-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
                       selected && "bg-muted/60",
                     )}
                     onClick={() => toggleTag(tag.id)}
                   >
-                    {/* Color dot */}
                     <span
-                      className="inline-block size-2 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          tag.color ?? categoryColor ?? DEFAULT_COLOR,
-                      }}
-                    />
-                    <span className="flex-1 truncate text-left">
+                      aria-hidden="true"
+                      className={cn(
+                        "mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-[4px] border",
+                        selected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-background",
+                      )}
+                    >
+                      {selected && (
+                        <HugeiconsIcon
+                          icon={Tick02Icon}
+                          className="size-3"
+                          strokeWidth={2.5}
+                          aria-hidden
+                        />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1 text-left leading-5 whitespace-normal wrap-break-word">
                       {tag.name}
                     </span>
-                    {selected && (
-                      <span
-                        className="ml-auto text-[10px] opacity-60"
-                        aria-hidden="true"
-                      >
-                        ✓
-                      </span>
-                    )}
                   </button>
                 );
               })
