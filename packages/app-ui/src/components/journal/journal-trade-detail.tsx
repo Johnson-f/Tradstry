@@ -30,9 +30,13 @@ import { TradeFormField as Field, TradeFieldHelp } from "./trade-form-field";
 import { TagPicker } from "./tag-picker";
 import { PrinciplePicker } from "./principle-picker";
 import {
+	AlertCircleIcon,
 	ArrowDown01Icon,
 	ArrowLeft01Icon,
+	Loading03Icon,
 	Notebook01Icon,
+	PencilEdit01Icon,
+	Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RiskOutcomePanel } from "@tradstry/app-ui/components/trade-review/risk-outcome";
@@ -252,18 +256,25 @@ function SaveStatus({ state }: { state: string }) {
 	return (
 		<span
 			aria-live="polite"
+			aria-atomic="true"
 			className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground"
 		>
-			<span
+			<HugeiconsIcon
+				icon={
+					state === "saved"
+						? Tick02Icon
+						: state === "saving"
+							? Loading03Icon
+							: state === "failed" || state === "conflict"
+								? AlertCircleIcon
+								: PencilEdit01Icon
+				}
+				strokeWidth={1.8}
 				aria-hidden="true"
 				className={cn(
-					"size-1.5 rounded-full",
-					state === "saved"
-						? "bg-emerald-500"
-						: state === "failed" || state === "conflict"
-							? "bg-rose-500"
-							: "bg-amber-500",
-					state === "saving" && "motion-safe:animate-pulse",
+					"size-3.5 shrink-0",
+					state === "saving" && "motion-safe:animate-spin",
+					(state === "failed" || state === "conflict") && "text-destructive",
 				)}
 			/>
 			{{
