@@ -6,6 +6,7 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 use sqlx::{PgConnection, Row};
 
+use super::opening::OpeningPosition;
 use crate::service::trade_review::{
     build_episodes,
     types::{
@@ -33,6 +34,7 @@ pub(super) struct SourceGroup {
     pub fees_known: bool,
     pub issue: Option<String>,
     pub opening_effect: bool,
+    pub opening: Option<OpeningPosition>,
     linked_trades: Vec<LinkedTrade>,
 }
 
@@ -51,11 +53,35 @@ impl SourceGroup {
             })
     }
 
-    pub fn drafts(&self, inventory: &Value) -> Result<Vec<TradeEpisodeDraft>> {
+    /// Imported executions plus the user's starting position, which comes first.
+    pub fn all_fills(&self) -> Vec<ExecutionFill> {
+        let opening = self
+            .opening
+            .as_ref()
+            .zip(self.fills.first())
+            .map(|(opening, first)| opening.fill(&first.instrument));
+        opening.into_iter().chain(self.fills.clone()).collect()
+    }
+
+    pub fn problem(&self) -> Option<String> {
         if self.issue.is_some() {
+            return self.issue.clone();
+        }
+        let opening = self.opening.as_ref()?;
+        self.fills
+            .iter()
+            .any(|fill| fill.executed_at <= opening.as_of)
+            .then(|| format!(
+                "Older broker history for {} was imported on or before the starting position you entered. Remove the starting position or check the history before calculating this trade.",
+                self.symbol
+            ))
+    }
+
+    pub fn drafts(&self, inventory: &Value) -> Result<Vec<TradeEpisodeDraft>> {
+        if self.problem().is_some() {
             return Ok(vec![]);
         }
-        let mut drafts = build_episodes(self.fills.clone())?;
+        let mut drafts = build_episodes(self.all_fills())?;
         if !self.has_known_start(inventory)?
             && !drafts.iter().all(|draft| self.has_exact_links(draft))
         {
@@ -71,6 +97,12 @@ impl SourceGroup {
     }
 
     pub fn has_known_start(&self, inventory: &Value) -> Result<bool> {
+        Ok(self.has_confirmed_start(inventory)? || self.balances_from_flat())
+    }
+
+    /// A start the user or the broker confirmed, as opposed to one inferred
+    /// from the executions balancing.
+    pub fn has_confirmed_start(&self, inventory: &Value) -> Result<bool> {
         let first = self
             .fills
             .iter()
@@ -84,7 +116,32 @@ impl SourceGroup {
             .and_then(|e| e["as_of"].as_str())
             .and_then(|date| DateTime::parse_from_rfc3339(date).ok())
             .is_some_and(|date| date <= first);
-        Ok(flat || self.opening_effect)
+        Ok(flat || self.opening_effect || self.opening.is_some())
+    }
+
+    /// Whether the imported history, read from a flat start, never flips between
+    /// long and short and ends flat. A position held from before the import would
+    /// usually break one of these, so such a history is treated as complete.
+    pub fn balances_from_flat(&self) -> bool {
+        let mut fills = self.fills.iter().collect::<Vec<_>>();
+        fills.sort_by(|a, b| {
+            (a.executed_at, &a.transaction_id).cmp(&(b.executed_at, &b.transaction_id))
+        });
+        let mut position = Decimal::ZERO;
+        for fill in fills {
+            let next = match fill.side {
+                ExecutionSide::Buy => position + fill.quantity,
+                ExecutionSide::Sell => position - fill.quantity,
+            };
+            if position != Decimal::ZERO
+                && next != Decimal::ZERO
+                && next.is_sign_negative() != position.is_sign_negative()
+            {
+                return false;
+            }
+            position = next;
+        }
+        !self.fills.is_empty() && position == Decimal::ZERO
     }
 
     fn has_exact_links(&self, draft: &TradeEpisodeDraft) -> bool {
@@ -127,6 +184,7 @@ pub(super) async fn load(
     user: &str,
     workspace: &str,
 ) -> Result<Vec<SourceGroup>> {
+    let openings = super::opening::active(&mut *connection, user, workspace).await?;
     let continuations: Option<Value> = sqlx::query_scalar("SELECT coalesce(opening_inventory->'confirmed_continuations','[]'::jsonb) FROM journal_workspace_state WHERE user_id=$1 AND workspace_id=$2")
         .bind(user).bind(workspace).fetch_optional(&mut *connection).await?;
     // Brokerage storage represents absent option strings as either NULL or empty.
@@ -226,6 +284,7 @@ pub(super) async fn load(
             fees_known: true,
             issue: None,
             opening_effect: matches!(kind.as_str(), "BUY_TO_OPEN" | "SELL_TO_OPEN" | "SELL_SHORT"),
+            opening: None,
             linked_trades: vec![],
         });
         group.source_ids.push(id.clone());
@@ -277,6 +336,11 @@ pub(super) async fn load(
     if let Some(continuations) = continuations {
         for continuation in serde_json::from_value::<Vec<ConfirmedContinuation>>(continuations)? {
             apply_continuation(&mut groups, &continuation)?;
+        }
+    }
+    for opening in openings {
+        if let Some(group) = groups.get_mut(&opening.instrument_key) {
+            group.opening = Some(opening);
         }
     }
     // Existing execution links preserve a previously recorded trade; they do

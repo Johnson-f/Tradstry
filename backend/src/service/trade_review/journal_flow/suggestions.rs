@@ -41,7 +41,7 @@ pub async fn refresh(pool: &PgPool, user: &str, workspace: &str) -> Result<()> {
     let mut tx = pool.begin().await?;
     let version = commands::lock_workspace(&mut tx, user, workspace).await?;
     let rows=sqlx::query("SELECT j.id AS entry_id,j.materialized_revision,e.id,e.instrument_key,e.direction,
-        (SELECT jsonb_agg(jsonb_build_object('transaction_id',f.brokerage_transaction_id,'role',f.role,'quantity',f.quantity::text,'price',f.price::text,'fee',f.fee::text,'executed_at',f.executed_at) ORDER BY f.executed_at,f.allocation_order,f.id) FROM trade_episode_fills f WHERE f.episode_id=e.id) AS allocations
+        (SELECT jsonb_agg(jsonb_build_object('transaction_id',coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id),'role',f.role,'quantity',f.quantity::text,'price',f.price::text,'fee',f.fee::text,'executed_at',f.executed_at) ORDER BY f.executed_at,f.allocation_order,f.id) FROM trade_episode_fills f WHERE f.episode_id=e.id) AS allocations
         FROM trade_episodes e JOIN journal_entries j ON j.episode_id=e.id AND j.user_id=e.user_id AND j.workspace_id=e.workspace_id
         WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL AND e.status='ready' AND e.grouping_source='automatic' AND j.deleted_at IS NULL AND j.retired_at IS NULL")
         .bind(user).bind(workspace).fetch_all(&mut *tx).await?;

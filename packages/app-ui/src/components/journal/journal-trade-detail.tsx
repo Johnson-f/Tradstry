@@ -61,8 +61,9 @@ import {
 import { usePlaybooks } from "@tradstry/app-ui/hooks/playbook";
 import { useJournalSave } from "@tradstry/app-ui/hooks/journal-flow-save";
 import * as flow from "@tradstry/app-ui/lib/service/journal-flow";
-import { GroupingDialog } from "./journal-grouping";
-import { money, tradeDate } from "./journal-format";
+import { ExecutionHeldBy, GroupingDialog } from "./journal-grouping";
+import { FixTradeHistory, StartingPositionNotice } from "./journal-resolve";
+import { executionTime, money, tradeDate, tradeSpan } from "./journal-format";
 import { JournalSuggestions } from "./journal-suggestions";
 import { JournalChart } from "./journal-chart";
 import { EditTrades } from "./edit-trades";
@@ -313,6 +314,11 @@ function TradeEditor({
 		queryKey: [...base, "status"],
 		queryFn: () => flow.status(fetcher, props.workspaceId),
 	});
+	const trades = useQuery({
+		queryKey: [...base, "trades"],
+		queryFn: () => flow.trades(fetcher, props.workspaceId),
+		enabled: !!trade.possibleDuplicates?.length,
+	});
 	const [error, setError] = React.useState<string | null>(null);
 	const [activeTab, setActiveTab] = React.useState(
 		props.sessionId ? "review" : "overview",
@@ -323,9 +329,11 @@ function TradeEditor({
 	const [separating, setSeparating] = React.useState<"ask" | "saving" | null>(
 		null,
 	);
-	const [grouping, setGrouping] = React.useState<
-		"split" | "undo" | "resolve" | null
-	>(null);
+	const [grouping, setGrouping] = React.useState<"split" | "undo" | null>(
+		null,
+	);
+	const [fixing, setFixing] = React.useState(false);
+	const closeFix = React.useCallback(() => setFixing(false), []);
 	const [undoId, setUndoId] = React.useState<string | undefined>();
 	const [stopTouched, setStopTouched] = React.useState(false);
 	const reviewId = React.useId();
@@ -632,13 +640,19 @@ function TradeEditor({
 								</>
 							)}
 							<span>
-								{tradeDate(trade.openDate, status.data?.timezone)}
-								{trade.closeDate &&
-									" → " + tradeDate(trade.closeDate, status.data?.timezone)}
+								{tradeSpan(trade, status.data?.timezone)}
 							</span>
 						</p>
 					</div>
-					<div className="flex items-center gap-2 pt-1 text-xs">
+					<div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+						{trade.startingPosition && (
+							<span
+								className="rounded-md border px-2.5 py-1 text-muted-foreground"
+								title="Includes a starting position you entered"
+							>
+								Starting position
+							</span>
+						)}
 						<span className="rounded-md bg-muted px-2.5 py-1">
 							{trade.retiredAt
 								? "Previous grouping"
@@ -740,13 +754,44 @@ function TradeEditor({
 					</div>
 				))}
 			</section>
+			{fixing && (
+				<ScrollArea
+					className={cn(
+						"min-h-0 min-w-0 flex-1 pt-4",
+						props.embedded ? "-mr-[29px] md:-mr-[41px]" : "-mr-3 md:-mr-5",
+					)}
+				>
+					<div
+						className={cn(
+							"pb-6",
+							props.embedded ? "pr-[41px] md:pr-[53px]" : "pr-5 md:pr-7",
+						)}
+					>
+						<FixTradeHistory
+							workspaceId={props.workspaceId}
+							trade={trade}
+							executions={data.journalExecutionsV2}
+							timezone={status.data?.timezone}
+							onClose={closeFix}
+							onDone={async () => {
+								await cache.invalidateQueries({ queryKey: base });
+								await props.onChanged();
+								await refresh();
+							}}
+						/>
+					</div>
+				</ScrollArea>
+			)}
 			<Tabs
 				value={activeTab}
 				onValueChange={(value) => {
 					setActiveTab(value);
 					contentViewport.current?.scrollTo({ top: 0, left: 0 });
 				}}
-				className="min-h-0 min-w-0 flex-1 gap-3 pt-4"
+				className={cn(
+					"min-h-0 min-w-0 flex-1 gap-3 pt-4",
+					fixing && "hidden",
+				)}
 			>
 				<TabsList
 					aria-label="Trade details"
@@ -813,7 +858,7 @@ function TradeEditor({
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => setGrouping("resolve")}
+										onClick={() => setFixing(true)}
 									>
 										Resolve history
 									</Button>
@@ -861,22 +906,65 @@ function TradeEditor({
 										)}
 									</div>
 								)}
-								{trade.possibleDuplicates.map((id) => (
-									<Button
-										key={id}
-										variant="link"
-										size="sm"
-										onClick={() =>
-											platform.navigate(
-												"/dashboard/journal/" + encodeURIComponent(id),
-											)
-										}
-									>
-										View existing {trade.symbol} entry
-									</Button>
-								))}
+								<ul className="mt-2 divide-y rounded-md border">
+									{trade.possibleDuplicates.map((id) => {
+										const duplicate = trades.data?.find((entry) => entry.id === id);
+										return (
+											<li key={id}>
+												<button
+													type="button"
+													className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2 text-left hover:bg-muted/40"
+													onClick={() =>
+														platform.navigate(
+															"/dashboard/journal/" + encodeURIComponent(id),
+														)
+													}
+												>
+													<span className="font-medium">
+														{trade.symbol}
+														{duplicate && (
+															<span className="ml-2 font-normal capitalize text-muted-foreground">
+																{duplicate.direction}
+															</span>
+														)}
+													</span>
+													<span className="text-xs text-muted-foreground tabular-nums">
+														{duplicate
+															? [
+																	tradeDate(duplicate.openDate, status.data?.timezone) +
+																		(duplicate.closeDate
+																			? " – " +
+																				tradeDate(duplicate.closeDate, status.data?.timezone)
+																			: ""),
+																	duplicate.enteredQuantity &&
+																		"Qty " + duplicate.enteredQuantity,
+																	duplicate.realizedNet !== null &&
+																		money(duplicate.realizedNet, duplicate.currency),
+																]
+																	.filter(Boolean)
+																	.join(" · ")
+															: trades.isLoading
+																? "Loading…"
+																: "Existing entry"}
+													</span>
+												</button>
+											</li>
+										);
+									})}
+								</ul>
 							</div>
 						)}
+						<StartingPositionNotice
+							workspaceId={props.workspaceId}
+							trade={trade}
+							timezone={status.data?.timezone}
+							readOnly={readOnly}
+							onChanged={async () => {
+								await cache.invalidateQueries({ queryKey: base });
+								await props.onChanged();
+								await refresh();
+							}}
+						/>
 						<TabsContent
 							value="overview"
 							forceMount
@@ -939,16 +1027,10 @@ function TradeEditor({
 													className="border-t border-border/60 hover:bg-muted/30"
 												>
 													<td className="px-4 py-3 text-xs text-muted-foreground">
-														{execution.executedAt
-															? execution.precision === "timestamp"
-																? new Intl.DateTimeFormat(undefined, {
-																		dateStyle: "medium",
-																		timeStyle: "short",
-																		timeZone: status.data?.timezone,
-																	}).format(new Date(execution.executedAt))
-																: tradeDate(execution.executedAt) +
-																	" · time unavailable"
-															: "Date unavailable"}
+														{execution.startingPosition
+															? "Starting position · " +
+																tradeDate(execution.executedAt, status.data?.timezone)
+															: executionTime(execution, status.data?.timezone)}
 													</td>
 													<td className="px-4 py-3">
 														<span
@@ -966,6 +1048,10 @@ function TradeEditor({
 													</td>
 													<td className="px-4 py-3 text-right tabular-nums">
 														{execution.quantity}
+														<ExecutionHeldBy
+															holders={execution.heldBy}
+															timezone={status.data?.timezone}
+														/>
 													</td>
 													<td className="px-4 py-3 text-right tabular-nums">
 														{money(execution.price, trade.currency)}

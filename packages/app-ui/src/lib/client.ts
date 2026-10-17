@@ -17,6 +17,22 @@ export type GraphQLSubscriber = <T>(
   handlers: GraphQLSubscriptionHandlers<T>,
 ) => () => void;
 
+export class GraphQLRequestError extends Error {
+  constructor(
+    message: string,
+    readonly extensions: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "GraphQLRequestError";
+  }
+
+  get code(): string | undefined {
+    return typeof this.extensions.code === "string"
+      ? this.extensions.code
+      : undefined;
+  }
+}
+
 let configuredBackendBaseUrl = "";
 
 export function configureBackendBaseUrl(value: string): void {
@@ -64,10 +80,16 @@ export function createHttpGraphQLFetcher(options: {
       }
       const payload = (await response.json()) as {
         data?: T;
-        errors?: Array<{ message?: string }>;
+        errors?: Array<{
+          message?: string;
+          extensions?: Record<string, unknown>;
+        }>;
       };
       if (payload.errors?.length) {
-        throw new Error(payload.errors[0]?.message ?? "GraphQL request failed");
+        throw new GraphQLRequestError(
+          payload.errors[0]?.message ?? "GraphQL request failed",
+          payload.errors[0]?.extensions,
+        );
       }
       if (payload.data === undefined) {
         throw new Error("GraphQL response did not include data");

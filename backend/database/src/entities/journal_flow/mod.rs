@@ -4,6 +4,7 @@ pub mod journal_grouping_feedback;
 pub mod journal_grouping_operations;
 pub mod journal_grouping_suggestions;
 pub mod journal_mutations;
+pub mod journal_opening_positions;
 pub mod journal_projection_jobs;
 pub mod journal_review_drafts;
 pub mod journal_review_sessions;

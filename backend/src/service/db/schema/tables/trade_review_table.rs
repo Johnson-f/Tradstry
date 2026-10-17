@@ -67,7 +67,8 @@ pub async fn rebuild_workspace(pool: &PgPool, user_id: &str, workspace_id: &str)
         "SELECT DISTINCT f.brokerage_transaction_id
          FROM trade_episode_fills f
          JOIN trade_episodes e ON e.id=f.episode_id
-         WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.grouping_source='manual'",
+         WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.grouping_source='manual'
+           AND f.brokerage_transaction_id IS NOT NULL",
     )
     .bind(user_id)
     .bind(workspace_id)
@@ -1397,7 +1398,7 @@ async fn load_episode(pool: &PgPool, user_id: &str, episode_id: &str) -> Result<
     let row = sqlx::query("SELECT id,workspace_id,grouping_source,instrument_json,direction,opened_at,closed_at,current_quantity,fingerprint FROM trade_episodes WHERE id=$1 AND user_id=$2")
         .bind(episode_id).bind(user_id).fetch_optional(pool).await?.ok_or_else(|| anyhow!("episode not found"))?;
     let instrument: ExecutionInstrument = serde_json::from_value(row.try_get(3)?)?;
-    let fill_rows = sqlx::query("SELECT brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,allocation_order,brokerage_transaction_id")
+    let fill_rows = sqlx::query("SELECT coalesce(brokerage_transaction_id,'opening:'||opening_position_id),role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,allocation_order,brokerage_transaction_id")
         .bind(episode_id).fetch_all(pool).await?;
     let allocations = fill_rows
         .into_iter()

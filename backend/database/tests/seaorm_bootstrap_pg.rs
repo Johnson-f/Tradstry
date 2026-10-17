@@ -276,8 +276,9 @@ async fn fresh_bootstrap_is_concurrent_and_idempotent() {
     .fetch_all(&pool)
     .await
     .expect("list fresh tables");
-    assert_eq!(tables.len(), 89);
+    assert_eq!(tables.len(), 90);
     assert!(tables.contains(&"seaql_migrations".to_string()));
+    assert!(tables.contains(&"journal_opening_positions".to_string()));
     assert!(tables.contains(&"agent_run_items".to_string()));
     assert!(!tables.contains(&"agent_checkpoints".to_string()));
     let legacy_run_columns: i64 = sqlx::query_scalar(

@@ -56,8 +56,9 @@ pub(super) async fn materialize(
         .execute(&mut *connection)
         .await?;
     for (order, fill) in draft.allocations.iter().enumerate() {
-        sqlx::query("INSERT INTO trade_episode_fills(id,episode_id,brokerage_transaction_id,role,quantity,price,fee,executed_at,allocation_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)")
-            .bind(crate::ids::new_uuid_v7().to_string()).bind(episode_id).bind(&fill.transaction_id).bind(if fill.role==FillRole::Entry {"entry"} else {"exit"}).bind(fill.quantity).bind(fill.price).bind(fill.fee).bind(fill.executed_at).bind(i32::try_from(order)?).execute(&mut *connection).await?;
+        let opening = super::opening::position_id(&fill.transaction_id);
+        sqlx::query("INSERT INTO trade_episode_fills(id,episode_id,brokerage_transaction_id,opening_position_id,role,quantity,price,fee,executed_at,allocation_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+            .bind(crate::ids::new_uuid_v7().to_string()).bind(episode_id).bind(opening.is_none().then_some(&fill.transaction_id)).bind(opening).bind(if fill.role==FillRole::Entry {"entry"} else {"exit"}).bind(fill.quantity).bind(fill.price).bind(fill.fee).bind(fill.executed_at).bind(i32::try_from(order)?).execute(&mut *connection).await?;
     }
     let repaired: Option<String> = if entry_id.is_none() {
         let source_ids = draft
@@ -106,7 +107,7 @@ pub(super) async fn materialize(
         .execute(&mut *connection)
         .await?;
     sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id,allocated_quantity)
-        SELECT uuidv7()::text,$1,brokerage_transaction_id,$2,sum(quantity) FROM trade_episode_fills WHERE episode_id=$3 GROUP BY brokerage_transaction_id")
+        SELECT uuidv7()::text,$1,brokerage_transaction_id,$2,sum(quantity) FROM trade_episode_fills WHERE episode_id=$3 AND brokerage_transaction_id IS NOT NULL GROUP BY brokerage_transaction_id")
         .bind(&id).bind(scope.user).bind(episode_id).execute(&mut *connection).await?;
     if entry_id.is_some() {
         let source_ids = draft

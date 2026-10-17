@@ -1,4 +1,4 @@
-import type { GraphQLFetcher } from "@tradstry/app-ui/lib/client";
+import { GraphQLRequestError, type GraphQLFetcher } from "@tradstry/app-ui/lib/client";
 
 export type JournalTrade = {
   id: string; workspaceId: string; sourceKind: string; episodeId: string | null;
@@ -10,19 +10,22 @@ export type JournalTrade = {
   outcome: "profit" | "loss" | "breakeven" | "unknown"; tags: { id: string; name: string; color: string | null }[];
   recordVersion: number; materializedRevision: number; issueCode: string | null;
   issueMessage: string | null; possibleDuplicates:string[]; retiredAt: string | null; successorId: string | null;
+  startingPosition: boolean; firstExecutionAt: string | null; lastExecutionAt: string | null; executionCount: number;
 };
 export type FlowStatus = { apiVersion: number; enabled: boolean; sourceRevision: number; projectionRevision: number; importState: string; lastError: string | null; timezone: string; changeCursor: string };
 export type TradeContext = { notes: string | null; tagIds: string[]; violatedPrincipleIds: string[]; entryId: string; version: number; stopState: "unknown" | "none" | "price"; stopPrice: string | null; legacyStopPrice: string | null; playbookId: string | null; noteId: string | null; phase: string | null; recordedAt: string | null; claimedAt: string | null };
 export type ReviewDraft = { entryId: string; version: number; takeaway: string; choiceIds: string[]; planAdherence: string | null };
 export type ReviewSession = { id: string; date: string; timezone: string; queue: string[]; completed: string[]; cursorEntryId: string | null; version: number; refreshAvailable: boolean };
-export type Execution = { transactionId: string; role: string; side: string; quantity: string; price: string; fee: string | null; executedAt: string | null; precision: string; sourceQuantity: string };
+export type ExecutionHolder = { entryId: string | null; direction: string; openedAt: string; blocked: boolean; quantity: string };
+export type Execution = { transactionId: string; role: string; side: string; quantity: string; price: string; fee: string | null; executedAt: string | null; precision: string; sourceQuantity: string; heldBy: ExecutionHolder[]; startingPosition: boolean };
+export type ExitIssue = { transactionId: string; positionBefore: string; exitQuantity: string; shortBy: string };
 export type GroupingInput = { direction?: string; entryIds: string[]; groups: { entryId: string | null; allocations: { transactionId: string; quantity: string }[] }[] };
 export type PreviewGroup = { entryId: string; direction: string; remainingQuantity: string; enteredQuantity: string; feesPaid: string | null; realizedNet: string | null; allocations: { transactionId: string; role: string; quantity: string; price: string; fee: string | null; executedAt: string }[] };
 export type GroupingPreview = { token: string; entryIds: string[]; realizedNet: (string | null)[]; beforeGroups: PreviewGroup[]; groups: PreviewGroup[] };
 export type GroupingResult = { operationId: string; entryIds: string[] };
 export type GroupingHistory = { id: string; kind: string; state: string; createdAt: string; entryIds:string[] };
 
-export const TRADE_FIELDS = `id workspaceId sourceKind episodeId symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid contractMultiplier lifecycleState outcome tags { id name color } reviewState recordVersion materializedRevision issueCode issueMessage possibleDuplicates retiredAt successorId`;
+export const TRADE_FIELDS = `id workspaceId sourceKind episodeId symbol symbolName direction currency openDate closeDate entryPrice exitPrice enteredQuantity remainingQuantity realizedNet feesPaid contractMultiplier lifecycleState outcome tags { id name color } reviewState recordVersion materializedRevision issueCode issueMessage possibleDuplicates retiredAt successorId startingPosition firstExecutionAt lastExecutionAt executionCount`;
 export const CONTEXT_FIELDS = `entryId version stopState stopPrice legacyStopPrice playbookId noteId phase recordedAt claimedAt notes tagIds violatedPrincipleIds`;
 export const DRAFT_FIELDS = `entryId version takeaway choiceIds planAdherence`;
 export const SESSION_FIELDS = `id date timezone queue completed cursorEntryId version refreshAvailable`;
@@ -40,7 +43,7 @@ export async function detail(fetcher: GraphQLFetcher, workspaceId: string, entry
     journalTradeV2(workspaceId:$workspaceId,entryId:$entryId){${TRADE_FIELDS}}
     journalContextV2(workspaceId:$workspaceId,entryId:$entryId){${CONTEXT_FIELDS}}
     journalReviewDraftV2(workspaceId:$workspaceId,entryId:$entryId){${DRAFT_FIELDS}}
-    journalExecutionsV2(workspaceId:$workspaceId,entryId:$entryId){transactionId role side quantity price fee executedAt precision sourceQuantity}
+    journalExecutionsV2(workspaceId:$workspaceId,entryId:$entryId){transactionId role side quantity price fee executedAt precision sourceQuantity heldBy{entryId direction openedAt blocked quantity} startingPosition}
     journalReviewHistoryV2(workspaceId:$workspaceId,entryId:$entryId){id version takeaway choiceIds planAdherence createdAt entryRevision contextRevision}
     journalGroupingHistoryV2(workspaceId:$workspaceId,entryId:$entryId){id kind state createdAt entryIds}
   }`, { workspaceId, entryId });
@@ -94,3 +97,22 @@ export async function chart(fetcher: GraphQLFetcher, workspaceId: string, entryI
   return (await fetcher<{ journalTradeChartV2: TradeChart }>(`query JournalChartV2($workspaceId:String!,$entryId:String!,$from:Int,$to:Int){journalTradeChartV2(workspaceId:$workspaceId,entryId:$entryId,from:$from,to:$to){availability message seriesKind symbol provider interval priceBasis currency timezone start end bars{timestamp open high low close volume} markers{transactionId timestamp precision side price quantity}}}`, { workspaceId, entryId, from, to })).journalTradeChartV2;
 }
 export const CONFIRM_GROUPING = `mutation ConfirmJournalGrouping($workspaceId:String!,$token:String!,$clientId:String!,$mutationId:String!){confirmJournalGrouping(workspaceId:$workspaceId,token:$token,clientId:$clientId,mutationId:$mutationId){operationId entryIds}}`;
+export function exitIssue(reason: unknown): ExitIssue | null {
+  if (!(reason instanceof GraphQLRequestError) || reason.code !== "EXIT_EXCEEDS_POSITION") return null;
+  const { transactionId, positionBefore, exitQuantity, shortBy } = reason.extensions;
+  return [transactionId, positionBefore, exitQuantity, shortBy].every((value) => typeof value === "string")
+    ? { transactionId, positionBefore, exitQuantity, shortBy } as ExitIssue
+    : null;
+}
+export type OpeningPositionInput = { direction: string; quantity: string; averagePrice: string; asOf: string };
+export type OpeningPosition = { id: string; direction: string; quantity: string; averagePrice: string; asOf: string; olderHistory: boolean };
+export type OpeningTrade = { direction: string; openedAt: string; closedAt: string | null; enteredQuantity: string; remainingQuantity: string; realizedNet: string | null; feesPaid: string | null; startingPosition: boolean };
+const OPENING_FIELDS = `id direction quantity averagePrice asOf olderHistory`;
+export async function openingPosition(fetcher: GraphQLFetcher, workspaceId: string, entryId: string) {
+  return (await fetcher<{ journalOpeningPositionV2: OpeningPosition | null }>(`query JournalOpeningPositionV2($workspaceId:String!,$entryId:String!){journalOpeningPositionV2(workspaceId:$workspaceId,entryId:$entryId){${OPENING_FIELDS}}}`, { workspaceId, entryId })).journalOpeningPositionV2;
+}
+export async function openingPreview(fetcher: GraphQLFetcher, workspaceId: string, entryId: string, input: OpeningPositionInput) {
+  return (await fetcher<{ journalOpeningPreviewV2: { trades: OpeningTrade[] } }>(`query JournalOpeningPreviewV2($workspaceId:String!,$entryId:String!,$input:JournalOpeningPositionInputV2!){journalOpeningPreviewV2(workspaceId:$workspaceId,entryId:$entryId,input:$input){trades{direction openedAt closedAt enteredQuantity remainingQuantity realizedNet feesPaid startingPosition}}}`, { workspaceId, entryId, input })).journalOpeningPreviewV2.trades;
+}
+export const SAVE_OPENING = `mutation SaveJournalOpeningPosition($workspaceId:String!,$entryId:String!,$input:JournalOpeningPositionInputV2!,$clientId:String!,$mutationId:String!){saveJournalOpeningPosition(workspaceId:$workspaceId,entryId:$entryId,input:$input,clientId:$clientId,mutationId:$mutationId){${OPENING_FIELDS}}}`;
+export const REMOVE_OPENING = `mutation RemoveJournalOpeningPosition($workspaceId:String!,$positionId:String!,$clientId:String!,$mutationId:String!){removeJournalOpeningPosition(workspaceId:$workspaceId,positionId:$positionId,clientId:$clientId,mutationId:$mutationId)}`;

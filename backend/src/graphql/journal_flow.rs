@@ -1,7 +1,7 @@
 use crate::service::trade_review::journal_flow::{
-    self, JournalTrade, backfill, grouping, reflection, sessions, suggestions,
+    self, JournalTrade, backfill, grouping, opening, reflection, sessions, suggestions,
 };
-use async_graphql::{Context, Object, Result, SimpleObject};
+use async_graphql::{Context, Error, ErrorExtensions, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::Row;
@@ -31,6 +31,8 @@ pub struct Execution {
     pub executed_at: Option<String>,
     pub precision: String,
     pub source_quantity: String,
+    pub held_by: Vec<journal_flow::ExecutionHolder>,
+    pub starting_position: bool,
 }
 
 #[derive(SimpleObject)]
@@ -173,6 +175,25 @@ impl JournalFlowQuery {
         let db = super::auth::user_db(ctx).await?;
         Ok(journal_flow::get_trade(db.pool(), db.user_id(), &workspace_id, &entry_id).await?)
     }
+    async fn journal_opening_position_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+    ) -> Result<Option<opening::OpeningPositionView>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(opening::for_entry(db.pool(), db.user_id(), &workspace_id, &entry_id).await?)
+    }
+    async fn journal_opening_preview_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        input: opening::OpeningPositionInput,
+    ) -> Result<opening::OpeningPreview> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(opening::preview(db.pool(), db.user_id(), &workspace_id, &entry_id, input).await?)
+    }
     async fn journal_context_v2(
         &self,
         ctx: &Context<'_>,
@@ -198,18 +219,68 @@ impl JournalFlowQuery {
         entry_id: String,
     ) -> Result<Vec<Execution>> {
         let db = super::auth::user_db(ctx).await?;
-        let rows=sqlx::query("SELECT b.id,coalesce(f.role,'unassigned') AS role,b.transaction_type,coalesce(f.quantity,greatest(0,abs(b.units::text::numeric)-(SELECT coalesce(sum(af.quantity),0) FROM trade_episode_fills af JOIN trade_episodes ae ON ae.id=af.episode_id WHERE ae.retired_at IS NULL AND af.brokerage_transaction_id=b.id))) AS quantity,coalesce(f.price,b.price::text::numeric) AS price,coalesce(f.fee,b.fee::text::numeric-(SELECT coalesce(sum(af.fee),0) FROM trade_episode_fills af JOIN trade_episodes ae ON ae.id=af.episode_id WHERE ae.retired_at IS NULL AND af.brokerage_transaction_id=b.id)) AS fee,b.trade_date,b.raw_json,abs(b.units::text::numeric) AS source_quantity
+        let released =
+            journal_flow::releasable_episodes(db.pool(), db.user_id(), &workspace_id, &entry_id)
+                .await?;
+        let rows=sqlx::query("SELECT b.id,coalesce(f.role,'unassigned') AS role,b.transaction_type,coalesce(f.quantity,greatest(0,abs(b.units::text::numeric)-(SELECT coalesce(sum(af.quantity),0) FROM trade_episode_fills af JOIN trade_episodes ae ON ae.id=af.episode_id WHERE ae.retired_at IS NULL AND ae.id<>ALL($4) AND af.brokerage_transaction_id=b.id))) AS quantity,coalesce(f.price,b.price::text::numeric) AS price,coalesce(f.fee,b.fee::text::numeric-(SELECT coalesce(sum(af.fee),0) FROM trade_episode_fills af JOIN trade_episodes ae ON ae.id=af.episode_id WHERE ae.retired_at IS NULL AND ae.id<>ALL($4) AND af.brokerage_transaction_id=b.id)) AS fee,b.trade_date,b.raw_json,abs(b.units::text::numeric) AS source_quantity
             FROM journal_entries e JOIN brokerage_transactions b ON b.user_id=e.user_id AND b.workspace_id=e.workspace_id
             LEFT JOIN trade_episode_fills f ON f.episode_id=e.episode_id AND f.brokerage_transaction_id=b.id
             WHERE e.id=$1 AND e.user_id=$2 AND e.workspace_id=$3 AND e.deleted_at IS NULL AND (f.id IS NOT NULL OR (e.episode_id IS NULL AND (e.issue_json->'source_ids') ? b.id)) ORDER BY b.trade_date,coalesce(f.allocation_order,0),b.id")
+            .bind(&entry_id).bind(db.user_id()).bind(&workspace_id).bind(&released).fetch_all(db.pool()).await?;
+        let ids = rows
+            .iter()
+            .map(|row| row.try_get::<String, _>("id"))
+            .collect::<sqlx::Result<Vec<_>>>()?;
+        let mut held_by = journal_flow::execution_holders(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &entry_id,
+            &ids,
+            &released,
+        )
+        .await?;
+        let openings = sqlx::query("SELECT 'opening:'||p.id AS id,p.direction,f.quantity,f.price,f.executed_at,p.quantity AS position_quantity
+            FROM journal_entries j JOIN trade_episode_fills f ON f.episode_id=j.episode_id JOIN journal_opening_positions p ON p.id=f.opening_position_id
+            WHERE j.id=$1 AND j.user_id=$2 AND j.workspace_id=$3 AND j.deleted_at IS NULL")
             .bind(&entry_id).bind(db.user_id()).bind(&workspace_id).fetch_all(db.pool()).await?;
-        rows.into_iter()
+        let openings = openings.into_iter().map(|row| {
+            Ok(Execution {
+                transaction_id: row.try_get("id")?,
+                role: "entry".into(),
+                side: if row.try_get::<String, _>("direction")? == "long" {
+                    "BUY"
+                } else {
+                    "SELL"
+                }
+                .into(),
+                quantity: row
+                    .try_get::<Decimal, _>("quantity")?
+                    .normalize()
+                    .to_string(),
+                price: row.try_get::<Decimal, _>("price")?.normalize().to_string(),
+                fee: Some("0".into()),
+                executed_at: Some(row.try_get::<DateTime<Utc>, _>("executed_at")?.to_rfc3339()),
+                precision: "date".into(),
+                source_quantity: row
+                    .try_get::<Decimal, _>("position_quantity")?
+                    .normalize()
+                    .to_string(),
+                held_by: vec![],
+                starting_position: true,
+            })
+        });
+        let executions = rows
+            .into_iter()
             .map(|row| {
+                let transaction_id: String = row.try_get("id")?;
                 let raw: serde_json::Value =
                     serde_json::from_str(&row.try_get::<String, _>("raw_json")?)
                         .unwrap_or_default();
                 Ok(Execution {
-                    transaction_id: row.try_get("id")?,
+                    starting_position: false,
+                    held_by: held_by.remove(&transaction_id).unwrap_or_default(),
+                    transaction_id,
                     role: row.try_get("role")?,
                     side: row.try_get("transaction_type")?,
                     quantity: row
@@ -240,7 +311,8 @@ impl JournalFlowQuery {
                         .to_string(),
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        openings.chain(executions.into_iter().map(Ok)).collect()
     }
     async fn journal_grouping_history_v2(
         &self,
@@ -272,6 +344,20 @@ impl JournalFlowQuery {
 
 #[derive(Default)]
 pub struct JournalFlowMutation;
+
+fn grouping_error(error: anyhow::Error) -> Error {
+    let Some(exit) = error.downcast_ref::<grouping::ExitExceedsPosition>() else {
+        return Error::new(error.to_string());
+    };
+    let exit = exit.clone();
+    Error::new(exit.to_string()).extend_with(move |_, ext| {
+        ext.set("code", "EXIT_EXCEEDS_POSITION");
+        ext.set("transactionId", exit.transaction_id.clone());
+        ext.set("positionBefore", exit.position_before.to_string());
+        ext.set("exitQuantity", exit.exit_quantity.to_string());
+        ext.set("shortBy", exit.short_by.to_string());
+    })
+}
 
 #[Object]
 impl JournalFlowMutation {
@@ -312,14 +398,15 @@ impl JournalFlowMutation {
         adjustment: Option<grouping::GroupingInput>,
     ) -> Result<grouping::GroupingPreview> {
         let db = super::auth::user_db(ctx).await?;
-        Ok(suggestions::preview(
+        suggestions::preview(
             db.pool(),
             db.user_id(),
             &workspace_id,
             &suggestion_id,
             adjustment,
         )
-        .await?)
+        .await
+        .map_err(grouping_error)
     }
     async fn dismiss_journal_suggestion(
         &self,
@@ -364,7 +451,9 @@ impl JournalFlowMutation {
         input: grouping::GroupingInput,
     ) -> Result<grouping::GroupingPreview> {
         let db = super::auth::user_db(ctx).await?;
-        Ok(grouping::preview(db.pool(), db.user_id(), &workspace_id, input).await?)
+        grouping::preview(db.pool(), db.user_id(), &workspace_id, input)
+            .await
+            .map_err(grouping_error)
     }
     async fn confirm_journal_grouping(
         &self,
@@ -380,6 +469,46 @@ impl JournalFlowMutation {
             db.user_id(),
             &workspace_id,
             &token,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn save_journal_opening_position(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        input: opening::OpeningPositionInput,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<opening::OpeningPositionView> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(opening::save(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &entry_id,
+            input,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn remove_journal_opening_position(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        position_id: String,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(opening::remove(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &position_id,
             &client_id,
             &mutation_id,
         )

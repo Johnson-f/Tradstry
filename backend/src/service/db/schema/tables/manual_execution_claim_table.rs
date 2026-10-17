@@ -172,7 +172,7 @@ pub async fn reconcile_for_confirmed_match(
         .await?
         .ok_or_else(|| anyhow!("plan not found"))?;
     let rows = sqlx::query(
-        "SELECT f.brokerage_transaction_id,f.quantity,f.price,f.fee,f.executed_at
+        "SELECT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id),f.quantity,f.price,f.fee,f.executed_at
          FROM trade_episode_fills f
          JOIN trade_episodes e ON e.id=f.episode_id
          WHERE f.episode_id=$1 AND f.role='entry' AND e.user_id=$2

@@ -2,6 +2,7 @@ export { DashboardApp } from "./dashboard-app";
 export {
   createHttpGraphQLFetcher,
   createWebSocketGraphQLSubscriber,
+  GraphQLRequestError,
   type GraphQLFetcher,
   type GraphQLSubscriber,
 } from "./lib/client";

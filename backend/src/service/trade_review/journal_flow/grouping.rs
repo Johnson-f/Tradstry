@@ -12,6 +12,15 @@ use serde_json::{Value, json};
 use sqlx::{PgConnection, PgPool, Row};
 use std::collections::{BTreeMap, HashSet};
 
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("An exit cannot precede or exceed its opening quantity")]
+pub struct ExitExceedsPosition {
+    pub transaction_id: String,
+    pub position_before: Decimal,
+    pub exit_quantity: Decimal,
+    pub short_by: Decimal,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, async_graphql::InputObject)]
 #[graphql(name = "JournalAllocationInputV2", rename_fields = "camelCase")]
 pub struct AllocationInput {
@@ -137,6 +146,8 @@ pub(super) struct SavedGroup {
     pub grouping_source: String,
     pub currency: String,
     pub draft: TradeEpisodeDraft,
+    #[serde(default)]
+    pub released_episodes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,7 +190,7 @@ pub(super) async fn selected(
             groups.push(super::unresolved::selected(connection, user, workspace, &row).await?);
             continue;
         };
-        let fills=sqlx::query("SELECT brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,allocation_order,id")
+        let fills=sqlx::query("SELECT coalesce(brokerage_transaction_id,'opening:'||opening_position_id) AS brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=$1 ORDER BY executed_at,allocation_order,id")
             .bind(&episode_id).fetch_all(&mut *connection).await?;
         let allocations = fills
             .into_iter()
@@ -208,6 +219,7 @@ pub(super) async fn selected(
             updated_at: row.try_get("updated_at")?,
             grouping_source: row.try_get("grouping_source")?,
             currency: row.try_get("currency")?,
+            released_episodes: vec![],
             draft: TradeEpisodeDraft {
                 instrument: serde_json::from_value(row.try_get("instrument_json")?)?,
                 direction: if row.try_get::<String, _>("direction")? == "long" {
@@ -292,10 +304,10 @@ pub async fn preview(
             budget.1 += fill.fee;
         }
     }
+    let fills = source.all_fills();
     for (id, (quantity, _)) in &budgets {
         ensure!(
-            source
-                .fills
+            fills
                 .iter()
                 .any(|fill| &fill.transaction_id == id && fill.quantity >= *quantity),
             "REPREVIEW_REQUIRED: source quantities changed"
@@ -341,8 +353,7 @@ pub async fn preview(
                 quantity > Decimal::ZERO,
                 "Allocation quantities must be positive"
             );
-            let fill = source
-                .fills
+            let fill = fills
                 .iter()
                 .find(|f| f.transaction_id == allocation.transaction_id)
                 .ok_or_else(|| {
@@ -372,13 +383,17 @@ pub async fn preview(
             );
             if entry {
                 remaining += quantity;
+            } else if quantity > remaining {
+                return Err(ExitExceedsPosition {
+                    transaction_id: fill.transaction_id.clone(),
+                    position_before: remaining.normalize(),
+                    exit_quantity: quantity.normalize(),
+                    short_by: (quantity - remaining).normalize(),
+                }
+                .into());
             } else {
                 remaining -= quantity;
             }
-            ensure!(
-                remaining >= Decimal::ZERO,
-                "An exit cannot precede or exceed its opening quantity"
-            );
             allocations.push(FillAllocation {
                 transaction_id: fill.transaction_id.clone(),
                 role: if entry {
@@ -426,6 +441,7 @@ pub async fn preview(
             grouping_source: "manual".into(),
             currency: first.currency.clone(),
             draft,
+            released_episodes: vec![],
         });
     }
     ensure!(
@@ -515,6 +531,18 @@ pub async fn confirm(
         versions(&current) == operation.try_get::<Value, _>("expected_versions")?,
         "REPREVIEW_REQUIRED: trade context changed"
     );
+    let released = current
+        .iter()
+        .flat_map(|g| g.released_episodes.clone())
+        .collect::<Vec<_>>();
+    ensure!(
+        released
+            == before
+                .iter()
+                .flat_map(|g| g.released_episodes.clone())
+                .collect::<Vec<_>>(),
+        "REPREVIEW_REQUIRED: blocked broker records changed"
+    );
     let proposal: Proposal = serde_json::from_value(operation.try_get("proposal_json")?)?;
     let sources = source::load(&mut tx, user, workspace).await?;
     let source = sources
@@ -549,6 +577,7 @@ pub async fn confirm(
                 .bind(&group.entry_id).bind(user).bind(workspace).bind(successor).execute(&mut *tx).await?;
         }
     }
+    super::unresolved::release(&mut tx, user, workspace, &released).await?;
     for group in &proposal.groups {
         if let Some(issue) = &group.unresolved {
             super::unresolved::restore(&mut tx, user, workspace, group, issue).await?;

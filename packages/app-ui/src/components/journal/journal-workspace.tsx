@@ -17,7 +17,7 @@ import { CreateTrades } from "./create-trades";
 import { TradeDetail } from "./journal-trade-detail";
 import { GroupingDialog } from "./journal-grouping";
 import * as flow from "@tradstry/app-ui/lib/service/journal-flow";
-import { money, tradeDate } from "./journal-format";
+import { money, tradeDate, tradeSpan } from "./journal-format";
 import { JournalSetup } from "./journal-setup";
 
 const TRADE_STATUSES = [
@@ -142,7 +142,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
               {filtered.map((trade) => <tr key={trade.id} className="cursor-pointer border-t transition-colors hover:bg-accent/50" onClick={(event) => openTrade(trade.id, event.currentTarget.querySelector<HTMLButtonElement>("[data-trade-open]"))}>
                 <td className="px-3 py-4" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${trade.symbol} trade`} checked={selected.includes(trade.id)} disabled={!trade.episodeId || trade.lifecycleState === "incomplete"} onChange={(event) => setSelected(event.target.checked ? [...selected, trade.id] : selected.filter((id) => id !== trade.id))} /></td>
                 <td className="px-3 py-4"><button type="button" data-trade-open aria-haspopup="dialog" className="text-left font-medium hover:underline focus-visible:outline-ring" onClick={(event) => { event.stopPropagation(); openTrade(trade.id, event.currentTarget); }}>{trade.symbol}</button><p className="mt-0.5 max-w-60 truncate text-xs text-muted-foreground">{trade.symbolName} · {trade.direction}</p></td>
-                <td className="px-3 py-4 text-muted-foreground">{tradeDate(trade.closeDate ?? trade.openDate, status.data?.timezone)}</td>
+                <td className="px-3 py-4 text-muted-foreground">{trade.openDate ? tradeDate(trade.closeDate ?? trade.openDate, status.data?.timezone) : tradeSpan(trade, status.data?.timezone)}{!trade.openDate && trade.executionCount > 0 && <p className="mt-0.5 text-xs">{trade.executionCount} executions</p>}</td>
                 <td className="px-3 py-4"><span className={`rounded-md px-2 py-1 text-xs ${trade.lifecycleState === "incomplete" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{trade.lifecycleState === "incomplete" ? "Needs attention" : trade.lifecycleState === "open" ? "Open" : "Closed"}</span></td>
                 <td className="px-3 py-4 text-right tabular-nums">{trade.remainingQuantity ?? "—"}</td><td className={`px-3 py-4 text-right font-medium tabular-nums ${Number(trade.realizedNet) < 0 ? "text-rose-600" : Number(trade.realizedNet) > 0 ? "text-emerald-600" : ""}`}>{money(trade.realizedNet, trade.currency)}</td>
                 <td className="px-3 py-4 text-xs text-muted-foreground">{trade.reviewState === "reviewed" ? "Reviewed" : trade.reviewState === "outdated" ? "Results changed" : trade.reviewState === "in_progress" ? "Review in progress" : trade.lifecycleState === "open" ? "When it closes" : "Not reviewed"}</td>

@@ -987,6 +987,14 @@ type JournalEntryDeltaGql {
 	updatedAt: String!
 }
 
+type JournalExecutionHolderV2 {
+	entryId: String
+	direction: String!
+	openedAt: String!
+	blocked: Boolean!
+	quantity: String!
+}
+
 type JournalExecutionV2 {
 	transactionId: String!
 	role: String!
@@ -997,6 +1005,8 @@ type JournalExecutionV2 {
 	executedAt: String
 	precision: String!
 	sourceQuantity: String!
+	heldBy: [JournalExecutionHolderV2!]!
+	startingPosition: Boolean!
 }
 
 input JournalFinalizeReviewInputV2 {
@@ -1055,6 +1065,37 @@ type JournalGroupingSuggestionV2 {
 	entryId: String!
 	explanation: String!
 	previousConfirmations: Int!
+}
+
+input JournalOpeningPositionInputV2 {
+	direction: String!
+	quantity: String!
+	averagePrice: String!
+	asOf: String!
+}
+
+type JournalOpeningPositionV2 {
+	id: String!
+	direction: String!
+	quantity: String!
+	averagePrice: String!
+	asOf: String!
+	olderHistory: Boolean!
+}
+
+type JournalOpeningPreviewV2 {
+	trades: [JournalOpeningTradeV2!]!
+}
+
+type JournalOpeningTradeV2 {
+	direction: String!
+	openedAt: String!
+	closedAt: String
+	enteredQuantity: String!
+	remainingQuantity: String!
+	realizedNet: String
+	feesPaid: String
+	startingPosition: Boolean!
 }
 
 type JournalPreparationV2 {
@@ -1200,6 +1241,7 @@ type JournalTradeV2 {
 	executionCount: Int!
 	boughtQuantity: String
 	soldQuantity: String
+	startingPosition: Boolean!
 }
 
 type ManualExecutionClaimGql {
@@ -1420,6 +1462,8 @@ type Mutation {
 	resetJournalLearning(workspaceId: String!, clientId: String!, mutationId: String!): Boolean!
 	previewJournalGrouping(workspaceId: String!, input: JournalGroupingInputV2!): JournalGroupingPreviewV2!
 	confirmJournalGrouping(workspaceId: String!, token: String!, clientId: String!, mutationId: String!): JournalGroupingResultV2!
+	saveJournalOpeningPosition(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!, clientId: String!, mutationId: String!): JournalOpeningPositionV2!
+	removeJournalOpeningPosition(workspaceId: String!, positionId: String!, clientId: String!, mutationId: String!): Boolean!
 	previewUndoJournalGrouping(workspaceId: String!, operationId: String!): JournalGroupingPreviewV2!
 	saveJournalContext(workspaceId: String!, input: JournalContextInputV2!, clientId: String!, mutationId: String!): JournalContextV2!
 	ensureJournalContextNote(workspaceId: String!, entryId: String!, clientId: String!, mutationId: String!): String!
@@ -2085,6 +2129,8 @@ type Query {
 	journalFlowStatus(workspaceId: String!): JournalFlowStatus!
 	journalTradesV2(workspaceId: String!): [JournalTradeV2!]!
 	journalTradeV2(workspaceId: String!, entryId: String!): JournalTradeV2
+	journalOpeningPositionV2(workspaceId: String!, entryId: String!): JournalOpeningPositionV2
+	journalOpeningPreviewV2(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!): JournalOpeningPreviewV2!
 	journalContextV2(workspaceId: String!, entryId: String!): JournalContextV2!
 	journalReviewDraftV2(workspaceId: String!, entryId: String!): JournalReviewDraftV2!
 	journalExecutionsV2(workspaceId: String!, entryId: String!): [JournalExecutionV2!]!

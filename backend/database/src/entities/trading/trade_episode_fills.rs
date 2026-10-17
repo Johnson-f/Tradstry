@@ -15,9 +15,10 @@ pub struct Model {
     pub episode_id: String,
     #[sea_orm(
         column_type = "Text",
+        nullable,
         unique_key = "trade_episode_fills_episode_id_brokerage_transaction_id_rol_key"
     )]
-    pub brokerage_transaction_id: String,
+    pub brokerage_transaction_id: Option<String>,
     #[sea_orm(
         column_type = "Text",
         unique_key = "trade_episode_fills_episode_id_brokerage_transaction_id_rol_key"
@@ -28,6 +29,8 @@ pub struct Model {
     pub fee: Decimal,
     pub executed_at: DateTimeWithTimeZone,
     pub allocation_order: i32,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub opening_position_id: Option<String>,
     #[sea_orm(
         belongs_to,
         from = "brokerage_transaction_id",
@@ -36,7 +39,16 @@ pub struct Model {
         on_delete = "Cascade"
     )]
     pub brokerage_transactions:
-        BelongsTo<crate::entities::brokerage::brokerage_transactions::Entity>,
+        BelongsTo<Option<crate::entities::brokerage::brokerage_transactions::Entity>>,
+    #[sea_orm(
+        belongs_to,
+        from = "opening_position_id",
+        to = "id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    pub journal_opening_positions:
+        BelongsTo<Option<crate::entities::journal_flow::journal_opening_positions::Entity>>,
     #[sea_orm(
         belongs_to,
         from = "episode_id",

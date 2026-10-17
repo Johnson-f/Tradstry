@@ -3,7 +3,7 @@ use sqlx::{PgPool, Row};
 use tradstry_backend::service::db::schema::tables::trade_review_table;
 use tradstry_backend::service::trade_review::journal_flow;
 
-async fn enabled_workspace(pool: &PgPool) -> (String, String) {
+pub(crate) async fn enabled_workspace(pool: &PgPool) -> (String, String) {
     let (user, workspace) = crate::pg_support::seed_user_workspace(pool).await;
     sqlx::query("INSERT INTO journal_workspace_state(workspace_id,user_id,enabled,opening_inventory) VALUES ($1,$2,true,$3)")
         .bind(&workspace).bind(&user)
@@ -12,13 +12,13 @@ async fn enabled_workspace(pool: &PgPool) -> (String, String) {
     (user, workspace)
 }
 
-struct FillAmounts {
-    quantity: f64,
-    price: f64,
-    fee: f64,
+pub(crate) struct FillAmounts {
+    pub quantity: f64,
+    pub price: f64,
+    pub fee: f64,
 }
 
-async fn fill(
+pub(crate) async fn fill(
     pool: &PgPool,
     user: &str,
     workspace: &str,
@@ -40,7 +40,7 @@ async fn fill(
         .execute(pool).await.unwrap();
 }
 
-async fn project(pool: &PgPool, user: &str, workspace: &str) {
+pub(crate) async fn project(pool: &PgPool, user: &str, workspace: &str) {
     journal_flow::seal_import(pool, user, workspace)
         .await
         .unwrap();
@@ -572,6 +572,21 @@ async fn unresolved_history_is_confirmed_reviewed_and_undone_without_losing_iden
         "2026-09-01T15:00:00Z",
     )
     .await;
+    // Still open, so the history does not end flat and its start stays unknown.
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "later",
+        "BUY",
+        FillAmounts {
+            quantity: 5.0,
+            price: 12.0,
+            fee: 0.0,
+        },
+        "2026-09-02T15:00:00Z",
+    )
+    .await;
     project(&pool, &user, &workspace).await;
     let original = journal_flow::list_trades(&pool, &user, &workspace)
         .await
@@ -585,28 +600,40 @@ async fn unresolved_history_is_confirmed_reviewed_and_undone_without_losing_iden
         GroupingInput {
             direction: Some("long".into()),
             entry_ids: vec![original.id.clone()],
-            groups: vec![GroupInput {
-                entry_id: Some(original.id.clone()),
-                allocations: vec![
-                    AllocationInput {
-                        transaction_id: format!("{workspace}:buy"),
-                        quantity: "10".into(),
-                    },
-                    AllocationInput {
-                        transaction_id: format!("{workspace}:sell"),
-                        quantity: "10".into(),
-                    },
-                ],
-            }],
+            groups: vec![
+                GroupInput {
+                    entry_id: Some(original.id.clone()),
+                    allocations: vec![
+                        AllocationInput {
+                            transaction_id: format!("{workspace}:buy"),
+                            quantity: "10".into(),
+                        },
+                        AllocationInput {
+                            transaction_id: format!("{workspace}:sell"),
+                            quantity: "10".into(),
+                        },
+                    ],
+                },
+                GroupInput {
+                    entry_id: None,
+                    allocations: vec![AllocationInput {
+                        transaction_id: format!("{workspace}:later"),
+                        quantity: "5".into(),
+                    }],
+                },
+            ],
         },
     )
     .await
     .unwrap();
-    assert_eq!(preview.realized_net, vec![Some("10".into())]);
+    assert_eq!(
+        preview.realized_net,
+        vec![Some("10".into()), Some("0".into())]
+    );
     let confirmed = grouping::confirm(&pool, &user, &workspace, &preview.token, "test", "resolve")
         .await
         .unwrap();
-    assert_eq!(confirmed.entry_ids, vec![original.id.clone()]);
+    assert_eq!(confirmed.entry_ids[0], original.id);
     let trade = journal_flow::get_trade(&pool, &user, &workspace, &original.id)
         .await
         .unwrap()
@@ -749,19 +776,28 @@ async fn unresolved_history_is_confirmed_reviewed_and_undone_without_losing_iden
         GroupingInput {
             direction: Some("long".into()),
             entry_ids: vec![original.id.clone(), manual_id.clone()],
-            groups: vec![GroupInput {
-                entry_id: Some(manual_id.clone()),
-                allocations: vec![
-                    AllocationInput {
-                        transaction_id: format!("{workspace}:buy"),
-                        quantity: "10".into(),
-                    },
-                    AllocationInput {
-                        transaction_id: format!("{workspace}:sell"),
-                        quantity: "10".into(),
-                    },
-                ],
-            }],
+            groups: vec![
+                GroupInput {
+                    entry_id: Some(manual_id.clone()),
+                    allocations: vec![
+                        AllocationInput {
+                            transaction_id: format!("{workspace}:buy"),
+                            quantity: "10".into(),
+                        },
+                        AllocationInput {
+                            transaction_id: format!("{workspace}:sell"),
+                            quantity: "10".into(),
+                        },
+                    ],
+                },
+                GroupInput {
+                    entry_id: None,
+                    allocations: vec![AllocationInput {
+                        transaction_id: format!("{workspace}:later"),
+                        quantity: "5".into(),
+                    }],
+                },
+            ],
         },
     )
     .await
@@ -1676,14 +1712,13 @@ async fn uncertain_legacy_links_do_not_confirm_starting_history() {
             .await
             .unwrap();
         project(&pool, &user, &workspace).await;
-        let adopted: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND episode_id IS NOT NULL",
-        )
-        .bind(&workspace)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(adopted, 0, "{case} links must not authorize a trade");
+        let adopted: bool =
+            sqlx::query_scalar("SELECT episode_id IS NOT NULL FROM journal_entries WHERE id=$1")
+                .bind(&id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(!adopted, "{case} links must not adopt the legacy entry");
         let notes: String = sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
             .bind(&id)
             .fetch_one(&pool)
@@ -2966,4 +3001,300 @@ async fn preparation_counts_earlier_entries_that_hold_back_new_trades() {
     assert_eq!(after.overlapping_entries, 1);
     assert_eq!(after.held_by_earlier_entries, 1);
     assert_eq!((after.ready_trades, after.attention_groups), (0, 1));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_oversized_exit_names_the_execution_and_the_shortfall() {
+    use journal_flow::grouping::{
+        self, AllocationInput, ExitExceedsPosition, GroupInput, GroupingInput,
+    };
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    sqlx::query("UPDATE journal_workspace_state SET opening_inventory='{}' WHERE workspace_id=$1")
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "buy",
+        "BUY",
+        FillAmounts {
+            quantity: 10.0,
+            price: 10.0,
+            fee: 0.0,
+        },
+        "2026-09-01T14:00:00Z",
+    )
+    .await;
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "sell",
+        "SELL",
+        FillAmounts {
+            quantity: 30.0,
+            price: 11.0,
+            fee: 0.0,
+        },
+        "2026-09-01T15:00:00Z",
+    )
+    .await;
+    project(&pool, &user, &workspace).await;
+    let original = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(original.lifecycle_state, "incomplete");
+    let allocation = |name: &str, quantity: &str| AllocationInput {
+        transaction_id: format!("{workspace}:{name}"),
+        quantity: quantity.into(),
+    };
+    let error = grouping::preview(
+        &pool,
+        &user,
+        &workspace,
+        GroupingInput {
+            direction: Some("long".into()),
+            entry_ids: vec![original.id.clone()],
+            groups: vec![GroupInput {
+                entry_id: Some(original.id.clone()),
+                allocations: vec![allocation("buy", "10"), allocation("sell", "30")],
+            }],
+        },
+    )
+    .await
+    .unwrap_err();
+    let exit = error.downcast_ref::<ExitExceedsPosition>().unwrap();
+    assert_eq!(exit.transaction_id, format!("{workspace}:sell"));
+    assert_eq!(exit.position_before, Decimal::from(10));
+    assert_eq!(exit.exit_quantity, Decimal::from(30));
+    assert_eq!(exit.short_by, Decimal::from(20));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn executions_name_the_other_trade_holding_their_quantity() {
+    use journal_flow::grouping::{self, AllocationInput, GroupInput, GroupingInput};
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "hold",
+        "BUY",
+        FillAmounts {
+            quantity: 100.0,
+            price: 50.0,
+            fee: 0.0,
+        },
+        "2026-09-01T14:00:00Z",
+    )
+    .await;
+    project(&pool, &user, &workspace).await;
+    let id = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap()
+        .remove(0)
+        .id;
+    let hold = format!("{workspace}:hold");
+    let allocation = |quantity: &str| AllocationInput {
+        transaction_id: hold.clone(),
+        quantity: quantity.into(),
+    };
+    let preview = grouping::preview(
+        &pool,
+        &user,
+        &workspace,
+        GroupingInput {
+            direction: None,
+            entry_ids: vec![id.clone()],
+            groups: vec![
+                GroupInput {
+                    entry_id: Some(id.clone()),
+                    allocations: vec![allocation("60")],
+                },
+                GroupInput {
+                    entry_id: None,
+                    allocations: vec![allocation("40")],
+                },
+            ],
+        },
+    )
+    .await
+    .unwrap();
+    grouping::confirm(
+        &pool,
+        &user,
+        &workspace,
+        &preview.token,
+        "browser",
+        "split-hold",
+    )
+    .await
+    .unwrap();
+    let child = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|trade| trade.id != id)
+        .unwrap();
+    let mut holders = journal_flow::execution_holders(
+        &pool,
+        &user,
+        &workspace,
+        &id,
+        std::slice::from_ref(&hold),
+        &[],
+    )
+    .await
+    .unwrap();
+    let holders = holders.remove(&hold).unwrap();
+    assert_eq!(holders.len(), 1);
+    assert_eq!(holders[0].entry_id.as_deref(), Some(child.id.as_str()));
+    assert_eq!(holders[0].quantity, "40");
+    assert!(!holders[0].blocked);
+    assert_eq!(holders[0].direction, "long");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn resolving_history_takes_over_fills_from_blocked_records_without_an_entry() {
+    use journal_flow::grouping::{self, AllocationInput, GroupInput, GroupingInput};
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    sqlx::query(
+        "UPDATE journal_workspace_state SET enabled=false,opening_inventory='{}' WHERE workspace_id=$1",
+    )
+    .bind(&workspace)
+    .execute(&pool)
+    .await
+    .unwrap();
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "buy",
+        "BUY",
+        FillAmounts {
+            quantity: 10.0,
+            price: 10.0,
+            fee: 0.0,
+        },
+        "2026-09-01T14:00:00Z",
+    )
+    .await;
+    fill(
+        &pool,
+        &user,
+        &workspace,
+        "sell",
+        "SELL",
+        FillAmounts {
+            quantity: 4.0,
+            price: 11.0,
+            fee: 0.0,
+        },
+        "2026-09-01T15:00:00Z",
+    )
+    .await;
+    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
+        .await
+        .unwrap();
+    let legacy: String = sqlx::query_scalar("SELECT id FROM trade_episodes WHERE workspace_id=$1")
+        .bind(&workspace)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+    project(&pool, &user, &workspace).await;
+    let legacy_state = || async {
+        sqlx::query_as::<_, (String, bool)>(
+            "SELECT status,retired_at IS NOT NULL FROM trade_episodes WHERE id=$1",
+        )
+        .bind(&legacy)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+    };
+    assert_eq!(legacy_state().await, ("blocked".into(), false));
+    let original = journal_flow::list_trades(&pool, &user, &workspace)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(original.lifecycle_state, "incomplete");
+    assert!(original.episode_id.is_none());
+    assert_eq!(
+        journal_flow::releasable_episodes(&pool, &user, &workspace, &original.id)
+            .await
+            .unwrap(),
+        vec![legacy.clone()]
+    );
+
+    let allocation = |name: &str, quantity: &str| AllocationInput {
+        transaction_id: format!("{workspace}:{name}"),
+        quantity: quantity.into(),
+    };
+    let preview = grouping::preview(
+        &pool,
+        &user,
+        &workspace,
+        GroupingInput {
+            direction: Some("long".into()),
+            entry_ids: vec![original.id.clone()],
+            groups: vec![GroupInput {
+                entry_id: Some(original.id.clone()),
+                allocations: vec![allocation("buy", "10"), allocation("sell", "4")],
+            }],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(preview.realized_net, vec![Some("4".into())]);
+    let confirmed = grouping::confirm(
+        &pool,
+        &user,
+        &workspace,
+        &preview.token,
+        "browser",
+        "resolve-blocked",
+    )
+    .await
+    .unwrap();
+    let resolved = journal_flow::get_trade(&pool, &user, &workspace, &original.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.lifecycle_state, "open");
+    assert_eq!(resolved.realized_net.as_deref(), Some("4"));
+    assert_eq!(legacy_state().await, ("blocked".into(), true));
+
+    let undo = grouping::preview_undo(&pool, &user, &workspace, &confirmed.operation_id)
+        .await
+        .unwrap();
+    grouping::confirm(
+        &pool,
+        &user,
+        &workspace,
+        &undo.token,
+        "browser",
+        "undo-resolve-blocked",
+    )
+    .await
+    .unwrap();
+    let restored = journal_flow::get_trade(&pool, &user, &workspace, &original.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.lifecycle_state, "incomplete");
+    assert_eq!(legacy_state().await, ("blocked".into(), false));
 }

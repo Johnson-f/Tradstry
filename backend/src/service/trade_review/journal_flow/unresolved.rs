@@ -53,8 +53,9 @@ pub(super) async fn selected(
     let ids = issue["source_ids"]
         .as_array()
         .ok_or_else(|| anyhow!("Execution history is unavailable"))?;
-    let allocated = sqlx::query("SELECT f.brokerage_transaction_id,sum(f.quantity) AS quantity,sum(f.fee) AS fee FROM trade_episode_fills f JOIN trade_episodes e ON e.id=f.episode_id WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL GROUP BY f.brokerage_transaction_id")
-        .bind(user).bind(workspace).fetch_all(&mut *connection).await?;
+    let released = releasable(connection, user, workspace, &string_ids(ids)).await?;
+    let allocated = sqlx::query("SELECT f.brokerage_transaction_id,sum(f.quantity) AS quantity,sum(f.fee) AS fee FROM trade_episode_fills f JOIN trade_episodes e ON e.id=f.episode_id WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL AND e.id<>ALL($3) AND f.brokerage_transaction_id IS NOT NULL GROUP BY f.brokerage_transaction_id")
+        .bind(user).bind(workspace).bind(&released).fetch_all(&mut *connection).await?;
     let direction = source
         .fills
         .first()
@@ -136,6 +137,7 @@ pub(super) async fn selected(
         updated_at: row.try_get("updated_at")?,
         grouping_source: "manual".into(),
         currency: source.currency.clone(),
+        released_episodes: released,
         draft: TradeEpisodeDraft {
             instrument: source.fills[0].instrument.clone(),
             direction,
@@ -148,6 +150,64 @@ pub(super) async fn selected(
     })
 }
 
+fn string_ids(ids: &[Value]) -> Vec<String> {
+    ids.iter()
+        .filter_map(|id| id.as_str().map(str::to_owned))
+        .collect()
+}
+
+/// Episodes built before the journal was enabled have no entry to resolve them
+/// through. Once the projection blocks them, they would hold their fills forever,
+/// so a resolve over the same executions takes those fills over.
+pub(super) async fn releasable(
+    connection: &mut PgConnection,
+    user: &str,
+    workspace: &str,
+    source_ids: &[String],
+) -> Result<Vec<String>> {
+    Ok(sqlx::query_scalar("SELECT e.id FROM trade_episodes e WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL AND e.status='blocked' AND e.grouping_source<>'manual'
+        AND NOT EXISTS(SELECT 1 FROM journal_entries j WHERE j.episode_id=e.id)
+        AND NOT EXISTS(SELECT 1 FROM brokerage_episode_publications p WHERE p.episode_id=e.id)
+        AND EXISTS(SELECT 1 FROM trade_episode_fills f WHERE f.episode_id=e.id)
+        AND NOT EXISTS(SELECT 1 FROM trade_episode_fills f WHERE f.episode_id=e.id AND (f.brokerage_transaction_id IS NULL OR f.brokerage_transaction_id<>ALL($3)))
+        ORDER BY e.id")
+        .bind(user).bind(workspace).bind(source_ids).fetch_all(connection).await?)
+}
+
+pub(super) async fn releasable_for_entry(
+    connection: &mut PgConnection,
+    user: &str,
+    workspace: &str,
+    entry: &str,
+) -> Result<Vec<String>> {
+    let issue: Option<Value> = sqlx::query_scalar("SELECT issue_json FROM journal_entries WHERE id=$1 AND user_id=$2 AND workspace_id=$3 AND episode_id IS NULL AND source_kind='broker'")
+        .bind(entry).bind(user).bind(workspace).fetch_optional(&mut *connection).await?.flatten();
+    let ids = issue
+        .as_ref()
+        .and_then(|issue| issue["source_ids"].as_array())
+        .map(|ids| string_ids(ids))
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    releasable(connection, user, workspace, &ids).await
+}
+
+pub(super) async fn release(
+    connection: &mut PgConnection,
+    user: &str,
+    workspace: &str,
+    episodes: &[String],
+) -> Result<()> {
+    let released = sqlx::query("UPDATE trade_episodes SET retired_at=now(),fingerprint='retired:'||id||':'||fingerprint,record_version=record_version+1 WHERE id=ANY($1) AND user_id=$2 AND workspace_id=$3 AND retired_at IS NULL AND status='blocked'")
+        .bind(episodes).bind(user).bind(workspace).execute(connection).await?;
+    ensure!(
+        released.rows_affected() == episodes.len() as u64,
+        "REPREVIEW_REQUIRED: blocked broker records changed"
+    );
+    Ok(())
+}
+
 pub(super) async fn restore(
     connection: &mut PgConnection,
     user: &str,
@@ -157,6 +217,8 @@ pub(super) async fn restore(
 ) -> Result<()> {
     sqlx::query("DELETE FROM trade_episode_fills WHERE episode_id=$1 AND EXISTS(SELECT 1 FROM trade_episodes WHERE id=$1 AND user_id=$2 AND workspace_id=$3)").bind(&group.episode_id).bind(user).bind(workspace).execute(&mut *connection).await?;
     sqlx::query("UPDATE trade_episodes SET retired_at=now(),fingerprint='retired:'||id,record_version=record_version+1 WHERE id=$1 AND user_id=$2 AND workspace_id=$3").bind(&group.episode_id).bind(user).bind(workspace).execute(&mut *connection).await?;
+    sqlx::query("UPDATE trade_episodes SET retired_at=NULL,fingerprint=substr(fingerprint,length('retired:'||id||':')+1),record_version=record_version+1 WHERE id=ANY($1) AND user_id=$2 AND workspace_id=$3 AND fingerprint LIKE 'retired:'||id||':%'")
+        .bind(&group.released_episodes).bind(user).bind(workspace).execute(&mut *connection).await?;
     sqlx::query("DELETE FROM journal_brokerage_links WHERE journal_entry_id=$1 AND user_id=$2")
         .bind(&group.entry_id)
         .bind(user)

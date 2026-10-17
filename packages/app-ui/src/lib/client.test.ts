@@ -3,6 +3,7 @@ import { version } from "uuid";
 import {
   createHttpGraphQLFetcher,
   createWebSocketGraphQLSubscriber,
+  GraphQLRequestError,
 } from "./client";
 
 class FakeWebSocket {
@@ -133,5 +134,32 @@ describe("createHttpGraphQLFetcher", () => {
     await expect(
       fetcher("query Workspaces { workspaces { id } }"),
     ).rejects.toThrow("GraphQL request timed out");
+  });
+
+  test("keeps the error code and details the server sent", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({
+        errors: [
+          {
+            message: "An exit cannot precede or exceed its opening quantity",
+            extensions: { code: "EXIT_EXCEEDS_POSITION", shortBy: "20" },
+          },
+        ],
+      })) as unknown as typeof fetch;
+    try {
+      const fetcher = createHttpGraphQLFetcher({
+        endpoint: "http://localhost:7899/graphql",
+        getToken: async () => null,
+      });
+      const error = await fetcher("mutation Preview { preview }").catch(
+        (reason: unknown) => reason,
+      );
+      expect(error).toBeInstanceOf(GraphQLRequestError);
+      expect((error as GraphQLRequestError).code).toBe("EXIT_EXCEEDS_POSITION");
+      expect((error as GraphQLRequestError).extensions.shortBy).toBe("20");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

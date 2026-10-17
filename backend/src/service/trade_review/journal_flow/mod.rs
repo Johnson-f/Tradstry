@@ -3,6 +3,7 @@ pub mod chart;
 mod commands;
 pub mod duplicates;
 pub mod grouping;
+pub mod opening;
 mod projection;
 pub mod reflection;
 mod results;
@@ -15,8 +16,9 @@ mod unresolved;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Row};
+use std::collections::HashMap;
 
-pub use projection::{process_once, run_worker};
+pub use projection::{process_once, process_workspace, run_worker};
 
 #[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
 #[graphql(name = "JournalTradeV2", rename_fields = "camelCase")]
@@ -55,6 +57,7 @@ pub struct JournalTrade {
     pub execution_count: i32,
     pub bought_quantity: Option<String>,
     pub sold_quantity: Option<String>,
+    pub starting_position: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
@@ -102,6 +105,64 @@ pub async fn list_trades(pool: &PgPool, user: &str, workspace: &str) -> Result<V
     query_trades(pool, user, workspace, None).await
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(name = "JournalExecutionHolderV2", rename_fields = "camelCase")]
+pub struct ExecutionHolder {
+    pub entry_id: Option<String>,
+    pub direction: String,
+    pub opened_at: String,
+    pub blocked: bool,
+    pub quantity: String,
+}
+
+/// Blocked broker records that resolving this entry would take over.
+pub async fn releasable_episodes(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    entry: &str,
+) -> Result<Vec<String>> {
+    let mut connection = pool.acquire().await?;
+    unresolved::releasable_for_entry(&mut connection, user, workspace, entry).await
+}
+
+/// Other trades that still hold quantity from these executions, keyed by transaction id.
+pub async fn execution_holders(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    entry: &str,
+    transaction_ids: &[String],
+    released: &[String],
+) -> Result<HashMap<String, Vec<ExecutionHolder>>> {
+    let rows = sqlx::query("SELECT f.brokerage_transaction_id,j.id AS entry_id,e.direction,e.opened_at,e.status='blocked' AS blocked,sum(f.quantity) AS quantity
+        FROM trade_episode_fills f JOIN trade_episodes e ON e.id=f.episode_id
+        LEFT JOIN journal_entries j ON j.episode_id=e.id AND j.user_id=e.user_id AND j.deleted_at IS NULL
+        WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL AND f.brokerage_transaction_id=ANY($3)
+          AND e.id IS DISTINCT FROM (SELECT episode_id FROM journal_entries WHERE id=$4 AND user_id=$1) AND e.id<>ALL($5)
+        GROUP BY f.brokerage_transaction_id,j.id,e.id ORDER BY e.opened_at,e.id")
+        .bind(user).bind(workspace).bind(transaction_ids).bind(entry).bind(released).fetch_all(pool).await?;
+    let mut holders = HashMap::<String, Vec<ExecutionHolder>>::new();
+    for row in rows {
+        holders
+            .entry(row.try_get("brokerage_transaction_id")?)
+            .or_default()
+            .push(ExecutionHolder {
+                entry_id: row.try_get("entry_id")?,
+                direction: row.try_get("direction")?,
+                opened_at: row
+                    .try_get::<chrono::DateTime<chrono::Utc>, _>("opened_at")?
+                    .to_rfc3339(),
+                blocked: row.try_get("blocked")?,
+                quantity: row
+                    .try_get::<rust_decimal::Decimal, _>("quantity")?
+                    .normalize()
+                    .to_string(),
+            });
+    }
+    Ok(holders)
+}
+
 pub async fn get_trade(
     pool: &PgPool,
     user: &str,
@@ -132,6 +193,7 @@ async fn query_trades_connection(
 ) -> Result<Vec<JournalTrade>> {
     let rows = sqlx::query("SELECT e.id,e.workspace_id,e.source_kind,e.episode_id,e.symbol,e.symbol_name,e.trade_type,coalesce(e.currency,(SELECT currency FROM workspaces WHERE id=e.workspace_id)) AS currency,e.open_date,e.entry_price::text,e.exit_price::text,e.position_size::text,e.contract_multiplier::text,e.record_version,e.materialized_revision,e.issue_json->>'code' AS issue_code,e.issue_json->>'message' AS issue_message,coalesce(e.issue_json->'possible_duplicates','[]') AS possible_duplicates,e.retired_at,e.successor_id,e.playbook_id,e.lifecycle_state,e.outcome,e.remaining_quantity,COALESCE(e.realized_net,CASE WHEN e.source_kind='manual' THEN e.position_size::text::numeric*e.entry_price::text::numeric*e.total_pl::text::numeric/100*e.contract_multiplier::text::numeric END) AS realized_net,e.fees_paid,e.close_date,x.first_execution_at,x.last_execution_at,coalesce(x.execution_count,0)::int AS execution_count,x.bought_quantity,x.sold_quantity,
         (SELECT coalesce(jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color)),'[]') FROM trade_tags link JOIN tags t ON t.id=link.tag_id AND t.user_id=e.user_id WHERE link.journal_entry_id=e.id AND t.deleted_at IS NULL) AS tags,
+        EXISTS(SELECT 1 FROM trade_episode_fills sf WHERE sf.episode_id=e.episode_id AND sf.opening_position_id IS NOT NULL) AS starting_position,
         CASE WHEN r.id IS NULL THEN CASE WHEN (e.notes ~ '[^[:space:]]'
           OR regexp_replace(e.mistakes,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
           OR regexp_replace(e.entry_tactics,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
@@ -146,7 +208,7 @@ async fn query_trades_connection(
         LEFT JOIN journal_review_drafts d ON d.entry_id=e.id AND d.user_id=e.user_id AND d.workspace_id=e.workspace_id
         LEFT JOIN LATERAL (SELECT id,entry_revision,context_revision FROM journal_trade_reviews WHERE entry_id=e.id AND user_id=e.user_id AND workspace_id=e.workspace_id ORDER BY review_version DESC LIMIT 1) r ON true
         LEFT JOIN LATERAL (SELECT count(*) AS execution_count,min(t) AS first_execution_at,max(t) AS last_execution_at,sum(q) FILTER (WHERE buy) AS bought_quantity,sum(q) FILTER (WHERE NOT buy) AS sold_quantity FROM (
-            SELECT f.executed_at AS t,f.quantity AS q,NULL::boolean AS buy FROM trade_episode_fills f WHERE f.episode_id=e.episode_id
+            SELECT f.executed_at AS t,f.quantity AS q,NULL::boolean AS buy FROM trade_episode_fills f WHERE f.episode_id=e.episode_id AND f.brokerage_transaction_id IS NOT NULL
             UNION ALL
             SELECT b.trade_date,abs(b.units::text::numeric),upper(b.transaction_type) LIKE 'BUY%' FROM brokerage_transactions b WHERE e.episode_id IS NULL AND jsonb_typeof(e.issue_json->'source_ids')='array' AND b.user_id=e.user_id AND b.workspace_id=e.workspace_id AND (e.issue_json->'source_ids') ? b.id
         ) fills) x ON true
@@ -199,6 +261,7 @@ async fn query_trades_connection(
                 execution_count: row.try_get("execution_count")?,
                 bought_quantity: decimal_string(&row, "bought_quantity")?,
                 sold_quantity: decimal_string(&row, "sold_quantity")?,
+                starting_position: row.try_get("starting_position")?,
             })
         })
         .collect()

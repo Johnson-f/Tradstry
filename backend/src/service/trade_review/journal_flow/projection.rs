@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::Result;
 use rust_decimal::Decimal;
@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use sqlx::{PgConnection, PgPool, Row};
 
 use super::{
-    commands, results,
+    commands, opening, results,
     source::{self, SourceGroup},
     storage::{WriteScope, materialize, unassigned_entry},
 };
@@ -62,27 +62,38 @@ pub async fn process_once(pool: &PgPool, owner: &str) -> Result<usize> {
     for row in candidates {
         let user: String = row.try_get("user_id")?;
         let workspace: String = row.try_get("workspace_id")?;
-        if let Some(snapshot) = claim(pool, &user, &workspace, owner).await? {
-            let result = derive_and_commit(pool, &snapshot).await;
-            match result {
-                Ok(committed) => {
-                    done += usize::from(committed);
-                    if committed
-                        && let Err(error) =
-                            super::suggestions::refresh(pool, &user, &workspace).await
-                    {
-                        log::warn!(
-                            "journal suggestions will retry for workspace {workspace}: {error:#}"
-                        );
-                        sqlx::query("UPDATE journal_projection_jobs SET state='pending',available_at=now()+interval '30 seconds',last_error='suggestions_failed' WHERE workspace_id=$1 AND user_id=$2 AND state='complete'")
-                            .bind(&workspace).bind(&user).execute(pool).await?;
-                    }
+        done += process_workspace(pool, &user, &workspace, owner).await?;
+    }
+    Ok(done)
+}
+
+/// Project one workspace now, if its projection job is waiting.
+pub async fn process_workspace(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    owner: &str,
+) -> Result<usize> {
+    let mut done = 0;
+    if let Some(snapshot) = claim(pool, user, workspace, owner).await? {
+        let result = derive_and_commit(pool, &snapshot).await;
+        match result {
+            Ok(committed) => {
+                done += usize::from(committed);
+                if committed
+                    && let Err(error) = super::suggestions::refresh(pool, user, workspace).await
+                {
+                    log::warn!(
+                        "journal suggestions will retry for workspace {workspace}: {error:#}"
+                    );
+                    sqlx::query("UPDATE journal_projection_jobs SET state='pending',available_at=now()+interval '30 seconds',last_error='suggestions_failed' WHERE workspace_id=$1 AND user_id=$2 AND state='complete'")
+                        .bind(workspace).bind(user).execute(pool).await?;
                 }
-                Err(error) => {
-                    log::error!("journal projection failed for workspace {workspace}: {error:#}");
-                    sqlx::query("UPDATE journal_projection_jobs SET state='pending',lease_owner=NULL,lease_until=NULL,attempt_count=attempt_count+1,available_at=now()+interval '30 seconds',last_error='projection_failed' WHERE workspace_id=$1 AND user_id=$2 AND lease_owner=$3")
-                        .bind(&workspace).bind(&user).bind(&snapshot.lease).execute(pool).await?;
-                }
+            }
+            Err(error) => {
+                log::error!("journal projection failed for workspace {workspace}: {error:#}");
+                sqlx::query("UPDATE journal_projection_jobs SET state='pending',lease_owner=NULL,lease_until=NULL,attempt_count=attempt_count+1,available_at=now()+interval '30 seconds',last_error='projection_failed' WHERE workspace_id=$1 AND user_id=$2 AND lease_owner=$3")
+                    .bind(workspace).bind(user).bind(&snapshot.lease).execute(pool).await?;
             }
         }
     }
@@ -110,8 +121,8 @@ async fn claim(
     }
     let groups = source::load(&mut tx, user, workspace).await?;
     let existing_rows=sqlx::query("SELECT e.id,e.fingerprint,e.grouping_source,e.status,e.instrument_json,e.direction,e.opened_at,e.closed_at,e.current_quantity,j.fees_paid IS NOT NULL AS fees_known,coalesce(j.id,p.journal_entry_id) AS entry_id,
-        (SELECT f.brokerage_transaction_id FROM trade_episode_fills f WHERE f.episode_id=e.id AND f.role='entry' ORDER BY f.executed_at,f.allocation_order,f.id LIMIT 1) AS anchor,
-        ARRAY(SELECT DISTINCT f.brokerage_transaction_id FROM trade_episode_fills f WHERE f.episode_id=e.id) AS sources
+        (SELECT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id) FROM trade_episode_fills f WHERE f.episode_id=e.id AND f.role='entry' ORDER BY f.executed_at,f.allocation_order,f.id LIMIT 1) AS anchor,
+        ARRAY(SELECT DISTINCT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id) FROM trade_episode_fills f WHERE f.episode_id=e.id) AS sources
         FROM trade_episodes e LEFT JOIN journal_entries j ON j.episode_id=e.id
         LEFT JOIN brokerage_episode_publications p ON p.episode_id=e.id AND p.user_id=e.user_id AND p.workspace_id=e.workspace_id
         WHERE e.user_id=$1 AND e.workspace_id=$2 AND e.retired_at IS NULL")
@@ -153,7 +164,7 @@ async fn claim(
         .filter(|old| old.manual)
         .map(|old| old.episode_id.clone())
         .collect::<Vec<_>>();
-    let allocations=sqlx::query("SELECT episode_id,brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=ANY($1) ORDER BY episode_id,executed_at,allocation_order,id")
+    let allocations=sqlx::query("SELECT episode_id,coalesce(brokerage_transaction_id,'opening:'||opening_position_id) AS brokerage_transaction_id,role,quantity,price,fee,executed_at FROM trade_episode_fills WHERE episode_id=ANY($1) ORDER BY episode_id,executed_at,allocation_order,id")
         .bind(&manual_ids).fetch_all(&mut *tx).await?;
     for row in allocations {
         if let Some(draft) = existing
@@ -222,12 +233,13 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
         return Ok(false);
     }
     let mut retained = HashSet::<String>::new();
+    let mut successors = HashMap::<String, String>::new();
     for (original, original_drafts) in computed {
         let residual = preserve_manual(&mut tx, snapshot, original, &mut retained).await?;
         let Some(group) = residual.as_ref() else {
             continue;
         };
-        let drafts = if group.fills == original.fills {
+        let drafts = if group.fills == original.fills && group.opening == original.opening {
             original_drafts
         } else {
             group.drafts(&snapshot.inventory)?
@@ -243,6 +255,11 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
             );
             continue;
         }
+        let known_ids = group
+            .all_fills()
+            .into_iter()
+            .map(|fill| fill.transaction_id)
+            .collect::<HashSet<_>>();
         for draft in drafts {
             let overlaps = snapshot
                 .existing
@@ -252,22 +269,37 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                         && old.anchor.as_ref().is_some_and(|anchor| {
                             draft.allocations.iter().any(|fill| {
                                 &fill.transaction_id == anchor && fill.role == FillRole::Entry
-                            }) || (!group
-                                .fills
-                                .iter()
-                                .any(|fill| &fill.transaction_id == anchor)
+                            }) || (!known_ids.contains(anchor)
                                 && old.sources.iter().any(|id| {
                                     draft.allocations.iter().any(|f| &f.transaction_id == id)
                                 }))
                         })
                 })
                 .collect::<Vec<_>>();
-            if overlaps.iter().any(|old| old.manual) || overlaps.len() > 1 {
+            // Merging trades could drop one trade's identity, so it needs the
+            // user, unless they were already blocked or the user's own starting
+            // position joined them.
+            let merge_allowed = group.opening.is_some() || overlaps.iter().all(|old| old.blocked);
+            if overlaps.iter().any(|old| old.manual) || (overlaps.len() > 1 && !merge_allowed) {
                 record_issue(&mut tx, snapshot, group).await?;
                 retained.extend(overlaps.iter().map(|old| old.episode_id.clone()));
                 continue;
             }
-            let old = overlaps.first().copied();
+            let old = overlaps
+                .iter()
+                .find(|old| old.entry_id.is_some())
+                .or(overlaps.first())
+                .copied();
+            if let Some(kept) = old.and_then(|old| old.entry_id.clone()) {
+                for merged in overlaps
+                    .iter()
+                    .filter(|other| other.entry_id != old.and_then(|o| o.entry_id.clone()))
+                {
+                    if let Some(entry) = &merged.entry_id {
+                        successors.insert(entry.clone(), kept.clone());
+                    }
+                }
+            }
             let episode_id = old
                 .map(|old| old.episode_id.clone())
                 .unwrap_or_else(|| crate::ids::new_uuid_v7().to_string());
@@ -325,8 +357,12 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
         if !retained.contains(&old.episode_id) && !old.manual {
             sqlx::query("UPDATE trade_episodes SET retired_at=now(),record_version=record_version+1,fingerprint='retired:'||id||':'||fingerprint WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
                 .bind(&old.episode_id).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *tx).await?;
-            sqlx::query("UPDATE journal_entries SET retired_at=now(),record_version=record_version+1 WHERE episode_id=$1 AND user_id=$2 AND workspace_id=$3")
-                .bind(&old.episode_id).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *tx).await?;
+            let successor = old
+                .entry_id
+                .as_ref()
+                .and_then(|entry| successors.get(entry));
+            sqlx::query("UPDATE journal_entries SET retired_at=now(),successor_id=coalesce($4,successor_id),record_version=record_version+1 WHERE episode_id=$1 AND user_id=$2 AND workspace_id=$3")
+                .bind(&old.episode_id).bind(&snapshot.user).bind(&snapshot.workspace).bind(successor).execute(&mut *tx).await?;
         }
     }
     sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
@@ -359,12 +395,20 @@ async fn preserve_manual(
         return Ok(Some(group.clone()));
     }
     retained.extend(manual.iter().map(|old| old.episode_id.clone()));
-    if !group.can_confirm() {
+    let uses_opening = manual.iter().any(|old| {
+        old.manual_draft.as_ref().is_some_and(|draft| {
+            draft
+                .allocations
+                .iter()
+                .any(|fill| opening::position_id(&fill.transaction_id).is_some())
+        })
+    });
+    if !group.can_confirm() || (uses_opening && group.problem().is_some()) {
         record_issue(connection, snapshot, group).await?;
         return Ok(None);
     }
-    let mut budget = group
-        .fills
+    let fills = group.all_fills();
+    let mut budget = fills
         .iter()
         .map(|fill| (fill.transaction_id.clone(), (fill.quantity, fill.fee)))
         .collect::<BTreeMap<_, _>>();
@@ -374,8 +418,7 @@ async fn preserve_manual(
             continue;
         };
         for allocation in &mut draft.allocations {
-            let Some(source) = group
-                .fills
+            let Some(source) = fills
                 .iter()
                 .find(|fill| fill.transaction_id == allocation.transaction_id)
             else {
@@ -463,6 +506,13 @@ async fn preserve_manual(
         fill.fee = remaining.1;
         remaining.0 > Decimal::ZERO
     });
+    if let Some(opening) = residual.opening.as_mut() {
+        opening.quantity = budget[&opening.transaction_id()].0;
+    }
+    residual.opening = residual
+        .opening
+        .take()
+        .filter(|opening| opening.quantity > Decimal::ZERO);
     residual.source_ids = residual
         .fills
         .iter()
@@ -614,9 +664,9 @@ async fn record_issue(
     let mut preserved = false;
     for old in affected {
         sqlx::query("UPDATE trade_episodes SET status='blocked',block_reason=$2,record_version=record_version+1 WHERE id=$1 AND user_id=$3 AND workspace_id=$4")
-            .bind(&old.episode_id).bind(group.issue.as_deref().unwrap_or("Grouping needs confirmation")).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *connection).await?;
+            .bind(&old.episode_id).bind(group.problem().unwrap_or_else(|| "Grouping needs confirmation".into())).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *connection).await?;
         if let Some(id) = &old.entry_id {
-            let issue = json!({"code":"source_needs_attention","instrument_key":group.key,"source_ids":group.source_ids,"message":group.issue.as_deref().unwrap_or("Grouping needs confirmation")});
+            let issue = json!({"code":"source_needs_attention","instrument_key":group.key,"source_ids":group.source_ids,"message":group.problem().unwrap_or_else(|| "Grouping needs confirmation".into())});
             sqlx::query("UPDATE journal_entries SET lifecycle_state='incomplete',outcome='unknown',open_date=NULL,close_date=NULL,entry_price=NULL,exit_price=NULL,position_size=NULL,remaining_quantity=NULL,realized_net=NULL,fees_paid=NULL,status=NULL,total_pl=NULL,net_roi=NULL,duration=NULL,issue_json=$4,materialized_revision=materialized_revision+1,record_version=record_version+1 WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
                 .bind(id).bind(&snapshot.user).bind(&snapshot.workspace).bind(issue).execute(&mut *connection).await?;
             preserved = true;
@@ -644,7 +694,7 @@ async fn record_unassigned_issue(
     let id = existing.unwrap_or_else(|| crate::ids::new_uuid_v7().to_string());
     let duplicates:Vec<String>=sqlx::query_scalar("SELECT id FROM journal_entries WHERE user_id=$1 AND workspace_id=$2 AND source_kind='manual' AND deleted_at IS NULL AND retired_at IS NULL AND journal_trades_overlap(ARRAY[symbol],open_date,close_date,ARRAY[$3],$4,$5) ORDER BY id")
         .bind(&snapshot.user).bind(&snapshot.workspace).bind(&group.symbol).bind(group.fills.iter().map(|fill|fill.executed_at).min()).bind(group.fills.iter().map(|fill|fill.executed_at).max()).fetch_all(&mut *connection).await?;
-    let issue = json!({"code":"incomplete_history","instrument_key":group.key,"source_ids":group.source_ids,"possible_duplicates":duplicates,"message":group.issue.as_deref().unwrap_or("Confirm opening inventory or grouping before calculating this trade")});
+    let issue = json!({"code":"incomplete_history","instrument_key":group.key,"source_ids":group.source_ids,"possible_duplicates":duplicates,"message":group.problem().unwrap_or_else(|| "Confirm opening inventory or grouping before calculating this trade".into())});
     sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,currency,issue_json,materialized_revision,record_version)
         VALUES ($1,$2,$3,$4,$5,'unknown','broker','incomplete','unknown',$6,$7,$8,1)
         ON CONFLICT(id) DO UPDATE SET issue_json=EXCLUDED.issue_json,materialized_revision=journal_entries.materialized_revision+1,record_version=journal_entries.record_version+1,updated_at=now()")
