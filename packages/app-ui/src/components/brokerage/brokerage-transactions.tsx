@@ -6,8 +6,6 @@ import {
   type BrokerageJournalStatus,
 } from "@tradstry/app-ui/components/brokerage/brokerage-query";
 import { BrokerageTable } from "@tradstry/app-ui/components/brokerage/brokerage-table";
-import { MergeTradesModal } from "@tradstry/app-ui/components/brokerage/merge-trades-modal";
-import { PendingTrades } from "@tradstry/app-ui/components/brokerage/pending-trades";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import {
   Select,
@@ -28,13 +26,7 @@ import { cn } from "@tradstry/app-ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useGraphQL,useTradstryPlatform } from "@tradstry/app-ui/platform";
 import * as journalFlow from "@tradstry/app-ui/lib/service/journal-flow";
-import {
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const DEFAULT_PAGE_SIZE = 100;
 
@@ -82,7 +74,7 @@ export function BrokerageTransactions() {
     if(!automatic)return;
     const search=window.location.search;
     if(new URLSearchParams(search).get("tab")==="pending"){
-      platform.navigate(`/dashboard/journal/review${initialQuery.episodeClosedDate?`?date=${initialQuery.episodeClosedDate}`:""}`);return;
+      platform.navigate(`/dashboard/journal${initialQuery.episodeClosedDate?`?date=${initialQuery.episodeClosedDate}`:""}`);return;
     }
     setTab("all");setFilters((previous)=>({...previous,isJournalled:undefined,offset:0}));setPageOffsets([0]);
   },[automatic]);
@@ -102,7 +94,6 @@ export function BrokerageTransactions() {
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null);
 
   // Symbol search drives the server-side filter (filters.symbol).
   const [symbolSearch, setSymbolSearch] = useState(initialQuery.symbol ?? "");
@@ -111,7 +102,6 @@ export function BrokerageTransactions() {
     if (next === tab) return;
     setTab(next);
     setSelectedIds(new Set());
-    setEditingEpisodeId(null);
     setPageOffsets([0]);
     const isJournalled = brokerageJournalFilter(next, journalStatus);
     setFilters((prev) => ({ ...prev, isJournalled, offset: 0 }));
@@ -125,25 +115,6 @@ export function BrokerageTransactions() {
     setFilters((prev) => ({
       ...prev,
       isJournalled: brokerageJournalFilter(tab, next),
-      offset: 0,
-    }));
-  }
-
-  function beginGroupingEdit(
-    episodeId: string,
-    transactionIds: string[],
-    symbol: string,
-  ) {
-    setTab("all");
-    setJournalStatus("all");
-    setEditingEpisodeId(episodeId);
-    setSelectedIds(new Set(transactionIds));
-    setSymbolSearch(symbol);
-    setPageOffsets([0]);
-    setFilters((prev) => ({
-      ...prev,
-      symbol,
-      isJournalled: undefined,
       offset: 0,
     }));
   }
@@ -284,18 +255,16 @@ export function BrokerageTransactions() {
       </div>
 
       {tab === "pending" && !automatic ? (
-        <PendingTrades onAdjustFills={beginGroupingEdit} />
+        <div className="grid flex-1 place-content-center gap-3 p-8 text-center">
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Trade review now lives in your journal. Turn on the automatic journal to review your trades.
+          </p>
+          <Button variant="outline" onClick={() => platform.navigate("/dashboard/journal")}>
+            Open Journal
+          </Button>
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-          {editingEpisodeId ? (
-            <div className="mb-3 shrink-0 rounded-lg border border-l-2 border-l-foreground bg-background px-3 py-2">
-              <p className="text-xs font-medium">Edit trade grouping</p>
-              <p className="text-[0.6875rem] text-muted-foreground">
-                Select the broker fills that make up one closed trade. Prices,
-                quantities, and timestamps remain unchanged.
-              </p>
-            </div>
-          ) : null}
           <BrokerageTable
             transactions={transactions}
             symbolSearch={symbolSearch}
@@ -359,46 +328,7 @@ export function BrokerageTransactions() {
               </>
             }
           />
-          {automatic && selectedIds.size>0 && <div className="mt-3 flex items-center justify-between rounded-lg border p-3 text-sm"><span>Change trade grouping in your journal.</span><Button size="sm" onClick={()=>platform.navigate(`/dashboard/journal${symbol?`?symbol=${encodeURIComponent(symbol)}`:""}`)}>{symbol?`Find ${symbol} in Journal`:"Open Journal"}</Button></div>}
-          {!automatic && (selectedIds.size >= 1 || editingEpisodeId) && (
-            <DraggableBar>
-              <span className="text-xs font-medium">
-                {editingEpisodeId ? "Editing grouping · " : ""}
-                {selectedIds.size} {symbol ?? "mixed"} selected
-              </span>
-              {editingEpisodeId ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditingEpisodeId(null);
-                    setSelectedIds(new Set());
-                  }}
-                >
-                  Cancel
-                </Button>
-              ) : null}
-              <MergeTradesModal
-                selectedTransactions={selectedTxs}
-                disabled={!sameSymbol}
-                episodeId={editingEpisodeId ?? undefined}
-                groupingTransactionIds={
-                  editingEpisodeId ? selectedIdList : undefined
-                }
-                onSuccess={() => {
-                  setSelectedIds(new Set());
-                  setEditingEpisodeId(null);
-                }}
-                trigger={
-                  editingEpisodeId ? (
-                    <Button size="sm" disabled={!sameSymbol}>
-                      Review grouping
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </DraggableBar>
-          )}
+          {selectedIds.size>0 && <div className="mt-3 flex items-center justify-between rounded-lg border p-3 text-sm"><span>Change trade grouping in your journal.</span><Button size="sm" onClick={()=>platform.navigate(`/dashboard/journal/trades${symbol?`?symbol=${encodeURIComponent(symbol)}`:""}`)}>{symbol?`Find ${symbol} in Journal`:"Open Journal"}</Button></div>}
         </div>
       )}
     </div>
@@ -429,83 +359,5 @@ function TabButton({
     >
       {children}
     </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Draggable floating bar
-// ---------------------------------------------------------------------------
-
-function DraggableBar({ children }: { children: React.ReactNode }) {
-  const barRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
-
-  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    if ((e.target as HTMLElement).closest("button, input, a, [role=dialog]"))
-      return;
-    if (!barRef.current) return;
-    e.preventDefault();
-    const rect = barRef.current.getBoundingClientRect();
-    dragState.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: rect.left,
-      origY: rect.top,
-    };
-    // Switch from CSS centering to explicit positioning for drag
-    barRef.current.style.left = `${rect.left}px`;
-    barRef.current.style.top = `${rect.top}px`;
-    barRef.current.style.right = "auto";
-    barRef.current.style.bottom = "auto";
-    barRef.current.style.margin = "0";
-    barRef.current.style.transform = "none";
-    barRef.current.style.cursor = "grabbing";
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-  }
-
-  function handlePointerMove(e: globalThis.PointerEvent) {
-    if (!dragState.current || !barRef.current) return;
-    const dx = e.clientX - dragState.current.startX;
-    const dy = e.clientY - dragState.current.startY;
-    const x = Math.max(
-      0,
-      Math.min(
-        window.innerWidth - barRef.current.offsetWidth,
-        dragState.current.origX + dx,
-      ),
-    );
-    const y = Math.max(
-      0,
-      Math.min(
-        window.innerHeight - barRef.current.offsetHeight,
-        dragState.current.origY + dy,
-      ),
-    );
-    barRef.current.style.left = `${x}px`;
-    barRef.current.style.top = `${y}px`;
-  }
-
-  function handlePointerUp() {
-    dragState.current = null;
-    if (barRef.current) barRef.current.style.cursor = "grab";
-    document.removeEventListener("pointermove", handlePointerMove);
-    document.removeEventListener("pointerup", handlePointerUp);
-  }
-
-  return (
-    <div
-      ref={barRef}
-      onPointerDown={handlePointerDown}
-      className="fixed inset-x-0 bottom-8 z-50 mx-auto flex w-fit items-center gap-3 rounded-xl border border-border/80 bg-background px-3 py-2 shadow-[0_16px_40px_rgb(0_0_0/0.16)]"
-      style={{ cursor: "grab", touchAction: "none" }}
-    >
-      {children}
-    </div>
   );
 }

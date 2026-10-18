@@ -27,10 +27,12 @@ export function JournalChart({
 	workspaceId,
 	entryId,
 	revision,
+	headerAction,
 }: {
 	workspaceId: string;
 	entryId: string;
 	revision: number;
+	headerAction?: React.ReactNode;
 }) {
 	const fetcher = useGraphQL();
 	const platform = useTradstryPlatform();
@@ -87,86 +89,89 @@ export function JournalChart({
 			timeZone: data?.timezone,
 		}).format(new Date(value * 1000));
 	return (
-		<section className="overflow-hidden rounded-xl border bg-card">
-			<div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-				<div>
-					<h2 className="text-sm font-semibold">
+		<section aria-label="Price history" className="space-y-3">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="min-w-0">
+					<h3 className="text-sm font-medium">
 						Price history
 						{data?.seriesKind === "underlying"
 							? ` · ${data.symbol} underlying stock`
 							: ""}
-					</h2>
-					<p className="mt-0.5 text-xs text-muted-foreground">
+					</h3>
+					<p className="mt-0.5 text-[11px] text-muted-foreground">
 						{data?.provider
 							? `${data.provider} · ${data.interval} · closing prices`
 							: "Trade window"}
 					</p>
 				</div>
-				<Popover open={rangeOpen} onOpenChange={setRangeOpen}>
-					<PopoverTrigger asChild>
-						<Button
-							variant="outline"
-							size="sm"
-							className="h-8 px-3"
-							aria-label="Change chart date range"
-						>
-							Date range
-						</Button>
-					</PopoverTrigger>
-					<PopoverContent align="end" className="w-72 space-y-3">
-						<p className="text-sm font-medium">Chart date range</p>
-						<div className="grid grid-cols-2 gap-2">
-							<label className="grid gap-1.5 text-xs">
-								From (UTC)
-								<Input
-									type="date"
-									className="h-9"
-									value={from}
-									onChange={(event) => setFrom(event.target.value)}
-								/>
-							</label>
-							<label className="grid gap-1.5 text-xs">
-								To (UTC)
-								<Input
-									type="date"
-									className="h-9"
-									value={to}
-									onChange={(event) => setTo(event.target.value)}
-								/>
-							</label>
-						</div>
-						<div className="flex justify-between gap-2">
+				<div className="ml-auto flex shrink-0 items-center gap-1">
+					<Popover open={rangeOpen} onOpenChange={setRangeOpen}>
+						<PopoverTrigger asChild>
 							<Button
-								size="sm"
 								variant="ghost"
-								onClick={() => {
-									setRange({ from: null, to: null });
-									setFrom("");
-									setTo("");
-									setRangeOpen(false);
-								}}
-							>
-								Trade window
-							</Button>
-							<Button
 								size="sm"
-								disabled={!from || !to || from > to}
-								onClick={() => {
-									setRange({
-										from: Date.parse(from + "T00:00:00Z") / 1000,
-										to: Date.parse(to + "T23:59:59Z") / 1000,
-									});
-									setRangeOpen(false);
-								}}
+								className="h-7 px-2 text-muted-foreground"
+								aria-label="Change chart date range"
 							>
-								Apply
+								Date range
 							</Button>
-						</div>
-					</PopoverContent>
-				</Popover>
+						</PopoverTrigger>
+						<PopoverContent align="end" className="w-72 space-y-3">
+							<p className="text-sm font-medium">Chart date range</p>
+							<div className="grid grid-cols-2 gap-2">
+								<label className="grid gap-1.5 text-xs">
+									From (UTC)
+									<Input
+										type="date"
+										className="h-9"
+										value={from}
+										onChange={(event) => setFrom(event.target.value)}
+									/>
+								</label>
+								<label className="grid gap-1.5 text-xs">
+									To (UTC)
+									<Input
+										type="date"
+										className="h-9"
+										value={to}
+										onChange={(event) => setTo(event.target.value)}
+									/>
+								</label>
+							</div>
+							<div className="flex justify-between gap-2">
+								<Button
+									size="sm"
+									variant="ghost"
+									onClick={() => {
+										setRange({ from: null, to: null });
+										setFrom("");
+										setTo("");
+										setRangeOpen(false);
+									}}
+								>
+									Trade window
+								</Button>
+								<Button
+									size="sm"
+									disabled={!from || !to || from > to}
+									onClick={() => {
+										setRange({
+											from: Date.parse(from + "T00:00:00Z") / 1000,
+											to: Date.parse(to + "T23:59:59Z") / 1000,
+										});
+										setRangeOpen(false);
+									}}
+								>
+									Apply
+								</Button>
+							</div>
+						</PopoverContent>
+					</Popover>
+					{headerAction}
+				</div>
 			</div>
 			{query.isLoading ? (
-				<div role="status" className="p-4">
+				<div role="status" className="py-2">
 					<span className="sr-only">Loading price history…</span>
 					<div
 						aria-hidden="true"
@@ -184,9 +189,9 @@ export function JournalChart({
 					</div>
 				</div>
 			) : !query.isError && geometry && data && active ? (
-				<div className="px-4 pt-3">
+				<div className="pt-1">
 					<div
-						className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1"
+						className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
 						aria-live="polite"
 						aria-atomic="true"
 					>
@@ -331,7 +336,7 @@ export function JournalChart({
 							{money(geometry.low.toString(), data.currency)}
 						</text>
 					</svg>
-					<div className="flex flex-wrap justify-between gap-2 pb-3 text-[11px] text-muted-foreground">
+					<div className="flex flex-wrap justify-between gap-2 text-[11px] text-muted-foreground">
 						<span>
 							{tradeDate(
 								new Date(data.start * 1000).toISOString(),
@@ -348,7 +353,7 @@ export function JournalChart({
 					</div>
 				</div>
 			) : (
-				<Empty className="min-h-64 py-8">
+				<Empty className="min-h-52 py-6">
 					<EmptyHeader>
 						<EmptyMedia variant="icon" className="size-10 rounded-xl">
 							<HugeiconsIcon
@@ -381,7 +386,7 @@ export function JournalChart({
 				</Empty>
 			)}
 			{!query.isError && geometry && data && active && data.message && (
-				<p className="border-t border-border/60 bg-muted/20 px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+				<p className="text-[11px] leading-relaxed text-muted-foreground">
 					{data.message}
 				</p>
 			)}

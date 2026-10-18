@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_opening_positions() {
+fn seaorm_migrations_end_with_orphan_acknowledgement() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 17);
+    assert_eq!(migrations.len(), 19);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261017_000017_opening_positions"
+        "m20261018_000019_orphan_acknowledged"
     );
 }

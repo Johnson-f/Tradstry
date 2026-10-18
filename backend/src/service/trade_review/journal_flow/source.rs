@@ -1,12 +1,15 @@
-use std::{collections::BTreeMap, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    str::FromStr,
+};
 
 use anyhow::{Result, anyhow, ensure};
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde_json::Value;
-use sqlx::{PgConnection, Row};
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
-use super::opening::OpeningPosition;
+use super::{holdings, opening::OpeningPosition};
 use crate::service::trade_review::{
     build_episodes,
     types::{
@@ -35,10 +38,92 @@ pub(super) struct SourceGroup {
     pub issue: Option<String>,
     pub opening_effect: bool,
     pub opening: Option<OpeningPosition>,
+    /// Keys the instrument was recorded under before its ticker changed.
+    pub aliases: BTreeSet<String>,
+    pub holdings: Holdings,
+    pub instrument_ids: BTreeSet<String>,
     linked_trades: Vec<LinkedTrade>,
 }
 
+/// What the broker's latest holdings snapshot says about an instrument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Holdings {
+    Unavailable,
+    /// The snapshot is older than the latest execution, so it can't be compared.
+    Stale,
+    Held(Decimal),
+}
+
 impl SourceGroup {
+    #[cfg(test)]
+    pub fn for_test(symbol: &str, description: &str, fills: Vec<ExecutionFill>) -> Self {
+        Self {
+            key: format!("equity:{symbol}|USD"),
+            symbol: symbol.into(),
+            description: description.into(),
+            currency: "USD".into(),
+            source_ids: fills
+                .iter()
+                .map(|fill| fill.transaction_id.clone())
+                .collect(),
+            fills,
+            fees_known: true,
+            issue: None,
+            opening_effect: false,
+            opening: None,
+            aliases: BTreeSet::new(),
+            holdings: Holdings::Unavailable,
+            instrument_ids: BTreeSet::new(),
+            linked_trades: vec![],
+        }
+    }
+
+    pub fn answers_to(&self, key: &str) -> bool {
+        self.key == key || self.aliases.contains(key)
+    }
+
+    /// Imported buys minus sells, starting from zero.
+    pub fn net_imported(&self) -> Decimal {
+        self.fills
+            .iter()
+            .map(|fill| match fill.side {
+                ExecutionSide::Buy => fill.quantity,
+                ExecutionSide::Sell => -fill.quantity,
+            })
+            .sum()
+    }
+
+    /// The position the broker's holdings imply was held before the first
+    /// imported execution: holdings − imported buys + imported sells.
+    pub fn holdings_gap(&self) -> Option<Decimal> {
+        match self.holdings {
+            Holdings::Held(held) => Some(held - self.net_imported()),
+            Holdings::Unavailable | Holdings::Stale => None,
+        }
+    }
+
+    pub fn holdings_mismatch(&self) -> Option<String> {
+        let Holdings::Held(held) = self.holdings else {
+            return None;
+        };
+        (self.holdings_gap() != Some(Decimal::ZERO)).then(|| format!(
+            "Your broker shows {} {} held, but the imported history adds up to {}. If a recent trade hasn't synced yet, this clears on the next sync. Otherwise, add a starting position or import the missing history.",
+            held.normalize(),
+            self.symbol,
+            self.net_imported().normalize()
+        ))
+    }
+
+    /// Why the start of this history is unknown, when holdings can explain it.
+    pub fn holdings_message(&self) -> Option<String> {
+        self.holdings_mismatch().or_else(|| {
+            (self.holdings == Holdings::Stale).then(|| format!(
+                "Waiting for a fresh holdings sync to check the history of {}. You can also confirm a starting position now.",
+                self.symbol
+            ))
+        })
+    }
+
     pub fn can_confirm(&self) -> bool {
         self.fills.len() == self.source_ids.len()
             && self.fills.iter().all(|fill| {
@@ -96,8 +181,15 @@ impl SourceGroup {
         Ok(drafts)
     }
 
+    /// Holdings that match the imported history prove a flat start. Without a
+    /// comparable snapshot, a history that balances from flat is accepted. When
+    /// holdings disagree but the history balances, the trades are still built
+    /// and the mismatch is shown, because a recent trade that hasn't synced yet
+    /// looks the same as a missing start.
     pub fn has_known_start(&self, inventory: &Value) -> Result<bool> {
-        Ok(self.has_confirmed_start(inventory)? || self.balances_from_flat())
+        Ok(self.has_confirmed_start(inventory)?
+            || self.holdings_gap() == Some(Decimal::ZERO)
+            || self.balances_from_flat())
     }
 
     /// A start the user or the broker confirmed, as opposed to one inferred
@@ -109,8 +201,9 @@ impl SourceGroup {
             .map(|f| f.executed_at)
             .min()
             .ok_or_else(|| anyhow!("empty source group"))?;
-        let flat = inventory
-            .get(&self.key)
+        let flat = std::iter::once(&self.key)
+            .chain(&self.aliases)
+            .find_map(|key| inventory.get(key))
             .or_else(|| inventory.get("*"))
             .filter(|e| e["kind"] == "flat")
             .and_then(|e| e["as_of"].as_str())
@@ -191,8 +284,15 @@ pub(super) async fn load(
     // Normalize only the read; the original broker facts must remain untouched.
     let rows=sqlx::query("SELECT id,symbol,symbol_description,currency,transaction_type,price::text,units::text,fee::text,trade_date,raw_json,NULLIF(btrim(underlying_symbol),'') AS underlying_symbol,NULLIF(btrim(option_kind),'') AS option_kind,strike_price::text,NULLIF(btrim(option_expiration),'') AS option_expiration,contract_multiplier::text FROM brokerage_transactions WHERE user_id=$1 AND workspace_id=$2 ORDER BY trade_date,id")
         .bind(user).bind(workspace).fetch_all(&mut *connection).await?;
+    let raws = rows
+        .iter()
+        .map(|row| {
+            Ok(serde_json::from_str(&row.try_get::<String, _>("raw_json")?).unwrap_or(Value::Null))
+        })
+        .collect::<Result<Vec<Value>>>()?;
+    let canonical = canonical_symbols(&rows, &raws)?;
     let mut groups = BTreeMap::<String, SourceGroup>::new();
-    for row in rows {
+    for (row, raw) in rows.iter().zip(raws) {
         let kind = row
             .try_get::<String, _>("transaction_type")?
             .to_ascii_uppercase();
@@ -213,8 +313,6 @@ pub(super) async fn load(
             .unwrap_or_default();
         let currency: String = row.try_get("currency")?;
         let id: String = row.try_get("id")?;
-        let raw: Value =
-            serde_json::from_str(&row.try_get::<String, _>("raw_json")?).unwrap_or(Value::Null);
         let decimal = |column: &str| -> Result<Decimal> {
             Ok(Decimal::from_str(&row.try_get::<String, _>(column)?)?)
         };
@@ -269,6 +367,28 @@ pub(super) async fn load(
             }
         }
         .normalized();
+        let instrument_id = match &instrument {
+            ExecutionInstrument::Equity { symbol }
+                if !symbol.to_ascii_lowercase().contains("unresolved:") =>
+            {
+                stock_instrument_id(&raw)
+            }
+            _ => None,
+        };
+        let recorded_key = format!("{}|{}", instrument.key(), currency);
+        let (instrument, symbol) = match instrument_id
+            .and_then(|id| canonical.get(id))
+            .filter(|current| **current != symbol.trim().to_ascii_uppercase())
+        {
+            Some(current) => (
+                ExecutionInstrument::Equity {
+                    symbol: current.clone(),
+                }
+                .normalized(),
+                current.clone(),
+            ),
+            None => (instrument, symbol),
+        };
         let key = format!("{}|{}", instrument.key(), currency);
         let group = groups.entry(key.clone()).or_insert_with(|| SourceGroup {
             key,
@@ -285,8 +405,17 @@ pub(super) async fn load(
             issue: None,
             opening_effect: matches!(kind.as_str(), "BUY_TO_OPEN" | "SELL_TO_OPEN" | "SELL_SHORT"),
             opening: None,
+            aliases: BTreeSet::new(),
+            holdings: Holdings::Unavailable,
+            instrument_ids: BTreeSet::new(),
             linked_trades: vec![],
         });
+        if recorded_key != group.key {
+            group.aliases.insert(recorded_key);
+        }
+        if let Some(instrument_id) = instrument_id {
+            group.instrument_ids.insert(instrument_id.to_owned());
+        }
         group.source_ids.push(id.clone());
         let Some(side) = side else {
             group.issue=Some("A transfer, corporate action, exercise or assignment needs confirmed position history".into());
@@ -333,13 +462,28 @@ pub(super) async fn load(
             });
         }
     }
+    for group in groups.values_mut() {
+        if group.instrument_ids.len() > 1 {
+            group.issue = Some(format!(
+                "Executions under {} belong to more than one security. Check the broker history before calculating this trade.",
+                group.symbol
+            ));
+        }
+    }
     if let Some(continuations) = continuations {
         for continuation in serde_json::from_value::<Vec<ConfirmedContinuation>>(continuations)? {
             apply_continuation(&mut groups, &continuation)?;
         }
     }
+    let holdings = holdings::load(&mut *connection, user, workspace).await?;
+    for group in groups.values_mut() {
+        group.holdings = holdings.for_group(group);
+    }
     for opening in openings {
-        if let Some(group) = groups.get_mut(&opening.instrument_key) {
+        if let Some(group) = groups
+            .values_mut()
+            .find(|group| group.answers_to(&opening.instrument_key))
+        {
             group.opening = Some(opening);
         }
     }
@@ -374,6 +518,46 @@ pub(super) async fn load(
         }
     }
     Ok(groups.into_values().collect())
+}
+
+/// SnapTrade's id for a stock execution. Options have their own symbol object.
+fn stock_instrument_id(raw: &Value) -> Option<&str> {
+    if !raw["option_symbol"].is_null() {
+        return None;
+    }
+    raw["symbol"]["id"]
+        .as_str()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
+/// The latest ticker each broker instrument id traded under, so a renamed stock
+/// stays one position. When two ids share a latest ticker, both keep their
+/// recorded tickers: telling them apart needs the user.
+fn canonical_symbols(rows: &[PgRow], raws: &[Value]) -> Result<HashMap<String, String>> {
+    let mut latest = HashMap::<String, String>::new();
+    for (row, raw) in rows.iter().zip(raws) {
+        if row.try_get::<Option<String>, _>("option_kind")?.is_some() {
+            continue;
+        }
+        let Some(id) = stock_instrument_id(raw) else {
+            continue;
+        };
+        let symbol = row
+            .try_get::<Option<String>, _>("symbol")?
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_uppercase();
+        if !symbol.is_empty() {
+            latest.insert(id.to_owned(), symbol);
+        }
+    }
+    let mut owners = HashMap::<String, usize>::new();
+    for symbol in latest.values() {
+        *owners.entry(symbol.clone()).or_default() += 1;
+    }
+    latest.retain(|_, symbol| owners.get(symbol) == Some(&1));
+    Ok(latest)
 }
 
 #[derive(serde::Deserialize)]
@@ -448,6 +632,7 @@ fn apply_continuation(
     let source_key = source.key.clone();
     let target_key = target.key.clone();
     let fees_known = source.fees_known;
+    let instrument_ids = source.instrument_ids.clone();
     // A confirmed ticker transition applies only to this execution. Broker rows
     // and future executions under either ticker retain their original identity.
     let source = groups
@@ -457,12 +642,17 @@ fn apply_continuation(
         .fills
         .retain(|fill| fill.transaction_id != closing.transaction_id);
     source.source_ids.retain(|id| id != &closing.transaction_id);
-    if source.source_ids.is_empty() {
+    let emptied = source.source_ids.is_empty();
+    if emptied {
         groups.remove(&source_key);
     }
     let target = groups
         .get_mut(&target_key)
         .ok_or_else(|| anyhow!("Continuation target disappeared"))?;
+    if emptied {
+        target.aliases.insert(source_key);
+    }
+    target.instrument_ids.extend(instrument_ids);
     target.source_ids.push(closing.transaction_id.clone());
     target.fills.push(closing);
     target.fills.sort_by(|a, b| {

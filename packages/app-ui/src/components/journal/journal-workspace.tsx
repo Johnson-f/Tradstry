@@ -1,171 +1,103 @@
 "use client";
 
-import * as React from "react";
-import { Alert02Icon, CheckmarkCircle02Icon, Clock01Icon, Layers01Icon, ListViewIcon, RefreshIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
+import { Badge } from "@tradstry/app-ui/components/ui/badge";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@tradstry/app-ui/components/ui/dialog";
-import { Input } from "@tradstry/app-ui/components/ui/input";
 import { Progress } from "@tradstry/app-ui/components/ui/progress";
-import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@tradstry/app-ui/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectLabel, SelectGroup, SelectTrigger, SelectValue } from "@tradstry/app-ui/components/ui/select";
-import { cn } from "@tradstry/app-ui/lib/utils";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@tradstry/app-ui/components/ui/tabs";
+import {
+	useJournalStatus,
+	useJournalTrades,
+	useRefreshJournal,
+} from "@tradstry/app-ui/hooks/journal-review";
+import type { FlowStatus } from "@tradstry/app-ui/lib/service/journal-flow";
 import { CreateTrades } from "./create-trades";
-import { TradeDetail } from "./journal-trade-detail";
-import { GroupingDialog } from "./journal-grouping";
-import * as flow from "@tradstry/app-ui/lib/service/journal-flow";
-import { money, tradeDate, tradeSpan } from "./journal-format";
+import { JournalAttention } from "./journal-attention";
+import {
+	JournalNavigationProvider,
+	useJournalLocation,
+} from "./journal-navigation";
 import { JournalSetup } from "./journal-setup";
+import { JournalToday } from "./journal-today";
+import { JournalTrades } from "./journal-trades";
+import { TradeSheet } from "./trade/trade-sheet";
+import { useJournalAttention } from "./use-journal-attention";
+import type { JournalView } from "./journal-route";
 
-const TRADE_STATUSES = [
-  { value: "all", label: "All trades", description: "Open, closed, and needs attention", icon: Layers01Icon },
-  { value: "open", label: "Open", description: "Positions that are still open", icon: Clock01Icon },
-  { value: "closed", label: "Closed", description: "Positions that have been fully exited", icon: CheckmarkCircle02Icon },
-  { value: "incomplete", label: "Needs attention", description: "History or grouping needs a check", icon: Alert02Icon },
-] as const;
-
-const REVIEW_STATUSES = [
-  { value: "all", label: "Any review status", description: "Show every review state", icon: ListViewIcon },
-  { value: "unreviewed", label: "Not reviewed", description: "No review work added yet", icon: Clock01Icon },
-  { value: "in_progress", label: "Review in progress", description: "Work saved; not marked reviewed yet", icon: Clock01Icon },
-  { value: "reviewed", label: "Reviewed", description: "Reviewed against the current results", icon: CheckmarkCircle02Icon },
-  { value: "outdated", label: "Results changed", description: "Results or context changed after review", icon: RefreshIcon },
-] as const;
-
-function StatusFilter({ label, value, onChange, options, className }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly { value: string; label: string; description: string; icon: IconSvgElement }[];
-  className?: string;
-}) {
-  const selected = options.find((option) => option.value === value);
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        aria-label={label}
-        className={cn("h-9 gap-2.5 rounded-lg bg-background px-3 text-sm shadow-none hover:bg-muted/40", value !== "all" && "border-foreground/25 bg-muted/50", className)}
-      >
-        {selected && <HugeiconsIcon icon={selected.icon} aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
-        <span className="min-w-0 flex-1 text-left"><SelectValue>{selected?.label}</SelectValue></span>
-      </SelectTrigger>
-      <SelectContent position="popper" align="start" sideOffset={6} className="w-64 max-w-[calc(100vw-2rem)] rounded-xl p-1">
-        <SelectGroup>
-          <SelectLabel className="px-2 pb-1.5 text-[11px] text-muted-foreground">{label}</SelectLabel>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value} className="rounded-lg py-2.5 pr-8">
-              <span className="flex items-start gap-2.5">
-                <HugeiconsIcon icon={option.icon} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium">{option.label}</span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{option.description}</span>
-                </span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
-  );
+function SyncLine({ status, failed }: { status: FlowStatus | undefined; failed: boolean }) {
+	if (failed) return <>Sync status unavailable</>;
+	if (status?.importState === "offline") return <>Offline · showing saved trades</>;
+	if (status?.importState === "failed") return <>Sync needs attention</>;
+	if (status && status.sourceRevision > status.projectionRevision)
+		return (
+			<>
+				<span className="sr-only">Updating your journal…</span>
+				<Progress value={null} aria-label="Updating your journal" className="h-1.5 w-36" />
+			</>
+		);
+	return <>{status?.enabled ? "Trades sync automatically" : "Automatic journal is not enabled yet"}</>;
 }
 
 export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
-  const fetcher = useGraphQL();
-  const platform = useTradstryPlatform();
-  const cache = useQueryClient();
-  const owner = platform.user.email;
-  const base = ["journal-flow", owner, workspaceId];
-  const status = useQuery({ queryKey: [...base, "status"], queryFn: () => flow.status(fetcher, workspaceId), refetchInterval: 8_000 });
-  const trades = useQuery({ queryKey: [...base, "trades"], queryFn: () => flow.trades(fetcher, workspaceId), refetchInterval: 15_000 });
-  const route=platform.pathname.split("?")[0]??platform.pathname;
-  const [params]=React.useState(()=>new URLSearchParams(typeof window==="undefined"?"":window.location.search));
-  const [search, setSearch] = React.useState(params.get("symbol")??"");
-  const [lifecycle, setLifecycle] = React.useState(params.get("status")??"all");
-  const [reviewState, setReviewState] = React.useState("all");
-  const [selected, setSelected] = React.useState<string[]>([]);
-  const [grouping, setGrouping] = React.useState(false);
-  const [openedTrade, setOpenedTrade] = React.useState<{ id: string; route: string } | null>(null);
-  const returnFocus = React.useRef<HTMLButtonElement | null>(null);
-  const searchInput = React.useRef<HTMLInputElement>(null);
-  const entryId = route.split("/dashboard/journal/")[1]?.split("/")[0];
-  const linkedEntryId = entryId && entryId !== "review" ? decodeURIComponent(entryId) : null;
-  const modalEntryId = openedTrade?.route === route ? openedTrade.id : linkedEntryId;
-  const view = entryId === "review" ? "review" : "trades";
-  const entries = trades.data ?? [];
-  const modalTrade = entries.find((trade) => trade.id === modalEntryId);
-  const filtered = entries.filter((trade) => (!search || `${trade.symbol} ${trade.symbolName}`.toLowerCase().includes(search.toLowerCase())) && (lifecycle === "all" || trade.lifecycleState === lifecycle) && (reviewState === "all" || trade.reviewState === reviewState));
-  const reload = async () => { await cache.invalidateQueries({ queryKey: base }); };
-  function openTrade(id: string, trigger: HTMLButtonElement | null) {
-    returnFocus.current = trigger;
-    setOpenedTrade({ id, route });
-  }
-  function closeTrade() {
-    setOpenedTrade(null);
-    if (linkedEntryId) platform.navigate("/dashboard/journal");
-  }
-  return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 md:p-5">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <Tabs value={view} onValueChange={(value) => { platform.navigate(value==="review"?"/dashboard/journal/review":"/dashboard/journal"); }}>
-          <TabsList><TabsTrigger value="trades">Trades</TabsTrigger><TabsTrigger value="review">Review</TabsTrigger></TabsList>
-        </Tabs>
-        {view === "trades" && <div className="ml-auto flex items-center gap-4">
-        <div className="hidden text-xs text-muted-foreground md:block" aria-live="polite">
-          {status.isError ? "Sync status unavailable" : status.data?.importState === "offline" ? "Offline · showing saved trades" : status.data?.importState === "failed" ? "Sync needs attention" : status.data && status.data.sourceRevision > status.data.projectionRevision ? (
-            <>
-              <span className="sr-only">Updating your journal…</span>
-              <Progress value={null} aria-label="Updating your journal" className="h-1.5 w-36" />
-            </>
-          ) : status.data?.enabled ? "Trades sync automatically" : "Automatic journal is not enabled yet"}
-        </div>
-        <CreateTrades trigger={<Button variant="outline" size="sm">Add a manual trade</Button>} />
-        </div>}
-      </div>
-      {view === "trades" && status.data && (!status.data.enabled || entries.some((trade) => trade.lifecycleState === "incomplete")) && <JournalSetup workspaceId={workspaceId} enabled={status.data.enabled} onDone={reload}/>}
-      {view === "trades" ? <>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input ref={searchInput} aria-label="Search trades" placeholder="Search symbol or company…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-9 max-w-xs" />
-          <StatusFilter label="Trade status" value={lifecycle} onChange={setLifecycle} options={TRADE_STATUSES} className="min-w-44" />
-          <StatusFilter label="Review status" value={reviewState} onChange={setReviewState} options={REVIEW_STATUSES} className="min-w-48" />
-          {(lifecycle !== "all" || reviewState !== "all") && (
-            <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-muted-foreground" aria-label="Reset both status filters" title="Reset both status filters" onClick={() => { setLifecycle("all"); setReviewState("all"); }}>Reset</Button>
-          )}
-          {selected.length > 1 && <Button size="sm" variant="outline" disabled={!status.data?.enabled} onClick={() => setGrouping(true)}>Merge {selected.length} trades</Button>}
-          <span role="status" className="ml-auto text-xs text-muted-foreground">{filtered.length} trades</span>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
-          {trades.isLoading ? <p className="p-8 text-center text-sm text-muted-foreground">Loading your trades…</p> : trades.isError ? <div className="p-8 text-center"><p>We couldn’t load your journal.</p><Button className="mt-3" variant="outline" onClick={() => void trades.refetch()}>Retry</Button></div> : filtered.length === 0 ? <div className="grid min-h-64 flex-1 place-content-center gap-3 p-8 text-center"><h2 className="font-medium">{entries.length ? "No trades match these filters" : "Your trading story starts here"}</h2><p className="max-w-sm text-sm text-muted-foreground">{entries.length ? "Try another symbol or clear the status filters." : "Connect your brokerage to bring in your executions, or add a trade yourself."}</p>{!entries.length && <Button variant="outline" onClick={() => platform.navigate("/dashboard/brokerage")}>Go to brokerage</Button>}</div> : <ScrollArea className="min-h-0 flex-1" orientation="both">
-            <table className="w-full min-w-[760px] text-sm"><thead className="sticky top-0 z-10 bg-muted/90 text-xs text-muted-foreground"><tr><th className="w-10 px-3 py-3"><span className="sr-only">Select</span></th><th className="px-3 py-3 text-left font-medium">Trade</th><th className="px-3 py-3 text-left font-medium">Date</th><th className="px-3 py-3 text-left font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Open quantity</th><th className="px-3 py-3 text-right font-medium">Realized net</th><th className="px-3 py-3 text-left font-medium">Review</th></tr></thead><tbody>
-              {filtered.map((trade) => <tr key={trade.id} className="cursor-pointer border-t transition-colors hover:bg-accent/50" onClick={(event) => openTrade(trade.id, event.currentTarget.querySelector<HTMLButtonElement>("[data-trade-open]"))}>
-                <td className="px-3 py-4" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${trade.symbol} trade`} checked={selected.includes(trade.id)} disabled={!trade.episodeId || trade.lifecycleState === "incomplete"} onChange={(event) => setSelected(event.target.checked ? [...selected, trade.id] : selected.filter((id) => id !== trade.id))} /></td>
-                <td className="px-3 py-4"><button type="button" data-trade-open aria-haspopup="dialog" className="text-left font-medium hover:underline focus-visible:outline-ring" onClick={(event) => { event.stopPropagation(); openTrade(trade.id, event.currentTarget); }}>{trade.symbol}</button><p className="mt-0.5 max-w-60 truncate text-xs text-muted-foreground">{trade.symbolName} · {trade.direction}</p></td>
-                <td className="px-3 py-4 text-muted-foreground">{trade.openDate ? tradeDate(trade.closeDate ?? trade.openDate, status.data?.timezone) : tradeSpan(trade, status.data?.timezone)}{!trade.openDate && trade.executionCount > 0 && <p className="mt-0.5 text-xs">{trade.executionCount} executions</p>}</td>
-                <td className="px-3 py-4"><span className={`rounded-md px-2 py-1 text-xs ${trade.lifecycleState === "incomplete" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{trade.lifecycleState === "incomplete" ? "Needs attention" : trade.lifecycleState === "open" ? "Open" : "Closed"}</span></td>
-                <td className="px-3 py-4 text-right tabular-nums">{trade.remainingQuantity ?? "—"}</td><td className={`px-3 py-4 text-right font-medium tabular-nums ${Number(trade.realizedNet) < 0 ? "text-rose-600" : Number(trade.realizedNet) > 0 ? "text-emerald-600" : ""}`}>{money(trade.realizedNet, trade.currency)}</td>
-                <td className="px-3 py-4 text-xs text-muted-foreground">{trade.reviewState === "reviewed" ? "Reviewed" : trade.reviewState === "outdated" ? "Results changed" : trade.reviewState === "in_progress" ? "Review in progress" : trade.lifecycleState === "open" ? "When it closes" : "Not reviewed"}</td>
-              </tr>)}
-            </tbody></table>
-          </ScrollArea>}
-        </div>
-      </> : null}
-      <Dialog open={!!modalEntryId} onOpenChange={(open) => { if (!open) closeTrade(); }}>
-        <DialogContent
-          className="flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[88rem]"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            const target = returnFocus.current?.isConnected ? returnFocus.current : searchInput.current;
-            target?.focus({ preventScroll: true });
-          }}
-        >
-          <DialogTitle className="sr-only">{modalTrade ? `${modalTrade.symbol} trade details` : "Trade details"}</DialogTitle>
-          <DialogDescription className="sr-only">View the chart, executions, review, notes, and history for this trade.</DialogDescription>
-          {modalEntryId && <TradeDetail key={`${workspaceId}:${modalEntryId}`} workspaceId={workspaceId} entryId={modalEntryId} inDialog onChanged={reload} />}
-        </DialogContent>
-      </Dialog>
-      <GroupingDialog open={grouping} onOpenChange={setGrouping} workspaceId={workspaceId} entries={entries.filter((trade) => selected.includes(trade.id))} mode="merge" onDone={async () => { setSelected([]); await reload(); }} />
-    </section>
-  );
+	const nav = useJournalLocation();
+	const status = useJournalStatus(workspaceId, 8_000);
+	const trades = useJournalTrades(workspaceId);
+	const attention = useJournalAttention(workspaceId);
+	const refresh = useRefreshJournal(workspaceId);
+	const timezone = status.data?.timezone;
+	const needsHistoryCheck = (trades.data ?? []).some((trade) => trade.lifecycleState === "incomplete");
+	const showSetup = !!status.data && (!status.data.enabled || (needsHistoryCheck && nav.view !== "today"));
+	return (
+		<JournalNavigationProvider value={nav}>
+			<Tabs
+				value={nav.view}
+				onValueChange={(view) => nav.goTo(view as JournalView)}
+				className="min-h-0 min-w-0 flex-1 gap-4 p-3 md:p-5"
+			>
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+					<TabsList variant="line" aria-label="Journal views">
+						<TabsTrigger value="today">Today</TabsTrigger>
+						<TabsTrigger value="trades">Trades</TabsTrigger>
+						<TabsTrigger value="attention">
+							Needs attention
+							{attention.count > 0 && <Badge className="ml-1">{attention.count}</Badge>}
+						</TabsTrigger>
+					</TabsList>
+					<div className="ml-auto flex items-center gap-4">
+						<div className="hidden text-xs text-muted-foreground sm:block" aria-live="polite">
+							<SyncLine status={status.data} failed={status.isError} />
+						</div>
+						<CreateTrades trigger={<Button variant="outline" size="sm">Add a manual trade</Button>} />
+					</div>
+				</div>
+				{showSetup && (
+					<div className="shrink-0">
+						<JournalSetup workspaceId={workspaceId} enabled={status.data!.enabled} onDone={refresh} />
+					</div>
+				)}
+				<div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+					<TabsContent value="today">
+						<JournalToday workspaceId={workspaceId} timezone={timezone} dateParam={nav.params.get("date")} />
+					</TabsContent>
+					<TabsContent value="trades">
+						<JournalTrades
+							workspaceId={workspaceId}
+							timezone={timezone}
+							enabled={!!status.data?.enabled}
+							symbolParam={nav.params.get("symbol")}
+							statusParam={nav.params.get("status")}
+						/>
+					</TabsContent>
+					<TabsContent value="attention">
+						<JournalAttention workspaceId={workspaceId} attention={attention} />
+					</TabsContent>
+				</div>
+			</Tabs>
+			<TradeSheet workspaceId={workspaceId} />
+		</JournalNavigationProvider>
+	);
 }

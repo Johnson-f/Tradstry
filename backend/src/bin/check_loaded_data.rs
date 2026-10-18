@@ -10,7 +10,6 @@ use anyhow::{Context, Result};
 use sqlx::Row;
 use sqlx::postgres::PgPoolOptions;
 
-use tradstry_backend::service::brokerage::pending_trades;
 use tradstry_backend::service::db::schema::tables::{
     brokerage_table, journal_table, tags_table, workspaces_table,
 };
@@ -84,11 +83,6 @@ async fn main() -> Result<()> {
                 t.transaction_type, t.symbol, t.units, t.price, t.trade_date
             );
         }
-
-        // pending trades lifecycle assembly over the real fills
-        let pending =
-            pending_trades::compute_pending_trades(&pool, &user_id, &workspace_id).await?;
-        println!("pending_trades: {}", pending.len());
     }
 
     // tags

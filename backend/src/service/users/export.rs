@@ -57,6 +57,22 @@ const USER_SCOPED: &[(&str, &str)] = &[
         "SELECT to_jsonb(t) FROM journal_review_drafts t WHERE t.user_id=$1",
     ),
     (
+        "journal_action_notes",
+        "SELECT to_jsonb(t) FROM journal_action_notes t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_action_joins",
+        "SELECT to_jsonb(t) FROM journal_action_joins t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_review_skips",
+        "SELECT to_jsonb(t) FROM journal_review_skips t WHERE t.user_id=$1",
+    ),
+    (
+        "journal_opening_positions",
+        "SELECT to_jsonb(t) FROM journal_opening_positions t WHERE t.user_id=$1",
+    ),
+    (
         "journal_changes",
         "SELECT to_jsonb(t) FROM journal_changes t WHERE t.user_id=$1",
     ),

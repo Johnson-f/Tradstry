@@ -28,6 +28,8 @@ export interface PrinciplePickerProps {
   /** Currently ticked principle ids. */
   value: string[];
   onChange: (ids: string[]) => void;
+  /** Use a single quiet line inside compact trade-detail forms. */
+  emptyState?: "default" | "compact";
   className?: string;
 }
 
@@ -43,6 +45,7 @@ export function PrinciplePicker({
   selectedPlaybookId,
   value,
   onChange,
+  emptyState = "default",
   className,
 }: PrinciplePickerProps) {
   const [open, setOpen] = React.useState(false);
@@ -80,6 +83,13 @@ export function PrinciplePicker({
   }
 
   if (applicable.length === 0) {
+    if (emptyState === "compact") {
+      return (
+        <p className="flex min-h-8 items-center text-xs text-muted-foreground">
+          {all.length === 0 ? "No principles added yet" : "No matching principles"}
+        </p>
+      );
+    }
     return (
       <Empty
         className={cn(

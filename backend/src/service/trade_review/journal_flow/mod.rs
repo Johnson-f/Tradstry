@@ -1,12 +1,16 @@
+pub mod action_notes;
+pub mod attention;
 pub mod backfill;
 pub mod chart;
 mod commands;
 pub mod duplicates;
 pub mod grouping;
+mod holdings;
 pub mod opening;
 mod projection;
 pub mod reflection;
 mod results;
+pub mod review_outcome;
 pub mod sessions;
 mod source;
 mod storage;
@@ -58,6 +62,10 @@ pub struct JournalTrade {
     pub bought_quantity: Option<String>,
     pub sold_quantity: Option<String>,
     pub starting_position: bool,
+    /// An entry note exists on the trade's first execution.
+    pub has_entry_note: bool,
+    /// Net result over the risk to the planned stop, once the trade is closed.
+    pub realized_r: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
@@ -78,6 +86,16 @@ pub async fn seal_import(pool: &PgPool, user: &str, workspace: &str) -> Result<(
         ON CONFLICT(workspace_id) DO UPDATE SET requested_revision=EXCLUDED.requested_revision,state=CASE WHEN journal_projection_jobs.state='running' THEN 'running' ELSE 'pending' END,available_at=now()")
         .bind(workspace).bind(user).execute(&mut *tx).await?;
     tx.commit().await?;
+    Ok(())
+}
+
+/// A new holdings snapshot can confirm or question where a history starts, so
+/// the trades are rebuilt even when no execution changed.
+pub async fn holdings_synced(pool: &PgPool, user: &str, workspace: &str) -> Result<()> {
+    sqlx::query("INSERT INTO journal_projection_jobs(workspace_id,user_id,requested_revision)
+        SELECT workspace_id,user_id,source_revision FROM journal_workspace_state WHERE workspace_id=$1 AND user_id=$2 AND enabled
+        ON CONFLICT(workspace_id) DO UPDATE SET state=CASE WHEN journal_projection_jobs.state='running' THEN 'running' ELSE 'pending' END,available_at=now()")
+        .bind(workspace).bind(user).execute(pool).await?;
     Ok(())
 }
 
@@ -194,7 +212,11 @@ async fn query_trades_connection(
     let rows = sqlx::query("SELECT e.id,e.workspace_id,e.source_kind,e.episode_id,e.symbol,e.symbol_name,e.trade_type,coalesce(e.currency,(SELECT currency FROM workspaces WHERE id=e.workspace_id)) AS currency,e.open_date,e.entry_price::text,e.exit_price::text,e.position_size::text,e.contract_multiplier::text,e.record_version,e.materialized_revision,e.issue_json->>'code' AS issue_code,e.issue_json->>'message' AS issue_message,coalesce(e.issue_json->'possible_duplicates','[]') AS possible_duplicates,e.retired_at,e.successor_id,e.playbook_id,e.lifecycle_state,e.outcome,e.remaining_quantity,COALESCE(e.realized_net,CASE WHEN e.source_kind='manual' THEN e.position_size::text::numeric*e.entry_price::text::numeric*e.total_pl::text::numeric/100*e.contract_multiplier::text::numeric END) AS realized_net,e.fees_paid,e.close_date,x.first_execution_at,x.last_execution_at,coalesce(x.execution_count,0)::int AS execution_count,x.bought_quantity,x.sold_quantity,
         (SELECT coalesce(jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color)),'[]') FROM trade_tags link JOIN tags t ON t.id=link.tag_id AND t.user_id=e.user_id WHERE link.journal_entry_id=e.id AND t.deleted_at IS NULL) AS tags,
         EXISTS(SELECT 1 FROM trade_episode_fills sf WHERE sf.episode_id=e.episode_id AND sf.opening_position_id IS NOT NULL) AS starting_position,
-        CASE WHEN r.id IS NULL THEN CASE WHEN (e.notes ~ '[^[:space:]]'
+        en.id IS NOT NULL AS has_entry_note,
+        CASE WHEN e.lifecycle_state='closed' AND e.realized_net IS NOT NULL AND planned.stop>0 AND planned.entry>0
+              AND ((e.trade_type='long' AND planned.stop<planned.entry) OR (e.trade_type='short' AND planned.stop>planned.entry))
+            THEN e.realized_net/(abs(planned.entry-planned.stop)*e.position_size::text::numeric*e.contract_multiplier::text::numeric) END AS realized_r,
+        CASE WHEN r.id IS NULL THEN CASE WHEN EXISTS(SELECT 1 FROM journal_review_skips k WHERE k.entry_id=e.id AND k.revoked_at IS NULL AND k.reason<>'review_later') THEN 'skipped' WHEN (e.notes ~ '[^[:space:]]'
           OR regexp_replace(e.mistakes,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
           OR regexp_replace(e.entry_tactics,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
           OR regexp_replace(e.edges_spotted,'[[:space:]]','','g') NOT IN ('','[]','{}','null')
@@ -205,6 +227,9 @@ async fn query_trades_connection(
           OR EXISTS(SELECT 1 FROM trade_principle_violations v WHERE v.journal_entry_id=e.id)) IS TRUE THEN 'in_progress' ELSE 'unreviewed' END
           WHEN r.entry_revision=e.materialized_revision AND r.context_revision=coalesce(c.record_version,0) THEN 'reviewed' ELSE 'outdated' END AS review_state
         FROM journal_entries e LEFT JOIN journal_trade_context c ON c.entry_id=e.id
+        LEFT JOIN LATERAL (SELECT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id) AS anchor FROM trade_episode_fills f WHERE f.episode_id=e.episode_id AND f.role='entry' ORDER BY f.executed_at,f.allocation_order,f.id LIMIT 1) first_entry ON true
+        LEFT JOIN journal_action_notes en ON en.user_id=e.user_id AND en.workspace_id=e.workspace_id AND en.kind='plan' AND en.anchor_role='entry' AND en.anchor_execution_id=first_entry.anchor
+        LEFT JOIN LATERAL (SELECT coalesce(en.stop_price,CASE WHEN c.stop_state='price' THEN c.stop_price END) AS stop,e.entry_price::text::numeric AS entry) planned ON true
         LEFT JOIN journal_review_drafts d ON d.entry_id=e.id AND d.user_id=e.user_id AND d.workspace_id=e.workspace_id
         LEFT JOIN LATERAL (SELECT id,entry_revision,context_revision FROM journal_trade_reviews WHERE entry_id=e.id AND user_id=e.user_id AND workspace_id=e.workspace_id ORDER BY review_version DESC LIMIT 1) r ON true
         LEFT JOIN LATERAL (SELECT count(*) AS execution_count,min(t) AS first_execution_at,max(t) AS last_execution_at,sum(q) FILTER (WHERE buy) AS bought_quantity,sum(q) FILTER (WHERE NOT buy) AS sold_quantity FROM (
@@ -262,6 +287,10 @@ async fn query_trades_connection(
                 bought_quantity: decimal_string(&row, "bought_quantity")?,
                 sold_quantity: decimal_string(&row, "sold_quantity")?,
                 starting_position: row.try_get("starting_position")?,
+                has_entry_note: row.try_get("has_entry_note")?,
+                realized_r: row
+                    .try_get::<Option<rust_decimal::Decimal>, _>("realized_r")?
+                    .map(|r| r.round_dp(2).normalize().to_string()),
             })
         })
         .collect()

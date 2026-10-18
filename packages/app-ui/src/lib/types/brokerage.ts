@@ -243,34 +243,3 @@ export interface BrokerageConnectionAccount {
 	linkedWorkspaceName: string | null;
 	current: boolean;
 }
-
-export interface PendingTrade {
-	id: string;
-	episodeId: string;
-	symbol: string;
-	direction: "long" | "short";
-	status: "open" | "closed";
-	openDate: string;
-	closeDate: string | null;
-	entryUnits: number;
-	avgEntryPrice: number;
-	avgExitPrice: number | null;
-	realizedPnl: number | null;
-	transactionIds: string[];
-	fillCount: number;
-	isFullyLinked: boolean;
-	isPartiallyLinked: boolean;
-	/** 1 for equities; 100 (or 10 for minis) for option contracts. */
-	multiplier: number;
-	isOption: boolean;
-	underlying: string | null;
-	/** "CALL" | "PUT" for options; null for equities. */
-	optionKind: string | null;
-	strike: number | null;
-	expiration: string | null;
-	/** Human-readable contract name for options, e.g. "AAPL $150 Call 2026-01-17". */
-	symbolName: string | null;
-	requiresManualGrouping: boolean;
-	blockReason: string | null;
-	isManuallyGrouped: boolean;
-}

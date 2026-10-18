@@ -73,3 +73,12 @@ export function tradeSpan(trade: { openDate: string | null; closeDate: string | 
   const last = end ? tradeDate(end, timezone) : null;
   return last && last !== first ? `${first} → ${last}` : first;
 }
+export function formatR(value: string | null) {
+  const amount = value === null ? NaN : Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  return `${amount > 0 ? "+" : amount < 0 ? "−" : ""}${Math.abs(amount).toFixed(1)}R`;
+}
+/** A calendar day like 2026-04-06, written as "Mon 6 Apr". The day is read as-is, never shifted by a time zone. */
+export function dayLabel(date: string) {
+  return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+}

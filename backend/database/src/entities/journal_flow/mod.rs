@@ -1,4 +1,6 @@
 pub mod brokerage_transaction_versions;
+pub mod journal_action_joins;
+pub mod journal_action_notes;
 pub mod journal_changes;
 pub mod journal_grouping_feedback;
 pub mod journal_grouping_operations;
@@ -8,6 +10,7 @@ pub mod journal_opening_positions;
 pub mod journal_projection_jobs;
 pub mod journal_review_drafts;
 pub mod journal_review_sessions;
+pub mod journal_review_skips;
 pub mod journal_trade_context;
 pub mod journal_trade_context_events;
 pub mod journal_trade_reviews;

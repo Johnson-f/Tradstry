@@ -17,6 +17,8 @@ mod m20261015_000014_drop_clerk_uuid;
 mod m20261016_000015_manual_trade_identity;
 mod m20261016_000016_linked_trade_duplicates;
 mod m20261017_000017_opening_positions;
+mod m20261017_000018_trade_actions;
+mod m20261018_000019_orphan_acknowledged;
 
 pub struct Migrator;
 
@@ -41,6 +43,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261016_000015_manual_trade_identity::Migration),
             Box::new(m20261016_000016_linked_trade_duplicates::Migration),
             Box::new(m20261017_000017_opening_positions::Migration),
+            Box::new(m20261017_000018_trade_actions::Migration),
+            Box::new(m20261018_000019_orphan_acknowledged::Migration),
         ]
     }
 }

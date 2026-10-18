@@ -20,10 +20,6 @@ const historyKey = (workspaceId: string) =>
   ["position-calculator-history", workspaceId] as const;
 const plansKey = (workspaceId: string) =>
   ["position-calculator-plans", workspaceId] as const;
-const tradeReviewKey = (workspaceId: string) =>
-  ["trade-review-inbox", workspaceId] as const;
-const tradeReviewPreviewKey = (episodeId: string, planId: string) =>
-  ["trade-review-preview", episodeId, planId] as const;
 const manualExecutionsKey = (workspaceId: string) =>
   ["manual-execution-claims", workspaceId] as const;
 
@@ -64,88 +60,6 @@ export function useDismissManualExecution() {
       queryClient.invalidateQueries({
         queryKey: manualExecutionsKey(workspace?.id ?? ""),
       }),
-  });
-}
-
-export function useTradeReviewInbox(enabled = true) {
-  const { isLoaded, isSignedIn } = useAuth();
-  const fetcher = useGraphQL();
-  const workspace = useActiveWorkspace();
-  return useQuery({
-    queryKey: tradeReviewKey(workspace?.id ?? ""),
-    queryFn: () => positionCalculatorService.fetchTradeReviewInbox(fetcher, workspace!.id),
-    enabled: enabled && isLoaded && isSignedIn && !!workspace,
-    refetchInterval: 15_000,
-  });
-}
-
-export function useTradeReviewPreview(
-  episodeId: string | undefined,
-  planId: string | undefined,
-) {
-  const { isLoaded, isSignedIn } = useAuth();
-  const fetcher = useGraphQL();
-  return useQuery({
-    queryKey: tradeReviewPreviewKey(episodeId ?? "", planId ?? ""),
-    queryFn: () => {
-      if (!episodeId || !planId) {
-        throw new Error("A broker trade and position plan are required");
-      }
-      return positionCalculatorService.fetchTradeReviewPreview(
-        fetcher,
-        episodeId,
-        planId,
-      );
-    },
-    enabled: isLoaded && isSignedIn && !!episodeId && !!planId,
-  });
-}
-
-export function useRequestPlanExecutionCheck() {
-  const fetcher = useGraphQL();
-  const queryClient = useQueryClient();
-  const workspace = useActiveWorkspace();
-  return useMutation({
-    mutationFn: (planId: string) => positionCalculatorService.requestExecutionCheck(fetcher, planId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: tradeReviewKey(workspace?.id ?? "") }),
-  });
-}
-
-export function useConfirmTradeMatch() {
-  const fetcher = useGraphQL();
-  const queryClient = useQueryClient();
-  const workspace = useActiveWorkspace();
-  return useMutation({
-    mutationFn: ({ episodeId, planId }: { episodeId: string; planId: string }) =>
-      positionCalculatorService.confirmTradeMatch(fetcher, episodeId, planId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tradeReviewKey(workspace?.id ?? "") });
-      queryClient.invalidateQueries({ queryKey: manualExecutionsKey(workspace?.id ?? "") });
-    },
-  });
-}
-
-export function useFinalizeTradeReview() {
-  const fetcher = useGraphQL();
-  const queryClient = useQueryClient();
-  const workspace = useActiveWorkspace();
-  return useMutation({
-    mutationFn: positionCalculatorService.finalizeTradeReview.bind(null, fetcher),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: tradeReviewKey(workspace?.id ?? "") }),
-  });
-}
-
-export function usePublishTradeReview() {
-  const fetcher = useGraphQL();
-  const queryClient = useQueryClient();
-  const workspace = useActiveWorkspace();
-  return useMutation({
-    mutationFn: (matchId: string) => positionCalculatorService.publishTradeReview(fetcher, matchId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tradeReviewKey(workspace?.id ?? "") });
-      queryClient.invalidateQueries({ queryKey: historyKey(workspace?.id ?? "") });
-      queryClient.invalidateQueries({ queryKey: plansKey(workspace?.id ?? "") });
-    },
   });
 }
 

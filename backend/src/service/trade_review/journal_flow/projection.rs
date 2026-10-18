@@ -370,6 +370,7 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
         .bind(&snapshot.workspace)
         .execute(&mut *tx)
         .await?;
+    super::action_notes::refresh(&mut tx, &snapshot.user, &snapshot.workspace).await?;
     sqlx::query("UPDATE journal_workspace_state SET projection_revision=$3,last_error=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2")
         .bind(&snapshot.workspace).bind(&snapshot.user).bind(snapshot.source_revision).execute(&mut *tx).await?;
     sqlx::query("UPDATE journal_projection_jobs SET state='complete',lease_owner=NULL,lease_until=NULL,last_error=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2 AND lease_owner=$3")
@@ -694,7 +695,7 @@ async fn record_unassigned_issue(
     let id = existing.unwrap_or_else(|| crate::ids::new_uuid_v7().to_string());
     let duplicates:Vec<String>=sqlx::query_scalar("SELECT id FROM journal_entries WHERE user_id=$1 AND workspace_id=$2 AND source_kind='manual' AND deleted_at IS NULL AND retired_at IS NULL AND journal_trades_overlap(ARRAY[symbol],open_date,close_date,ARRAY[$3],$4,$5) ORDER BY id")
         .bind(&snapshot.user).bind(&snapshot.workspace).bind(&group.symbol).bind(group.fills.iter().map(|fill|fill.executed_at).min()).bind(group.fills.iter().map(|fill|fill.executed_at).max()).fetch_all(&mut *connection).await?;
-    let issue = json!({"code":"incomplete_history","instrument_key":group.key,"source_ids":group.source_ids,"possible_duplicates":duplicates,"message":group.problem().unwrap_or_else(|| "Confirm opening inventory or grouping before calculating this trade".into())});
+    let issue = json!({"code":"incomplete_history","instrument_key":group.key,"source_ids":group.source_ids,"possible_duplicates":duplicates,"message":group.problem().or_else(|| group.holdings_message()).unwrap_or_else(|| "Confirm opening inventory or grouping before calculating this trade".into())});
     sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,outcome,currency,issue_json,materialized_revision,record_version)
         VALUES ($1,$2,$3,$4,$5,'unknown','broker','incomplete','unknown',$6,$7,$8,1)
         ON CONFLICT(id) DO UPDATE SET issue_json=EXCLUDED.issue_json,materialized_revision=journal_entries.materialized_revision+1,record_version=journal_entries.record_version+1,updated_at=now()")

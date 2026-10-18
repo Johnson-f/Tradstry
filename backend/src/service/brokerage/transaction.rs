@@ -604,20 +604,6 @@ async fn sync_transactions_inner(
     )
     .await?;
 
-    if report.mapped_count > 0
-        && let Err(e) = crate::service::db::schema::tables::trade_review_table::rebuild_workspace(
-            pool,
-            internal_user_id,
-            internal_account_id,
-        )
-        .await
-    {
-        // Trade review derivation is recoverable from the immutable broker
-        // transactions, so it must not turn a successful brokerage sync into
-        // a failure. The inbox query also retries the rebuild.
-        log::warn!("trade review: rebuild after transaction sync failed: {e}");
-    }
-
     Ok(report)
 }
 
@@ -921,6 +907,12 @@ pub async fn sync_holdings_if_advanced(
             internal_account_id,
             snaptrade_account_id,
             remote_mark,
+        )
+        .await?;
+        crate::service::trade_review::journal_flow::holdings_synced(
+            pool,
+            internal_user_id,
+            internal_account_id,
         )
         .await?;
     }

@@ -15,9 +15,10 @@ use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-use crate::service::brokerage::pending_trades::realized_pnl;
 use crate::service::db::schema::tables::journal_table::{self, JournalEntry};
-use crate::service::db::schema::tables::trade_review_table::{self, StoredEpisode};
+use crate::service::trade_review::stored::{
+    self, StoredEpisode, direction_str, realized_pnl, weighted_price,
+};
 use crate::service::trade_review::types::ExecutionInstrument;
 
 /// What a report covers besides the trades it counted.
@@ -319,7 +320,7 @@ pub async fn load_scoped(
             .iter()
             .filter_map(|source| Some((source.episode_id.as_deref()?, source.id.as_str())))
             .collect();
-        for episode in trade_review_table::list_workspace_episodes(pool, user, workspace).await? {
+        for episode in stored::list_workspace_episodes(pool, user, workspace).await? {
             if let Some(entry) = behind.get(episode.id.as_str()) {
                 set.episodes.insert((*entry).to_string(), episode);
             }
@@ -336,12 +337,7 @@ pub async fn load_scoped(
         set.coverage.needs_review = attention.needs_review;
         set.coverage.possible_duplicates = attention.possible_duplicates;
     } else {
-        let mut episodes =
-            trade_review_table::list_workspace_episodes(pool, user, workspace).await?;
-        if episodes.is_empty() {
-            trade_review_table::rebuild_workspace(pool, user, workspace).await?;
-            episodes = trade_review_table::list_workspace_episodes(pool, user, workspace).await?;
-        }
+        let episodes = stored::list_workspace_episodes(pool, user, workspace).await?;
         let journaled = journaled_episodes(pool, user, workspace, &episodes).await?;
         let shared = shared_transactions(&episodes);
         for episode in &episodes {
@@ -371,7 +367,7 @@ pub async fn load_scoped(
 
 /// Every stop commitment for the counted trades: calculator plans matched to
 /// their broker history, dated by the plan's last save, and stops recorded in
-/// the journal, dated when they were recorded.
+/// the journal or in an entry note, dated when they were recorded.
 async fn stop_candidates(
     pool: &PgPool,
     user: &str,
@@ -426,6 +422,26 @@ async fn stop_candidates(
                     source: StopSource::Journal,
                 });
             }
+        }
+        let noted: Vec<(String, DateTime<Utc>, f64)> = sqlx::query_as(
+            "SELECT j.id,n.updated_at,n.stop_price::float8 FROM journal_entries j
+             JOIN LATERAL (SELECT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id) AS anchor FROM trade_episode_fills f
+                 WHERE f.episode_id=j.episode_id AND f.role='entry' ORDER BY f.executed_at,f.allocation_order,f.id LIMIT 1) first ON true
+             JOIN journal_action_notes n ON n.user_id=j.user_id AND n.workspace_id=j.workspace_id AND n.kind='plan'
+                 AND n.anchor_role='entry' AND n.anchor_execution_id=first.anchor AND n.stop_price IS NOT NULL
+             WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.id=ANY($3)",
+        )
+        .bind(user)
+        .bind(workspace)
+        .bind(&ids)
+        .fetch_all(pool)
+        .await?;
+        for (entry, at, price) in noted {
+            candidates.entry(entry).or_default().push(StopCandidate {
+                at,
+                price,
+                source: StopSource::Journal,
+            });
         }
     }
     Ok(candidates)
@@ -570,10 +586,9 @@ fn episode_entry(episode: &StoredEpisode, user: &str) -> Result<JournalEntry> {
     let draft = &episode.draft;
     let closed_at = draft.closed_at.context("the episode is still open")?;
     let entry_quantity = draft.entry_quantity();
-    let entry_price =
-        trade_review_table::weighted_price(draft.entry_allocations(), entry_quantity)?;
+    let entry_price = weighted_price(draft.entry_allocations(), entry_quantity)?;
     let exit_quantity: Decimal = draft.exit_allocations().map(|fill| fill.quantity).sum();
-    let exit_price = trade_review_table::weighted_price(draft.exit_allocations(), exit_quantity)?;
+    let exit_price = weighted_price(draft.exit_allocations(), exit_quantity)?;
     let (symbol, multiplier) = match &draft.instrument {
         ExecutionInstrument::Equity { symbol } => (symbol.clone(), Decimal::ONE),
         ExecutionInstrument::Option {
@@ -584,7 +599,7 @@ fn episode_entry(episode: &StoredEpisode, user: &str) -> Result<JournalEntry> {
     };
     let format = |at: DateTime<Utc>| at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let (open_date, close_date) = (format(draft.opened_at), format(closed_at));
-    let trade_type = trade_review_table::direction_str(draft.direction);
+    let trade_type = direction_str(draft.direction);
     let entry_price = entry_price
         .to_f64()
         .context("entry price cannot be represented")?;

@@ -282,7 +282,7 @@ export function CreateTrades({
           )}
         </DialogTrigger>
       ) : null}
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden sm:max-w-3xl">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden max-sm:top-auto max-sm:bottom-0 max-sm:max-w-full max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-3xl">
         <form
           onSubmit={handleSubmit}
           className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-4 overflow-hidden"

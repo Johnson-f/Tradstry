@@ -18,11 +18,19 @@ import type { JournalEntry } from "@tradstry/app-ui/lib/types/journal";
 
 interface DeleteTradesProps {
   trade: JournalEntry;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function DeleteTrades({ trade }: DeleteTradesProps) {
+export function DeleteTrades({
+  trade,
+  open: controlledOpen,
+  onOpenChange,
+}: DeleteTradesProps) {
   const deleteTrade = useDeleteJournalEntry();
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [error, setError] = React.useState("");
 
   async function handleDelete() {
@@ -41,20 +49,22 @@ export function DeleteTrades({ trade }: DeleteTradesProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-        >
-          <HugeiconsIcon
-            icon={Delete02Icon}
-            strokeWidth={2}
-            className="size-4"
-          />
-          <span className="sr-only">Delete trade</span>
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined ? (
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            <HugeiconsIcon
+              icon={Delete02Icon}
+              strokeWidth={2}
+              className="size-4"
+            />
+            <span className="sr-only">Delete trade</span>
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete trade</DialogTitle>

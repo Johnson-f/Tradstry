@@ -588,7 +588,7 @@ export function Notebook() {
                 : "Open linked trade";
               return (
                 <Button key={id} type="button" variant="outline" size="sm"
-                  onClick={() => platform.navigate("/dashboard/journal/" + encodeURIComponent(id))}>
+                  onClick={() => platform.navigate("/dashboard/journal/trades?trade=" + encodeURIComponent(id))}>
                   {label}
                 </Button>
               );

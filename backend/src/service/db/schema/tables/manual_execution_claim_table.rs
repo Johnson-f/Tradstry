@@ -2,13 +2,11 @@ use anyhow::{Context, Result, anyhow, ensure};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 
 use crate::service::db::error::is_unique_violation;
 use crate::service::db::schema::tables::position_calculator_plans_table;
 use crate::service::db::{client::sea_orm_connection, entities::trading::manual_execution_claims};
-use crate::service::trade_review::reconcile_tranches;
-use crate::service::trade_review::types::{FillAllocation, FillRole, PlanTranche};
 
 #[derive(Debug, Clone)]
 pub struct ManualExecutionClaim {
@@ -147,126 +145,4 @@ pub async fn dismiss_claim(pool: &PgPool, user_id: &str, id: &str) -> Result<boo
     .await?
     .rows_affected()
         == 1)
-}
-
-/// Reconciles only manual claims whose planned tranche allocation is covered
-/// by the confirmed episode's broker-derived entry quantity. Manual claims do
-/// not contribute any quantity or price to the broker review calculation.
-pub async fn reconcile_for_confirmed_match(
-    pool: &PgPool,
-    user_id: &str,
-    match_id: &str,
-    episode_id: &str,
-    plan_id: &str,
-) -> Result<usize> {
-    sqlx::query(
-        "UPDATE manual_execution_claims
-         SET status='pending',reconciled_match_id=NULL,updated_at=now()
-         WHERE user_id=$1 AND reconciled_match_id=$2",
-    )
-    .bind(user_id)
-    .bind(match_id)
-    .execute(pool)
-    .await?;
-    let plan = position_calculator_plans_table::find_plan(pool, plan_id, user_id)
-        .await?
-        .ok_or_else(|| anyhow!("plan not found"))?;
-    let rows = sqlx::query(
-        "SELECT coalesce(f.brokerage_transaction_id,'opening:'||f.opening_position_id),f.quantity,f.price,f.fee,f.executed_at
-         FROM trade_episode_fills f
-         JOIN trade_episodes e ON e.id=f.episode_id
-         WHERE f.episode_id=$1 AND f.role='entry' AND e.user_id=$2
-         ORDER BY f.executed_at,f.brokerage_transaction_id",
-    )
-    .bind(episode_id)
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
-    let entry_fills = rows
-        .into_iter()
-        .map(|row| {
-            Ok(FillAllocation {
-                transaction_id: row.try_get(0)?,
-                role: FillRole::Entry,
-                quantity: row.try_get(1)?,
-                price: row.try_get(2)?,
-                fee: row.try_get(3)?,
-                executed_at: row.try_get(4)?,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let tranches = plan
-        .tranches
-        .iter()
-        .enumerate()
-        .map(|(order, tranche)| {
-            Ok(PlanTranche {
-                id: tranche.id.clone(),
-                order,
-                quantity: tranche
-                    .shares
-                    .to_string()
-                    .parse::<Decimal>()
-                    .context("planned tranche quantity is invalid")?,
-                entry_price: tranche
-                    .target_price
-                    .to_string()
-                    .parse::<Decimal>()
-                    .context("planned tranche price is invalid")?,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let allocation = reconcile_tranches(&tranches, &entry_fills);
-    let mut reconciled = 0;
-    for tranche in tranches {
-        let allocated = allocation
-            .allocations
-            .iter()
-            .filter(|entry| entry.tranche_id == tranche.id)
-            .map(|entry| entry.quantity)
-            .sum::<Decimal>();
-        reconciled += sqlx::query(
-            "UPDATE manual_execution_claims
-             SET status='reconciled',reconciled_match_id=$1,updated_at=now()
-             WHERE user_id=$2 AND plan_id=$3 AND tranche_id=$4 AND status='pending'
-               AND quantity <= $5",
-        )
-        .bind(match_id)
-        .bind(user_id)
-        .bind(plan_id)
-        .bind(&tranche.id)
-        .bind(allocated)
-        .execute(pool)
-        .await?
-        .rows_affected();
-    }
-    Ok(reconciled as usize)
-}
-
-pub async fn reconcile_confirmed_matches_for_workspace(
-    pool: &PgPool,
-    user_id: &str,
-    workspace_id: &str,
-) -> Result<usize> {
-    let rows = sqlx::query(
-        "SELECT id,episode_id,plan_id FROM trade_episode_matches
-         WHERE user_id=$1 AND workspace_id=$2 AND status='confirmed'
-         ORDER BY created_at,id",
-    )
-    .bind(user_id)
-    .bind(workspace_id)
-    .fetch_all(pool)
-    .await?;
-    let mut reconciled = 0;
-    for row in rows {
-        reconciled += reconcile_for_confirmed_match(
-            pool,
-            user_id,
-            row.try_get::<String, _>(0)?.as_str(),
-            row.try_get::<String, _>(1)?.as_str(),
-            row.try_get::<String, _>(2)?.as_str(),
-        )
-        .await?;
-    }
-    Ok(reconciled)
 }

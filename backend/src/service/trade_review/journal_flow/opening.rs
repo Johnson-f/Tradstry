@@ -156,7 +156,7 @@ async fn group_for(
     source::load(connection, user, workspace)
         .await?
         .into_iter()
-        .find(|group| group.key == key)
+        .find(|group| group.answers_to(key))
         .ok_or_else(|| anyhow!("Broker executions are unavailable"))
 }
 
@@ -287,18 +287,16 @@ pub async fn for_entry(
 ) -> Result<Option<OpeningPositionView>> {
     let mut connection = pool.acquire().await?;
     let key = entry_instrument(&mut connection, user, workspace, entry).await?;
-    let Some(position) = active(&mut connection, user, workspace)
-        .await?
-        .into_iter()
-        .find(|position| position.instrument_key == key)
-    else {
-        return Ok(None);
-    };
     let group = source::load(&mut connection, user, workspace)
         .await?
         .into_iter()
-        .find(|group| group.key == key);
-    Ok(Some(view(&position, group.as_ref())))
+        .find(|group| group.answers_to(&key));
+    Ok(group.as_ref().and_then(|group| {
+        group
+            .opening
+            .as_ref()
+            .map(|position| view(position, Some(group)))
+    }))
 }
 
 pub async fn preview(
@@ -356,7 +354,7 @@ async fn inventory(connection: &mut PgConnection, user: &str, workspace: &str) -
     .unwrap_or_else(|| json!({})))
 }
 
-async fn queue_projection(
+pub(super) async fn queue_projection(
     connection: &mut PgConnection,
     user: &str,
     workspace: &str,
@@ -369,7 +367,7 @@ async fn queue_projection(
     Ok(())
 }
 
-async fn project_now(pool: &PgPool, user: &str, workspace: &str) {
+pub(super) async fn project_now(pool: &PgPool, user: &str, workspace: &str) {
     if let Err(error) =
         super::process_workspace(pool, user, workspace, "journal-opening-position").await
     {
@@ -412,8 +410,8 @@ pub async fn save(
     if let Some(previous) = group.opening.as_ref() {
         ensure_not_grouped_by_hand(&mut tx, user, workspace, &previous.id).await?;
     }
-    sqlx::query("UPDATE journal_opening_positions SET retired_at=now() WHERE user_id=$1 AND workspace_id=$2 AND instrument_key=$3 AND retired_at IS NULL")
-        .bind(user).bind(workspace).bind(&key).execute(&mut *tx).await?;
+    sqlx::query("UPDATE journal_opening_positions SET retired_at=now() WHERE user_id=$1 AND workspace_id=$2 AND (instrument_key=$3 OR id=$4) AND retired_at IS NULL")
+        .bind(user).bind(workspace).bind(&key).bind(group.opening.as_ref().map(|previous| &previous.id)).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO journal_opening_positions(id,user_id,workspace_id,instrument_key,direction,quantity,average_price,as_of) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
         .bind(&position.id).bind(user).bind(workspace).bind(&key).bind(direction_name(position.direction)).bind(position.quantity).bind(position.average_price).bind(position.as_of)
         .execute(&mut *tx).await?;
@@ -503,9 +501,10 @@ pub async fn remove(
     ensure_not_grouped_by_hand(&mut tx, user, workspace, position).await?;
     let key: Option<String> = sqlx::query_scalar("UPDATE journal_opening_positions SET retired_at=now() WHERE id=$1 AND user_id=$2 AND workspace_id=$3 AND retired_at IS NULL RETURNING instrument_key")
         .bind(position).bind(user).bind(workspace).fetch_optional(&mut *tx).await?;
-    let key = key.ok_or_else(|| anyhow!("This starting position was already removed"))?;
-    let mut without_opening = group_for(&mut tx, user, workspace, &key).await?;
+    let recorded_key = key.ok_or_else(|| anyhow!("This starting position was already removed"))?;
+    let mut without_opening = group_for(&mut tx, user, workspace, &recorded_key).await?;
     without_opening.opening = None;
+    let key = without_opening.key.clone();
     if !without_opening.has_known_start(&inventory(&mut tx, user, workspace).await?)? {
         restore_unresolved(&mut tx, user, workspace, &key).await?;
     }

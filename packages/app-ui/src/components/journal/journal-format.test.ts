@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { calendarDate, positionHistory, startOfDay } from "./journal-format";
+import { calendarDate, dayLabel, formatR, positionHistory, startOfDay } from "./journal-format";
 
 describe("positionHistory", () => {
   const fills = [
@@ -50,5 +50,24 @@ describe("workspace dates", () => {
   test("calendar date reads the day in the workspace time zone", () => {
     expect(calendarDate("2026-04-07T02:30:00Z", "America/New_York")).toBe("2026-04-06");
     expect(calendarDate("2026-04-07T02:30:00Z", "UTC")).toBe("2026-04-07");
+  });
+});
+
+describe("formatR", () => {
+  test("shows the sign and one decimal", () => {
+    expect(formatR("1.2345")).toBe("+1.2R");
+    expect(formatR("-0.5")).toBe("−0.5R");
+    expect(formatR("0")).toBe("0.0R");
+  });
+
+  test("an unknown R is a dash", () => {
+    expect(formatR(null)).toBe("—");
+    expect(formatR("n/a")).toBe("—");
+  });
+});
+
+describe("dayLabel", () => {
+  test("names the day without shifting it", () => {
+    expect(dayLabel("2025-12-19")).toBe("Fri 19 Dec");
   });
 });

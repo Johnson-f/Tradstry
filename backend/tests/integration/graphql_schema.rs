@@ -113,17 +113,25 @@ fn schema_builds_without_duplicate_type_names() {
     );
     assert!(sdl.contains("recordManualExecution("));
     assert!(sdl.contains("dismissManualExecution(id: String!): Boolean!"));
-    assert!(sdl.contains("tradeReviewPreview(episodeId: String!, planId: String!): String!"));
+    for retired in [
+        "tradeReviewPreview(",
+        "tradeReviewInbox(",
+        "publishBrokerageEpisodeReview(",
+        "regroupBrokerageEpisode(",
+        "resetBrokerageEpisodeGrouping(",
+        "pendingTrades(",
+        "finalizeTradeReview(",
+        "publishTradeReview(",
+    ] {
+        assert!(
+            !sdl.contains(retired),
+            "{retired} belongs to the retired review flow"
+        );
+    }
     assert!(sdl.contains(
-        "publishBrokerageEpisodeReview(input: PublishBrokerageEpisodeReviewInput!): String!"
+        "journalTradeActionsV2(workspaceId: String!, entryId: String!): JournalTradeActionsV2!"
     ));
-    assert!(sdl.contains("requiresManualGrouping: Boolean!"));
-    assert!(sdl.contains("isManuallyGrouped: Boolean!"));
-    assert!(sdl.contains("episodeId: String!"));
-    assert!(sdl.contains(
-        "regroupBrokerageEpisode(episodeId: String!, transactionIds: [String!]!): String!"
-    ));
-    assert!(sdl.contains("resetBrokerageEpisodeGrouping(episodeId: String!): Boolean!"));
+    assert!(sdl.contains("skipJournalTradeReview("));
     assert!(sdl.contains(
         "tradingPerformance(workspaceId: String!, timeFilter: AnalyticsTimeFilterInput!): TradingPerformanceGql!"
     ));

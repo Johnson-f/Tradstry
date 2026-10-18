@@ -474,6 +474,21 @@ pub async fn finalize(
     .bind(&input.entry_id)
     .fetch_one(&mut *tx)
     .await?;
+    let mut snapshot: Value = entry.try_get("snapshot")?;
+    if let Some(fields) = snapshot.as_object_mut() {
+        let actions = super::action_notes::trade_actions_connection(
+            &mut tx,
+            user,
+            workspace,
+            &input.entry_id,
+        )
+        .await?;
+        let outcome =
+            super::review_outcome::outcome_connection(&mut tx, user, workspace, &input.entry_id)
+                .await?;
+        fields.insert("actionTimeline".into(), serde_json::to_value(actions)?);
+        fields.insert("reviewOutcome".into(), serde_json::to_value(outcome)?);
+    }
     let id = crate::ids::new_uuid_v7().to_string();
     let created = Utc::now();
     if let Some(session) = &input.session_id {
@@ -487,12 +502,10 @@ pub async fn finalize(
         );
     }
     sqlx::query("INSERT INTO journal_trade_reviews(id,entry_id,user_id,workspace_id,review_version,entry_revision,context_revision,takeaway,choice_ids,plan_adherence,snapshot_json,session_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
-        .bind(&id).bind(&input.entry_id).bind(user).bind(workspace).bind(version).bind(input.expected_entry_revision).bind(context_revision).bind(&takeaway).bind(json!(choices)).bind(&adherence).bind(entry.try_get::<Value,_>("snapshot")?).bind(&input.session_id).bind(created).execute(&mut *tx).await?;
+        .bind(&id).bind(&input.entry_id).bind(user).bind(workspace).bind(version).bind(input.expected_entry_revision).bind(context_revision).bind(&takeaway).bind(json!(choices)).bind(&adherence).bind(&snapshot).bind(&input.session_id).bind(created).execute(&mut *tx).await?;
+    super::action_notes::lock_for_review(&mut tx, user, workspace, &input.entry_id).await?;
     if let Some(session) = &input.session_id {
-        sqlx::query("UPDATE journal_review_sessions SET completed_json=CASE WHEN completed_json ? $2 THEN completed_json ELSE completed_json||jsonb_build_array($2::text) END,record_version=record_version+1,updated_at=now() WHERE id=$1 AND user_id=$3 AND workspace_id=$4")
-            .bind(session).bind(&input.entry_id).bind(user).bind(workspace).execute(&mut *tx).await?;
-        sqlx::query("UPDATE journal_review_sessions s SET cursor_entry_id=(SELECT value FROM jsonb_array_elements_text(s.queue_json) WITH ORDINALITY q(value,position) WHERE NOT(s.completed_json ? value) ORDER BY position LIMIT 1) WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
-            .bind(session).bind(user).bind(workspace).execute(&mut *tx).await?;
+        super::sessions::mark_done(&mut tx, session, &input.entry_id).await?;
     }
     let result = ReviewView {
         id,

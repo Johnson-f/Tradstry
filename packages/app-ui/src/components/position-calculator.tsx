@@ -9,7 +9,6 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { RiskOutcomePanel } from "@tradstry/app-ui/components/trade-review/risk-outcome";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import {
   Dialog,
@@ -36,11 +35,6 @@ import {
   usePositionCalculatorHistory,
   usePositionCalculatorPlans,
   usePositionCalculatorRule,
-  useTradeReviewInbox,
-  useRequestPlanExecutionCheck,
-  useConfirmTradeMatch,
-  useFinalizeTradeReview,
-  usePublishTradeReview,
   useRecordManualExecution,
   useUpdatePositionCalculatorPlan,
   useUpsertPositionCalculatorRule,
@@ -60,9 +54,6 @@ import type {
   ManualExecutionClaim,
   PositionCalculatorHistoryEntry,
   PositionCalculatorPlan,
-  TradeReviewCalculation,
-  TradeReviewInboxItem,
-  TradeReviewMatchSuggestion,
 } from "@tradstry/app-ui/lib/types/position-calculator";
 import { cn } from "@tradstry/app-ui/lib/utils";
 import * as React from "react";
@@ -598,22 +589,8 @@ function CalculatorTab({
 function HistoryTab() {
   const history = usePositionCalculatorHistory();
   const plans = usePositionCalculatorPlans();
-  const reviewInbox = useTradeReviewInbox();
   const deleteEntry = useDeletePositionCalculatorHistory();
-  const reviewedTrades = (reviewInbox.data ?? [])
-    .map((item) => ({
-      item,
-      review: parseJson<{
-        id?: string;
-        stage?: string;
-        version?: number;
-        journalEntryId?: string | null;
-        calculation?: TradeReviewCalculation;
-      } | null>(item.latestReviewJson, null),
-    }))
-    .filter(({ review }) => review?.stage === "final" && review.calculation);
-
-  if (history.isLoading || reviewInbox.isLoading) {
+  if (history.isLoading) {
     return (
       <div className="py-12 text-center text-sm text-muted-foreground">
         Loading...
@@ -621,11 +598,11 @@ function HistoryTab() {
     );
   }
 
-  if ((!history.data || history.data.length === 0) && reviewedTrades.length === 0) {
+  if (!history.data || history.data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <span className="text-sm text-muted-foreground">
-          No calculations or completed trade reviews yet.
+          No calculations yet.
         </span>
       </div>
     );
@@ -634,44 +611,6 @@ function HistoryTab() {
   return (
     <ScrollArea className="py-2 [&>[data-slot=scroll-area-viewport]]:max-h-[28rem]">
       <div className="grid gap-2 pr-3">
-        {reviewedTrades.length > 0 ? (
-          <section className="mb-2 grid gap-2">
-            <div>
-              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Broker-backed trade reviews
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Immutable plan-versus-execution snapshots
-              </p>
-            </div>
-            {reviewedTrades.map(({ item, review }) => (
-              <article
-                key={review?.id ?? item.episodeId}
-                className="rounded-lg border border-border bg-background p-3"
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-sm font-semibold tracking-wide">
-                      {item.instrumentKey.replace(/^equity:/, "")}
-                      <span className="ml-2 font-sans text-xs font-normal capitalize text-muted-foreground">
-                        {item.direction}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
-                      Closed {item.closedAt ? new Date(item.closedAt).toLocaleString() : "—"}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-border bg-muted/30 px-2 py-1 text-[0.625rem] font-medium text-muted-foreground">
-                    {review?.journalEntryId
-                      ? "Published"
-                      : `Review v${review?.version ?? "—"}`}
-                  </span>
-                </div>
-                <RiskOutcomePanel calculation={review?.calculation} />
-              </article>
-            ))}
-          </section>
-        ) : null}
         {(history.data ?? []).map((entry) => (
           <HistoryCard
             key={entry.id}
@@ -1561,21 +1500,17 @@ function CreatePlanForm({
 function PlanCard({
   plan,
   brokerageConnected,
-  brokerMatchConfirmed,
   manualClaims,
 }: {
   plan: PositionCalculatorPlan;
   brokerageConnected: boolean;
-  brokerMatchConfirmed: boolean;
   manualClaims: ManualExecutionClaim[];
 }) {
   const updatePlan = useUpdatePositionCalculatorPlan();
   const deletePlan = useDeletePositionCalculatorPlan();
   const createHistory = useCreatePositionCalculatorHistory();
-  const requestExecutionCheck = useRequestPlanExecutionCheck();
   const recordManualExecution = useRecordManualExecution();
   const dismissManualExecution = useDismissManualExecution();
-  const [executionRequested, setExecutionRequested] = React.useState(false);
   const [manualDraft, setManualDraft] = React.useState<{
     trancheId: string;
     quantity: string;
@@ -1940,9 +1875,7 @@ function PlanCard({
               ? `$${fmt(displayedSummary.totalRisk)} risk`
               : `${fmt(plan.accountRisk)}% risk`} —{" "}
             {brokerageConnected
-              ? brokerMatchConfirmed
-                ? "Broker execution matched"
-                : "Waiting for execution"
+              ? "Waiting for execution"
               : `${filledCount}/${plan.tranches.length} filled`}
             {brokerageConnected && reconciledManualCount > 0 ? (
               <span className="text-green-600 dark:text-green-400">
@@ -2105,13 +2038,6 @@ function PlanCard({
                         >
                           Remove
                         </Button>
-                      );
-                    }
-                    if (brokerMatchConfirmed) {
-                      return (
-                        <span className="text-[0.6875rem] font-medium text-green-600 dark:text-green-400">
-                          Included in broker match
-                        </span>
                       );
                     }
                     return (
@@ -2282,36 +2208,6 @@ function PlanCard({
               ) : null}
             </div>
           ))}
-          {brokerageConnected ? (
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-dashed border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">
-                Broker executions determine what actually filled. Tradstry will
-                suggest a match for you to confirm.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="shrink-0"
-                disabled={requestExecutionCheck.isPending || executionRequested}
-                onClick={async () => {
-                  const toastId = toast.loading("Checking broker executions...");
-                  try {
-                    await requestExecutionCheck.mutateAsync(plan.id);
-                    setExecutionRequested(true);
-                    toast.success("Execution check started. Review any suggested match below.", { id: toastId });
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Could not check executions.", { id: toastId });
-                  }
-                }}
-              >
-                {requestExecutionCheck.isPending
-                  ? "Checking..."
-                  : executionRequested
-                    ? "Check requested"
-                    : "I entered this trade"}
-              </Button>
-            </div>
-          ) : null}
         </div>
       )}
       {completing ? (
@@ -2330,225 +2226,6 @@ function parseJson<T>(value: string | null, fallback: T): T {
   }
 }
 
-function TradeReviewCard({
-  item,
-  plans,
-}: {
-  item: TradeReviewInboxItem;
-  plans: PositionCalculatorPlan[];
-}) {
-  const confirmMatch = useConfirmTradeMatch();
-  const finalizeReview = useFinalizeTradeReview();
-  const publishReview = usePublishTradeReview();
-  const activeWorkspace = useActiveWorkspace();
-  const principles = usePrinciples(activeWorkspace?.id ?? null);
-  const [reflection, setReflection] = React.useState("");
-  const [noContext, setNoContext] = React.useState(false);
-  const [principleResponses, setPrincipleResponses] = React.useState<
-    Record<string, "followed" | "violated">
-  >({});
-  const suggestions = parseJson<TradeReviewMatchSuggestion[]>(
-    item.suggestionsJson,
-    [],
-  );
-  const latest = parseJson<{
-    stage?: string;
-    journalEntryId?: string | null;
-    calculation?: TradeReviewCalculation;
-  } | null>(item.latestReviewJson, null);
-  const calculation = latest?.calculation;
-  const symbol = item.instrumentKey.replace(/^equity:/, "");
-
-  return (
-    <article className="rounded-md border border-border bg-muted/20 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">
-            {symbol} <span className="capitalize text-muted-foreground">{item.direction}</span>
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Broker execution · {new Date(item.openedAt).toLocaleString()}
-          </p>
-        </div>
-        <span className="rounded-full border px-2 py-0.5 text-[0.6875rem] capitalize text-muted-foreground">
-          {latest?.stage === "final" ? "Reviewed" : item.matchStatus ?? "Needs match"}
-        </span>
-      </div>
-
-      {!item.confirmedMatchId ? (
-        <div className="mt-3 grid gap-2">
-          {suggestions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No eligible plan was found within the seven-day matching window.
-            </p>
-          ) : (
-            suggestions.map((suggestion) => {
-              const plan = plans.find((candidate) => candidate.id === suggestion.planId);
-              return (
-                <div key={suggestion.matchId} className="flex items-center justify-between gap-3 rounded bg-background px-2 py-2">
-                  <div className="min-w-0 text-xs">
-                    <p className="font-medium">Suggested: {plan?.symbol ?? suggestion.planId}</p>
-                    <p className="text-muted-foreground">
-                      Planned {suggestion.evidence.planned_quantity} · actual {suggestion.evidence.actual_quantity} shares
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={confirmMatch.isPending}
-                    onClick={async () => {
-                      const toastId = toast.loading("Confirming match...");
-                      try {
-                        await confirmMatch.mutateAsync({ episodeId: item.episodeId, planId: suggestion.planId });
-                        toast.success("Plan and broker execution matched.", { id: toastId });
-                      } catch (error) {
-                        toast.error(error instanceof Error ? error.message : "Could not confirm match.", { id: toastId });
-                      }
-                    }}
-                  >
-                    Confirm match
-                  </Button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      ) : calculation ? (
-        <div className="mt-3 grid gap-3">
-          <div className="grid grid-cols-3 gap-2 rounded bg-background p-2">
-            <HistoryMetric label="Entry" value={`$${calculation.planned_weighted_entry ?? "—"} → $${calculation.actual_weighted_entry ?? "—"}`} />
-            <HistoryMetric label="Size" value={`${calculation.planned_quantity ?? "—"} → ${calculation.actual_quantity ?? "—"}`} />
-            <HistoryMetric label="Risk drift" value={`$${calculation.risk_drift ?? "—"}`} />
-          </div>
-          <RiskOutcomePanel calculation={calculation} />
-          {(calculation.flags?.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {calculation.flags?.map((flag) => (
-                <span key={flag} className="rounded-full bg-yellow-500/10 px-2 py-1 text-[0.6875rem] text-yellow-700 dark:text-yellow-300">
-                  {flag.replaceAll("_", " ")}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {latest.stage !== "final" ? (
-            item.closedAt ? (
-              <div className="grid gap-2">
-              {(principles.data?.length ?? 0) > 0 ? (
-                <div className="grid gap-1.5">
-                  <Label>Principles</Label>
-                  {principles.data?.filter((principle) => principle.isActive).map((principle) => (
-                    <div key={principle.id} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5 text-xs">
-                      <span className="min-w-0 truncate">{principle.title}</span>
-                      <div className="flex gap-1">
-                        {(["followed", "violated"] as const).map((response) => (
-                          <Button
-                            key={response}
-                            type="button"
-                            size="sm"
-                            variant={principleResponses[principle.id] === response ? "default" : "ghost"}
-                            className="h-6 px-2 text-[0.6875rem] capitalize"
-                            onClick={() => setPrincipleResponses((current) =>
-                              current[principle.id] === response
-                                ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== principle.id))
-                                : { ...current, [principle.id]: response },
-                            )}
-                          >
-                            {response}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <Label htmlFor={`reflection-${item.episodeId}`}>What caused the deviation?</Label>
-              <textarea
-                id={`reflection-${item.episodeId}`}
-                value={reflection}
-                onChange={(event) => { setReflection(event.target.value); setNoContext(false); }}
-                rows={2}
-                placeholder="Record only what you know—Tradstry will not infer this."
-                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-              />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked={noContext} onChange={(event) => { setNoContext(event.target.checked); if (event.target.checked) setReflection(""); }} />
-                No additional context
-              </label>
-              <Button
-                type="button"
-                size="sm"
-                className="justify-self-end"
-                disabled={
-                  finalizeReview.isPending ||
-                  (!reflection.trim() &&
-                    Object.keys(principleResponses).length === 0 &&
-                    !noContext)
-                }
-                onClick={async () => {
-                  if (!item.confirmedMatchId) return;
-                  const toastId = toast.loading("Finalizing review...");
-                  try {
-                    await finalizeReview.mutateAsync({
-                      matchId: item.confirmedMatchId,
-                      reflectionJson: JSON.stringify({
-                        ...(reflection.trim() ? { deviationReason: reflection.trim() } : {}),
-                        followedPrincipleIds: Object.entries(principleResponses).filter(([, response]) => response === "followed").map(([id]) => id),
-                        violatedPrincipleIds: Object.entries(principleResponses).filter(([, response]) => response === "violated").map(([id]) => id),
-                      }),
-                      noAdditionalContext: noContext,
-                    });
-                    toast.success("Trade review finalized as an immutable version.", { id: toastId });
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Could not finalize review.", { id: toastId });
-                  }
-                }}
-              >
-                Finalize review
-              </Button>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Entry review captured. The final reflection unlocks after the
-                broker&apos;s closing fill syncs.
-              </p>
-            )
-          ) : latest.journalEntryId ? (
-            <p className="text-xs font-medium text-green-600 dark:text-green-400">
-              Published to journal
-            </p>
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                {item.closedAt
-                  ? "Publish this broker-backed review to History."
-                  : "The position is still open. Publish becomes available after the closing fill syncs."}
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!item.closedAt || publishReview.isPending}
-                onClick={async () => {
-                  if (!item.confirmedMatchId) return;
-                  const toastId = toast.loading("Publishing to journal...");
-                  try {
-                    await publishReview.mutateAsync(item.confirmedMatchId);
-                    toast.success("Trade review published to History with its broker fills linked.", { id: toastId });
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Could not publish review.", { id: toastId });
-                  }
-                }}
-              >
-                Publish to History
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 function PlansTab({
   seed,
   onClearSeed,
@@ -2562,7 +2239,6 @@ function PlansTab({
     activeWorkspace?.snaptradeAccountId &&
       !activeWorkspace.snaptradeConnectionDisabled,
   );
-  const reviewInbox = useTradeReviewInbox(brokerageConnected);
   const manualClaims = useManualExecutionClaims(brokerageConnected);
 
   if (seed) {
@@ -2594,33 +2270,14 @@ function PlansTab({
     );
   }
 
-  const reviewItems = (reviewInbox.data ?? []).filter((item) => {
-    const suggestions = parseJson<TradeReviewMatchSuggestion[]>(item.suggestionsJson, []);
-    return Boolean(item.confirmedMatchId) || suggestions.length > 0;
-  });
-
   return (
     <ScrollArea className="py-2 [&>[data-slot=scroll-area-viewport]]:max-h-[26rem]">
       <div className="grid gap-3 pr-3">
-        {brokerageConnected && reviewItems.length > 0 ? (
-          <section className="grid gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">Execution review</p>
-              <p className="text-xs text-muted-foreground">Broker fills are the source of truth. Confirm every suggested match.</p>
-            </div>
-            {reviewItems.map((item) => (
-              <TradeReviewCard key={item.episodeId} item={item} plans={plansQuery.data ?? []} />
-            ))}
-          </section>
-        ) : null}
         {visiblePlans.map((plan) => (
           <PlanCard
             key={plan.id}
             plan={plan}
             brokerageConnected={brokerageConnected}
-            brokerMatchConfirmed={reviewItems.some(
-              (item) => item.confirmedPlanId === plan.id,
-            )}
             manualClaims={(manualClaims.data ?? []).filter(
               (claim) => claim.planId === plan.id,
             )}

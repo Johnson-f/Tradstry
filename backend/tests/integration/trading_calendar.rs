@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
 use rust_decimal::Decimal;
-use tradstry_backend::service::db::schema::tables::trade_review_table::StoredEpisode;
+use tradstry_backend::service::trade_review::stored::StoredEpisode;
 use tradstry_backend::service::trade_review::types::{
     EpisodeDirection, ExecutionInstrument, FillAllocation, FillRole, TradeEpisodeDraft,
 };

@@ -1,5 +1,6 @@
 use crate::service::trade_review::journal_flow::{
-    self, JournalTrade, backfill, grouping, opening, reflection, sessions, suggestions,
+    self, JournalTrade, action_notes, attention, backfill, grouping, opening, reflection,
+    review_outcome, sessions, suggestions,
 };
 use async_graphql::{Context, Error, ErrorExtensions, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
@@ -183,6 +184,56 @@ impl JournalFlowQuery {
     ) -> Result<Option<opening::OpeningPositionView>> {
         let db = super::auth::user_db(ctx).await?;
         Ok(opening::for_entry(db.pool(), db.user_id(), &workspace_id, &entry_id).await?)
+    }
+    async fn journal_trade_actions_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+    ) -> Result<action_notes::TradeActions> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::trade_actions(db.pool(), db.user_id(), &workspace_id, &entry_id).await?)
+    }
+    async fn journal_trade_outcome_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+    ) -> Result<Option<review_outcome::OutcomeView>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(review_outcome::outcome(db.pool(), db.user_id(), &workspace_id, &entry_id).await?)
+    }
+    async fn journal_orphaned_notes_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+    ) -> Result<Vec<action_notes::NoteView>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::orphaned(db.pool(), db.user_id(), &workspace_id).await?)
+    }
+    async fn journal_broken_joins_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+    ) -> Result<Vec<attention::BrokenJoin>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(attention::broken_joins(db.pool(), db.user_id(), &workspace_id).await?)
+    }
+    async fn journal_holdings_mismatches_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+    ) -> Result<Vec<attention::HoldingsMismatch>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(attention::holdings_mismatches(db.pool(), db.user_id(), &workspace_id).await?)
+    }
+    async fn journal_continuation_suggestions_v2(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+    ) -> Result<Vec<attention::ContinuationSuggestion>> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(attention::continuation_suggestions(db.pool(), db.user_id(), &workspace_id).await?)
     }
     async fn journal_opening_preview_v2(
         &self,
@@ -490,6 +541,184 @@ impl JournalFlowMutation {
             &workspace_id,
             &entry_id,
             input,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn save_journal_action_note(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        input: action_notes::NoteInput,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<action_notes::NoteView> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::save_note(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            input,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn add_journal_hindsight_note(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        parent_id: String,
+        reason: String,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<action_notes::NoteView> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::add_hindsight(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &parent_id,
+            &reason,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn join_journal_actions(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        execution_ids: Vec<String>,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<String> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::join(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            action_notes::JoinInput {
+                entry: &entry_id,
+                execution_ids: &execution_ids,
+            },
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn keep_journal_orphaned_note(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        note_id: String,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::keep_orphan(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &note_id,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn unjoin_journal_actions(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        join_id: String,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(action_notes::unjoin(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &join_id,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "GraphQL field arguments mirror the other journal mutations"
+    )]
+    async fn skip_journal_trade_review(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        reason: String,
+        session_id: Option<String>,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(sessions::skip(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            sessions::SkipInput {
+                entry: &entry_id,
+                reason: &reason,
+                session: session_id.as_deref(),
+            },
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    async fn unskip_journal_trade_review(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        entry_id: String,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(sessions::unskip(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            &entry_id,
+            &client_id,
+            &mutation_id,
+        )
+        .await?)
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "GraphQL field arguments mirror the other journal mutations"
+    )]
+    async fn answer_journal_continuation(
+        &self,
+        ctx: &Context<'_>,
+        workspace_id: String,
+        execution_id: String,
+        opening_execution_id: String,
+        same_position: bool,
+        client_id: String,
+        mutation_id: String,
+    ) -> Result<bool> {
+        let db = super::auth::user_db(ctx).await?;
+        Ok(attention::answer_continuation(
+            db.pool(),
+            db.user_id(),
+            &workspace_id,
+            attention::ContinuationInput {
+                execution_id: &execution_id,
+                opening_execution_id: &opening_execution_id,
+            },
+            same_position,
             &client_id,
             &mutation_id,
         )

@@ -1,6 +1,5 @@
 use anyhow::Result;
 
-use crate::service::brokerage::pending_trades::{self, PendingTrade};
 use crate::service::db::client::UserDb;
 use crate::service::db::schema::tables::brokerage_table::{
     self, BrokerageBalance, BrokerageHolding, BrokerageTransaction, TransactionFilters,
@@ -25,13 +24,6 @@ pub async fn get_transactions_by_ids(
     ids: &[String],
 ) -> Result<Vec<BrokerageTransaction>> {
     brokerage_table::get_transactions_by_ids(user_db.pool(), user_db.user_id(), ids).await
-}
-
-pub async fn list_pending_trades(
-    user_db: &UserDb,
-    workspace_id: &str,
-) -> Result<Vec<PendingTrade>> {
-    pending_trades::compute_pending_trades(user_db.pool(), user_db.user_id(), workspace_id).await
 }
 
 pub async fn list_holdings(user_db: &UserDb, workspace_id: &str) -> Result<Vec<BrokerageHolding>> {

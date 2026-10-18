@@ -62,18 +62,6 @@ export interface CreateJournalEntryInput {
   fees?: number | null;
 }
 
-export interface PublishBrokerageEpisodeReviewInput {
-  episodeId: string;
-  planId?: string | null;
-  stopLoss?: number | null;
-  playbookId?: string | null;
-  notes?: string | null;
-  planAdherence?: string | null;
-  lesson?: string | null;
-  tagIds: string[];
-  violatedPrincipleIds: string[];
-}
-
 export interface UpdateJournalEntryInput {
   workspaceId?: string;
   openDate?: string;

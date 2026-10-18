@@ -25,7 +25,7 @@ use crate::service::db::schema::tables::brokerage_table::{
 };
 use crate::service::db::schema::tables::{
     brokerage_data_report_table, brokerage_reconciliation_table, snaptrade_oauth_table,
-    trade_review_table, workspaces_table,
+    workspaces_table,
 };
 use crate::service::read_service::analytics::resolve_range_bounds;
 use crate::service::read_service::brokerage as brokerage_service;
@@ -783,18 +783,6 @@ impl BrokerageQuery {
         Ok(brokerage_service::get_transactions_by_ids(&user_db, &ids).await?)
     }
 
-    /// Round-trip trade lifecycles that haven't been fully journaled. Groups
-    /// fills across months/years so a position opened in April and closed
-    /// in May shows up as one journaling target.
-    async fn pending_trades(
-        &self,
-        ctx: &Context<'_>,
-        workspace_id: String,
-    ) -> Result<Vec<crate::service::brokerage::pending_trades::PendingTrade>> {
-        let user_db = get_user_db(ctx).await?;
-        Ok(brokerage_service::list_pending_trades(&user_db, &workspace_id).await?)
-    }
-
     async fn brokerage_holdings(
         &self,
         ctx: &Context<'_>,
@@ -1171,40 +1159,6 @@ impl BrokerageMutation {
             diagnostic_id: report.diagnostic_id,
             created_at: report.created_at,
         })
-    }
-
-    /// Replaces an automatic trade grouping with the user's selected broker
-    /// fills. The executions remain immutable; only episode membership changes.
-    async fn regroup_brokerage_episode(
-        &self,
-        ctx: &Context<'_>,
-        episode_id: String,
-        transaction_ids: Vec<String>,
-    ) -> Result<String> {
-        let user_db = get_user_db(ctx).await?;
-        Ok(trade_review_table::regroup_episode(
-            user_db.pool(),
-            user_db.user_id(),
-            &episode_id,
-            transaction_ids,
-        )
-        .await?)
-    }
-
-    /// Removes a manual grouping and returns its fills to deterministic
-    /// brokerage grouping.
-    async fn reset_brokerage_episode_grouping(
-        &self,
-        ctx: &Context<'_>,
-        episode_id: String,
-    ) -> Result<bool> {
-        let user_db = get_user_db(ctx).await?;
-        Ok(trade_review_table::reset_episode_grouping(
-            user_db.pool(),
-            user_db.user_id(),
-            &episode_id,
-        )
-        .await?)
     }
 
     /// Registers a SnapTrade user and initiates a brokerage connection.

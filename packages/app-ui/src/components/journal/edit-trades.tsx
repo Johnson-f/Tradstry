@@ -119,14 +119,22 @@ function Field({
 
 interface EditTradesProps {
   trade: JournalEntry;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function EditTrades({ trade }: EditTradesProps) {
+export function EditTrades({
+  trade,
+  open: controlledOpen,
+  onOpenChange,
+}: EditTradesProps) {
   const updateTrade = useUpdateJournalEntry();
   const playbooks = usePlaybooks();
   const tagCategories = useTagCategories();
   const availablePlaybooks = playbooks.data ?? [];
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [form, setForm] = React.useState<TradeFormState>(() =>
     createInitialState(trade),
   );
@@ -261,20 +269,22 @@ export function EditTrades({ trade }: EditTradesProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground"
-        >
-          <HugeiconsIcon
-            icon={PencilEdit01Icon}
-            strokeWidth={2}
-            className="size-4"
-          />
-          <span className="sr-only">Edit trade</span>
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined ? (
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+          >
+            <HugeiconsIcon
+              icon={PencilEdit01Icon}
+              strokeWidth={2}
+              className="size-4"
+            />
+            <span className="sr-only">Edit trade</span>
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-3xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>

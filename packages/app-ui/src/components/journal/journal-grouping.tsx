@@ -17,6 +17,7 @@ import {
 import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import * as flow from "@tradstry/app-ui/lib/service/journal-flow";
 import { executionTime, money, quantityMath, tradeDate } from "./journal-format";
+import { useJournalNavigation } from "./journal-navigation";
 
 export function GroupingDialog({
 	open,
@@ -615,7 +616,7 @@ export function ExecutionHeldBy({
 	holders: flow.ExecutionHolder[];
 	timezone?: string;
 }) {
-	const platform = useTradstryPlatform();
+	const { switchTrade } = useJournalNavigation();
 	if (!holders.length) return null;
 	return (
 		<ul className="mt-1 space-y-0.5 text-[11px] font-normal text-muted-foreground">
@@ -627,12 +628,7 @@ export function ExecutionHeldBy({
 							<button
 								type="button"
 								className="underline-offset-2 hover:text-foreground hover:underline"
-								onClick={() =>
-									platform.navigate(
-										"/dashboard/journal/" +
-											encodeURIComponent(holder.entryId!),
-									)
-								}
+								onClick={() => switchTrade(holder.entryId!)}
 							>
 								{label}
 							</button>

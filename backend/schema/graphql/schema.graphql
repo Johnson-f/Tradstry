@@ -825,6 +825,59 @@ A scalar that can represent any JSON value.
 """
 scalar JSON
 
+input JournalActionNoteInputV2 {
+	entryId: String!
+	anchorExecutionId: String!
+	anchorRole: String!
+	expectedVersion: Int
+	reason: String!
+	stopPrice: String
+	targetPrice: String
+}
+
+type JournalActionNoteV2 {
+	id: String!
+	kind: String!
+	parentId: String
+	anchorExecutionId: String!
+	anchorRole: String!
+	reason: String!
+	stopPrice: String
+	targetPrice: String
+	locked: Boolean!
+	writtenLate: Boolean!
+	orphaned: Boolean!
+	version: Int!
+	createdAt: String!
+	updatedAt: String!
+}
+
+type JournalActionOutcomeV2 {
+	anchorExecutionId: String!
+	kind: String!
+	quantity: String!
+	price: String!
+	plannedStop: String
+	plannedTarget: String
+	distanceFromStopR: String
+	boundary: String
+}
+
+type JournalActionV2 {
+	kind: String!
+	role: String!
+	anchorExecutionId: String!
+	executionIds: [String!]!
+	quantity: String!
+	price: String!
+	fee: String!
+	firstExecutedAt: String!
+	lastExecutedAt: String!
+	positionAfter: String!
+	joinId: String
+	notes: [JournalActionNoteV2!]!
+}
+
 type JournalActivationV2 {
 	enabled: Boolean!
 	sourceRevision: Int!
@@ -849,6 +902,13 @@ type JournalAnalyticsGql {
 	biggestLoss: TradeOutcomeGql
 	rangeStart: String
 	rangeEnd: String
+}
+
+type JournalBrokenJoinV2 {
+	joinId: String!
+	entryId: String!
+	symbol: String!
+	executionIds: [String!]!
 }
 
 type JournalChartBarV2 {
@@ -895,6 +955,16 @@ type JournalContextV2 {
 	notes: String
 	tagIds: [String!]!
 	violatedPrincipleIds: [String!]!
+}
+
+type JournalContinuationSuggestionV2 {
+	fromSymbol: String!
+	toSymbol: String!
+	quantity: String!
+	executionId: String!
+	openingExecutionId: String!
+	executedAt: String!
+	explanation: String!
 }
 
 type JournalEntry {
@@ -1067,6 +1137,15 @@ type JournalGroupingSuggestionV2 {
 	previousConfirmations: Int!
 }
 
+type JournalHoldingsMismatchV2 {
+	instrumentKey: String!
+	symbol: String!
+	held: String!
+	imported: String!
+	message: String!
+	entryId: String
+}
+
 input JournalOpeningPositionInputV2 {
 	direction: String!
 	quantity: String!
@@ -1154,6 +1233,34 @@ type JournalReviewDraftV2 {
 	planAdherence: String
 }
 
+type JournalReviewOutcomeV2 {
+	plannedStop: String
+	stopSource: String!
+	enteredQuantity: String!
+	entryPrice: String!
+	exitPrice: String
+	fees: String!
+	realizedNet: String
+	initialRisk: String
+	realizedR: String
+	realizedRUnavailable: String
+	actions: [JournalActionOutcomeV2!]!
+	flags: [String!]!
+}
+
+type JournalReviewSessionItemV2 {
+	entryId: String!
+	"""
+	`exited`, `open` or `attention`.
+	"""
+	group: String!
+	"""
+	`reviewed`, `skipped`, `pending` or `none` (nothing is required).
+	"""
+	state: String!
+	skipReason: String
+}
+
 type JournalReviewSessionV2 {
 	id: String!
 	date: String!
@@ -1163,6 +1270,13 @@ type JournalReviewSessionV2 {
 	cursorEntryId: String
 	version: Int!
 	refreshAvailable: Boolean!
+	items: [JournalReviewSessionItemV2!]!
+	reviewedCount: Int!
+	skippedCount: Int!
+	"""
+	Every trade that exited that day is reviewed or skipped.
+	"""
+	complete: Boolean!
 }
 
 type JournalReviewV2 {
@@ -1188,6 +1302,15 @@ type JournalTagV2 {
 	id: String!
 	name: String!
 	color: String
+}
+
+type JournalTradeActionsV2 {
+	entryId: String!
+	direction: String
+	closed: Boolean!
+	actions: [JournalActionV2!]!
+	suggestedJoins: [[String!]!]!
+	brokenJoins: [String!]!
 }
 
 type JournalTradeChartV2 {
@@ -1242,6 +1365,14 @@ type JournalTradeV2 {
 	boughtQuantity: String
 	soldQuantity: String
 	startingPosition: Boolean!
+	"""
+	An entry note exists on the trade's first execution.
+	"""
+	hasEntryNote: Boolean!
+	"""
+	Net result over the risk to the planned stop, once the trade is closed.
+	"""
+	realizedR: String
 }
 
 type ManualExecutionClaimGql {
@@ -1404,16 +1535,6 @@ type Mutation {
 	"""
 	reportBrokerageDataIssue(input: ReportBrokerageDataIssueInput!): BrokerageDataIssueReport!
 	"""
-	Replaces an automatic trade grouping with the user's selected broker
-	fills. The executions remain immutable; only episode membership changes.
-	"""
-	regroupBrokerageEpisode(episodeId: String!, transactionIds: [String!]!): String!
-	"""
-	Removes a manual grouping and returns its fills to deterministic
-	brokerage grouping.
-	"""
-	resetBrokerageEpisodeGrouping(episodeId: String!): Boolean!
-	"""
 	Registers a SnapTrade user and initiates a brokerage connection.
 	Returns only the short-lived portal URL. SnapTrade credentials never leave the backend.
 	"""
@@ -1448,11 +1569,6 @@ type Mutation {
 	createUserPrompt(name: String!, content: String!): UserPrompt!
 	updateUserPrompt(id: String!, name: String, content: String): UserPrompt!
 	deleteUserPrompt(id: String!): Boolean!
-	"""
-	Publishes a closed broker-derived episode. Execution facts are loaded
-	server-side; only review context is accepted from the client.
-	"""
-	publishBrokerageEpisodeReview(input: PublishBrokerageEpisodeReviewInput!): String!
 	createJournalEntry(input: CreateJournalEntryInput!): JournalEntry!
 	updateJournalEntry(id: String!, input: UpdateJournalEntryInput!): JournalEntry!
 	deleteJournalEntry(id: String!): Boolean!
@@ -1463,6 +1579,14 @@ type Mutation {
 	previewJournalGrouping(workspaceId: String!, input: JournalGroupingInputV2!): JournalGroupingPreviewV2!
 	confirmJournalGrouping(workspaceId: String!, token: String!, clientId: String!, mutationId: String!): JournalGroupingResultV2!
 	saveJournalOpeningPosition(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!, clientId: String!, mutationId: String!): JournalOpeningPositionV2!
+	saveJournalActionNote(workspaceId: String!, input: JournalActionNoteInputV2!, clientId: String!, mutationId: String!): JournalActionNoteV2!
+	addJournalHindsightNote(workspaceId: String!, parentId: String!, reason: String!, clientId: String!, mutationId: String!): JournalActionNoteV2!
+	joinJournalActions(workspaceId: String!, entryId: String!, executionIds: [String!]!, clientId: String!, mutationId: String!): String!
+	keepJournalOrphanedNote(workspaceId: String!, noteId: String!, clientId: String!, mutationId: String!): Boolean!
+	unjoinJournalActions(workspaceId: String!, joinId: String!, clientId: String!, mutationId: String!): Boolean!
+	skipJournalTradeReview(workspaceId: String!, entryId: String!, reason: String!, sessionId: String, clientId: String!, mutationId: String!): Boolean!
+	unskipJournalTradeReview(workspaceId: String!, entryId: String!, clientId: String!, mutationId: String!): Boolean!
+	answerJournalContinuation(workspaceId: String!, executionId: String!, openingExecutionId: String!, samePosition: Boolean!, clientId: String!, mutationId: String!): Boolean!
 	removeJournalOpeningPosition(workspaceId: String!, positionId: String!, clientId: String!, mutationId: String!): Boolean!
 	previewUndoJournalGrouping(workspaceId: String!, operationId: String!): JournalGroupingPreviewV2!
 	saveJournalContext(workspaceId: String!, input: JournalContextInputV2!, clientId: String!, mutationId: String!): JournalContextV2!
@@ -1513,19 +1637,6 @@ type Mutation {
 	"""
 	recordManualExecution(planId: String!, trancheId: String!, quantity: String!, price: String!, executedAt: String!): ManualExecutionClaimGql!
 	dismissManualExecution(id: String!): Boolean!
-	"""
-	Records that the trader entered the planned trade and asks the broker
-	reconciliation engine to look for executions. This does not mark any
-	tranche filled.
-	"""
-	requestPlanExecutionCheck(planId: String!): Int!
-	confirmTradeEpisodeMatch(episodeId: String!, planId: String!): String!
-	finalizeTradeReview(matchId: String!, reflectionJson: String!, journalDraftJson: String, noAdditionalContext: Boolean! = false): String!
-	"""
-	Publishes the latest finalized immutable review as a normal journal
-	entry and links every source broker fill. Idempotent per review version.
-	"""
-	publishTradeReview(matchId: String!): String!
 	upsertPositionCalculatorRule(input: UpsertPositionCalculatorRuleInput!): PositionCalculatorRule!
 	createPositionCalculatorHistory(input: CreatePositionCalculatorHistoryInput!): PositionCalculatorHistoryEntry!
 	deletePositionCalculatorHistory(id: String!): Boolean!
@@ -1828,34 +1939,6 @@ type NotificationSettingsGql {
 	quietEndMinute: Int
 }
 
-type PendingTrade {
-	id: String!
-	episodeId: String!
-	symbol: String!
-	direction: String!
-	status: String!
-	openDate: String!
-	closeDate: String
-	entryUnits: Float!
-	avgEntryPrice: Float!
-	avgExitPrice: Float
-	realizedPnl: Float
-	transactionIds: [String!]!
-	fillCount: Int!
-	isFullyLinked: Boolean!
-	isPartiallyLinked: Boolean!
-	multiplier: Float!
-	isOption: Boolean!
-	underlying: String
-	optionKind: String
-	strike: Float
-	expiration: String
-	symbolName: String
-	requiresManualGrouping: Boolean!
-	blockReason: String
-	isManuallyGrouped: Boolean!
-}
-
 type PerformanceBreakdownGql {
 	key: String!
 	netPnl: Float!
@@ -2021,18 +2104,6 @@ type PrincipleWithStats {
 	violatedWinRate: Float!
 }
 
-input PublishBrokerageEpisodeReviewInput {
-	episodeId: String!
-	planId: String
-	stopLoss: Float
-	playbookId: String
-	notes: String
-	planAdherence: String
-	lesson: String
-	tagIds: [String!]! = []
-	violatedPrincipleIds: [String!]! = []
-}
-
 type PushSubscriptionGql {
 	endpoint: String!
 }
@@ -2064,12 +2135,6 @@ type Query {
 	Used by the pending-trade prefill in the MergeTradesModal.
 	"""
 	brokerageTransactionsByIds(ids: [String!]!): [BrokerageTransaction!]!
-	"""
-	Round-trip trade lifecycles that haven't been fully journaled. Groups
-	fills across months/years so a position opened in April and closed
-	in May shows up as one journaling target.
-	"""
-	pendingTrades(workspaceId: String!): [PendingTrade!]!
 	brokerageHoldings(workspaceId: String!): [BrokerageHolding!]!
 	brokerageBalances(workspaceId: String!): [BrokerageBalance!]!
 	"""
@@ -2130,6 +2195,12 @@ type Query {
 	journalTradesV2(workspaceId: String!): [JournalTradeV2!]!
 	journalTradeV2(workspaceId: String!, entryId: String!): JournalTradeV2
 	journalOpeningPositionV2(workspaceId: String!, entryId: String!): JournalOpeningPositionV2
+	journalTradeActionsV2(workspaceId: String!, entryId: String!): JournalTradeActionsV2!
+	journalTradeOutcomeV2(workspaceId: String!, entryId: String!): JournalReviewOutcomeV2
+	journalOrphanedNotesV2(workspaceId: String!): [JournalActionNoteV2!]!
+	journalBrokenJoinsV2(workspaceId: String!): [JournalBrokenJoinV2!]!
+	journalHoldingsMismatchesV2(workspaceId: String!): [JournalHoldingsMismatchV2!]!
+	journalContinuationSuggestionsV2(workspaceId: String!): [JournalContinuationSuggestionV2!]!
 	journalOpeningPreviewV2(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!): JournalOpeningPreviewV2!
 	journalContextV2(workspaceId: String!, entryId: String!): JournalContextV2!
 	journalReviewDraftV2(workspaceId: String!, entryId: String!): JournalReviewDraftV2!
@@ -2168,16 +2239,6 @@ type Query {
 	positionCalculatorRule(workspaceId: String!): PositionCalculatorRule
 	positionCalculatorHistory(workspaceId: String!): [PositionCalculatorHistoryEntry!]!
 	positionCalculatorPlans(workspaceId: String!): [PositionCalculatorPlan!]!
-	"""
-	Broker-derived trade episodes and their explainable plan-match
-	suggestions. Suggestions are never applied without confirmation.
-	"""
-	tradeReviewInbox(workspaceId: String!): [TradeReviewInboxItemGql!]!
-	"""
-	Read-only calculation preview for a user-selected eligible plan. This
-	does not confirm the match or create an immutable review version.
-	"""
-	tradeReviewPreview(episodeId: String!, planId: String!): String!
 	manualExecutionClaims(workspaceId: String!): [ManualExecutionClaimGql!]!
 	tagCategories(workspaceId: String!): [TagCategoryGql!]!
 	tags(workspaceId: String!, categoryId: String): [TagGql!]!
@@ -2385,22 +2446,6 @@ type TradeOutcomeGql {
 	symbol: String!
 	symbolName: String!
 	amount: Float!
-}
-
-type TradeReviewInboxItemGql {
-	episodeId: String!
-	instrumentKey: String!
-	direction: String!
-	openedAt: String!
-	closedAt: String
-	currentQuantity: String!
-	status: String!
-	blockReason: String
-	matchStatus: String
-	confirmedMatchId: String
-	confirmedPlanId: String
-	suggestionsJson: String!
-	latestReviewJson: String
 }
 
 """

@@ -4,27 +4,27 @@ import {
 	useActiveWorkspace,
 	useWorkspacesLoading,
 } from "@tradstry/app-ui/components/workspaces/hooks";
-import { useTradstryPlatform } from "@tradstry/app-ui/platform";
-import { TradeDetailSkeleton } from "./journal-trade-detail";
+import { Skeleton } from "@tradstry/app-ui/components/ui/skeleton";
 import { JournalWorkspace } from "./journal-workspace";
+
+function JournalSkeleton() {
+	return (
+		<div role="status" className="flex min-h-0 flex-1 flex-col gap-4 p-3 md:p-5">
+			<span className="sr-only">Loading your journal…</span>
+			<div aria-hidden="true" className="space-y-4 [&_[data-slot=skeleton]]:motion-reduce:animate-none">
+				<Skeleton className="h-8 w-72" />
+				<Skeleton className="h-9 w-64" />
+				<Skeleton className="h-48 w-full rounded-xl" />
+			</div>
+		</div>
+	);
+}
 
 export function Journal() {
 	const activeWorkspace = useActiveWorkspace();
 	const loading = useWorkspacesLoading();
-	const { pathname } = useTradstryPlatform();
-	const route = pathname.split("?")[0] ?? pathname;
 
-	if (!activeWorkspace && loading) {
-		return (
-			<TradeDetailSkeleton
-				review={route === "/dashboard/journal/review"}
-				hasBack={
-					route.startsWith("/dashboard/journal/") &&
-					route !== "/dashboard/journal/review"
-				}
-			/>
-		);
-	}
+	if (!activeWorkspace && loading) return <JournalSkeleton />;
 
 	return activeWorkspace ? (
 		<JournalWorkspace

@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use crate::service::db::schema::tables::journal_table::JournalEntry;
-use crate::service::db::schema::tables::trade_review_table::StoredEpisode;
+
 use crate::service::read_service::trade_set::{self, TradeSet};
-use crate::service::trade_review::types::{ExecutionInstrument, PlanSnapshot};
+use crate::service::trade_review::stored::StoredEpisode;
+use crate::service::trade_review::types::ExecutionInstrument;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PerformanceBreakdown {
@@ -144,38 +145,8 @@ pub fn calculate_trading_performance(
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
 ) -> TradingPerformance {
-    calculate_trading_performance_with_plans(episodes, &HashMap::new(), start, end)
-}
-
-pub fn calculate_trading_performance_with_plans(
-    episodes: &[StoredEpisode],
-    confirmed_plans: &HashMap<String, PlanSnapshot>,
-    start: Option<DateTime<Utc>>,
-    end: Option<DateTime<Utc>>,
-) -> TradingPerformance {
     let mut set = TradeSet::from_episodes(episodes, start, end, New_York);
-    let opened: HashMap<&str, DateTime<Utc>> = episodes
-        .iter()
-        .map(|episode| (episode.id.as_str(), episode.draft.opened_at))
-        .collect();
-    let candidates = confirmed_plans
-        .iter()
-        .filter_map(|(episode, plan)| {
-            let opened = *opened.get(episode.as_str())?;
-            let at = if plan.active_at_episode_open {
-                opened - Duration::nanoseconds(1)
-            } else {
-                plan.created_at.max(opened)
-            };
-            let candidate = trade_set::StopCandidate {
-                at,
-                price: plan.stop_loss.to_f64()?,
-                source: trade_set::StopSource::Plan,
-            };
-            Some((episode.clone(), vec![candidate]))
-        })
-        .collect();
-    set.apply_initial_stops(&candidates, |_| false);
+    set.apply_initial_stops(&HashMap::new(), |_| false);
     calculate_performance(&set, start, end)
 }
 

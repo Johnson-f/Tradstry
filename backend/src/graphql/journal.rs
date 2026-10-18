@@ -1,4 +1,4 @@
-use async_graphql::{ComplexObject, Context, InputObject, Object, Result, SimpleObject};
+use async_graphql::{ComplexObject, Context, Object, Result, SimpleObject};
 
 use crate::graphql::tags::TagGql;
 use crate::service::db::schema::tables::journal_table::{
@@ -6,7 +6,6 @@ use crate::service::db::schema::tables::journal_table::{
     UpdateJournalEntryInput,
 };
 use crate::service::db::schema::tables::notebook::sync as notebook_sync;
-use crate::service::db::schema::tables::trade_review_table;
 use crate::service::read_service::journal::{self as journal_service, JournalFilter};
 use crate::service::read_service::principle as principle_service;
 use crate::service::read_service::tags as tags_service;
@@ -89,22 +88,6 @@ pub struct JournalPullResult {
     pub cookie: String,
     pub last_mutation_id: i64,
     pub entries: Vec<JournalEntryDeltaGql>,
-}
-
-#[derive(Debug, InputObject)]
-#[graphql(rename_fields = "camelCase")]
-pub struct PublishBrokerageEpisodeReviewInput {
-    pub episode_id: String,
-    pub plan_id: Option<String>,
-    pub stop_loss: Option<f64>,
-    pub playbook_id: Option<String>,
-    pub notes: Option<String>,
-    pub plan_adherence: Option<String>,
-    pub lesson: Option<String>,
-    #[graphql(default)]
-    pub tag_ids: Vec<String>,
-    #[graphql(default)]
-    pub violated_principle_ids: Vec<String>,
 }
 
 #[ComplexObject]
@@ -232,33 +215,6 @@ pub struct JournalMutation;
 
 #[Object]
 impl JournalMutation {
-    /// Publishes a closed broker-derived episode. Execution facts are loaded
-    /// server-side; only review context is accepted from the client.
-    async fn publish_brokerage_episode_review(
-        &self,
-        ctx: &Context<'_>,
-        input: PublishBrokerageEpisodeReviewInput,
-    ) -> Result<String> {
-        let user_db = get_user_db(ctx).await?;
-        let journal_id = trade_review_table::publish_episode_review(
-            user_db.pool(),
-            user_db.user_id(),
-            trade_review_table::PublishEpisodeReviewInput {
-                episode_id: input.episode_id,
-                plan_id: input.plan_id,
-                stop_loss: input.stop_loss,
-                playbook_id: input.playbook_id,
-                notes: input.notes,
-                plan_adherence: input.plan_adherence,
-                lesson: input.lesson,
-                tag_ids: input.tag_ids,
-                violated_principle_ids: input.violated_principle_ids,
-            },
-        )
-        .await?;
-        Ok(journal_id)
-    }
-
     async fn create_journal_entry(
         &self,
         ctx: &Context<'_>,

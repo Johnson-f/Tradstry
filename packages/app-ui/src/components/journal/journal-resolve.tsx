@@ -65,11 +65,15 @@ function useResolveTrade({
 	trade,
 	executions,
 	timezone,
+	startingOnly,
+	suggestedQuantity,
 }: {
 	workspaceId: string;
 	trade: flow.JournalTrade;
 	executions: flow.Execution[];
 	timezone?: string;
+	startingOnly: boolean;
+	suggestedQuantity?: string;
 }) {
 	const fetcher = useGraphQL();
 	const platform = useTradstryPlatform();
@@ -135,13 +139,13 @@ function useResolveTrade({
 		? calendarDate(rows[0].executedAt, timezone)
 		: "";
 	const [fix, setFix] = React.useState<Fix>(
-		history.deficit > 0 ? "starting" : "keep",
+		startingOnly || history.deficit > 0 ? "starting" : "keep",
 	);
 	const [targetId, setTargetId] = React.useState("");
 	const [distinct, setDistinct] = React.useState(false);
 	const [starting, setStarting] = React.useState({
 		direction: guessed as Direction,
-		quantity: history.deficit > 0 ? String(history.deficit) : "",
+		quantity: history.deficit > 0 ? String(history.deficit) : (suggestedQuantity ?? ""),
 		averagePrice: "",
 		date: firstDate,
 	});
@@ -392,6 +396,8 @@ export function FixTradeHistory({
 	trade,
 	executions,
 	timezone,
+	startingOnly = false,
+	suggestedQuantity,
 	onClose,
 	onDone,
 }: {
@@ -399,11 +405,13 @@ export function FixTradeHistory({
 	trade: flow.JournalTrade;
 	executions: flow.Execution[];
 	timezone?: string;
+	startingOnly?: boolean;
+	suggestedQuantity?: string;
 	onClose: () => void;
 	onDone: () => void | Promise<void>;
 }) {
 	const platform = useTradstryPlatform();
-	const fix = useResolveTrade({ workspaceId, trade, executions, timezone });
+	const fix = useResolveTrade({ workspaceId, trade, executions, timezone, startingOnly, suggestedQuantity });
 	const id = React.useId();
 	const brokenId =
 		fix.exitIssue?.transactionId ??
@@ -412,21 +420,6 @@ export function FixTradeHistory({
 	React.useEffect(() => {
 		brokenRow.current?.scrollIntoView({ block: "nearest" });
 	}, [brokenId]);
-
-	React.useEffect(() => {
-		const close = (event: KeyboardEvent) => {
-			if (
-				event.key !== "Escape" ||
-				document.querySelector("[data-radix-popper-content-wrapper]")
-			)
-				return;
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			onClose();
-		};
-		window.addEventListener("keydown", close, true);
-		return () => window.removeEventListener("keydown", close, true);
-	}, [onClose]);
 
 	const finish = async () => {
 		if (await fix.confirm()) {
@@ -444,8 +437,9 @@ export function FixTradeHistory({
 	const broken =
 		fix.history.broken >= 0 ? fix.rows[fix.history.broken] : undefined;
 	const step = fix.history.steps[fix.history.broken];
-	const diagnosis =
-		broken && step
+	const diagnosis = startingOnly
+		? "What you held before your first imported execution. The first trades that sell it use it up."
+		: broken && step
 			? `This ${broken.side.toLowerCase()} of ${broken.quantity} on ${executionTime(broken, timezone)} is ${step.short} more than the ${step.before} held at that point. Your history probably started before the first imported execution.`
 			: fix.history.steps.at(-1)?.position
 				? `These executions leave ${fix.history.steps.at(-1)!.position} open as a ${fix.guessed} position. The position before them isn't known, so confirm how to calculate it.`
@@ -494,9 +488,11 @@ export function FixTradeHistory({
 		},
 	];
 
+	const offered = startingOnly ? choices.slice(0, 1) : choices;
+
 	return (
 		<section
-			aria-label="Fix trade history"
+			aria-label={startingOnly ? "Starting position" : "Fix trade history"}
 			className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]"
 		>
 			<div className="min-w-0 overflow-hidden rounded-xl border bg-card lg:order-1">
@@ -622,14 +618,14 @@ export function FixTradeHistory({
 			</div>
 
 			<div className="min-w-0 space-y-4 lg:order-2">
-				<div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-					<h2 className="text-sm font-semibold">What's wrong</h2>
-					{trade.issueMessage && (
+				<div className={cn("rounded-xl border p-4", startingOnly ? "bg-muted/30" : "border-amber-500/20 bg-amber-500/5")}>
+					<h2 className="text-sm font-semibold">{startingOnly ? "What you held" : "What's wrong"}</h2>
+					{!startingOnly && trade.issueMessage && (
 						<p className="mt-1.5 text-sm leading-relaxed text-amber-900 dark:text-amber-200">
 							{trade.issueMessage}
 						</p>
 					)}
-					<p className="mt-1.5 text-sm leading-relaxed text-amber-900 dark:text-amber-200">
+					<p className={cn("mt-1.5 text-sm leading-relaxed", !startingOnly && "text-amber-900 dark:text-amber-200")}>
 						{diagnosis}
 					</p>
 					{fix.existing && (
@@ -657,39 +653,43 @@ export function FixTradeHistory({
 				</div>
 
 				<fieldset className="space-y-2">
-					<legend className="mb-2 text-sm font-semibold">Choose a fix</legend>
-					<RadioGroup
-						value={fix.fix}
-						onValueChange={(value) => fix.setFix(value as Fix)}
-						className="gap-2"
-					>
-						{choices.map((choice) => (
-							<Label
-								key={choice.value}
-								htmlFor={`${id}-${choice.value}`}
-								className={cn(
-									"flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal",
-									fix.fix === choice.value && "border-primary/50 bg-primary/5",
-									choice.disabled && "cursor-not-allowed opacity-60",
-								)}
+					{!startingOnly && <legend className="mb-2 text-sm font-semibold">Choose a fix</legend>}
+					{!startingOnly && (
+						<>
+							<RadioGroup
+								value={fix.fix}
+								onValueChange={(value) => fix.setFix(value as Fix)}
+								className="gap-2"
 							>
-								<RadioGroupItem
-									id={`${id}-${choice.value}`}
-									value={choice.value}
-									disabled={!!choice.disabled || fix.busy}
-									className="mt-0.5"
-								/>
-								<span className="min-w-0">
-									<span className="block text-sm font-medium">
-										{choice.label}
-									</span>
-									<span className="mt-0.5 block text-xs text-muted-foreground">
-										{choice.disabled ?? choice.hint}
-									</span>
-								</span>
-							</Label>
-						))}
-					</RadioGroup>
+								{offered.map((choice) => (
+									<Label
+										key={choice.value}
+										htmlFor={`${id}-${choice.value}`}
+										className={cn(
+											"flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal",
+											fix.fix === choice.value && "border-primary/50 bg-primary/5",
+											choice.disabled && "cursor-not-allowed opacity-60",
+										)}
+									>
+										<RadioGroupItem
+											id={`${id}-${choice.value}`}
+											value={choice.value}
+											disabled={!!choice.disabled || fix.busy}
+											className="mt-0.5"
+										/>
+										<span className="min-w-0">
+											<span className="block text-sm font-medium">
+												{choice.label}
+											</span>
+											<span className="mt-0.5 block text-xs text-muted-foreground">
+												{choice.disabled ?? choice.hint}
+											</span>
+										</span>
+									</Label>
+								))}
+							</RadioGroup>
+						</>
+					)}
 					<Button
 						type="button"
 						variant="link"
@@ -973,95 +973,5 @@ function ResultCard({
 				</p>
 			)}
 		</section>
-	);
-}
-
-export function StartingPositionNotice({
-	workspaceId,
-	trade,
-	timezone,
-	readOnly,
-	onChanged,
-}: {
-	workspaceId: string;
-	trade: flow.JournalTrade;
-	timezone?: string;
-	readOnly: boolean;
-	onChanged: () => void | Promise<void>;
-}) {
-	const fetcher = useGraphQL();
-	const platform = useTradstryPlatform();
-	const opening = useQuery({
-		queryKey: ["journal-flow", platform.user.email, workspaceId, "opening", trade.id],
-		queryFn: () => flow.openingPosition(fetcher, workspaceId, trade.id),
-		enabled: trade.startingPosition,
-	});
-	const [confirming, setConfirming] = React.useState(false);
-	const [busy, setBusy] = React.useState(false);
-	const [error, setError] = React.useState<string | null>(null);
-	if (!trade.startingPosition || !opening.data) return null;
-	const position = opening.data;
-	const remove = async () => {
-		setBusy(true);
-		setError(null);
-		try {
-			await flow.execute(
-				fetcher,
-				flow.command(
-					flow.REMOVE_OPENING,
-					"removeJournalOpeningPosition",
-					{ workspaceId, positionId: position.id },
-					platform.user.email,
-				),
-			);
-			await onChanged();
-		} catch (reason) {
-			setError(messageOf(reason, "Could not remove the starting position"));
-		} finally {
-			setBusy(false);
-			setConfirming(false);
-		}
-	};
-	return (
-		<div className="rounded-lg border px-4 py-3 text-sm">
-			<p>
-				Includes a starting position you entered: {position.quantity}{" "}
-				{position.direction} at {money(position.averagePrice, trade.currency)},
-				held at the start of {tradeDate(position.asOf, timezone)}.
-			</p>
-			{error && (
-				<p role="alert" className="mt-2 text-xs text-destructive">
-					{error}
-				</p>
-			)}
-			{!readOnly &&
-				(confirming ? (
-					<div className="mt-2 flex flex-wrap items-center gap-2">
-						<span className="text-xs text-muted-foreground">
-							Trades built from it go back to needing attention.
-						</span>
-						<Button size="sm" disabled={busy} onClick={() => void remove()}>
-							{busy ? "Removing…" : "Remove it"}
-						</Button>
-						<Button
-							size="sm"
-							variant="ghost"
-							disabled={busy}
-							onClick={() => setConfirming(false)}
-						>
-							Cancel
-						</Button>
-					</div>
-				) : (
-					<Button
-						size="sm"
-						variant="link"
-						className="h-auto px-0"
-						onClick={() => setConfirming(true)}
-					>
-						Remove starting position
-					</Button>
-				))}
-		</div>
 	);
 }

@@ -6,7 +6,6 @@ import * as journalService from "@tradstry/app-ui/lib/service/journal";
 import type {
   CreateJournalEntryInput,
   JournalEntry,
-  PublishBrokerageEpisodeReviewInput,
   UpdateJournalEntryInput,
 } from "@tradstry/app-ui/lib/types/journal";
 import { useAuth } from "@tradstry/app-ui/platform";
@@ -66,22 +65,6 @@ export function useCreateJournalEntry() {
       journalService.createJournalEntry(fetcher, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: JOURNAL_KEY });
-    },
-  });
-}
-
-export function usePublishBrokerageEpisodeReview() {
-  const fetcher = useGraphQL();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: PublishBrokerageEpisodeReviewInput) =>
-      journalService.publishBrokerageEpisodeReview(fetcher, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: JOURNAL_KEY });
-      queryClient.invalidateQueries({ queryKey: ["pending-trades"] });
-      queryClient.invalidateQueries({ queryKey: ["linked-brokerage-tx-ids"] });
-      queryClient.invalidateQueries({ queryKey: ["trade-review-inbox"] });
     },
   });
 }

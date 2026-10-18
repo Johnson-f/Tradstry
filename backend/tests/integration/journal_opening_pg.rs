@@ -504,7 +504,6 @@ async fn a_split_trade_keeps_its_starting_position_through_projection() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_starting_position_absorbs_records_built_before_the_journal() {
-    use tradstry_backend::service::db::schema::tables::trade_review_table;
     let test_db = crate::pg_support::TestDb::new().await;
     let pool = test_db.pool();
     let (user, workspace) = enabled_workspace(&pool).await;
@@ -535,9 +534,7 @@ async fn a_starting_position_absorbs_records_built_before_the_journal() {
         )
         .await;
     }
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
         .bind(&workspace)
         .execute(&pool)

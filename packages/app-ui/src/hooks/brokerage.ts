@@ -20,7 +20,6 @@ import type {
 	BrokerageTransaction,
 	BrokerageTransactionsPage,
 	ConnectionPortal,
-	PendingTrade,
 	ReportBrokerageDataIssueInput,
 	SnapTradeOAuthStart,
 	SnapTradeOAuthStatus,
@@ -38,7 +37,6 @@ const HOLDINGS_KEY = ["brokerage-holdings"] as const;
 const BALANCES_KEY = ["brokerage-balances"] as const;
 const CONNECTION_ACCOUNTS_KEY = ["brokerage-connection-accounts"] as const;
 const LINKED_TX_IDS_KEY = ["linked-brokerage-tx-ids"] as const;
-const PENDING_TRADES_KEY = ["pending-trades"] as const;
 const WORKSPACES_KEY = ["workspaces"] as const;
 const SYNC_OUTCOME_KEY = ["brokerage-sync-outcome"] as const;
 const RECONCILIATION_KEY = ["brokerage-reconciliation"] as const;
@@ -193,54 +191,6 @@ export function useBrokerageTransactionsByIds(ids: string[]) {
 		queryFn: () =>
 			brokerageService.fetchBrokerageTransactionsByIds(fetcher, ids),
 		enabled: isLoaded && isSignedIn && ids.length > 0,
-	});
-}
-
-export function usePendingTrades(workspaceId: string | null) {
-	const { isLoaded, isSignedIn } = useAuth();
-	const fetcher = useGraphQL();
-
-	return useQuery<PendingTrade[]>({
-		queryKey: [...PENDING_TRADES_KEY, workspaceId],
-		queryFn: () => brokerageService.fetchPendingTrades(fetcher, workspaceId!),
-		enabled: isLoaded && isSignedIn && !!workspaceId,
-		staleTime: 30_000,
-	});
-}
-
-export function useRegroupBrokerageEpisode() {
-	const fetcher = useGraphQL();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: ({
-			episodeId,
-			transactionIds,
-		}: {
-			episodeId: string;
-			transactionIds: string[];
-		}) =>
-			brokerageService.regroupBrokerageEpisode(
-				fetcher,
-				episodeId,
-				transactionIds,
-			),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: PENDING_TRADES_KEY });
-			queryClient.invalidateQueries({ queryKey: ["trade-review-inbox"] });
-		},
-	});
-}
-
-export function useResetBrokerageEpisodeGrouping() {
-	const fetcher = useGraphQL();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (episodeId: string) =>
-			brokerageService.resetBrokerageEpisodeGrouping(fetcher, episodeId),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: PENDING_TRADES_KEY });
-			queryClient.invalidateQueries({ queryKey: ["trade-review-inbox"] });
-		},
 	});
 }
 

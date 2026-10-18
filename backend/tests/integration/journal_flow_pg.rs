@@ -1,6 +1,5 @@
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
-use tradstry_backend::service::db::schema::tables::trade_review_table;
 use tradstry_backend::service::trade_review::journal_flow;
 
 pub(crate) async fn enabled_workspace(pool: &PgPool) -> (String, String) {
@@ -231,9 +230,7 @@ async fn empty_option_metadata_recovers_stock_history_and_preserves_the_journal_
         .execute(&pool)
         .await
         .unwrap();
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
         .bind(&workspace)
         .execute(&pool)
@@ -1404,28 +1401,20 @@ async fn existing_published_entry_keeps_its_identity_and_notes() {
         "2026-09-01T15:00:00Z",
     )
     .await;
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     let episode: String = sqlx::query_scalar("SELECT id FROM trade_episodes WHERE workspace_id=$1")
         .bind(&workspace)
         .fetch_one(&pool)
         .await
         .unwrap();
-    let input = trade_review_table::PublishEpisodeReviewInput {
-        episode_id: episode,
-        plan_id: None,
-        stop_loss: Some(95.0),
-        playbook_id: None,
-        notes: Some("My existing journal notes".into()),
-        plan_adherence: None,
-        lesson: None,
-        tag_ids: vec![],
-        violated_principle_ids: vec![],
-    };
-    let id = trade_review_table::publish_episode_review(&pool, &user, input.clone())
-        .await
-        .unwrap();
+    let id = crate::legacy_support::legacy_publication(
+        &pool,
+        &user,
+        &workspace,
+        &episode,
+        "My existing journal notes",
+    )
+    .await;
     let before: Option<String> =
         sqlx::query_scalar("SELECT notes FROM journal_entries WHERE id=$1")
             .bind(&id)
@@ -1450,12 +1439,6 @@ async fn existing_published_entry_keeps_its_identity_and_notes() {
         .await
         .unwrap();
     assert_eq!(after, before);
-    assert_eq!(
-        trade_review_table::publish_episode_review(&pool, &user, input)
-            .await
-            .unwrap(),
-        id
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1504,9 +1487,7 @@ async fn legacy_manual_merge_with_exact_links_recovers_without_a_flat_account() 
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) SELECT uuidv7()::text,$1,id,$2 FROM brokerage_transactions WHERE workspace_id=$3")
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     let episode: String = sqlx::query_scalar("SELECT id FROM trade_episodes WHERE workspace_id=$1")
         .bind(&workspace)
         .fetch_one(&pool)
@@ -3203,9 +3184,7 @@ async fn resolving_history_takes_over_fills_from_blocked_records_without_an_entr
         "2026-09-01T15:00:00Z",
     )
     .await;
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     let legacy: String = sqlx::query_scalar("SELECT id FROM trade_episodes WHERE workspace_id=$1")
         .bind(&workspace)
         .fetch_one(&pool)

@@ -1,15 +1,10 @@
-use std::collections::HashMap;
-
 use chrono::{TimeZone, Utc};
 use rust_decimal::Decimal;
-use tradstry_backend::service::db::schema::tables::trade_review_table::StoredEpisode;
+use tradstry_backend::service::trade_review::stored::StoredEpisode;
 use tradstry_backend::service::trade_review::types::{
-    EpisodeDirection, ExecutionInstrument, FillAllocation, FillRole, PlanSnapshot, PlanTranche,
-    TradeEpisodeDraft,
+    EpisodeDirection, ExecutionInstrument, FillAllocation, FillRole, TradeEpisodeDraft,
 };
-use tradstry_backend::service::trading_performance::{
-    calculate_trading_performance, calculate_trading_performance_with_plans,
-};
+use tradstry_backend::service::trading_performance::calculate_trading_performance;
 
 fn closed_episode(
     id: &str,
@@ -83,26 +78,6 @@ fn open_episode() -> StoredEpisode {
     }
 }
 
-fn plan(id: &str, entry_price: i64, stop_loss: i64) -> PlanSnapshot {
-    PlanSnapshot {
-        plan_id: format!("plan-{id}"),
-        workspace_id: "workspace-1".to_string(),
-        instrument: ExecutionInstrument::Equity {
-            symbol: "TEST".to_string(),
-        },
-        direction: EpisodeDirection::Long,
-        stop_loss: Decimal::new(stop_loss, 0),
-        created_at: Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap(),
-        active_at_episode_open: true,
-        tranches: vec![PlanTranche {
-            id: format!("tranche-{id}"),
-            order: 0,
-            quantity: Decimal::TEN,
-            entry_price: Decimal::new(entry_price, 0),
-        }],
-    }
-}
-
 #[test]
 fn calculates_filtered_realized_trading_performance_from_closed_episodes() {
     let episodes = vec![
@@ -169,29 +144,10 @@ fn ranks_best_and_worst_symbols_and_trading_days() {
 }
 
 #[test]
-fn averages_realized_r_only_across_closed_episodes_with_confirmed_risk() {
-    let episodes = vec![
-        closed_episode("win", "TEST", 10, 10, 20, 1),
-        closed_episode("loss", "TEST", 11, 20, 15, 1),
-        closed_episode("no-plan", "TEST", 12, 10, 10, 0),
-    ];
-    let plans = HashMap::from([
-        ("win".to_string(), plan("win", 10, 9)),
-        ("loss".to_string(), plan("loss", 20, 18)),
-    ]);
-
-    let performance = calculate_trading_performance_with_plans(&episodes, &plans, None, None);
-
-    assert_eq!(performance.risk_defined_trade_count, 2);
-    assert!((performance.average_realized_r.expect("average R") - 3.6).abs() < 1e-9);
-}
-
-#[test]
 fn leaves_average_realized_r_unavailable_without_confirmed_risk() {
     let episodes = vec![closed_episode("win", "TEST", 10, 10, 20, 1)];
 
-    let performance =
-        calculate_trading_performance_with_plans(&episodes, &HashMap::new(), None, None);
+    let performance = calculate_trading_performance(&episodes, None, None);
 
     assert_eq!(performance.risk_defined_trade_count, 0);
     assert_eq!(performance.average_realized_r, None);

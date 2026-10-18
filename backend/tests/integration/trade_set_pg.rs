@@ -3,7 +3,6 @@
 
 use sqlx::PgPool;
 use tradstry_backend::service::db::Db;
-use tradstry_backend::service::db::schema::tables::trade_review_table;
 use tradstry_backend::service::read_service::analytics::{
     AnalyticsTimeFilter, get_advanced_analytics, get_journal_analytics,
 };
@@ -290,9 +289,7 @@ async fn every_report_agrees_with_the_journal_off() {
         },
     )
     .await;
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     let episode = |symbol: &'static str| {
         let pool = pool.clone();
         let workspace = workspace.clone();
@@ -380,6 +377,7 @@ async fn the_journal_off_case_from_the_check_counts_both_trades_everywhere() {
         trip("BETA", "2026-09-01", 100.0, 105.0),
     )
     .await;
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
 
     assert_every_report(&totals(&pool, &user, &workspace).await, 30.0, 2);
 }
@@ -400,9 +398,7 @@ async fn the_analytics_cache_sees_broker_history_and_plans_change() {
         trip("ACME", "2026-09-01", 100.0, 105.0),
     )
     .await;
-    trade_review_table::rebuild_workspace(&pool, &user, &workspace)
-        .await
-        .unwrap();
+    crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
     seen.push(workspace_version(&user_db, &workspace).await.unwrap());
     manual(
         &pool,

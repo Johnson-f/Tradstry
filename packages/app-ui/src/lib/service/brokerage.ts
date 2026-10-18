@@ -10,7 +10,6 @@ import type {
 	BrokerageTransaction,
 	BrokerageTransactionsPage,
 	ConnectionPortal,
-	PendingTrade,
 	ReportBrokerageDataIssueInput,
 	SnapTradeOAuthRevocation,
 	SnapTradeOAuthStart,
@@ -652,49 +651,6 @@ export async function fetchLinkedBrokerageTransactionIds(
 	return data.linkedBrokerageTransactionIds;
 }
 
-const PENDING_TRADES_QUERY = `
-  query PendingTrades($workspaceId: String!) {
-    pendingTrades(workspaceId: $workspaceId) {
-      id
-      episodeId
-      symbol
-      direction
-      status
-      openDate
-      closeDate
-      entryUnits
-      avgEntryPrice
-      avgExitPrice
-      realizedPnl
-      transactionIds
-      fillCount
-      isFullyLinked
-      isPartiallyLinked
-      multiplier
-      isOption
-      underlying
-      optionKind
-      strike
-      expiration
-      symbolName
-      requiresManualGrouping
-      blockReason
-      isManuallyGrouped
-    }
-  }
-`;
-
-export async function fetchPendingTrades(
-	fetcher: GraphQLFetcher,
-	workspaceId: string,
-): Promise<PendingTrade[]> {
-	const data = await fetcher<{ pendingTrades: PendingTrade[] }>(
-		PENDING_TRADES_QUERY,
-		{ workspaceId },
-	);
-	return data.pendingTrades;
-}
-
 const BROKERAGE_TX_BY_IDS_QUERY = `
   query BrokerageTransactionsByIds($ids: [String!]!) {
     brokerageTransactionsByIds(ids: $ids) {
@@ -712,39 +668,4 @@ export async function fetchBrokerageTransactionsByIds(
 		brokerageTransactionsByIds: BrokerageTransaction[];
 	}>(BROKERAGE_TX_BY_IDS_QUERY, { ids });
 	return data.brokerageTransactionsByIds;
-}
-
-const REGROUP_BROKERAGE_EPISODE_MUTATION = `
-  mutation RegroupBrokerageEpisode($episodeId: String!, $transactionIds: [String!]!) {
-    regroupBrokerageEpisode(episodeId: $episodeId, transactionIds: $transactionIds)
-  }
-`;
-
-export async function regroupBrokerageEpisode(
-	fetcher: GraphQLFetcher,
-	episodeId: string,
-	transactionIds: string[],
-): Promise<string> {
-	const data = await fetcher<{ regroupBrokerageEpisode: string }>(
-		REGROUP_BROKERAGE_EPISODE_MUTATION,
-		{ episodeId, transactionIds },
-	);
-	return data.regroupBrokerageEpisode;
-}
-
-const RESET_BROKERAGE_EPISODE_GROUPING_MUTATION = `
-  mutation ResetBrokerageEpisodeGrouping($episodeId: String!) {
-    resetBrokerageEpisodeGrouping(episodeId: $episodeId)
-  }
-`;
-
-export async function resetBrokerageEpisodeGrouping(
-	fetcher: GraphQLFetcher,
-	episodeId: string,
-): Promise<boolean> {
-	const data = await fetcher<{ resetBrokerageEpisodeGrouping: boolean }>(
-		RESET_BROKERAGE_EPISODE_GROUPING_MUTATION,
-		{ episodeId },
-	);
-	return data.resetBrokerageEpisodeGrouping;
 }

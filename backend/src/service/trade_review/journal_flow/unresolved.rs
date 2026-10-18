@@ -44,7 +44,11 @@ pub(super) async fn selected(
     };
     let source = sources
         .iter()
-        .find(|s| Some(s.key.as_str()) == issue["instrument_key"].as_str())
+        .find(|s| {
+            issue["instrument_key"]
+                .as_str()
+                .is_some_and(|key| s.answers_to(key))
+        })
         .ok_or_else(|| anyhow!("Broker history is unavailable"))?;
     ensure!(
         source.can_confirm(),
