@@ -9,6 +9,82 @@ use tradstry_migration::{Migrator, MigratorTrait};
 use uuid::Uuid;
 
 #[tokio::test]
+async fn legacy_precision_upgrade_preserves_journal_entries_and_real_allocation_errors() {
+    let (admin, pool, schema) = isolated_pool().await;
+    pg::migrate(&pool).await.unwrap();
+    let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    Migrator::up(&db, Some(19)).await.unwrap();
+    pool.execute("INSERT INTO users(id,stytch_user_id,email,full_name) VALUES ('precision-u','precision-stytch','precision@test.local','Precision');
+        INSERT INTO workspaces(id,user_id,name) VALUES ('precision-w','precision-u','Main');
+        INSERT INTO journal_workspace_state(workspace_id,user_id,enabled) VALUES ('precision-w','precision-u',false);
+        INSERT INTO brokerage_transactions(id,user_id,workspace_id,snaptrade_id,symbol,currency,transaction_type,price,units,fee,trade_date,settlement_date,institution,raw_json,dedup_key)
+        SELECT name,'precision-u','precision-w',name,'ACME','USD','BUY',10,CASE WHEN name='round-down' THEN 0.3 ELSE 0.60657 END,0,'2026-01-01T10:00:00Z','2026-01-01T10:00:00Z','test','{}',name FROM unnest(ARRAY['round-up','round-down','real-excess','completed']) name;
+        INSERT INTO trade_episodes(id,user_id,workspace_id,fingerprint,instrument_key,instrument_json,direction,opened_at,current_quantity,status,grouping_source)
+        SELECT name,'precision-u','precision-w',name,'equity:ACME','{\"kind\":\"equity\",\"symbol\":\"ACME\"}','long','2026-01-01T10:00:00Z',0.60657,
+            CASE WHEN name='completed' THEN 'ready' ELSE 'blocked' END,
+            CASE WHEN name='completed' THEN 'manual' ELSE 'automatic' END
+        FROM unnest(ARRAY['round-up','round-up-second','round-down','real-excess','completed']) name;
+        INSERT INTO trade_episode_fills(id,episode_id,brokerage_transaction_id,role,quantity,price,fee,executed_at,allocation_order)
+        VALUES ('up-a','round-up','round-up','entry',0.3,10,0,'2026-01-01T10:00:00Z',0),
+            ('up-b','round-up-second','round-up','entry',0.3065700000000000535749222761,10,0,'2026-01-01T10:00:00Z',1),
+            ('down','round-down','round-down','entry',0.2999999999999999888977697537,10,0,'2026-01-01T10:00:00Z',0),
+            ('excess','real-excess','real-excess','entry',0.7,10,0,'2026-01-01T10:00:00Z',0),
+            ('completed','completed','completed','entry',0.60657,10,0,'2026-01-01T10:00:00Z',0);
+        INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,episode_id,notes)
+        VALUES ('precision-completed','precision-u','precision-w','ACME','Acme','long','broker','closed','completed','Keep completed note'),
+            ('precision-unresolved','precision-u','precision-w','ACME','Acme','unknown','broker','incomplete',NULL,'Keep unresolved note');")
+        .await.unwrap();
+    let entries_before: serde_json::Value =
+        sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let broker_before: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    bootstrap(&pool, &schema).await.unwrap();
+    let quantities: Vec<(String, String)> = sqlx::query_as("SELECT brokerage_transaction_id,trim_scale(sum(quantity))::text FROM trade_episode_fills GROUP BY brokerage_transaction_id ORDER BY brokerage_transaction_id")
+        .fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        quantities,
+        vec![
+            ("completed".into(), "0.60657".into()),
+            ("real-excess".into(), "0.7".into()),
+            ("round-down".into(), "0.3".into()),
+            ("round-up".into(), "0.60657".into()),
+        ]
+    );
+    let entries_after: serde_json::Value =
+        sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let broker_after: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM brokerage_transactions b",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(entries_before, entries_after);
+    assert_eq!(broker_before, broker_after);
+    pool.execute(
+        "UPDATE journal_workspace_state SET enabled=true WHERE workspace_id='precision-w'",
+    )
+    .await
+    .unwrap();
+    let error = pool
+        .execute("UPDATE trade_episode_fills SET quantity=0.7 WHERE id='up-a'")
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("over-allocated"));
+    bootstrap(&pool, &schema).await.unwrap();
+    cleanup(admin, pool, &schema).await;
+}
+
+#[tokio::test]
 async fn linked_duplicate_upgrade_preserves_distinct_trades_and_still_holds_shared_records() {
     let (admin, pool, schema) = isolated_pool().await;
     pg::migrate(&pool).await.unwrap();

@@ -19,6 +19,7 @@ mod m20261016_000016_linked_trade_duplicates;
 mod m20261017_000017_opening_positions;
 mod m20261017_000018_trade_actions;
 mod m20261018_000019_orphan_acknowledged;
+mod m20261018_000020_legacy_allocation_precision;
 
 pub struct Migrator;
 
@@ -45,6 +46,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261017_000017_opening_positions::Migration),
             Box::new(m20261017_000018_trade_actions::Migration),
             Box::new(m20261018_000019_orphan_acknowledged::Migration),
+            Box::new(m20261018_000020_legacy_allocation_precision::Migration),
         ]
     }
 }
