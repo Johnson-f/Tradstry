@@ -6,6 +6,7 @@ import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Checkbox } from "@tradstry/app-ui/components/ui/checkbox";
+import { DialogFooter } from "@tradstry/app-ui/components/ui/dialog";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { Label } from "@tradstry/app-ui/components/ui/label";
 import {
@@ -411,7 +412,14 @@ export function FixTradeHistory({
 	onDone: () => void | Promise<void>;
 }) {
 	const platform = useTradstryPlatform();
-	const fix = useResolveTrade({ workspaceId, trade, executions, timezone, startingOnly, suggestedQuantity });
+	const fix = useResolveTrade({
+		workspaceId,
+		trade,
+		executions,
+		timezone,
+		startingOnly,
+		suggestedQuantity,
+	});
 	const id = React.useId();
 	const brokenId =
 		fix.exitIssue?.transactionId ??
@@ -493,382 +501,452 @@ export function FixTradeHistory({
 	return (
 		<section
 			aria-label={startingOnly ? "Starting position" : "Fix trade history"}
-			className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]"
+			className="flex min-h-0 min-w-0 flex-1 flex-col"
 		>
-			<div className="min-w-0 overflow-hidden rounded-xl border bg-card lg:order-1">
-				<div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-					<h2 className="text-sm font-semibold">Executions</h2>
-					<span className="text-[11px] text-muted-foreground">
-						Running position as a {fix.direction}
-					</span>
-				</div>
-				<ScrollArea orientation="horizontal">
-					<table className="w-full min-w-[540px] text-sm">
-						<thead className="bg-muted/30 text-[11px] text-muted-foreground">
-							<tr>
-								<th className="px-4 py-2.5 text-left font-medium">Time</th>
-								<th className="px-3 py-2.5 text-left font-medium">Side</th>
-								<th className="px-3 py-2.5 text-right font-medium">Available</th>
-								<th className="px-3 py-2.5 text-right font-medium">Price</th>
-								<th className="px-4 py-2.5 text-right font-medium">Position</th>
-							</tr>
-						</thead>
-						<tbody>
-							{fix.rows.map((fill, index) => {
-								const step = fix.shown.steps[index]!;
-								const isBroken = fill.transactionId === brokenId;
-								const reorder = fix.sameTime(index, -1) || fix.sameTime(index, 1);
-								return (
-									<tr
-										key={fill.transactionId}
-										ref={isBroken ? brokenRow : undefined}
-										aria-invalid={isBroken || undefined}
-										className="border-t border-border/60 aria-invalid:bg-destructive/5"
-									>
-										<td className="px-4 py-3 text-xs text-muted-foreground">
-											<div className="flex items-center gap-1">
-												{executionTime(fill, timezone)}
-												{reorder && (
-													<span className="ml-1 flex">
-														<Button
-															type="button"
-															variant="ghost"
-															size="icon-sm"
-															aria-label={`Move execution ${index + 1} earlier`}
-															title="Move earlier within the same recorded time"
-															disabled={fix.busy || !fix.sameTime(index, -1)}
-															onClick={() => fix.move(index, -1)}
-														>
-															<HugeiconsIcon
-																icon={ArrowUp01Icon}
-																className="size-3.5"
-																aria-hidden="true"
-															/>
-														</Button>
-														<Button
-															type="button"
-															variant="ghost"
-															size="icon-sm"
-															aria-label={`Move execution ${index + 1} later`}
-															title="Move later within the same recorded time"
-															disabled={fix.busy || !fix.sameTime(index, 1)}
-															onClick={() => fix.move(index, 1)}
-														>
-															<HugeiconsIcon
-																icon={ArrowDown01Icon}
-																className="size-3.5"
-																aria-hidden="true"
-															/>
-														</Button>
-													</span>
-												)}
-											</div>
-										</td>
-										<td className="px-3 py-3">
-											<span
-												className={cn(
-													"rounded-md px-1.5 py-1 text-[10px] font-medium",
-													fill.side.toUpperCase().startsWith("BUY")
-														? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-														: fill.side.toUpperCase().startsWith("SELL")
-															? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-															: "bg-muted text-muted-foreground",
-												)}
-											>
-												{fill.side}
-											</span>
-										</td>
-										<td
-											className={cn(
-												"px-3 py-3 text-right tabular-nums",
-												Number(fill.quantity) === 0 && "text-muted-foreground",
-											)}
-											title={"Broker quantity: " + fill.sourceQuantity}
-										>
-											{fill.quantity}
-											<ExecutionHeldBy holders={fill.heldBy} timezone={timezone} />
-										</td>
-										<td className="px-3 py-3 text-right tabular-nums">
-											{money(fill.price, trade.currency)}
-										</td>
-										<td
-											className={cn(
-												"px-4 py-3 text-right font-medium tabular-nums",
-												step.position < 0 && "text-destructive",
-											)}
-										>
-											{step.position}
-											{step.short > 0 && (
-												<span className="mt-0.5 block text-[11px] font-normal">
-													{step.short} short
-												</span>
-											)}
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</ScrollArea>
-				{!fix.rows.length && (
-					<p className="px-4 py-5 text-center text-xs text-muted-foreground">
-						No executions are available.
-					</p>
-				)}
-			</div>
-
-			<div className="min-w-0 space-y-4 lg:order-2">
-				<div className={cn("rounded-xl border p-4", startingOnly ? "bg-muted/30" : "border-amber-500/20 bg-amber-500/5")}>
-					<h2 className="text-sm font-semibold">{startingOnly ? "What you held" : "What's wrong"}</h2>
-					{!startingOnly && trade.issueMessage && (
-						<p className="mt-1.5 text-sm leading-relaxed text-amber-900 dark:text-amber-200">
-							{trade.issueMessage}
-						</p>
-					)}
-					<p className={cn("mt-1.5 text-sm leading-relaxed", !startingOnly && "text-amber-900 dark:text-amber-200")}>
-						{diagnosis}
-					</p>
-					{fix.existing && (
-						<div className="mt-3 border-t border-amber-500/20 pt-3 text-xs leading-relaxed">
-							<p>
-								Your starting position: {fix.existing.quantity}{" "}
-								{fix.existing.direction} at{" "}
-								{money(fix.existing.averagePrice, trade.currency)}, held at the
-								start of {tradeDate(fix.existing.asOf, timezone)}.
-								{fix.existing.olderHistory &&
-									" Older broker history has since been imported, so it may already include these shares."}
-							</p>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								className="mt-2"
-								disabled={fix.busy}
-								onClick={() => void remove()}
-							>
-								Remove starting position
-							</Button>
-						</div>
-					)}
-				</div>
-
-				<fieldset className="space-y-2">
-					{!startingOnly && <legend className="mb-2 text-sm font-semibold">Choose a fix</legend>}
-					{!startingOnly && (
-						<>
-							<RadioGroup
-								value={fix.fix}
-								onValueChange={(value) => fix.setFix(value as Fix)}
-								className="gap-2"
-							>
-								{offered.map((choice) => (
-									<Label
-										key={choice.value}
-										htmlFor={`${id}-${choice.value}`}
-										className={cn(
-											"flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal",
-											fix.fix === choice.value && "border-primary/50 bg-primary/5",
-											choice.disabled && "cursor-not-allowed opacity-60",
-										)}
-									>
-										<RadioGroupItem
-											id={`${id}-${choice.value}`}
-											value={choice.value}
-											disabled={!!choice.disabled || fix.busy}
-											className="mt-0.5"
-										/>
-										<span className="min-w-0">
-											<span className="block text-sm font-medium">
-												{choice.label}
-											</span>
-											<span className="mt-0.5 block text-xs text-muted-foreground">
-												{choice.disabled ?? choice.hint}
-											</span>
-										</span>
-									</Label>
-								))}
-							</RadioGroup>
-						</>
-					)}
-					<Button
-						type="button"
-						variant="link"
-						size="sm"
-						className="h-auto px-0 text-xs"
-						onClick={() => platform.navigate("/dashboard/brokerage")}
+			<ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]]:overscroll-contain lg:[&>[data-slot=scroll-area-viewport]>div]:h-full">
+				<div className="grid min-h-0 lg:h-full lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+					<section
+						aria-labelledby={`${id}-executions-heading`}
+						className="flex min-h-0 min-w-0 flex-col border-b lg:border-r lg:border-b-0"
 					>
-						Import missing history from your broker instead
-					</Button>
-				</fieldset>
-
-				{fix.fix === "starting" && (
-					<div className="grid grid-cols-2 gap-3 rounded-lg border p-3">
-						<div className="col-span-2 space-y-1.5">
-							<Label id={`${id}-starting-direction`}>Position</Label>
-							<RadioGroup
-								aria-labelledby={`${id}-starting-direction`}
-								value={fix.starting.direction}
-								onValueChange={(value) =>
-									fix.chooseStartingDirection(value as Direction)
-								}
-								className="flex gap-4"
-							>
-								{(["long", "short"] as const).map((value) => (
-									<Label
-										key={value}
-										htmlFor={`${id}-starting-${value}`}
-										className="flex items-center gap-2 font-normal capitalize"
-									>
-										<RadioGroupItem id={`${id}-starting-${value}`} value={value} />
-										{value === "long" ? "Long (shares held)" : "Short (shares owed)"}
-									</Label>
-								))}
-							</RadioGroup>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor={`${id}-quantity`}>Quantity</Label>
-							<Input
-								id={`${id}-quantity`}
-								inputMode="decimal"
-								value={fix.starting.quantity}
-								onChange={(event) =>
-									fix.setStarting({ ...fix.starting, quantity: event.target.value })
-								}
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor={`${id}-price`}>Average price</Label>
-							<Input
-								id={`${id}-price`}
-								inputMode="decimal"
-								placeholder="0.00"
-								value={fix.starting.averagePrice}
-								onChange={(event) =>
-									fix.setStarting({
-										...fix.starting,
-										averagePrice: event.target.value,
-									})
-								}
-							/>
-						</div>
-						<div className="col-span-2 space-y-1.5">
-							<Label htmlFor={`${id}-date`}>Held at the start of</Label>
-							<Input
-								id={`${id}-date`}
-								type="date"
-								value={fix.starting.date}
-								onChange={(event) =>
-									fix.setStarting({ ...fix.starting, date: event.target.value })
-								}
-							/>
-							<p className="text-[11px] text-muted-foreground">
-								{fix.shown.deficit > 0
-									? `${fix.shown.deficit} is the smallest starting quantity that keeps your position from going negative.`
-									: "Use the position shown on your broker statement for that day."}
-							</p>
-						</div>
-					</div>
-				)}
-
-				{fix.fix === "merge" && (
-					<div className="space-y-2 rounded-lg border p-3">
-						<RadioGroup
-							aria-label="Existing trade"
-							value={fix.targetId}
-							onValueChange={fix.setTargetId}
-							className="gap-1"
-						>
-							{fix.eligibleTargets.map((entry) => (
-								<Label
-									key={entry.id}
-									htmlFor={`${id}-target-${entry.id}`}
-									className="flex cursor-pointer items-start gap-3 rounded-md p-2 font-normal hover:bg-muted/40"
+						<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-4">
+							<div className="flex items-center gap-2">
+								<h2
+									id={`${id}-executions-heading`}
+									className="text-sm font-medium"
 								>
-									<RadioGroupItem
-										id={`${id}-target-${entry.id}`}
-										value={entry.id}
-										className="mt-0.5"
-									/>
-									<span className="min-w-0 text-xs">
-										<span className="block text-sm font-medium capitalize">
-											{entry.symbol} · {entry.direction}
-										</span>
-										<span className="mt-0.5 block text-muted-foreground tabular-nums">
-											{[
-												tradeDate(entry.openDate, timezone) +
-													(entry.closeDate
-														? " – " + tradeDate(entry.closeDate, timezone)
-														: ""),
-												entry.sourceKind === "manual"
-													? "Journal entry"
-													: entry.remainingQuantity &&
-														entry.remainingQuantity + " open",
-												entry.realizedNet !== null &&
-													money(entry.realizedNet, entry.currency),
-											]
-												.filter(Boolean)
-												.join(" · ")}
-										</span>
-									</span>
-								</Label>
-							))}
-						</RadioGroup>
-					</div>
-				)}
-
-				{fix.needsDistinct && (
-					<div className="flex items-start gap-2 rounded-lg border p-3">
-						<Checkbox
-							id={`${id}-distinct`}
-							checked={fix.distinct}
-							disabled={fix.busy}
-							onCheckedChange={(checked) => fix.setDistinct(checked === true)}
-						/>
-						<Label
-							htmlFor={`${id}-distinct`}
-							className="text-xs leading-relaxed font-normal"
+									Broker executions
+								</h2>
+								<span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground tabular-nums">
+									{fix.rows.length}
+								</span>
+							</div>
+							<p className="text-[11px] text-muted-foreground">
+								Running position ·{" "}
+								<span className="capitalize">{fix.direction}</span>
+							</p>
+						</div>
+						<ScrollArea
+							orientation="both"
+							className="min-h-0 lg:flex-1 [&>[data-slot=scroll-area-viewport]]:max-h-72 lg:[&>[data-slot=scroll-area-viewport]]:overscroll-contain lg:[&>[data-slot=scroll-area-viewport]]:max-h-none"
 						>
-							I compared the existing entries. These executions belong to a
-							separate trade.
-						</Label>
-					</div>
-				)}
+							<table className="w-full min-w-[520px] text-xs">
+								<thead className="sticky top-0 z-10 bg-muted text-[11px] text-muted-foreground">
+									<tr>
+										<th className="px-4 py-2.5 text-left font-medium">Time</th>
+										<th className="px-3 py-2.5 text-left font-medium">Side</th>
+										<th className="px-3 py-2.5 text-right font-medium">
+											Available
+										</th>
+										<th className="px-3 py-2.5 text-right font-medium">
+											Price
+										</th>
+										<th className="px-4 py-2.5 text-right font-medium">
+											Position
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{fix.rows.map((fill, index) => {
+										const step = fix.shown.steps[index]!;
+										const isBroken = fill.transactionId === brokenId;
+										const reorder =
+											fix.sameTime(index, -1) || fix.sameTime(index, 1);
+										return (
+											<tr
+												key={fill.transactionId}
+												ref={isBroken ? brokenRow : undefined}
+												aria-invalid={isBroken || undefined}
+												className="border-t border-border/60 hover:bg-muted/30 aria-invalid:bg-destructive/5"
+											>
+												<td className="px-4 py-3 text-xs text-muted-foreground">
+													<div className="flex items-center gap-1">
+														{executionTime(fill, timezone)}
+														{reorder && (
+															<span className="ml-1 flex">
+																<Button
+																	type="button"
+																	variant="ghost"
+																	size="icon-sm"
+																	aria-label={`Move execution ${index + 1} earlier`}
+																	title="Move earlier within the same recorded time"
+																	disabled={
+																		fix.busy || !fix.sameTime(index, -1)
+																	}
+																	onClick={() => fix.move(index, -1)}
+																>
+																	<HugeiconsIcon
+																		icon={ArrowUp01Icon}
+																		className="size-3.5"
+																		aria-hidden="true"
+																	/>
+																</Button>
+																<Button
+																	type="button"
+																	variant="ghost"
+																	size="icon-sm"
+																	aria-label={`Move execution ${index + 1} later`}
+																	title="Move later within the same recorded time"
+																	disabled={fix.busy || !fix.sameTime(index, 1)}
+																	onClick={() => fix.move(index, 1)}
+																>
+																	<HugeiconsIcon
+																		icon={ArrowDown01Icon}
+																		className="size-3.5"
+																		aria-hidden="true"
+																	/>
+																</Button>
+															</span>
+														)}
+													</div>
+												</td>
+												<td className="px-3 py-3">
+													<span
+														className={cn(
+															"rounded-md px-1.5 py-1 text-[10px] font-medium",
+															fill.side.toUpperCase().startsWith("BUY")
+																? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+																: fill.side.toUpperCase().startsWith("SELL")
+																	? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+																	: "bg-muted text-muted-foreground",
+														)}
+													>
+														{fill.side}
+													</span>
+												</td>
+												<td
+													className={cn(
+														"px-3 py-3 text-right tabular-nums",
+														Number(fill.quantity) === 0 &&
+															"text-muted-foreground",
+													)}
+													title={"Broker quantity: " + fill.sourceQuantity}
+												>
+													{fill.quantity}
+													<ExecutionHeldBy
+														holders={fill.heldBy}
+														timezone={timezone}
+													/>
+												</td>
+												<td className="px-3 py-3 text-right tabular-nums">
+													{money(fill.price, trade.currency)}
+												</td>
+												<td
+													className={cn(
+														"px-4 py-3 text-right font-medium tabular-nums",
+														step.position < 0 && "text-destructive",
+													)}
+												>
+													{step.position}
+													{step.short > 0 && (
+														<span className="mt-0.5 block text-[11px] font-normal">
+															{step.short} short
+														</span>
+													)}
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</ScrollArea>
+						{!fix.rows.length && (
+							<p className="shrink-0 px-5 py-5 text-center text-xs text-muted-foreground">
+								No executions are available.
+							</p>
+						)}
+					</section>
 
-				<ResultCard fix={fix} currency={trade.currency} timezone={timezone} />
+					<ScrollArea className="min-h-0 min-w-0 lg:h-full lg:[&>[data-slot=scroll-area-viewport]]:overscroll-contain">
+						<div className="space-y-5 p-5">
+							<div
+								className={cn(
+									"border-l-2 py-1 pl-3",
+									startingOnly ? "border-border" : "border-amber-500/50",
+								)}
+							>
+								<h2 className="text-xs font-medium">
+									{startingOnly ? "What you held" : "What needs checking"}
+								</h2>
+								{!startingOnly && trade.issueMessage && (
+									<p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+										{trade.issueMessage}
+									</p>
+								)}
+								<p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+									{diagnosis}
+								</p>
+								{fix.existing && (
+									<div className="mt-3 border-t pt-3 text-xs leading-relaxed">
+										<p>
+											Your starting position: {fix.existing.quantity}{" "}
+											{fix.existing.direction} at{" "}
+											{money(fix.existing.averagePrice, trade.currency)}, held
+											at the start of {tradeDate(fix.existing.asOf, timezone)}.
+											{fix.existing.olderHistory &&
+												" Older broker history has since been imported, so it may already include these shares."}
+										</p>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="mt-2"
+											disabled={fix.busy}
+											onClick={() => void remove()}
+										>
+											Remove starting position
+										</Button>
+									</div>
+								)}
+							</div>
 
-				{fix.error && (
-					<p
-						role="alert"
-						className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"
-					>
-						{fix.error}
-					</p>
-				)}
+							<fieldset className="space-y-2">
+								{!startingOnly && (
+									<legend className="mb-2 text-sm font-medium">
+										Choose a fix
+									</legend>
+								)}
+								{!startingOnly && (
+									<>
+										<RadioGroup
+											aria-label="Choose a fix"
+											value={fix.fix}
+											onValueChange={(value) => fix.setFix(value as Fix)}
+											className="gap-0 divide-y overflow-hidden rounded-lg border"
+										>
+											{offered.map((choice) => (
+												<Label
+													key={choice.value}
+													htmlFor={`${id}-${choice.value}`}
+													className={cn(
+														"flex cursor-pointer items-start gap-3 p-3 font-normal hover:bg-muted/40 focus-within:bg-muted/60",
+														fix.fix === choice.value && "bg-muted/70",
+														choice.disabled && "cursor-not-allowed opacity-60",
+													)}
+												>
+													<RadioGroupItem
+														id={`${id}-${choice.value}`}
+														value={choice.value}
+														disabled={!!choice.disabled || fix.busy}
+														className="mt-0.5"
+													/>
+													<span className="min-w-0">
+														<span className="block text-xs font-medium leading-relaxed">
+															{choice.label}
+														</span>
+														<span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+															{choice.disabled ?? choice.hint}
+														</span>
+													</span>
+												</Label>
+											))}
+										</RadioGroup>
+									</>
+								)}
+								<Button
+									type="button"
+									variant="link"
+									size="sm"
+									className="h-auto whitespace-normal px-0 text-left text-[11px] text-muted-foreground"
+									onClick={() => platform.navigate("/dashboard/brokerage")}
+								>
+									Import missing history from your broker instead
+								</Button>
+							</fieldset>
 
-				<div className="flex flex-wrap justify-end gap-2">
-					<Button
-						type="button"
-						variant="outline"
-						disabled={fix.busy}
-						onClick={onClose}
-					>
-						Cancel
-					</Button>
-					<Button
-						type="button"
-						disabled={fix.busy || (!fix.pending && !fix.outcome)}
-						onClick={() => void finish()}
-					>
-						{fix.busy
-							? "Applying…"
-							: fix.pending
-								? "Check confirmation"
-								: fix.fix === "starting"
-									? "Save starting position"
-									: "Confirm fix"}
-					</Button>
+							{fix.fix === "starting" && (
+								<div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3">
+									<div className="col-span-2 space-y-1.5">
+										<Label id={`${id}-starting-direction`}>Position</Label>
+										<RadioGroup
+											aria-labelledby={`${id}-starting-direction`}
+											value={fix.starting.direction}
+											onValueChange={(value) =>
+												fix.chooseStartingDirection(value as Direction)
+											}
+											className="flex gap-4"
+										>
+											{(["long", "short"] as const).map((value) => (
+												<Label
+													key={value}
+													htmlFor={`${id}-starting-${value}`}
+													className="flex items-center gap-2 font-normal capitalize"
+												>
+													<RadioGroupItem
+														id={`${id}-starting-${value}`}
+														value={value}
+													/>
+													{value === "long"
+														? "Long (shares held)"
+														: "Short (shares owed)"}
+												</Label>
+											))}
+										</RadioGroup>
+									</div>
+									<div className="space-y-1.5">
+										<Label htmlFor={`${id}-quantity`}>Quantity</Label>
+										<Input
+											id={`${id}-quantity`}
+											inputMode="decimal"
+											value={fix.starting.quantity}
+											onChange={(event) =>
+												fix.setStarting({
+													...fix.starting,
+													quantity: event.target.value,
+												})
+											}
+										/>
+									</div>
+									<div className="space-y-1.5">
+										<Label htmlFor={`${id}-price`}>Average price</Label>
+										<Input
+											id={`${id}-price`}
+											inputMode="decimal"
+											placeholder="0.00"
+											value={fix.starting.averagePrice}
+											onChange={(event) =>
+												fix.setStarting({
+													...fix.starting,
+													averagePrice: event.target.value,
+												})
+											}
+										/>
+									</div>
+									<div className="col-span-2 space-y-1.5">
+										<Label htmlFor={`${id}-date`}>Held at the start of</Label>
+										<Input
+											id={`${id}-date`}
+											type="date"
+											value={fix.starting.date}
+											onChange={(event) =>
+												fix.setStarting({
+													...fix.starting,
+													date: event.target.value,
+												})
+											}
+										/>
+										<p className="text-[11px] text-muted-foreground">
+											{fix.shown.deficit > 0
+												? `${fix.shown.deficit} is the smallest starting quantity that keeps your position from going negative.`
+												: "Use the position shown on your broker statement for that day."}
+										</p>
+									</div>
+								</div>
+							)}
+
+							{fix.fix === "merge" && (
+								<div className="space-y-2 border-l-2 pl-3">
+									<RadioGroup
+										aria-label="Existing trade"
+										value={fix.targetId}
+										onValueChange={fix.setTargetId}
+										className="gap-1"
+									>
+										{fix.eligibleTargets.map((entry) => (
+											<Label
+												key={entry.id}
+												htmlFor={`${id}-target-${entry.id}`}
+												className="flex cursor-pointer items-start gap-3 rounded-md p-2 font-normal hover:bg-muted/40"
+											>
+												<RadioGroupItem
+													id={`${id}-target-${entry.id}`}
+													value={entry.id}
+													className="mt-0.5"
+												/>
+												<span className="min-w-0 text-xs">
+													<span className="block text-sm font-medium capitalize">
+														{entry.symbol} · {entry.direction}
+													</span>
+													<span className="mt-0.5 block text-muted-foreground tabular-nums">
+														{[
+															tradeDate(entry.openDate, timezone) +
+																(entry.closeDate
+																	? " – " + tradeDate(entry.closeDate, timezone)
+																	: ""),
+															entry.sourceKind === "manual"
+																? "Journal entry"
+																: entry.remainingQuantity &&
+																	entry.remainingQuantity + " open",
+															entry.realizedNet !== null &&
+																money(entry.realizedNet, entry.currency),
+														]
+															.filter(Boolean)
+															.join(" · ")}
+													</span>
+												</span>
+											</Label>
+										))}
+									</RadioGroup>
+								</div>
+							)}
+
+							{fix.needsDistinct && (
+								<div className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-3">
+									<Checkbox
+										id={`${id}-distinct`}
+										checked={fix.distinct}
+										disabled={fix.busy}
+										onCheckedChange={(checked) =>
+											fix.setDistinct(checked === true)
+										}
+									/>
+									<Label
+										htmlFor={`${id}-distinct`}
+										className="text-xs leading-relaxed font-normal"
+									>
+										I compared the existing entries. These executions belong to
+										a separate trade.
+									</Label>
+								</div>
+							)}
+
+							<ResultCard
+								fix={fix}
+								currency={trade.currency}
+								timezone={timezone}
+							/>
+						</div>
+					</ScrollArea>
 				</div>
-			</div>
+			</ScrollArea>
+
+			{fix.error && (
+				<div className="shrink-0 border-t border-destructive/20 bg-destructive/5 px-5 py-3">
+					<ScrollArea className="[&>[data-slot=scroll-area-viewport]]:max-h-20">
+						<p role="alert" className="text-xs text-destructive">
+							{fix.error}
+						</p>
+					</ScrollArea>
+				</div>
+			)}
+
+			<DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t bg-muted/20 px-5 py-3 sm:justify-between">
+				<Button
+					type="button"
+					variant="outline"
+					size="lg"
+					className="h-9 px-4"
+					disabled={fix.busy}
+					onClick={onClose}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					size="lg"
+					className="h-9 px-4"
+					disabled={fix.busy || (!fix.pending && !fix.outcome)}
+					onClick={() => void finish()}
+				>
+					{fix.busy
+						? "Applying…"
+						: fix.pending
+							? "Check confirmation"
+							: fix.fix === "starting"
+								? "Save starting position"
+								: "Confirm fix"}
+				</Button>
+			</DialogFooter>
 		</section>
 	);
 }
@@ -883,8 +961,8 @@ function ResultCard({
 	timezone?: string;
 }) {
 	return (
-		<section aria-live="polite" className="rounded-xl border p-4">
-			<h2 className="text-sm font-semibold">Result</h2>
+		<section aria-live="polite" className="border-t pt-4">
+			<h2 className="text-sm font-medium">Result preview</h2>
 			{fix.pending ? (
 				<p className="mt-2 text-xs text-muted-foreground">
 					A confirmation may still be in progress. Check it before making
@@ -893,8 +971,14 @@ function ResultCard({
 			) : fix.previewing ? (
 				<div role="status" className="mt-3 space-y-2">
 					<span className="sr-only">Calculating the result…</span>
-					<Skeleton aria-hidden="true" className="h-10 w-full motion-reduce:animate-none" />
-					<Skeleton aria-hidden="true" className="h-10 w-full motion-reduce:animate-none" />
+					<Skeleton
+						aria-hidden="true"
+						className="h-10 w-full motion-reduce:animate-none"
+					/>
+					<Skeleton
+						aria-hidden="true"
+						className="h-10 w-full motion-reduce:animate-none"
+					/>
 				</div>
 			) : fix.outcome?.kind === "starting" ? (
 				<>
@@ -905,7 +989,9 @@ function ResultCard({
 								className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs"
 							>
 								<span>
-									<span className="font-medium capitalize">{trade.direction}</span>{" "}
+									<span className="font-medium capitalize">
+										{trade.direction}
+									</span>{" "}
 									<span className="text-muted-foreground">
 										{tradeDate(trade.openedAt, timezone)}
 										{trade.closedAt
@@ -927,8 +1013,8 @@ function ResultCard({
 						))}
 					</ul>
 					<p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-						Your history is rebuilt into these trades. This trade keeps its notes.
-						Remove the starting position any time to undo.
+						Your history is rebuilt into these trades. This trade keeps its
+						notes. Remove the starting position any time to undo.
 					</p>
 				</>
 			) : fix.outcome?.kind === "grouping" ? (
@@ -940,7 +1026,9 @@ function ResultCard({
 								className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs"
 							>
 								<span>
-									<span className="font-medium capitalize">{group.direction}</span>{" "}
+									<span className="font-medium capitalize">
+										{group.direction}
+									</span>{" "}
 									<span className="text-muted-foreground">
 										{group.remainingQuantity === "0"
 											? "closed"

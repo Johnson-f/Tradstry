@@ -56,7 +56,7 @@ export function FixHistoryDialog({
 }) {
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<JournalDialogContent className="sm:max-w-5xl">
+			<JournalDialogContent className="flex h-[min(52rem,92dvh)] min-h-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
 				{open && (
 					<FixHistoryBody
 						workspaceId={workspaceId}
@@ -92,27 +92,32 @@ function FixHistoryBody({
 	if (!trade)
 		return (
 			<>
-				<DialogHeader>
+				<DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
 					<DialogTitle>{title}</DialogTitle>
 					<DialogDescription>
 						{detail.isError ? "This trade could not be loaded." : "Loading the executions…"}
 					</DialogDescription>
 				</DialogHeader>
-				{detail.isError ? (
-					<Button variant="outline" className="w-fit" onClick={() => void detail.refetch()}>Retry</Button>
-				) : (
-					<Skeleton className="h-40 w-full motion-reduce:animate-none" />
-				)}
+				<div className="min-h-0 flex-1 p-5">
+					{detail.isError ? (
+						<Button variant="outline" onClick={() => void detail.refetch()}>Retry</Button>
+					) : (
+						<Skeleton className="h-full min-h-40 w-full motion-reduce:animate-none" />
+					)}
+				</div>
+				<DialogFooter className="shrink-0 border-t px-5 py-3">
+					<Button variant="outline" onClick={onClose}>Cancel</Button>
+				</DialogFooter>
 			</>
 		);
 	return (
 		<>
-			<DialogHeader>
-				<DialogTitle>{title} · {trade.symbol}</DialogTitle>
+			<DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
+				<DialogTitle className="text-base">{title} · {trade.symbol}</DialogTitle>
 				<DialogDescription>
 					{startingOnly
 						? "What you held before your first imported execution. It’s used up by the first trades that sell it."
-						: "The executions don’t add up yet. Choose what really happened."}
+						: "Check the executions, choose what happened, then review the result."}
 				</DialogDescription>
 			</DialogHeader>
 			<FixTradeHistory
