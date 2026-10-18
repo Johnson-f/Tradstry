@@ -1,6 +1,6 @@
 "use client";
 
-import type * as React from "react";
+import * as React from "react";
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
 
 import { cn } from "@tradstry/app-ui/lib/utils";
@@ -13,6 +13,10 @@ import { cn } from "@tradstry/app-ui/lib/utils";
  * `[&>[data-radix-scroll-area-viewport]]:max-h-56`.
  *
  * Vertical content wraps normally; horizontal content can grow wider.
+ *
+ * Radix moves the thumb from JavaScript, a frame or more behind compositor scrolling. Where
+ * the browser supports scroll timelines, globals.css drives the thumb from the viewport's
+ * timeline instead, so it moves with the content.
  */
 function ScrollArea({
 	className,
@@ -20,22 +24,36 @@ function ScrollArea({
 	orientation = "vertical",
 	viewportRef,
 	type = "auto",
+	style,
 	...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
 	orientation?: "vertical" | "horizontal" | "both";
 	viewportRef?: React.Ref<HTMLDivElement>;
 }) {
+	const timeline = `--scroll-area${React.useId().replace(/[^\w-]/g, "-")}`;
 	return (
 		<ScrollAreaPrimitive.Root
 			data-slot="scroll-area"
 			className={cn("relative", className)}
 			type={type}
+			style={
+				{
+					timelineScope: `${timeline}-y, ${timeline}-x`,
+					"--scroll-area-timeline-y": `${timeline}-y`,
+					"--scroll-area-timeline-x": `${timeline}-x`,
+					...style,
+				} as React.CSSProperties
+			}
 			{...props}
 		>
 			<ScrollAreaPrimitive.Viewport
 				ref={viewportRef}
 				tabIndex={0}
 				data-slot="scroll-area-viewport"
+				style={{
+					scrollTimelineName: `${timeline}-y, ${timeline}-x`,
+					scrollTimelineAxis: "y, x",
+				}}
 				className={cn(
 					"size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
 					orientation === "vertical" && "[&>div]:block!",

@@ -162,6 +162,40 @@
   }
 }
 
+@supports (animation-timeline: scroll()) and (timeline-scope: none) {
+  [data-slot="scroll-area-scrollbar"] {
+    container-type: size;
+  }
+
+  [data-slot="scroll-area-scrollbar"][data-orientation="vertical"] > [data-slot="scroll-area-thumb"] {
+    animation: scroll-area-thumb-y linear both;
+    animation-timeline: var(--scroll-area-timeline-y);
+  }
+
+  [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] > [data-slot="scroll-area-thumb"] {
+    animation: scroll-area-thumb-x linear both;
+    animation-timeline: var(--scroll-area-timeline-x);
+  }
+}
+
+@keyframes scroll-area-thumb-y {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(100cqh - 100%));
+  }
+}
+
+@keyframes scroll-area-thumb-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(100cqw - 100%));
+  }
+}
+
 @keyframes playbook-card-in {
   from {
     opacity: 0;
