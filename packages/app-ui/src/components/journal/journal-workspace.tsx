@@ -3,6 +3,7 @@
 import { Badge } from "@tradstry/app-ui/components/ui/badge";
 import { Button } from "@tradstry/app-ui/components/ui/button";
 import { Progress } from "@tradstry/app-ui/components/ui/progress";
+import { ScrollArea } from "@tradstry/app-ui/components/ui/scroll-area";
 import {
 	Tabs,
 	TabsContent,
@@ -79,7 +80,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
 						<JournalSetup workspaceId={workspaceId} enabled={status.data!.enabled} onDone={refresh} />
 					</div>
 				)}
-				<div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+				<ScrollArea className="min-h-0 min-w-0 flex-1">
 					<TabsContent value="today">
 						<JournalToday workspaceId={workspaceId} timezone={timezone} dateParam={nav.params.get("date")} />
 					</TabsContent>
@@ -95,7 +96,7 @@ export function JournalWorkspace({ workspaceId }: { workspaceId: string }) {
 					<TabsContent value="attention">
 						<JournalAttention workspaceId={workspaceId} attention={attention} />
 					</TabsContent>
-				</div>
+				</ScrollArea>
 			</Tabs>
 			<TradeSheet workspaceId={workspaceId} />
 		</JournalNavigationProvider>
