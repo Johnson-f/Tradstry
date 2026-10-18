@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_orphan_acknowledgement() {
+fn seaorm_migrations_end_with_legacy_allocation_precision() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 19);
+    assert_eq!(migrations.len(), 20);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261018_000019_orphan_acknowledged"
+        "m20261018_000020_legacy_allocation_precision"
     );
 }

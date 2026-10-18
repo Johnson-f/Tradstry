@@ -49,6 +49,182 @@ pub(crate) async fn project(pool: &PgPool, user: &str, workspace: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_ambiguous_draft_preserves_the_entire_old_group_without_double_assignment() {
+    for ambiguous_first in [true, false] {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        sqlx::query("UPDATE journal_workspace_state SET enabled=false WHERE workspace_id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (name, side, quantity, at) in [
+            ("buy1", "BUY", 1.0, "2026-09-01T14:00:00Z"),
+            ("sell1", "SELL", -1.0, "2026-09-01T15:00:00Z"),
+            ("buy2", "BUY", 1.0, "2026-09-02T14:00:00Z"),
+            ("sell2", "SELL", -1.0, "2026-09-02T15:00:00Z"),
+        ] {
+            fill(
+                &pool,
+                &user,
+                &workspace,
+                name,
+                side,
+                FillAmounts {
+                    quantity,
+                    price: 10.0,
+                    fee: 0.0,
+                },
+                at,
+            )
+            .await;
+        }
+        let old = format!("{workspace}:old");
+        sqlx::query("INSERT INTO trade_episodes(id,user_id,workspace_id,fingerprint,instrument_key,instrument_json,direction,opened_at,closed_at,current_quantity,status) VALUES ($1,$2,$3,$1,'equity:ACME','{\"kind\":\"equity\",\"symbol\":\"ACME\"}','long','2026-09-01T14:00:00Z','2026-09-02T15:00:00Z',0,'blocked')")
+            .bind(&old).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO trade_episode_fills(id,episode_id,brokerage_transaction_id,role,quantity,price,fee,executed_at,allocation_order) SELECT uuidv7()::text,$1,id,CASE WHEN transaction_type='BUY' THEN 'entry' ELSE 'exit' END,abs(units::text::numeric),price::text::numeric,0,trade_date,0 FROM brokerage_transactions WHERE workspace_id=$2")
+            .bind(&old).bind(&workspace).execute(&pool).await.unwrap();
+        for day in [1, 2] {
+            let entry = format!("{workspace}:manual{day}");
+            let start = format!("2026-09-0{day}T14:00:00Z");
+            let end = format!("2026-09-0{day}T15:00:00Z");
+            sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,position_size,notes) VALUES ($1,$2,$3,'ACME','Acme','long',$4::text::timestamptz,$5::text::timestamptz,1,'Keep original notes')")
+                .bind(&entry).bind(&user).bind(&workspace).bind(start).bind(end).execute(&pool).await.unwrap();
+            if (day == 1) != ambiguous_first {
+                for name in [format!("buy{day}"), format!("sell{day}")] {
+                    sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) VALUES (uuidv7()::text,$1,$2,$3)")
+                        .bind(&entry).bind(format!("{workspace}:{name}")).bind(&user).execute(&pool).await.unwrap();
+                }
+            }
+        }
+        sqlx::query("UPDATE journal_workspace_state SET enabled=true WHERE workspace_id=$1")
+            .bind(&workspace)
+            .execute(&pool)
+            .await
+            .unwrap();
+        project(&pool, &user, &workspace).await;
+        let job: String =
+            sqlx::query_scalar("SELECT state FROM journal_projection_jobs WHERE workspace_id=$1")
+                .bind(&workspace)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(job, "complete", "ambiguous_first={ambiguous_first}");
+        let active: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM trade_episodes WHERE workspace_id=$1 AND retired_at IS NULL",
+        )
+        .bind(&workspace)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(active, 1);
+        let originals: i64 = sqlx::query_scalar("SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND source_kind='manual' AND episode_id IS NULL AND notes='Keep original notes' AND retired_at IS NULL")
+            .bind(&workspace).fetch_one(&pool).await.unwrap();
+        assert_eq!(originals, 2);
+        let pending: i64 = sqlx::query_scalar("SELECT count(*) FROM journal_entries WHERE workspace_id=$1 AND source_kind='broker' AND lifecycle_state='incomplete' AND retired_at IS NULL")
+            .bind(&workspace).fetch_one(&pool).await.unwrap();
+        assert_eq!(pending, 1);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn completed_trades_retire_only_fully_covered_history_placeholders() {
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace) = enabled_workspace(&pool).await;
+    for (name, side, quantity, at) in [
+        ("buy1", "BUY", 3.0, "2026-09-01T14:00:00Z"),
+        ("sell1", "SELL", -3.0, "2026-09-01T15:00:00Z"),
+        ("buy2", "BUY", 2.0, "2026-09-02T14:00:00Z"),
+        ("sell2", "SELL", -2.0, "2026-09-02T15:00:00Z"),
+    ] {
+        fill(
+            &pool,
+            &user,
+            &workspace,
+            name,
+            side,
+            FillAmounts {
+                quantity,
+                price: 10.0,
+                fee: 0.0,
+            },
+            at,
+        )
+        .await;
+    }
+    project(&pool, &user, &workspace).await;
+    sqlx::query("UPDATE trade_episodes SET grouping_source='manual' WHERE workspace_id=$1")
+        .bind(&workspace)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE journal_entries SET notes='Keep completed trade notes' WHERE workspace_id=$1",
+    )
+    .bind(&workspace)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let completed: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j WHERE workspace_id=$1",
+    )
+    .bind(&workspace)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    for (suffix, names) in [
+        ("covered", vec!["buy1", "sell1", "buy2", "sell2"]),
+        ("partial", vec!["buy1", "sell1", "missing"]),
+        ("unrelated", vec!["missing"]),
+    ] {
+        let sources: Vec<String> = names
+            .iter()
+            .map(|name| format!("{workspace}:{name}"))
+            .collect();
+        sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,source_kind,lifecycle_state,issue_json,notes) VALUES ($1,$2,$3,'ACME','Acme','unknown','broker','incomplete',$4,'Keep unresolved notes')")
+            .bind(format!("{workspace}:{suffix}")).bind(&user).bind(&workspace)
+            .bind(serde_json::json!({"code":"incomplete_history","instrument_key":"equity:ACME|USD","source_ids":sources}))
+            .execute(&pool).await.unwrap();
+    }
+    for _ in 0..2 {
+        journal_flow::holdings_synced(&pool, &user, &workspace)
+            .await
+            .unwrap();
+        project(&pool, &user, &workspace).await;
+        let state: Vec<(String, bool, Option<String>, String)> = sqlx::query_as("SELECT id,retired_at IS NOT NULL,successor_id,notes FROM journal_entries WHERE workspace_id=$1 AND episode_id IS NULL ORDER BY id")
+            .bind(&workspace).fetch_all(&pool).await.unwrap();
+        assert_eq!(
+            state,
+            vec![
+                (
+                    format!("{workspace}:covered"),
+                    true,
+                    None,
+                    "Keep unresolved notes".into()
+                ),
+                (
+                    format!("{workspace}:partial"),
+                    false,
+                    None,
+                    "Keep unresolved notes".into()
+                ),
+                (
+                    format!("{workspace}:unrelated"),
+                    false,
+                    None,
+                    "Keep unresolved notes".into()
+                ),
+            ]
+        );
+        let after: serde_json::Value = sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j WHERE workspace_id=$1 AND episode_id IS NOT NULL")
+            .bind(&workspace).fetch_one(&pool).await.unwrap();
+        assert_eq!(after, completed);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn saved_review_work_is_in_progress_until_explicitly_finalized() {
     use journal_flow::reflection;
     let test_db = crate::pg_support::TestDb::new().await;
@@ -1483,8 +1659,10 @@ async fn legacy_manual_merge_with_exact_links_recovers_without_a_flat_account() 
         .bind(&workspace).execute(&pool).await.unwrap();
     let id = format!("{workspace}:manual");
     sqlx::query("INSERT INTO journal_entries(id,user_id,workspace_id,symbol,symbol_name,trade_type,open_date,close_date,entry_price,exit_price,position_size,status,total_pl,net_roi,duration,notes,contract_multiplier)
-        VALUES ($1,$2,$3,'ACME','ACME $37 Put 2026-09-18','long','2026-09-01T14:00:00Z','2026-09-01T15:00:00Z',2.50,1.75,1,'loss',-30,-30,3600,'Original manual merge',100)")
+        VALUES ($1,$2,$3,'ACME','ACME $37 Put 2026-09-18','long','2026-09-01T15:00:00Z','2026-09-01T16:00:00Z',2.50,1.75,1,'loss',-30,-30,3600,'Original manual merge',100)")
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
+    let saved_values: serde_json::Value = sqlx::query_scalar("SELECT jsonb_build_array(open_date,close_date,entry_price,exit_price,position_size,total_pl,net_roi,duration) FROM journal_entries WHERE id=$1")
+        .bind(&id).fetch_one(&pool).await.unwrap();
     sqlx::query("INSERT INTO journal_brokerage_links(id,journal_entry_id,brokerage_transaction_id,user_id) SELECT uuidv7()::text,$1,id,$2 FROM brokerage_transactions WHERE workspace_id=$3")
         .bind(&id).bind(&user).bind(&workspace).execute(&pool).await.unwrap();
     crate::legacy_support::legacy_episodes(&pool, &user, &workspace).await;
@@ -1523,6 +1701,9 @@ async fn legacy_manual_merge_with_exact_links_recovers_without_a_flat_account() 
         .await
         .unwrap();
     assert_eq!(notes, "Original manual merge");
+    let recovered_values: serde_json::Value = sqlx::query_scalar("SELECT jsonb_build_array(open_date,close_date,entry_price,exit_price,position_size,total_pl,net_roi,duration) FROM journal_entries WHERE id=$1")
+        .bind(&id).fetch_one(&pool).await.unwrap();
+    assert_eq!(recovered_values, saved_values);
     let retired: (bool, Option<String>, String) = sqlx::query_as(
         "SELECT retired_at IS NOT NULL,successor_id,notes FROM journal_entries WHERE id=$1",
     )

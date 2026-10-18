@@ -260,6 +260,12 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
             .into_iter()
             .map(|fill| fill.transaction_id)
             .collect::<HashSet<_>>();
+        sqlx::query("SAVEPOINT journal_source_group")
+            .execute(&mut *tx)
+            .await?;
+        let retained_before = retained.clone();
+        let successors_before = successors.clone();
+        let mut unresolved = None;
         for draft in drafts {
             let overlaps = snapshot
                 .existing
@@ -281,9 +287,8 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
             // position joined them.
             let merge_allowed = group.opening.is_some() || overlaps.iter().all(|old| old.blocked);
             if overlaps.iter().any(|old| old.manual) || (overlaps.len() > 1 && !merge_allowed) {
-                record_issue(&mut tx, snapshot, group).await?;
-                retained.extend(overlaps.iter().map(|old| old.episode_id.clone()));
-                continue;
+                unresolved = Some(group.clone());
+                break;
             }
             let old = overlaps
                 .iter()
@@ -320,16 +325,26 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                     LegacyLinkMatch::Ambiguous => {
                         let mut ambiguous = group.clone();
                         ambiguous.issue=Some("This broker history overlaps existing journal entries. Compare them before confirming a separate trade.".into());
-                        record_issue(&mut tx, snapshot, &ambiguous).await?;
-                        continue;
+                        unresolved = Some(ambiguous);
+                        break;
                     }
                     LegacyLinkMatch::None if !group.has_known_start(&snapshot.inventory)? => {
-                        record_issue(&mut tx, snapshot, group).await?;
-                        continue;
+                        unresolved = Some(group.clone());
+                        break;
                     }
                     LegacyLinkMatch::None => {}
                 }
             }
+            let legacy_snapshot: Option<Value> = if adopted_legacy {
+                Some(
+                    sqlx::query_scalar("SELECT to_jsonb(j) FROM journal_entries j WHERE id=$1")
+                        .bind(&entry_id)
+                        .fetch_one(&mut *tx)
+                        .await?,
+                )
+            } else {
+                None
+            };
             materialize(
                 &mut tx,
                 &WriteScope {
@@ -343,11 +358,33 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                 entry_id.as_deref(),
             )
             .await?;
-            if adopted_legacy {
+            if let Some(legacy_snapshot) = legacy_snapshot {
+                sqlx::query("UPDATE journal_entries j SET open_date=old.open_date,close_date=old.close_date,entry_price=old.entry_price,exit_price=old.exit_price,position_size=old.position_size,total_pl=old.total_pl,net_roi=old.net_roi,duration=old.duration FROM jsonb_populate_record(NULL::journal_entries,$2) old WHERE j.id=$1")
+                    .bind(&entry_id).bind(&legacy_snapshot).execute(&mut *tx).await?;
                 sqlx::query("UPDATE trade_episodes SET grouping_source='manual' WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
                     .bind(&episode_id).bind(&snapshot.user).bind(&snapshot.workspace).execute(&mut *tx).await?;
             }
         }
+        if let Some(issue) = unresolved {
+            // A blocked old grouping may span several new drafts. Publishing
+            // only some drafts while retaining that grouping double-assigns fills.
+            sqlx::query("ROLLBACK TO SAVEPOINT journal_source_group")
+                .execute(&mut *tx)
+                .await?;
+            retained = retained_before;
+            successors = successors_before;
+            record_issue(&mut tx, snapshot, &issue).await?;
+            retained.extend(
+                snapshot
+                    .existing
+                    .iter()
+                    .filter(|old| old.sources.iter().any(|id| issue.source_ids.contains(id)))
+                    .map(|old| old.episode_id.clone()),
+            );
+        }
+        sqlx::query("RELEASE SAVEPOINT journal_source_group")
+            .execute(&mut *tx)
+            .await?;
     }
     for old in &snapshot.existing {
         if !retained.contains(&old.episode_id) && old.manual {
@@ -365,6 +402,11 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
                 .bind(&old.episode_id).bind(&snapshot.user).bind(&snapshot.workspace).bind(successor).execute(&mut *tx).await?;
         }
     }
+    sqlx::query(include_str!("retire_covered_history.sql"))
+        .bind(&snapshot.user)
+        .bind(&snapshot.workspace)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
         .bind(&snapshot.user)
         .bind(&snapshot.workspace)
