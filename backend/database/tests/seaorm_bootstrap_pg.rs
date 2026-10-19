@@ -57,8 +57,9 @@ async fn legacy_precision_upgrade_preserves_journal_entries_and_real_allocation_
             ("round-up".into(), "0.60657".into()),
         ]
     );
-    let entries_after: serde_json::Value =
-        sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j")
+    let entries_after: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_agg(to_jsonb(j) - 'separate_from_executions' ORDER BY id) FROM journal_entries j",
+    )
             .fetch_one(&pool)
             .await
             .unwrap();

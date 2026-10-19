@@ -1576,9 +1576,9 @@ type Mutation {
 	previewJournalSuggestion(workspaceId: String!, suggestionId: String!, adjustment: JournalGroupingInputV2): JournalGroupingPreviewV2!
 	dismissJournalSuggestion(workspaceId: String!, suggestionId: String!, clientId: String!, mutationId: String!): Boolean!
 	resetJournalLearning(workspaceId: String!, clientId: String!, mutationId: String!): Boolean!
-	previewJournalGrouping(workspaceId: String!, input: JournalGroupingInputV2!): JournalGroupingPreviewV2!
+	previewJournalGrouping(workspaceId: String!, input: JournalGroupingInputV2!, separateFrom: [String!]! = []): JournalGroupingPreviewV2!
 	confirmJournalGrouping(workspaceId: String!, token: String!, clientId: String!, mutationId: String!): JournalGroupingResultV2!
-	saveJournalOpeningPosition(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!, clientId: String!, mutationId: String!): JournalOpeningPositionV2!
+	saveJournalOpeningPosition(workspaceId: String!, entryId: String!, input: JournalOpeningPositionInputV2!, separateFrom: [String!]! = [], clientId: String!, mutationId: String!): JournalOpeningPositionV2!
 	saveJournalActionNote(workspaceId: String!, input: JournalActionNoteInputV2!, clientId: String!, mutationId: String!): JournalActionNoteV2!
 	addJournalHindsightNote(workspaceId: String!, parentId: String!, reason: String!, clientId: String!, mutationId: String!): JournalActionNoteV2!
 	joinJournalActions(workspaceId: String!, entryId: String!, executionIds: [String!]!, clientId: String!, mutationId: String!): String!

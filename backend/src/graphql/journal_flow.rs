@@ -500,9 +500,10 @@ impl JournalFlowMutation {
         ctx: &Context<'_>,
         workspace_id: String,
         input: grouping::GroupingInput,
+        #[graphql(default)] separate_from: Vec<String>,
     ) -> Result<grouping::GroupingPreview> {
         let db = super::auth::user_db(ctx).await?;
-        grouping::preview(db.pool(), db.user_id(), &workspace_id, input)
+        grouping::preview_separate(db.pool(), db.user_id(), &workspace_id, input, separate_from)
             .await
             .map_err(grouping_error)
     }
@@ -525,22 +526,28 @@ impl JournalFlowMutation {
         )
         .await?)
     }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Preserve the existing GraphQL field arguments for web and desktop clients"
+    )]
     async fn save_journal_opening_position(
         &self,
         ctx: &Context<'_>,
         workspace_id: String,
         entry_id: String,
         input: opening::OpeningPositionInput,
+        #[graphql(default)] separate_from: Vec<String>,
         client_id: String,
         mutation_id: String,
     ) -> Result<opening::OpeningPositionView> {
         let db = super::auth::user_db(ctx).await?;
-        Ok(opening::save(
+        Ok(opening::save_separate(
             db.pool(),
             db.user_id(),
             &workspace_id,
             &entry_id,
             input,
+            separate_from,
             &client_id,
             &mutation_id,
         )

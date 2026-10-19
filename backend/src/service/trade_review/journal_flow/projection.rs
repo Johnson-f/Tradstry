@@ -407,6 +407,8 @@ async fn derive_and_commit(pool: &PgPool, snapshot: &Snapshot) -> Result<bool> {
         .bind(&snapshot.workspace)
         .execute(&mut *tx)
         .await?;
+    super::duplicates::apply_separate_executions(&mut tx, &snapshot.user, &snapshot.workspace)
+        .await?;
     sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
         .bind(&snapshot.user)
         .bind(&snapshot.workspace)
@@ -630,8 +632,8 @@ async fn legacy_link_match(
                 vec![underlying.clone()]
             }
         };
-        let duplicate:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM journal_entries j WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.source_kind='manual' AND j.deleted_at IS NULL AND j.retired_at IS NULL AND journal_trades_overlap(ARRAY[j.symbol],j.open_date,j.close_date,$3,$4,$5) AND NOT EXISTS(SELECT 1 FROM journal_brokerage_links WHERE journal_entry_id=j.id))")
-            .bind(&snapshot.user).bind(&snapshot.workspace).bind(&symbols).bind(draft.opened_at).bind(draft.closed_at.unwrap_or(draft.opened_at)).fetch_one(&mut *connection).await?;
+        let duplicate:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM journal_entries j WHERE j.user_id=$1 AND j.workspace_id=$2 AND j.source_kind='manual' AND j.deleted_at IS NULL AND j.retired_at IS NULL AND journal_trades_overlap(ARRAY[j.symbol],j.open_date,j.close_date,$3,$4,$5) AND NOT EXISTS(SELECT 1 FROM journal_brokerage_links WHERE journal_entry_id=j.id) AND NOT $6::text[] <@ j.separate_from_executions)")
+            .bind(&snapshot.user).bind(&snapshot.workspace).bind(&symbols).bind(draft.opened_at).bind(draft.closed_at.unwrap_or(draft.opened_at)).bind(ids.iter().filter(|id| !id.starts_with("opening:")).collect::<Vec<_>>()).fetch_one(&mut *connection).await?;
         if duplicate {
             return Ok(LegacyLinkMatch::Ambiguous);
         }

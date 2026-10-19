@@ -2872,6 +2872,56 @@ mod duplicates {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn a_fix_that_keeps_a_manual_trade_separate_is_not_asked_again() {
+        let test_db = crate::pg_support::TestDb::new().await;
+        let pool = test_db.pool();
+        let (user, workspace) = enabled_workspace(&pool).await;
+        let broker = broker_acme(&pool, &user, &workspace).await;
+        let manual = manual_acme(&pool, &user, &workspace).await;
+        let allocation = |name: &str| AllocationInput {
+            transaction_id: format!("{workspace}:{name}"),
+            quantity: "10".into(),
+        };
+        let input = || GroupingInput {
+            direction: Some("long".into()),
+            entry_ids: vec![broker.clone()],
+            groups: vec![GroupInput {
+                entry_id: Some(broker.clone()),
+                allocations: vec![allocation("buy-a"), allocation("sell-a")],
+            }],
+        };
+
+        let broker_as_manual =
+            grouping::preview_separate(&pool, &user, &workspace, input(), vec![broker.clone()])
+                .await;
+        assert!(
+            broker_as_manual.is_err(),
+            "only manual entries can be kept separate"
+        );
+
+        let preview =
+            grouping::preview_separate(&pool, &user, &workspace, input(), vec![manual.id.clone()])
+                .await
+                .unwrap();
+        grouping::confirm(&pool, &user, &workspace, &preview.token, "test", "separate")
+            .await
+            .unwrap();
+
+        let kept = trade(&pool, &user, &workspace, &manual.id).await;
+        assert_eq!(kept.lifecycle_state, "closed");
+        assert!(kept.possible_duplicates.is_empty());
+        let separate: Vec<String> =
+            sqlx::query_scalar("SELECT separate_from FROM journal_entries WHERE id=$1")
+                .bind(&manual.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(separate, vec![broker]);
+        project(&pool, &user, &workspace).await;
+        assert_eq!(counted(&pool, &user, &workspace).await, (2, 100.0));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn editing_a_manual_trade_into_or_out_of_an_overlap_holds_or_releases_it() {
         let test_db = crate::pg_support::TestDb::new().await;
         let pool = test_db.pool();

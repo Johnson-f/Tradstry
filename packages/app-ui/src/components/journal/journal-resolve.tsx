@@ -5,7 +5,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 import { useGraphQL, useTradstryPlatform } from "@tradstry/app-ui/platform";
 import { Button } from "@tradstry/app-ui/components/ui/button";
-import { Checkbox } from "@tradstry/app-ui/components/ui/checkbox";
 import { DialogFooter } from "@tradstry/app-ui/components/ui/dialog";
 import { Input } from "@tradstry/app-ui/components/ui/input";
 import { Label } from "@tradstry/app-ui/components/ui/label";
@@ -127,13 +126,22 @@ function useResolveTrade({
 	const history = positionHistory(rows, guessed);
 	const switched = positionHistory(rows, opposite(guessed));
 
+	const duplicates = startingOnly
+		? []
+		: (targets.data ?? []).filter((entry) =>
+				trade.possibleDuplicates?.includes(entry.id),
+			);
+	// undefined until answered, null when the user says they are different trades.
+	const [sameAs, setSameAs] = React.useState<string | null>();
+	const unanswered = duplicates.length > 0 && sameAs === undefined;
 	const eligibleTargets = (targets.data ?? []).filter(
 		(entry) =>
 			entry.id !== trade.id &&
+			!(sameAs === null && duplicates.includes(entry)) &&
 			((entry.episodeId &&
 				entry.symbol === trade.symbol &&
 				entry.lifecycleState === "open") ||
-				trade.possibleDuplicates?.includes(entry.id)),
+				duplicates.includes(entry)),
 	);
 
 	const firstDate = rows[0]?.executedAt
@@ -143,7 +151,16 @@ function useResolveTrade({
 		startingOnly || history.deficit > 0 ? "starting" : "keep",
 	);
 	const [targetId, setTargetId] = React.useState("");
-	const [distinct, setDistinct] = React.useState(false);
+	const answerSameAs = (answer: string | null) => {
+		setSameAs(answer);
+		if (answer) {
+			setFix("merge");
+			setTargetId(answer);
+		} else if (fix === "merge" && duplicates.some((entry) => entry.id === targetId)) {
+			setFix(history.deficit > 0 ? "starting" : "keep");
+			setTargetId("");
+		}
+	};
 	const [starting, setStarting] = React.useState({
 		direction: guessed as Direction,
 		quantity: history.deficit > 0 ? String(history.deficit) : (suggestedQuantity ?? ""),
@@ -172,9 +189,6 @@ function useResolveTrade({
 					? starting.direction
 					: guessed;
 	const shown = positionHistory(rows, direction);
-	const needsDistinct =
-		!!trade.possibleDuplicates?.length &&
-		!(fix === "merge" && trade.possibleDuplicates.includes(targetId));
 	const startingInput: flow.OpeningPositionInput | null =
 		Number(starting.quantity) > 0 &&
 		Number(starting.averagePrice) > 0 &&
@@ -228,11 +242,16 @@ function useResolveTrade({
 				return (left < 0 ? 99999 : left) - (right < 0 ? 99999 : right);
 			})
 			.map(([transactionId, quantity]) => ({ transactionId, quantity }));
-		return flow.previewGrouping(fetcher, workspaceId, {
-			direction,
-			entryIds: sources.map((item) => item.entry.id),
-			groups: [{ entryId: target?.id ?? trade.id, allocations }],
-		});
+		return flow.previewGrouping(
+			fetcher,
+			workspaceId,
+			{
+				direction,
+				entryIds: sources.map((item) => item.entry.id),
+				groups: [{ entryId: target?.id ?? trade.id, allocations }],
+			},
+			sameAs === null ? duplicates.map((entry) => entry.id) : [],
+		);
 	};
 
 	const orderKey = order.join("|");
@@ -243,7 +262,7 @@ function useResolveTrade({
 		setError(null);
 		setExitIssue(null);
 		setPreviewing(false);
-		if (blocked || (needsDistinct && !distinct)) return;
+		if (blocked || unanswered) return;
 		const timer = setTimeout(async () => {
 			setPreviewing(true);
 			try {
@@ -269,7 +288,7 @@ function useResolveTrade({
 			}
 		}, 400);
 		return () => clearTimeout(timer);
-	}, [fix, targetId, orderKey, startingKey, distinct, blocked, nonce]);
+	}, [fix, targetId, orderKey, startingKey, sameAs, unanswered, blocked, nonce]);
 
 	const [pending, setPending] = React.useState<Pending | null>(() =>
 		readPending(storageKey),
@@ -323,7 +342,13 @@ function useResolveTrade({
 				command: flow.command(
 					flow.SAVE_OPENING,
 					"saveJournalOpeningPosition",
-					{ workspaceId, entryId: trade.id, input: startingInput },
+					{
+						workspaceId,
+						entryId: trade.id,
+						input: startingInput,
+						separateFrom:
+							sameAs === null ? duplicates.map((entry) => entry.id) : [],
+					},
 					owner,
 				),
 			});
@@ -377,9 +402,10 @@ function useResolveTrade({
 		setStarting,
 		chooseStartingDirection,
 		existing,
-		needsDistinct,
-		distinct,
-		setDistinct,
+		duplicates,
+		sameAs,
+		answerSameAs,
+		unanswered,
 		blocked,
 		outcome,
 		previewing,
@@ -488,7 +514,7 @@ export function FixTradeHistory({
 		{
 			value: "keep",
 			label: "Keep as one trade",
-			hint: `Group every execution as one ${fix.guessed} trade.`,
+			hint: `Group these broker executions as one ${fix.guessed} trade.`,
 			disabled:
 				fix.history.deficit > 0
 					? `${fix.history.deficit} more closed than opened.`
@@ -700,61 +726,132 @@ export function FixTradeHistory({
 								)}
 							</div>
 
-							<fieldset className="space-y-2">
-								{!startingOnly && (
+							{fix.duplicates.length > 0 && (
+								<fieldset className="space-y-2">
 									<legend className="mb-2 text-sm font-medium">
-										Choose a fix
+										Did you already add this trade?
 									</legend>
-								)}
-								{!startingOnly && (
-									<>
-										<RadioGroup
-											aria-label="Choose a fix"
-											value={fix.fix}
-											onValueChange={(value) => fix.setFix(value as Fix)}
-											className="gap-0 divide-y overflow-hidden rounded-lg border"
-										>
-											{offered.map((choice) => (
-												<Label
-													key={choice.value}
-													htmlFor={`${id}-${choice.value}`}
-													className={cn(
-														"flex cursor-pointer items-start gap-3 p-3 font-normal hover:bg-muted/40 focus-within:bg-muted/60",
-														fix.fix === choice.value && "bg-muted/70",
-														choice.disabled && "cursor-not-allowed opacity-60",
-													)}
-												>
-													<RadioGroupItem
-														id={`${id}-${choice.value}`}
-														value={choice.value}
-														disabled={!!choice.disabled || fix.busy}
-														className="mt-0.5"
-													/>
-													<span className="min-w-0">
-														<span className="block text-xs font-medium leading-relaxed">
-															{choice.label}
-														</span>
-														<span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
-															{choice.disabled ?? choice.hint}
-														</span>
+									<RadioGroup
+										aria-label="Did you already add this trade?"
+										value={
+											fix.sameAs === undefined ? "" : (fix.sameAs ?? "different")
+										}
+										onValueChange={(value) =>
+											fix.answerSameAs(value === "different" ? null : value)
+										}
+										className="gap-0 divide-y overflow-hidden rounded-lg border"
+									>
+										{fix.duplicates.map((entry) => (
+											<Label
+												key={entry.id}
+												htmlFor={`${id}-same-${entry.id}`}
+												className={cn(
+													"flex cursor-pointer items-start gap-3 p-3 font-normal hover:bg-muted/40 focus-within:bg-muted/60",
+													fix.sameAs === entry.id && "bg-muted/70",
+												)}
+											>
+												<RadioGroupItem
+													id={`${id}-same-${entry.id}`}
+													value={entry.id}
+													disabled={fix.busy}
+													className="mt-0.5"
+												/>
+												<span className="min-w-0">
+													<span className="block text-xs font-medium leading-relaxed">
+														Yes, it's my {entry.symbol} trade from{" "}
+														{tradeDate(entry.openDate, timezone)}
 													</span>
-												</Label>
-											))}
-										</RadioGroup>
-									</>
-								)}
-								<Button
-									type="button"
-									variant="link"
-									size="sm"
-									className="h-auto whitespace-normal px-0 text-left text-[11px] text-muted-foreground"
-									onClick={() => platform.navigate("/dashboard/brokerage")}
-								>
-									Import missing history from your broker instead
-								</Button>
-							</fieldset>
+													<span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+														The broker executions replace it. Your notes and
+														review stay.
+													</span>
+												</span>
+											</Label>
+										))}
+										<Label
+											htmlFor={`${id}-same-different`}
+											className={cn(
+												"flex cursor-pointer items-start gap-3 p-3 font-normal hover:bg-muted/40 focus-within:bg-muted/60",
+												fix.sameAs === null && "bg-muted/70",
+											)}
+										>
+											<RadioGroupItem
+												id={`${id}-same-different`}
+												value="different"
+												disabled={fix.busy}
+												className="mt-0.5"
+											/>
+											<span className="min-w-0">
+												<span className="block text-xs font-medium leading-relaxed">
+													No, these are different trades
+												</span>
+												<span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+													Both stay in your journal, and you won't be asked
+													again.
+												</span>
+											</span>
+										</Label>
+									</RadioGroup>
+								</fieldset>
+							)}
 
-							{fix.fix === "starting" && (
+							{(startingOnly || !fix.duplicates.length || fix.sameAs === null) && (
+								<fieldset className="space-y-2">
+									{!startingOnly && (
+										<legend className="mb-2 text-sm font-medium">
+											Choose a fix
+										</legend>
+									)}
+									{!startingOnly && (
+										<>
+											<RadioGroup
+												aria-label="Choose a fix"
+												value={fix.fix}
+												onValueChange={(value) => fix.setFix(value as Fix)}
+												className="gap-0 divide-y overflow-hidden rounded-lg border"
+											>
+												{offered.map((choice) => (
+													<Label
+														key={choice.value}
+														htmlFor={`${id}-${choice.value}`}
+														className={cn(
+															"flex cursor-pointer items-start gap-3 p-3 font-normal hover:bg-muted/40 focus-within:bg-muted/60",
+															fix.fix === choice.value && "bg-muted/70",
+															choice.disabled && "cursor-not-allowed opacity-60",
+														)}
+													>
+														<RadioGroupItem
+															id={`${id}-${choice.value}`}
+															value={choice.value}
+															disabled={!!choice.disabled || fix.busy}
+															className="mt-0.5"
+														/>
+														<span className="min-w-0">
+															<span className="block text-xs font-medium leading-relaxed">
+																{choice.label}
+															</span>
+															<span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+																{choice.disabled ?? choice.hint}
+															</span>
+														</span>
+													</Label>
+												))}
+											</RadioGroup>
+										</>
+									)}
+									<Button
+										type="button"
+										variant="link"
+										size="sm"
+										className="h-auto whitespace-normal px-0 text-left text-[11px] text-muted-foreground"
+										onClick={() => platform.navigate("/dashboard/brokerage")}
+									>
+										Import missing history from your broker instead
+									</Button>
+								</fieldset>
+							)}
+
+							{fix.fix === "starting" && !fix.unanswered && (
 								<div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3">
 									<div className="col-span-2 space-y-1.5">
 										<Label id={`${id}-starting-direction`}>Position</Label>
@@ -834,7 +931,7 @@ export function FixTradeHistory({
 								</div>
 							)}
 
-							{fix.fix === "merge" && (
+							{fix.fix === "merge" && !fix.sameAs && !fix.unanswered && (
 								<div className="space-y-2 border-l-2 pl-3">
 									<RadioGroup
 										aria-label="Existing trade"
@@ -877,26 +974,6 @@ export function FixTradeHistory({
 											</Label>
 										))}
 									</RadioGroup>
-								</div>
-							)}
-
-							{fix.needsDistinct && (
-								<div className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-3">
-									<Checkbox
-										id={`${id}-distinct`}
-										checked={fix.distinct}
-										disabled={fix.busy}
-										onCheckedChange={(checked) =>
-											fix.setDistinct(checked === true)
-										}
-									/>
-									<Label
-										htmlFor={`${id}-distinct`}
-										className="text-xs leading-relaxed font-normal"
-									>
-										I compared the existing entries. These executions belong to
-										a separate trade.
-									</Label>
 								</div>
 							)}
 
@@ -1055,8 +1132,8 @@ function ResultCard({
 							: fix.fix === "merge"
 								? "Choose the trade to merge into."
 								: "This fix doesn't balance the history."
-						: fix.needsDistinct && !fix.distinct
-							? "Confirm the check above to see the result."
+						: fix.unanswered
+							? "Answer the question above to see the result."
 							: "The result appears here."}
 				</p>
 			)}

@@ -159,6 +159,8 @@ struct Proposal {
     origin_suggestion: Option<String>,
     #[serde(default)]
     adjusted: bool,
+    #[serde(default)]
+    separate_from: Vec<String>,
 }
 
 pub(super) async fn selected(
@@ -248,8 +250,25 @@ pub async fn preview(
     workspace: &str,
     input: GroupingInput,
 ) -> Result<GroupingPreview> {
+    preview_separate(pool, user, workspace, input, vec![]).await
+}
+
+/// Previews a grouping and records that the resulting trades are different
+/// trades from the manual entries in `separate_from`, once it is confirmed.
+pub async fn preview_separate(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    input: GroupingInput,
+    separate_from: Vec<String>,
+) -> Result<GroupingPreview> {
     let mut tx = pool.begin().await?;
     let version = commands::lock_workspace(&mut tx, user, workspace).await?;
+    ensure!(
+        !separate_from.iter().any(|id| input.entry_ids.contains(id)),
+        "A trade can't be kept separate from itself"
+    );
+    super::duplicates::ensure_manual(&mut tx, user, workspace, &separate_from).await?;
     let mut before = selected(&mut tx, user, workspace, &input.entry_ids).await?;
     if before.iter().any(|g| g.unresolved.is_some()) {
         let direction = match input.direction.as_deref() {
@@ -466,6 +485,7 @@ pub async fn preview(
         source_key,
         origin_suggestion: None,
         adjusted: false,
+        separate_from,
     };
     let token = crate::ids::new_uuid_v7().to_string();
     let kind = if proposal.groups.len() > before.len() {
@@ -632,6 +652,21 @@ pub async fn confirm(
         )
         .await?;
     }
+    let executions = proposal
+        .groups
+        .iter()
+        .flat_map(|group| &group.draft.allocations)
+        .map(|fill| fill.transaction_id.clone())
+        .filter(|id| !id.starts_with("opening:"))
+        .collect::<Vec<_>>();
+    super::duplicates::keep_executions_separate(
+        &mut tx,
+        user,
+        workspace,
+        &proposal.separate_from,
+        &executions,
+    )
+    .await?;
     sqlx::query("SELECT journal_refresh_manual_holds($1,$2)")
         .bind(user)
         .bind(workspace)
@@ -730,6 +765,7 @@ pub async fn preview_undo(
         source_key: prior.source_key,
         origin_suggestion: None,
         adjusted: false,
+        separate_from: vec![],
     };
     let token = crate::ids::new_uuid_v7().to_string();
     sqlx::query("INSERT INTO journal_grouping_operations(id,user_id,workspace_id,kind,source_revision,grouping_revision,expected_versions,before_json,proposal_json,undo_of,expires_at) VALUES ($1,$2,$3,'undo',$4,$5,$6,$7,$8,$9,now()+interval '10 minutes')")

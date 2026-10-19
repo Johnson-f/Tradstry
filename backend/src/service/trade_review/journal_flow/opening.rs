@@ -384,8 +384,37 @@ pub async fn save(
     client: &str,
     mutation: &str,
 ) -> Result<OpeningPositionView> {
-    let payload =
+    save_separate(
+        pool,
+        user,
+        workspace,
+        entry,
+        input,
+        vec![],
+        client,
+        mutation,
+    )
+    .await
+}
+
+/// Saves a starting position and records that the trades built from this
+/// entry's executions are not the manual trades in `separate_from`.
+#[allow(clippy::too_many_arguments)]
+pub async fn save_separate(
+    pool: &PgPool,
+    user: &str,
+    workspace: &str,
+    entry: &str,
+    input: OpeningPositionInput,
+    separate_from: Vec<String>,
+    client: &str,
+    mutation: &str,
+) -> Result<OpeningPositionView> {
+    let mut payload =
         json!({"kind":"save_opening_position","workspace":workspace,"entry":entry,"input":input});
+    if !separate_from.is_empty() {
+        payload["separate_from"] = json!(separate_from);
+    }
     let mut tx = pool.begin().await?;
     if let Some(result) =
         commands::replay(&mut tx, user, workspace, client, mutation, &payload).await?
@@ -415,6 +444,17 @@ pub async fn save(
     sqlx::query("INSERT INTO journal_opening_positions(id,user_id,workspace_id,instrument_key,direction,quantity,average_price,as_of) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
         .bind(&position.id).bind(user).bind(workspace).bind(&key).bind(direction_name(position.direction)).bind(position.quantity).bind(position.average_price).bind(position.as_of)
         .execute(&mut *tx).await?;
+    super::duplicates::ensure_manual(&mut tx, user, workspace, &separate_from).await?;
+    let executions: Vec<String> = sqlx::query_scalar("SELECT ARRAY(SELECT jsonb_array_elements_text(coalesce(issue_json->'source_ids','[]')) UNION SELECT brokerage_transaction_id FROM journal_brokerage_links WHERE journal_entry_id=$1 AND user_id=$2)::text[] FROM journal_entries WHERE id=$1 AND user_id=$2 AND workspace_id=$3")
+        .bind(entry).bind(user).bind(workspace).fetch_one(&mut *tx).await?;
+    super::duplicates::keep_executions_separate(
+        &mut tx,
+        user,
+        workspace,
+        &separate_from,
+        &executions,
+    )
+    .await?;
     queue_projection(&mut tx, user, workspace, &version).await?;
     let result = view(&position, Some(&group));
     commands::changed(

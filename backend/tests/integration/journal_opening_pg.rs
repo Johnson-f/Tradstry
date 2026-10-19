@@ -799,3 +799,94 @@ async fn trades_blocked_before_the_rule_clear_after_a_hand_confirmed_one() {
             .collect::<Vec<_>>()
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_manual_trade_kept_separate_stays_separate_after_a_starting_position_rebuild() {
+    use tradstry_backend::service::db::schema::tables::journal_table::{
+        self, CreateJournalEntryInput,
+    };
+    let test_db = crate::pg_support::TestDb::new().await;
+    let pool = test_db.pool();
+    let (user, workspace, placeholder) = unknown_start_history(&pool).await;
+    let manual = journal_table::create_journal_entry(
+        &pool,
+        &user,
+        CreateJournalEntryInput {
+            id: None,
+            fees: None,
+            workspace_id: workspace.clone(),
+            open_date: "2026-09-02T14:00:00Z".into(),
+            close_date: "2026-09-04T16:00:00Z".into(),
+            entry_price: 9.0,
+            exit_price: 12.0,
+            position_size: 10.0,
+            symbol: "ACME".into(),
+            symbol_name: Some("Acme".into()),
+            stop_loss: 8.0,
+            trade_type: "long".into(),
+            playbook_id: None,
+            notes: None,
+            broke_30min_rule: None,
+            pre_trade_conviction: None,
+            market_regime: None,
+            is_planned_pre_market: None,
+            revenge_trade: None,
+            rule_adherence_score: None,
+            contract_multiplier: None,
+            brokerage_transaction_ids: None,
+            tag_ids: Vec::new(),
+            violated_principle_ids: Vec::new(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let broker_as_manual = opening::save_separate(
+        &pool,
+        &user,
+        &workspace,
+        &placeholder,
+        held_before_history(),
+        vec![placeholder.clone()],
+        "browser",
+        "not-manual",
+    )
+    .await;
+    assert!(
+        broker_as_manual.is_err(),
+        "only manual entries can be kept separate"
+    );
+
+    opening::save_separate(
+        &pool,
+        &user,
+        &workspace,
+        &placeholder,
+        held_before_history(),
+        vec![manual.id.clone()],
+        "browser",
+        "separate",
+    )
+    .await
+    .unwrap();
+    project(&pool, &user, &workspace).await;
+
+    let trades = active_trades(&pool, &user, &workspace).await;
+    let mut broker = trades
+        .iter()
+        .filter(|trade| trade.source_kind == "broker")
+        .map(|trade| trade.id.clone())
+        .collect::<Vec<_>>();
+    broker.sort();
+    assert_eq!(broker.len(), 2, "the history rebuilds into two trades");
+    let kept = trades.iter().find(|trade| trade.id == manual.id).unwrap();
+    assert_ne!(kept.lifecycle_state, "incomplete");
+    assert!(kept.possible_duplicates.is_empty());
+    let separate: Vec<String> =
+        sqlx::query_scalar("SELECT separate_from FROM journal_entries WHERE id=$1")
+            .bind(&manual.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(separate, broker);
+}

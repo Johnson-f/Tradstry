@@ -35,11 +35,11 @@ fn archived_migration_versions_do_not_have_gaps() {
 }
 
 #[test]
-fn seaorm_migrations_end_with_legacy_allocation_precision() {
+fn seaorm_migrations_end_with_separate_from_executions() {
     let migrations = Migrator::migrations();
-    assert_eq!(migrations.len(), 20);
+    assert_eq!(migrations.len(), 21);
     assert_eq!(
         migrations.last().unwrap().name(),
-        "m20261018_000020_legacy_allocation_precision"
+        "m20261018_000021_separate_from_executions"
     );
 }
