@@ -1,12 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="overscroll-none bg-white dark:bg-neutral-900">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        document.documentElement.classList.toggle(
+          'dark',
+          localStorage.getItem('tradstry:theme') === 'dark',
+        )
+      } catch {}
+    </script>
+    <link rel="stylesheet" href="/src/index.css" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tradstry</title>
   </head>
-  <body>
+  <body class="bg-white dark:bg-neutral-900">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRouteWithContext } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import type { AuthState } from '@/lib/auth/auth-guard'
 
 export interface RouterContext {
@@ -14,12 +13,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 })
 
 function RootLayout() {
-  return (
-    <>
-      <Outlet />
-      <TanStackRouterDevtools />
-    </>
-  )
+  return <Outlet />
 }
 
 function NotFound() {

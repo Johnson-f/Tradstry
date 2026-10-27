@@ -1,8 +1,8 @@
 import { Products, StytchLogin, useStytchSession } from '@stytch/react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
-import { AuthShell } from '@/components/auth/auth-shell'
-import { presentation } from '@/components/auth/presentation'
+import { SignInShell } from '@/components/auth/sign-in-shell'
+import { signInPresentation } from '@/components/auth/presentation'
 import {
   rememberReturnTo,
   safeReturnPath,
@@ -48,11 +48,15 @@ function SignIn() {
   }, [])
 
   return (
-    <AuthShell
-      title="Sign in"
-      description="Use Google or your email and password. New here? The same form creates your account."
-    >
-      <StytchLogin config={config} presentation={presentation} />
-    </AuthShell>
+    <SignInShell>
+      <StytchLogin
+        config={config}
+        presentation={signInPresentation}
+        strings={{
+          'button.emailLogin': 'Continue',
+          'formField.email.placeholder': 'Email',
+        }}
+      />
+    </SignInShell>
   )
 }

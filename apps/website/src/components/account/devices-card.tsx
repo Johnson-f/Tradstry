@@ -2,13 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle, Monitor, Smartphone } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   type AuthSession,
@@ -44,14 +37,14 @@ export function DevicesCard() {
     revoke.error.code === 'REAUTH_REQUIRED'
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Active devices</CardTitle>
-        <CardDescription>Everywhere you're currently signed in.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <section aria-labelledby="devices-heading" className="space-y-2">
+      <h2 id="devices-heading" className="text-[13px] font-medium">Active devices</h2>
+      <div className="overflow-hidden rounded-2xl border border-neutral-200/60 bg-card shadow-xs dark:border-white/10">
+        <p className="border-b border-neutral-200/60 px-5 py-3.5 text-[13px] text-muted-foreground dark:border-white/10">
+          Everywhere you're currently signed in.
+        </p>
         {revoke.isError && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="px-5 py-3 text-sm text-destructive">
             {needsReauth ? (
               <>
                 For your security, sign in again before signing out other
@@ -70,16 +63,16 @@ export function DevicesCard() {
           </p>
         )}
         {sessions.isPending ? (
-          <div className="grid gap-2">
+          <div className="grid gap-2 px-5 py-3">
             <Skeleton className="h-14 rounded-lg" />
             <Skeleton className="h-14 rounded-lg" />
           </div>
         ) : sessions.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="px-5 py-3 text-sm text-destructive">
             Could not load your devices: {sessions.error.message}
           </p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="divide-y divide-neutral-200/60 dark:divide-white/10">
             {sessions.data.map((item) => (
               <DeviceRow
                 key={item.id}
@@ -90,8 +83,8 @@ export function DevicesCard() {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -107,7 +100,7 @@ function DeviceRow({
   const device = describeUserAgent(session.userAgent)
   const Icon = device.isMobile ? Smartphone : Monitor
   return (
-    <li className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+    <li className="flex items-center gap-3 px-5 py-3.5">
       <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm">{device.label}</p>
