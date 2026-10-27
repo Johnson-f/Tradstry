@@ -74,6 +74,20 @@ impl AuthClaims {
         let claim = self.other.get(STYTCH_SESSION_CLAIM)?;
         serde_json::from_value(claim.clone()).ok()
     }
+
+    /// When a long-lived connection opened with this token must end. A web
+    /// session outlives its five-minute JWT, so its own expiry is the bound;
+    /// connected-app tokens carry no session and end at the token's `exp`.
+    pub fn access_ends_at(&self) -> Option<DateTime<Utc>> {
+        match self.kind {
+            TokenKind::Session => self.stytch_session()?.expires_at(),
+            TokenKind::ConnectedApp => self
+                .other
+                .get("exp")
+                .and_then(Value::as_i64)
+                .and_then(|exp| DateTime::from_timestamp(exp, 0)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -119,6 +133,24 @@ mod tests {
                 .expires_at()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn access_ends_with_the_session_or_the_connected_app_token() {
+        let session = claims(json!({STYTCH_SESSION_CLAIM: {
+            "id": "session-1",
+            "expires_at": "2026-11-26T12:00:00Z",
+        }, "exp": 1}));
+        assert_eq!(
+            session.access_ends_at().unwrap().to_rfc3339(),
+            "2026-11-26T12:00:00+00:00"
+        );
+
+        let mut app = claims(json!({"client_id": "c", "exp": 1_800_000_000}));
+        app.kind = TokenKind::ConnectedApp;
+        assert_eq!(app.access_ends_at().unwrap().timestamp(), 1_800_000_000);
+
+        assert!(claims(json!({})).access_ends_at().is_none());
     }
 
     #[test]

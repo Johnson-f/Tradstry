@@ -11,10 +11,21 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+futures-channel = { version = "0.3", features = ["sink"] }
+futures-util = { version = "0.3", features = ["sink"] }
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 stytch = "11.1.0"
 thiserror = "2"
-tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tokio-tungstenite = "0.30.0"
+tower = { version = "0.5", features = ["util"] }

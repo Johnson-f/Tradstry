@@ -1,2 +1,3 @@
 services/backend/target/
 services/backend/.env
+docs/plans/

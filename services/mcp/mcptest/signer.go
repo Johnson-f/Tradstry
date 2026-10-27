@@ -1,0 +1,62 @@
+// Package mcptest runs the real server against a fake Tradstry API, for tests.
+package mcptest
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"maps"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+const (
+	Issuer   = "https://quiet-river-1234.customers.stytch.dev"
+	Audience = "project-test-123"
+	Subject  = "user-test-123"
+)
+
+// Signer mints Stytch-shaped tokens with a throwaway key.
+type Signer struct {
+	key *rsa.PrivateKey
+}
+
+func NewSigner(t *testing.T) *Signer {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Signer{key: key}
+}
+
+func (s *Signer) Keyfunc(*jwt.Token) (any, error) {
+	return &s.key.PublicKey, nil
+}
+
+// Token returns a token with the given JOSE typ header. Claims left unset
+// default to a valid Stytch Connected Apps access token for Subject.
+func (s *Signer) Token(t *testing.T, typ string, claims jwt.MapClaims) string {
+	t.Helper()
+	all := jwt.MapClaims{
+		"iss":       Issuer,
+		"aud":       []string{Audience},
+		"sub":       Subject,
+		"client_id": "connected-app-test",
+		"scope":     "openid profile email offline_access",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+	}
+	maps.Copy(all, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, all)
+	token.Header["typ"] = typ
+	signed, err := token.SignedString(s.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signed
+}
+
+func (s *Signer) AccessToken(t *testing.T) string {
+	return s.Token(t, "JWT", nil)
+}

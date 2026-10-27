@@ -1,44 +1,27 @@
-import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
+import { Outlet, createRootRouteWithContext } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import type { AuthState } from '@/lib/auth/auth-guard'
 
-export const Route = createRootRoute({
+export interface RouterContext {
+  auth: AuthState
+  queryClient: QueryClient
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   notFoundComponent: NotFound,
 })
 
-const navLinkClass = 'text-muted-foreground hover:text-foreground'
-
 function RootLayout() {
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="flex items-center gap-6 border-b px-6 py-3">
-        <span className="font-semibold">Tradstry</span>
-        <nav className="flex gap-4 text-sm">
-          <Link
-            to="/"
-            className={navLinkClass}
-            activeProps={{ className: 'text-foreground font-medium' }}
-            activeOptions={{ exact: true }}
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/settings"
-            className={navLinkClass}
-            activeProps={{ className: 'text-foreground font-medium' }}
-          >
-            Settings
-          </Link>
-        </nav>
-      </header>
-      <main className="flex-1 p-6">
-        <Outlet />
-      </main>
+    <>
+      <Outlet />
       <TanStackRouterDevtools />
-    </div>
+    </>
   )
 }
 
 function NotFound() {
-  return <p className="text-muted-foreground">Page not found.</p>
+  return <p className="p-6 text-muted-foreground">Page not found.</p>
 }

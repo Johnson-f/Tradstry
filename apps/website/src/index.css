@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+/* Stytch's own theme/shadcn.css sources a shadcn.js that @stytch/react 20.3.0
+   does not ship. Scanning the real module keeps the Tailwind theme variables
+   its shadcnTheme reads (--spacing, --radius-xl, ...) in the build. */
+@source "../node_modules/@stytch/react/dist/esm/packages/web/src/ui/components/themes/shadcn.mjs";
 
 @custom-variant dark (&:is(.dark *));
 

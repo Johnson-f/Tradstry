@@ -1,7 +1,26 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/joho/godotenv"
+
+	"github.com/Johnson-f/Tradstry-v2-/services/mcp/app"
+)
 
 func main() {
-	fmt.Println("Hello from mcp")
+	if err := godotenv.Load(); err != nil {
+		slog.Info(".env not loaded; using process environment", "error", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	err := app.Run(ctx)
+	stop()
+	if err != nil {
+		slog.Error("tradstry-mcp stopped", "error", err)
+		os.Exit(1)
+	}
 }

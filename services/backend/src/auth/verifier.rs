@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use base64::Engine as _;
+use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde_json::{Map, Value};
 
@@ -13,6 +13,10 @@ use crate::stytch;
 pub enum AuthError {
     #[error("{0}")]
     Unauthorized(String),
+    /// Signed by a trusted key but past `exp`. Kept apart from `Unauthorized`
+    /// so clients know refreshing the session JWT and retrying can succeed.
+    #[error("Error: JWT has expired")]
+    Expired,
     #[error("{0}")]
     Unavailable(String),
 }
@@ -82,16 +86,16 @@ impl TokenVerifier {
         }
     }
 
-    pub fn from_env() -> Result<Self> {
-        let project_id = env_var("STYTCH_PROJECT_ID")
-            .context("STYTCH_PROJECT_ID must be set to verify Stytch tokens")?;
-        let api = stytch::api_base(&project_id, env_var("STYTCH_API_URL").as_deref());
+    /// Verifies tokens for one Stytch project, fetching its signing keys from
+    /// the project's JWKS endpoint.
+    pub fn stytch(project_id: &str, api_url: Option<&str>, custom_issuer: Option<&str>) -> Self {
+        let api = stytch::api_base(project_id, api_url);
         let jwks = HttpJwksProvider::new(format!("{api}/v1/sessions/jwks/{project_id}"));
-        Ok(Self::new(vec![IssuerConfig::stytch(
-            &project_id,
-            env_var("STYTCH_ISSUER").as_deref(),
+        Self::new(vec![IssuerConfig::stytch(
+            project_id,
+            custom_issuer,
             Arc::new(jwks),
-        )]))
+        )])
     }
 
     pub async fn verify(&self, token: &str) -> Result<AuthClaims, AuthError> {
@@ -120,8 +124,9 @@ impl TokenVerifier {
             DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|_| invalid())?;
 
         let mut claims = decode::<Map<String, Value>>(token, &decoding_key, &config.validation())
-            .map_err(|error| {
-                AuthError::Unauthorized(format!("Error: Invalid JWT! cause: {error}"))
+            .map_err(|error| match error.kind() {
+                ErrorKind::ExpiredSignature => AuthError::Expired,
+                _ => AuthError::Unauthorized(format!("Error: Invalid JWT! cause: {error}")),
             })?
             .claims;
         let sub = take_string(&mut claims, "sub").ok_or_else(invalid)?;
@@ -153,13 +158,6 @@ fn unverified_issuer(token: &str) -> Option<String> {
         .ok()?;
     let claims: Value = serde_json::from_slice(&bytes).ok()?;
     claims.get("iss")?.as_str().map(str::to_owned)
-}
-
-fn env_var(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
 }
 
 #[cfg(test)]
@@ -254,9 +252,15 @@ mod tests {
     #[tokio::test]
     async fn rejects_expired_and_not_yet_valid_tokens() {
         let expired = sign(&stytch_claims(json!({ "exp": now() - 600 })));
-        assert!(verifier().verify(&expired).await.is_err());
+        assert!(matches!(
+            verifier().verify(&expired).await,
+            Err(AuthError::Expired)
+        ));
         let early = sign(&stytch_claims(json!({ "nbf": now() + 600 })));
-        assert!(verifier().verify(&early).await.is_err());
+        assert!(matches!(
+            verifier().verify(&early).await,
+            Err(AuthError::Unauthorized(_))
+        ));
     }
 
     #[tokio::test]
