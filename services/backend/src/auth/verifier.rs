@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use super::claims::{AuthClaims, STYTCH_SESSION_CLAIM, TokenKind};
 use super::jwks::{HttpJwksProvider, JwksError, JwksProvider};
-use crate::stytch;
+use super::stytch;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {

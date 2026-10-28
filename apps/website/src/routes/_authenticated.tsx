@@ -3,12 +3,15 @@ import {
   Outlet,
   createFileRoute,
   redirect,
+  useParams,
   useRouterState,
 } from '@tanstack/react-router'
-import { ChevronRight, House, LifeBuoy } from 'lucide-react'
+import { ChevronRight, House, Landmark, LifeBuoy } from 'lucide-react'
 import { Suspense } from 'react'
 import { UserMenu } from '@/components/account/user-menu'
+import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
 import { signInRedirectFor } from '@/lib/auth/auth-guard'
+import { pageTitle } from '@/lib/navigation'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
@@ -21,10 +24,13 @@ export const Route = createFileRoute('/_authenticated')({
 const railLinkClass =
   'flex size-9 items-center justify-center rounded-xl text-neutral-500 hover:bg-black/5 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500 max-sm:size-11 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100'
 
+const activeRailLinkClass = 'bg-black/7 text-neutral-900 dark:bg-white/10 dark:text-neutral-100'
+
 function AppLayout() {
-  const isSettings = useRouterState({
-    select: (state) => state.location.pathname === '/settings',
+  const title = useRouterState({
+    select: (state) => pageTitle(state.location.pathname),
   })
+  const { workspaceId } = useParams({ strict: false })
 
   return (
     <div className="fixed inset-0 flex overflow-hidden overscroll-none bg-[#ededed] py-1.5 pr-1.5 font-[Arial,Helvetica,sans-serif] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
@@ -48,11 +54,19 @@ function AppLayout() {
             to="/"
             aria-label="Dashboard"
             title="Dashboard"
-            className={railLinkClass}
-            activeProps={{ className: 'bg-black/7 text-neutral-900 dark:bg-white/10 dark:text-neutral-100' }}
-            activeOptions={{ exact: true }}
+            aria-current={workspaceId ? 'page' : undefined}
+            className={workspaceId ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
           >
             <House className="size-4.5" aria-hidden />
+          </Link>
+          <Link
+            to="/brokerage"
+            aria-label="Brokerage"
+            title="Brokerage"
+            className={railLinkClass}
+            activeProps={{ className: activeRailLinkClass }}
+          >
+            <Landmark className="size-4.5" aria-hidden />
           </Link>
         </nav>
 
@@ -77,10 +91,18 @@ function AppLayout() {
                 <li>
                   <span className="text-neutral-400">Tradstry</span>
                 </li>
-                <li className="flex items-center gap-2.5">
-                  <ChevronRight className="size-3.5 text-neutral-400" aria-hidden />
-                  <span aria-current="page">{isSettings ? 'Settings' : 'Dashboard'}</span>
-                </li>
+                {workspaceId && (
+                  <li className="flex min-w-0 items-center gap-2.5" aria-current={title === 'Dashboard' ? 'page' : undefined}>
+                    <ChevronRight className="size-3.5 shrink-0 text-neutral-400" aria-hidden />
+                    <WorkspaceSwitcher workspaceId={workspaceId} />
+                  </li>
+                )}
+                {(!workspaceId || title !== 'Dashboard') && (
+                  <li className="flex items-center gap-2.5">
+                    <ChevronRight className="size-3.5 text-neutral-400" aria-hidden />
+                    <span aria-current="page">{title}</span>
+                  </li>
+                )}
               </ol>
             </nav>
           </header>

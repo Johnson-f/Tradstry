@@ -23,7 +23,10 @@ pub async fn graphql_handler(
     claims: AuthClaims,
     request: GraphQLRequest,
 ) -> GraphQLResponse {
-    let request = request.into_inner().data(claims);
+    let request = request
+        .into_inner()
+        .data(claims)
+        .data(super::RequestUser::default());
     state.schema.execute(request).await.into()
 }
 
@@ -63,6 +66,7 @@ async fn serve_socket(socket: WebSocket, state: AppState, protocol: GraphQLProto
             deadline_tx.send_replace(claims.access_ends_at());
             let mut data = Data::default();
             data.insert(claims);
+            data.insert(super::RequestUser::default());
             Ok(data)
         })
         .serve();

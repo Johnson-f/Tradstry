@@ -9,22 +9,60 @@ use tower_http::trace::TraceLayer;
 
 use std::sync::Arc;
 
+use sqlx::PgPool;
+
 use crate::auth::TokenVerifier;
+use crate::auth::stytch::StytchApi;
+use crate::brokerage::Brokerage;
 use crate::graphql::{self, AppSchema};
-use crate::stytch::StytchApi;
+use crate::webhooks;
+
+/// What the app needs from the outside world. Tests build it with fakes.
+pub struct Services {
+    pub verifier: TokenVerifier,
+    pub pool: PgPool,
+    pub stytch: Arc<dyn StytchApi>,
+    pub stytch_webhook_secret: Option<String>,
+    pub brokerage: Option<Arc<Brokerage>>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub verifier: TokenVerifier,
     pub schema: AppSchema,
+    pub pool: PgPool,
+    pub stytch: Arc<dyn StytchApi>,
+    pub stytch_webhook_secret: Option<Arc<str>>,
+    pub brokerage: Option<Arc<Brokerage>>,
 }
 
 impl AppState {
-    pub fn new(verifier: TokenVerifier, stytch: Arc<dyn StytchApi>) -> Self {
+    pub fn new(services: Services) -> Self {
         Self {
-            verifier,
-            schema: graphql::build_schema(stytch),
+            schema: graphql::build_schema(
+                services.pool.clone(),
+                services.stytch.clone(),
+                services.brokerage.clone(),
+            ),
+            verifier: services.verifier,
+            pool: services.pool,
+            stytch: services.stytch,
+            stytch_webhook_secret: services.stytch_webhook_secret.map(Arc::from),
+            brokerage: services.brokerage,
         }
+    }
+}
+
+/// Services for tests: the test token verifier, an empty fake Stytch, and the
+/// given pool. Never use outside a test process.
+#[doc(hidden)]
+pub fn test_services(pool: PgPool) -> Services {
+    Services {
+        verifier: crate::auth::test_jwt::test_verifier(),
+        pool,
+        stytch: Arc::new(crate::auth::stytch::fake::FakeStytch::default()),
+        stytch_webhook_secret: Some("whsec_dGVzdC1zZWNyZXQtdGVzdC1zZWNyZXQ=".to_owned()),
+        brokerage: None,
     }
 }
 
@@ -39,6 +77,15 @@ pub fn router(state: AppState, cors_allowed_origins: Vec<HeaderValue>) -> Router
         .route("/health", get(health))
         .route("/graphql", graphql_route())
         .route("/graphql/ws", get(graphql::graphql_ws_handler))
+        .route("/webhooks/stytch", post(webhooks::stytch::stytch_webhook))
+        .route(
+            "/oauth/snaptrade/callback",
+            get(webhooks::snaptrade_oauth::snaptrade_oauth_callback),
+        )
+        .route(
+            "/webhooks/snaptrade",
+            post(webhooks::snaptrade::snaptrade_webhook),
+        )
         .layer(cors(cors_allowed_origins))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -75,13 +122,13 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::auth::test_jwt;
 
     fn app() -> Router {
-        let state = AppState::new(
-            test_jwt::test_verifier(),
-            Arc::new(crate::stytch::fake::FakeStytch::default()),
-        );
+        // These routes never touch the database, so the pool never connects.
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://unused@localhost/unused")
+            .unwrap();
+        let state = AppState::new(test_services(pool));
         router(
             state,
             vec![HeaderValue::from_static("http://localhost:5173")],

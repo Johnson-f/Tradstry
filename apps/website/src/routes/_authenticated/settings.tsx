@@ -1,36 +1,47 @@
 import { Switch } from '@base-ui/react/switch'
 import { Tabs } from '@base-ui/react/tabs'
 import { useStytchUser } from '@stytch/react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DevicesCard } from '@/components/account/devices-card'
 import { Button } from '@/components/ui/button'
+import { tabClass, tabListClass } from '@/components/ui/tab-styles'
+import { WorkspacesSettings } from '@/components/workspace/workspaces-settings'
 import { userEmail, userFullName } from '@/lib/auth/stytch'
 import { isDarkMode, setDarkMode } from '@/lib/theme'
 
+const TABS = ['general', 'workspaces', 'you'] as const
+type SettingsTab = (typeof TABS)[number]
+
 export const Route = createFileRoute('/_authenticated/settings')({
+  validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
+    TABS.includes(search.tab as SettingsTab) && search.tab !== 'general' ? { tab: search.tab as SettingsTab } : {},
   component: Settings,
 })
 
 function Settings() {
   const { user } = useStytchUser()
   const [darkMode, updateDarkMode] = useState(isDarkMode)
+  const { tab = 'general' } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
 
   return (
     <div className="mx-auto w-full max-w-160 pt-2 pb-10 sm:pt-3">
       <h1 className="sr-only">Settings</h1>
-      <Tabs.Root defaultValue="general">
-        <Tabs.List aria-label="Settings" className="flex gap-5 border-b border-neutral-200/60 dark:border-white/10">
-          <Tabs.Tab
-            value="general"
-            className="-mb-px cursor-pointer border-b-2 border-transparent pb-2.5 text-sm font-medium text-neutral-500 outline-offset-4 focus-visible:outline-2 data-active:border-neutral-900 data-active:text-neutral-900 dark:text-neutral-400 dark:data-active:border-neutral-100 dark:data-active:text-neutral-100"
-          >
+      <Tabs.Root
+        value={tab}
+        onValueChange={(value: SettingsTab) =>
+          void navigate({ search: value === 'general' ? {} : { tab: value }, replace: true })
+        }
+      >
+        <Tabs.List aria-label="Settings" className={tabListClass}>
+          <Tabs.Tab value="general" className={tabClass}>
             General
           </Tabs.Tab>
-          <Tabs.Tab
-            value="you"
-            className="-mb-px cursor-pointer border-b-2 border-transparent pb-2.5 text-sm font-medium text-neutral-500 outline-offset-4 focus-visible:outline-2 data-active:border-neutral-900 data-active:text-neutral-900 dark:text-neutral-400 dark:data-active:border-neutral-100 dark:data-active:text-neutral-100"
-          >
+          <Tabs.Tab value="workspaces" className={tabClass}>
+            Workspaces
+          </Tabs.Tab>
+          <Tabs.Tab value="you" className={tabClass}>
             You
           </Tabs.Tab>
         </Tabs.List>
@@ -98,6 +109,10 @@ function Settings() {
               </Switch.Root>
             </div>
           </section>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="workspaces" className="space-y-5 pt-5 outline-none">
+          <WorkspacesSettings />
         </Tabs.Panel>
 
         <Tabs.Panel value="you" className="space-y-5 pt-5 outline-none">

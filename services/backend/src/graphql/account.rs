@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use async_graphql::{Context, Error, ErrorExtensions, Object, Result, SimpleObject};
+use async_graphql::{Context, Error, Object, Result, SimpleObject};
 use chrono::{DateTime, Duration, Utc};
+use sqlx::PgPool;
 use tracing::error;
 
+use super::errors::{coded, to_graphql};
+use super::user::current_user;
+use crate::auth::stytch::{Session, StytchApi, StytchError};
 use crate::auth::{AuthClaims, StytchSession, TokenKind};
-use crate::stytch::{Session, StytchApi, StytchError};
+use crate::brokerage::Brokerage;
+use crate::users::account;
 
 const REAUTH_WINDOW_MINUTES: i64 = 5;
 
@@ -40,10 +45,6 @@ struct StytchCaller<'a> {
     claims: &'a AuthClaims,
     session: StytchSession,
     stytch: &'a dyn StytchApi,
-}
-
-fn coded(message: &str, code: &'static str) -> Error {
-    Error::new(message).extend_with(|_, ext| ext.set("code", code))
 }
 
 /// Account management acts on the caller's Stytch user, so it needs a Stytch
@@ -123,6 +124,33 @@ impl AccountMutation {
             .revoke_session(&id)
             .await
             .map_err(provider_error)?;
+        Ok(true)
+    }
+
+    /// Permanently deletes the caller's account and data. Needs a sign-in
+    /// within the last five minutes.
+    async fn delete_account(&self, ctx: &Context<'_>) -> Result<bool> {
+        let caller = stytch_caller(ctx)?;
+        let window = Duration::minutes(REAUTH_WINDOW_MINUTES);
+        if !caller.session.authenticated_within(window, Utc::now()) {
+            return Err(coded(
+                "Sign in again to delete your account",
+                "REAUTH_REQUIRED",
+            ));
+        }
+        let user = current_user(ctx).await?;
+        caller
+            .stytch
+            .delete_user(&caller.claims.sub)
+            .await
+            .map_err(provider_error)?;
+        account::purge(
+            ctx.data::<PgPool>()?,
+            ctx.data_opt::<Arc<Brokerage>>().map(|b| b.as_ref()),
+            &user,
+        )
+        .await
+        .map_err(to_graphql)?;
         Ok(true)
     }
 }

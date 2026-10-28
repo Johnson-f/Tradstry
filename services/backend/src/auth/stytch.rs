@@ -165,6 +165,7 @@ pub mod fake {
     pub struct FakeStytch {
         sessions: Mutex<HashMap<String, Vec<Session>>>,
         revoked: Mutex<Vec<String>>,
+        deleted_users: Mutex<Vec<String>>,
     }
 
     impl FakeStytch {
@@ -183,11 +184,16 @@ pub mod fake {
             Self {
                 sessions: Mutex::new(HashMap::from([(user_id.to_owned(), sessions)])),
                 revoked: Mutex::default(),
+                deleted_users: Mutex::default(),
             }
         }
 
         pub fn revoked(&self) -> Vec<String> {
             self.revoked.lock().unwrap().clone()
+        }
+
+        pub fn deleted_users(&self) -> Vec<String> {
+            self.deleted_users.lock().unwrap().clone()
         }
     }
 
@@ -214,6 +220,7 @@ pub mod fake {
 
         async fn delete_user(&self, user_id: &str) -> Result<(), StytchError> {
             self.sessions.lock().unwrap().remove(user_id);
+            self.deleted_users.lock().unwrap().push(user_id.to_owned());
             Ok(())
         }
     }

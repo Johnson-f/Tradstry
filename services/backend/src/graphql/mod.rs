@@ -1,33 +1,59 @@
 mod account;
+mod brokerage;
+mod errors;
 mod me;
 mod routes;
 mod ticks;
+mod user;
+mod workspaces;
 
 use std::sync::Arc;
 
 use async_graphql::{MergedObject, MergedSubscription, Schema};
+use sqlx::PgPool;
 
-use crate::stytch::StytchApi;
+use crate::auth::stytch::StytchApi;
+use crate::brokerage::Brokerage;
 
 pub use routes::{SESSION_ENDED_CLOSE_CODE, graphiql, graphql_handler, graphql_ws_handler};
+pub use user::RequestUser;
 
 #[derive(MergedObject, Default)]
-pub struct Query(me::MeQuery, account::AccountQuery);
+pub struct Query(
+    me::MeQuery,
+    account::AccountQuery,
+    workspaces::WorkspaceQuery,
+    brokerage::BrokerageQuery,
+    brokerage::ImportQuery,
+);
 
 #[derive(MergedObject, Default)]
-pub struct Mutation(account::AccountMutation);
+pub struct Mutation(
+    account::AccountMutation,
+    workspaces::WorkspaceMutation,
+    brokerage::BrokerageMutation,
+    brokerage::ImportMutation,
+);
 
 #[derive(MergedSubscription, Default)]
 pub struct Subscription(ticks::TicksSubscription);
 
 pub type AppSchema = Schema<Query, Mutation, Subscription>;
 
-pub fn build_schema(stytch: Arc<dyn StytchApi>) -> AppSchema {
-    Schema::build(
+pub fn build_schema(
+    pool: PgPool,
+    stytch: Arc<dyn StytchApi>,
+    brokerage: Option<Arc<Brokerage>>,
+) -> AppSchema {
+    let mut builder = Schema::build(
         Query::default(),
         Mutation::default(),
         Subscription::default(),
     )
-    .data(stytch)
-    .finish()
+    .data(pool)
+    .data(stytch);
+    if let Some(brokerage) = brokerage {
+        builder = builder.data(brokerage);
+    }
+    builder.finish()
 }

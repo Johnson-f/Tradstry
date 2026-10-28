@@ -1,11 +1,12 @@
-use async_graphql::{Context, Object, Result, SimpleObject};
+use async_graphql::{Context, ID, Object, Result, SimpleObject};
 
+use super::user::current_user;
 use crate::auth::AuthClaims;
 
-/// The caller as their token describes them. Read from claims alone, so it
-/// costs no Stytch or database call.
 #[derive(SimpleObject)]
 pub struct Me {
+    /// Tradstry's ID for the user.
+    id: ID,
     stytch_user_id: String,
     email: Option<String>,
     full_name: Option<String>,
@@ -18,13 +19,16 @@ pub struct MeQuery;
 
 #[Object]
 impl MeQuery {
+    /// The signed-in user. A web session's first call creates the account.
     async fn me(&self, ctx: &Context<'_>) -> Result<Me> {
+        let user = current_user(ctx).await?;
         let claims = ctx.data::<AuthClaims>()?;
-        let present = |value: &str| Some(value.to_owned()).filter(|value| !value.is_empty());
+        let present = |value: String| Some(value).filter(|value| !value.is_empty());
         Ok(Me {
-            stytch_user_id: claims.sub.clone(),
-            email: present(claims.email()),
-            full_name: present(claims.full_name()),
+            id: ID(user.id.to_string()),
+            stytch_user_id: user.stytch_user_id,
+            email: present(user.email),
+            full_name: present(user.full_name),
             session_id: claims.stytch_session().map(|session| session.id),
         })
     }

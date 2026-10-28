@@ -12,7 +12,7 @@ use base64::Engine as _;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
-use tradstry::stytch::{StytchApi, StytchClient};
+use tradstry::auth::stytch::{StytchApi, StytchClient};
 
 const PROJECT: &str = "project-test-123";
 const SECRET: &str = "secret-test-456";

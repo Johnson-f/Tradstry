@@ -16,6 +16,11 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
+import { Route as AuthenticatedBrokerageIndexRouteImport } from './routes/_authenticated/brokerage/index'
+import { Route as AuthenticatedBrokerageCallbackRouteImport } from './routes/_authenticated/brokerage/callback'
+import { Route as AuthenticatedWWorkspaceIdRouteRouteImport } from './routes/_authenticated/w/$workspaceId/route'
+import { Route as AuthenticatedBrokerageOauthCallbackRouteImport } from './routes/_authenticated/brokerage/oauth.callback'
+import { Route as AuthenticatedWWorkspaceIdIndexRouteImport } from './routes/_authenticated/w/$workspaceId/index'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -51,6 +56,36 @@ const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
   path: '/oauth/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedBrokerageIndexRoute =
+  AuthenticatedBrokerageIndexRouteImport.update({
+    id: '/brokerage/',
+    path: '/brokerage/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBrokerageCallbackRoute =
+  AuthenticatedBrokerageCallbackRouteImport.update({
+    id: '/brokerage/callback',
+    path: '/brokerage/callback',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedWWorkspaceIdRouteRoute =
+  AuthenticatedWWorkspaceIdRouteRouteImport.update({
+    id: '/w/$workspaceId',
+    path: '/w/$workspaceId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBrokerageOauthCallbackRoute =
+  AuthenticatedBrokerageOauthCallbackRouteImport.update({
+    id: '/brokerage/oauth/callback',
+    path: '/brokerage/oauth/callback',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedWWorkspaceIdIndexRoute =
+  AuthenticatedWWorkspaceIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -59,6 +94,11 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/w/$workspaceId': typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
+  '/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
+  '/brokerage/': typeof AuthenticatedBrokerageIndexRoute
+  '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/authenticate': typeof AuthenticateRoute
@@ -67,6 +107,10 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/': typeof AuthenticatedIndexRoute
+  '/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
+  '/brokerage': typeof AuthenticatedBrokerageIndexRoute
+  '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/w/$workspaceId': typeof AuthenticatedWWorkspaceIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,6 +121,11 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/w/$workspaceId': typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
+  '/_authenticated/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
+  '/_authenticated/brokerage/': typeof AuthenticatedBrokerageIndexRoute
+  '/_authenticated/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/_authenticated/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,6 +136,11 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/settings'
     | '/oauth/authorize'
+    | '/w/$workspaceId'
+    | '/brokerage/callback'
+    | '/brokerage/'
+    | '/brokerage/oauth/callback'
+    | '/w/$workspaceId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/authenticate'
@@ -95,6 +149,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/oauth/authorize'
     | '/'
+    | '/brokerage/callback'
+    | '/brokerage'
+    | '/brokerage/oauth/callback'
+    | '/w/$workspaceId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -104,6 +162,11 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/oauth/authorize'
     | '/_authenticated/'
+    | '/_authenticated/w/$workspaceId'
+    | '/_authenticated/brokerage/callback'
+    | '/_authenticated/brokerage/'
+    | '/_authenticated/brokerage/oauth/callback'
+    | '/_authenticated/w/$workspaceId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -165,17 +228,76 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/brokerage/': {
+      id: '/_authenticated/brokerage/'
+      path: '/brokerage'
+      fullPath: '/brokerage/'
+      preLoaderRoute: typeof AuthenticatedBrokerageIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/brokerage/callback': {
+      id: '/_authenticated/brokerage/callback'
+      path: '/brokerage/callback'
+      fullPath: '/brokerage/callback'
+      preLoaderRoute: typeof AuthenticatedBrokerageCallbackRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/w/$workspaceId': {
+      id: '/_authenticated/w/$workspaceId'
+      path: '/w/$workspaceId'
+      fullPath: '/w/$workspaceId'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceIdRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/brokerage/oauth/callback': {
+      id: '/_authenticated/brokerage/oauth/callback'
+      path: '/brokerage/oauth/callback'
+      fullPath: '/brokerage/oauth/callback'
+      preLoaderRoute: typeof AuthenticatedBrokerageOauthCallbackRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/w/$workspaceId/': {
+      id: '/_authenticated/w/$workspaceId/'
+      path: '/'
+      fullPath: '/w/$workspaceId/'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceIdIndexRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
+    }
   }
 }
+
+interface AuthenticatedWWorkspaceIdRouteRouteChildren {
+  AuthenticatedWWorkspaceIdIndexRoute: typeof AuthenticatedWWorkspaceIdIndexRoute
+}
+
+const AuthenticatedWWorkspaceIdRouteRouteChildren: AuthenticatedWWorkspaceIdRouteRouteChildren =
+  {
+    AuthenticatedWWorkspaceIdIndexRoute: AuthenticatedWWorkspaceIdIndexRoute,
+  }
+
+const AuthenticatedWWorkspaceIdRouteRouteWithChildren =
+  AuthenticatedWWorkspaceIdRouteRoute._addFileChildren(
+    AuthenticatedWWorkspaceIdRouteRouteChildren,
+  )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedWWorkspaceIdRouteRoute: typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
+  AuthenticatedBrokerageCallbackRoute: typeof AuthenticatedBrokerageCallbackRoute
+  AuthenticatedBrokerageIndexRoute: typeof AuthenticatedBrokerageIndexRoute
+  AuthenticatedBrokerageOauthCallbackRoute: typeof AuthenticatedBrokerageOauthCallbackRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedWWorkspaceIdRouteRoute:
+    AuthenticatedWWorkspaceIdRouteRouteWithChildren,
+  AuthenticatedBrokerageCallbackRoute: AuthenticatedBrokerageCallbackRoute,
+  AuthenticatedBrokerageIndexRoute: AuthenticatedBrokerageIndexRoute,
+  AuthenticatedBrokerageOauthCallbackRoute:
+    AuthenticatedBrokerageOauthCallbackRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

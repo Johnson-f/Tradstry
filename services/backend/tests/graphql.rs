@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::HeaderValue;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use sqlx::PgPool;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -12,15 +12,14 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tradstry::app::{self, AppState};
 use tradstry::auth::test_jwt::{self, PROJECT};
 use tradstry::graphql::SESSION_ENDED_CLOSE_CODE;
-use tradstry::stytch::fake::FakeStytch;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-async fn spawn_server() -> String {
+async fn spawn_server(pool: PgPool) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let router = app::router(
-        AppState::new(test_jwt::test_verifier(), Arc::new(FakeStytch::default())),
+        AppState::new(app::test_services(pool)),
         vec![HeaderValue::from_static("http://localhost:5173")],
     );
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
@@ -97,19 +96,23 @@ async fn close_code(socket: &mut Socket) -> Option<u16> {
     }
 }
 
-#[tokio::test]
-async fn me_reads_the_caller_from_the_token() {
-    let address = spawn_server().await;
+#[sqlx::test]
+async fn me_reads_the_caller_from_the_token(pool: PgPool) {
+    let address = spawn_server(pool).await;
     let token = test_jwt::session_token("user-test-1", "ada@example.com", "Ada Trader");
     let (status, body) = post_graphql(
         &address,
         Some(&token),
-        "{ me { stytchUserId email fullName sessionId } }",
+        "{ me { id stytchUserId email fullName sessionId } }",
     )
     .await;
     assert_eq!(status, 200);
+    let me = &body["data"]["me"];
+    assert!(uuid::Uuid::parse_str(me["id"].as_str().unwrap()).is_ok());
+    let mut me = me.clone();
+    me.as_object_mut().unwrap().remove("id");
     assert_eq!(
-        body["data"]["me"],
+        me,
         json!({
             "stytchUserId": "user-test-1",
             "email": "ada@example.com",
@@ -119,17 +122,17 @@ async fn me_reads_the_caller_from_the_token() {
     );
 }
 
-#[tokio::test]
-async fn graphql_over_http_requires_a_token() {
-    let address = spawn_server().await;
+#[sqlx::test]
+async fn graphql_over_http_requires_a_token(pool: PgPool) {
+    let address = spawn_server(pool).await;
     let (status, body) = post_graphql(&address, None, "{ me { stytchUserId } }").await;
     assert_eq!(status, 401);
     assert_eq!(body["error"], "missing_token");
 }
 
-#[tokio::test]
-async fn websocket_init_without_a_valid_token_is_refused() {
-    let address = spawn_server().await;
+#[sqlx::test]
+async fn websocket_init_without_a_valid_token_is_refused(pool: PgPool) {
+    let address = spawn_server(pool).await;
     for payload in [json!({}), json!({ "token": "not-a-jwt" })] {
         let mut socket = connect(&address).await;
         send(
@@ -141,9 +144,9 @@ async fn websocket_init_without_a_valid_token_is_refused() {
     }
 }
 
-#[tokio::test]
-async fn an_authenticated_subscription_streams() {
-    let address = spawn_server().await;
+#[sqlx::test]
+async fn an_authenticated_subscription_streams(pool: PgPool) {
+    let address = spawn_server(pool).await;
     let mut socket = connect(&address).await;
     let token = session_token_ending_in(3600);
     send(
@@ -170,9 +173,9 @@ async fn an_authenticated_subscription_streams() {
     assert_eq!(first["payload"]["data"]["ticks"], 1);
 }
 
-#[tokio::test]
-async fn the_server_closes_the_socket_when_the_session_ends() {
-    let address = spawn_server().await;
+#[sqlx::test]
+async fn the_server_closes_the_socket_when_the_session_ends(pool: PgPool) {
+    let address = spawn_server(pool).await;
     let mut socket = connect(&address).await;
     send(
         &mut socket,

@@ -1,6 +1,7 @@
 mod claims;
 mod extract;
 mod jwks;
+pub mod stytch;
 #[doc(hidden)]
 pub mod test_jwt;
 mod verifier;
