@@ -25,6 +25,10 @@ const MAX_PAGES: u64 = 500;
 /// Re-read the last week each day in case a brokerage corrected recent rows.
 const OVERLAP_DAYS: i64 = 7;
 const HOLDINGS_INTERVAL: Duration = Duration::hours(6);
+/// SnapTrade asks for activities at most once a day per account, so the next
+/// read is a full day after the last. A webhook saying there is new data may
+/// still pull it earlier.
+const TRANSACTIONS_INTERVAL: Duration = Duration::hours(24);
 const BLOCKED_RETRY: Duration = Duration::hours(6);
 const ORDER_DAYS: u32 = 90;
 const SNAPSHOT_RETENTION_DAYS: i32 = 30;
@@ -122,22 +126,6 @@ pub enum ImportError {
     Internal(#[from] anyhow::Error),
 }
 
-/// The account's daily sync time: spread across the day by account so syncs
-/// are not bunched, and at least 20 hours after `now`.
-pub fn next_daily_slot(account_id: Uuid, now: DateTime<Utc>) -> DateTime<Utc> {
-    let offset = Duration::seconds((account_id.as_u128() % 86_400) as i64);
-    let mut at = now
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .expect("midnight exists")
-        .and_utc()
-        + offset;
-    while at < now + Duration::hours(20) {
-        at += Duration::days(1);
-    }
-    at
-}
-
 impl Brokerage {
     /// Queues a job for an account. If one is already queued, it only moves earlier.
     pub async fn enqueue(&self, account_id: Uuid, kind: JobKind, due: DateTime<Utc>) -> Result<()> {
@@ -199,15 +187,7 @@ impl Brokerage {
         let Some(kind) = JobKind::parse(&job.kind) else {
             return self.drop_job(job.id).await;
         };
-        let account = sqlx::query_as::<_, store::Account>(sqlx::AssertSqlSafe(
-            "SELECT a.id, a.user_id, a.connection_id, a.snaptrade_account_id, a.name, a.masked_number, a.kind,
-                a.raw_type, a.is_paper, a.import_mode, a.import_start_date, a.initial_import_completed_at,
-                a.unlinked_at, w.id AS workspace_id
-             FROM brokerage_accounts a LEFT JOIN workspaces w ON w.brokerage_account_id = a.id WHERE a.id = $1",
-        ))
-        .bind(job.account_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let account = store::account_by_id(&self.pool, job.account_id).await?;
         let Some(account) = account.filter(|a| a.unlinked_at.is_none()) else {
             return self.drop_job(job.id).await;
         };
@@ -280,7 +260,7 @@ impl Brokerage {
         self.enqueue(
             account.id,
             JobKind::Transactions,
-            next_daily_slot(account.id, now),
+            now + TRANSACTIONS_INTERVAL,
         )
         .await?;
         self.enqueue(account.id, JobKind::Holdings, now + HOLDINGS_INTERVAL)
@@ -317,7 +297,7 @@ impl Brokerage {
             .execute(&self.pool)
             .await
             .map_err(anyhow::Error::from)?;
-        Ok(Some(next_daily_slot(account.id, Utc::now())))
+        Ok(Some(Utc::now() + TRANSACTIONS_INTERVAL))
     }
 
     async fn run_holdings(
@@ -385,12 +365,16 @@ impl Brokerage {
                 async move { client.balances(auth.credentials(), &id).await }
             })
             .await?;
-        let orders = session
+        let orders = match session
             .run(|client, auth| {
                 let id = id.clone();
                 async move { client.orders(auth.credentials(), &id, ORDER_DAYS).await }
             })
-            .await?;
+            .await
+        {
+            Err(SessionError::SnapTrade(error)) if error.is_not_supported() => Vec::new(),
+            other => other?,
+        };
         let mut tx = self.pool.begin().await.map_err(anyhow::Error::from)?;
         for order in &orders {
             upsert_order(&mut tx, account.id, order).await?;
@@ -688,23 +672,6 @@ async fn upsert_order(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn daily_slots_are_stable_spread_and_far_enough_ahead() {
-        let now = DateTime::parse_from_rfc3339("2026-10-27T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let account = Uuid::now_v7();
-        let first = next_daily_slot(account, now);
-        assert!(first >= now + Duration::hours(20) && first < now + Duration::hours(44));
-        assert_eq!(
-            next_daily_slot(account, now + Duration::minutes(1)),
-            first,
-            "stable for an account"
-        );
-        let other = next_daily_slot(Uuid::from_u128(account.as_u128() + 3600), now);
-        assert_ne!(other, first, "different accounts land at different times");
-    }
 
     #[test]
     fn job_kinds_round_trip() {

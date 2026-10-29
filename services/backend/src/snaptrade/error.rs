@@ -65,6 +65,11 @@ impl SnapTradeError {
     }
 
     /// A Commercial request whose stored credentials SnapTrade no longer knows.
+    /// SnapTrade answers 501 for data a brokerage does not offer, e.g. orders.
+    pub fn is_not_supported(&self) -> bool {
+        self.status() == Some(501)
+    }
+
     pub fn is_stale_credentials(&self) -> bool {
         self.code() == Some(STALE_CREDENTIALS_CODE)
     }

@@ -37,6 +37,8 @@ pub struct FakeAccount {
     pub id: String,
     pub kind: String,
     pub name: String,
+    pub raw_type: String,
+    pub cash_or_margin: String,
     pub activities: Vec<Value>,
     pub orders: Vec<Value>,
     pub positions: Value,
@@ -49,10 +51,21 @@ impl FakeAccount {
             id: id.to_owned(),
             kind: "investment".to_owned(),
             name: name.to_owned(),
+            raw_type: "Margin".to_owned(),
+            cash_or_margin: "margin".to_owned(),
             activities: Vec::new(),
             orders: Vec::new(),
             positions: json!({ "results": [], "data_freshness": {} }),
             balances: json!([{ "currency": { "code": "USD" }, "cash": 1000.0, "buying_power": 1000.0 }]),
+        }
+    }
+
+    /// An investment account the brokerage labels `raw_type`.
+    pub fn typed(id: &str, name: &str, raw_type: &str, cash_or_margin: &str) -> Self {
+        Self {
+            raw_type: raw_type.to_owned(),
+            cash_or_margin: cash_or_margin.to_owned(),
+            ..Self::investment(id, name)
         }
     }
 
@@ -90,6 +103,7 @@ struct PendingCode {
 
 #[derive(Default)]
 struct State {
+    brokerages: Vec<Value>,
     users: HashMap<String, String>,
     connections: Vec<FakeConnection>,
     codes: HashMap<String, PendingCode>,
@@ -111,6 +125,12 @@ pub struct FakeSnapTrade {
 impl FakeSnapTrade {
     pub async fn start() -> Self {
         let state = Arc::new(Mutex::new(State {
+            brokerages: vec![json!({
+                "slug": "ROBINHOOD", "name": "Robinhood", "display_name": "Robinhood",
+                "aws_s3_logo_url": "https://example.test/robinhood.png",
+                "aws_s3_square_logo_url": "https://example.test/robinhood-square.png",
+                "enabled": true, "maintenance_mode": false,
+            })],
             access_token_ttl_seconds: 36_000,
             ..State::default()
         }));
@@ -154,6 +174,10 @@ impl FakeSnapTrade {
 
     pub fn add_connection(&self, connection: FakeConnection) {
         self.with(|state| state.connections.push(connection));
+    }
+
+    pub fn set_brokerages(&self, brokerages: Vec<Value>) {
+        self.with(|state| state.brokerages = brokerages);
     }
 
     /// A Personal user's connection with one investment account per ID.
@@ -424,6 +448,9 @@ async fn handle(state: Arc<Mutex<State>>, url: String, request: Request<Body>) -
     let method = parts.method.clone();
     let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     match (method, segments.as_slice(), owner) {
+        (Method::GET, ["snapTrade", "partners"], None) => {
+            axum::Json(json!({ "allowed_brokerages": state.brokerages })).into_response()
+        }
         (Method::POST, ["snapTrade", "registerUser"], None) => {
             let user_id = json_body
                 .as_ref()
@@ -494,7 +521,8 @@ async fn handle(state: Arc<Mutex<State>>, url: String, request: Request<Body>) -
                             json!({
                                 "id": a.id, "kind": a.kind, "connection_id": connection.id,
                                 "display_name": a.name, "masked_account_number": "****1234",
-                                "raw_type": "Margin", "is_paper": false, "sync_status": {},
+                                "raw_type": a.raw_type, "cash_or_margin": a.cash_or_margin,
+                                "is_paper": false, "sync_status": {},
                             })
                         })
                         .collect();

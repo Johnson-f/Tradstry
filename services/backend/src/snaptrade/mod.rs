@@ -8,6 +8,6 @@ pub mod signing;
 pub use client::{Credentials, OAuthClientConfig, PortalOptions, SnapTradeClient, SnapTradeConfig};
 pub use error::{STALE_CREDENTIALS_CODE, SnapTradeError};
 pub use models::{
-    Activity, ActivityPage, ActivityQuery, Brokerage, Connection, ConnectionAccount, OAuthTokens,
-    Order, Registration,
+    Activity, ActivityPage, ActivityQuery, Brokerage, BrokerageProvider, Connection,
+    ConnectionAccount, OAuthTokens, Order, Registration,
 };

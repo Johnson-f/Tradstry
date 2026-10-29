@@ -9,6 +9,7 @@ use uuid::Uuid;
 use super::errors::{coded, to_graphql};
 use super::user::current_user;
 use crate::auth::{AuthClaims, TokenKind};
+use crate::brokerage::account_types::{self, AccountType, CashOrMargin, TaxTreatment};
 use crate::brokerage::history::ImportMode as StoredImportMode;
 use crate::brokerage::import::{ImportError, StoredActivity, StoredOrder};
 use crate::brokerage::linking::{
@@ -51,6 +52,7 @@ fn link_error(error: LinkError) -> Error {
         LinkError::InvalidImportRange(_) => (error.to_string(), "INVALID_IMPORT_RANGE"),
         LinkError::AuthorizationIncomplete => (error.to_string(), "AUTHORIZATION_INCOMPLETE"),
         LinkError::RepairInSnapTrade => (error.to_string(), "REPAIR_IN_SNAPTRADE"),
+        LinkError::BrokerUnavailable => (error.to_string(), "BROKER_UNAVAILABLE"),
         LinkError::Session(SessionError::ReauthorizationRequired) => (
             "Your SnapTrade access needs to be authorized again".to_owned(),
             "REAUTHORIZATION_REQUIRED",
@@ -114,13 +116,26 @@ pub struct BrokerageStatus {
 }
 
 #[derive(SimpleObject)]
+pub struct BrokerageProvider {
+    slug: String,
+    name: String,
+    logo_url: Option<String>,
+    enabled: bool,
+    maintenance_mode: bool,
+}
+
+#[derive(SimpleObject)]
 pub struct AccountChoice {
     connection_id: ID,
     institution_name: String,
     snaptrade_account_id: String,
     name: String,
     masked_number: Option<String>,
+    /// What the brokerage calls the account, unstandardised.
     raw_type: Option<String>,
+    account_type: AccountType,
+    tax_treatment: TaxTreatment,
+    cash_or_margin: CashOrMargin,
     is_paper: bool,
     linked_workspace_id: Option<ID>,
     previously_linked: bool,
@@ -128,7 +143,11 @@ pub struct AccountChoice {
 
 impl From<LinkChoice> for AccountChoice {
     fn from(choice: LinkChoice) -> Self {
+        let account_type = account_types::classify(choice.raw_type.as_deref(), &choice.name);
         Self {
+            account_type,
+            tax_treatment: account_type.tax_treatment(),
+            cash_or_margin: choice.cash_or_margin,
             connection_id: ID(choice.connection_id.to_string()),
             institution_name: choice.institution_name,
             snaptrade_account_id: choice.snaptrade_account_id,
@@ -147,7 +166,11 @@ pub struct BrokerageAccount {
     id: ID,
     name: String,
     masked_number: Option<String>,
+    /// What the brokerage calls the account, unstandardised.
     raw_type: Option<String>,
+    account_type: AccountType,
+    tax_treatment: TaxTreatment,
+    cash_or_margin: CashOrMargin,
     is_paper: bool,
     import_mode: String,
     import_start_date: Option<NaiveDate>,
@@ -158,7 +181,11 @@ pub struct BrokerageAccount {
 
 impl From<store::Account> for BrokerageAccount {
     fn from(account: store::Account) -> Self {
+        let account_type = account_types::classify(account.raw_type.as_deref(), &account.name);
         Self {
+            account_type,
+            tax_treatment: account_type.tax_treatment(),
+            cash_or_margin: CashOrMargin::parse(Some(&account.cash_or_margin)),
             id: ID(account.id.to_string()),
             name: account.name,
             masked_number: account.masked_number,
@@ -252,6 +279,29 @@ pub struct BrokerageQuery;
 
 #[Object]
 impl BrokerageQuery {
+    /// The broker names, logos, and availability supplied by SnapTrade.
+    async fn brokerage_providers(&self, ctx: &Context<'_>) -> Result<Vec<BrokerageProvider>> {
+        ctx.data::<AuthClaims>()?;
+        let providers = brokerage(ctx)?
+            .client
+            .brokerages()
+            .await
+            .map_err(|error| link_error(error.into()))?;
+        Ok(providers
+            .into_iter()
+            .map(|provider| BrokerageProvider {
+                slug: provider.slug,
+                name: provider
+                    .display_name
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or(provider.name),
+                logo_url: provider.aws_s3_square_logo_url.or(provider.aws_s3_logo_url),
+                enabled: provider.enabled,
+                maintenance_mode: provider.maintenance_mode,
+            })
+            .collect())
+    }
+
     async fn brokerage_status(&self, ctx: &Context<'_>) -> Result<BrokerageStatus> {
         let brokerage = ctx.data_opt::<Arc<Brokerage>>();
         Ok(BrokerageStatus {
@@ -338,15 +388,23 @@ impl BrokerageMutation {
         &self,
         ctx: &Context<'_>,
         reconnect_connection_id: Option<ID>,
+        broker_slug: Option<String>,
     ) -> Result<ConnectionPortal> {
         require_web_session(ctx)?;
         let brokerage = brokerage(ctx)?;
         let user = current_user(ctx).await?;
         let reconnect = reconnect_connection_id.as_ref().map(parse_id).transpose()?;
-        let url = brokerage
-            .start_commercial(user.id, reconnect)
-            .await
-            .map_err(link_error)?;
+        if reconnect.is_some() && broker_slug.is_some() {
+            return Err(coded(
+                "Choose a broker or a connection to repair",
+                "INVALID_SELECTION",
+            ));
+        }
+        let url = match broker_slug {
+            Some(slug) => brokerage.start_commercial_for_broker(user.id, &slug).await,
+            None => brokerage.start_commercial(user.id, reconnect).await,
+        }
+        .map_err(link_error)?;
         Ok(ConnectionPortal { url })
     }
 

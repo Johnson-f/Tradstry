@@ -547,11 +547,12 @@ pub struct Account {
     pub initial_import_completed_at: Option<DateTime<Utc>>,
     pub unlinked_at: Option<DateTime<Utc>>,
     pub workspace_id: Option<Uuid>,
+    pub cash_or_margin: String,
 }
 
 const ACCOUNT_SELECT: &str = "SELECT a.id, a.user_id, a.connection_id, a.snaptrade_account_id, a.name, a.masked_number, \
      a.kind, a.raw_type, a.is_paper, a.import_mode, a.import_start_date, a.initial_import_completed_at, a.unlinked_at, \
-     w.id AS workspace_id FROM brokerage_accounts a LEFT JOIN workspaces w ON w.brokerage_account_id = a.id";
+     w.id AS workspace_id, a.cash_or_margin FROM brokerage_accounts a LEFT JOIN workspaces w ON w.brokerage_account_id = a.id";
 
 pub struct NewAccount<'a> {
     pub user_id: Uuid,
@@ -561,6 +562,7 @@ pub struct NewAccount<'a> {
     pub masked_number: Option<&'a str>,
     pub kind: &'a str,
     pub raw_type: Option<&'a str>,
+    pub cash_or_margin: &'a str,
     pub is_paper: bool,
     pub import_mode: &'a str,
     pub import_start_date: Option<NaiveDate>,
@@ -575,8 +577,8 @@ pub async fn create_account_with_workspace(
     let id = new_id();
     sqlx::query(
         "INSERT INTO brokerage_accounts (id, user_id, connection_id, snaptrade_account_id, name, masked_number,
-            kind, raw_type, is_paper, import_mode, import_start_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+            kind, raw_type, is_paper, import_mode, import_start_date, cash_or_margin)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(id)
     .bind(account.user_id)
@@ -589,10 +591,11 @@ pub async fn create_account_with_workspace(
     .bind(account.is_paper)
     .bind(account.import_mode)
     .bind(account.import_start_date)
+    .bind(account.cash_or_margin)
     .execute(&mut *tx)
     .await?;
     insert_account_workspace(tx, account.user_id, id, account.name).await?;
-    account_on(tx, id)
+    account_by_id(&mut *tx, id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("account vanished after insert"))
 }
@@ -622,7 +625,7 @@ pub async fn ensure_account_workspace(tx: &mut PgConnection, account: Account) -
         return Ok(account);
     }
     insert_account_workspace(tx, account.user_id, account.id, &account.name).await?;
-    account_on(tx, account.id)
+    account_by_id(&mut *tx, account.id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("account vanished while adding its workspace"))
 }
@@ -637,13 +640,31 @@ pub async fn relink_account(tx: &mut PgConnection, id: Uuid, connection_id: Uuid
     Ok(())
 }
 
-async fn account_on(tx: &mut PgConnection, id: Uuid) -> Result<Option<Account>> {
+pub async fn account_by_id<'e>(executor: impl PgExecutor<'e>, id: Uuid) -> Result<Option<Account>> {
     Ok(sqlx::query_as::<_, Account>(sqlx::AssertSqlSafe(format!(
         "{ACCOUNT_SELECT} WHERE a.id = $1"
     )))
     .bind(id)
-    .fetch_optional(tx)
+    .fetch_optional(executor)
     .await?)
+}
+
+/// Keeps an account's brokerage-reported details current when it is chosen again.
+pub async fn update_account_details(
+    tx: &mut PgConnection,
+    id: Uuid,
+    raw_type: Option<&str>,
+    cash_or_margin: &str,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE brokerage_accounts SET raw_type = $2, cash_or_margin = $3, updated_at = now() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(raw_type)
+    .bind(cash_or_margin)
+    .execute(tx)
+    .await?;
+    Ok(())
 }
 
 pub async fn account_by_snaptrade_id<'e>(

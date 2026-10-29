@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { BrokerageConnection } from '@/lib/client/brokerage-model'
+import type { BrokerageConnection } from '@/lib/client/brokerage/brokerage-model'
 import { describeSource, pickWorkspace, rememberWorkspace, rememberedWorkspace, workspaceSources } from './workspace'
 
 function memoryStorage(): Storage {
@@ -48,7 +48,10 @@ describe('workspaceSources', () => {
         id: 'a',
         name: 'Roth IRA',
         maskedNumber: '••9876',
-        rawType: null,
+        rawType: 'ROTH',
+        accountType: 'ROTH_IRA',
+        taxTreatment: 'TAX_FREE',
+        cashOrMargin: 'CASH',
         isPaper: false,
         importMode: 'one_year',
         importStartDate: null,
@@ -61,7 +64,7 @@ describe('workspaceSources', () => {
 
   test('labels brokerage and manual workspaces', () => {
     const sources = workspaceSources(['ira', 'main'], [connection])
-    expect(describeSource(sources.ira)).toBe('Fidelity · ••9876')
+    expect(describeSource(sources.ira)).toBe('Fidelity · Roth IRA · ••9876')
     expect(describeSource(sources.main)).toBe('Manual')
   })
 
@@ -71,6 +74,6 @@ describe('workspaceSources', () => {
 
   test('flags accounts that stopped syncing', () => {
     const unlinked = { ...connection, unlinked: true }
-    expect(describeSource(workspaceSources(['ira'], [unlinked]).ira)).toBe('Fidelity · ••9876 · not syncing')
+    expect(describeSource(workspaceSources(['ira'], [unlinked]).ira)).toBe('Fidelity · Roth IRA · ••9876 · not syncing')
   })
 })

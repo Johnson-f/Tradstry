@@ -27,7 +27,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { workspaceErrorMessage } from '@/components/workspace/errors'
 import { NewWorkspaceDialog } from '@/components/workspace/new-workspace-dialog'
-import { useBrokerageConnections, useBrokerageStatus } from '@/lib/client/brokerage'
+import { useBrokerageConnections, useBrokerageStatus } from '@/lib/client/brokerage/brokerage'
 import {
   type Workspace,
   useDeleteWorkspace,

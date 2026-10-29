@@ -47,6 +47,19 @@ It must never include user secrets, tokens, code verifiers or webhook payloads.
 
 Secrets never reach logs. Every type holding one has a redacting `Debug` implementation, and transport errors drop the request URL, because Commercial calls carry `userSecret` in the query string.
 
+## Account types
+
+One brokerage login can hold several accounts, such as a margin account, a Roth IRA and a 401(k). Each one is imported separately, into its own workspace.
+
+SnapTrade standardises two fields:
+
+- `kind`: only `investment` accounts are offered for import.
+- `cash_or_margin`: stored as sent. Fidelity often reports `unknown`.
+
+`raw_type` is the brokerage's own label, and SnapTrade does not standardise it. `brokerage/account_types.rs` maps it to a US account type and its tax treatment (taxable, tax-deferred or tax-free). If `raw_type` says little, the rules fall back to the account's display name.
+
+The type is computed when read, so improving the rules reclassifies every account without a migration. There is no manual override. Labels the rules miss classify as `UNKNOWN`, the UI shows the brokerage's label instead, and the backend logs `could not classify a brokerage account type` with the institution and label. Add new labels to the rules and their table-driven tests.
+
 ## Rotating `BROKERAGE_ENCRYPTION_KEY`
 
 There is one active key, and there is no rotation tool yet. Each value is `base64(nonce || ciphertext)`. To rotate the key:

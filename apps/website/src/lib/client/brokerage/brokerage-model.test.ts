@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { GraphQLRequestError } from './api'
+import { GraphQLRequestError } from '../api'
 import {
+  type AccountType,
   type BrokerageConnection,
+  accountSummary,
+  accountTypeLabel,
   authorizationStep,
   balanceRows,
   brokerageErrorMessage,
@@ -11,6 +14,7 @@ import {
   parsePortalReturn,
   positionRows,
   selectionInput,
+  taxTreatmentLabel,
 } from './brokerage-model'
 
 describe('parsePortalReturn', () => {
@@ -149,7 +153,7 @@ describe('snapshot rows', () => {
         currency: 'USD',
       },
     ])
-    expect(positionRows([{ instrument: { symbol: 'BTC' }, units: 'x', currency: { code: 'CAD' } }])).toEqual([
+    expect(positionRows([{ instrument: { symbol: 'BTC' }, units: 'x', price: '', currency: { code: 'CAD' } }])).toEqual([
       {
         symbol: 'BTC',
         description: null,
@@ -160,6 +164,21 @@ describe('snapshot rows', () => {
         currency: 'CAD',
       },
     ])
+  })
+
+  test('reads positions/all as SnapTrade returns it for Webull', () => {
+    const rows = positionRows({
+      results: [
+        { instrument: { symbol: 'AEYE', description: 'AudioEye' }, units: '2', price: '11.91', cost_basis: '10', currency: 'USD' },
+        { instrument: { symbol: 'EVMN' }, units: '-1', price: '6.31', cost_basis: '6.32', currency: 'USD' },
+      ],
+    })
+    expect(rows.map(({ symbol, units, price, averagePrice }) => ({ symbol, units, price, averagePrice }))).toEqual([
+      { symbol: 'AEYE', units: 2, price: 11.91, averagePrice: 10 },
+      { symbol: 'EVMN', units: -1, price: 6.31, averagePrice: 6.32 },
+    ])
+    expect(rows[0].openPnl).toBeCloseTo(3.82)
+    expect(rows[1].openPnl).toBeCloseTo(0.01, 5)
   })
 
   test('tolerates shapes it does not know', () => {
@@ -187,4 +206,28 @@ test('stored import modes get the picker labels', () => {
   expect(importModeLabel('two_years')).toBe('Past 2 years')
   expect(importModeLabel('all')).toBe('All history')
   expect(importModeLabel('mystery')).toBe('mystery')
+})
+
+describe('account types', () => {
+  const classified = (
+    accountType: AccountType,
+    cashOrMargin: 'CASH' | 'MARGIN' | 'UNKNOWN',
+    rawType: string | null = null,
+  ) => ({ rawType, accountType, taxTreatment: 'UNKNOWN' as const, cashOrMargin })
+
+  test('labels the standard type with cash or margin', () => {
+    expect(accountSummary(classified('ROTH_IRA', 'CASH'))).toBe('Roth IRA · Cash')
+    expect(accountSummary(classified('TAXABLE', 'MARGIN'))).toBe('Taxable brokerage · Margin')
+    expect(accountSummary(classified('PLAN_401K', 'UNKNOWN'))).toBe('401(k)')
+  })
+
+  test('falls back to the brokerage label when the type is unknown', () => {
+    expect(accountTypeLabel(classified('UNKNOWN', 'UNKNOWN', 'RO'))).toBe('RO')
+    expect(accountSummary(classified('UNKNOWN', 'UNKNOWN'))).toBe('')
+  })
+
+  test('names the tax treatment', () => {
+    expect(taxTreatmentLabel({ ...classified('ROTH_IRA', 'CASH'), taxTreatment: 'TAX_FREE' })).toBe('Tax-free')
+    expect(taxTreatmentLabel(classified('UNKNOWN', 'UNKNOWN'))).toBeNull()
+  })
 })

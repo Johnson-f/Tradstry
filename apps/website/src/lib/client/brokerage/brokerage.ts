@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { graphql } from '@/lib/client/backend'
+import type { BrokerProvider } from './broker-catalog'
 import type {
   AccountChoice,
   AccountSelection,
@@ -8,7 +9,7 @@ import type {
   BrokerageAccount,
   BrokerageConnection,
   ImportMode,
-} from '@/lib/client/brokerage-model'
+} from './brokerage-model'
 import { WORKSPACES_KEY } from '@/lib/client/workspaces'
 
 export interface BrokerageActivity {
@@ -40,10 +41,22 @@ export interface Holdings {
   balances: unknown
 }
 
+export interface BrokerageOrder {
+  id: string
+  status: string | null
+  action: string | null
+  symbol: string | null
+  totalUnits: number | null
+  filledUnits: number | null
+  executionPrice: number | null
+  timePlaced: string | null
+  timeExecuted: string | null
+}
+
 const ACCOUNT_FIELDS =
-  'id name maskedNumber rawType isPaper importMode importStartDate initialImportCompletedAt unlinked workspaceId'
+  'id name maskedNumber rawType accountType taxTreatment cashOrMargin isPaper importMode importStartDate initialImportCompletedAt unlinked workspaceId'
 const CHOICE_FIELDS =
-  'connectionId institutionName snaptradeAccountId name maskedNumber rawType isPaper linkedWorkspaceId previouslyLinked'
+  'connectionId institutionName snaptradeAccountId name maskedNumber rawType accountType taxTreatment cashOrMargin isPaper linkedWorkspaceId previouslyLinked'
 
 export const brokerageKeys = {
   status: ['brokerage', 'status'],
@@ -60,6 +73,19 @@ export function useBrokerageStatus() {
       ),
     select: (data) => data.brokerageStatus,
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useBrokerageProviders(enabled: boolean) {
+  return useQuery({
+    queryKey: ['brokerage', 'providers'],
+    queryFn: () => graphql<{ brokerageProviders: BrokerProvider[] }>(
+      'query BrokerageProviders { brokerageProviders { slug name logoUrl enabled maintenanceMode } }',
+    ),
+    select: (data) => data.brokerageProviders,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
   })
 }
 
@@ -94,10 +120,10 @@ export function useInvalidateBrokerage() {
   )
 }
 
-export function startBrokerageConnection(reconnectConnectionId?: string) {
+export function startBrokerageConnection(reconnectConnectionId?: string, brokerSlug?: string) {
   return graphql<{ startBrokerageConnection: { url: string } }>(
-    'mutation StartBrokerageConnection($reconnectConnectionId: ID) { startBrokerageConnection(reconnectConnectionId: $reconnectConnectionId) { url } }',
-    { reconnectConnectionId: reconnectConnectionId ?? null },
+    'mutation StartBrokerageConnection($reconnectConnectionId: ID, $brokerSlug: String) { startBrokerageConnection(reconnectConnectionId: $reconnectConnectionId, brokerSlug: $brokerSlug) { url } }',
+    { reconnectConnectionId: reconnectConnectionId ?? null, brokerSlug: brokerSlug ?? null },
   ).then((data) => data.startBrokerageConnection.url)
 }
 
@@ -225,14 +251,15 @@ export function useSyncStatus(workspaceId: string, enabled = true) {
       ),
     select: (data) => data.brokerageSyncStatus,
     enabled,
-    refetchInterval: (query) =>
-      query.state.data?.brokerageSyncStatus && !query.state.data.brokerageSyncStatus.initialImportCompletedAt
-        ? 5000
-        : false,
+    refetchInterval: (query) => {
+      const sync = query.state.data?.brokerageSyncStatus
+      if (!sync || sync.account.unlinked) return false
+      return sync.initialImportCompletedAt ? 30_000 : 5000
+    },
   })
 }
 
-export function useHoldings(workspaceId: string, enabled: boolean) {
+export function useHoldings(workspaceId: string, enabled: boolean, live = true) {
   return useQuery({
     queryKey: [...brokerageKeys.workspace(workspaceId), 'holdings'],
     queryFn: () =>
@@ -242,12 +269,13 @@ export function useHoldings(workspaceId: string, enabled: boolean) {
       ),
     select: (data) => data.brokerageHoldings,
     enabled,
+    refetchInterval: live ? 30_000 : false,
   })
 }
 
 export const ACTIVITY_PAGE_SIZE = 50
 
-export function useActivities(workspaceId: string, page: number, enabled: boolean) {
+export function useActivities(workspaceId: string, page: number, enabled: boolean, live = true) {
   return useQuery({
     queryKey: [...brokerageKeys.workspace(workspaceId), 'activities', page],
     queryFn: () =>
@@ -260,6 +288,21 @@ export function useActivities(workspaceId: string, page: number, enabled: boolea
     select: (data) => data.brokerageActivities,
     enabled,
     placeholderData: (previous) => previous,
+    refetchInterval: live ? 30_000 : false,
+  })
+}
+
+export function useOrders(workspaceId: string, live: boolean) {
+  return useQuery({
+    queryKey: [...brokerageKeys.workspace(workspaceId), 'orders'],
+    queryFn: () => graphql<{ brokerageOrders: BrokerageOrder[] }>(
+      `query Orders($id: ID!) { brokerageOrders(workspaceId: $id, limit: 200) {
+        id status action symbol totalUnits filledUnits executionPrice timePlaced timeExecuted
+      } }`,
+      { id: workspaceId },
+    ),
+    select: (data) => data.brokerageOrders,
+    refetchInterval: live ? 30_000 : false,
   })
 }
 

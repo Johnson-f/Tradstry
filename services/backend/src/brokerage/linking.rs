@@ -11,6 +11,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::Brokerage;
+use super::account_types::{self, AccountType, CashOrMargin};
 use super::history::{self, ImportMode};
 use super::session::{Auth, Session, SessionError};
 use super::store::{self, AuthorizedTokens, ConnectionUpsert, GrantError, NewAccount, NewAttempt};
@@ -37,6 +38,8 @@ pub enum LinkError {
     AuthorizationIncomplete,
     #[error("Connections shared from SnapTrade are repaired in SnapTrade")]
     RepairInSnapTrade,
+    #[error("This broker is not available for new connections right now")]
+    BrokerUnavailable,
     #[error(transparent)]
     Session(#[from] SessionError),
     #[error(transparent)]
@@ -64,6 +67,7 @@ pub struct AccountChoice {
     pub name: String,
     pub masked_number: Option<String>,
     pub raw_type: Option<String>,
+    pub cash_or_margin: CashOrMargin,
     pub is_paper: bool,
     /// The workspace already importing this account, if any.
     pub linked_workspace_id: Option<Uuid>,
@@ -214,6 +218,31 @@ impl Brokerage {
         user_id: Uuid,
         reconnect: Option<Uuid>,
     ) -> Result<String, LinkError> {
+        self.start_commercial_inner(user_id, reconnect, None).await
+    }
+
+    /// Opens the selected broker, after checking this client's access to it.
+    pub async fn start_commercial_for_broker(
+        &self,
+        user_id: Uuid,
+        broker: &str,
+    ) -> Result<String, LinkError> {
+        let providers = self.client.brokerages().await?;
+        if !providers.iter().any(|provider| {
+            provider.slug == broker && provider.enabled && !provider.maintenance_mode
+        }) {
+            return Err(LinkError::BrokerUnavailable);
+        }
+        self.start_commercial_inner(user_id, None, Some(broker))
+            .await
+    }
+
+    async fn start_commercial_inner(
+        &self,
+        user_id: Uuid,
+        reconnect: Option<Uuid>,
+        broker: Option<&str>,
+    ) -> Result<String, LinkError> {
         let reconnect_id = match reconnect {
             Some(id) => {
                 let connection = store::connection_for_user(&self.pool, user_id, id)
@@ -242,7 +271,7 @@ impl Brokerage {
                                 unreachable!("portal links are Commercial");
                             };
                             let options = PortalOptions {
-                                broker: None,
+                                broker,
                                 reconnect: reconnect.as_deref(),
                                 custom_redirect: Some(&redirect),
                             };
@@ -342,6 +371,7 @@ impl Brokerage {
                     name: account.name(),
                     masked_number: account.masked_account_number.clone(),
                     raw_type: account.raw_type.clone(),
+                    cash_or_margin: CashOrMargin::parse(account.cash_or_margin.as_deref()),
                     is_paper: account.is_paper.unwrap_or(false),
                     linked_workspace_id: known
                         .filter(|a| a.unlinked_at.is_none())
@@ -425,6 +455,18 @@ impl Brokerage {
                     })?;
                 let policy = history::resolve(selection.mode, selection.custom_start_date, today)
                     .map_err(|error| LinkError::InvalidImportRange(error.to_string()))?;
+                let cash_or_margin =
+                    CashOrMargin::parse(account.cash_or_margin.as_deref()).as_str();
+                if account_types::classify(account.raw_type.as_deref(), &account.name())
+                    == AccountType::Unknown
+                {
+                    // Not secret, and the only way to learn labels the rules miss.
+                    info!(
+                        institution = %connection.institution_name,
+                        raw_type = account.raw_type.as_deref().unwrap_or(""),
+                        "could not classify a brokerage account type"
+                    );
+                }
                 let account_row =
                     match store::account_by_snaptrade_id(&mut *tx, user_id, &account.id).await? {
                         Some(existing) if existing.unlinked_at.is_some() => {
@@ -433,7 +475,18 @@ impl Brokerage {
                                 .await?
                                 .ok_or(LinkError::NotFound)?
                         }
-                        Some(existing) => existing,
+                        Some(existing) => {
+                            store::update_account_details(
+                                &mut tx,
+                                existing.id,
+                                account.raw_type.as_deref(),
+                                cash_or_margin,
+                            )
+                            .await?;
+                            store::account_by_id(&mut *tx, existing.id)
+                                .await?
+                                .ok_or(LinkError::NotFound)?
+                        }
                         None => {
                             store::create_account_with_workspace(
                                 &mut tx,
@@ -445,6 +498,7 @@ impl Brokerage {
                                     masked_number: account.masked_account_number.as_deref(),
                                     kind: &account.kind,
                                     raw_type: account.raw_type.as_deref(),
+                                    cash_or_margin,
                                     is_paper: account.is_paper.unwrap_or(false),
                                     import_mode: policy.mode.as_str(),
                                     import_start_date: policy.start_date,

@@ -16,6 +16,26 @@ fn day(value: &str) -> NaiveDate {
 }
 
 #[tokio::test]
+async fn broker_catalog_uses_signed_client_info_and_reuses_its_cache() {
+    let snaptrade = FakeSnapTrade::start().await;
+    let client = snaptrade.client();
+    let brokers = client.brokerages().await.unwrap();
+    assert_eq!(brokers[0].slug, "ROBINHOOD");
+    assert!(brokers[0].enabled);
+    assert!(!brokers[0].maintenance_mode);
+    assert_eq!(
+        brokers[0].aws_s3_square_logo_url.as_deref(),
+        Some("https://example.test/robinhood-square.png")
+    );
+    client.brokerages().await.unwrap();
+    assert_eq!(snaptrade.requests_to("/snapTrade/partners"), 1);
+    let request = snaptrade.requests().pop().unwrap();
+    assert_eq!(request.query["clientId"], fake::CLIENT_ID);
+    assert!(!request.query.contains_key("userId"));
+    assert!(snaptrade.registered_users().is_empty());
+}
+
+#[tokio::test]
 async fn commercial_requests_are_signed_and_scoped_to_the_user() {
     let snaptrade = FakeSnapTrade::start().await;
     let client = snaptrade.client();

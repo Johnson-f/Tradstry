@@ -1,3 +1,4 @@
+pub mod account_types;
 pub mod crypto;
 pub mod history;
 pub mod import;

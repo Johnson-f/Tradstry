@@ -36,6 +36,23 @@ pub struct Brokerage {
     pub display_name: Option<String>,
 }
 
+/// An institution available to this SnapTrade client, including current health.
+#[derive(Clone, Debug, Deserialize)]
+pub struct BrokerageProvider {
+    pub slug: String,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub aws_s3_logo_url: Option<String>,
+    pub aws_s3_square_logo_url: Option<String>,
+    pub enabled: bool,
+    pub maintenance_mode: bool,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PartnerInfo {
+    pub allowed_brokerages: Vec<BrokerageProvider>,
+}
+
 /// A brokerage authorization: one login at one institution.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Connection {
@@ -99,6 +116,8 @@ pub struct ConnectionAccount {
     pub raw_type: Option<String>,
     #[serde(default)]
     pub is_paper: Option<bool>,
+    #[serde(default)]
+    pub cash_or_margin: Option<String>,
 }
 
 impl ConnectionAccount {

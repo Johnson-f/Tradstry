@@ -15,15 +15,18 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateWorkspace } from '@/lib/client/workspaces'
+import { type WorkspaceSection, workspaceLocation } from '@/lib/navigation'
 
 export function NewWorkspaceDialog({
   open,
   onOpenChange,
   navigateAfterCreate = true,
+  section = 'dashboard',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   navigateAfterCreate?: boolean
+  section?: WorkspaceSection
 }) {
   const navigate = useNavigate()
   const create = useCreateWorkspace()
@@ -73,16 +76,14 @@ export function NewWorkspaceDialog({
               onSuccess: (workspace) => {
                 close(false)
                 if (navigateAfterCreate) {
-                  void navigate({ to: '/w/$workspaceId', params: { workspaceId: workspace.id } })
+                  void navigate(workspaceLocation(section, workspace.id))
                 }
               },
             })
           }}
         >
           <div className="space-y-2.5">
-            <Label htmlFor="new-workspace-name">
-              Workspace name
-            </Label>
+            <Label htmlFor="new-workspace-name">Workspace name</Label>
             <Input
               id="new-workspace-name"
               name="workspaceName"
@@ -120,7 +121,9 @@ export function NewWorkspaceDialog({
               disabled={!name.trim() || create.isPending}
               aria-busy={create.isPending}
             >
-              {create.isPending && <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />}
+              {create.isPending && (
+                <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+              )}
               {create.isPending ? 'Creating…' : 'Create workspace'}
             </Button>
           </DialogFooter>

@@ -171,8 +171,8 @@ async fn the_initial_import_pages_through_history_from_the_chosen_start(pool: Pg
         "holdings at most four times a day"
     );
     assert!(
-        scheduled[1].1 > now + Duration::hours(19),
-        "transactions once a day"
+        scheduled[1].1 > now + Duration::hours(23) && scheduled[1].1 <= now + Duration::hours(24),
+        "transactions a day later: never sooner, and no longer"
     );
 }
 
@@ -669,4 +669,26 @@ async fn imported_data_is_read_per_workspace(pool: PgPool) {
         data["brokerageHoldings"]["balances"][0]["currency"]["code"],
         "USD"
     );
+}
+
+#[sqlx::test]
+async fn holdings_still_sync_when_the_brokerage_has_no_orders_api(pool: PgPool) {
+    let l = linked(&pool, ImportMode::OneYear, None).await;
+    l.brokerage.run_due_jobs(10).await.unwrap();
+    let before = count(&pool, "brokerage_snapshots").await;
+
+    l.snaptrade.fail_next(
+        "/accounts/acct-1/orders",
+        501,
+        json!({ "detail": "Orders are not supported for this brokerage" }),
+    );
+    make_due(&pool).await;
+    l.brokerage.run_due_jobs(10).await.unwrap();
+    assert_eq!(count(&pool, "brokerage_snapshots").await, before + 1);
+    let errors: Vec<Option<String>> =
+        sqlx::query_scalar("SELECT last_error FROM sync_jobs WHERE kind = 'holdings'")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(errors, [None]);
 }

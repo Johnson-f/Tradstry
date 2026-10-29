@@ -1,15 +1,24 @@
-import { useNavigate } from '@tanstack/react-router'
-import { LoaderCircle } from 'lucide-react'
-import { useState } from 'react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowRight, Check, Landmark, Layers, LoaderCircle } from 'lucide-react'
+import { useId, useState } from 'react'
+import { BrokerageError } from '@/components/brokerage/feedback'
+import { ImportRangeFields } from '@/components/brokerage/import-range-fields'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useFinalizeAccounts } from '@/lib/client/brokerage'
+import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { useFinalizeAccounts } from '@/lib/client/brokerage/brokerage'
 import {
   type AccountChoice,
   type ImportMode,
-  IMPORT_MODE_LABELS,
+  accountSummary,
   brokerageErrorMessage,
   selectionInput,
-} from '@/lib/client/brokerage-model'
+} from '@/lib/client/brokerage/brokerage-model'
 import { localToday } from '@/lib/format'
 
 interface Pick {
@@ -17,151 +26,264 @@ interface Pick {
   importMode: ImportMode
   customStartDate: string
 }
-
 const choiceKey = (choice: AccountChoice) => `${choice.connectionId}:${choice.snaptradeAccountId}`
+const defaultPick = (choice: AccountChoice): Pick => ({
+  selected: !choice.isPaper,
+  importMode: 'ONE_YEAR',
+  customStartDate: '',
+})
 
-export function AccountPicker({ choices }: { choices: AccountChoice[] }) {
+export function AccountPicker({
+  choices,
+  onPendingChange,
+  onCancel,
+}: {
+  choices: AccountChoice[]
+  onPendingChange?: (pending: boolean) => void
+  onCancel: () => void
+}) {
+  const id = useId()
   const navigate = useNavigate()
   const finalize = useFinalizeAccounts()
   const importable = choices.filter((choice) => !choice.linkedWorkspaceId)
-  const [picks, setPicks] = useState<Record<string, Pick>>(() =>
-    Object.fromEntries(
-      importable.map((choice) => [
-        choiceKey(choice),
-        { selected: !choice.isPaper, importMode: 'ONE_YEAR', customStartDate: '' },
-      ]),
-    ),
-  )
+  const linked = choices.filter((choice) => choice.linkedWorkspaceId)
+  const [picks, setPicks] = useState<Record<string, Pick>>({})
   const [problem, setProblem] = useState<string | null>(null)
-  const today = localToday()
+  const pickFor = (choice: AccountChoice) => picks[choiceKey(choice)] ?? defaultPick(choice)
+  const selected = importable.filter((choice) => pickFor(choice).selected)
+  const allSelected = importable.length > 0 && selected.length === importable.length
 
-  const update = (key: string, change: Partial<Pick>) =>
-    setPicks((current) => ({ ...current, [key]: { ...current[key], ...change } }))
+  const clearError = () => {
+    setProblem(null)
+    if (finalize.isError) finalize.reset()
+  }
+  const update = (choice: AccountChoice, change: Partial<Pick>) => {
+    setPicks((current) => ({
+      ...current,
+      [choiceKey(choice)]: { ...(current[choiceKey(choice)] ?? defaultPick(choice)), ...change },
+    }))
+    clearError()
+  }
+  const selectAll = (checked: boolean) => {
+    setPicks((current) => {
+      const next = { ...current }
+      for (const choice of importable)
+        next[choiceKey(choice)] = {
+          ...(current[choiceKey(choice)] ?? defaultPick(choice)),
+          selected: checked,
+        }
+      return next
+    })
+    clearError()
+  }
 
   const submit = () => {
+    if (finalize.isPending) return
     const result = selectionInput(
-      importable
-        .filter((choice) => picks[choiceKey(choice)]?.selected)
-        .map((choice) => {
-          const pick = picks[choiceKey(choice)]
-          return {
-            connectionId: choice.connectionId,
-            snaptradeAccountId: choice.snaptradeAccountId,
-            importMode: pick.importMode,
-            customStartDate: pick.customStartDate || null,
-          }
-        }),
-      today,
+      selected.map((choice) => ({
+        connectionId: choice.connectionId,
+        snaptradeAccountId: choice.snaptradeAccountId,
+        importMode: pickFor(choice).importMode,
+        customStartDate: pickFor(choice).customStartDate || null,
+      })),
+      localToday(),
     )
     if (!result.ok) {
       setProblem(result.message)
       return
     }
     setProblem(null)
+    onPendingChange?.(true)
     finalize.mutate(result.accounts, {
+      onSettled: () => onPendingChange?.(false),
       onSuccess: (accounts) => {
         const [first] = accounts
         void (first?.workspaceId
           ? navigate({ to: '/w/$workspaceId', params: { workspaceId: first.workspaceId } })
-          : navigate({ to: '/brokerage' }))
+          : navigate({ to: '/brokerage/connections' }))
       },
     })
   }
-
-  if (importable.length === 0) {
-    return (
-      <div className="rounded-2xl border border-neutral-200/60 bg-card px-5 py-4 text-sm shadow-xs dark:border-white/10">
-        Every account in this connection is already in Tradstry.
-      </div>
-    )
-  }
-
-  const error = problem ?? (finalize.isError ? brokerageErrorMessage(finalize.error, 'Could not import those accounts. Try again.') : null)
+  const error =
+    problem ??
+    (finalize.isError
+      ? brokerageErrorMessage(finalize.error, 'Could not import those accounts. Try again.')
+      : null)
 
   return (
     <form
-      className="space-y-4"
+      className="flex min-h-0 flex-1 flex-col"
+      aria-busy={finalize.isPending}
       onSubmit={(event) => {
         event.preventDefault()
         submit()
       }}
     >
-      <fieldset className="divide-y divide-neutral-200/60 overflow-hidden rounded-2xl border border-neutral-200/60 bg-card shadow-xs dark:divide-white/10 dark:border-white/10">
-        <legend className="sr-only">Accounts to import</legend>
-        {importable.map((choice) => {
-          const key = choiceKey(choice)
-          const pick = picks[key]
-          return (
-            <div key={key} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
-              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={pick.selected}
-                  onChange={(event) => update(key, { selected: event.target.checked })}
-                  className="mt-0.5 size-4 accent-neutral-900 dark:accent-neutral-100"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium break-words">
-                    {choice.name}
-                    {choice.maskedNumber && <span className="ml-1.5 text-muted-foreground">{choice.maskedNumber}</span>}
-                  </span>
-                  <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                    {[choice.institutionName, choice.rawType, choice.isPaper ? 'Paper' : null, choice.previouslyLinked ? 'Imported before' : null]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                </span>
-              </label>
-              {pick.selected && (
-                <div className="flex items-center gap-2">
-                  <label className="sr-only" htmlFor={`${key}-range`}>
-                    History to import for {choice.name}
-                  </label>
-                  <select
-                    id={`${key}-range`}
-                    value={pick.importMode}
-                    onChange={(event) => update(key, { importMode: event.target.value as ImportMode })}
-                    className="h-7.5 rounded-lg border border-border bg-background px-2 text-[13px] dark:bg-input/30"
-                  >
-                    {(Object.keys(IMPORT_MODE_LABELS) as ImportMode[]).map((mode) => (
-                      <option key={mode} value={mode}>
-                        {IMPORT_MODE_LABELS[mode]}
-                      </option>
-                    ))}
-                  </select>
-                  {pick.importMode === 'CUSTOM' && (
-                    <>
-                      <label className="sr-only" htmlFor={`${key}-start`}>
-                        Import {choice.name} from
-                      </label>
-                      <input
-                        id={`${key}-start`}
-                        type="date"
-                        max={today}
-                        value={pick.customStartDate}
-                        onChange={(event) => update(key, { customStartDate: event.target.value })}
-                        className="h-7.5 rounded-lg border border-border bg-background px-2 text-[13px] dark:bg-input/30"
-                      />
-                    </>
-                  )}
-                </div>
-              )}
+      {importable.length > 0 && (
+        <>
+          <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-3 sm:px-6">
+            <div className="flex items-center gap-2.5">
+              <Checkbox
+                id={`${id}-all`}
+                checked={allSelected}
+                indeterminate={selected.length > 0 && !allSelected}
+                disabled={finalize.isPending}
+                onCheckedChange={selectAll}
+              />
+              <Label htmlFor={`${id}-all`} className="cursor-pointer text-xs font-medium">
+                Select all
+              </Label>
             </div>
-          )
-        })}
-      </fieldset>
-      <p className="text-[13px] text-muted-foreground">
-        Each account gets its own workspace. You can import further back later, but not less.
-      </p>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+            <span role="status" className="text-xs text-muted-foreground">
+              {selected.length} of {importable.length} selected
+            </span>
+          </div>
+          <Separator />
+        </>
       )}
-      <Button type="submit" disabled={finalize.isPending}>
-        {finalize.isPending && <LoaderCircle className="animate-spin" aria-hidden />}
-        Import accounts
-      </Button>
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <div className="space-y-5 p-5 sm:p-6">
+          {importable.length > 0 ? (
+            <fieldset className="min-w-0 space-y-3" disabled={finalize.isPending}>
+              <legend className="sr-only">Accounts to import</legend>
+              {importable.map((choice) => {
+                const key = choiceKey(choice)
+                const pick = pickFor(choice)
+                return (
+                  <Card
+                    key={key}
+                    role="group"
+                    aria-label={choice.name}
+                    className={`gap-3 rounded-xl p-4 shadow-none ${pick.selected ? 'ring-foreground/20' : 'bg-muted/20 ring-border'}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id={`${id}-${key}`}
+                        checked={pick.selected}
+                        disabled={finalize.isPending}
+                        onCheckedChange={(checked) => update(choice, { selected: checked })}
+                        className="mt-0.5"
+                      />
+                      <Label htmlFor={`${id}-${key}`} className="min-w-0 flex-1 cursor-pointer items-start">
+                        <span className="min-w-0 space-y-1.5">
+                          <span className="block text-sm leading-5 font-medium break-words">
+                            {choice.name}
+                          </span>
+                          <span className="flex flex-wrap gap-x-2 text-xs leading-5 font-normal text-muted-foreground">
+                            {choice.maskedNumber && (
+                              <span className="tabular-nums">{choice.maskedNumber}</span>
+                            )}
+                            <span>
+                              {[choice.institutionName, accountSummary(choice)].filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
+                        </span>
+                      </Label>
+                      {choice.isPaper && (
+                        <Badge variant="outline" className="text-[10px]">
+                          Paper
+                        </Badge>
+                      )}
+                    </div>
+                    {pick.selected && (
+                      <div className="pl-7">
+                        {choice.previouslyLinked ? (
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            Your existing history and import range will be kept.
+                          </p>
+                        ) : (
+                          <ImportRangeFields
+                            compact
+                            mode={pick.importMode}
+                            date={pick.customStartDate}
+                            disabled={finalize.isPending}
+                            onModeChange={(importMode) => update(choice, { importMode })}
+                            onDateChange={(customStartDate) => update(choice, { customStartDate })}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                )
+              })}
+            </fieldset>
+          ) : (
+            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+              {linked.length > 0 ? (
+                <Check className="size-7 text-muted-foreground" aria-hidden />
+              ) : (
+                <Landmark className="size-7 text-muted-foreground" aria-hidden />
+              )}
+              <h3 className="font-medium">
+                {linked.length > 0
+                  ? 'Your accounts are already imported'
+                  : 'No investment accounts available'}
+              </h3>
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                {linked.length > 0
+                  ? 'Open a workspace below to view its holdings and activity.'
+                  : 'You can close this window and try another brokerage connection.'}
+              </p>
+            </div>
+          )}
+          {linked.length > 0 && (
+            <section aria-labelledby={`${id}-linked`} className="space-y-2">
+              <h3 id={`${id}-linked`} className="text-xs font-medium text-muted-foreground">
+                Already in Tradstry
+              </h3>
+              {linked.map((choice) => (
+                <Button
+                  key={choiceKey(choice)}
+                  disabled={finalize.isPending}
+                  variant="outline"
+                  className="h-auto w-full justify-between gap-3 px-4 py-3"
+                  nativeButton={false}
+                  render={<Link to="/w/$workspaceId" params={{ workspaceId: choice.linkedWorkspaceId! }} />}
+                >
+                  <span className="truncate">{choice.name}</span>
+                  <ArrowRight aria-hidden />
+                </Button>
+              ))}
+            </section>
+          )}
+        </div>
+      </ScrollArea>
+      {error && (
+        <div className="shrink-0 px-5 pb-4 sm:px-6">
+          <BrokerageError message={error} />
+        </div>
+      )}
+      <DialogFooter className="m-0 shrink-0 flex-col gap-3 rounded-b-2xl px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p className="flex items-center gap-2 text-xs leading-5 text-muted-foreground">
+          <Layers className="size-4 shrink-0" aria-hidden />
+          Each account gets its own workspace.
+        </p>
+        <div className="flex w-full justify-end gap-2 sm:w-auto">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 px-4"
+            disabled={finalize.isPending}
+            onClick={onCancel}
+          >
+            {importable.length > 0 ? 'Not now' : 'Done'}
+          </Button>
+          {importable.length > 0 && (
+            <Button
+              type="submit"
+              className="h-9 min-w-36 px-4"
+              disabled={selected.length === 0 || finalize.isPending}
+            >
+              {finalize.isPending && (
+                <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden />
+              )}
+              {finalize.isPending
+                ? 'Starting import…'
+                : `Import ${selected.length} ${selected.length === 1 ? 'account' : 'accounts'}`}
+            </Button>
+          )}
+        </div>
+      </DialogFooter>
     </form>
   )
 }

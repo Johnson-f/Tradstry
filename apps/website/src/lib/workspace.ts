@@ -1,4 +1,4 @@
-import type { BrokerageConnection } from '@/lib/client/brokerage-model'
+import { type BrokerageConnection, accountTypeLabel } from '@/lib/client/brokerage/brokerage-model'
 
 const LAST_WORKSPACE_KEY = 'tradstry.lastWorkspace'
 
@@ -16,7 +16,7 @@ export function pickWorkspace(workspaces: Array<{ id: string }>, remembered: str
 }
 
 export type WorkspaceSource =
-  | { kind: 'brokerage'; institutionName: string; maskedNumber: string | null; unlinked: boolean }
+  | { kind: 'brokerage'; institutionName: string; accountType: string | null; maskedNumber: string | null; unlinked: boolean }
   | { kind: 'manual' }
   | { kind: 'unknown' }
 
@@ -35,6 +35,7 @@ export function workspaceSources(
       linked.set(account.workspaceId, {
         kind: 'brokerage',
         institutionName: connection.institutionName,
+        accountType: accountTypeLabel(account),
         maskedNumber: account.maskedNumber,
         unlinked: account.unlinked || connection.unlinked,
       })
@@ -48,7 +49,7 @@ export function workspaceSources(
 export function describeSource(source: WorkspaceSource | undefined): string | null {
   if (!source || source.kind === 'unknown') return null
   if (source.kind === 'manual') return 'Manual'
-  return [source.institutionName, source.maskedNumber, source.unlinked ? 'not syncing' : null]
+  return [source.institutionName, source.accountType, source.maskedNumber, source.unlinked ? 'not syncing' : null]
     .filter(Boolean)
     .join(' · ')
 }

@@ -1,24 +1,50 @@
-import { GraphQLRequestError } from './api'
+import { GraphQLRequestError } from '../api'
 
 export type ImportMode = 'ONE_YEAR' | 'TWO_YEARS' | 'ALL' | 'CUSTOM'
 
-export interface AccountChoice {
+export type AccountType =
+  | 'TAXABLE'
+  | 'TRADITIONAL_IRA'
+  | 'ROLLOVER_IRA'
+  | 'SEP_IRA'
+  | 'SIMPLE_IRA'
+  | 'ROTH_IRA'
+  | 'PLAN_401K'
+  | 'ROTH_401K'
+  | 'PLAN_403B'
+  | 'PLAN_457B'
+  | 'HSA'
+  | 'PLAN_529'
+  | 'CUSTODIAL'
+  | 'TRUST'
+  | 'CRYPTO'
+  | 'UNKNOWN'
+
+export type TaxTreatment = 'TAXABLE' | 'TAX_DEFERRED' | 'TAX_FREE' | 'UNKNOWN'
+export type CashOrMargin = 'CASH' | 'MARGIN' | 'UNKNOWN'
+
+interface AccountClassification {
+  rawType: string | null
+  accountType: AccountType
+  taxTreatment: TaxTreatment
+  cashOrMargin: CashOrMargin
+}
+
+export interface AccountChoice extends AccountClassification {
   connectionId: string
   institutionName: string
   snaptradeAccountId: string
   name: string
   maskedNumber: string | null
-  rawType: string | null
   isPaper: boolean
   linkedWorkspaceId: string | null
   previouslyLinked: boolean
 }
 
-export interface BrokerageAccount {
+export interface BrokerageAccount extends AccountClassification {
   id: string
   name: string
   maskedNumber: string | null
-  rawType: string | null
   isPaper: boolean
   importMode: string
   importStartDate: string | null
@@ -110,6 +136,7 @@ export function authorizationStep(attempt: AuthorizationStatus | null): Authoriz
 
 const ERROR_MESSAGES: Record<string, string> = {
   BROKERAGE_UNAVAILABLE: 'Brokerage linking is not available right now.',
+  BROKER_UNAVAILABLE: 'This broker is not available for new connections right now.',
   OAUTH_UNAVAILABLE: 'Continuing with SnapTrade is not available right now.',
   REAUTHORIZATION_REQUIRED: 'Your SnapTrade access needs to be authorized again.',
   RECONNECT_REQUIRED: 'Reconnect your brokerage to continue.',
@@ -209,7 +236,11 @@ type Json = Record<string, unknown>
 
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-const numberOrNull = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+/** positions/all sends decimal strings ("6.31"); balances send numbers. */
+const numberOrNull = (value: unknown) => {
+  const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+  return typeof number === 'number' && Number.isFinite(number) ? number : null
+}
 const stringOrNull = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null)
 
 /** Follows nested objects to a string, e.g. a currency's `code`. */
@@ -227,27 +258,37 @@ function textAt(value: unknown, ...paths: string[][]): string | null {
  * Snapshot rows straight from SnapTrade. Positions are either the
  * `{ results }` envelope of positions/all or a bare list, and a position's
  * symbol is nested differently by instrument kind, so read them loosely.
+ * positions/all reports a per-share `cost_basis` and no P&L, so open P&L is
+ * worked out from it; that also gives shorts (negative units) the right sign.
  */
 export function positionRows(positions: unknown): PositionRow[] {
   const items = isObject(positions) ? positions.results : positions
   if (!Array.isArray(items)) return []
-  return items.filter(isObject).map((item) => ({
-    symbol:
-      textAt(
-        item,
-        ['instrument', 'symbol'],
-        ['symbol', 'symbol', 'symbol'],
-        ['symbol', 'symbol'],
-        ['symbol', 'option_symbol', 'ticker'],
-        ['symbol'],
-      ) ?? 'Unknown',
-    description: textAt(item, ['instrument', 'description'], ['symbol', 'symbol', 'description'], ['symbol', 'description']),
-    units: numberOrNull(item.units),
-    price: numberOrNull(item.price),
-    averagePrice: numberOrNull(item.average_purchase_price),
-    openPnl: numberOrNull(item.open_pnl),
-    currency: textAt(item, ['currency', 'code'], ['currency'], ['symbol', 'symbol', 'currency', 'code']),
-  }))
+  return items.filter(isObject).map((item) => {
+    const units = numberOrNull(item.units)
+    const price = numberOrNull(item.price)
+    const averagePrice = numberOrNull(item.average_purchase_price) ?? numberOrNull(item.cost_basis)
+    const reportedPnl = numberOrNull(item.open_pnl)
+    const openPnl =
+      reportedPnl ?? (units !== null && price !== null && averagePrice !== null ? (price - averagePrice) * units : null)
+    return {
+      symbol:
+        textAt(
+          item,
+          ['instrument', 'symbol'],
+          ['symbol', 'symbol', 'symbol'],
+          ['symbol', 'symbol'],
+          ['symbol', 'option_symbol', 'ticker'],
+          ['symbol'],
+        ) ?? 'Unknown',
+      description: textAt(item, ['instrument', 'description'], ['symbol', 'symbol', 'description'], ['symbol', 'description']),
+      units,
+      price,
+      averagePrice,
+      openPnl,
+      currency: textAt(item, ['currency', 'code'], ['currency'], ['symbol', 'symbol', 'currency', 'code']),
+    }
+  })
 }
 
 export function balanceRows(balances: unknown): BalanceRow[] {
@@ -262,4 +303,44 @@ export function balanceRows(balances: unknown): BalanceRow[] {
 /** Labels the backend's stored mode, which is the enum in snake_case. */
 export function importModeLabel(stored: string): string {
   return IMPORT_MODE_LABELS[stored.toUpperCase() as ImportMode] ?? stored
+}
+
+const ACCOUNT_TYPE_LABELS: Record<Exclude<AccountType, 'UNKNOWN'>, string> = {
+  TAXABLE: 'Taxable brokerage',
+  TRADITIONAL_IRA: 'Traditional IRA',
+  ROLLOVER_IRA: 'Rollover IRA',
+  SEP_IRA: 'SEP IRA',
+  SIMPLE_IRA: 'SIMPLE IRA',
+  ROTH_IRA: 'Roth IRA',
+  PLAN_401K: '401(k)',
+  ROTH_401K: 'Roth 401(k)',
+  PLAN_403B: '403(b)',
+  PLAN_457B: '457(b)',
+  HSA: 'HSA',
+  PLAN_529: '529 plan',
+  CUSTODIAL: 'Custodial (UTMA/UGMA)',
+  TRUST: 'Trust',
+  CRYPTO: 'Crypto',
+}
+
+const TAX_TREATMENT_LABELS: Record<TaxTreatment, string | null> = {
+  TAXABLE: 'Taxable',
+  TAX_DEFERRED: 'Tax-deferred',
+  TAX_FREE: 'Tax-free',
+  UNKNOWN: null,
+}
+
+/** The standard type, or what the brokerage calls it when Tradstry cannot tell. */
+export function accountTypeLabel(account: AccountClassification): string | null {
+  return account.accountType === 'UNKNOWN' ? account.rawType : ACCOUNT_TYPE_LABELS[account.accountType]
+}
+
+export function taxTreatmentLabel(account: AccountClassification): string | null {
+  return TAX_TREATMENT_LABELS[account.taxTreatment]
+}
+
+/** e.g. "Roth IRA · Cash"; cash or margin is left out when SnapTrade does not know. */
+export function accountSummary(account: AccountClassification): string {
+  const margin = account.cashOrMargin === 'CASH' ? 'Cash' : account.cashOrMargin === 'MARGIN' ? 'Margin' : null
+  return [accountTypeLabel(account), margin].filter(Boolean).join(' · ')
 }

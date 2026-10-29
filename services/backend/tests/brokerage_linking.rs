@@ -96,6 +96,52 @@ async fn authorize(
 // ── Commercial ──────────────────────────────────────────────────────────────
 
 #[sqlx::test]
+async fn selecting_a_broker_opens_that_broker_and_rejects_unknown_slugs(pool: PgPool) {
+    let snaptrade = FakeSnapTrade::start().await;
+    let brokerage = Brokerage::for_tests(pool.clone(), &snaptrade);
+    let owner = user(&pool, "user-1").await;
+    brokerage
+        .start_commercial_for_broker(owner, "ROBINHOOD")
+        .await
+        .unwrap();
+    let body = snaptrade
+        .requests()
+        .into_iter()
+        .find(|request| request.path == "/snapTrade/login")
+        .unwrap()
+        .body
+        .unwrap();
+    assert_eq!(body["broker"], "ROBINHOOD");
+    assert_eq!(body["connectionType"], "read");
+    assert!(matches!(
+        brokerage
+            .start_commercial_for_broker(owner, "NOT-A-BROKER")
+            .await,
+        Err(LinkError::BrokerUnavailable)
+    ));
+    assert_eq!(snaptrade.requests_to("/snapTrade/login"), 1);
+}
+
+#[sqlx::test]
+async fn disabled_and_maintenance_brokers_do_not_create_registrations(pool: PgPool) {
+    let snaptrade = FakeSnapTrade::start().await;
+    snaptrade.set_brokerages(vec![
+        json!({ "slug": "DISABLED", "name": "Disabled", "enabled": false, "maintenance_mode": false }),
+        json!({ "slug": "MAINTENANCE", "name": "Maintenance", "enabled": true, "maintenance_mode": true }),
+    ]);
+    let brokerage = Brokerage::for_tests(pool.clone(), &snaptrade);
+    let owner = user(&pool, "user-1").await;
+    for slug in ["DISABLED", "MAINTENANCE"] {
+        assert!(matches!(
+            brokerage.start_commercial_for_broker(owner, slug).await,
+            Err(LinkError::BrokerUnavailable)
+        ));
+    }
+    assert!(snaptrade.registered_users().is_empty());
+    assert_eq!(snaptrade.requests_to("/snapTrade/login"), 0);
+}
+
+#[sqlx::test]
 async fn the_portal_registers_once_and_returns_to_the_website(pool: PgPool) {
     let snaptrade = FakeSnapTrade::start().await;
     let brokerage = Brokerage::for_tests(pool.clone(), &snaptrade);
@@ -348,6 +394,58 @@ async fn importing_again_after_deleting_the_workspace_gives_the_account_a_new_on
         workspace_names(&pool, owner).await,
         ["Main Workspace", "Individual Margin"]
     );
+}
+
+#[sqlx::test]
+async fn sub_accounts_are_classified_and_keep_snaptrades_cash_or_margin(pool: PgPool) {
+    use tradstry::brokerage::account_types::{AccountType, CashOrMargin};
+
+    let snaptrade = FakeSnapTrade::start().await;
+    let brokerage = Brokerage::for_tests(pool.clone(), &snaptrade);
+    let owner = user(&pool, "user-1").await;
+    brokerage.start_commercial(owner, None).await.unwrap();
+    snaptrade.complete_portal(
+        &owner.to_string(),
+        "conn-1",
+        vec![
+            FakeAccount::typed("margin", "Individual", "INDIVIDUAL", "margin"),
+            FakeAccount::typed("roth", "Retirement", "ROTH", "cash"),
+            FakeAccount::typed("odd", "****8443", "RO", "portfolio"),
+        ],
+    );
+    let choices = brokerage
+        .complete_commercial(owner, "conn-1")
+        .await
+        .unwrap();
+    let summary: Vec<(String, AccountType, CashOrMargin)> = choices
+        .iter()
+        .map(|choice| {
+            (
+                choice.snaptrade_account_id.clone(),
+                tradstry::brokerage::account_types::classify(
+                    choice.raw_type.as_deref(),
+                    &choice.name,
+                ),
+                choice.cash_or_margin,
+            )
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("margin".into(), AccountType::Taxable, CashOrMargin::Margin),
+            ("roth".into(), AccountType::RothIra, CashOrMargin::Cash),
+            ("odd".into(), AccountType::Unknown, CashOrMargin::Unknown),
+        ]
+    );
+
+    let connection = choices[0].connection_id;
+    let imported = brokerage
+        .finalize_accounts(owner, vec![select(connection, "roth")])
+        .await
+        .unwrap();
+    assert_eq!(imported[0].cash_or_margin, "cash");
+    assert_eq!(imported[0].raw_type.as_deref(), Some("ROTH"));
 }
 
 // ── OAuth ───────────────────────────────────────────────────────────────────
@@ -703,14 +801,37 @@ async fn graphql_guards_brokerage_actions(pool: PgPool) {
     )
     .await;
     assert_eq!(code(&refused).as_deref(), Some("SESSION_REQUIRED"));
+    let providers = graphql(
+        &pool,
+        brokerage.clone(),
+        session.clone(),
+        "{ brokerageProviders { slug name logoUrl enabled maintenanceMode } }",
+    )
+    .await;
+    assert!(providers.errors.is_empty(), "{:?}", providers.errors);
+    assert_eq!(
+        providers.data.into_json().unwrap()["brokerageProviders"],
+        json!([{
+            "slug": "ROBINHOOD", "name": "Robinhood", "logoUrl": "https://example.test/robinhood-square.png",
+            "enabled": true, "maintenanceMode": false,
+        }])
+    );
     let started = graphql(
         &pool,
         brokerage,
         session,
-        "mutation { startBrokerageConnection { url } }",
+        "mutation { startBrokerageConnection(brokerSlug: \"ROBINHOOD\") { url } }",
     )
     .await;
     assert!(started.errors.is_empty(), "{:?}", started.errors);
+    let body = snaptrade
+        .requests()
+        .into_iter()
+        .find(|request| request.path == "/snapTrade/login")
+        .unwrap()
+        .body
+        .unwrap();
+    assert_eq!(body["broker"], "ROBINHOOD");
 }
 
 #[sqlx::test]

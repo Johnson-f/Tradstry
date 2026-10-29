@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { WorkspaceLoadError } from '@/components/workspace/workspace-load-error'
 import { workspacesQuery } from '@/lib/client/workspaces'
 import { pickWorkspace, rememberedWorkspace } from '@/lib/workspace'
 
@@ -9,11 +10,7 @@ export const Route = createFileRoute('/_authenticated/')({
     if (workspaceId) throw redirect({ to: '/w/$workspaceId', params: { workspaceId }, replace: true })
   },
   component: NoWorkspace,
-  errorComponent: () => (
-    <p role="alert" className="text-sm text-destructive">
-      Could not reach the Tradstry API. Refresh to try again.
-    </p>
-  ),
+  errorComponent: WorkspaceLoadError,
 })
 
 function NoWorkspace() {

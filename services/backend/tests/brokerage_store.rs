@@ -51,6 +51,7 @@ fn account(user_id: Uuid, connection_id: Uuid, snaptrade_id: &str) -> NewAccount
         masked_number: Some("****1234"),
         kind: "investment",
         raw_type: Some("Margin"),
+        cash_or_margin: "margin",
         is_paper: false,
         import_mode: "one_year",
         import_start_date: None,

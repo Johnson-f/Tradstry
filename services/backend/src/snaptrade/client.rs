@@ -10,9 +10,9 @@ use tracing::debug;
 
 use super::error::SnapTradeError;
 use super::models::{
-    Activity, ActivityPage, ActivityPageBody, ActivityQuery, Connection, ConnectionAccount,
-    ConnectionAccounts, OAuthMetadata, OAuthTokenBody, OAuthTokens, Order, PortalLink,
-    Registration,
+    Activity, ActivityPage, ActivityPageBody, ActivityQuery, BrokerageProvider, Connection,
+    ConnectionAccount, ConnectionAccounts, OAuthMetadata, OAuthTokenBody, OAuthTokens, Order,
+    PartnerInfo, PortalLink, Registration,
 };
 use super::signing;
 
@@ -94,6 +94,7 @@ pub struct SnapTradeClient {
     consumer_key: String,
     oauth: Option<OAuthClientConfig>,
     oauth_metadata: OnceCell<OAuthMetadata>,
+    brokerages: Mutex<Option<(Instant, Vec<BrokerageProvider>)>>,
     limiter: Limiter,
 }
 
@@ -142,12 +143,36 @@ impl SnapTradeClient {
             consumer_key: config.consumer_key,
             oauth: config.oauth,
             oauth_metadata: OnceCell::new(),
+            brokerages: Mutex::new(None),
             limiter: Limiter::per_minute(REQUESTS_PER_MINUTE),
         })
     }
 
     pub fn oauth_enabled(&self) -> bool {
         self.oauth.is_some()
+    }
+
+    /// Use supported client info rather than the deprecated global broker list.
+    /// A short cache avoids a provider call for every dropdown opening.
+    pub async fn brokerages(&self) -> Result<Vec<BrokerageProvider>, SnapTradeError> {
+        let mut cached = self.brokerages.lock().await;
+        if let Some((fetched_at, brokers)) = cached.as_ref()
+            && fetched_at.elapsed() < Duration::from_secs(300)
+        {
+            return Ok(brokers.clone());
+        }
+        let partner: PartnerInfo = self
+            .request(
+                Method::GET,
+                "/snapTrade/partners",
+                &[],
+                None,
+                Auth::Signed { user: None },
+            )
+            .await?;
+        let brokers = partner.allowed_brokerages;
+        *cached = Some((Instant::now(), brokers.clone()));
+        Ok(brokers)
     }
 
     pub fn oauth_redirect_uri(&self) -> Option<&str> {
