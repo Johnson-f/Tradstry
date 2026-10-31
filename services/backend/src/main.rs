@@ -62,6 +62,7 @@ async fn main() -> Result<()> {
             None
         }
     };
+    tradstry::trades::rebuild::spawn_upgrade(pool.clone());
     if let Some(brokerage) = &brokerage {
         brokerage.clone().spawn_background();
     }

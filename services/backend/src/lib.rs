@@ -5,6 +5,7 @@ pub mod config;
 pub mod db;
 pub mod graphql;
 pub mod snaptrade;
+pub mod trades;
 pub mod users;
 pub mod webhooks;
 pub mod workspace;

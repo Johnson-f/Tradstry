@@ -6,7 +6,6 @@ import {
   PauseCircleIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Link } from '@tanstack/react-router'
 import type { RefObject } from 'react'
 import { ExpandHistory } from '@/components/brokerage/account-sync'
 import { BrokerageError } from '@/components/brokerage/feedback'
@@ -117,16 +116,6 @@ export function BrokerageAccountDialog({
           </div>
         </ScrollArea>
         <DialogFooter className="m-0 shrink-0 flex-row items-center rounded-b-2xl bg-background px-6 py-4">
-          {sync.data && (
-            <Button
-              variant="outline"
-              className="mr-auto h-9 px-3"
-              nativeButton={false}
-              render={<Link to="/brokerage/connections" />}
-            >
-              Manage connection
-            </Button>
-          )}
           <DialogClose render={<Button className="ml-auto h-9 px-5" />}>Done</DialogClose>
         </DialogFooter>
       </DialogContent>

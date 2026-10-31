@@ -99,8 +99,8 @@ export function AccountPicker({
       onSuccess: (accounts) => {
         const [first] = accounts
         void (first?.workspaceId
-          ? navigate({ to: '/w/$workspaceId', params: { workspaceId: first.workspaceId } })
-          : navigate({ to: '/brokerage/connections' }))
+          ? navigate({ to: '/w/$workspaceId/journal', params: { workspaceId: first.workspaceId } })
+          : navigate({ to: '/brokerage' }))
       },
     })
   }
@@ -238,7 +238,7 @@ export function AccountPicker({
                   variant="outline"
                   className="h-auto w-full justify-between gap-3 px-4 py-3"
                   nativeButton={false}
-                  render={<Link to="/w/$workspaceId" params={{ workspaceId: choice.linkedWorkspaceId! }} />}
+                  render={<Link to="/w/$workspaceId/journal" params={{ workspaceId: choice.linkedWorkspaceId! }} />}
                 >
                   <span className="truncate">{choice.name}</span>
                   <ArrowRight aria-hidden />

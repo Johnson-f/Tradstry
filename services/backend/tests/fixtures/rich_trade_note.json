@@ -1,0 +1,220 @@
+{
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "detail": 0,
+            "format": 0,
+            "mode": "normal",
+            "style": "",
+            "text": "Trade plan",
+            "type": "text",
+            "version": 1
+          }
+        ],
+        "tag": "h2",
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "type": "heading",
+        "version": 1
+      },
+      {
+        "children": [
+          {
+            "detail": 0,
+            "format": 1,
+            "mode": "normal",
+            "style": "",
+            "text": "Waited ",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "detail": 0,
+            "format": 10,
+            "mode": "normal",
+            "style": "",
+            "text": "for the retest",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "type": "linebreak",
+            "version": 1
+          },
+          {
+            "detail": 0,
+            "format": 16,
+            "mode": "normal",
+            "style": "",
+            "text": "risk",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "detail": 2,
+            "mode": "normal",
+            "text": "\t",
+            "format": 0,
+            "style": "",
+            "type": "tab",
+            "version": 1
+          },
+          {
+            "detail": 0,
+            "format": 4,
+            "mode": "normal",
+            "style": "",
+            "text": "reduced",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "detail": 0,
+            "format": 0,
+            "mode": "normal",
+            "style": "",
+            "text": " ",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "children": [
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Chart",
+                "type": "text",
+                "version": 1
+              }
+            ],
+            "rel": "noopener noreferrer",
+            "target": "_blank",
+            "title": null,
+            "url": "https://example.com/chart",
+            "direction": null,
+            "format": "",
+            "indent": 0,
+            "type": "link",
+            "version": 1
+          }
+        ],
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "textFormat": 1,
+        "textStyle": "",
+        "type": "paragraph",
+        "version": 1
+      },
+      {
+        "children": [
+          {
+            "detail": 0,
+            "format": 0,
+            "mode": "normal",
+            "style": "",
+            "text": "Follow the plan.",
+            "type": "text",
+            "version": 1
+          }
+        ],
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "type": "quote",
+        "version": 1
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Entry",
+                "type": "text",
+                "version": 1
+              }
+            ],
+            "indent": 0,
+            "value": 1,
+            "direction": null,
+            "format": "",
+            "type": "listitem",
+            "version": 1
+          },
+          {
+            "children": [
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Exit",
+                "type": "text",
+                "version": 1
+              }
+            ],
+            "indent": 0,
+            "value": 2,
+            "direction": null,
+            "format": "",
+            "type": "listitem",
+            "version": 1
+          }
+        ],
+        "listType": "bullet",
+        "start": 1,
+        "tag": "ul",
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "type": "list",
+        "version": 1
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Review",
+                "type": "text",
+                "version": 1
+              }
+            ],
+            "indent": 0,
+            "value": 1,
+            "direction": null,
+            "format": "",
+            "type": "listitem",
+            "version": 1
+          }
+        ],
+        "listType": "number",
+        "start": 1,
+        "tag": "ol",
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "type": "list",
+        "version": 1
+      }
+    ],
+    "direction": null,
+    "format": "",
+    "indent": 0,
+    "type": "root",
+    "version": 1
+  }
+}

@@ -4,13 +4,14 @@ import { useStytchUser } from '@stytch/react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DevicesCard } from '@/components/account/devices-card'
+import { JournalLabelsSettings } from '@/components/trades/labels-settings'
 import { Button } from '@/components/ui/button'
 import { tabClass, tabListClass } from '@/components/ui/tab-styles'
 import { WorkspacesSettings } from '@/components/workspace/workspaces-settings'
 import { userEmail, userFullName } from '@/lib/auth/stytch'
 import { isDarkMode, setDarkMode } from '@/lib/theme'
 
-const TABS = ['general', 'workspaces', 'you'] as const
+const TABS = ['general', 'workspaces', 'journal', 'you'] as const
 type SettingsTab = (typeof TABS)[number]
 
 export const Route = createFileRoute('/_authenticated/settings')({
@@ -40,6 +41,9 @@ function Settings() {
           </Tabs.Tab>
           <Tabs.Tab value="workspaces" className={tabClass}>
             Workspaces
+          </Tabs.Tab>
+          <Tabs.Tab value="journal" className={tabClass}>
+            Journal
           </Tabs.Tab>
           <Tabs.Tab value="you" className={tabClass}>
             You
@@ -113,6 +117,10 @@ function Settings() {
 
         <Tabs.Panel value="workspaces" className="space-y-5 pt-5 outline-none">
           <WorkspacesSettings />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="journal" className="space-y-5 pt-5 outline-none">
+          <JournalLabelsSettings />
         </Tabs.Panel>
 
         <Tabs.Panel value="you" className="space-y-5 pt-5 outline-none">

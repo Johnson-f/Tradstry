@@ -29,7 +29,7 @@ fn brokerage<'a>(ctx: &Context<'a>) -> Result<&'a Arc<Brokerage>> {
 
 /// Linking and unlinking brokerages acts for a person in the app, never for a
 /// connected app such as an MCP client.
-fn require_web_session(ctx: &Context<'_>) -> Result<()> {
+pub(super) fn require_web_session(ctx: &Context<'_>) -> Result<()> {
     match ctx.data::<AuthClaims>()?.kind {
         TokenKind::Session => Ok(()),
         TokenKind::ConnectedApp => Err(coded(

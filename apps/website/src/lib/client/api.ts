@@ -13,11 +13,13 @@ export interface TokenSource {
 
 export class GraphQLRequestError extends Error {
   readonly code?: string
+  readonly extensions: Record<string, unknown>
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, extensions: Record<string, unknown> = {}) {
     super(message)
     this.name = 'GraphQLRequestError'
     this.code = code
+    this.extensions = extensions
   }
 }
 
@@ -82,11 +84,11 @@ export function createGraphQLFetcher(
 
     const body = (await response.json()) as {
       data?: T
-      errors?: Array<{ message: string; extensions?: { code?: string } }>
+      errors?: Array<{ message: string; extensions?: { code?: string } & Record<string, unknown> }>
     }
     const [error] = body.errors ?? []
     if (error) {
-      throw new GraphQLRequestError(error.message, error.extensions?.code)
+      throw new GraphQLRequestError(error.message, error.extensions?.code, error.extensions)
     }
     return body.data as T
   }

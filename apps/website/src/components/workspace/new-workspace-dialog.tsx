@@ -21,7 +21,7 @@ export function NewWorkspaceDialog({
   open,
   onOpenChange,
   navigateAfterCreate = true,
-  section = 'dashboard',
+  section = 'journal',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -76,7 +76,7 @@ export function NewWorkspaceDialog({
               onSuccess: (workspace) => {
                 close(false)
                 if (navigateAfterCreate) {
-                  void navigate(workspaceLocation(section, workspace.id))
+                  void navigate(workspaceLocation(workspace.id, section))
                 }
               },
             })

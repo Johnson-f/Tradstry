@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { Check, Clock3, History, Layers, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { BrokerageError } from '@/components/brokerage/feedback'
@@ -134,9 +133,6 @@ export function AccountSync({ workspaceId, sync }: { workspaceId: string; sync: 
               startDate={account.importStartDate}
             />
           )}
-          <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/brokerage/connections" />}>
-            Manage connection
-          </Button>
         </div>
       </CardFooter>
     </Card>

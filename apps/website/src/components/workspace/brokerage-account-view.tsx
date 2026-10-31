@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { dataTableClass, numericCell } from '@/components/ui/table-styles'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ACTIVITY_PAGE_SIZE,
@@ -91,9 +92,8 @@ function EmptyData({ title, description }: { title: string; description: string 
   )
 }
 
-const tableClass =
-  '[&_th]:px-5 [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:px-5 [&_td]:py-4'
-const numeric = 'text-right tabular-nums'
+const tableClass = dataTableClass
+const numeric = numericCell
 
 function HoldingsView({ workspaceId, live }: { workspaceId: string; live: boolean }) {
   const holdings = useHoldings(workspaceId, true, live)

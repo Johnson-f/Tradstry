@@ -5,9 +5,11 @@ import { ChevronRight, House, LifeBuoy } from 'lucide-react'
 import { Suspense } from 'react'
 import { UserMenu } from '@/components/account/user-menu'
 import { ConnectBrokerMenu } from '@/components/brokerage/connect-broker-menu'
+import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
 import { signInRedirectFor } from '@/lib/auth/auth-guard'
-import { pageTitle, workspaceLocation, workspaceSection } from '@/lib/navigation'
+import { pageTitle, workspaceLocation } from '@/lib/navigation'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
@@ -27,9 +29,21 @@ function AppLayout() {
     select: (state) => state.location.pathname,
   })
   const title = pageTitle(pathname)
-  const section = workspaceSection(pathname)
-  const { workspaceId } = useParams({ strict: false })
-  const showPageTitle = !workspaceId || (title !== 'Dashboard' && title !== 'Journal')
+  const isHome = title === 'Home'
+  const isJournal = title === 'Journal'
+  const { workspaceId, tradeId } = useParams({ strict: false })
+  const showPageTitle = !workspaceId || (!isHome && !isJournal)
+  const content = (
+    <Suspense
+      fallback={
+        <span role="status" className="sr-only">
+          Loading page…
+        </span>
+      }
+    >
+      <Outlet />
+    </Suspense>
+  )
 
   return (
     <div className="fixed inset-0 flex overflow-hidden overscroll-none bg-[#ededed] py-1.5 pr-1.5 font-[Arial,Helvetica,sans-serif] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
@@ -56,26 +70,22 @@ function AppLayout() {
 
         <nav aria-label="Main navigation" className="flex flex-col gap-1">
           <Link
-            {...workspaceLocation('dashboard', workspaceId)}
-            aria-label="Dashboard"
-            title="Dashboard"
+            {...workspaceLocation(workspaceId, 'home')}
+            aria-label="Home"
+            title="Home"
             activeOptions={{ exact: true }}
-            aria-current={workspaceId && section === 'dashboard' ? 'page' : undefined}
-            className={
-              workspaceId && section === 'dashboard'
-                ? `${railLinkClass} ${activeRailLinkClass}`
-                : railLinkClass
-            }
+            aria-current={isHome ? 'page' : undefined}
+            className={isHome ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
           >
             <House className="size-4.5" aria-hidden />
           </Link>
           <Link
-            {...workspaceLocation('journal', workspaceId)}
+            {...workspaceLocation(workspaceId)}
             aria-label="Journal"
             title="Journal"
             activeOptions={{ exact: true }}
-            aria-current={section === 'journal' ? 'page' : undefined}
-            className={section === 'journal' ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
+            aria-current={isJournal ? 'page' : undefined}
+            className={isJournal ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
           >
             <HugeiconsIcon icon={QuillWrite02Icon} className="size-5" strokeWidth={1.5} aria-hidden />
           </Link>
@@ -97,13 +107,13 @@ function AppLayout() {
                 <li>
                   <span className="text-neutral-400">Tradstry</span>
                 </li>
-                {workspaceId && (
+                {(workspaceId || isHome) && (
                   <li
                     className="flex min-w-0 items-center gap-2.5"
                     aria-current={!showPageTitle ? 'page' : undefined}
                   >
                     <ChevronRight className="size-3.5 shrink-0 text-neutral-400" aria-hidden />
-                    <WorkspaceSwitcher workspaceId={workspaceId} section={section} />
+                    <WorkspaceSwitcher workspaceId={workspaceId} section={isHome ? 'home' : 'journal'} />
                   </li>
                 )}
                 {showPageTitle && (
@@ -114,22 +124,21 @@ function AppLayout() {
                 )}
               </ol>
             </nav>
-            {section === 'journal' && <ConnectBrokerMenu />}
+            {isJournal && (
+              <div className="flex shrink-0 items-center gap-2">
+                <ManageLabelsDialog />
+                <ConnectBrokerMenu />
+              </div>
+            )}
           </header>
-          <main
-            id="dashboard-content"
-            tabIndex={-1}
-            className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none p-4 outline-none sm:p-6"
-          >
-            <Suspense
-              fallback={
-                <span role="status" className="sr-only">
-                  Loading page…
-                </span>
-              }
-            >
-              <Outlet />
-            </Suspense>
+          <main id="dashboard-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none">
+            {tradeId ? (
+              content
+            ) : (
+              <ScrollArea className="h-full min-w-0 overflow-hidden [&>[data-slot=scroll-area-viewport]]:overscroll-none">
+                <div className="min-h-full min-w-0 p-4 sm:p-6">{content}</div>
+              </ScrollArea>
+            )}
           </main>
         </div>
       </div>

@@ -1,28 +1,25 @@
 const SECTIONS: Array<[prefix: string, title: string]> = [
   ['/settings', 'Settings'],
-  ['/brokerage/connections', 'Brokerage'],
-  ['/brokerage', 'Journal'],
+  ['/tax', 'Realized gains'],
 ]
 
-export type WorkspaceSection = 'dashboard' | 'journal'
+export type WorkspaceSection = 'home' | 'journal'
 
 export function workspaceSection(pathname: string): WorkspaceSection {
-  return /^\/w\/[^/]+\/journal(?:\/|$)/.test(pathname) || /^\/brokerage\/?$/.test(pathname)
-    ? 'journal'
-    : 'dashboard'
+  return pathname === '/' || /^\/w\/[^/]+\/?$/.test(pathname) ? 'home' : 'journal'
 }
 
-/** Keep the selected workspace when moving between its Dashboard and Journal. */
-export function workspaceLocation(section: WorkspaceSection, workspaceId?: string) {
-  if (!workspaceId) return { to: section === 'journal' ? ('/brokerage' as const) : ('/' as const) }
+/** Keep the selected workspace and section when navigating. */
+export function workspaceLocation(workspaceId?: string, section: WorkspaceSection = 'journal') {
+  if (!workspaceId) return { to: section === 'home' ? ('/' as const) : ('/brokerage' as const) }
   return {
-    to: section === 'journal' ? ('/w/$workspaceId/journal' as const) : ('/w/$workspaceId' as const),
+    to: section === 'home' ? ('/w/$workspaceId' as const) : ('/w/$workspaceId/journal' as const),
     params: { workspaceId },
   }
 }
 
 export function pageTitle(pathname: string): string {
-  if (workspaceSection(pathname) === 'journal') return 'Journal'
+  if (workspaceSection(pathname) === 'home') return 'Home'
   const match = SECTIONS.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-  return match ? match[1] : 'Dashboard'
+  return match ? match[1] : 'Journal'
 }

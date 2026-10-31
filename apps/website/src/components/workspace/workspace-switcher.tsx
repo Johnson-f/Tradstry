@@ -29,9 +29,9 @@ const menuItemClass =
 
 export function WorkspaceSwitcher({
   workspaceId,
-  section = 'dashboard',
+  section = 'journal',
 }: {
-  workspaceId: string
+  workspaceId?: string
   section?: WorkspaceSection
 }) {
   const navigate = useNavigate()
@@ -49,7 +49,7 @@ export function WorkspaceSwitcher({
     list.map((workspace) => workspace.id),
     status.data?.available === false ? undefined : connections.data,
   )
-  const CurrentIcon = sources[workspaceId]?.kind === 'brokerage' ? Landmark : Layers2
+  const CurrentIcon = workspaceId && sources[workspaceId]?.kind === 'brokerage' ? Landmark : Layers2
   const groups = [
     { kind: 'manual', label: 'Manual workspaces' },
     { kind: 'brokerage', label: 'Brokerage workspaces' },
@@ -66,7 +66,7 @@ export function WorkspaceSwitcher({
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger
           ref={triggerRef}
-          aria-label={`Workspace: ${current?.name ?? 'loading'}. Switch workspace`}
+          aria-label={current ? `Workspace: ${current.name}. Switch workspace` : 'Choose workspace'}
           render={<Button variant="ghost" size="sm" />}
           className="-mx-2 h-8 min-w-0 max-w-60 cursor-pointer gap-2 rounded-lg px-2 text-sm font-medium transition-none data-popup-open:bg-muted"
         >
@@ -110,10 +110,10 @@ export function WorkspaceSwitcher({
             ) : (
               <ScrollArea className="max-h-64 overflow-hidden [&_[data-slot=scroll-area-viewport]]:max-h-[min(16rem,calc(var(--available-height)-8rem))] [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
                 <DropdownMenuRadioGroup
-                  value={workspaceId}
+                  value={workspaceId ?? ''}
                   onValueChange={(id: string) => {
                     if (id !== workspaceId) {
-                      void navigate(workspaceLocation(section, id))
+                      void navigate(workspaceLocation(id, section))
                     }
                   }}
                   className="space-y-1 pr-1.5"

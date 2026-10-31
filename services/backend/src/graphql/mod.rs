@@ -1,9 +1,11 @@
 mod account;
 mod brokerage;
 mod errors;
+mod journal;
 mod me;
 mod routes;
 mod ticks;
+mod trades;
 mod user;
 mod workspaces;
 
@@ -25,6 +27,8 @@ pub struct Query(
     workspaces::WorkspaceQuery,
     brokerage::BrokerageQuery,
     brokerage::ImportQuery,
+    trades::TradeQuery,
+    journal::JournalQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -33,6 +37,8 @@ pub struct Mutation(
     workspaces::WorkspaceMutation,
     brokerage::BrokerageMutation,
     brokerage::ImportMutation,
+    trades::TradeMutation,
+    journal::JournalMutation,
 );
 
 #[derive(MergedSubscription, Default)]

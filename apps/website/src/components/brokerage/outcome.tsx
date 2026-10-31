@@ -19,9 +19,9 @@ export function Outcome({
         {children}
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" nativeButton={false} render={<Link to="/brokerage/connections" />}>
+        <Button variant="outline" nativeButton={false} render={<Link to="/brokerage" />}>
           <ArrowLeft aria-hidden />
-          Back to Brokerage
+          Back to Journal
         </Button>
         {retry && (
           <Button disabled={pending} onClick={retry}>

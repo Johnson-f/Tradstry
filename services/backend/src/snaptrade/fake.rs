@@ -234,6 +234,21 @@ impl FakeSnapTrade {
         });
     }
 
+    /// Holdings as `positions/all` returns them, e.g. `{"results": [...]}`.
+    pub fn set_positions(&self, account_id: &str, positions: Value) {
+        self.with(|state| {
+            for account in state
+                .connections
+                .iter_mut()
+                .flat_map(|c| c.accounts.iter_mut())
+            {
+                if account.id == account_id {
+                    account.positions = positions.clone();
+                }
+            }
+        });
+    }
+
     pub fn set_orders(&self, account_id: &str, orders: Vec<Value>) {
         self.with(|state| {
             for account in state

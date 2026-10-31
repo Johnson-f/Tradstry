@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 aes-gcm = "0.11.1"
 anyhow = "1"
-async-graphql = { version = "7.2", features = ["chrono"] }
+async-graphql = { version = "7.2", features = ["chrono", "decimal"] }
 async-graphql-axum = "7.2"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
@@ -20,10 +20,11 @@ getrandom = "0.4.3"
 hmac = "0.13"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["form", "json", "query", "rustls"] }
+rust_decimal = { version = "1.43.0", features = ["serde-with-str"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "migrate", "macros", "json", "derive"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "migrate", "macros", "json", "derive", "rust_decimal"] }
 stytch = "11.1.0"
 subtle = "2"
 thiserror = "2"
@@ -36,6 +37,8 @@ uuid = { version = "1.29.0", features = ["serde", "v7"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
+proptest = "1.12.0"
+rust_decimal_macros = "1.40.0"
 tokio = { version = "1.54.1", features = ["test-util", "macros", "rt-multi-thread"] }
 tokio-tungstenite = "0.30.0"
 tower = { version = "0.5", features = ["util"] }

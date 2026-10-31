@@ -15,6 +15,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedTaxRouteImport } from './routes/_authenticated/tax'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as AuthenticatedBrokerageIndexRouteImport } from './routes/_authenticated/brokerage/index'
 import { Route as AuthenticatedBrokerageCallbackRouteImport } from './routes/_authenticated/brokerage/callback'
@@ -22,7 +23,8 @@ import { Route as AuthenticatedBrokerageConnectionsRouteImport } from './routes/
 import { Route as AuthenticatedWWorkspaceIdRouteRouteImport } from './routes/_authenticated/w/$workspaceId/route'
 import { Route as AuthenticatedBrokerageOauthCallbackRouteImport } from './routes/_authenticated/brokerage/oauth.callback'
 import { Route as AuthenticatedWWorkspaceIdIndexRouteImport } from './routes/_authenticated/w/$workspaceId/index'
-import { Route as AuthenticatedWWorkspaceIdJournalRouteImport } from './routes/_authenticated/w/$workspaceId/journal'
+import { Route as AuthenticatedWWorkspaceIdJournalIndexRouteImport } from './routes/_authenticated/w/$workspaceId/journal/index'
+import { Route as AuthenticatedWWorkspaceIdJournalTradeIdRouteImport } from './routes/_authenticated/w/$workspaceId/journal/$tradeId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -51,6 +53,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTaxRoute = AuthenticatedTaxRouteImport.update({
+  id: '/tax',
+  path: '/tax',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -94,10 +101,16 @@ const AuthenticatedWWorkspaceIdIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
   } as any)
-const AuthenticatedWWorkspaceIdJournalRoute =
-  AuthenticatedWWorkspaceIdJournalRouteImport.update({
-    id: '/journal',
-    path: '/journal',
+const AuthenticatedWWorkspaceIdJournalIndexRoute =
+  AuthenticatedWWorkspaceIdJournalIndexRouteImport.update({
+    id: '/journal/',
+    path: '/journal/',
+    getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
+  } as any)
+const AuthenticatedWWorkspaceIdJournalTradeIdRoute =
+  AuthenticatedWWorkspaceIdJournalTradeIdRouteImport.update({
+    id: '/journal/$tradeId',
+    path: '/journal/$tradeId',
     getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
   } as any)
 
@@ -107,28 +120,32 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/w/$workspaceId': typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
   '/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
   '/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/brokerage/': typeof AuthenticatedBrokerageIndexRoute
   '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
-  '/w/$workspaceId/journal': typeof AuthenticatedWWorkspaceIdJournalRoute
   '/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
+  '/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
+  '/w/$workspaceId/journal/': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
 }
 export interface FileRoutesByTo {
   '/authenticate': typeof AuthenticateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/': typeof AuthenticatedIndexRoute
   '/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
   '/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/brokerage': typeof AuthenticatedBrokerageIndexRoute
   '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
-  '/w/$workspaceId/journal': typeof AuthenticatedWWorkspaceIdJournalRoute
   '/w/$workspaceId': typeof AuthenticatedWWorkspaceIdIndexRoute
+  '/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
+  '/w/$workspaceId/journal': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -137,6 +154,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/w/$workspaceId': typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
@@ -144,8 +162,9 @@ export interface FileRoutesById {
   '/_authenticated/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/_authenticated/brokerage/': typeof AuthenticatedBrokerageIndexRoute
   '/_authenticated/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
-  '/_authenticated/w/$workspaceId/journal': typeof AuthenticatedWWorkspaceIdJournalRoute
   '/_authenticated/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
+  '/_authenticated/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
+  '/_authenticated/w/$workspaceId/journal/': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -155,28 +174,32 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sign-in'
     | '/settings'
+    | '/tax'
     | '/oauth/authorize'
     | '/w/$workspaceId'
     | '/brokerage/callback'
     | '/brokerage/connections'
     | '/brokerage/'
     | '/brokerage/oauth/callback'
-    | '/w/$workspaceId/journal'
     | '/w/$workspaceId/'
+    | '/w/$workspaceId/journal/$tradeId'
+    | '/w/$workspaceId/journal/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/authenticate'
     | '/reset-password'
     | '/sign-in'
     | '/settings'
+    | '/tax'
     | '/oauth/authorize'
     | '/'
     | '/brokerage/callback'
     | '/brokerage/connections'
     | '/brokerage'
     | '/brokerage/oauth/callback'
-    | '/w/$workspaceId/journal'
     | '/w/$workspaceId'
+    | '/w/$workspaceId/journal/$tradeId'
+    | '/w/$workspaceId/journal'
   id:
     | '__root__'
     | '/_authenticated'
@@ -184,6 +207,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sign-in'
     | '/_authenticated/settings'
+    | '/_authenticated/tax'
     | '/oauth/authorize'
     | '/_authenticated/'
     | '/_authenticated/w/$workspaceId'
@@ -191,8 +215,9 @@ export interface FileRouteTypes {
     | '/_authenticated/brokerage/connections'
     | '/_authenticated/brokerage/'
     | '/_authenticated/brokerage/oauth/callback'
-    | '/_authenticated/w/$workspaceId/journal'
     | '/_authenticated/w/$workspaceId/'
+    | '/_authenticated/w/$workspaceId/journal/$tradeId'
+    | '/_authenticated/w/$workspaceId/journal/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -247,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/tax': {
+      id: '/_authenticated/tax'
+      path: '/tax'
+      fullPath: '/tax'
+      preLoaderRoute: typeof AuthenticatedTaxRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/oauth/authorize': {
       id: '/oauth/authorize'
       path: '/oauth/authorize'
@@ -296,26 +328,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceIdIndexRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
     }
-    '/_authenticated/w/$workspaceId/journal': {
-      id: '/_authenticated/w/$workspaceId/journal'
+    '/_authenticated/w/$workspaceId/journal/': {
+      id: '/_authenticated/w/$workspaceId/journal/'
       path: '/journal'
-      fullPath: '/w/$workspaceId/journal'
-      preLoaderRoute: typeof AuthenticatedWWorkspaceIdJournalRouteImport
+      fullPath: '/w/$workspaceId/journal/'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceIdJournalIndexRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
+    }
+    '/_authenticated/w/$workspaceId/journal/$tradeId': {
+      id: '/_authenticated/w/$workspaceId/journal/$tradeId'
+      path: '/journal/$tradeId'
+      fullPath: '/w/$workspaceId/journal/$tradeId'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceIdJournalTradeIdRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
     }
   }
 }
 
 interface AuthenticatedWWorkspaceIdRouteRouteChildren {
-  AuthenticatedWWorkspaceIdJournalRoute: typeof AuthenticatedWWorkspaceIdJournalRoute
   AuthenticatedWWorkspaceIdIndexRoute: typeof AuthenticatedWWorkspaceIdIndexRoute
+  AuthenticatedWWorkspaceIdJournalTradeIdRoute: typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
+  AuthenticatedWWorkspaceIdJournalIndexRoute: typeof AuthenticatedWWorkspaceIdJournalIndexRoute
 }
 
 const AuthenticatedWWorkspaceIdRouteRouteChildren: AuthenticatedWWorkspaceIdRouteRouteChildren =
   {
-    AuthenticatedWWorkspaceIdJournalRoute:
-      AuthenticatedWWorkspaceIdJournalRoute,
     AuthenticatedWWorkspaceIdIndexRoute: AuthenticatedWWorkspaceIdIndexRoute,
+    AuthenticatedWWorkspaceIdJournalTradeIdRoute:
+      AuthenticatedWWorkspaceIdJournalTradeIdRoute,
+    AuthenticatedWWorkspaceIdJournalIndexRoute:
+      AuthenticatedWWorkspaceIdJournalIndexRoute,
   }
 
 const AuthenticatedWWorkspaceIdRouteRouteWithChildren =
@@ -325,6 +367,7 @@ const AuthenticatedWWorkspaceIdRouteRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedTaxRoute: typeof AuthenticatedTaxRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedWWorkspaceIdRouteRoute: typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
   AuthenticatedBrokerageCallbackRoute: typeof AuthenticatedBrokerageCallbackRoute
@@ -335,6 +378,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedTaxRoute: AuthenticatedTaxRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedWWorkspaceIdRouteRoute:
     AuthenticatedWWorkspaceIdRouteRouteWithChildren,

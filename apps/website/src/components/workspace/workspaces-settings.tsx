@@ -150,7 +150,7 @@ function WorkspaceRow({
           </div>
           <div className="min-w-0 flex-1">
             <Link
-              to="/w/$workspaceId"
+              to="/w/$workspaceId/journal"
               params={{ workspaceId: workspace.id }}
               title={workspace.name}
               className="block truncate rounded-sm text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

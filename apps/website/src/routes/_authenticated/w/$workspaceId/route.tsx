@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceId')({
   loader: async ({ context, params, location }) => {
     const workspaces = await context.queryClient.fetchQuery({ ...workspacesQuery, staleTime: 60_000 })
     if (!workspaces.some((workspace) => workspace.id === params.workspaceId)) {
-      throw redirect({ ...workspaceLocation(workspaceSection(location.pathname)), replace: true })
+      throw redirect({ ...workspaceLocation(undefined, workspaceSection(location.pathname)), replace: true })
     }
   },
   component: WorkspaceLayout,

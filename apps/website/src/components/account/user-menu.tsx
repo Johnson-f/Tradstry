@@ -1,7 +1,7 @@
 import { useStytchUser } from '@stytch/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { LogOut, Mail, Settings } from 'lucide-react'
+import { LogOut, Mail, Receipt, Settings } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -66,6 +66,13 @@ export function UserMenu() {
           >
             <Settings className="size-4" aria-hidden />
             Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={menuItemClass}
+            onClick={() => void navigate({ to: '/tax' })}
+          >
+            <Receipt className="size-4" aria-hidden />
+            Realized gains
           </DropdownMenuItem>
           <DropdownMenuItem
             className={menuItemClass}

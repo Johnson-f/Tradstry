@@ -180,6 +180,18 @@ impl Brokerage {
                 warn!(job_id = %job.id, error = %error, "could not record a sync job's outcome");
             }
         }
+        // One rebuild per user however many of their jobs ran, so a burst of
+        // syncs costs a single rebuild.
+        let accounts: Vec<Uuid> = jobs.iter().map(|job| job.account_id).collect();
+        let users: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT DISTINCT user_id FROM brokerage_accounts WHERE id = ANY($1)",
+        )
+        .bind(&accounts)
+        .fetch_all(&self.pool)
+        .await?;
+        for user_id in users {
+            crate::trades::rebuild::rebuild_quietly(&self.pool, user_id).await;
+        }
         Ok(jobs.len())
     }
 
