@@ -60,7 +60,11 @@ fn code(error: TradeError) -> String {
 
 /// A manual workspace with two AAPL round trips: +10 then +15.
 async fn journal(pool: &PgPool, owner: Uuid) -> (Uuid, Vec<TradeRow>) {
-    let workspace = tradstry::workspace::create(pool, owner, "Paper")
+    journal_named(pool, owner, "Paper").await
+}
+
+async fn journal_named(pool: &PgPool, owner: Uuid, name: &str) -> (Uuid, Vec<TradeRow>) {
+    let workspace = tradstry::workspace::create(pool, owner, name)
         .await
         .unwrap()
         .id;
@@ -70,34 +74,46 @@ async fn journal(pool: &PgPool, owner: Uuid) -> (Uuid, Vec<TradeRow>) {
         (Side::Buy, dec!(5), dec!(12), 120),
         (Side::Sell, dec!(5), dec!(15), 180),
     ] {
-        let input = ManualFillInput {
-            instrument: InstrumentInput {
-                asset_class: AssetClass::Stock,
-                symbol: "AAPL".into(),
-                expiry: None,
-                right: None,
-                strike: None,
-                mini: false,
-            },
-            side,
-            quantity,
-            price,
-            fee: Decimal::ZERO,
-            intent: None,
-            executed_at: "2026-01-02T15:00:00Z"
-                .parse::<chrono::DateTime<Utc>>()
-                .unwrap()
-                + Duration::minutes(minutes),
-            note: String::new(),
-        };
-        service::add_manual_fill(pool, owner, workspace, &input)
-            .await
-            .unwrap();
+        fill(pool, owner, workspace, side, quantity, price, minutes).await;
     }
     (
         workspace,
         trades(pool, owner, workspace, &TradeFilter::default()).await,
     )
+}
+
+async fn fill(
+    pool: &PgPool,
+    owner: Uuid,
+    workspace: Uuid,
+    side: Side,
+    quantity: Decimal,
+    price: Decimal,
+    minutes: i64,
+) {
+    let input = ManualFillInput {
+        instrument: InstrumentInput {
+            asset_class: AssetClass::Stock,
+            symbol: "AAPL".into(),
+            expiry: None,
+            right: None,
+            strike: None,
+            mini: false,
+        },
+        side,
+        quantity,
+        price,
+        fee: Decimal::ZERO,
+        intent: None,
+        executed_at: "2026-01-02T15:00:00Z"
+            .parse::<chrono::DateTime<Utc>>()
+            .unwrap()
+            + Duration::minutes(minutes),
+        note: String::new(),
+    };
+    service::add_manual_fill(pool, owner, workspace, &input)
+        .await
+        .unwrap();
 }
 
 async fn trades(
@@ -642,6 +658,33 @@ async fn trades_filter_by_each_label_kind(pool: PgPool) {
     );
     assert_eq!(stats.mistake_costs[0].net, dec!(15.00));
     assert_eq!(stats.untagged, 1);
+}
+
+#[sqlx::test]
+async fn trades_filter_by_when_they_closed(pool: PgPool) {
+    let owner = user(&pool, "user-1").await;
+    let (workspace, rows) = journal(&pool, owner).await;
+    let at = |time: &str| Some(time.parse::<chrono::DateTime<Utc>>().unwrap());
+    let ids = |rows: Vec<TradeRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
+
+    let first_close = TradeFilter {
+        closed_from: at("2026-01-02T15:30:00Z"),
+        closed_to: at("2026-01-02T17:00:00Z"),
+        ..TradeFilter::default()
+    };
+    assert_eq!(
+        ids(trades(&pool, owner, workspace, &first_close).await),
+        [rows[0].id.clone()],
+        "the first trade closed at 16:00"
+    );
+    let later = TradeFilter {
+        closed_from: at("2026-01-02T16:30:00Z"),
+        ..TradeFilter::default()
+    };
+    assert_eq!(
+        ids(trades(&pool, owner, workspace, &later).await),
+        [rows[1].id.clone()]
+    );
 }
 
 // ── Suggested stops ─────────────────────────────────────────────────────────

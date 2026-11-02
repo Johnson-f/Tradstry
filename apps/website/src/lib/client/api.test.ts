@@ -10,14 +10,27 @@ import {
 function tokens(initial: string | null) {
   let token = initial
   let refreshes = 0
+  let signOuts = 0
+  let refreshFails = false
   const source: TokenSource = {
     getToken: () => token,
     refresh: async () => {
       refreshes += 1
+      if (refreshFails) throw new Error('session ended')
       token = `fresh-${refreshes}`
     },
+    signedOut: () => {
+      signOuts += 1
+    },
   }
-  return { source, refreshes: () => refreshes }
+  return {
+    source,
+    refreshes: () => refreshes,
+    signOuts: () => signOuts,
+    failRefresh: () => {
+      refreshFails = true
+    },
+  }
 }
 
 function json(status: number, body: unknown): Response {
@@ -59,6 +72,7 @@ describe('createGraphQLFetcher', () => {
     expect(await graphql('{ me }')).toEqual({ me: 1 })
     expect(bearers).toEqual(['Bearer stale', 'Bearer fresh-1'])
     expect(auth.refreshes()).toBe(1)
+    expect(auth.signOuts()).toBe(0)
   })
 
   test('gives up after one refresh', async () => {
@@ -72,6 +86,19 @@ describe('createGraphQLFetcher', () => {
     expect(error).toBeInstanceOf(GraphQLRequestError)
     expect((error as GraphQLRequestError).code).toBe('token_expired')
     expect(auth.refreshes()).toBe(1)
+    expect(auth.signOuts()).toBe(1)
+  })
+
+  test('signs out when the session can no longer be refreshed', async () => {
+    const auth = tokens('stale')
+    auth.failRefresh()
+    const { fetchImpl, bearers } = scripted(json(401, { error: 'token_expired' }))
+    const graphql = createGraphQLFetcher(auth.source, fetchImpl)
+    const error = (await graphql('{ me }').catch((e: unknown) => e)) as GraphQLRequestError
+    expect(error).toBeInstanceOf(GraphQLRequestError)
+    expect(error.message).toBe('You are signed out.')
+    expect(bearers).toEqual(['Bearer stale'])
+    expect(auth.signOuts()).toBe(1)
   })
 
   test('does not refresh for other auth failures', async () => {
@@ -86,6 +113,16 @@ describe('createGraphQLFetcher', () => {
     expect(error.code).toBe('missing_token')
     expect(bearers).toEqual([null])
     expect(auth.refreshes()).toBe(0)
+    expect(auth.signOuts()).toBe(1)
+  })
+
+  test('other failures leave the session alone', async () => {
+    const auth = tokens('jwt-1')
+    const { fetchImpl } = scripted(json(503, { error: 'keys_unavailable' }))
+    const graphql = createGraphQLFetcher(auth.source, fetchImpl)
+    const error = (await graphql('{ me }').catch((e: unknown) => e)) as GraphQLRequestError
+    expect(error.code).toBe('keys_unavailable')
+    expect(auth.signOuts()).toBe(0)
   })
 
   test('surfaces GraphQL error codes', async () => {

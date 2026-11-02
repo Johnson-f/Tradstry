@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { CircleAlert, Plus, RefreshCw, Search } from 'lucide-react'
+import { CircleAlert, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { useId, useState } from 'react'
 import { Tabs } from '@base-ui/react/tabs'
 import { AttentionPanel } from '@/components/trades/attention-panel'
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { tabClass, tabListClass } from '@/components/ui/tab-styles'
+import { dayLabel, marketMidnight, shiftDays } from '@/lib/client/home/home-model'
 import { labelsOf, useJournalLabels } from '@/lib/client/trades/labels'
 import {
   type TradeFilter,
@@ -24,9 +25,32 @@ import {
 } from '@/lib/client/trades/trades'
 import { type LabelKind } from '@/lib/client/trades/trades-model'
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+interface JournalSearch {
+  symbol?: string
+  /** Inclusive New York trading days, `YYYY-MM-DD`. */
+  closedFrom?: string
+  closedTo?: string
+}
+
 export const Route = createFileRoute('/_authenticated/w/$workspaceId/journal/')({
+  validateSearch: (search: Record<string, unknown>): JournalSearch => {
+    const day = (value: unknown) => (typeof value === 'string' && DAY.test(value) ? value : undefined)
+    const closedFrom = day(search.closedFrom)
+    return {
+      ...(typeof search.symbol === 'string' && search.symbol.trim() ? { symbol: search.symbol.trim() } : {}),
+      ...(closedFrom ? { closedFrom, closedTo: day(search.closedTo) ?? closedFrom } : {}),
+    }
+  },
   component: Journal,
 })
+
+function closedLabel(range: { from: string; to: string }): string {
+  return range.from === range.to
+    ? dayLabel(range.from, 'year')
+    : `${dayLabel(range.from, 'year')} – ${dayLabel(range.to, 'year')}`
+}
 
 const ALL = 'all'
 
@@ -43,6 +67,7 @@ type RetryTarget = 'journal' | 'stats' | 'trades'
 
 function Journal() {
   const { workspaceId } = Route.useParams()
+  const search = Route.useSearch()
   const id = useId()
   const manual = useIsManualWorkspace(workspaceId)
   const labels = useJournalLabels()
@@ -51,7 +76,10 @@ function Journal() {
   const [direction, setDirection] = useState(ALL)
   const [labelFilter, setLabelFilter] = useState(NO_LABELS)
   const [view, setView] = useState<'trades' | 'insights'>('trades')
-  const [symbol, setSymbol] = useState('')
+  const [symbol, setSymbol] = useState(search.symbol ?? '')
+  const [closed, setClosed] = useState(
+    search.closedFrom ? { from: search.closedFrom, to: search.closedTo ?? search.closedFrom } : null,
+  )
   const [sort, setSort] = useState<TradeSort>('OPENED_DESC')
   const [dialog, setDialog] = useState<'fill' | 'opening' | null>(null)
   const [retrying, setRetrying] = useState<{ workspaceId: string; target: RetryTarget } | null>(null)
@@ -60,14 +88,21 @@ function Journal() {
     direction: direction === ALL ? null : direction,
     symbol: symbol.trim() || null,
     ...Object.fromEntries(Object.entries(labelFilter).map(([key, value]) => [key, value === ALL ? null : value])),
+    closedFrom: closed ? marketMidnight(closed.from) : null,
+    closedTo: closed ? marketMidnight(shiftDays(closed.to, 1)) : null,
   }
   const filtered =
-    status !== ALL || direction !== ALL || symbol.trim() !== '' || Object.values(labelFilter).some((v) => v !== ALL)
+    status !== ALL ||
+    direction !== ALL ||
+    symbol.trim() !== '' ||
+    closed !== null ||
+    Object.values(labelFilter).some((v) => v !== ALL)
   const showTrades = (key: LabelFilterKey, labelId: string) => {
     setLabelFilter({ ...NO_LABELS, [key]: labelId })
     setStatus(ALL)
     setDirection(ALL)
     setSymbol('')
+    setClosed(null)
     setView('trades')
   }
   const trades = useTrades(workspaceId, filter, sort)
@@ -258,6 +293,18 @@ function Journal() {
                       />
                     )
                   })}
+                  {closed && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-8 gap-1.5"
+                      aria-label={`Closed ${closedLabel(closed)}. Remove this filter`}
+                      onClick={() => setClosed(null)}
+                    >
+                      Closed {closedLabel(closed)}
+                      <X aria-hidden />
+                    </Button>
+                  )}
                   <ChoiceField
                     id={`${id}-sort`}
                     label="Sort"

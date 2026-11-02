@@ -31,6 +31,9 @@ export interface TradeFilter {
   entryTacticId?: string | null
   tagId?: string | null
   mistakeId?: string | null
+  /** ISO instants bounding when trades closed. */
+  closedFrom?: string | null
+  closedTo?: string | null
 }
 
 export type TradeSort = 'OPENED_DESC' | 'OPENED_ASC' | 'NET_DESC' | 'NET_ASC'
@@ -238,6 +241,16 @@ export interface MistakeCost {
   expectancyWithout: Decimal | null
 }
 
+export interface EquityPoint {
+  /** A New York trading day, `YYYY-MM-DD`. */
+  day: string
+  net: Decimal
+  cumulative: Decimal
+  trades: number
+  wins: number
+  losses: number
+}
+
 export interface TradeStats {
   trades: number
   wins: number
@@ -261,7 +274,7 @@ export interface TradeStats {
   longestWinStreak: number
   longestLossStreak: number
   currentStreak: number
-  equity: Array<{ day: string; net: Decimal; cumulative: Decimal }>
+  equity: EquityPoint[]
   bySymbol: Bucket[]
   byDirection: Bucket[]
   byWeekday: Bucket[]
@@ -278,22 +291,23 @@ export interface TradeStats {
 
 const BUCKET = 'key trades wins losses net winRate labelId color expectancy expectancyR'
 
-export function useTradeStats(workspaceId: string | null, from: string | null) {
+/** Closed-trade statistics for a workspace, or every workspace when it is null. */
+export function useTradeStats(workspaceId: string | null, from: string | null, to: string | null = null) {
   return useQuery({
-    queryKey: [...TRADES_KEY, workspaceId ?? 'all', 'stats', from],
+    queryKey: [...TRADES_KEY, workspaceId ?? 'all', 'stats', from, to],
     queryFn: () =>
       graphql<{ tradeStats: TradeStats }>(
-        `query TradeStats($w: ID, $from: DateTime) { tradeStats(workspaceId: $w, from: $from) {
+        `query TradeStats($w: ID, $from: DateTime, $to: DateTime) { tradeStats(workspaceId: $w, from: $from, to: $to) {
           trades wins losses breakeven winRate net grossProfit grossLoss averageWin averageLoss largestWin largestLoss
           profitFactor expectancy expectancyR rTrades averageHoldSeconds maxDrawdown currentDrawdown longestWinStreak
-          longestLossStreak currentStreak equity { day net cumulative }
+          longestLossStreak currentStreak equity { day net cumulative trades wins losses }
           bySymbol { ${BUCKET} } byDirection { ${BUCKET} } byWeekday { ${BUCKET} } byHour { ${BUCKET} }
           byHold { ${BUCKET} } byEdge { ${BUCKET} } byEntryTactic { ${BUCKET} } byTag { ${BUCKET} } byMistake { ${BUCKET} }
           edgeTactic { edge { ${LABEL_REF} } entryTactic { ${LABEL_REF} } trades wins losses net winRate expectancy }
           mistakeCosts { mistake { ${LABEL_REF} } trades net expectancyWith expectancyWithout }
           untagged
         } }`,
-        { w: workspaceId, from },
+        { w: workspaceId, from, to },
       ),
     select: (data) => data.tradeStats,
     placeholderData: keepPreviousData,

@@ -19,7 +19,7 @@ export function workspaceLocation(workspaceId?: string, section: WorkspaceSectio
 }
 
 export function pageTitle(pathname: string): string {
-  if (workspaceSection(pathname) === 'home') return 'Home'
+  if (workspaceSection(pathname) === 'home') return 'Dashboard'
   const match = SECTIONS.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   return match ? match[1] : 'Journal'
 }

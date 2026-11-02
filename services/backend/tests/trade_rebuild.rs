@@ -1,6 +1,7 @@
 //! Rebuilding trades from imported and manual data, end to end in Postgres.
 
 use std::sync::Arc;
+use tradstry::trades::notes::NoteDocument;
 
 use chrono::Utc;
 use rust_decimal::Decimal;
@@ -222,12 +223,13 @@ async fn annotations_follow_their_trade_through_regrouping(pool: PgPool) {
     let rows = trades(&pool, l.user_id).await;
     let annotation = Uuid::now_v7();
     sqlx::query(
-        "INSERT INTO trade_annotations (id, user_id, workspace_id, trade_id, anchor_fill_key, notes) VALUES ($1, $2, $3, $4, 'snaptrade:a3', 'second')",
+        "INSERT INTO trade_annotations (id, user_id, workspace_id, trade_id, anchor_fill_key, notes) VALUES ($1, $2, $3, $4, 'snaptrade:a3', $5)",
     )
     .bind(annotation)
     .bind(l.user_id)
     .bind(l.workspace_id)
     .bind(&rows[1].0)
+    .bind(sqlx::types::Json(NoteDocument::from("second").0))
     .execute(&pool)
     .await
     .unwrap();

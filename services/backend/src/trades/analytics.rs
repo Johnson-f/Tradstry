@@ -74,6 +74,10 @@ pub struct EquityPoint {
     pub day: NaiveDate,
     pub net: Decimal,
     pub cumulative: Decimal,
+    /// Trades closed that day.
+    pub trades: usize,
+    pub wins: usize,
+    pub losses: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, async_graphql::SimpleObject)]
@@ -340,18 +344,20 @@ pub fn compute(mut trades: Vec<StatTrade>) -> Stats {
     let net: Decimal = trades.iter().map(|t| t.net).sum();
     let r: Vec<Decimal> = trades.iter().filter_map(|t| t.r).collect();
 
-    let mut daily: BTreeMap<NaiveDate, Decimal> = BTreeMap::new();
+    let mut daily: BTreeMap<NaiveDate, Vec<&StatTrade>> = BTreeMap::new();
     for trade in &trades {
-        *daily
+        daily
             .entry(trade.closed_at.with_timezone(&New_York).date_naive())
-            .or_default() += trade.net;
+            .or_default()
+            .push(trade);
     }
     let mut cumulative = Decimal::ZERO;
     let mut peak = Decimal::ZERO;
     let mut max_drawdown = Decimal::ZERO;
     let equity: Vec<EquityPoint> = daily
         .into_iter()
-        .map(|(day, value)| {
+        .map(|(day, closed)| {
+            let value: Decimal = closed.iter().map(|t| t.net).sum();
             cumulative += value;
             peak = peak.max(cumulative);
             max_drawdown = max_drawdown.max(peak - cumulative);
@@ -359,6 +365,9 @@ pub fn compute(mut trades: Vec<StatTrade>) -> Stats {
                 day,
                 net: money(value),
                 cumulative: money(cumulative),
+                trades: closed.len(),
+                wins: closed.iter().filter(|t| t.net > Decimal::ZERO).count(),
+                losses: closed.iter().filter(|t| t.net < Decimal::ZERO).count(),
             }
         })
         .collect();
@@ -525,6 +534,15 @@ mod tests {
         let breakout = stats.by_tag.iter().find(|b| b.key == "breakout").unwrap();
         assert_eq!((breakout.trades, breakout.net), (2, dec!(160)));
         assert_eq!(stats.equity.last().unwrap().cumulative, dec!(80));
+        assert_eq!(
+            stats
+                .equity
+                .iter()
+                .map(|d| (d.trades, d.wins, d.losses))
+                .collect::<Vec<_>>(),
+            [(1, 1, 0), (1, 0, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0)],
+            "each day counts the trades it closed and how they ended"
+        );
         assert_eq!(stats.by_hold[0].key, "under 1 hour");
     }
 

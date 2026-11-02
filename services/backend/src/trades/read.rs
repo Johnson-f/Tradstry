@@ -141,6 +141,8 @@ pub struct TradeFilter {
     pub mistake_id: Option<Uuid>,
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
+    pub closed_from: Option<DateTime<Utc>>,
+    pub closed_to: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -203,6 +205,12 @@ fn push_filters(
     }
     if let Some(to) = filter.to {
         builder.push(" AND t.opened_at < ").push_bind(to);
+    }
+    if let Some(from) = filter.closed_from {
+        builder.push(" AND t.closed_at >= ").push_bind(from);
+    }
+    if let Some(to) = filter.closed_to {
+        builder.push(" AND t.closed_at < ").push_bind(to);
     }
 }
 

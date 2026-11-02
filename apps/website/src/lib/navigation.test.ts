@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test'
 import { pageTitle, workspaceLocation, workspaceSection } from './navigation'
 
 test('the breadcrumb names the section', () => {
-  expect(pageTitle('/')).toBe('Home')
+  expect(pageTitle('/')).toBe('Dashboard')
   expect(pageTitle('/brokerage')).toBe('Journal')
   expect(pageTitle('/settings')).toBe('Settings')
   expect(pageTitle('/tax')).toBe('Realized gains')
   expect(pageTitle('/brokerage/oauth/callback')).toBe('Journal')
-  expect(pageTitle('/w/0192')).toBe('Home')
-  expect(pageTitle('/w/0192/')).toBe('Home')
+  expect(pageTitle('/w/0192')).toBe('Dashboard')
+  expect(pageTitle('/w/0192/')).toBe('Dashboard')
   expect(pageTitle('/w/0192/journal')).toBe('Journal')
   expect(pageTitle('/brokerage/connections')).toBe('Journal')
   expect(pageTitle('/settings/workspaces')).toBe('Settings')

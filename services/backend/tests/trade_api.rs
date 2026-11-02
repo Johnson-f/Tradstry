@@ -138,7 +138,8 @@ async fn manual_fills_become_trades_and_can_be_journaled(pool: PgPool) {
     let save = "mutation S($w: ID!, $t: ID!, $v: Int, $input: TradeAnnotationInput!) {
         saveTradeAnnotation(workspaceId: $w, tradeId: $t, expectedVersion: $v, input: $input) {
             id version notes edges { id name kind } tags { name } initialStop } }";
-    let rich_note: Value = serde_json::from_str(include_str!("fixtures/rich_trade_note.json")).unwrap();
+    let rich_note: Value =
+        serde_json::from_str(include_str!("fixtures/rich_trade_note.json")).unwrap();
     let saved = data(
         &pool,
         &me,
@@ -159,9 +160,17 @@ async fn manual_fills_become_trades_and_can_be_journaled(pool: PgPool) {
     assert_eq!(entry["version"], 1);
     assert_eq!(entry["notes"], rich_note);
     let reloaded = data(&pool, &me, TRADES, json!({"w": w})).await;
-    assert_eq!(reloaded["trades"]["items"][0]["annotation"]["notes"], rich_note);
-    let old_format = gql(&pool, &me, save,
-        json!({"w": w, "t": trade_id, "v": 1, "input": {"notes": "plain text"}})).await;
+    assert_eq!(
+        reloaded["trades"]["items"][0]["annotation"]["notes"],
+        rich_note
+    );
+    let old_format = gql(
+        &pool,
+        &me,
+        save,
+        json!({"w": w, "t": trade_id, "v": 1, "input": {"notes": "plain text"}}),
+    )
+    .await;
     assert_eq!(code(&old_format).as_deref(), Some("INVALID_NOTE"));
 
     let wrong_kind = gql(

@@ -5,6 +5,7 @@ import { ChevronRight, House, LifeBuoy } from 'lucide-react'
 import { Suspense } from 'react'
 import { UserMenu } from '@/components/account/user-menu'
 import { ConnectBrokerMenu } from '@/components/brokerage/connect-broker-menu'
+import { PeriodMenu } from '@/components/home/period-menu'
 import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
@@ -29,10 +30,10 @@ function AppLayout() {
     select: (state) => state.location.pathname,
   })
   const title = pageTitle(pathname)
-  const isHome = title === 'Home'
+  const isHome = title === 'Dashboard'
   const isJournal = title === 'Journal'
   const { workspaceId, tradeId } = useParams({ strict: false })
-  const showPageTitle = !workspaceId || (!isHome && !isJournal)
+  const showPageTitle = !workspaceId || !isJournal
   const content = (
     <Suspense
       fallback={
@@ -71,8 +72,8 @@ function AppLayout() {
         <nav aria-label="Main navigation" className="flex flex-col gap-1">
           <Link
             {...workspaceLocation(workspaceId, 'home')}
-            aria-label="Home"
-            title="Home"
+            aria-label="Dashboard"
+            title="Dashboard"
             activeOptions={{ exact: true }}
             aria-current={isHome ? 'page' : undefined}
             className={isHome ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
@@ -130,6 +131,7 @@ function AppLayout() {
                 <ConnectBrokerMenu />
               </div>
             )}
+            {isHome && workspaceId && <PeriodMenu workspaceId={workspaceId} />}
           </header>
           <main id="dashboard-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none">
             {tradeId ? (

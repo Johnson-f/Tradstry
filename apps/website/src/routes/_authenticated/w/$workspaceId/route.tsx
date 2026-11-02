@@ -1,5 +1,6 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { WorkspaceLoadError } from '@/components/workspace/workspace-load-error'
 import { workspacesQuery } from '@/lib/client/workspaces'
 import { rememberWorkspace } from '@/lib/workspace'
 import { workspaceLocation, workspaceSection } from '@/lib/navigation'
@@ -14,6 +15,7 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceId')({
     }
   },
   component: WorkspaceLayout,
+  errorComponent: WorkspaceLoadError,
 })
 
 function WorkspaceLayout() {

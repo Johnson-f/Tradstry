@@ -18,6 +18,10 @@ export const stytchTokens: TokenSource = {
   refresh: async () => {
     await stytch.session.authenticate()
   },
+  // forceClear drops the local session even though Stytch may refuse to revoke one it already ended.
+  signedOut: () => {
+    if (stytch.session.getSync()) void stytch.session.revoke({ forceClear: true }).catch(() => {})
+  },
 }
 
 let identityProviderClient: typeof stytch | undefined

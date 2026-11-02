@@ -167,7 +167,12 @@ fn summary(row: TradeRow, unrealized: &HashMap<String, (Decimal, Decimal)>) -> T
     let annotation = row.annotation_id.map(|id| TradeAnnotation {
         id: ID(id.to_string()),
         trade_id: row.id.clone(),
-        notes: Json(row.notes.as_ref().map(|notes| notes.0.clone()).unwrap_or_else(|| NoteDocument::default().0)),
+        notes: Json(
+            row.notes
+                .as_ref()
+                .map(|notes| notes.0.clone())
+                .unwrap_or_else(|| NoteDocument::default().0),
+        ),
         edges: row.edges.0.clone(),
         entry_tactics: row.entry_tactics.0.clone(),
         tags: row.tags.0.clone(),
@@ -628,6 +633,10 @@ pub struct TradeFilterInput {
     mistake_id: Option<ID>,
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
+    /// Trades closed at or after this instant.
+    closed_from: Option<DateTime<Utc>>,
+    /// Trades closed before this instant.
+    closed_to: Option<DateTime<Utc>>,
 }
 
 #[derive(InputObject)]
@@ -719,6 +728,8 @@ impl TradeQuery {
             mistake_id: filter.mistake_id.as_ref().map(parse_id).transpose()?,
             from: filter.from,
             to: filter.to,
+            closed_from: filter.closed_from,
+            closed_to: filter.closed_to,
         };
         let sort = match sort {
             TradeSort::OpenedDesc => Sort::OpenedDesc,
@@ -1316,7 +1327,10 @@ impl TradeMutation {
         let (pool, user_id, workspace_id) = context(ctx, &workspace_id).await?;
         let ids = |ids: &[ID]| ids.iter().map(parse_id).collect::<Result<Vec<_>>>();
         let annotation = AnnotationInput {
-            notes: input.notes.map(|notes| NoteDocument(notes.0)).unwrap_or_default(),
+            notes: input
+                .notes
+                .map(|notes| NoteDocument(notes.0))
+                .unwrap_or_default(),
             edge_ids: ids(&input.edge_ids)?,
             entry_tactic_ids: ids(&input.entry_tactic_ids)?,
             tag_ids: ids(&input.tag_ids)?,

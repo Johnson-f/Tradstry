@@ -3,6 +3,7 @@ import { MoreVerticalIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronsUpDown, Landmark, Layers2, LoaderCircle, NotebookPen, Plus, Settings } from 'lucide-react'
 import { Fragment, useRef, useState } from 'react'
+import { SettingsDialog } from '@/components/settings/settings-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ export function WorkspaceSwitcher({
   const status = useBrokerageStatus()
   const connections = useBrokerageConnections(status.data?.available === true, false)
   const [creating, setCreating] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [viewing, setViewing] = useState<{ id: string; name: string; institutionName: string } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -75,7 +77,7 @@ export function WorkspaceSwitcher({
           <ChevronsUpDown className="ml-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          finalFocus={viewing ? false : undefined}
+          finalFocus={viewing || settingsOpen ? false : undefined}
           side="bottom"
           align="start"
           sideOffset={8}
@@ -221,7 +223,7 @@ export function WorkspaceSwitcher({
             </DropdownMenuItem>
             <DropdownMenuItem
               className={menuItemClass}
-              onClick={() => void navigate({ to: '/settings', search: { tab: 'workspaces' } })}
+              onClick={() => setSettingsOpen(true)}
             >
               <Settings className="size-4" aria-hidden />
               Manage workspaces
@@ -230,6 +232,12 @@ export function WorkspaceSwitcher({
         </DropdownMenuContent>
       </DropdownMenu>
       <NewWorkspaceDialog open={creating} onOpenChange={setCreating} section={section} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        initialTab="workspaces"
+        returnFocus={triggerRef}
+      />
       {viewing && (
         <BrokerageAccountDialog
           key={viewing.id}

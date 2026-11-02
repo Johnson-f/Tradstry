@@ -9,6 +9,8 @@ export interface TokenSource {
   getToken(): string | null
   /** Asks Stytch for a fresh session JWT. */
   refresh(): Promise<void>
+  /** Forgets a session the backend no longer accepts, so the app sends the user to sign in. */
+  signedOut(): void
 }
 
 export class GraphQLRequestError extends Error {
@@ -60,20 +62,22 @@ export function createGraphQLFetcher(
       })
     }
 
+    const signedOut = (code: string | undefined) => {
+      tokens.signedOut()
+      return new GraphQLRequestError('You are signed out.', code)
+    }
+
     let response = await send()
     if (response.status === 401) {
       const code = await errorCode(response)
-      if (code !== 'token_expired') {
-        throw new GraphQLRequestError('You are signed out.', code)
+      if (code !== 'token_expired') throw signedOut(code)
+      try {
+        await tokens.refresh()
+      } catch {
+        throw signedOut(code)
       }
-      await tokens.refresh()
       response = await send()
-      if (response.status === 401) {
-        throw new GraphQLRequestError(
-          'You are signed out.',
-          await errorCode(response),
-        )
-      }
+      if (response.status === 401) throw signedOut(await errorCode(response))
     }
     if (!response.ok) {
       throw new GraphQLRequestError(
