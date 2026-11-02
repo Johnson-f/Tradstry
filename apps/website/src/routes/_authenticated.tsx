@@ -1,16 +1,21 @@
 import { Link, Outlet, createFileRoute, redirect, useParams, useRouterState } from '@tanstack/react-router'
-import { QuillWrite02Icon } from '@hugeicons/core-free-icons'
+import { Analytics01Icon, Calculator01Icon, QuillWrite02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronRight, House, LifeBuoy } from 'lucide-react'
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { UserMenu } from '@/components/account/user-menu'
 import { ConnectBrokerMenu } from '@/components/brokerage/connect-broker-menu'
 import { PeriodMenu } from '@/components/home/period-menu'
+import { PositionCalculator } from '@/components/plans/position-calculator'
 import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
 import { signInRedirectFor } from '@/lib/auth/auth-guard'
-import { pageTitle, workspaceLocation } from '@/lib/navigation'
+import { useRealtimeUpdates } from '@/lib/client/realtime'
+import { useSettings } from '@/lib/client/settings'
+import { setDisplayTimeZone } from '@/lib/format'
+import { pageTitle, workspaceLocation, workspaceSection } from '@/lib/navigation'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
@@ -25,15 +30,33 @@ const railLinkClass =
 
 const activeRailLinkClass = 'bg-black/7 text-neutral-900 dark:bg-white/10 dark:text-neutral-100'
 
+/** A rail control whose name shows beside it on hover or focus. */
+function RailItem({ label, render, children }: { label: string; render: React.ReactElement; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={render}>{children}</TooltipTrigger>
+      <TooltipContent side="right" sideOffset={10} className="font-[Arial,Helvetica,sans-serif]">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function AppLayout() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
   const title = pageTitle(pathname)
+  const section = workspaceSection(pathname)
   const isHome = title === 'Dashboard'
   const isJournal = title === 'Journal'
+  const isAnalytics = title === 'Analytics'
   const { workspaceId, tradeId } = useParams({ strict: false })
-  const showPageTitle = !workspaceId || !isJournal
+  const settings = useSettings()
+  useRealtimeUpdates()
+  const [plannerOpen, setPlannerOpen] = useState(false)
+  setDisplayTimeZone(settings.data?.timeZone ?? 'LOCAL')
+  const showPageTitle = !workspaceId || !(isHome || isJournal || isAnalytics)
   const content = (
     <Suspense
       fallback={
@@ -55,50 +78,93 @@ function AppLayout() {
         Skip to content
       </a>
 
-      <aside
-        aria-label="App navigation"
-        className="grid w-13 shrink-0 grid-rows-[1fr_auto_1fr] justify-items-center py-1 max-sm:w-14"
-      >
-        <Link to="/" aria-label="Tradstry home" title="Tradstry" className={railLinkClass}>
-          <img
-            src="/favicon.svg"
-            width="22"
-            height="22"
-            alt=""
-            className="size-5.5 brightness-0 dark:invert"
-          />
-        </Link>
+      <TooltipProvider delay={300}>
+        <aside
+          aria-label="App navigation"
+          className="grid w-13 shrink-0 grid-rows-[1fr_auto_1fr] justify-items-center py-1 max-sm:w-14"
+        >
+          <RailItem label="Tradstry" render={<Link to="/" aria-label="Tradstry home" className={railLinkClass} />}>
+            <img
+              src="/favicon.svg"
+              width="24"
+              height="24"
+              alt=""
+              className="size-6 rounded-[5px] dark:ring-1 dark:ring-white/15"
+            />
+          </RailItem>
 
-        <nav aria-label="Main navigation" className="flex flex-col gap-1">
-          <Link
-            {...workspaceLocation(workspaceId, 'home')}
-            aria-label="Dashboard"
-            title="Dashboard"
-            activeOptions={{ exact: true }}
-            aria-current={isHome ? 'page' : undefined}
-            className={isHome ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
-          >
-            <House className="size-4.5" aria-hidden />
-          </Link>
-          <Link
-            {...workspaceLocation(workspaceId)}
-            aria-label="Journal"
-            title="Journal"
-            activeOptions={{ exact: true }}
-            aria-current={isJournal ? 'page' : undefined}
-            className={isJournal ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
-          >
-            <HugeiconsIcon icon={QuillWrite02Icon} className="size-5" strokeWidth={1.5} aria-hidden />
-          </Link>
-        </nav>
+          <nav aria-label="Main navigation" className="flex flex-col gap-1">
+            <RailItem
+              label="Dashboard"
+              render={
+                <Link
+                  {...workspaceLocation(workspaceId, 'home')}
+                  aria-label="Dashboard"
+                  activeOptions={{ exact: true }}
+                  aria-current={isHome ? 'page' : undefined}
+                  className={isHome ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
+                />
+              }
+            >
+              <House className="size-4.5" aria-hidden />
+            </RailItem>
+            <RailItem
+              label="Journal"
+              render={
+                <Link
+                  {...workspaceLocation(workspaceId)}
+                  aria-label="Journal"
+                  activeOptions={{ exact: true }}
+                  aria-current={isJournal ? 'page' : undefined}
+                  className={isJournal ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
+                />
+              }
+            >
+              <HugeiconsIcon icon={QuillWrite02Icon} className="size-5" strokeWidth={1.5} aria-hidden />
+            </RailItem>
+            <RailItem
+              label="Analytics"
+              render={
+                <Link
+                  {...workspaceLocation(workspaceId, 'analytics')}
+                  aria-label="Analytics"
+                  aria-current={isAnalytics ? 'page' : undefined}
+                  className={isAnalytics ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
+                />
+              }
+            >
+              <HugeiconsIcon icon={Analytics01Icon} className="size-5" strokeWidth={1.5} aria-hidden />
+            </RailItem>
+          </nav>
 
-        <div className="flex flex-col items-center gap-2 self-end">
-          <a href="https://www.tradstry.com/#faq" aria-label="Help" title="Help" className={railLinkClass}>
-            <LifeBuoy className="size-4.5" aria-hidden />
-          </a>
-          <UserMenu />
-        </div>
-      </aside>
+          <div className="flex flex-col items-center gap-2 self-end">
+            {workspaceId && (
+              <RailItem
+                label="Position Calculator"
+                render={
+                  <button
+                    type="button"
+                    aria-label="Position Calculator"
+                    aria-haspopup="dialog"
+                    onClick={() => setPlannerOpen(true)}
+                    className={plannerOpen ? `${railLinkClass} ${activeRailLinkClass}` : railLinkClass}
+                  />
+                }
+              >
+                <HugeiconsIcon icon={Calculator01Icon} className="size-5" strokeWidth={1.5} aria-hidden />
+              </RailItem>
+            )}
+            <RailItem
+              label="Help"
+              render={<a href="https://www.tradstry.com/#faq" aria-label="Help" className={railLinkClass} />}
+            >
+              <LifeBuoy className="size-4.5" aria-hidden />
+            </RailItem>
+            <UserMenu />
+          </div>
+        </aside>
+      </TooltipProvider>
+      {workspaceId && <PositionCalculator workspaceId={workspaceId} open={plannerOpen} onOpenChange={setPlannerOpen} />}
 
       <div className="flex min-w-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-neutral-900">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -114,7 +180,7 @@ function AppLayout() {
                     aria-current={!showPageTitle ? 'page' : undefined}
                   >
                     <ChevronRight className="size-3.5 shrink-0 text-neutral-400" aria-hidden />
-                    <WorkspaceSwitcher workspaceId={workspaceId} section={isHome ? 'home' : 'journal'} />
+                    <WorkspaceSwitcher workspaceId={workspaceId} section={section} />
                   </li>
                 )}
                 {showPageTitle && (
@@ -131,7 +197,9 @@ function AppLayout() {
                 <ConnectBrokerMenu />
               </div>
             )}
-            {isHome && workspaceId && <PeriodMenu workspaceId={workspaceId} />}
+            {(isHome || isAnalytics) && workspaceId && (
+              <PeriodMenu workspaceId={workspaceId} section={isHome ? 'home' : 'analytics'} />
+            )}
           </header>
           <main id="dashboard-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none">
             {tradeId ? (

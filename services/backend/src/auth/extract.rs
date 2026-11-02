@@ -1,9 +1,13 @@
-use axum::Json;
-use axum::extract::{FromRef, FromRequestParts, OptionalFromRequestParts};
-use axum::http::header::{AUTHORIZATION, COOKIE};
-use axum::http::request::Parts;
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::{
+    Json,
+    extract::{FromRef, FromRequestParts, OptionalFromRequestParts},
+    http::{
+        HeaderMap, StatusCode,
+        header::{AUTHORIZATION, COOKIE},
+        request::Parts,
+    },
+    response::{IntoResponse, Response},
+};
 use serde_json::json;
 
 use super::{AuthClaims, AuthError, TokenVerifier};
@@ -48,6 +52,13 @@ impl IntoResponse for AuthRejection {
     }
 }
 
+/// Expired tokens are routine (clients refresh and retry), so only the rest is logged.
+fn log_rejection(error: &AuthError) {
+    if !matches!(error, AuthError::Expired) {
+        tracing::warn!(reason = %error, "rejected a session token");
+    }
+}
+
 /// The Authorization header wins whenever it is present, so a malformed header
 /// is rejected rather than silently replaced by whatever cookie rides along.
 pub fn request_token(headers: &HeaderMap) -> Option<String> {
@@ -85,6 +96,7 @@ where
         TokenVerifier::from_ref(state)
             .verify(&token)
             .await
+            .inspect_err(log_rejection)
             .map_err(AuthRejection::Rejected)
     }
 }
@@ -109,6 +121,7 @@ where
         TokenVerifier::from_ref(state)
             .verify(&token)
             .await
+            .inspect_err(log_rejection)
             .map(Some)
             .map_err(AuthRejection::Rejected)
     }
@@ -116,10 +129,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use axum::Router;
-    use axum::body::Body;
-    use axum::http::Request;
-    use axum::routing::get;
+    use axum::{Router, body::Body, http::Request, routing::get};
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
     use tower::ServiceExt;

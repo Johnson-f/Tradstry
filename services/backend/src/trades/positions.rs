@@ -8,9 +8,11 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::instrument::{self, Alias, decimal, parse_occ};
-use super::model::{Direction, Instrument, Issue, Severity, Trade, TradeKind, TradeStatus};
-use super::stitch::dust;
+use super::{
+    instrument::{self, Alias, decimal, parse_occ},
+    model::{Direction, Instrument, Issue, Severity, Trade, TradeKind, TradeStatus},
+    stitch::dust,
+};
 
 #[derive(Clone, Debug)]
 pub struct HoldingsSnapshot {
@@ -49,16 +51,52 @@ fn instrument_of(item: &Value) -> Option<Instrument> {
     Some(Instrument::stock(symbol))
 }
 
+fn snapshot_items(positions: &Value) -> Option<&Vec<Value>> {
+    match positions {
+        Value::Object(map) => map.get("results").and_then(Value::as_array),
+        Value::Array(items) => Some(items),
+        _ => None,
+    }
+}
+
+/// What a brokerage account is worth in US dollars: its dollar cash plus the
+/// market value of its positions, shorts counting against it. None when the
+/// snapshot has neither, or the total is not above zero.
+pub fn account_value(positions: &Value, balances: &Value) -> Option<Decimal> {
+    let cash: Vec<Decimal> = balances
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| {
+            text(item, &["currency", "code"]).is_none_or(|code| code.eq_ignore_ascii_case("USD"))
+        })
+        .filter_map(|item| item.get("cash").and_then(decimal))
+        .collect();
+    let holdings: Vec<Decimal> = snapshot_items(positions)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let multiplier = instrument_of(item)?.multiplier;
+            Some(
+                item.get("units").and_then(decimal)?
+                    * item.get("price").and_then(decimal)?
+                    * multiplier,
+            )
+        })
+        .collect();
+    if cash.is_empty() && holdings.is_empty() {
+        return None;
+    }
+    let total: Decimal = cash.into_iter().chain(holdings).sum();
+    (total > Decimal::ZERO).then(|| total.round_dp(2))
+}
+
 /// Positions by instrument key (after aliases), signed: negative is short.
 pub fn broker_positions(
     snapshot: &HoldingsSnapshot,
     aliases: &[Alias],
 ) -> HashMap<String, BrokerPosition> {
-    let items = match &snapshot.positions {
-        Value::Object(map) => map.get("results").and_then(Value::as_array),
-        Value::Array(items) => Some(items),
-        _ => None,
-    };
+    let items = snapshot_items(&snapshot.positions);
     let mut positions = HashMap::new();
     for item in items.into_iter().flatten() {
         let Some(instrument) = instrument_of(item) else {

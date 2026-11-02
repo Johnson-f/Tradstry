@@ -31,6 +31,7 @@ test('autosave preserves edits during writes, flushes navigation, and recovers f
     let annotation = null, writeGate = null, writeError = null, readError = false, active = 0, peak = 0;
     mock.module('@/lib/client/backend', () => ({ graphql: async (query, variables) => {
       if (query.includes('query JournalLabels')) return { journalLabels: [] };
+      if (query.includes('query TradePlans')) return { tradePlans: [] };
       if (query.includes('query Trade(')) {
         if (readError) throw new Error('Offline');
         return { trade: { trade: { id: 't', avgEntry: '10', maxQuantity: '2', net: '1',
@@ -172,6 +173,23 @@ test('autosave preserves edits during writes, flushes navigation, and recovers f
       await settle(850);
       assert.equal(annotation.notes.root.children[0].children[0].format, 1, 'format-only edits must save');
       assert.equal(editor(), reopenedEditor);
+
+      annotation = { ...annotation, notes: createNoteDocument('From the phone'), version: annotation.version + 1 };
+      await act(async () => { await client.invalidateQueries(); await wait(); });
+      await settle();
+      assert.equal(noteText(editor().getEditorState().toJSON()), 'From the phone', 'an idle editor shows another device’s save');
+
+      await text('Typed here');
+      annotation = { ...annotation, notes: createNoteDocument('Phone again'), version: annotation.version + 1 };
+      await act(async () => { await client.invalidateQueries(); await wait(); });
+      await settle();
+      assert.ok(button('Load latest version'), 'local edits are not replaced without asking');
+      const pausedCount = calls.length;
+      await settle(900);
+      assert.equal(calls.length, pausedCount, 'no autosave over a newer version');
+      await act(async () => { button('Load latest version').click(); await wait(); });
+      await settle();
+      assert.equal(noteText(editor().getEditorState().toJSON()), 'Phone again');
 
       await act(async () => { button('Trade Detail').click(); await wait(); });
       const stopLabel = [...document.querySelectorAll('label')].find(el => el.textContent.startsWith('Initial stop'));

@@ -6,6 +6,9 @@ import { createRoot } from 'react-dom/client'
 import { App } from '@/app'
 import { stytch } from '@/lib/auth/stytch'
 import { routeTree } from './routeTree.gen'
+import { applyTheme, storedTheme } from '@/lib/theme'
+
+applyTheme(storedTheme(), false)
 
 const queryClient = new QueryClient()
 

@@ -11,18 +11,18 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use sqlx::types::Json;
-use tradstry::brokerage::Brokerage;
-use tradstry::brokerage::history::ImportMode;
-use tradstry::brokerage::linking::Selection;
-use tradstry::snaptrade::fake::{FakeAccount, FakeSnapTrade};
-use tradstry::trades::decisions::DecisionKind;
-use tradstry::trades::labels::{self, LabelInput, LabelKind, LabelRef};
-use tradstry::trades::model::{AssetClass, Side};
-use tradstry::trades::read::{self, TradeFilter, TradeRow, TradeSort};
-use tradstry::trades::service::{
-    self, AnnotationInput, InstrumentInput, ManualFillInput, TradeError,
+use tradstry::{
+    brokerage::{Brokerage, history::ImportMode, linking::Selection},
+    snaptrade::fake::{FakeAccount, FakeSnapTrade},
+    trades::{
+        decisions::DecisionKind,
+        labels::{self, LabelInput, LabelKind, LabelRef},
+        model::{AssetClass, Side},
+        read::{self, TradeFilter, TradeRow, TradeSort},
+        service::{self, AnnotationInput, InstrumentInput, ManualFillInput, TradeError},
+    },
+    users::{self, Provisioning},
 };
-use tradstry::users::{self, Provisioning};
 
 async fn user(pool: &PgPool, stytch: &str) -> Uuid {
     users::load_user(pool, stytch, "", "", Provisioning::CreateIfMissing)
@@ -645,7 +645,7 @@ async fn trades_filter_by_each_label_kind(pool: PgPool) {
         second
     );
 
-    let stats = read::stats(&pool, owner, Some(workspace), None, None)
+    let stats = tradstry::analytics::stats(&pool, owner, Some(workspace), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -685,6 +685,90 @@ async fn trades_filter_by_when_they_closed(pool: PgPool) {
         ids(trades(&pool, owner, workspace, &later).await),
         [rows[1].id.clone()]
     );
+}
+
+#[sqlx::test]
+async fn settings_shape_r_and_wins(pool: PgPool) {
+    use tradstry::users::settings::{self, Settings};
+
+    let owner = user(&pool, "user-1").await;
+    let (workspace, rows) = journal(&pool, owner).await;
+    assert_eq!(
+        settings::get(&pool, owner).await.unwrap(),
+        Settings::default()
+    );
+    assert_eq!(rows[0].r_multiple(), None, "no stop and no default risk");
+
+    let chosen = Settings {
+        default_risk: Some(dec!(5)),
+        breakeven_band: dec!(12),
+        ..Settings::default()
+    };
+    assert_eq!(settings::save(&pool, owner, &chosen).await.unwrap(), chosen);
+
+    let rows = trades(&pool, owner, workspace, &TradeFilter::default()).await;
+    assert_eq!(
+        rows[0].r_multiple(),
+        Some(dec!(2)),
+        "10 net over the $5 default risk"
+    );
+    save(
+        &pool,
+        owner,
+        workspace,
+        &rows[0].id,
+        None,
+        AnnotationInput {
+            initial_stop: Some(dec!(9)),
+            ..AnnotationInput::default()
+        },
+    )
+    .await
+    .unwrap();
+    let rows = trades(&pool, owner, workspace, &TradeFilter::default()).await;
+    assert_eq!(
+        rows[0].r_multiple(),
+        Some(dec!(1)),
+        "a stop wins over the default"
+    );
+
+    let stats = tradstry::analytics::stats(&pool, owner, Some(workspace), None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        (stats.wins, stats.breakeven),
+        (1, 1),
+        "+10 sits inside the $12 band; +15 does not"
+    );
+
+    for (bad, code) in [
+        (
+            Settings {
+                default_risk: Some(dec!(0)),
+                ..Settings::default()
+            },
+            "INVALID_RISK",
+        ),
+        (
+            Settings {
+                breakeven_band: dec!(-1),
+                ..Settings::default()
+            },
+            "INVALID_BREAKEVEN",
+        ),
+        (
+            Settings {
+                default_period: "2w".into(),
+                ..Settings::default()
+            },
+            "INVALID_PERIOD",
+        ),
+    ] {
+        match settings::save(&pool, owner, &bad).await {
+            Err(settings::SettingsError::Invalid(found, _)) => assert_eq!(found, code),
+            other => panic!("expected {code}, got {other:?}"),
+        }
+    }
 }
 
 // ── Suggested stops ─────────────────────────────────────────────────────────

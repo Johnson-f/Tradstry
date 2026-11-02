@@ -1,9 +1,54 @@
+import { DateField } from '@/components/trades/date-field'
 import { ChoiceField } from '@/components/trades/trade-bits'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { fieldControlClass, fieldLabelClass, fieldSelectClass } from '@/components/trades/form-styles'
 import type { FillForm } from '@/lib/client/trades/trades-model'
 
 export type InstrumentForm = Pick<FillForm, 'assetClass' | 'symbol' | 'expiry' | 'right' | 'strike'>
+
+
+/** A labelled form control with an optional hint below it, which the control should name in `aria-describedby`. */
+export function FormField({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  id: string
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <Label htmlFor={id} className={fieldLabelClass}>
+        {label}
+      </Label>
+      {children}
+      {hint && (
+        <p id={`${id}-hint`} className="text-xs leading-5 text-muted-foreground">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** An amount input with a leading currency sign. */
+export function MoneyInput({ className = '', ...props }: React.ComponentProps<typeof Input>) {
+  return (
+    <div className="relative">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground"
+      >
+        $
+      </span>
+      <Input inputMode="decimal" {...props} className={`${fieldControlClass} pl-7 tabular-nums ${className}`} />
+    </div>
+  )
+}
 
 export function InstrumentFields({
   id,
@@ -18,71 +63,57 @@ export function InstrumentFields({
 }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <ChoiceField
           id={`${id}-asset`}
           label="Instrument"
           value={value.assetClass}
           onChange={(assetClass) => onChange({ assetClass })}
-          className="h-9 w-full bg-background text-sm"
+          className={fieldSelectClass}
+          labelClassName={fieldLabelClass}
           choices={[
             { value: 'STOCK', label: 'Stock or ETF' },
             { value: 'OPTION', label: 'Option' },
             { value: 'CRYPTO', label: 'Crypto' },
           ]}
         />
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-symbol`} className="text-xs font-normal text-muted-foreground">
-            {value.assetClass === 'OPTION' ? 'Underlying' : 'Ticker'}
-          </Label>
+        <FormField id={`${id}-symbol`} label={value.assetClass === 'OPTION' ? 'Underlying' : 'Ticker'}>
           <Input
             id={`${id}-symbol`}
             value={value.symbol}
             autoFocus={autoFocus}
             autoCapitalize="characters"
-            placeholder="AAPL"
+            autoComplete="off"
+            placeholder="e.g. AAPL"
             onChange={(event) => onChange({ symbol: event.target.value })}
-            className="h-9 bg-background uppercase"
+            className={`${fieldControlClass} uppercase placeholder:normal-case`}
           />
-        </div>
+        </FormField>
       </div>
       {value.assetClass === 'OPTION' && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${id}-expiry`} className="text-xs font-normal text-muted-foreground">
-              Expiry
-            </Label>
-            <Input
-              id={`${id}-expiry`}
-              type="date"
-              value={value.expiry}
-              onChange={(event) => onChange({ expiry: event.target.value })}
-              className="h-9 bg-background"
-            />
-          </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField id={`${id}-expiry`} label="Expiry">
+            <DateField id={`${id}-expiry`} value={value.expiry} onChange={(expiry) => onChange({ expiry })} />
+          </FormField>
           <ChoiceField
             id={`${id}-right`}
             label="Type"
             value={value.right}
             onChange={(right) => onChange({ right })}
-            className="h-9 w-full bg-background text-sm"
+            className={fieldSelectClass}
+            labelClassName={fieldLabelClass}
             choices={[
               { value: 'CALL', label: 'Call' },
               { value: 'PUT', label: 'Put' },
             ]}
           />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${id}-strike`} className="text-xs font-normal text-muted-foreground">
-              Strike
-            </Label>
-            <Input
+          <FormField id={`${id}-strike`} label="Strike">
+            <MoneyInput
               id={`${id}-strike`}
-              inputMode="decimal"
               value={value.strike}
               onChange={(event) => onChange({ strike: event.target.value })}
-              className="h-9 bg-background"
             />
-          </div>
+          </FormField>
         </div>
       )}
     </>

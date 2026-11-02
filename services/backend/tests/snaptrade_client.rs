@@ -1,8 +1,10 @@
 use chrono::NaiveDate;
 use serde_json::json;
 
-use tradstry::snaptrade::fake::{self, FakeAccount, FakeSnapTrade};
-use tradstry::snaptrade::{ActivityQuery, Credentials, PortalOptions, SnapTradeClient};
+use tradstry::snaptrade::{
+    ActivityQuery, Credentials, PortalOptions, SnapTradeClient,
+    fake::{self, FakeAccount, FakeSnapTrade},
+};
 
 fn commercial<'a>(user_id: &'a str, user_secret: &'a str) -> Credentials<'a> {
     Credentials::Commercial {

@@ -251,15 +251,10 @@ export function useSyncStatus(workspaceId: string, enabled = true) {
       ),
     select: (data) => data.brokerageSyncStatus,
     enabled,
-    refetchInterval: (query) => {
-      const sync = query.state.data?.brokerageSyncStatus
-      if (!sync || sync.account.unlinked) return false
-      return sync.initialImportCompletedAt ? 30_000 : 5000
-    },
   })
 }
 
-export function useHoldings(workspaceId: string, enabled: boolean, live = true) {
+export function useHoldings(workspaceId: string, enabled: boolean) {
   return useQuery({
     queryKey: [...brokerageKeys.workspace(workspaceId), 'holdings'],
     queryFn: () =>
@@ -269,13 +264,12 @@ export function useHoldings(workspaceId: string, enabled: boolean, live = true) 
       ),
     select: (data) => data.brokerageHoldings,
     enabled,
-    refetchInterval: live ? 30_000 : false,
   })
 }
 
 export const ACTIVITY_PAGE_SIZE = 50
 
-export function useActivities(workspaceId: string, page: number, enabled: boolean, live = true) {
+export function useActivities(workspaceId: string, page: number, enabled: boolean) {
   return useQuery({
     queryKey: [...brokerageKeys.workspace(workspaceId), 'activities', page],
     queryFn: () =>
@@ -288,11 +282,10 @@ export function useActivities(workspaceId: string, page: number, enabled: boolea
     select: (data) => data.brokerageActivities,
     enabled,
     placeholderData: (previous) => previous,
-    refetchInterval: live ? 30_000 : false,
   })
 }
 
-export function useOrders(workspaceId: string, live: boolean) {
+export function useOrders(workspaceId: string) {
   return useQuery({
     queryKey: [...brokerageKeys.workspace(workspaceId), 'orders'],
     queryFn: () => graphql<{ brokerageOrders: BrokerageOrder[] }>(
@@ -302,7 +295,6 @@ export function useOrders(workspaceId: string, live: boolean) {
       { id: workspaceId },
     ),
     select: (data) => data.brokerageOrders,
-    refetchInterval: live ? 30_000 : false,
   })
 }
 

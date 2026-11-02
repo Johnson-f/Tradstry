@@ -14,8 +14,10 @@ import {
   manualFillId,
   money,
   niceTicks,
+  EMPTY_BEHAVIOR,
   annotationDraft,
   annotationInput,
+  behaviorChips,
   previewR,
   riskDollars,
   percent,
@@ -96,19 +98,36 @@ test('fill keys', () => {
 describe('journal entries', () => {
   const orb = { id: 'e1', kind: 'EDGE' as const, name: 'ORB', color: null, archived: false }
   const gap = { id: 't1', kind: 'TAG' as const, name: 'gap up', color: '#2563eb', archived: false }
+  const behavior = { ...EMPTY_BEHAVIOR, conviction: 4, marketRegime: 'TRENDING' as const, plannedPreMarket: true, revengeTrade: false }
 
   test('a draft holds label IDs and round-trips into the save input', () => {
     const draft = annotationDraft({
       id: 'a1', tradeId: 'tr', notes: createNoteDocument('n'), edges: [orb], entryTactics: [], tags: [gap], mistakes: [],
-      initialStop: '9.5', plannedRisk: null, version: 1, updatedAt: '', orphaned: false,
+      initialStop: '9.5', plannedRisk: null, behavior, version: 1, updatedAt: '', orphaned: false,
     })
     expect(draft).toEqual({
       notes: createNoteDocument('n'), edgeIds: ['e1'], entryTacticIds: [], tagIds: ['t1'], mistakeIds: [], initialStop: '9.5', plannedRisk: '',
+      behavior,
     })
     expect(annotationInput(draft)).toEqual({
       ok: true,
-      input: { notes: createNoteDocument('n'), edgeIds: ['e1'], entryTacticIds: [], tagIds: ['t1'], mistakeIds: [], initialStop: '9.5', plannedRisk: null },
+      input: {
+        notes: createNoteDocument('n'), edgeIds: ['e1'], entryTacticIds: [], tagIds: ['t1'], mistakeIds: [], initialStop: '9.5', plannedRisk: null,
+        behavior,
+      },
     })
+    expect(annotationDraft(null).behavior).toEqual(EMPTY_BEHAVIOR)
+  })
+
+  test('behavior chips show what was recorded and skip the good-habit noes', () => {
+    expect(behaviorChips(behavior)).toEqual(['Conviction 4/5', 'Trending', 'Planned pre-market'])
+    expect(behaviorChips({ ...EMPTY_BEHAVIOR, plannedPreMarket: false, revengeTrade: true, brokeThirtyMinuteRule: true, ruleAdherence: 2 })).toEqual([
+      'Rules 2/5',
+      'Unplanned',
+      'Revenge trade',
+      'Broke 30-minute rule',
+    ])
+    expect(behaviorChips(EMPTY_BEHAVIOR)).toEqual([])
   })
 
   test('stops and risk must be above zero; a dollar sign is fine', () => {

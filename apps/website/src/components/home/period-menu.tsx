@@ -10,13 +10,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { DEFAULT_PERIOD, PERIODS, type Period, isPeriod } from '@/lib/client/home/home-model'
+import { PERIODS, type Period, isPeriod } from '@/lib/client/home/home-model'
+import { useDefaultPeriod } from '@/lib/client/settings'
 
-/** The dashboard's time window, kept in the URL. Only rendered on the dashboard. */
-export function PeriodMenu({ workspaceId }: { workspaceId: string }) {
-  const { period = DEFAULT_PERIOD } = useSearch({ from: '/_authenticated/w/$workspaceId/' })
+/** The time window for the dashboard or analytics, kept in the URL. */
+export function PeriodMenu({ workspaceId, section }: { workspaceId: string; section: 'home' | 'analytics' }) {
+  const search: { period?: unknown } = useSearch({ strict: false })
+  const defaultPeriod = useDefaultPeriod()
+  const period = isPeriod(search.period) ? search.period : defaultPeriod
   const navigate = useNavigate()
-  const current = PERIODS.find((option) => option.value === period) ?? PERIODS.find((option) => option.value === DEFAULT_PERIOD)!
+  const current = PERIODS.find((option) => option.value === period) ?? PERIODS[2]
 
   return (
     <DropdownMenu>
@@ -40,12 +43,17 @@ export function PeriodMenu({ workspaceId }: { workspaceId: string }) {
           value={period}
           onValueChange={(next: unknown) => {
             if (!isPeriod(next)) return
-            void navigate({
-              to: '/w/$workspaceId',
-              params: { workspaceId },
-              search: next === DEFAULT_PERIOD ? {} : { period: next as Period },
-              replace: true,
-            })
+            const chosen: Period = next
+            if (section === 'home') {
+              void navigate({ to: '/w/$workspaceId', params: { workspaceId }, search: { period: chosen }, replace: true })
+            } else {
+              void navigate({
+                to: '/w/$workspaceId/analytics',
+                params: { workspaceId },
+                search: (previous) => ({ ...previous, period: chosen }),
+                replace: true,
+              })
+            }
           }}
         >
           {PERIODS.map((option) => (

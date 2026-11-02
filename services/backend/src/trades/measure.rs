@@ -186,3 +186,25 @@ pub fn unrealized(trade: &Trade, price: Decimal) -> Decimal {
         })
         .sum()
 }
+
+/// Exactly two decimals, so totals read the same everywhere.
+pub fn money(value: Decimal) -> Decimal {
+    let mut value = value.round_dp(2);
+    value.rescale(2);
+    value
+}
+
+/// Dollars an initial stop put at risk: |entry − stop| × size × multiplier.
+pub fn stop_risk(
+    avg_entry: Decimal,
+    stop: Decimal,
+    quantity: Decimal,
+    multiplier: Decimal,
+) -> Decimal {
+    (avg_entry - stop).abs() * quantity * multiplier
+}
+
+/// R-multiple: net P&L over the dollars at risk; none without a risk.
+pub fn r_multiple(net: Decimal, risk: Decimal) -> Option<Decimal> {
+    (!risk.is_zero()).then(|| (net / risk).round_dp(4))
+}

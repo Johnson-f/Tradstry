@@ -23,6 +23,7 @@ import { Route as AuthenticatedBrokerageConnectionsRouteImport } from './routes/
 import { Route as AuthenticatedWWorkspaceIdRouteRouteImport } from './routes/_authenticated/w/$workspaceId/route'
 import { Route as AuthenticatedBrokerageOauthCallbackRouteImport } from './routes/_authenticated/brokerage/oauth.callback'
 import { Route as AuthenticatedWWorkspaceIdIndexRouteImport } from './routes/_authenticated/w/$workspaceId/index'
+import { Route as AuthenticatedWWorkspaceIdAnalyticsRouteImport } from './routes/_authenticated/w/$workspaceId/analytics'
 import { Route as AuthenticatedWWorkspaceIdJournalIndexRouteImport } from './routes/_authenticated/w/$workspaceId/journal/index'
 import { Route as AuthenticatedWWorkspaceIdJournalTradeIdRouteImport } from './routes/_authenticated/w/$workspaceId/journal/$tradeId'
 
@@ -101,6 +102,12 @@ const AuthenticatedWWorkspaceIdIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
   } as any)
+const AuthenticatedWWorkspaceIdAnalyticsRoute =
+  AuthenticatedWWorkspaceIdAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AuthenticatedWWorkspaceIdRouteRoute,
+  } as any)
 const AuthenticatedWWorkspaceIdJournalIndexRoute =
   AuthenticatedWWorkspaceIdJournalIndexRouteImport.update({
     id: '/journal/',
@@ -127,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/brokerage/': typeof AuthenticatedBrokerageIndexRoute
   '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/w/$workspaceId/analytics': typeof AuthenticatedWWorkspaceIdAnalyticsRoute
   '/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
   '/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
   '/w/$workspaceId/journal/': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
@@ -143,6 +151,7 @@ export interface FileRoutesByTo {
   '/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/brokerage': typeof AuthenticatedBrokerageIndexRoute
   '/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/w/$workspaceId/analytics': typeof AuthenticatedWWorkspaceIdAnalyticsRoute
   '/w/$workspaceId': typeof AuthenticatedWWorkspaceIdIndexRoute
   '/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
   '/w/$workspaceId/journal': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
@@ -162,6 +171,7 @@ export interface FileRoutesById {
   '/_authenticated/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/_authenticated/brokerage/': typeof AuthenticatedBrokerageIndexRoute
   '/_authenticated/brokerage/oauth/callback': typeof AuthenticatedBrokerageOauthCallbackRoute
+  '/_authenticated/w/$workspaceId/analytics': typeof AuthenticatedWWorkspaceIdAnalyticsRoute
   '/_authenticated/w/$workspaceId/': typeof AuthenticatedWWorkspaceIdIndexRoute
   '/_authenticated/w/$workspaceId/journal/$tradeId': typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
   '/_authenticated/w/$workspaceId/journal/': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/brokerage/connections'
     | '/brokerage/'
     | '/brokerage/oauth/callback'
+    | '/w/$workspaceId/analytics'
     | '/w/$workspaceId/'
     | '/w/$workspaceId/journal/$tradeId'
     | '/w/$workspaceId/journal/'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/brokerage/connections'
     | '/brokerage'
     | '/brokerage/oauth/callback'
+    | '/w/$workspaceId/analytics'
     | '/w/$workspaceId'
     | '/w/$workspaceId/journal/$tradeId'
     | '/w/$workspaceId/journal'
@@ -215,6 +227,7 @@ export interface FileRouteTypes {
     | '/_authenticated/brokerage/connections'
     | '/_authenticated/brokerage/'
     | '/_authenticated/brokerage/oauth/callback'
+    | '/_authenticated/w/$workspaceId/analytics'
     | '/_authenticated/w/$workspaceId/'
     | '/_authenticated/w/$workspaceId/journal/$tradeId'
     | '/_authenticated/w/$workspaceId/journal/'
@@ -328,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceIdIndexRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
     }
+    '/_authenticated/w/$workspaceId/analytics': {
+      id: '/_authenticated/w/$workspaceId/analytics'
+      path: '/analytics'
+      fullPath: '/w/$workspaceId/analytics'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceIdAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceIdRouteRoute
+    }
     '/_authenticated/w/$workspaceId/journal/': {
       id: '/_authenticated/w/$workspaceId/journal/'
       path: '/journal'
@@ -346,6 +366,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedWWorkspaceIdRouteRouteChildren {
+  AuthenticatedWWorkspaceIdAnalyticsRoute: typeof AuthenticatedWWorkspaceIdAnalyticsRoute
   AuthenticatedWWorkspaceIdIndexRoute: typeof AuthenticatedWWorkspaceIdIndexRoute
   AuthenticatedWWorkspaceIdJournalTradeIdRoute: typeof AuthenticatedWWorkspaceIdJournalTradeIdRoute
   AuthenticatedWWorkspaceIdJournalIndexRoute: typeof AuthenticatedWWorkspaceIdJournalIndexRoute
@@ -353,6 +374,8 @@ interface AuthenticatedWWorkspaceIdRouteRouteChildren {
 
 const AuthenticatedWWorkspaceIdRouteRouteChildren: AuthenticatedWWorkspaceIdRouteRouteChildren =
   {
+    AuthenticatedWWorkspaceIdAnalyticsRoute:
+      AuthenticatedWWorkspaceIdAnalyticsRoute,
     AuthenticatedWWorkspaceIdIndexRoute: AuthenticatedWWorkspaceIdIndexRoute,
     AuthenticatedWWorkspaceIdJournalTradeIdRoute:
       AuthenticatedWWorkspaceIdJournalTradeIdRoute,

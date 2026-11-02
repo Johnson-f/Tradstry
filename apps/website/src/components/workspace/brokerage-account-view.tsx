@@ -43,13 +43,13 @@ export function BrokerageAccountView({ workspaceId, sync }: { workspaceId: strin
             </TabsTrigger>
           </TabsList>
           <TabsContent value="holdings">
-            <HoldingsView workspaceId={workspaceId} live={live} />
+            <HoldingsView workspaceId={workspaceId} />
           </TabsContent>
           <TabsContent value="activity">
-            <ActivityView workspaceId={workspaceId} live={live} />
+            <ActivityView workspaceId={workspaceId} />
           </TabsContent>
           <TabsContent value="orders">
-            <OrdersView workspaceId={workspaceId} live={live} />
+            <OrdersView workspaceId={workspaceId} />
           </TabsContent>
         </Tabs>
       ) : (
@@ -95,8 +95,8 @@ function EmptyData({ title, description }: { title: string; description: string 
 const tableClass = dataTableClass
 const numeric = numericCell
 
-function HoldingsView({ workspaceId, live }: { workspaceId: string; live: boolean }) {
-  const holdings = useHoldings(workspaceId, true, live)
+function HoldingsView({ workspaceId }: { workspaceId: string }) {
+  const holdings = useHoldings(workspaceId, true)
   if (holdings.isPending) return <Skeleton className="h-64 rounded-xl" aria-label="Loading holdings" />
   if (holdings.isError && !holdings.data)
     return (
@@ -215,9 +215,9 @@ function HoldingsView({ workspaceId, live }: { workspaceId: string; live: boolea
   )
 }
 
-function ActivityView({ workspaceId, live }: { workspaceId: string; live: boolean }) {
+function ActivityView({ workspaceId }: { workspaceId: string }) {
   const [page, setPage] = useState(0)
-  const activities = useActivities(workspaceId, page, true, live)
+  const activities = useActivities(workspaceId, page, true)
   if (activities.isPending) return <Skeleton className="h-64 rounded-xl" aria-label="Loading activity" />
   if (activities.isError && !activities.data)
     return (
@@ -338,8 +338,8 @@ function ActivityView({ workspaceId, live }: { workspaceId: string; live: boolea
   )
 }
 
-function OrdersView({ workspaceId, live }: { workspaceId: string; live: boolean }) {
-  const orders = useOrders(workspaceId, live)
+function OrdersView({ workspaceId }: { workspaceId: string }) {
+  const orders = useOrders(workspaceId)
   if (orders.isPending) return <Skeleton className="h-64 rounded-xl" aria-label="Loading orders" />
   if (orders.isError && !orders.data)
     return (

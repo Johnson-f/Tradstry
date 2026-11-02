@@ -93,7 +93,24 @@ The rules for labels:
 
 Labels hang off the annotation, so they follow it through rebuilds.
 
+**Behavior.** An entry can also record how the trade was taken. Every field is optional, and null means "not recorded", which is different from "no":
+
+- conviction before entry, 1 to 5;
+- market regime: trending, choppy, ranging or volatile;
+- whether it was planned before the open;
+- whether it was a revenge trade;
+- whether it broke the trader's 30-minute rule;
+- rule adherence, 1 to 5.
+
+Statistics break results down by each field. A trade without that field recorded is left out of its breakdown.
+
 **Risk.** The risk on a trade is the `planned_risk` dollar amount when set. Otherwise it is |avg entry − `initial_stop`| × max size × multiplier. R-multiple = net ÷ risk.
+
+**Plans.** A trade plan (`trade_plans`) records what the trader means to do before a trade: symbol, long or short, entry, stop, an optional target, and the dollars they will risk. A plan can split its risk across up to ten entries (tranches), each taking a percent of the risk; the percents add up to 100. Each entry's size is its share of the risk ÷ (|entry − stop| × multiplier), rounded down to whole shares or contracts. Plans cover stocks and options only. The trader can round up instead, which never leaves an entry at zero but can risk a little more than chosen. The plan's `entry` is the size-weighted average of its entries. Percent risk is converted to dollars in the app before saving. It uses the workspace's balance: the latest brokerage snapshot (dollar cash plus position value) for a linked workspace, otherwise the balance the trader typed in. Each workspace also has a calculator rule: a default percent risked per trade, and a maximum stop distance (percent of the entry) past which the calculator warns.
+
+A plan is open until the trader links it to a trade or skips it. Linking is always manual: the journal suggests open or skipped plans with the same symbol and direction, and linking copies the plan's stop and risk onto the trade's journal entry. A trade carries at most one plan. Like an annotation, a linked plan keeps the trade's anchor fill and follows it through rebuilds; if no trade holds that fill, the plan goes back to open. Unlinking reopens the plan and leaves the copied stop and risk on the trade.
+
+Statistics compare trades from a plan with trades without one, and count the skipped plans made in the period.
 
 **Suggested stop.** When a brokerage trade has no initial stop, the API suggests the trigger price of the earliest protective stop order that matches:
 
@@ -110,6 +127,14 @@ The suggestion is only a hint: it is never saved unless the user accepts it.
 - an edge × entry-tactic matrix, where a trade counts in every pair it has;
 - the net with and without each mistake;
 - how many closed trades have no edge.
+
+Statistics live in their own backend module, `services/backend/src/analytics/`, and are served by the `tradeStats` query. They count closed, economic, top-level trades closed in the requested window. Times are New York time:
+
+- **Sessions** are by when a trade opened: pre-market 4:00–9:30, first hour 9:30–10:30, midday 10:30–15:00, last hour 15:00–16:00, after hours 16:00–20:00, and overnight otherwise.
+- **Months and days** are by when a trade closed.
+- **After a win or a loss** looks at the last trade that closed earlier the same day, before this one opened.
+- **Position size** is what the entries cost; trades with an unknown cost are grouped as "Unknown".
+- **R ranges** include their lower bound, and trades without a risk are left out.
 
 ## Wash sales and tax lots
 

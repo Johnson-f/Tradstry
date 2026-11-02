@@ -80,7 +80,7 @@ export function SignInShell({ children }: { children: ReactNode }) {
         href="https://www.tradstry.com"
         aria-label="Tradstry home"
       >
-        <img className="h-9 w-10 opacity-30 grayscale" src="/favicon.svg" width="40" height="36" alt="" />
+        <img className="size-9 rounded-lg dark:ring-1 dark:ring-white/15" src="/favicon.svg" width="36" height="36" alt="" />
       </a>
 
       <main className="mt-[max(150px,22svh)] w-[calc(100%-40px)] max-w-100 shrink-0 pb-16 text-center max-[600px]:mt-[max(140px,20svh)]">

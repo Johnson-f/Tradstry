@@ -10,6 +10,8 @@ test('the breadcrumb names the section', () => {
   expect(pageTitle('/w/0192')).toBe('Dashboard')
   expect(pageTitle('/w/0192/')).toBe('Dashboard')
   expect(pageTitle('/w/0192/journal')).toBe('Journal')
+  expect(pageTitle('/w/0192/analytics')).toBe('Analytics')
+  expect(pageTitle('/w/0192/analytics/')).toBe('Analytics')
   expect(pageTitle('/brokerage/connections')).toBe('Journal')
   expect(pageTitle('/settings/workspaces')).toBe('Settings')
   expect(pageTitle('/settings-other')).toBe('Journal')
@@ -43,6 +45,15 @@ test('the sidebar keeps the selected workspace between Home and Journal', () => 
     to: '/w/$workspaceId',
     params: { workspaceId: 'main' },
   })
+})
+
+test('switching workspace keeps Analytics selected', () => {
+  expect(workspaceSection('/w/main/analytics')).toBe('analytics')
+  expect(workspaceLocation('second', 'analytics')).toEqual({
+    to: '/w/$workspaceId/analytics',
+    params: { workspaceId: 'second' },
+  })
+  expect(workspaceLocation(undefined, 'analytics')).toEqual({ to: '/brokerage' })
 })
 
 test('Journal without a selected workspace uses its entry route instead of Home', () => {

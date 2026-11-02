@@ -1,6 +1,6 @@
 import { Check, LoaderCircle, PencilLine, SlidersHorizontal } from 'lucide-react'
 import { useBlocker } from '@tanstack/react-router'
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,6 +15,8 @@ import { Input } from '@/components/ui/input'
 import { GraphQLRequestError } from '@/lib/client/api'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { PlanLink } from '@/components/plans/plan-link'
+import { BehaviorFields } from '@/components/trades/behavior-fields'
 import { LabelDot, LabelMultiSelect } from '@/components/trades/label-picker'
 import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
 import { TradeNoteEditor } from '@/components/trades/trade-note-editor'
@@ -28,6 +30,7 @@ import {
   type TradeSummary,
   annotationDraft,
   annotationInput,
+  behaviorChips,
   money,
   previewR,
   price,
@@ -107,13 +110,16 @@ export function AnnotationEditor({
   const [editorProblem, setEditorProblem] = useState<string | null>(null)
   const [failedKey, setFailedKey] = useState<string | null>(null)
   const [reloading, setReloading] = useState(false)
+  const [remoteChanged, setRemoteChanged] = useState(false)
   const catalog = useJournalLabels()
   const saved = annotationDraft(annotation)
   const key = draftKey(draft)
   const dirty = key !== base.key
   const input = annotationInput(draft)
   const invalid = editorProblem ?? noteDocumentError(draft.notes) ?? (input.ok ? null : input.message)
-  const conflict = save.error instanceof GraphQLRequestError && save.error.code === 'CONFLICT'
+  const saveConflict = save.error instanceof GraphQLRequestError && save.error.code === 'CONFLICT'
+  // Another device saved a newer version: stop autosaving over it until it is loaded.
+  const conflict = saveConflict || remoteChanged
   const risk = riskDollars(trade, draft)
   const r = previewR(trade.net, risk)
   const savedLabels: LabelRef[] = annotation
@@ -187,19 +193,39 @@ export function AnnotationEditor({
     enableBeforeUnload: dirty || save.isPending || reloading,
   })
 
+  const applyAnnotation = (fresh: TradeAnnotation | null) => {
+    const next = annotationDraft(fresh)
+    const nextBase = { key: draftKey(next), version: fresh?.version ?? null, savedAt: fresh?.updatedAt ?? null }
+    latest.current.draft = next
+    latest.current.key = nextBase.key
+    latest.current.base = nextBase
+    latest.current.conflict = false
+    setDraft(next)
+    setInitialNotes(next.notes)
+    setEditorRevision((revision) => revision + 1)
+    setBase(nextBase)
+    setFailedKey(null)
+    setEditorProblem(null)
+    setProblem(null)
+    setRemoteChanged(false)
+    save.reset()
+  }
+
+  // Live updates refetch the trade when another device saves this entry. With
+  // no local edits, show theirs at once; otherwise offer it instead of
+  // overwriting either side. An older version arriving late is ignored.
+  const remoteVersion = annotation?.version ?? null
+  const onSavedVersion = useEffectEvent(() => {
+    if (remoteVersion === null || remoteVersion <= (base.version ?? 0) || pending.current || reloading) return
+    if (latest.current.key === latest.current.base.key) applyAnnotation(annotation)
+    else setRemoteChanged(true)
+  })
+  useEffect(() => onSavedVersion(), [remoteVersion, base.version])
+
   const reload = async () => {
     setReloading(true)
     try {
-      const fresh = await reloadAnnotation()
-      const next = annotationDraft(fresh)
-      setDraft(next)
-      setInitialNotes(next.notes)
-      setEditorRevision((revision) => revision + 1)
-      setBase({ key: draftKey(next), version: fresh?.version ?? null, savedAt: fresh?.updatedAt ?? null })
-      setFailedKey(null)
-      setEditorProblem(null)
-      setProblem(null)
-      save.reset()
+      applyAnnotation(await reloadAnnotation())
     } catch {
       setProblem('Could not load the latest note. Your changes are still here. Try loading it again.')
     } finally {
@@ -214,12 +240,14 @@ export function AnnotationEditor({
         ? [{ id: label.id, kind: label.kind, name: label.name, color: label.color, archived: label.archived }]
         : []
     })
+  const chips = behaviorChips(draft.behavior)
   const hasDetails =
     draft.edgeIds.length ||
     draft.entryTacticIds.length ||
     draft.tagIds.length ||
     draft.mistakeIds.length ||
-    risk !== null
+    risk !== null ||
+    chips.length
 
   return (
     <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -267,6 +295,14 @@ export function AnnotationEditor({
                     {r !== null && <span className="ml-1.5 text-muted-foreground">· {rMultiple(String(r))}</span>}
                   </li>
                 )}
+                {chips.map((chip) => (
+                  <li
+                    key={chip}
+                    className="inline-flex h-6 items-center rounded-md bg-muted/70 px-2 text-xs tabular-nums dark:bg-white/8"
+                  >
+                    {chip}
+                  </li>
+                ))}
               </ul>
             ) : (
               suggestedStop && (
@@ -282,6 +318,11 @@ export function AnnotationEditor({
                 </p>
               )
             )}
+            <PlanLink
+              workspaceId={workspaceId}
+              trade={trade}
+              onLink={(plan) => set({ initialStop: plan.stop, plannedRisk: plan.risk })}
+            />
             <div className="mt-6">
               <h3 className="text-2xl font-semibold tracking-tight">Trade Notes</h3>
               <TradeNoteEditor
@@ -295,14 +336,16 @@ export function AnnotationEditor({
           </fieldset>
         </ScrollArea>
         <footer className="shrink-0 border-t border-border/60 px-6 py-3">
-          {(invalid || problem || save.error) && (
+          {(invalid || problem || save.error || remoteChanged) && (
             <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-destructive">
               <span>
                 {invalid ??
                   problem ??
-                  (conflict
+                  (saveConflict
                     ? 'This note changed on another device, so your latest changes were not saved.'
-                    : tradeErrorMessage(save.error, 'Could not save your changes.'))}
+                    : remoteChanged
+                      ? 'This note changed on another device. Your edits here are paused until you load it.'
+                      : tradeErrorMessage(save.error, 'Could not save your changes.'))}
               </span>
               {!invalid && (!problem || conflict) && (
                 <Button
@@ -347,7 +390,7 @@ export function AnnotationEditor({
         <DialogHeader className="pr-6">
           <DialogTitle className="text-lg font-semibold">Trade Detail</DialogTitle>
           <DialogDescription className="text-xs leading-5">
-            Label the trade and set its initial risk. Changes save automatically.{' '}
+            Label the trade, set its initial risk and note how you traded it. Changes save automatically.{' '}
             <ManageLabelsDialog triggerStyle="link" />
           </DialogDescription>
         </DialogHeader>
@@ -484,6 +527,20 @@ export function AnnotationEditor({
                     }`}
               </p>
             </div>
+            <section aria-labelledby={`${id}-behavior`} className="space-y-3 border-t pt-4 sm:col-span-2">
+              <div>
+                <h3 id={`${id}-behavior`} className="text-sm font-medium">
+                  How you traded it
+                </h3>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Optional. Analytics compares your results by each answer. Pick an answer again to clear it.
+                </p>
+              </div>
+              <BehaviorFields
+                value={draft.behavior}
+                onChange={(change) => set({ behavior: { ...latest.current.draft.behavior, ...change } })}
+              />
+            </section>
           </fieldset>
           {(problem || !input.ok) && (
             <p role="alert" className="text-xs text-destructive">

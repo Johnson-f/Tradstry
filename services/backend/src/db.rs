@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use sqlx::PgPool;
-use sqlx::migrate::Migrator;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, migrate::Migrator, postgres::PgPoolOptions};
 
 pub static MIGRATOR: Migrator = sqlx::migrate!();
 

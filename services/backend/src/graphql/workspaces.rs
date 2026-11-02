@@ -3,8 +3,10 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::errors::{coded, to_graphql};
-use super::user::current_user;
+use super::{
+    errors::{coded, to_graphql},
+    user::current_user,
+};
 use crate::workspace::{self, Workspace as WorkspaceRow};
 
 #[derive(SimpleObject)]

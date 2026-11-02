@@ -6,15 +6,17 @@ use rust_decimal_macros::dec;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use tradstry::trades::decisions::{Decision, DecisionKind, OutcomeStatus};
-use tradstry::trades::instrument::Alias;
-use tradstry::trades::measure;
-use tradstry::trades::model::{
-    ClosureKind, Direction, FillRole, Instrument, TaxStatus, Term, Trade, TradeKind, TradeStatus,
-    WorkspaceInfo,
+use tradstry::trades::{
+    EngineInput, EngineOutput, compute,
+    decisions::{Decision, DecisionKind, OutcomeStatus},
+    instrument::Alias,
+    measure,
+    model::{
+        ClosureKind, Direction, FillRole, Instrument, TaxStatus, Term, Trade, TradeKind,
+        TradeStatus, WorkspaceInfo,
+    },
+    normalize::{ActivityRow, ManualFill, OpeningPosition},
 };
-use tradstry::trades::normalize::{ActivityRow, ManualFill, OpeningPosition};
-use tradstry::trades::{EngineInput, EngineOutput, compute};
 
 const CASH: Uuid = Uuid::from_u128(1);
 const MARGIN: Uuid = Uuid::from_u128(2);

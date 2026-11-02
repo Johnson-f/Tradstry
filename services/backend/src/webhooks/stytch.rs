@@ -1,13 +1,13 @@
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use serde_json::Value;
 use tracing::{error, warn};
 
 use super::svix::verify_svix_signature;
-use crate::app::AppState;
-use crate::users;
-use crate::users::account;
+use crate::{app::AppState, users, users::account};
 
 /// Stytch names the event in the Svix envelope, not the body. The body of both
 /// `direct.user.delete` and `dashboard.user.delete` is a user DELETE.

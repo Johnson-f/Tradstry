@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
 const bootstrap = html.match(/<script>([\s\S]*?)<\/script>/)?.[1]
 
-function bootTheme(savedTheme: string | null, blocked = false) {
+function bootTheme(savedTheme: string | null, blocked = false, systemDark = false) {
   const classes = new Set<string>()
   runInNewContext(bootstrap!, {
     document: {
@@ -17,6 +17,10 @@ function bootTheme(savedTheme: string | null, blocked = false) {
           },
         },
       },
+    },
+    matchMedia(query: string) {
+      expect(query).toBe('(prefers-color-scheme: dark)')
+      return { matches: systemDark }
     },
     localStorage: {
       getItem(key: string) {
@@ -41,4 +45,10 @@ test('saved appearance is applied before styles and the application load', () =>
 test('unavailable or invalid stored appearance still boots in light mode', () => {
   expect(bootTheme('invalid')).toBe(false)
   expect(bootTheme(null, true)).toBe(false)
+})
+
+test('system appearance follows the operating system', () => {
+  expect(bootTheme('system', false, true)).toBe(true)
+  expect(bootTheme('system', false, false)).toBe(false)
+  expect(bootTheme('light', false, true)).toBe(false)
 })

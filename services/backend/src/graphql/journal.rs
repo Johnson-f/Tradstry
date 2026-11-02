@@ -3,12 +3,16 @@ use async_graphql::{
 };
 use sqlx::PgPool;
 
-use super::brokerage::require_web_session;
-use super::errors::{coded, to_graphql};
-use super::user::current_user;
-use super::workspaces::parse_id;
-use crate::trades::labels::{self, Label, LabelInput, LabelKind};
-use crate::trades::service::TradeError;
+use super::{
+    brokerage::require_web_session,
+    errors::{coded, to_graphql},
+    user::current_user,
+    workspaces::parse_id,
+};
+use crate::trades::{
+    labels::{self, Label, LabelInput, LabelKind},
+    service::TradeError,
+};
 
 fn label_error(error: TradeError) -> Error {
     match error {

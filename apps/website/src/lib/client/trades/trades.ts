@@ -2,13 +2,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useCallback } from 'react'
 import { graphql } from '@/lib/client/backend'
 import { useBrokerageStatus, useSyncStatus } from '@/lib/client/brokerage/brokerage'
-import type { Decimal, LabelRef, OptionDetail, TradeAnnotation, TradeIssue, TradeSummary } from './trades-model'
+import type { Decimal, OptionDetail, TradeAnnotation, TradeIssue, TradeSummary } from './trades-model'
 import { loadAllTrades, type TradePage } from './trade-list'
 
 const OPTION_FIELDS = 'underlying expiry right strike multiplier'
 export const LABEL_REF = 'id kind name color archived'
 const ANNOTATION_FIELDS = `id tradeId notes edges { ${LABEL_REF} } entryTactics { ${LABEL_REF} } tags { ${LABEL_REF} }
-  mistakes { ${LABEL_REF} } initialStop plannedRisk version updatedAt orphaned`
+  mistakes { ${LABEL_REF} } initialStop plannedRisk
+  behavior { conviction marketRegime plannedPreMarket revengeTrade brokeThirtyMinuteRule ruleAdherence }
+  version updatedAt orphaned`
 export const TRADE_FIELDS = `id kind workspaceId parentId children instrumentKey assetClass symbol underlying
   option { ${OPTION_FIELDS} } direction status openedAt closedAt maxQuantity openQuantity avgEntry avgExit
   gross fees net income returnPct holdingSeconds fillCount nonEconomic related strategyLabel
@@ -38,19 +40,24 @@ export interface TradeFilter {
 
 export type TradeSort = 'OPENED_DESC' | 'OPENED_ASC' | 'NET_DESC' | 'NET_ASC'
 
+/** Every trade in a workspace that matches the filter, loaded page by page. */
+export function fetchTrades(workspaceId: string, filter: TradeFilter, sort: TradeSort, signal?: AbortSignal) {
+  return loadAllTrades(async (offset, limit) => {
+    signal?.throwIfAborted()
+    const data = await graphql<{ trades: TradePage }>(
+      `query Trades($w: ID!, $filter: TradeFilterInput!, $sort: TradeSort!, $offset: Int!, $limit: Int!) {
+        trades(workspaceId: $w, filter: $filter, sort: $sort, offset: $offset, limit: $limit) { total items { ${TRADE_FIELDS} } }
+      }`,
+      { w: workspaceId, filter, sort, offset, limit },
+    )
+    return data.trades
+  })
+}
+
 export function useTrades(workspaceId: string, filter: TradeFilter, sort: TradeSort) {
   return useQuery({
     queryKey: [...TRADES_KEY, workspaceId, 'list', filter, sort],
-    queryFn: ({ signal }) => loadAllTrades(async (offset, limit) => {
-      signal.throwIfAborted()
-      const data = await graphql<{ trades: TradePage }>(
-        `query Trades($w: ID!, $filter: TradeFilterInput!, $sort: TradeSort!, $offset: Int!, $limit: Int!) {
-          trades(workspaceId: $w, filter: $filter, sort: $sort, offset: $offset, limit: $limit) { total items { ${TRADE_FIELDS} } }
-        }`,
-        { w: workspaceId, filter, sort, offset, limit },
-      )
-      return data.trades
-    }),
+    queryFn: ({ signal }) => fetchTrades(workspaceId, filter, sort, signal),
     placeholderData: keepPreviousData,
   })
 }
@@ -206,111 +213,6 @@ export function useTradeAttention(workspaceId: string) {
         { w: workspaceId },
       ),
     select: (data) => data.tradeAttention,
-  })
-}
-
-export interface Bucket {
-  key: string
-  trades: number
-  wins: number
-  losses: number
-  net: Decimal
-  winRate: Decimal | null
-  labelId: string | null
-  color: string | null
-  expectancy: Decimal | null
-  expectancyR: Decimal | null
-}
-
-export interface EdgeTacticCell {
-  edge: LabelRef | null
-  entryTactic: LabelRef | null
-  trades: number
-  wins: number
-  losses: number
-  net: Decimal
-  winRate: Decimal | null
-  expectancy: Decimal | null
-}
-
-export interface MistakeCost {
-  mistake: LabelRef
-  trades: number
-  net: Decimal
-  expectancyWith: Decimal | null
-  expectancyWithout: Decimal | null
-}
-
-export interface EquityPoint {
-  /** A New York trading day, `YYYY-MM-DD`. */
-  day: string
-  net: Decimal
-  cumulative: Decimal
-  trades: number
-  wins: number
-  losses: number
-}
-
-export interface TradeStats {
-  trades: number
-  wins: number
-  losses: number
-  breakeven: number
-  winRate: Decimal | null
-  net: Decimal
-  grossProfit: Decimal
-  grossLoss: Decimal
-  averageWin: Decimal | null
-  averageLoss: Decimal | null
-  largestWin: Decimal | null
-  largestLoss: Decimal | null
-  profitFactor: Decimal | null
-  expectancy: Decimal | null
-  expectancyR: Decimal | null
-  rTrades: number
-  averageHoldSeconds: number | null
-  maxDrawdown: Decimal
-  currentDrawdown: Decimal
-  longestWinStreak: number
-  longestLossStreak: number
-  currentStreak: number
-  equity: EquityPoint[]
-  bySymbol: Bucket[]
-  byDirection: Bucket[]
-  byWeekday: Bucket[]
-  byHour: Bucket[]
-  byHold: Bucket[]
-  byEdge: Bucket[]
-  byEntryTactic: Bucket[]
-  byTag: Bucket[]
-  byMistake: Bucket[]
-  edgeTactic: EdgeTacticCell[]
-  mistakeCosts: MistakeCost[]
-  untagged: number
-}
-
-const BUCKET = 'key trades wins losses net winRate labelId color expectancy expectancyR'
-
-/** Closed-trade statistics for a workspace, or every workspace when it is null. */
-export function useTradeStats(workspaceId: string | null, from: string | null, to: string | null = null) {
-  return useQuery({
-    queryKey: [...TRADES_KEY, workspaceId ?? 'all', 'stats', from, to],
-    queryFn: () =>
-      graphql<{ tradeStats: TradeStats }>(
-        `query TradeStats($w: ID, $from: DateTime, $to: DateTime) { tradeStats(workspaceId: $w, from: $from, to: $to) {
-          trades wins losses breakeven winRate net grossProfit grossLoss averageWin averageLoss largestWin largestLoss
-          profitFactor expectancy expectancyR rTrades averageHoldSeconds maxDrawdown currentDrawdown longestWinStreak
-          longestLossStreak currentStreak equity { day net cumulative trades wins losses }
-          bySymbol { ${BUCKET} } byDirection { ${BUCKET} } byWeekday { ${BUCKET} } byHour { ${BUCKET} }
-          byHold { ${BUCKET} } byEdge { ${BUCKET} } byEntryTactic { ${BUCKET} } byTag { ${BUCKET} } byMistake { ${BUCKET} }
-          edgeTactic { edge { ${LABEL_REF} } entryTactic { ${LABEL_REF} } trades wins losses net winRate expectancy }
-          mistakeCosts { mistake { ${LABEL_REF} } trades net expectancyWith expectancyWithout }
-          untagged
-        } }`,
-        { w: workspaceId, from, to },
-      ),
-    select: (data) => data.tradeStats,
-    placeholderData: keepPreviousData,
   })
 }
 

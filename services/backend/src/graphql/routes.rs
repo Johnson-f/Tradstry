@@ -1,17 +1,25 @@
-use async_graphql::http::{ALL_WEBSOCKET_PROTOCOLS, GraphiQLSource};
-use async_graphql::{Data, Error};
+use async_graphql::{
+    Data, Error,
+    http::{ALL_WEBSOCKET_PROTOCOLS, GraphiQLSource},
+};
 use async_graphql_axum::{GraphQLProtocol, GraphQLRequest, GraphQLResponse, GraphQLWebSocket};
-use axum::extract::State;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::response::{Html, IntoResponse, Response};
+use axum::{
+    extract::{
+        State,
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
+    },
+    response::{Html, IntoResponse, Response},
+};
 use chrono::{DateTime, Utc};
 use futures_channel::mpsc;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::sync::watch;
 
-use crate::app::AppState;
-use crate::auth::{AuthClaims, AuthRejection, TokenVerifier};
+use crate::{
+    app::AppState,
+    auth::{AuthClaims, AuthRejection, TokenVerifier},
+};
 
 /// Sent when the session behind a subscription connection ends. graphql-ws
 /// clients retry codes outside their fatal list, and the retry re-runs

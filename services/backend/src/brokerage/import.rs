@@ -3,8 +3,7 @@
 //! background, transactions once a day (they arrive a day late anyway), with
 //! webhooks pulling work earlier when SnapTrade says there is new data.
 
-use std::sync::Arc;
-use std::time::Duration as StdDuration;
+use std::{sync::Arc, time::Duration as StdDuration};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -13,10 +12,12 @@ use sqlx::PgConnection;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::Brokerage;
-use super::history::{self, ImportMode};
-use super::session::{Session, SessionError};
-use super::store;
+use super::{
+    Brokerage,
+    history::{self, ImportMode},
+    session::{Session, SessionError},
+    store,
+};
 use crate::snaptrade::{Activity, ActivityQuery, Order};
 
 const PAGE_SIZE: u64 = 1000;

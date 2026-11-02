@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use base64::Engine as _;
-use jsonwebtoken::errors::ErrorKind;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, errors::ErrorKind};
 use serde_json::{Map, Value};
 
-use super::claims::{AuthClaims, STYTCH_SESSION_CLAIM, TokenKind};
-use super::jwks::{HttpJwksProvider, JwksError, JwksProvider};
-use super::stytch;
+use super::{
+    claims::{AuthClaims, STYTCH_SESSION_CLAIM, TokenKind},
+    jwks::{HttpJwksProvider, JwksError, JwksProvider},
+    stytch,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -21,8 +22,17 @@ pub enum AuthError {
     Unavailable(String),
 }
 
-fn invalid() -> AuthError {
-    AuthError::Unauthorized("Error: Invalid JWT!".to_string())
+fn invalid(reason: impl std::fmt::Display) -> AuthError {
+    AuthError::Unauthorized(format!("Error: Invalid JWT! {reason}"))
+}
+
+/// Stytch's Authenticate Session API, for session JWTs that fail local
+/// verification only because they expired or were signed with a key this
+/// server has not fetched yet. Stytch's own backend SDKs fall back the same way.
+#[async_trait::async_trait]
+pub trait SessionAuthenticator: Send + Sync {
+    /// A fresh session JWT when Stytch still considers the session active.
+    async fn authenticate_session_jwt(&self, jwt: &str) -> Result<String, AuthError>;
 }
 
 /// The `iss` strings Stytch signs with, the audiences a token may name, and
@@ -62,6 +72,22 @@ impl IssuerConfig {
         validation
     }
 
+    fn claims(&self, mut claims: Map<String, Value>) -> Result<AuthClaims, AuthError> {
+        let sub =
+            take_string(&mut claims, "sub").ok_or_else(|| invalid("the token has no subject"))?;
+        let iss =
+            take_string(&mut claims, "iss").ok_or_else(|| invalid("the token has no issuer"))?;
+        let kind = self
+            .classify(&claims)
+            .ok_or_else(|| invalid("the token is neither a session nor a connected app token"))?;
+        Ok(AuthClaims {
+            sub,
+            iss,
+            kind,
+            other: claims,
+        })
+    }
+
     fn classify(&self, other: &Map<String, Value>) -> Option<TokenKind> {
         if other.contains_key(STYTCH_SESSION_CLAIM) {
             return Some(TokenKind::Session);
@@ -77,12 +103,29 @@ impl IssuerConfig {
 #[derive(Clone)]
 pub struct TokenVerifier {
     issuers: Arc<Vec<IssuerConfig>>,
+    remote: Option<Arc<dyn SessionAuthenticator>>,
+}
+
+/// Why local verification failed, and whether Stytch could still vouch for the token.
+struct LocalFailure {
+    error: AuthError,
+    recoverable: bool,
+}
+
+impl From<AuthError> for LocalFailure {
+    fn from(error: AuthError) -> Self {
+        Self {
+            error,
+            recoverable: false,
+        }
+    }
 }
 
 impl TokenVerifier {
     pub fn new(issuers: Vec<IssuerConfig>) -> Self {
         Self {
             issuers: Arc::new(issuers),
+            remote: None,
         }
     }
 
@@ -98,47 +141,107 @@ impl TokenVerifier {
         )])
     }
 
+    /// Falls back to Stytch's API for session JWTs that are expired or signed
+    /// with a key this server does not hold.
+    pub fn with_remote(mut self, remote: Arc<dyn SessionAuthenticator>) -> Self {
+        self.remote = Some(remote);
+        self
+    }
+
     pub async fn verify(&self, token: &str) -> Result<AuthClaims, AuthError> {
-        let header = decode_header(token).map_err(|_| invalid())?;
-        let kid = header.kid.clone().ok_or_else(invalid)?;
+        let failure = match self.verify_locally(token).await {
+            Ok(claims) => return Ok(claims),
+            Err(failure) => failure,
+        };
+        let Some(remote) = self.remote.as_ref().filter(|_| failure.recoverable) else {
+            return Err(failure.error);
+        };
+        let fresh = remote.authenticate_session_jwt(token).await?;
+        let claims = self.trusted_claims(&fresh)?;
+        tracing::info!(local = %failure.error, "Stytch vouched for a session JWT that failed local verification");
+        Ok(claims)
+    }
+
+    async fn verify_locally(&self, token: &str) -> Result<AuthClaims, LocalFailure> {
+        let header = decode_header(token).map_err(|_| invalid("the token is not a JWT"))?;
+        let kid = header
+            .kid
+            .clone()
+            .ok_or_else(|| invalid("the token names no signing key"))?;
         if header.alg != Algorithm::RS256 {
-            return Err(invalid());
+            return Err(invalid(format!("unexpected algorithm {:?}", header.alg)).into());
         }
-        let issuer = unverified_issuer(token).ok_or_else(invalid)?;
+        let issuer = unverified_issuer(token).ok_or_else(|| invalid("the token has no issuer"))?;
         let config = self
             .issuers
             .iter()
             .find(|config| config.issuers.contains(&issuer))
-            .ok_or_else(invalid)?;
+            .ok_or_else(|| {
+                AuthError::Unauthorized(format!("Error: Invalid JWT! untrusted issuer {issuer}"))
+            })?;
 
         let key = config.jwks.key(&kid).await.map_err(|error| match error {
-            JwksError::UnknownKey => invalid(),
+            JwksError::UnknownKey => LocalFailure {
+                error: invalid(format!("unknown signing key {kid} from {issuer}")),
+                recoverable: true,
+            },
             JwksError::Fetch(_) => {
-                AuthError::Unavailable("Error: Signing keys are unavailable".to_string())
+                AuthError::Unavailable("Error: Signing keys are unavailable".to_string()).into()
             }
         })?;
         if key.alg.as_deref().is_some_and(|alg| alg != "RS256") || key.kty != "RSA" {
-            return Err(invalid());
+            return Err(invalid(format!("signing key {kid} is not an RS256 key")).into());
         }
-        let decoding_key =
-            DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|_| invalid())?;
+        let decoding_key = DecodingKey::from_rsa_components(&key.n, &key.e)
+            .map_err(|_| invalid(format!("signing key {kid} is malformed")))?;
 
-        let mut claims = decode::<Map<String, Value>>(token, &decoding_key, &config.validation())
+        let claims = decode::<Map<String, Value>>(token, &decoding_key, &config.validation())
             .map_err(|error| match error.kind() {
-                ErrorKind::ExpiredSignature => AuthError::Expired,
-                _ => AuthError::Unauthorized(format!("Error: Invalid JWT! cause: {error}")),
+                ErrorKind::ExpiredSignature => LocalFailure {
+                    error: AuthError::Expired,
+                    recoverable: true,
+                },
+                _ => invalid(format!("cause: {error}")).into(),
             })?
             .claims;
-        let sub = take_string(&mut claims, "sub").ok_or_else(invalid)?;
-        let iss = take_string(&mut claims, "iss").ok_or_else(invalid)?;
-        let kind = config.classify(&claims).ok_or_else(invalid)?;
+        Ok(config.claims(claims)?)
+    }
 
-        Ok(AuthClaims {
-            sub,
-            iss,
-            kind,
-            other: claims,
-        })
+    /// Claims from a JWT Stytch's API just returned to us over TLS, so its
+    /// signature needs no second check; issuer, audience and expiry still do.
+    fn trusted_claims(&self, token: &str) -> Result<AuthClaims, AuthError> {
+        let issuer = unverified_issuer(token)
+            .ok_or_else(|| invalid("Stytch returned a token without an issuer"))?;
+        let config = self
+            .issuers
+            .iter()
+            .find(|config| config.issuers.contains(&issuer))
+            .ok_or_else(|| {
+                invalid(format!(
+                    "Stytch returned a token from untrusted issuer {issuer}"
+                ))
+            })?;
+        let claims = jsonwebtoken::dangerous::insecure_decode::<Map<String, Value>>(token)
+            .map_err(|error| invalid(format!("Stytch returned an unusable token: {error}")))?
+            .claims;
+        let audience_ok = match claims.get("aud") {
+            Some(Value::String(aud)) => config.audiences.contains(aud),
+            Some(Value::Array(auds)) => auds
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|aud| config.audiences.iter().any(|ours| ours == aud)),
+            _ => false,
+        };
+        let live = claims
+            .get("exp")
+            .and_then(Value::as_i64)
+            .is_some_and(|exp| exp > chrono::Utc::now().timestamp());
+        if !audience_ok || !live {
+            return Err(invalid(
+                "Stytch returned a token for another project or already expired",
+            ));
+        }
+        config.claims(claims)
     }
 }
 
@@ -338,5 +441,96 @@ mod tests {
         assert!(verifier().verify(&sign(&missing)).await.is_err());
         missing["aud"] = json!(PROJECT);
         assert!(verifier().verify(&sign(&missing)).await.is_ok());
+    }
+
+    /// Stands in for Stytch: vouches with a fresh token, refuses, and counts calls.
+    struct FakeStytch {
+        answer: Option<String>,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionAuthenticator for FakeStytch {
+        async fn authenticate_session_jwt(&self, _jwt: &str) -> Result<String, AuthError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.answer.clone().ok_or_else(|| {
+                AuthError::Unauthorized(
+                    "Error: Invalid JWT! Stytch did not accept the session".into(),
+                )
+            })
+        }
+    }
+
+    fn with_stytch(answer: Option<String>) -> (TokenVerifier, Arc<FakeStytch>) {
+        let stytch = Arc::new(FakeStytch {
+            answer,
+            calls: Default::default(),
+        });
+        (verifier().with_remote(stytch.clone()), stytch)
+    }
+
+    fn calls(stytch: &FakeStytch) -> usize {
+        stytch.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn stytch_vouches_for_expired_sessions_and_unknown_keys() {
+        let fresh = sign(&stytch_claims(json!({})));
+        let (verifier, stytch) = with_stytch(Some(fresh));
+
+        let expired = sign(&stytch_claims(json!({ "exp": now() - 600 })));
+        let claims = verifier.verify(&expired).await.unwrap();
+        assert_eq!(claims.sub, "user-test-123");
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("rotated-in".to_string());
+        let key = EncodingKey::from_rsa_pem(PRIVATE_KEY.as_bytes()).unwrap();
+        let new_key = encode(&header, &stytch_claims(json!({})), &key).unwrap();
+        assert!(verifier.verify(&new_key).await.is_ok());
+        assert_eq!(calls(&stytch), 2);
+    }
+
+    #[tokio::test]
+    async fn stytch_is_not_asked_about_forged_or_malformed_tokens() {
+        let (verifier, stytch) = with_stytch(Some(sign(&stytch_claims(json!({})))));
+        let mut forged = sign(&stytch_claims(json!({})));
+        forged.push('x');
+        assert!(matches!(
+            verifier.verify(&forged).await,
+            Err(AuthError::Unauthorized(_))
+        ));
+        assert!(verifier.verify("not-a-jwt").await.is_err());
+        let wrong_project = sign(&stytch_claims(json!({ "aud": ["project-test-other"] })));
+        assert!(verifier.verify(&wrong_project).await.is_err());
+        assert_eq!(calls(&stytch), 0);
+    }
+
+    #[tokio::test]
+    async fn a_session_stytch_refuses_or_a_fresh_token_for_another_project_is_rejected() {
+        let expired = sign(&stytch_claims(json!({ "exp": now() - 600 })));
+        let (refusing, _) = with_stytch(None);
+        assert!(matches!(
+            refusing.verify(&expired).await,
+            Err(AuthError::Unauthorized(_))
+        ));
+
+        let elsewhere = sign(&stytch_claims(json!({ "aud": ["project-test-other"] })));
+        let (confused, _) = with_stytch(Some(elsewhere));
+        assert!(matches!(
+            confused.verify(&expired).await,
+            Err(AuthError::Unauthorized(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejections_name_their_cause() {
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("other".to_string());
+        let key = EncodingKey::from_rsa_pem(PRIVATE_KEY.as_bytes()).unwrap();
+        let token = encode(&header, &stytch_claims(json!({})), &key).unwrap();
+        let Err(AuthError::Unauthorized(message)) = verifier().verify(&token).await else {
+            panic!("an unknown key is rejected");
+        };
+        assert!(message.contains("unknown signing key other"), "{message}");
     }
 }

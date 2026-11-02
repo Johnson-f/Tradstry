@@ -12,15 +12,23 @@ export const stytch = createStytchClient(PUBLIC_TOKEN, {
   customBaseUrl: import.meta.env.VITE_STYTCH_DOMAIN || undefined,
 })
 
+/** Stytch answers 401 or 404 when the session itself has ended or been revoked. */
+export function sessionEnded(error: unknown): boolean {
+  const status = (error as { status_code?: unknown } | null)?.status_code
+  return status === 401 || status === 404
+}
+
 // Read the JWT per request: the SDK swaps in a fresh one every few minutes.
 export const stytchTokens: TokenSource = {
   getToken: () => stytch.session.getTokens()?.session_jwt ?? null,
   refresh: async () => {
-    await stytch.session.authenticate()
-  },
-  // forceClear drops the local session even though Stytch may refuse to revoke one it already ended.
-  signedOut: () => {
-    if (stytch.session.getSync()) void stytch.session.revoke({ forceClear: true }).catch(() => {})
+    try {
+      await stytch.session.authenticate()
+    } catch (error) {
+      // forceClear drops the local copy even though Stytch already ended the session.
+      if (sessionEnded(error)) await stytch.session.revoke({ forceClear: true }).catch(() => {})
+      throw error
+    }
   },
 }
 

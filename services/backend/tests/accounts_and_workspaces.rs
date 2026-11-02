@@ -1,20 +1,26 @@
 use std::sync::Arc;
 
 use async_graphql::{Request, Response};
-use axum::body::Body;
-use axum::http::{Request as HttpRequest, StatusCode};
+use axum::{
+    body::Body,
+    http::{Request as HttpRequest, StatusCode},
+};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-use tradstry::app::{self, AppState};
-use tradstry::auth::AuthClaims;
-use tradstry::auth::stytch::fake::FakeStytch;
-use tradstry::auth::test_jwt::{self, PROJECT};
-use tradstry::graphql::{RequestUser, build_schema};
-use tradstry::users::{self, Provisioning};
-use tradstry::webhooks::svix;
+use tradstry::{
+    app::{self, AppState},
+    auth::{
+        AuthClaims,
+        stytch::fake::FakeStytch,
+        test_jwt::{self, PROJECT},
+    },
+    graphql::{RequestUser, build_schema},
+    users::{self, Provisioning},
+    webhooks::svix,
+};
 
 const STYTCH_USER: &str = "user-test-1";
 const WEBHOOK_SECRET: &str = "whsec_dGVzdC1zZWNyZXQtdGVzdC1zZWNyZXQ=";

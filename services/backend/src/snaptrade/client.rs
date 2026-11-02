@@ -8,13 +8,15 @@ use serde_json::{Value, json};
 use tokio::sync::{Mutex, OnceCell};
 use tracing::debug;
 
-use super::error::SnapTradeError;
-use super::models::{
-    Activity, ActivityPage, ActivityPageBody, ActivityQuery, BrokerageProvider, Connection,
-    ConnectionAccount, ConnectionAccounts, OAuthMetadata, OAuthTokenBody, OAuthTokens, Order,
-    PartnerInfo, PortalLink, Registration,
+use super::{
+    error::SnapTradeError,
+    models::{
+        Activity, ActivityPage, ActivityPageBody, ActivityQuery, BrokerageProvider, Connection,
+        ConnectionAccount, ConnectionAccounts, OAuthMetadata, OAuthTokenBody, OAuthTokens, Order,
+        PartnerInfo, PortalLink, Registration,
+    },
+    signing,
 };
-use super::signing;
 
 const LIVE_API: &str = "https://api.snaptrade.com";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);

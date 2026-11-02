@@ -4,13 +4,16 @@
     <meta charset="UTF-8" />
     <script>
       try {
+        var theme = localStorage.getItem('tradstry:theme')
         document.documentElement.classList.toggle(
           'dark',
-          localStorage.getItem('tradstry:theme') === 'dark',
+          theme === 'dark' ||
+            (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches),
         )
       } catch {}
     </script>
     <link rel="stylesheet" href="/src/index.css" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tradstry</title>

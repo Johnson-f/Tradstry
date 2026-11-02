@@ -49,6 +49,7 @@ export function ChoiceField<T extends string>({
   onChange,
   hideLabel = false,
   className = 'h-8 w-36 bg-background text-xs',
+  labelClassName = 'text-xs font-normal text-muted-foreground',
 }: {
   id: string
   label: string
@@ -57,11 +58,12 @@ export function ChoiceField<T extends string>({
   onChange: (value: T) => void
   hideLabel?: boolean
   className?: string
+  labelClassName?: string
 }) {
   const current = choices.find((choice) => choice.value === value)
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={id} className={hideLabel ? 'sr-only' : 'text-xs font-normal text-muted-foreground'}>
+      <Label htmlFor={id} className={hideLabel ? 'sr-only' : labelClassName}>
         {label}
       </Label>
       <Select

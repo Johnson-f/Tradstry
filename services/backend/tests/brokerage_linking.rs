@@ -1,22 +1,31 @@
 use std::sync::Arc;
 
 use async_graphql::{Request, Response};
-use axum::body::Body;
-use axum::http::{Request as HttpRequest, StatusCode};
+use axum::{
+    body::Body,
+    http::{Request as HttpRequest, StatusCode},
+};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use tradstry::app::{self, AppState};
-use tradstry::auth::stytch::fake::FakeStytch;
-use tradstry::auth::test_jwt::{self, PROJECT};
-use tradstry::brokerage::history::ImportMode;
-use tradstry::brokerage::linking::{LinkError, Selection};
-use tradstry::brokerage::{Brokerage, SessionError, store};
-use tradstry::graphql::{RequestUser, build_schema};
-use tradstry::snaptrade::fake::{FakeAccount, FakeSnapTrade};
-use tradstry::users::{self, Provisioning};
+use tradstry::{
+    app::{self, AppState},
+    auth::{
+        stytch::fake::FakeStytch,
+        test_jwt::{self, PROJECT},
+    },
+    brokerage::{
+        Brokerage, SessionError,
+        history::ImportMode,
+        linking::{LinkError, Selection},
+        store,
+    },
+    graphql::{RequestUser, build_schema},
+    snaptrade::fake::{FakeAccount, FakeSnapTrade},
+    users::{self, Provisioning},
+};
 
 async fn user(pool: &PgPool, stytch_id: &str) -> Uuid {
     users::load_user(pool, stytch_id, "", "", Provisioning::CreateIfMissing)

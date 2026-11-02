@@ -3,18 +3,19 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, NaiveDate, Utc};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::Brokerage;
-use super::account_types::{self, AccountType, CashOrMargin};
-use super::history::{self, ImportMode};
-use super::session::{Auth, Session, SessionError};
-use super::store::{self, AuthorizedTokens, ConnectionUpsert, GrantError, NewAccount, NewAttempt};
+use super::{
+    Brokerage,
+    account_types::{self, AccountType, CashOrMargin},
+    history::{self, ImportMode},
+    session::{Auth, Session, SessionError},
+    store::{self, AuthorizedTokens, ConnectionUpsert, GrantError, NewAccount, NewAttempt},
+};
 use crate::snaptrade::{ConnectionAccount, PortalOptions, SnapTradeError};
 
 pub const OAUTH_SCOPES: [&str; 2] = ["read", "webhook"];

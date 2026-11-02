@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowUpRight } from 'lucide-react'
 import { DashboardCard } from '@/components/home/dashboard-card'
 import { type Standout, bestAndWorst, dayLabel, dayStandouts, symbolStandouts, winRate } from '@/lib/client/home/home-model'
-import type { TradeStats } from '@/lib/client/trades/trades'
+import type { TradeStats } from '@/lib/client/analytics/stats'
 import { money } from '@/lib/client/trades/trades-model'
 
 type Kind = 'symbol' | 'day'

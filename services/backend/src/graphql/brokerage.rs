@@ -6,17 +6,22 @@ use serde_json::Value;
 use tracing::warn;
 use uuid::Uuid;
 
-use super::errors::{coded, to_graphql};
-use super::user::current_user;
-use crate::auth::{AuthClaims, TokenKind};
-use crate::brokerage::account_types::{self, AccountType, CashOrMargin, TaxTreatment};
-use crate::brokerage::history::ImportMode as StoredImportMode;
-use crate::brokerage::import::{ImportError, StoredActivity, StoredOrder};
-use crate::brokerage::linking::{
-    AccountChoice as LinkChoice, ConnectionView, LinkError, Selection,
+use super::{
+    errors::{coded, to_graphql},
+    user::current_user,
 };
-use crate::brokerage::{Brokerage, SessionError, store};
-use crate::snaptrade::SnapTradeError;
+use crate::{
+    auth::{AuthClaims, TokenKind},
+    brokerage::{
+        Brokerage, SessionError,
+        account_types::{self, AccountType, CashOrMargin, TaxTreatment},
+        history::ImportMode as StoredImportMode,
+        import::{ImportError, StoredActivity, StoredOrder},
+        linking::{AccountChoice as LinkChoice, ConnectionView, LinkError, Selection},
+        store,
+    },
+    snaptrade::SnapTradeError,
+};
 
 fn brokerage<'a>(ctx: &Context<'a>) -> Result<&'a Arc<Brokerage>> {
     ctx.data_opt::<Arc<Brokerage>>().ok_or_else(|| {

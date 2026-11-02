@@ -3,11 +3,17 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use tradstry::brokerage::store::{self, AuthorizedTokens};
-use tradstry::brokerage::{Auth, Brokerage, SessionError};
-use tradstry::snaptrade::fake::{self, FakeSnapTrade};
-use tradstry::snaptrade::{Connection, SnapTradeError};
-use tradstry::users::{self, Provisioning};
+use tradstry::{
+    brokerage::{
+        Auth, Brokerage, SessionError,
+        store::{self, AuthorizedTokens},
+    },
+    snaptrade::{
+        Connection, SnapTradeError,
+        fake::{self, FakeSnapTrade},
+    },
+    users::{self, Provisioning},
+};
 
 const PERSONAL: &str = "personal-1";
 

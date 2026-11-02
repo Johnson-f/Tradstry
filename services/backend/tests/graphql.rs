@@ -5,13 +5,16 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream,
+    tungstenite::{Message, client::IntoClientRequest},
+};
 
-use tradstry::app::{self, AppState};
-use tradstry::auth::test_jwt::{self, PROJECT};
-use tradstry::graphql::SESSION_ENDED_CLOSE_CODE;
+use tradstry::{
+    app::{self, AppState},
+    auth::test_jwt::{self, PROJECT},
+    graphql::SESSION_ENDED_CLOSE_CODE,
+};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -144,8 +147,16 @@ async fn websocket_init_without_a_valid_token_is_refused(pool: PgPool) {
     }
 }
 
+/// The next frame, or None if nothing arrives within `ms`.
+async fn frame_within(socket: &mut Socket, ms: u64) -> Option<Value> {
+    match tokio::time::timeout(Duration::from_millis(ms), socket.next()).await {
+        Ok(Some(Ok(Message::Text(text)))) => Some(serde_json::from_str(&text).unwrap()),
+        _ => None,
+    }
+}
+
 #[sqlx::test]
-async fn an_authenticated_subscription_streams(pool: PgPool) {
+async fn changes_stream_to_their_owner_in_real_time(pool: PgPool) {
     let address = spawn_server(pool).await;
     let mut socket = connect(&address).await;
     let token = session_token_ending_in(3600);
@@ -158,19 +169,62 @@ async fn an_authenticated_subscription_streams(pool: PgPool) {
         next_json(&mut socket).await.unwrap()["type"],
         "connection_ack"
     );
-
     send(
         &mut socket,
         json!({
             "id": "1",
             "type": "subscribe",
-            "payload": { "query": "subscription { ticks(intervalMs: 50) }" },
+            "payload": { "query": "subscription { changes { topic workspaceId resync } }" },
         }),
     )
     .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let stranger = test_jwt::session_token("user-test-2", "bo@example.com", "Bo Trader");
+    let (status, _) = post_graphql(
+        &address,
+        Some(&stranger),
+        r#"mutation { createWorkspace(name: "Theirs") { id } }"#,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        frame_within(&mut socket, 500).await,
+        None,
+        "another user's change is not sent"
+    );
+
+    let (_, created) = post_graphql(
+        &address,
+        Some(&token),
+        r#"mutation { createWorkspace(name: "Mine") { id } }"#,
+    )
+    .await;
+    let workspace = created["data"]["createWorkspace"]["id"].clone();
     let first = next_json(&mut socket).await.unwrap();
     assert_eq!(first["type"], "next");
-    assert_eq!(first["payload"]["data"]["ticks"], 1);
+    assert_eq!(
+        first["payload"]["data"]["changes"],
+        json!({ "topic": "WORKSPACES", "workspaceId": null, "resync": false })
+    );
+
+    let (_, saved) = post_graphql(
+        &address,
+        Some(&token),
+        &format!(
+            r#"mutation {{ createTradePlan(workspaceId: "{}", input: {{ assetClass: STOCK, symbol: "AAPL",
+                direction: LONG, tranches: [{{ percent: "100", entry: "100" }}], stop: "95", risk: "200" }}) {{ id }} }}"#,
+            workspace.as_str().unwrap()
+        ),
+    )
+    .await;
+    assert!(saved["errors"].is_null(), "{saved}");
+    let plan = next_json(&mut socket).await.unwrap();
+    assert_eq!(
+        plan["payload"]["data"]["changes"],
+        json!({ "topic": "PLANS", "workspaceId": workspace, "resync": false }),
+        "a change in a workspace names it"
+    );
 }
 
 #[sqlx::test]

@@ -3,8 +3,10 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 
 use super::errors::to_graphql;
-use crate::auth::AuthClaims;
-use crate::users::{self, Provisioning, User};
+use crate::{
+    auth::AuthClaims,
+    users::{self, Provisioning, User},
+};
 
 /// The caller's Tradstry user, loaded once per GraphQL request however many
 /// resolvers ask for it.

@@ -3,15 +3,13 @@
 //! authentication failure; a refresh that cannot succeed clears the grant's
 //! tokens so nothing keeps using them.
 
-use std::future::Future;
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use chrono::{Duration, Utc};
 use tracing::warn;
 use uuid::Uuid;
 
-use super::Brokerage;
-use super::store;
+use super::{Brokerage, store};
 use crate::snaptrade::{Credentials, SnapTradeClient, SnapTradeError};
 
 const REFRESH_BEFORE_EXPIRY_MINUTES: i64 = 5;

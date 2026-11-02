@@ -5,10 +5,10 @@ use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use tradstry::brokerage::store::{
-    self, AuthorizedTokens, ConnectionUpsert, GrantError, NewAccount,
+use tradstry::{
+    brokerage::store::{self, AuthorizedTokens, ConnectionUpsert, GrantError, NewAccount},
+    users::{self, Provisioning},
 };
-use tradstry::users::{self, Provisioning};
 
 const CLIENT: &str = "oauth-client-test";
 

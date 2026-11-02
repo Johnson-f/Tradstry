@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use async_graphql::Request;
-use axum::body::Body;
-use axum::http::{Request as HttpRequest, StatusCode};
+use axum::{
+    body::Body,
+    http::{Request as HttpRequest, StatusCode},
+};
 use base64::Engine;
 use chrono::{Duration, NaiveDate, Utc};
 use hmac::{Hmac, KeyInit, Mac};
@@ -12,16 +14,17 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use tradstry::app::{self, AppState};
-use tradstry::auth::stytch::fake::FakeStytch;
-use tradstry::auth::test_jwt::{self, PROJECT};
-use tradstry::brokerage::history::ImportMode;
-use tradstry::brokerage::import::ImportError;
-use tradstry::brokerage::linking::Selection;
-use tradstry::brokerage::{Brokerage, store};
-use tradstry::graphql::{RequestUser, build_schema};
-use tradstry::snaptrade::fake::{self, FakeAccount, FakeSnapTrade};
-use tradstry::users::{self, Provisioning};
+use tradstry::{
+    app::{self, AppState},
+    auth::{
+        stytch::fake::FakeStytch,
+        test_jwt::{self, PROJECT},
+    },
+    brokerage::{Brokerage, history::ImportMode, import::ImportError, linking::Selection, store},
+    graphql::{RequestUser, build_schema},
+    snaptrade::fake::{self, FakeAccount, FakeSnapTrade},
+    users::{self, Provisioning},
+};
 
 struct Linked {
     snaptrade: FakeSnapTrade,

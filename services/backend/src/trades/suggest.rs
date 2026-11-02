@@ -8,9 +8,11 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 use uuid::Uuid;
 
-use super::instrument::Alias;
-use super::model::{AssetClass, FillRole, Trade, TradeKind, TradeStatus};
-use super::stitch::dust;
+use super::{
+    instrument::Alias,
+    model::{AssetClass, FillRole, Trade, TradeKind, TradeStatus},
+    stitch::dust,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AliasSuggestion {

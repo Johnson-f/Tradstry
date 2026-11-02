@@ -7,8 +7,10 @@ use std::sync::Arc;
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde_json::{Value, json};
 
-use super::jwks::{Jwk, JwksError, JwksProvider};
-use super::verifier::{IssuerConfig, TokenVerifier};
+use super::{
+    jwks::{Jwk, JwksError, JwksProvider},
+    verifier::{IssuerConfig, TokenVerifier},
+};
 
 pub const KID: &str = "test-key";
 pub const PROJECT: &str = "project-test-123";

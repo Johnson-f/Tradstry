@@ -6,6 +6,8 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
+use super::verifier::{AuthError, SessionAuthenticator};
+
 const TEST_API: &str = "https://test.stytch.com";
 const LIVE_API: &str = "https://api.stytch.com";
 
@@ -97,6 +99,32 @@ impl StytchClient {
 }
 
 #[async_trait]
+impl SessionAuthenticator for StytchClient {
+    async fn authenticate_session_jwt(&self, jwt: &str) -> Result<String, AuthError> {
+        let response = self
+            .client
+            .sessions
+            .authenticate(::stytch::consumer::sessions::AuthenticateRequest {
+                session_jwt: Some(jwt.to_owned()),
+                ..Default::default()
+            })
+            .await
+            .map_err(StytchError::from);
+        match response {
+            Ok(response) => Ok(response.session_jwt),
+            Err(StytchError::Api {
+                status, error_type, ..
+            }) if status < 500 => Err(AuthError::Unauthorized(format!(
+                "Error: Invalid JWT! Stytch did not accept the session: {error_type}"
+            ))),
+            Err(error) => Err(AuthError::Unavailable(format!(
+                "Error: Could not reach Stytch: {error}"
+            ))),
+        }
+    }
+}
+
+#[async_trait]
 impl StytchApi for StytchClient {
     async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StytchError> {
         let response = self
@@ -156,8 +184,7 @@ impl StytchApi for StytchClient {
 /// An in-memory Stytch for tests. Never wire it into a running server.
 #[doc(hidden)]
 pub mod fake {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::{collections::HashMap, sync::Mutex};
 
     use super::*;
 

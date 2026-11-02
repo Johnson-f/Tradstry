@@ -8,11 +8,15 @@ use rust_decimal::Decimal;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::decisions::{Decision, DecisionKind, DecisionOutcome, OutcomeStatus};
-use super::labels::{self, LabelKind};
-use super::model::{AssetClass, Instrument, Intent, Side, Trade};
-use super::notes::{self, NoteDocument};
-use super::{compute, rebuild, store};
+use super::{
+    behavior::TradeBehavior,
+    compute,
+    decisions::{Decision, DecisionKind, DecisionOutcome, OutcomeStatus},
+    labels::{self, LabelKind},
+    model::{AssetClass, Instrument, Intent, Side, Trade},
+    notes::{self, NoteDocument},
+    rebuild, store,
+};
 use crate::db::new_id;
 
 #[derive(Debug, thiserror::Error)]
@@ -40,7 +44,7 @@ impl From<sqlx::Error> for TradeError {
 
 type Result<T> = std::result::Result<T, TradeError>;
 
-fn invalid<T>(code: &'static str, message: impl Into<String>) -> Result<T> {
+pub(super) fn invalid<T>(code: &'static str, message: impl Into<String>) -> Result<T> {
     Err(TradeError::Invalid(code, message.into()))
 }
 
@@ -495,6 +499,7 @@ pub struct AnnotationInput {
     pub initial_stop: Option<Decimal>,
     /// Dollars at risk; overrides the initial stop for R.
     pub planned_risk: Option<Decimal>,
+    pub behavior: TradeBehavior,
 }
 
 fn validate_annotation(input: &AnnotationInput) -> Result<()> {
@@ -518,6 +523,12 @@ fn validate_annotation(input: &AnnotationInput) -> Result<()> {
     {
         return invalid("INVALID_LABEL", "At most 30 labels of each kind on a trade");
     }
+    if !input.behavior.scores_in_range() {
+        return invalid(
+            "INVALID_SCORE",
+            "Conviction and rule adherence run from 1 to 5",
+        );
+    }
     Ok(())
 }
 
@@ -530,7 +541,7 @@ fn unique(ids: &[Uuid]) -> Vec<Uuid> {
 
 /// The fill a journal entry anchors to: the trade's first, or for a strategy
 /// its first leg's first.
-async fn anchor_fill(
+pub(super) async fn anchor_fill(
     pool: &PgPool,
     user_id: Uuid,
     workspace_id: Uuid,
@@ -572,6 +583,7 @@ pub async fn save_annotation(
     input: &AnnotationInput,
 ) -> Result<Uuid> {
     validate_annotation(input)?;
+    let b = &input.behavior;
     let anchor = anchor_fill(pool, user_id, workspace_id, trade_id).await?;
     let chosen = [
         (unique(&input.edge_ids), LabelKind::Edge),
@@ -598,6 +610,8 @@ pub async fn save_annotation(
         (Some((id, version)), Some(expected)) if version == expected => {
             sqlx::query(
                 "UPDATE trade_annotations SET notes = $3, initial_stop = $4, planned_risk = $5,
+                    conviction = $6, market_regime = $7, planned_pre_market = $8, revenge_trade = $9,
+                    broke_thirty_minute_rule = $10, rule_adherence = $11,
                     record_version = record_version + 1, updated_at = now()
                  WHERE id = $1 AND record_version = $2",
             )
@@ -606,6 +620,12 @@ pub async fn save_annotation(
             .bind(sqlx::types::Json(&input.notes.0))
             .bind(input.initial_stop)
             .bind(input.planned_risk)
+            .bind(b.conviction)
+            .bind(b.market_regime)
+            .bind(b.planned_pre_market)
+            .bind(b.revenge_trade)
+            .bind(b.broke_thirty_minute_rule)
+            .bind(b.rule_adherence)
             .execute(&mut *tx)
             .await?;
             sqlx::query("DELETE FROM trade_annotation_labels WHERE annotation_id = $1")
@@ -619,8 +639,9 @@ pub async fn save_annotation(
             let id = new_id();
             sqlx::query(
                 "INSERT INTO trade_annotations (id, user_id, workspace_id, trade_id, anchor_fill_key, notes,
-                    initial_stop, planned_risk)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    initial_stop, planned_risk, conviction, market_regime, planned_pre_market, revenge_trade,
+                    broke_thirty_minute_rule, rule_adherence)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
             )
             .bind(id)
             .bind(user_id)
@@ -630,6 +651,12 @@ pub async fn save_annotation(
             .bind(sqlx::types::Json(&input.notes.0))
             .bind(input.initial_stop)
             .bind(input.planned_risk)
+            .bind(b.conviction)
+            .bind(b.market_regime)
+            .bind(b.planned_pre_market)
+            .bind(b.revenge_trade)
+            .bind(b.broke_thirty_minute_rule)
+            .bind(b.rule_adherence)
             .execute(&mut *tx)
             .await
             .map_err(|error| match error {

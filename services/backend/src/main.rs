@@ -5,14 +5,14 @@ use tokio::net::TcpListener;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use tradstry::app::{self, AppState, Services};
-use tradstry::auth::TokenVerifier;
-use tradstry::auth::stytch::StytchClient;
-use tradstry::brokerage::Brokerage;
-use tradstry::brokerage::crypto::SecretBox;
-use tradstry::config::Config;
-use tradstry::db;
-use tradstry::snaptrade::SnapTradeClient;
+use tradstry::{
+    app::{self, AppState, Services},
+    auth::{TokenVerifier, stytch::StytchClient},
+    brokerage::{Brokerage, crypto::SecretBox},
+    config::Config,
+    db,
+    snaptrade::SnapTradeClient,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,16 +25,17 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Config::from_env()?;
+    let stytch = Arc::new(StytchClient::new(
+        &config.stytch.project_id,
+        &config.stytch.secret,
+        config.stytch.api_url.as_deref(),
+    )?);
     let verifier = TokenVerifier::stytch(
         &config.stytch.project_id,
         config.stytch.api_url.as_deref(),
         config.stytch.issuer.as_deref(),
-    );
-    let stytch = StytchClient::new(
-        &config.stytch.project_id,
-        &config.stytch.secret,
-        config.stytch.api_url.as_deref(),
-    )?;
+    )
+    .with_remote(stytch.clone());
     let pool = db::connect(&config.database_url).await?;
     let brokerage = match &config.brokerage {
         Some(settings) => {
@@ -69,7 +70,7 @@ async fn main() -> Result<()> {
     let state = AppState::new(Services {
         verifier,
         pool,
-        stytch: Arc::new(stytch),
+        stytch,
         stytch_webhook_secret: config.stytch_webhook_secret.clone(),
         brokerage,
     });

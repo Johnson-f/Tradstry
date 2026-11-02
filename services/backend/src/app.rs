@@ -1,21 +1,28 @@
-use axum::extract::FromRef;
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
-use axum::http::{HeaderValue, Method};
-use axum::routing::{MethodRouter, get, post};
-use axum::{Json, Router};
+use axum::{
+    Json, Router,
+    extract::FromRef,
+    http::{
+        HeaderValue, Method,
+        header::{AUTHORIZATION, CONTENT_TYPE},
+    },
+    routing::{MethodRouter, get, post},
+};
 use serde_json::{Value, json};
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::trace::TraceLayer;
+use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
+    trace::TraceLayer,
+};
 
 use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::auth::TokenVerifier;
-use crate::auth::stytch::StytchApi;
-use crate::brokerage::Brokerage;
-use crate::graphql::{self, AppSchema};
-use crate::webhooks;
+use crate::{
+    auth::{TokenVerifier, stytch::StytchApi},
+    brokerage::Brokerage,
+    graphql::{self, AppSchema},
+    webhooks,
+};
 
 /// What the app needs from the outside world. Tests build it with fakes.
 pub struct Services {
@@ -117,8 +124,10 @@ fn cors(origins: Vec<HeaderValue>) -> CorsLayer {
 
 #[cfg(test)]
 mod tests {
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use tower::ServiceExt;
 
     use super::*;

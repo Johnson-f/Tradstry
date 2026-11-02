@@ -1,9 +1,11 @@
+pub mod analytics;
 pub mod app;
 pub mod auth;
 pub mod brokerage;
 pub mod config;
 pub mod db;
 pub mod graphql;
+pub mod realtime;
 pub mod snaptrade;
 pub mod trades;
 pub mod users;

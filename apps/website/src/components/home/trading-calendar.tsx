@@ -7,16 +7,17 @@ import {
   type CalendarDay,
   type CalendarWeek,
   type Outcomes as OutcomeCounts,
+  type FirstWeekday,
   calendarMonth,
   dayLabel,
   monthLabel,
   shiftMonth,
+  weekdayNames,
   winRate,
 } from '@/lib/client/home/home-model'
-import type { EquityPoint } from '@/lib/client/trades/trades'
+import type { EquityPoint } from '@/lib/client/analytics/stats'
 import { money } from '@/lib/client/trades/trades-model'
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const headClass = 'border-b px-2 pb-2 text-center text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase'
 
 const pnl = (value: number) => money(String(value), { signed: true })
@@ -136,16 +137,18 @@ export function TradingCalendar({
   today,
   loading,
   workspaceId,
+  firstWeekday,
 }: {
   equity: EquityPoint[] | undefined
   today: string
   loading: boolean
   workspaceId: string
+  firstWeekday: FirstWeekday
 }) {
   const [month, setMonth] = useState(() => today.slice(0, 7))
   if (loading || !equity) return <DashboardCardSkeleton height="h-[32rem]" />
 
-  const view = calendarMonth(month, equity, today)
+  const view = calendarMonth(month, equity, today, firstWeekday)
   const largest = Math.max(1, ...view.weeks.flatMap((week) => week.days).map((day) => Math.abs(day.net)))
 
   return (
@@ -190,7 +193,7 @@ export function TradingCalendar({
 
       <div className="mt-5 min-w-0 overflow-x-auto overscroll-x-contain">
         <div className="grid min-w-[54rem] grid-cols-[repeat(7,minmax(0,1fr))_7.5rem] gap-2 pb-3">
-          {WEEKDAYS.map((weekday) => (
+          {weekdayNames(firstWeekday).map((weekday) => (
             <div key={weekday} className={headClass}>
               {weekday}
             </div>

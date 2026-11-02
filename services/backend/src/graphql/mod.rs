@@ -1,10 +1,13 @@
 mod account;
+mod analytics;
 mod brokerage;
+mod changes;
 mod errors;
 mod journal;
 mod me;
+mod plans;
 mod routes;
-mod ticks;
+mod settings;
 mod trades;
 mod user;
 mod workspaces;
@@ -14,8 +17,7 @@ use std::sync::Arc;
 use async_graphql::{MergedObject, MergedSubscription, Schema};
 use sqlx::PgPool;
 
-use crate::auth::stytch::StytchApi;
-use crate::brokerage::Brokerage;
+use crate::{auth::stytch::StytchApi, brokerage::Brokerage};
 
 pub use routes::{SESSION_ENDED_CLOSE_CODE, graphiql, graphql_handler, graphql_ws_handler};
 pub use user::RequestUser;
@@ -29,6 +31,9 @@ pub struct Query(
     brokerage::ImportQuery,
     trades::TradeQuery,
     journal::JournalQuery,
+    analytics::AnalyticsQuery,
+    settings::SettingsQuery,
+    plans::PlanQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -39,10 +44,12 @@ pub struct Mutation(
     brokerage::ImportMutation,
     trades::TradeMutation,
     journal::JournalMutation,
+    settings::SettingsMutation,
+    plans::PlanMutation,
 );
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscription(ticks::TicksSubscription);
+pub struct Subscription(changes::ChangeSubscription);
 
 pub type AppSchema = Schema<Query, Mutation, Subscription>;
 
@@ -56,6 +63,7 @@ pub fn build_schema(
         Mutation::default(),
         Subscription::default(),
     )
+    .data(crate::realtime::Hub::new(pool.clone()))
     .data(pool)
     .data(stytch);
     if let Some(brokerage) = brokerage {

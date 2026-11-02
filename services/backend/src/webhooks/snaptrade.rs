@@ -1,10 +1,14 @@
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use tracing::{error, warn};
 
-use crate::app::AppState;
-use crate::brokerage::webhooks::{self, WebhookError};
+use crate::{
+    app::AppState,
+    brokerage::webhooks::{self, WebhookError},
+};
 
 /// Verifies, records, and acknowledges a SnapTrade webhook, then processes it
 /// in the background. A failure after recording is retried by the sweeper,

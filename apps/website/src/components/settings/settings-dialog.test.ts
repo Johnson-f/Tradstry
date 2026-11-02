@@ -49,6 +49,8 @@ test('settings opens over the current page, supports search and nested dialogs, 
         return { createJournalLabel: { id: label.id } };
       }
       if (query.includes('query AuthSessions')) return { authSessions: [] };
+      if (query.includes('query Settings')) return { settings: { defaultRisk: null, breakevenBand: '0',
+        timeZone: 'LOCAL', weekStart: 'SUNDAY', defaultPeriod: '1m' } };
       throw new Error('Unexpected request: ' + query);
     }, subscriptions: {} }));
     const { UserMenu } = await import('@/components/account/user-menu');
@@ -117,7 +119,8 @@ test('settings opens over the current page, supports search and nested dialogs, 
       assert.equal(document.querySelector('[aria-label="Draft"]'), draft, 'the underlying page stays mounted');
       assert.equal(draft.value, 'Keep this draft');
       assert.equal(tab('General').getAttribute('aria-selected'), 'true');
-      await click(document.querySelector('#dark-mode'));
+      await click([...document.querySelectorAll('[role="radiogroup"][aria-label="Theme"] [role="radio"]')]
+        .find(el => el.textContent === 'Dark'));
       assert.equal(document.documentElement.classList.contains('dark'), true);
       assert.equal(win.localStorage.getItem('tradstry:theme'), 'dark');
       await click(tab('Account'));

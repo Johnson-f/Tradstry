@@ -2,8 +2,7 @@
 //! then processed from the database so a crash or error is retried rather
 //! than lost.
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::Value;
@@ -13,9 +12,7 @@ use subtle::ConstantTimeEq;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::Brokerage;
-use super::import::JobKind;
-use super::store;
+use super::{Brokerage, import::JobKind, store};
 use crate::snaptrade::signing::canonical_json;
 
 /// Duplicates are dropped by `webhookId`, so the age limit only has to cover

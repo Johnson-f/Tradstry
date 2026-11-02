@@ -10,12 +10,12 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use tradstry::brokerage::Brokerage;
-use tradstry::brokerage::history::ImportMode;
-use tradstry::brokerage::linking::Selection;
-use tradstry::snaptrade::fake::{FakeAccount, FakeSnapTrade};
-use tradstry::trades::rebuild::{rebuild, stale_users};
-use tradstry::users::{self, Provisioning};
+use tradstry::{
+    brokerage::{Brokerage, history::ImportMode, linking::Selection},
+    snaptrade::fake::{FakeAccount, FakeSnapTrade},
+    trades::rebuild::{rebuild, stale_users},
+    users::{self, Provisioning},
+};
 
 struct Linked {
     snaptrade: FakeSnapTrade,

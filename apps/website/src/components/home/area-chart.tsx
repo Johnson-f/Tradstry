@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useState } from 'react'
+import { useWidth } from '@/components/home/use-width'
 import { dayLabel } from '@/lib/client/home/home-model'
 import { compactMoney, niceTicks } from '@/lib/client/trades/trades-model'
 
@@ -9,18 +10,6 @@ const TONE = {
   loss: 'text-rose-500',
 }
 
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null)
-  const [width, setWidth] = useState(0)
-  useEffect(() => {
-    const element = ref.current
-    if (!element) return
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-  return [ref, width] as const
-}
 
 /**
  * A daily series as a line over a soft fill down to zero, with a hairline grid,
@@ -110,7 +99,7 @@ export function AreaChart({
             </g>
           ))}
           {points.map((point, index) =>
-            index % labelEvery === 0 || index === points.length - 1 ? (
+            index === points.length - 1 || (index % labelEvery === 0 && points.length - 1 - index >= labelEvery / 2) ? (
               <text
                 key={point.day}
                 x={x(index)}

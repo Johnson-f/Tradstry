@@ -8,8 +8,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::ids;
-use super::model::{FillRole, Instrument, Trade, TradeFill, TradeKind, TradeStatus};
+use super::{
+    ids,
+    model::{FillRole, Instrument, Trade, TradeFill, TradeKind, TradeStatus},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

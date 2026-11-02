@@ -1,7 +1,7 @@
 import { AreaChart, ReadoutRow } from '@/components/home/area-chart'
 import { DashboardCard, EmptyChart } from '@/components/home/dashboard-card'
 import { drawdownSeries } from '@/lib/client/home/home-model'
-import type { TradeStats } from '@/lib/client/trades/trades'
+import type { TradeStats } from '@/lib/client/analytics/stats'
 import { money, toNumber } from '@/lib/client/trades/trades-model'
 
 function streakLabel(streak: number): string {

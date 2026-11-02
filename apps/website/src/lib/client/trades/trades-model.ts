@@ -32,6 +32,54 @@ export interface LabelRef {
   archived: boolean
 }
 
+export type MarketRegime = 'TRENDING' | 'CHOPPY' | 'RANGING' | 'VOLATILE'
+
+export const MARKET_REGIMES: Array<{ value: MarketRegime; label: string }> = [
+  { value: 'TRENDING', label: 'Trending' },
+  { value: 'CHOPPY', label: 'Choppy' },
+  { value: 'RANGING', label: 'Ranging' },
+  { value: 'VOLATILE', label: 'Volatile' },
+]
+
+/** How the trader felt and behaved on a trade. Null means not recorded, not "no". */
+export interface TradeBehavior {
+  /** 1 to 5. */
+  conviction: number | null
+  marketRegime: MarketRegime | null
+  plannedPreMarket: boolean | null
+  revengeTrade: boolean | null
+  brokeThirtyMinuteRule: boolean | null
+  /** 1 to 5. */
+  ruleAdherence: number | null
+}
+
+export const EMPTY_BEHAVIOR: TradeBehavior = {
+  conviction: null,
+  marketRegime: null,
+  plannedPreMarket: null,
+  revengeTrade: null,
+  brokeThirtyMinuteRule: null,
+  ruleAdherence: null,
+}
+
+export function hasBehavior(behavior: TradeBehavior): boolean {
+  return Object.values(behavior).some((value) => value !== null)
+}
+
+/** Short chips for what was recorded; a "no" that is the good habit is left out. */
+export function behaviorChips(behavior: TradeBehavior): string[] {
+  const regime = MARKET_REGIMES.find((option) => option.value === behavior.marketRegime)
+  return [
+    behavior.conviction !== null && `Conviction ${behavior.conviction}/5`,
+    behavior.ruleAdherence !== null && `Rules ${behavior.ruleAdherence}/5`,
+    regime?.label,
+    behavior.plannedPreMarket === true && 'Planned pre-market',
+    behavior.plannedPreMarket === false && 'Unplanned',
+    behavior.revengeTrade === true && 'Revenge trade',
+    behavior.brokeThirtyMinuteRule === true && 'Broke 30-minute rule',
+  ].filter((chip): chip is string => typeof chip === 'string')
+}
+
 export interface TradeAnnotation {
   id: string
   tradeId: string
@@ -42,6 +90,7 @@ export interface TradeAnnotation {
   mistakes: LabelRef[]
   initialStop: Decimal | null
   plannedRisk: Decimal | null
+  behavior: TradeBehavior
   version: number
   updatedAt: string
   orphaned: boolean
@@ -250,6 +299,7 @@ export interface AnnotationDraft {
   mistakeIds: string[]
   initialStop: string
   plannedRisk: string
+  behavior: TradeBehavior
 }
 
 export function annotationDraft(annotation: TradeAnnotation | null): AnnotationDraft {
@@ -261,6 +311,7 @@ export function annotationDraft(annotation: TradeAnnotation | null): AnnotationD
     mistakeIds: annotation?.mistakes.map((m) => m.id) ?? [],
     initialStop: annotation?.initialStop ?? '',
     plannedRisk: annotation?.plannedRisk ?? '',
+    behavior: annotation?.behavior ?? EMPTY_BEHAVIOR,
   }
 }
 
@@ -283,6 +334,7 @@ export function annotationInput(
       mistakeIds: draft.mistakeIds,
       initialStop: stop,
       plannedRisk: risk,
+      behavior: draft.behavior,
     },
   }
 }

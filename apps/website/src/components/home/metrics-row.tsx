@@ -1,6 +1,6 @@
 import { MetricHelp } from '@/components/home/dashboard-card'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { TradeStats } from '@/lib/client/trades/trades'
+import type { TradeStats } from '@/lib/client/analytics/stats'
 import { money, toNumber } from '@/lib/client/trades/trades-model'
 
 const plural = (count: number, singular: string, many: string) => `${count} ${count === 1 ? singular : many}`

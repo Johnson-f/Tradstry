@@ -2,8 +2,7 @@
 //! key, of `{"content":…,"path":…,"query":…}` as compact JSON with every
 //! object's keys sorted. `path` and `query` are exactly what is sent.
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::Value;
 use sha2::Sha256;

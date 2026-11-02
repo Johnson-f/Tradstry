@@ -5,12 +5,18 @@ use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 use tracing::error;
 
-use super::errors::{coded, to_graphql};
-use super::user::current_user;
-use crate::auth::stytch::{Session, StytchApi, StytchError};
-use crate::auth::{AuthClaims, StytchSession, TokenKind};
-use crate::brokerage::Brokerage;
-use crate::users::account;
+use super::{
+    errors::{coded, to_graphql},
+    user::current_user,
+};
+use crate::{
+    auth::{
+        AuthClaims, StytchSession, TokenKind,
+        stytch::{Session, StytchApi, StytchError},
+    },
+    brokerage::Brokerage,
+    users::account,
+};
 
 const REAUTH_WINDOW_MINUTES: i64 = 5;
 

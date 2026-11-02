@@ -7,15 +7,17 @@ use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::New_York;
 use rust_decimal::Decimal;
 use serde_json::Value;
-use sqlx::types::Json;
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{PgPool, Postgres, QueryBuilder, types::Json};
 use uuid::Uuid;
 
-use super::analytics::{self, StatTrade, Stats};
-use super::instrument::Alias;
-use super::labels::LabelRef;
-use super::model::Instrument;
-use super::positions::{self, HoldingsSnapshot};
+use super::{
+    behavior::TradeBehavior,
+    instrument::Alias,
+    labels::LabelRef,
+    measure,
+    model::Instrument,
+    positions::{self, HoldingsSnapshot},
+};
 
 #[derive(Clone, Debug, sqlx::FromRow)]
 pub struct TradeRow {
@@ -53,30 +55,38 @@ pub struct TradeRow {
     pub notes: Option<Json<Value>>,
     pub initial_stop: Option<Decimal>,
     pub planned_risk: Option<Decimal>,
+    /// The user's default risk per trade, for trades with neither of the above.
+    pub default_risk: Option<Decimal>,
     pub edges: Json<Vec<LabelRef>>,
     pub entry_tactics: Json<Vec<LabelRef>>,
     pub tags: Json<Vec<LabelRef>>,
     pub mistakes: Json<Vec<LabelRef>>,
+    #[sqlx(flatten)]
+    pub behavior: TradeBehavior,
+    /// A trade plan is linked to this trade.
+    pub has_plan: bool,
     pub annotation_version: Option<i32>,
     pub annotation_updated_at: Option<DateTime<Utc>>,
 }
 
 impl TradeRow {
     /// Dollars at risk: the planned risk if set, otherwise what the initial
-    /// stop put at risk.
+    /// stop put at risk, otherwise the user's default risk per trade.
     pub fn risk(&self) -> Option<Decimal> {
-        self.planned_risk.or_else(|| {
-            Some(analytics::stop_risk(
-                self.avg_entry?,
-                self.initial_stop?,
-                self.max_quantity,
-                self.instrument.multiplier,
-            ))
-        })
+        self.planned_risk
+            .or_else(|| {
+                Some(measure::stop_risk(
+                    self.avg_entry?,
+                    self.initial_stop?,
+                    self.max_quantity,
+                    self.instrument.multiplier,
+                ))
+            })
+            .or(self.default_risk)
     }
 
     pub fn r_multiple(&self) -> Option<Decimal> {
-        analytics::r_multiple(self.net?, self.risk()?)
+        measure::r_multiple(self.net?, self.risk()?)
     }
 }
 
@@ -102,6 +112,13 @@ macro_rules! label_list {
     };
 }
 
+/// The behavior fields of journal entry `a`, matching `TradeBehavior`.
+macro_rules! behavior_columns {
+    () => {
+        "a.conviction, a.market_regime, a.planned_pre_market, a.revenge_trade, a.broke_thirty_minute_rule, a.rule_adherence"
+    };
+}
+
 /// The labels on journal entry `a`, as `edges`, `entry_tactics`, `tags` and `mistakes`.
 macro_rules! annotation_labels {
     () => {
@@ -118,14 +135,18 @@ macro_rules! annotation_labels {
     };
 }
 
-const TRADE_COLUMNS: &str = concat!(
+pub(crate) const TRADE_COLUMNS: &str = concat!(
     "t.id, t.workspace_id, t.kind, t.parent_id, t.children, t.instrument_key, t.instrument,
     t.asset_class, t.symbol, t.underlying, t.direction, t.status, t.opened_at, t.closed_at, t.max_quantity,
     t.open_quantity, t.avg_entry, t.avg_exit, t.gross, t.fees, t.net, t.income, t.entry_cost, t.return_pct,
     t.holding_seconds, t.fill_count, t.non_economic, t.related, t.strategy_label, t.issues,
-    a.id AS annotation_id, a.notes, a.initial_stop, a.planned_risk, ",
+    a.id AS annotation_id, a.notes, a.initial_stop, a.planned_risk,
+    (SELECT s.default_risk FROM user_settings s WHERE s.user_id = t.user_id) AS default_risk, ",
     annotation_labels!(),
-    ", a.record_version AS annotation_version, a.updated_at AS annotation_updated_at
+    ", ",
+    behavior_columns!(),
+    ", EXISTS (SELECT 1 FROM trade_plans p WHERE p.user_id = t.user_id AND p.trade_id = t.id) AS has_plan,
+    a.record_version AS annotation_version, a.updated_at AS annotation_updated_at
     FROM trades t LEFT JOIN trade_annotations a
       ON a.user_id = t.user_id AND a.trade_id = t.id AND a.orphaned_at IS NULL"
 );
@@ -488,6 +509,8 @@ pub struct AnnotationRow {
     pub entry_tactics: Json<Vec<LabelRef>>,
     pub tags: Json<Vec<LabelRef>>,
     pub mistakes: Json<Vec<LabelRef>>,
+    #[sqlx(flatten)]
+    pub behavior: TradeBehavior,
     pub record_version: i32,
     pub orphaned_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
@@ -496,6 +519,8 @@ pub struct AnnotationRow {
 const ANNOTATION_COLUMNS: &str = concat!(
     "a.id, a.workspace_id, a.trade_id, a.notes, a.initial_stop, a.planned_risk, ",
     annotation_labels!(),
+    ", ",
+    behavior_columns!(),
     ", a.record_version, a.orphaned_at, a.updated_at"
 );
 
@@ -574,47 +599,6 @@ pub async fn openings(pool: &PgPool, user_id: Uuid, workspace_id: Uuid) -> Resul
     .bind(workspace_id)
     .fetch_all(pool)
     .await?)
-}
-
-/// Inputs to statistics: closed, economic, top-level trades.
-pub async fn stats(
-    pool: &PgPool,
-    user_id: Uuid,
-    workspace_id: Option<Uuid>,
-    from: Option<DateTime<Utc>>,
-    to: Option<DateTime<Utc>>,
-) -> Result<Stats> {
-    let rows = sqlx::query_as::<_, TradeRow>(sqlx::AssertSqlSafe(format!(
-        "SELECT {TRADE_COLUMNS} WHERE t.user_id = $1 AND ($2::uuid IS NULL OR t.workspace_id = $2)
-           AND t.status = 'closed' AND t.parent_id IS NULL AND NOT t.non_economic AND t.net IS NOT NULL
-           AND ($3::timestamptz IS NULL OR t.closed_at >= $3) AND ($4::timestamptz IS NULL OR t.closed_at < $4)"
-    )))
-    .bind(user_id)
-    .bind(workspace_id)
-    .bind(from)
-    .bind(to)
-    .fetch_all(pool)
-    .await?;
-    Ok(analytics::compute(
-        rows.iter()
-            .filter_map(|row| {
-                Some(StatTrade {
-                    symbol: row.underlying.clone(),
-                    direction: row.direction.clone(),
-                    opened_at: row.opened_at,
-                    closed_at: row.closed_at?,
-                    net: row.net?,
-                    return_pct: row.return_pct,
-                    holding_seconds: row.holding_seconds.unwrap_or_default(),
-                    r: row.r_multiple(),
-                    edges: row.edges.0.clone(),
-                    entry_tactics: row.entry_tactics.0.clone(),
-                    tags: row.tags.0.clone(),
-                    mistakes: row.mistakes.0.clone(),
-                })
-            })
-            .collect(),
-    ))
 }
 
 /// Calendar-year bounds in New York time, where US trading days are dated.

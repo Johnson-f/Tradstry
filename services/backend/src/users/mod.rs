@@ -1,12 +1,12 @@
 pub mod account;
+pub mod settings;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::auth::TokenKind;
-use crate::db::new_id;
+use crate::{auth::TokenKind, db::new_id};
 
 pub const DEFAULT_WORKSPACE_NAME: &str = "Main Workspace";
 

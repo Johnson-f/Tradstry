@@ -9,13 +9,15 @@ use serde_json::Value;
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 use uuid::Uuid;
 
-use super::decisions::{Decision, DecisionKind};
-use super::instrument::Alias;
-use super::measure::{self, Metrics};
-use super::model::{Instrument, Intent, Side, TaxStatus, Trade, TradeKind, WorkspaceInfo};
-use super::normalize::{ActivityRow, ManualFill, OpeningPosition};
-use super::positions::HoldingsSnapshot;
-use super::{ENGINE_VERSION, EngineInput, EngineOutput};
+use super::{
+    ENGINE_VERSION, EngineInput, EngineOutput,
+    decisions::{Decision, DecisionKind},
+    instrument::Alias,
+    measure::{self, Metrics},
+    model::{Instrument, Intent, Side, TaxStatus, Trade, TradeKind, WorkspaceInfo},
+    normalize::{ActivityRow, ManualFill, OpeningPosition},
+    positions::HoldingsSnapshot,
+};
 use crate::brokerage::account_types::{self, AccountType, CashOrMargin, TaxTreatment};
 
 const CHUNK: usize = 500;
@@ -437,6 +439,7 @@ pub async fn write(
     insert_fills(conn, user_id, &output.trades).await?;
     insert_lots(conn, user_id, &output.trades).await?;
     reattach_annotations(conn, user_id).await?;
+    reattach_plans(conn, user_id).await?;
     sqlx::query(
         "INSERT INTO trade_engine_state (user_id, engine_version, rebuilt_at, duration_ms, issues, decision_outcomes,
             alias_suggestions, strategy_suggestions, unattributed_income)
@@ -462,6 +465,43 @@ pub async fn write(
         .collect::<Vec<_>>()))
     .execute(&mut *conn)
     .await?;
+    Ok(())
+}
+
+/// A linked plan whose trade vanished follows its anchor fill to the top-level
+/// trade that now holds it; one that cannot be placed goes back to open.
+async fn reattach_plans(conn: &mut PgConnection, user_id: Uuid) -> Result<()> {
+    let detached: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT p.id, p.anchor_fill_key FROM trade_plans p
+         WHERE p.user_id = $1 AND p.status = 'linked'
+           AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.user_id = p.user_id AND t.id = p.trade_id)
+         ORDER BY p.updated_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    for (id, anchor) in detached {
+        let target: Option<String> = sqlx::query_scalar(
+            "SELECT COALESCE(t.parent_id, t.id) FROM trade_fills f JOIN trades t ON t.user_id = f.user_id AND t.id = f.trade_id
+             WHERE f.user_id = $1 AND f.fill_key = $2
+               AND NOT EXISTS (SELECT 1 FROM trade_plans o WHERE o.user_id = $1 AND o.trade_id = COALESCE(t.parent_id, t.id))
+             ORDER BY t.opened_at LIMIT 1",
+        )
+        .bind(user_id)
+        .bind(&anchor)
+        .fetch_optional(&mut *conn)
+        .await?;
+        sqlx::query(
+            "UPDATE trade_plans SET trade_id = $2,
+                status = CASE WHEN $2::text IS NULL THEN 'open' ELSE 'linked' END,
+                anchor_fill_key = CASE WHEN $2::text IS NULL THEN NULL ELSE anchor_fill_key END
+             WHERE id = $1",
+        )
+        .bind(id)
+        .bind(target)
+        .execute(&mut *conn)
+        .await?;
+    }
     Ok(())
 }
 

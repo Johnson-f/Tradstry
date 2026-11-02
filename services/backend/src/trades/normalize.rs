@@ -5,8 +5,10 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::instrument::{self, Alias, decimal};
-use super::model::{Event, EventKind, Instrument, Intent, Issue, Severity, Side};
+use super::{
+    instrument::{self, Alias, decimal},
+    model::{Event, EventKind, Instrument, Intent, Issue, Severity, Side},
+};
 
 #[derive(Clone, Debug)]
 pub struct ActivityRow {

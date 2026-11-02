@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { takeReturnTo } from '@/lib/auth/auth-redirect'
 import { SESSION_DURATION_MINUTES } from '@/lib/auth/stytch'
 
+const STALLED_AFTER_MS = 20_000
+
 export const Route = createFileRoute('/authenticate')({
   component: Authenticate,
 })
@@ -19,11 +21,20 @@ function Authenticate() {
   // Read once: authenticateByUrl strips the token from the URL as it starts.
   const [handled] = useState(() => !!stytch.parseAuthenticateUrl()?.handled)
   const [failed, setFailed] = useState(false)
+  const [stalled, setStalled] = useState(false)
   const error = !handled
     ? 'This sign-in link is missing or invalid. Start again to continue.'
     : failed
       ? 'Your sign-in link may have expired or already been used. Start again to continue.'
-      : null
+      : stalled
+        ? 'Signing in is taking longer than it should. Check your connection and start again.'
+        : null
+
+  useEffect(() => {
+    if (!handled) return
+    const timer = setTimeout(() => setStalled(true), STALLED_AFTER_MS)
+    return () => clearTimeout(timer)
+  }, [handled])
 
   useEffect(() => {
     // StrictMode mounts twice in development; a token is single use.
@@ -42,20 +53,24 @@ function Authenticate() {
   if (error) {
     return (
       <AuthShell title="We couldn't sign you in." description={error}>
-        <div role="alert" className="flex flex-col gap-4">
+        <div role="alert" className="flex flex-col items-center gap-4">
           <TriangleAlert className="size-6 text-destructive" aria-hidden />
-          <Button render={<Link to="/sign-in" />}>Back to sign in</Button>
+          <Button className="w-full" render={<Link to="/sign-in" />}>
+            Back to sign in
+          </Button>
         </div>
       </AuthShell>
     )
   }
   return (
     <AuthShell title="Signing you in…" description="Hang tight while we finish.">
-      <LoaderCircle
-        role="status"
-        aria-label="Signing in"
-        className="size-6 animate-spin text-muted-foreground motion-reduce:animate-none"
-      />
+      <div className="flex justify-center">
+        <LoaderCircle
+          role="status"
+          aria-label="Signing in"
+          className="size-6 animate-spin text-muted-foreground motion-reduce:animate-none"
+        />
+      </div>
     </AuthShell>
   )
 }

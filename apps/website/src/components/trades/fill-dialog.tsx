@@ -1,11 +1,14 @@
-import { LoaderCircle } from 'lucide-react'
+import { ArrowLeftRight, LoaderCircle } from 'lucide-react'
 import { useId, useState } from 'react'
-import { InstrumentFields } from '@/components/trades/instrument-fields'
+import { fieldControlClass, fieldLabelClass, fieldSelectClass } from '@/components/trades/form-styles'
+import { FormField, InstrumentFields, MoneyInput } from '@/components/trades/instrument-fields'
+import { DateTimeField } from '@/components/trades/date-field'
 import { ChoiceField } from '@/components/trades/trade-bits'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -21,6 +24,7 @@ import {
   useUpdateManualFill,
 } from '@/lib/client/trades/trades'
 import { type FillForm, fillInput, toLocalInput, tradeErrorMessage } from '@/lib/client/trades/trades-model'
+import { localToday } from '@/lib/format'
 
 function initialForm(fill?: ManualFill): FillForm {
   if (!fill) {
@@ -78,109 +82,128 @@ export function FillDialog({ workspaceId, fill, onClose }: { workspaceId: string
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl font-[Arial,Helvetica,sans-serif] sm:max-w-md data-open:animate-none data-closed:animate-none">
-        <DialogHeader>
-          <DialogTitle className="font-[inherit] text-lg font-semibold">{fill ? 'Edit fill' : 'Add a fill'}</DialogTitle>
-          <DialogDescription className="text-xs leading-5">
-            Each buy or sell you enter is matched into trades the same way imported fills are.
-          </DialogDescription>
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent
+        showCloseButton={!pending}
+        className="max-h-[calc(100dvh-2rem)] gap-5 overflow-y-auto p-6 font-[Arial,Helvetica,sans-serif] sm:max-w-lg data-open:animate-none data-closed:animate-none"
+      >
+        <DialogHeader className="gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-muted/40">
+            <ArrowLeftRight className="size-5 text-muted-foreground" aria-hidden />
+          </div>
+          <div className="space-y-2">
+            <DialogTitle className="font-[Arial,Helvetica,sans-serif] text-lg leading-6 font-semibold">
+              {fill ? 'Edit fill' : 'Add a fill'}
+            </DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              Each buy or sell you enter is matched into trades the same way imported fills are.
+            </DialogDescription>
+          </div>
         </DialogHeader>
         <form
-          className="space-y-4"
+          className="space-y-6"
           onSubmit={(event) => {
             event.preventDefault()
-            submit()
+            if (!pending) submit()
           }}
         >
-          <InstrumentFields id={id} value={form} onChange={set} autoFocus={!fill} />
-          <div className="grid grid-cols-2 gap-3">
-            <ChoiceField
-              id={`${id}-side`}
-              label="Side"
-              value={form.side}
-              onChange={(side) => set({ side })}
-              className="h-9 w-full bg-background text-sm"
-              choices={[
-                { value: 'BUY', label: 'Buy' },
-                { value: 'SELL', label: 'Sell' },
-              ]}
-            />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${id}-at`} className="text-xs font-normal text-muted-foreground">
-                When
-              </Label>
-              <Input
-                id={`${id}-at`}
-                type="datetime-local"
-                value={form.executedAt}
-                onChange={(event) => set({ executedAt: event.target.value })}
-                className="h-9 bg-background"
+          <fieldset disabled={pending} className="min-w-0 space-y-4">
+            <InstrumentFields id={id} value={form} onChange={set} autoFocus={!fill} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ChoiceField
+                id={`${id}-side`}
+                label="Side"
+                value={form.side}
+                onChange={(side) => set({ side })}
+                className={fieldSelectClass}
+                labelClassName={fieldLabelClass}
+                choices={[
+                  { value: 'BUY', label: 'Buy' },
+                  { value: 'SELL', label: 'Sell' },
+                ]}
               />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {(
-              [
-                ['quantity', form.assetClass === 'OPTION' ? 'Contracts' : 'Quantity'],
-                ['price', form.assetClass === 'OPTION' ? 'Price per share' : 'Price'],
-                ['fee', 'Fees'],
-              ] as const
-            ).map(([field, label]) => (
-              <div key={field} className="flex flex-col gap-1.5">
-                <Label htmlFor={`${id}-${field}`} className="text-xs font-normal text-muted-foreground">
-                  {label}
-                </Label>
-                <Input
-                  id={`${id}-${field}`}
-                  inputMode="decimal"
-                  value={form[field]}
-                  placeholder={field === 'fee' ? '0' : undefined}
-                  onChange={(event) => set({ [field]: event.target.value })}
-                  className="h-9 bg-background tabular-nums"
+              <FormField id={`${id}-at`} label="When">
+                <DateTimeField
+                  id={`${id}-at`}
+                  value={form.executedAt}
+                  max={localToday()}
+                  onChange={(executedAt) => set({ executedAt })}
                 />
-              </div>
-            ))}
-          </div>
-          <div className="flex items-start gap-2.5">
-            <Checkbox
-              id={`${id}-closing`}
-              checked={form.closing}
-              onCheckedChange={(checked) => set({ closing: checked === true })}
-              className="mt-0.5"
-            />
-            <Label htmlFor={`${id}-closing`} className="text-xs leading-5 font-normal text-muted-foreground">
-              This closes a position opened before what you have entered
-            </Label>
-          </div>
+              </FormField>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <FormField id={`${id}-quantity`} label={form.assetClass === 'OPTION' ? 'Contracts' : 'Quantity'}>
+                <Input
+                  id={`${id}-quantity`}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0"
+                  value={form.quantity}
+                  onChange={(event) => set({ quantity: event.target.value })}
+                  className={`${fieldControlClass} tabular-nums`}
+                />
+              </FormField>
+              <FormField id={`${id}-price`} label={form.assetClass === 'OPTION' ? 'Price per share' : 'Price'}>
+                <MoneyInput
+                  id={`${id}-price`}
+                  autoComplete="off"
+                  placeholder="0.00"
+                  value={form.price}
+                  onChange={(event) => set({ price: event.target.value })}
+                />
+              </FormField>
+              <FormField id={`${id}-fee`} label="Fees">
+                <MoneyInput
+                  id={`${id}-fee`}
+                  autoComplete="off"
+                  placeholder="0.00"
+                  value={form.fee}
+                  onChange={(event) => set({ fee: event.target.value })}
+                />
+              </FormField>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Checkbox
+                id={`${id}-closing`}
+                checked={form.closing}
+                onCheckedChange={(checked) => set({ closing: checked === true })}
+                className="mt-0.5"
+              />
+              <Label htmlFor={`${id}-closing`} className="text-[13px] leading-5 font-normal text-muted-foreground">
+                This closes a position opened before what you have entered
+              </Label>
+            </div>
+          </fieldset>
           {(problem || error) && (
             <p role="alert" className="text-sm text-destructive">
               {problem ?? tradeErrorMessage(error, 'Could not save the fill. Try again.')}
             </p>
           )}
-          <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+          <DialogFooter className="-mx-6 -mb-6 px-6 py-4 sm:justify-between">
             {fill ? (
               <Button
                 type="button"
                 variant="destructive"
-                size="sm"
+                className="h-9 px-4"
                 disabled={pending}
                 onClick={() => {
                   if (window.confirm('Delete this fill? Its trade is recalculated.')) remove.mutate(fill.id, { onSuccess: onClose })
                 }}
               >
-                Delete
+                {remove.isPending ? 'Deleting…' : 'Delete'}
               </Button>
             ) : (
-              <span />
+              <span className="max-sm:hidden" />
             )}
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <DialogClose disabled={pending} render={<Button type="button" variant="outline" className="h-9 px-4" />}>
                 Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={pending}>
-                {(add.isPending || update.isPending) && <LoaderCircle className="animate-spin" aria-hidden />}
-                {fill ? 'Save' : 'Add fill'}
+              </DialogClose>
+              <Button type="submit" className="h-9 min-w-36 px-4" disabled={pending} aria-busy={add.isPending || update.isPending}>
+                {(add.isPending || update.isPending) && (
+                  <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                )}
+                {add.isPending || update.isPending ? 'Saving…' : fill ? 'Save changes' : 'Add fill'}
               </Button>
             </div>
           </DialogFooter>

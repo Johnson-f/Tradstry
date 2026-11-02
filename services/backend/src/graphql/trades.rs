@@ -9,22 +9,26 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::brokerage::require_web_session;
-use super::errors::{coded, to_graphql};
-use super::user::current_user;
-use super::workspaces::parse_id;
-use crate::trades::analytics::{Stats, money};
-use crate::trades::decisions::{DecisionKind, DecisionOutcome, OutcomeStatus};
-use crate::trades::labels::LabelRef;
-use crate::trades::model::{AssetClass, Instrument, Intent, OptionRight, Side, Trade};
-use crate::trades::notes::NoteDocument;
-use crate::trades::read::{self, TradeFilter as Filter, TradeRow, TradeSort as Sort};
-use crate::trades::service::{
-    self, AnnotationInput, InstrumentInput, ManualFillInput, OpeningInput, TradeError,
+use super::{
+    brokerage::require_web_session,
+    errors::{coded, to_graphql},
+    user::current_user,
+    workspaces::parse_id,
 };
-use crate::trades::{measure, suggest};
+use crate::trades::{
+    behavior::TradeBehavior,
+    decisions::{DecisionKind, DecisionOutcome, OutcomeStatus},
+    labels::LabelRef,
+    measure,
+    measure::money,
+    model::{AssetClass, Instrument, Intent, OptionRight, Side, Trade},
+    notes::NoteDocument,
+    read::{self, TradeFilter as Filter, TradeRow, TradeSort as Sort},
+    service::{self, AnnotationInput, InstrumentInput, ManualFillInput, OpeningInput, TradeError},
+    suggest,
+};
 
-fn trade_error(error: TradeError) -> Error {
+pub(super) fn trade_error(error: TradeError) -> Error {
     match error {
         TradeError::NotFound => coded("Not found", "NOT_FOUND"),
         TradeError::Invalid(code, message) => coded(message, code),
@@ -38,7 +42,7 @@ fn trade_error(error: TradeError) -> Error {
     }
 }
 
-async fn context(ctx: &Context<'_>, workspace_id: &ID) -> Result<(PgPool, Uuid, Uuid)> {
+pub(super) async fn context(ctx: &Context<'_>, workspace_id: &ID) -> Result<(PgPool, Uuid, Uuid)> {
     let pool = ctx.data::<PgPool>()?.clone();
     let user = current_user(ctx).await?;
     let workspace_id = parse_id(workspace_id)?;
@@ -100,6 +104,7 @@ pub struct TradeAnnotation {
     initial_stop: Option<Decimal>,
     /// Dollars at risk; overrides the initial stop for R.
     planned_risk: Option<Decimal>,
+    behavior: TradeBehavior,
     version: i32,
     updated_at: DateTime<Utc>,
     orphaned: bool,
@@ -117,6 +122,7 @@ impl From<read::AnnotationRow> for TradeAnnotation {
             mistakes: row.mistakes.0,
             initial_stop: row.initial_stop,
             planned_risk: row.planned_risk,
+            behavior: row.behavior,
             version: row.record_version,
             updated_at: row.updated_at,
             orphaned: row.orphaned_at.is_some(),
@@ -179,6 +185,7 @@ fn summary(row: TradeRow, unrealized: &HashMap<String, (Decimal, Decimal)>) -> T
         mistakes: row.mistakes.0.clone(),
         initial_stop: row.initial_stop,
         planned_risk: row.planned_risk,
+        behavior: row.behavior,
         version: row.annotation_version.unwrap_or(1),
         updated_at: row.annotation_updated_at.unwrap_or(row.opened_at),
         orphaned: false,
@@ -620,6 +627,8 @@ pub struct TradeAnnotationInput {
     initial_stop: Option<Decimal>,
     /// Dollars at risk; overrides the initial stop for R.
     planned_risk: Option<Decimal>,
+    #[graphql(default)]
+    behavior: TradeBehavior,
 }
 
 #[derive(InputObject, Default)]
@@ -1012,32 +1021,6 @@ impl TradeQuery {
         })
     }
 
-    /// Statistics over closed trades: one workspace, or all of them when
-    /// `workspaceId` is null.
-    async fn trade_stats(
-        &self,
-        ctx: &Context<'_>,
-        workspace_id: Option<ID>,
-        from: Option<DateTime<Utc>>,
-        to: Option<DateTime<Utc>>,
-    ) -> Result<Stats> {
-        let pool = ctx.data::<PgPool>()?;
-        let user = current_user(ctx).await?;
-        let workspace = match workspace_id {
-            Some(id) => {
-                let id = parse_id(&id)?;
-                service::owns_workspace(pool, user.id, id)
-                    .await
-                    .map_err(trade_error)?;
-                Some(id)
-            }
-            None => None,
-        };
-        read::stats(pool, user.id, workspace, from, to)
-            .await
-            .map_err(to_graphql)
-    }
-
     async fn manual_fills(
         &self,
         ctx: &Context<'_>,
@@ -1337,6 +1320,7 @@ impl TradeMutation {
             mistake_ids: ids(&input.mistake_ids)?,
             initial_stop: input.initial_stop,
             planned_risk: input.planned_risk,
+            behavior: input.behavior,
         };
         let id = service::save_annotation(
             &pool,

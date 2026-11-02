@@ -10,13 +10,15 @@ import { WinnersLeaksCard } from '@/components/home/winners-leaks-card'
 import { FillDialog } from '@/components/trades/fill-dialog'
 import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { DEFAULT_PERIOD, type Period, isPeriod, marketDate, periodRange } from '@/lib/client/home/home-model'
-import { useIsManualWorkspace, useOpenPositions, useTradeStats } from '@/lib/client/trades/trades'
+import { type Period, isPeriod, marketDate, periodRange } from '@/lib/client/home/home-model'
+import { useDefaultPeriod, useSettings } from '@/lib/client/settings'
+import { useTradeStats } from '@/lib/client/analytics/stats'
+import { useIsManualWorkspace, useOpenPositions } from '@/lib/client/trades/trades'
 import { tradeErrorMessage } from '@/lib/client/trades/trades-model'
 
 export const Route = createFileRoute('/_authenticated/w/$workspaceId/')({
   validateSearch: (search: Record<string, unknown>): { period?: Period } =>
-    isPeriod(search.period) && search.period !== DEFAULT_PERIOD ? { period: search.period } : {},
+    isPeriod(search.period) ? { period: search.period } : {},
   component: Dashboard,
 })
 
@@ -60,7 +62,9 @@ function FirstTrades({ workspaceId }: { workspaceId: string }) {
 
 function Dashboard() {
   const { workspaceId } = Route.useParams()
-  const { period = DEFAULT_PERIOD } = Route.useSearch()
+  const settings = useSettings()
+  const defaultPeriod = useDefaultPeriod()
+  const { period = defaultPeriod } = Route.useSearch()
   const [now] = useState(() => new Date())
   const range = periodRange(period, now)
   const allTime = useTradeStats(workspaceId, null)
@@ -112,6 +116,7 @@ function Dashboard() {
               today={marketDate(now)}
               loading={allTime.isPending}
               workspaceId={workspaceId}
+              firstWeekday={settings.data?.weekStart ?? 'SUNDAY'}
             />
           </>
         )}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { Bucket, EquityPoint } from '@/lib/client/trades/trades'
+import type { Bucket, EquityPoint } from '@/lib/client/analytics/stats'
 import {
   bestAndWorst,
   calendarMonth,
@@ -12,6 +12,7 @@ import {
   periodRange,
   shiftMonth,
   symbolStandouts,
+  weekdayNames,
   winRate,
 } from './home-model'
 
@@ -87,6 +88,15 @@ describe('calendarMonth', () => {
     expect(month.net).toBeCloseTo(5.48)
     expect(month.best?.day).toBe('2026-08-17')
     expect(winRate(month)).toBe(75)
+  })
+
+  test('weeks can start on Monday', () => {
+    const monday = calendarMonth('2026-08', equity, '2026-08-17', 'MONDAY')
+    expect(monday.weeks[0].days[0]).toMatchObject({ day: '2026-07-27', inMonth: false })
+    expect(monday.weeks[0].days[5]).toMatchObject({ day: '2026-08-01', inMonth: true })
+    expect(monday.weeks.flatMap((w) => w.days).filter((d) => d.inMonth)).toHaveLength(31)
+    expect(weekdayNames('MONDAY')).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+    expect(weekdayNames('SUNDAY')[0]).toBe('Sun')
   })
 
   test('months move across years', () => {

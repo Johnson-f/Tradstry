@@ -4,10 +4,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{delete, get, post};
-use axum::{Json, Router};
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    routing::{delete, get, post},
+};
 use base64::Engine as _;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;

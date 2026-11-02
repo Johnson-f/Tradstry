@@ -3,22 +3,30 @@
 //! (`1083` when unknown), expiring bearer tokens, rotating refresh tokens, and
 //! PKCE. Never point a running server at it.
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+};
 
-use axum::Router;
-use axum::body::{Body, Bytes};
-use axum::http::{HeaderMap, Method, Request, StatusCode};
-use axum::response::{IntoResponse, Response};
-use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use axum::{
+    Router,
+    body::{Body, Bytes},
+    http::{HeaderMap, Method, Request, StatusCode},
+    response::{IntoResponse, Response},
+};
+use base64::{
+    Engine,
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 
-use super::client::{OAuthClientConfig, SnapTradeClient, SnapTradeConfig};
-use super::signing;
+use super::{
+    client::{OAuthClientConfig, SnapTradeClient, SnapTradeConfig},
+    signing,
+};
 
 pub const CLIENT_ID: &str = "client-test";
 pub const CONSUMER_KEY: &str = "consumer-key-test";

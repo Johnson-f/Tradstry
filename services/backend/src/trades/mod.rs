@@ -2,7 +2,7 @@
 //! its input, rebuilt from scratch whenever any input changes, so fixing a
 //! rule fixes all of history.
 
-pub mod analytics;
+pub mod behavior;
 pub mod decisions;
 pub mod ids;
 pub mod instrument;
@@ -11,6 +11,7 @@ pub mod measure;
 pub mod model;
 pub mod normalize;
 pub mod notes;
+pub mod plans;
 pub mod positions;
 pub mod read;
 pub mod rebuild;

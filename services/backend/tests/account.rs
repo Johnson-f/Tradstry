@@ -5,10 +5,14 @@ use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
-use tradstry::auth::stytch::fake::FakeStytch;
-use tradstry::auth::test_jwt::{self, PROJECT};
-use tradstry::auth::{AuthClaims, TokenVerifier};
-use tradstry::graphql::build_schema;
+use tradstry::{
+    auth::{
+        AuthClaims, TokenVerifier,
+        stytch::fake::FakeStytch,
+        test_jwt::{self, PROJECT},
+    },
+    graphql::build_schema,
+};
 
 const USER: &str = "user-test-1";
 const CURRENT: &str = "session-current";

@@ -1,10 +1,10 @@
-import { Switch } from '@base-ui/react/switch'
 import { Tabs } from '@base-ui/react/tabs'
 import { useStytchUser } from '@stytch/react'
 import { useRouter } from '@tanstack/react-router'
 import { Layers2, Search, Settings2, Tags, UserRound } from 'lucide-react'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { DevicesCard } from '@/components/account/devices-card'
+import { GeneralSettings } from '@/components/settings/general-settings'
 import { JournalLabelsSettings } from '@/components/trades/labels-settings'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { WorkspacesSettings } from '@/components/workspace/workspaces-settings'
 import { userEmail, userFullName } from '@/lib/auth/stytch'
-import { isDarkMode, setDarkMode } from '@/lib/theme'
 
 export type SettingsTab = 'general' | 'workspaces' | 'journal' | 'you'
 
@@ -21,7 +20,7 @@ const sections = [
     value: 'general',
     label: 'General',
     icon: Settings2,
-    keywords: 'appearance theme dark light model referrals reviews',
+    keywords: 'appearance theme dark light system time zone week risk breakeven period dashboard export data csv',
   },
   {
     value: 'workspaces',
@@ -93,7 +92,6 @@ function SettingsContent({
   onTabChange?: (tab: SettingsTab) => void
 }) {
   const { user } = useStytchUser()
-  const [darkMode, updateDarkMode] = useState(isDarkMode)
   const [selectedTab, setSelectedTab] = useState(initialTab)
   const [search, setSearch] = useState('')
   const tab = controlledTab ?? selectedTab
@@ -171,7 +169,7 @@ function SettingsContent({
                 <div role="status" className="py-12 text-center">
                   <p className="text-sm font-medium">No settings found</p>
                   <p className="mt-1 text-[13px] text-muted-foreground">
-                    Try searching for appearance, workspaces, labels, or devices.
+                    Try searching for theme, risk, export, workspaces, labels, or devices.
                   </p>
                   <Button variant="ghost" size="sm" className="mt-3" onClick={() => setSearch('')}>
                     Clear search
@@ -179,81 +177,8 @@ function SettingsContent({
                 </div>
               )}
 
-              <Tabs.Panel value="general" className="space-y-7 outline-none">
-                <section aria-labelledby="model-heading" className="space-y-2">
-                  <h2 id="model-heading" className="text-[13px] font-medium">
-                    Model <span className="ml-1.5 text-xs font-normal text-muted-foreground">Preview</span>
-                  </h2>
-                  <div className="divide-y divide-neutral-200/60 overflow-hidden rounded-2xl border border-neutral-200/60 bg-card shadow-xs dark:divide-white/10 dark:border-white/10">
-                    <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">Claude · Anthropic</p>
-                        <p className="mt-0.5 text-[13px] text-muted-foreground">
-                          Model selection is not available yet.
-                        </p>
-                      </div>
-                      <Button disabled size="sm" variant="secondary" className="h-7.5 px-3">
-                        Change
-                      </Button>
-                    </div>
-                    <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">Your invite link</p>
-                        <p className="mt-0.5 text-[13px] text-muted-foreground">Referrals are not available yet.</p>
-                      </div>
-                      <Button disabled size="sm" variant="secondary" className="h-7.5 px-3">
-                        Copy link
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-
-                <section aria-labelledby="appearance-heading" className="space-y-2">
-                  <h2 id="appearance-heading" className="text-[13px] font-medium">
-                    Appearance
-                  </h2>
-                  <div className="flex min-h-12 items-center justify-between gap-4 rounded-2xl border border-neutral-200/60 bg-card px-5 py-3 shadow-xs dark:border-white/10">
-                    <label htmlFor="dark-mode" className="cursor-pointer text-sm">
-                      Dark mode
-                    </label>
-                    <Switch.Root
-                      id="dark-mode"
-                      checked={darkMode}
-                      onCheckedChange={(checked) => {
-                        updateDarkMode(checked)
-                        setDarkMode(checked)
-                      }}
-                      className="inline-flex h-5.5 w-9 shrink-0 cursor-pointer items-center rounded-full bg-neutral-300 p-0.5 outline-offset-4 focus-visible:outline-2 data-checked:bg-neutral-900 dark:bg-neutral-600 dark:data-checked:bg-neutral-100"
-                    >
-                      <Switch.Thumb className="size-4.5 rounded-full bg-white shadow-sm data-checked:translate-x-3.5 dark:data-checked:bg-neutral-900" />
-                    </Switch.Root>
-                  </div>
-                </section>
-
-                <section aria-labelledby="running-heading" className="space-y-2">
-                  <h2 id="running-heading" className="text-[13px] font-medium">
-                    Running <span className="ml-1.5 text-xs font-normal text-muted-foreground">Preview</span>
-                  </h2>
-                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200/60 bg-card px-5 py-3.5 shadow-xs dark:border-white/10">
-                    <div className="min-w-0">
-                      <label htmlFor="pause-reviews" className="text-sm font-medium">
-                        Pause reviews
-                      </label>
-                      <p id="pause-reviews-description" className="mt-0.5 text-[13px] text-muted-foreground">
-                        Automated reviews are not available yet.
-                      </p>
-                    </div>
-                    <Switch.Root
-                      id="pause-reviews"
-                      aria-describedby="pause-reviews-description"
-                      disabled
-                      checked={false}
-                      className="inline-flex h-5.5 w-9 shrink-0 cursor-not-allowed items-center rounded-full bg-neutral-300 p-0.5 opacity-50 dark:bg-neutral-600"
-                    >
-                      <Switch.Thumb className="size-4.5 rounded-full bg-white shadow-sm" />
-                    </Switch.Root>
-                  </div>
-                </section>
+              <Tabs.Panel value="general" className="outline-none">
+                <GeneralSettings />
               </Tabs.Panel>
 
               <Tabs.Panel value="workspaces" className="space-y-5 outline-none">

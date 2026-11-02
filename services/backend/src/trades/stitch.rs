@@ -6,11 +6,13 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
-use super::model::{
-    Closure, ClosureKind, Direction, Event, EventKind, FillRole, Intent, Issue, Lot, OptionRight,
-    Severity, Side, Trade, TradeFill, TradeKind, TradeStatus, WorkspaceInfo,
+use super::{
+    model::{
+        Closure, ClosureKind, Direction, Event, EventKind, FillRole, Intent, Issue, Lot,
+        OptionRight, Severity, Side, Trade, TradeFill, TradeKind, TradeStatus, WorkspaceInfo,
+    },
+    normalize::{OpeningPosition, opening_key},
 };
-use super::normalize::{OpeningPosition, opening_key};
 
 /// Below this many shares a position counts as flat; brokers leave dust
 /// after fractional sells.

@@ -1,8 +1,7 @@
 use async_graphql::{Error, ErrorExtensions};
 use tracing::error;
 
-use crate::users::AccountRequired;
-use crate::workspace::WorkspaceError;
+use crate::{users::AccountRequired, workspace::WorkspaceError};
 
 pub fn coded(message: impl Into<String>, code: &'static str) -> Error {
     Error::new(message.into()).extend_with(|_, ext| ext.set("code", code))

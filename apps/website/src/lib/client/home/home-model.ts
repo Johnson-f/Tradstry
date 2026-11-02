@@ -1,4 +1,4 @@
-import type { Bucket, EquityPoint } from '@/lib/client/trades/trades'
+import type { Bucket, EquityPoint } from '@/lib/client/analytics/stats'
 import { toNumber } from '@/lib/client/trades/trades-model'
 
 /** Trading days are dated in New York, as the backend's statistics are. */
@@ -148,12 +148,26 @@ export interface CalendarMonth extends Outcomes {
 }
 
 /** A month (`YYYY-MM`) of daily results in whole Sunday-to-Saturday weeks. */
-export function calendarMonth(month: string, equity: EquityPoint[], today: string): CalendarMonth {
+export type FirstWeekday = 'SUNDAY' | 'MONDAY'
+
+/** Weekday names in calendar order for the chosen first day of the week. */
+export function weekdayNames(first: FirstWeekday): string[] {
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  return first === 'MONDAY' ? [...names.slice(1), names[0]] : names
+}
+
+export function calendarMonth(
+  month: string,
+  equity: EquityPoint[],
+  today: string,
+  first: FirstWeekday = 'SUNDAY',
+): CalendarMonth {
   const [year, monthNumber] = month.split('-').map(Number)
   const byDay = new Map(equity.map((point) => [point.day, point]))
-  const first = `${month}-01`
+  const firstDay = `${month}-01`
   const last = isoDay(year, monthNumber + 1, 0)
-  const start = shiftDays(first, -new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay())
+  const weekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay()
+  const start = shiftDays(firstDay, -((weekday - (first === 'MONDAY' ? 1 : 0) + 7) % 7))
   const weeks: CalendarWeek[] = []
   for (let cursor = start, index = 1; cursor <= last; index++) {
     const days: CalendarDay[] = []
