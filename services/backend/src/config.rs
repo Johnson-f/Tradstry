@@ -45,6 +45,8 @@ pub struct Config {
     pub website_url: String,
     /// Brokerage linking is off when SnapTrade is not configured.
     pub brokerage: Option<BrokerageConfig>,
+    /// The public origin of the MCP endpoint, e.g. `https://mcp.tradstry.com`.
+    pub mcp_public_url: String,
 }
 
 impl std::fmt::Debug for StytchConfig {
@@ -125,6 +127,10 @@ impl Config {
             cors_allowed_origins,
             website_url,
             brokerage: brokerage_config(&var)?,
+            mcp_public_url: var("MCP_PUBLIC_URL")
+                .unwrap_or_else(|| format!("http://localhost:{port}"))
+                .trim_end_matches('/')
+                .to_owned(),
         })
     }
 }

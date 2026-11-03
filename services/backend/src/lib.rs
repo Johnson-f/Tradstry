@@ -5,6 +5,7 @@ pub mod brokerage;
 pub mod config;
 pub mod db;
 pub mod graphql;
+pub mod mcp;
 pub mod realtime;
 pub mod snaptrade;
 pub mod trades;

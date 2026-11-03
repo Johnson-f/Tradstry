@@ -103,6 +103,10 @@ async fn me_creates_the_account_with_its_main_workspace(pool: PgPool) {
     assert_eq!(me["me"]["email"], "ada@example.com");
     assert_eq!(me["workspaces"], json!([{"name": "Main Workspace"}]));
     assert_eq!(user_count(&pool).await, 1);
+    assert_eq!(
+        stytch.assigned_roles(),
+        [(STYTCH_USER.to_owned(), "trader".to_owned())]
+    );
 }
 
 #[sqlx::test]
@@ -122,6 +126,7 @@ async fn connected_apps_need_an_existing_account(pool: PgPool) {
         .await
         .unwrap();
     data(run(&pool, &stytch, app, "{ me { id } }").await);
+    assert!(stytch.assigned_roles().is_empty());
 }
 
 #[sqlx::test]

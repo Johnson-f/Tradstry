@@ -323,6 +323,9 @@ impl BrokerageQuery {
         ctx: &Context<'_>,
         #[graphql(default = false)] refresh: bool,
     ) -> Result<Vec<BrokerageConnection>> {
+        if refresh {
+            require_web_session(ctx)?;
+        }
         let brokerage = brokerage(ctx)?;
         let user = current_user(ctx).await?;
         let views = brokerage
@@ -338,6 +341,7 @@ impl BrokerageQuery {
         ctx: &Context<'_>,
         connection_id: ID,
     ) -> Result<Vec<AccountChoice>> {
+        require_web_session(ctx)?;
         let brokerage = brokerage(ctx)?;
         let user = current_user(ctx).await?;
         let choices = brokerage
@@ -372,6 +376,7 @@ impl BrokerageQuery {
         ctx: &Context<'_>,
         attempt_id: ID,
     ) -> Result<Vec<AccountChoice>> {
+        require_web_session(ctx)?;
         let brokerage = brokerage(ctx)?;
         let user = current_user(ctx).await?;
         let choices = brokerage
@@ -741,6 +746,7 @@ impl ImportMutation {
 
     /// Fetches holdings and recent orders now (at most every few minutes).
     async fn refresh_brokerage_holdings(&self, ctx: &Context<'_>, account_id: ID) -> Result<bool> {
+        require_web_session(ctx)?;
         let brokerage = brokerage(ctx)?;
         let user = current_user(ctx).await?;
         brokerage

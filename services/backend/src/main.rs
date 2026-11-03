@@ -11,6 +11,7 @@ use tradstry::{
     brokerage::{Brokerage, crypto::SecretBox},
     config::Config,
     db,
+    mcp::McpSettings,
     snaptrade::SnapTradeClient,
 };
 
@@ -67,12 +68,31 @@ async fn main() -> Result<()> {
     if let Some(brokerage) = &brokerage {
         brokerage.clone().spawn_background();
     }
+    let mcp = match config.stytch.issuer.clone() {
+        Some(issuer) => {
+            info!(url = %format!("{}/mcp", config.mcp_public_url), "MCP server is on");
+            Some(McpSettings {
+                public_origin: config.mcp_public_url.clone(),
+                issuer: issuer.clone(),
+                verifier: TokenVerifier::stytch(
+                    &config.stytch.project_id,
+                    config.stytch.api_url.as_deref(),
+                    Some(&issuer),
+                ),
+            })
+        }
+        None => {
+            warn!("STYTCH_ISSUER is not set; the MCP server is off");
+            None
+        }
+    };
     let state = AppState::new(Services {
         verifier,
         pool,
         stytch,
         stytch_webhook_secret: config.stytch_webhook_secret.clone(),
         brokerage,
+        mcp,
     });
     let router = app::router(state, config.cors_allowed_origins.clone());
 

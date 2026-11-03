@@ -64,6 +64,8 @@ impl From<::stytch::Error> for StytchError {
 
 #[async_trait]
 pub trait StytchApi: Send + Sync {
+    /// Adds a role without removing existing roles; already having it succeeds.
+    async fn assign_role(&self, user_id: &str, role: &str) -> Result<(), StytchError>;
     async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StytchError>;
     async fn revoke_session(&self, session_id: &str) -> Result<(), StytchError>;
     /// Succeeds when the user is already gone, so retries are safe.
@@ -126,6 +128,30 @@ impl SessionAuthenticator for StytchClient {
 
 #[async_trait]
 impl StytchApi for StytchClient {
+    async fn assign_role(&self, user_id: &str, role: &str) -> Result<(), StytchError> {
+        let mut roles = self
+            .client
+            .users
+            .get(::stytch::consumer::users::GetRequest {
+                user_id: user_id.to_owned(),
+            })
+            .await?
+            .roles;
+        if roles.iter().any(|existing| existing == role) {
+            return Ok(());
+        }
+        roles.push(role.to_owned());
+        self.client
+            .users
+            .update(::stytch::consumer::users::UpdateRequest {
+                user_id: user_id.to_owned(),
+                roles: Some(roles),
+                ..Default::default()
+            })
+            .await?;
+        Ok(())
+    }
+
     async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StytchError> {
         let response = self
             .client
@@ -191,6 +217,7 @@ pub mod fake {
     #[derive(Default)]
     pub struct FakeStytch {
         sessions: Mutex<HashMap<String, Vec<Session>>>,
+        assigned_roles: Mutex<Vec<(String, String)>>,
         revoked: Mutex<Vec<String>>,
         deleted_users: Mutex<Vec<String>>,
     }
@@ -210,6 +237,7 @@ pub mod fake {
                 .collect();
             Self {
                 sessions: Mutex::new(HashMap::from([(user_id.to_owned(), sessions)])),
+                assigned_roles: Mutex::default(),
                 revoked: Mutex::default(),
                 deleted_users: Mutex::default(),
             }
@@ -219,6 +247,10 @@ pub mod fake {
             self.revoked.lock().unwrap().clone()
         }
 
+        pub fn assigned_roles(&self) -> Vec<(String, String)> {
+            self.assigned_roles.lock().unwrap().clone()
+        }
+
         pub fn deleted_users(&self) -> Vec<String> {
             self.deleted_users.lock().unwrap().clone()
         }
@@ -226,6 +258,14 @@ pub mod fake {
 
     #[async_trait]
     impl StytchApi for FakeStytch {
+        async fn assign_role(&self, user_id: &str, role: &str) -> Result<(), StytchError> {
+            self.assigned_roles
+                .lock()
+                .unwrap()
+                .push((user_id.to_owned(), role.to_owned()));
+            Ok(())
+        }
+
         async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StytchError> {
             let revoked = self.revoked();
             Ok(self

@@ -1,14 +1,18 @@
 pub mod account;
 pub mod settings;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{auth::TokenKind, db::new_id};
+use crate::{
+    auth::{TokenKind, stytch::StytchApi},
+    db::new_id,
+};
 
 pub const DEFAULT_WORKSPACE_NAME: &str = "Main Workspace";
+const DEFAULT_ROLE: &str = "trader";
 
 #[derive(Clone, Debug, sqlx::FromRow)]
 pub struct User {
@@ -50,6 +54,32 @@ pub async fn find_by_stytch_id(pool: &PgPool, stytch_user_id: &str) -> Result<Op
     .bind(stytch_user_id)
     .fetch_optional(pool)
     .await?)
+}
+
+/// Assign the default role before saving a new website account, so a failed
+/// Stytch request leaves signup retryable. Existing users keep their role grants.
+pub async fn provision_user(
+    pool: &PgPool,
+    stytch: &dyn StytchApi,
+    stytch_user_id: &str,
+    full_name: &str,
+    email: &str,
+) -> Result<User> {
+    if let Some(user) = find_by_stytch_id(pool, stytch_user_id).await? {
+        return fill_blank_profile(pool, user, full_name, email).await;
+    }
+    stytch
+        .assign_role(stytch_user_id, DEFAULT_ROLE)
+        .await
+        .context("assign the new account's trader role")?;
+    load_user(
+        pool,
+        stytch_user_id,
+        full_name,
+        email,
+        Provisioning::CreateIfMissing,
+    )
+    .await
 }
 
 /// Resolves the user behind verified token claims. A new user is created with a

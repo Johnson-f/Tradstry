@@ -21,6 +21,7 @@ use crate::{
     auth::{TokenVerifier, stytch::StytchApi},
     brokerage::Brokerage,
     graphql::{self, AppSchema},
+    mcp::{self, McpSettings},
     webhooks,
 };
 
@@ -31,6 +32,8 @@ pub struct Services {
     pub stytch: Arc<dyn StytchApi>,
     pub stytch_webhook_secret: Option<String>,
     pub brokerage: Option<Arc<Brokerage>>,
+    /// The MCP endpoint is off without a Connected Apps issuer.
+    pub mcp: Option<McpSettings>,
 }
 
 #[derive(Clone)]
@@ -41,6 +44,7 @@ pub struct AppState {
     pub stytch: Arc<dyn StytchApi>,
     pub stytch_webhook_secret: Option<Arc<str>>,
     pub brokerage: Option<Arc<Brokerage>>,
+    pub mcp: Option<McpSettings>,
 }
 
 impl AppState {
@@ -56,6 +60,7 @@ impl AppState {
             stytch: services.stytch,
             stytch_webhook_secret: services.stytch_webhook_secret.map(Arc::from),
             brokerage: services.brokerage,
+            mcp: services.mcp,
         }
     }
 }
@@ -70,6 +75,7 @@ pub fn test_services(pool: PgPool) -> Services {
         stytch: Arc::new(crate::auth::stytch::fake::FakeStytch::default()),
         stytch_webhook_secret: Some("whsec_dGVzdC1zZWNyZXQtdGVzdC1zZWNyZXQ=".to_owned()),
         brokerage: None,
+        mcp: None,
     }
 }
 
@@ -80,6 +86,11 @@ impl FromRef<AppState> for TokenVerifier {
 }
 
 pub fn router(state: AppState, cors_allowed_origins: Vec<HeaderValue>) -> Router {
+    let mcp = state
+        .mcp
+        .clone()
+        .map(|settings| mcp::router(state.pool.clone(), settings))
+        .unwrap_or_default();
     Router::new()
         .route("/health", get(health))
         .route("/graphql", graphql_route())
@@ -94,8 +105,9 @@ pub fn router(state: AppState, cors_allowed_origins: Vec<HeaderValue>) -> Router
             post(webhooks::snaptrade::snaptrade_webhook),
         )
         .layer(cors(cors_allowed_origins))
-        .layer(TraceLayer::new_for_http())
         .with_state(state)
+        .merge(mcp)
+        .layer(TraceLayer::new_for_http())
 }
 
 /// GraphiQL is a development aid, so release builds answer only POST.

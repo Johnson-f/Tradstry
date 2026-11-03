@@ -57,6 +57,11 @@ impl AuthClaims {
         self.other.get(name).and_then(Value::as_str)
     }
 
+    /// The OAuth scopes a Connected App token was granted, from its `scope` claim.
+    pub fn scopes(&self) -> impl Iterator<Item = &str> {
+        self.str_claim("scope").unwrap_or("").split_whitespace()
+    }
+
     pub fn full_name(&self) -> &str {
         self.str_claim("full_name").unwrap_or("")
     }

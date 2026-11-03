@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::{
+    brokerage::require_web_session,
     errors::{coded, to_graphql},
     user::current_user,
 };
@@ -50,6 +51,7 @@ pub struct WorkspaceMutation;
 #[Object]
 impl WorkspaceMutation {
     async fn create_workspace(&self, ctx: &Context<'_>, name: String) -> Result<Workspace> {
+        require_web_session(ctx)?;
         let user = current_user(ctx).await?;
         workspace::create(ctx.data::<PgPool>()?, user.id, &name)
             .await
@@ -58,6 +60,7 @@ impl WorkspaceMutation {
     }
 
     async fn rename_workspace(&self, ctx: &Context<'_>, id: ID, name: String) -> Result<Workspace> {
+        require_web_session(ctx)?;
         let user = current_user(ctx).await?;
         workspace::rename(ctx.data::<PgPool>()?, user.id, parse_id(&id)?, &name)
             .await
@@ -66,6 +69,7 @@ impl WorkspaceMutation {
     }
 
     async fn delete_workspace(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
+        require_web_session(ctx)?;
         let user = current_user(ctx).await?;
         workspace::delete(ctx.data::<PgPool>()?, user.id, parse_id(&id)?)
             .await

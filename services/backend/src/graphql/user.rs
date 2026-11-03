@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, Result};
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
 
 use super::errors::to_graphql;
 use crate::{
-    auth::AuthClaims,
+    auth::{AuthClaims, TokenKind, stytch::StytchApi},
     users::{self, Provisioning, User},
 };
 
@@ -17,14 +19,28 @@ pub async fn current_user(ctx: &Context<'_>) -> Result<User> {
     let load = || async {
         let claims = ctx.data::<AuthClaims>()?;
         let pool = ctx.data::<PgPool>()?;
-        users::load_user(
-            pool,
-            &claims.sub,
-            claims.full_name(),
-            claims.email(),
-            Provisioning::from(claims.kind),
-        )
-        .await
+        match claims.kind {
+            TokenKind::Session => {
+                users::provision_user(
+                    pool,
+                    ctx.data::<Arc<dyn StytchApi>>()?.as_ref(),
+                    &claims.sub,
+                    claims.full_name(),
+                    claims.email(),
+                )
+                .await
+            }
+            TokenKind::ConnectedApp => {
+                users::load_user(
+                    pool,
+                    &claims.sub,
+                    claims.full_name(),
+                    claims.email(),
+                    Provisioning::ExistingOnly,
+                )
+                .await
+            }
+        }
         .map_err(to_graphql)
     };
     match ctx.data_opt::<RequestUser>() {

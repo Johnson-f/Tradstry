@@ -44,6 +44,33 @@ pub fn test_verifier() -> TokenVerifier {
     )])
 }
 
+/// The custom-domain issuer that Connected App tokens carry in tests.
+pub const ISSUER: &str = "https://login.test.tradstry.local";
+
+/// Accepts tokens from both `stytch.com/{PROJECT}` and [`ISSUER`].
+pub fn connected_app_verifier() -> TokenVerifier {
+    TokenVerifier::new(vec![IssuerConfig::stytch(
+        PROJECT,
+        Some(ISSUER),
+        Arc::new(StaticJwks),
+    )])
+}
+
+/// A Connected App access token, as Stytch issues one to an MCP client.
+pub fn connected_app_token(sub: &str, scope: &str) -> String {
+    let now = chrono::Utc::now().timestamp();
+    sign(&json!({
+        "iss": ISSUER,
+        "sub": sub,
+        "aud": [PROJECT],
+        "iat": now,
+        "nbf": now - 10,
+        "exp": now + 600,
+        "client_id": "https://claude.ai/oauth/claude-code-client-metadata",
+        "scope": scope,
+    }))
+}
+
 pub fn session_token(sub: &str, email: &str, full_name: &str) -> String {
     let now = chrono::Utc::now().timestamp();
     sign(&json!({
