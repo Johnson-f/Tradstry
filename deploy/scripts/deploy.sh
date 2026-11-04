@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Deploys one commit of master with its image, on the VPS. Run through
-# ssh-deploy-command.sh by the release workflow. On any failure it restores the
-# previous commit and image.
+# Deploys one commit of master with its image, on the VPS. Semaphore's deploy
+# pipeline runs it through ssh-deploy-command.sh, passing a read-only registry
+# user and token on stdin. On any failure it restores the previous commit and
+# image.
 
 set -Eeuo pipefail
 umask 077
@@ -12,6 +13,19 @@ IMAGE_TAG="${2:-}"
 LOCK_FILE="${DEPLOY_DIR}/.deploy.lock"
 DEPLOY_ENV="${DEPLOY_DIR}/deploy/deploy.env"
 PREVIOUS_ENV="${DEPLOY_DIR}/deploy/deploy.env.previous"
+
+REGISTRY_USER=""
+REGISTRY_TOKEN=""
+if [[ ! -t 0 ]]; then
+  IFS= read -r REGISTRY_USER || true
+  IFS= read -r REGISTRY_TOKEN || true
+fi
+
+# The registry login lives in a throwaway config, so no credential outlasts
+# this deploy.
+DOCKER_CONFIG="$(mktemp -d)"
+export DOCKER_CONFIG
+trap 'rm -rf "${DOCKER_CONFIG}"' EXIT
 
 compose() {
   docker compose \
@@ -94,6 +108,9 @@ echo "Validating configuration..."
 compose config --quiet
 
 echo "Pulling ${IMAGE_TAG}..."
+if [[ -n "${REGISTRY_TOKEN}" ]]; then
+  printf '%s' "${REGISTRY_TOKEN}" | docker login ghcr.io --username "${REGISTRY_USER}" --password-stdin >/dev/null
+fi
 compose pull backend
 
 echo "Starting services..."

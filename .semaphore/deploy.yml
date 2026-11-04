@@ -1,0 +1,42 @@
+version: v1.0
+name: Deploy to production
+agent:
+  machine:
+    type: f1-standard-2
+    os_image: ubuntu2404
+
+queue:
+  name: production
+  scope: project
+  processing: serialized
+
+blocks:
+  # The server's forced command allows only `deploy <commit> sha-<commit>`.
+  # The pull token goes over stdin and is never stored on the server.
+  - name: Deploy
+    task:
+      secrets:
+        - name: tradstry-deploy
+        - name: ghcr-pull
+      jobs:
+        - name: Deploy this commit
+          commands:
+            - chmod 600 ~/.ssh/tradstry_deploy
+            - >-
+              printf '%s\n%s\n' "$GHCR_PULL_USER" "$GHCR_PULL_TOKEN" |
+              ssh -i ~/.ssh/tradstry_deploy -o BatchMode=yes -o IdentitiesOnly=yes
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/tradstry_known_hosts
+              "${DEPLOY_USER}@${DEPLOY_HOST}" "deploy ${SEMAPHORE_GIT_SHA} sha-${SEMAPHORE_GIT_SHA}"
+
+  - name: Tag as latest
+    task:
+      secrets:
+        - name: ghcr-push
+      jobs:
+        - name: Tag the deployed image
+          commands:
+            - printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+            - >-
+              docker buildx imagetools create
+              --tag ghcr.io/johnson-f/tradstry-backend:latest
+              "ghcr.io/johnson-f/tradstry-backend:sha-${SEMAPHORE_GIT_SHA}"

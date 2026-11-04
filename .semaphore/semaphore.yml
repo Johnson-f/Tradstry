@@ -1,0 +1,112 @@
+version: v1.0
+name: Tradstry
+agent:
+  machine:
+    type: f1-standard-4
+    os_image: ubuntu2404
+
+auto_cancel:
+  running:
+    when: "branch != 'master'"
+
+fail_fast:
+  stop:
+    when: "true"
+
+global_job_config:
+  prologue:
+    commands:
+      - checkout
+
+blocks:
+  - name: Backend
+    dependencies: []
+    task:
+      env_vars:
+        - name: CARGO_INCREMENTAL
+          value: "0"
+        - name: CARGO_PROFILE_DEV_DEBUG
+          value: "0"
+        - name: CARGO_TERM_COLOR
+          value: always
+        - name: DATABASE_URL
+          value: postgres://tradstry:tradstry@localhost:5432/tradstry
+      prologue:
+        commands:
+          - source .semaphore/rust-toolchain.sh
+          - sem-service start postgres 18 --username=tradstry --password=tradstry --db=tradstry
+          - export CARGO_CACHE_KEY="cargo-${RUST_VERSION}-$(checksum backend/Cargo.lock)"
+          - cache restore "${CARGO_CACHE_KEY},cargo-${RUST_VERSION}-master"
+      jobs:
+        - name: Format, clippy and tests
+          commands:
+            - cd backend
+            - cargo fmt --check
+            - cargo clippy --all-targets --locked -- -D warnings
+            - cargo test --locked
+      epilogue:
+        on_pass:
+          commands:
+            - '[ "$SEMAPHORE_GIT_BRANCH" = master ] && .semaphore/store-cargo-cache.sh || true'
+
+  - name: Website
+    dependencies: []
+    task:
+      agent:
+        machine:
+          type: f1-standard-2
+          os_image: ubuntu2404
+      prologue:
+        commands:
+          - export BUN_VERSION=1.4.0
+          - curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+          - export PATH="$HOME/.bun/bin:$PATH"
+          - cache restore "bun-$(checksum apps/website/bun.lock),bun-master"
+      jobs:
+        - name: Lint, tests and build
+          commands:
+            - cd apps/website
+            - bun install --frozen-lockfile
+            - bun run lint
+            - bun run test
+            - bun run build
+      epilogue:
+        on_pass:
+          commands:
+            - cd "$SEMAPHORE_GIT_DIR"
+            - '[ "$SEMAPHORE_GIT_BRANCH" = master ] && cache store "bun-$(checksum apps/website/bun.lock)" ~/.bun/install/cache || true'
+
+  # Built only on master, alongside the checks; the deploy waits for both.
+  - name: Image
+    dependencies: []
+    run:
+      when: "branch = 'master'"
+    task:
+      secrets:
+        - name: ghcr-push
+      env_vars:
+        - name: IMAGE
+          value: ghcr.io/johnson-f/tradstry-backend
+      jobs:
+        - name: Build and push
+          commands:
+            - printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+            - docker buildx create --use --driver docker-container --name tradstry
+            # Only the compiled dependencies are cached, in the private
+            # package itself, so a release compiles just the backend crate.
+            - >-
+              docker buildx build --target deps --output type=cacheonly
+              --cache-from "type=registry,ref=${IMAGE}:cache-deps"
+              --cache-to "type=registry,ref=${IMAGE}:cache-deps,mode=min,image-manifest=true,oci-mediatypes=true"
+              .
+            - >-
+              docker buildx build --target backend --push
+              --cache-from "type=registry,ref=${IMAGE}:cache-deps"
+              --tag "${IMAGE}:sha-${SEMAPHORE_GIT_SHA}"
+              .
+
+promotions:
+  - name: Deploy to production
+    pipeline_file: deploy.yml
+    auto_promote:
+      when: "result = 'passed' and branch = 'master'"
