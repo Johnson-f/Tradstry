@@ -44,6 +44,21 @@ export function getIdentityProviderClient(): typeof stytch {
   return identityProviderClient
 }
 
+export const AUTHORIZE_PATH = '/oauth/authorize'
+
+/**
+ * The client this page load gives `<StytchProvider>`. Stytch won't nest
+ * providers, and consent must run on the IdP domain while sign-in must not
+ * (Google OAuth state breaks there), so the choice is made once at start-up.
+ */
+export const pageClient: typeof stytch =
+  typeof window !== 'undefined' && window.location.pathname === AUTHORIZE_PATH ? getIdentityProviderClient() : stytch
+
+/** Reached in-app, the consent page needs a full load to get the IdP-domain client. */
+export function consentNeedsReload(): boolean {
+  return pageClient !== getIdentityProviderClient()
+}
+
 export function absoluteUrl(path: string): string {
   return new URL(path, window.location.origin).toString()
 }

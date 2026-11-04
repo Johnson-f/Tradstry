@@ -1,3 +1,6 @@
-services/backend/target/
-services/backend/.env
+backend/target/
+backend/.env
 docs/plans/
+deploy/.env
+deploy/backend.env
+deploy/deploy.env*

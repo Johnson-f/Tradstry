@@ -35,7 +35,7 @@ test('converted text preserves blank lines, tabs and Unicode in Lexical', () => 
 
 test('the shared API fixture retains headings, lists, links and inline formatting', async () => {
   const document = await Bun.file(
-    new URL('../../../../../../services/backend/tests/fixtures/rich_trade_note.json', import.meta.url),
+    new URL('../../../../../../backend/tests/fixtures/rich_trade_note.json', import.meta.url),
   ).json()
   const restored = editor().parseEditorState(JSON.stringify(document)).toJSON()
   expect(noteKey(restored)).toBe(noteKey(document))

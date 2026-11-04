@@ -1,48 +1,49 @@
-import {
-  IdentityProvider,
-  StytchProvider,
-  useStytchSession,
-} from '@stytch/react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
-import { AuthShell } from '@/components/auth/auth-shell'
-import { presentation } from '@/components/auth/presentation'
-import { getIdentityProviderClient } from '@/lib/auth/stytch'
+import { parseOAuthAuthorizeParams, useStytch, useStytchSession } from '@stytch/react'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { ConsentScreen } from '@/components/auth/consent-screen'
+import { consentNeedsReload } from '@/lib/auth/stytch'
 
 /**
  * The Connected Apps authorization URL. MCP clients send the user here to
- * approve access; Stytch reads the OAuth parameters from this page's URL.
+ * approve access; the OAuth request travels in this page's query string.
  */
 export const Route = createFileRoute('/oauth/authorize')({
   component: Authorize,
 })
 
 function Authorize() {
-  return (
-    <StytchProvider stytch={getIdentityProviderClient()}>
-      <Consent />
-    </StytchProvider>
-  )
+  const reload = consentNeedsReload()
+  useEffect(() => {
+    if (reload) window.location.replace(window.location.href)
+  }, [reload])
+  return reload ? null : <Consent />
 }
 
 function Consent() {
+  const stytch = useStytch()
   const { session } = useStytchSession()
-  const navigate = useNavigate()
+  const router = useRouter()
+  // Keep the request seen on arrival, as Stytch's own consent screen does.
+  const [{ result: request, error }] = useState(() => parseOAuthAuthorizeParams(new URLSearchParams(window.location.search)))
+
+  // Sign in on a full page load so it runs on the default client, then come
+  // back to this exact URL: its query carries the OAuth request.
+  const signIn = () => {
+    const next = `${window.location.pathname}${window.location.search}`
+    window.location.replace(router.buildLocation({ to: '/sign-in', search: { next } }).href)
+  }
 
   useEffect(() => {
-    if (session) return
-    // Come back to the exact authorize URL: its query carries the OAuth request.
-    const next = `${window.location.pathname}${window.location.search}`
-    void navigate({ to: '/sign-in', search: { next }, replace: true })
-  }, [session, navigate])
+    if (!session) signIn()
+  })
 
   if (!session) return null
   return (
-    <AuthShell
-      title="Allow access"
-      description="An app is asking to use your Tradstry account."
-    >
-      <IdentityProvider presentation={presentation} />
-    </AuthShell>
+    <ConsentScreen
+      request={request}
+      requestError={error}
+      onSwitchAccount={() => void stytch.session.revoke({ forceClear: true }).finally(signIn)}
+    />
   )
 }

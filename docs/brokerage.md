@@ -9,8 +9,8 @@ Each imported brokerage account gets its own workspace. Users can also create ma
 
 ## Running locally
 
-1. `docker compose up -d` in `services/backend` starts Postgres. Migrations run when the backend starts.
-2. Copy `services/backend/.env.example` to `.env` and fill in:
+1. `make postgres` starts Postgres. Migrations run when the backend starts, into the schema named by `DATABASE_SCHEMA`.
+2. Copy `backend/.env.example` to `.env` and fill in:
    - the SnapTrade Test key;
    - the Test OAuth app;
    - `BROKERAGE_ENCRYPTION_KEY`.

@@ -1,0 +1,71 @@
+# Postgres and the backend on a private network: the backend reaches the
+# database as `postgres:5432`.
+#   make postgres   Postgres only, for `make backend` and `cargo test` on the host.
+#   make docker     Postgres and the backend image, on localhost:7900.
+# The backend keeps every table in the schema named by DATABASE_SCHEMA (`dev`
+# locally, `prod` in production) and creates it on startup. Tests create and
+# drop their own databases through #[sqlx::test], so they never touch it.
+name: tradstry
+
+services:
+  postgres:
+    build:
+      dockerfile_inline: |
+        FROM postgres:18.6-alpine
+    image: tradstry-postgres:18.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradstry
+      POSTGRES_PASSWORD: tradstry
+      POSTGRES_DB: tradstry
+    # Loopback only, for the backend and tests running on the host. The
+    # backend container uses the private network instead.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - tradstry-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradstry -d tradstry"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build: .
+    image: tradstry-backend:latest
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: backend/.env
+    environment:
+      DATABASE_URL: postgres://tradstry:tradstry@postgres:5432/tradstry
+      PORT: "7900"
+    ports:
+      - "127.0.0.1:7900:7900"
+    networks:
+      - tradstry-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/tradstry", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *logging
+
+volumes:
+  postgres-data:
+    name: tradstry-postgres-data
+
+networks:
+  tradstry-network:
+    name: tradstry-network
+    driver: bridge

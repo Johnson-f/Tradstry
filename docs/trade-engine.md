@@ -1,6 +1,6 @@
 # Trade engine
 
-The trade engine turns fills into **trades**, the unit Tradstry journals and measures. It lives in `services/backend/src/trades/`.
+The trade engine turns fills into **trades**, the unit Tradstry journals and measures. It lives in `backend/src/trades/`.
 
 ## How it runs
 
@@ -128,7 +128,7 @@ The suggestion is only a hint: it is never saved unless the user accepts it.
 - the net with and without each mistake;
 - how many closed trades have no edge.
 
-Statistics live in their own backend module, `services/backend/src/analytics/`, and are served by the `tradeStats` query. They count closed, economic, top-level trades closed in the requested window. Times are New York time:
+Statistics live in their own backend module, `backend/src/analytics/`, and are served by the `tradeStats` query. They count closed, economic, top-level trades closed in the requested window. Times are New York time:
 
 - **Sessions** are by when a trade opened: pre-market 4:00–9:30, first hour 9:30–10:30, midday 10:30–15:00, last hour 15:00–16:00, after hours 16:00–20:00, and overnight otherwise.
 - **Months and days** are by when a trade closed.

@@ -1,0 +1,5 @@
+*
+!backend/Cargo.toml
+!backend/Cargo.lock
+!backend/src
+!backend/migrations

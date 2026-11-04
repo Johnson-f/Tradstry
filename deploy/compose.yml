@@ -1,0 +1,113 @@
+# Production, run by deploy/scripts/deploy.sh on the VPS. Secrets stay on the
+# server beside this file, never in Git: `.env` holds POSTGRES_PASSWORD and
+# `backend.env` the backend's keys. deploy.sh writes `deploy.env` with the
+# image tag being deployed.
+name: tradstry
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradstry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: tradstry
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - tradstry-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradstry -d tradstry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: ghcr.io/johnson-f/tradstry-backend:${DEPLOY_TAG:?deploy.sh sets DEPLOY_TAG}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: backend.env
+    environment:
+      # The password must be URL-safe (openssl rand -hex 32).
+      DATABASE_URL: postgres://tradstry:${POSTGRES_PASSWORD}@postgres:5432/tradstry
+      DATABASE_SCHEMA: prod
+      PORT: "7900"
+      WEBSITE_URL: https://tradstry.com
+      CORS_ALLOWED_ORIGINS: https://tradstry.com,https://www.tradstry.com
+      MCP_PUBLIC_URL: https://mcp.tradstry.com
+      RUST_LOG: info,sqlx=warn
+    expose:
+      - "7900"
+    networks:
+      - tradstry-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/tradstry", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - tradstry-network
+    depends_on:
+      - backend
+    healthcheck:
+      # A port check: every site is a named domain, so an HTTP request to
+      # localhost matches none and fails TLS even when Caddy is fine.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 && nc -z 127.0.0.1 443"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging: *logging
+
+volumes:
+  postgres-data:
+    name: tradstry-postgres-data
+  # v1's Caddy volumes, reused so the existing certificates for these domains
+  # carry over instead of being issued again.
+  caddy-data:
+    name: tradstry_caddy_data
+  caddy-config:
+    name: tradstry_caddy_config
+
+networks:
+  tradstry-network:
+    name: tradstry-network
+    driver: bridge

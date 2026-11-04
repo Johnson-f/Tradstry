@@ -4,7 +4,7 @@ import { createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/app'
-import { stytch } from '@/lib/auth/stytch'
+import { pageClient } from '@/lib/auth/stytch'
 import { routeTree } from './routeTree.gen'
 import { applyTheme, storedTheme } from '@/lib/theme'
 
@@ -27,7 +27,7 @@ declare module '@tanstack/react-router' {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StytchProvider stytch={stytch}>
+    <StytchProvider stytch={pageClient}>
       <QueryClientProvider client={queryClient}>
         <App router={router} queryClient={queryClient} />
       </QueryClientProvider>

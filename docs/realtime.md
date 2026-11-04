@@ -4,7 +4,7 @@ Every change a user can see reaches their open apps as it happens, whether it ca
 
 ## How a change travels
 
-1. **Database.** Statement-level triggers on every user-visible table call `pg_notify('tradstry_changes', …)` with `{"u": user, "w": workspace or null, "t": topic}` (migration `0016_realtime_changes.sql`).
+1. **Database.** Statement-level triggers on every user-visible table call `pg_notify('tradstry_changes_<schema>', …)`, one channel per schema so `dev` and `prod` never hear each other, with `{"u": user, "w": workspace or null, "t": topic}`.
    - Each trigger reads its statement's transition table, so a bulk write sends one message per user and workspace, not one per row.
    - Postgres sends notifications on commit and drops identical ones within a transaction. A rebuild that rewrites thousands of trades therefore sends one `trades` message per workspace, and a rolled-back write sends nothing.
 2. **Backend.** `realtime::Hub` holds one `LISTEN` connection, opened when the first subscriber arrives, and broadcasts each change in-process.
