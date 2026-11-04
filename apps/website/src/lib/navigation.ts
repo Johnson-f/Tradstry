@@ -6,7 +6,7 @@ const SECTIONS: Array<[prefix: string, title: string]> = [
 export type WorkspaceSection = 'home' | 'journal' | 'analytics'
 
 export function workspaceSection(pathname: string): WorkspaceSection {
-  if (pathname === '/' || /^\/w\/[^/]+\/?$/.test(pathname)) return 'home'
+  if (pathname === '/app' || /^\/w\/[^/]+\/?$/.test(pathname)) return 'home'
   return /^\/w\/[^/]+\/analytics(\/|$)/.test(pathname) ? 'analytics' : 'journal'
 }
 
@@ -18,7 +18,7 @@ const SECTION_ROUTES = {
 
 /** Keep the selected workspace and section when navigating. */
 export function workspaceLocation(workspaceId?: string, section: WorkspaceSection = 'journal') {
-  if (!workspaceId) return { to: section === 'home' ? ('/' as const) : ('/brokerage' as const) }
+  if (!workspaceId) return { to: section === 'home' ? ('/app' as const) : ('/brokerage' as const) }
   return { to: SECTION_ROUTES[section], params: { workspaceId } }
 }
 

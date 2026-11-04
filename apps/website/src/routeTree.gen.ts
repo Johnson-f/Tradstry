@@ -9,11 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticateRouteImport } from './routes/authenticate'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
-import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedTaxRouteImport } from './routes/_authenticated/tax'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
@@ -27,6 +28,11 @@ import { Route as AuthenticatedWWorkspaceIdAnalyticsRouteImport } from './routes
 import { Route as AuthenticatedWWorkspaceIdJournalIndexRouteImport } from './routes/_authenticated/w/$workspaceId/journal/index'
 import { Route as AuthenticatedWWorkspaceIdJournalTradeIdRouteImport } from './routes/_authenticated/w/$workspaceId/journal/$tradeId'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -46,9 +52,9 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthenticatedAppRoute = AuthenticatedAppRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -122,10 +128,11 @@ const AuthenticatedWWorkspaceIdJournalTradeIdRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute
+  '/': typeof IndexRoute
   '/authenticate': typeof AuthenticateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/app': typeof AuthenticatedAppRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -140,13 +147,14 @@ export interface FileRoutesByFullPath {
   '/w/$workspaceId/journal/': typeof AuthenticatedWWorkspaceIdJournalIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/authenticate': typeof AuthenticateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/app': typeof AuthenticatedAppRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
-  '/': typeof AuthenticatedIndexRoute
   '/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
   '/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
   '/brokerage': typeof AuthenticatedBrokerageIndexRoute
@@ -158,14 +166,15 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/authenticate': typeof AuthenticateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/_authenticated/app': typeof AuthenticatedAppRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/tax': typeof AuthenticatedTaxRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
-  '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/w/$workspaceId': typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
   '/_authenticated/brokerage/callback': typeof AuthenticatedBrokerageCallbackRoute
   '/_authenticated/brokerage/connections': typeof AuthenticatedBrokerageConnectionsRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/authenticate'
     | '/reset-password'
     | '/sign-in'
+    | '/app'
     | '/settings'
     | '/tax'
     | '/oauth/authorize'
@@ -197,13 +207,14 @@ export interface FileRouteTypes {
     | '/w/$workspaceId/journal/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/authenticate'
     | '/reset-password'
     | '/sign-in'
+    | '/app'
     | '/settings'
     | '/tax'
     | '/oauth/authorize'
-    | '/'
     | '/brokerage/callback'
     | '/brokerage/connections'
     | '/brokerage'
@@ -214,14 +225,15 @@ export interface FileRouteTypes {
     | '/w/$workspaceId/journal'
   id:
     | '__root__'
+    | '/'
     | '/_authenticated'
     | '/authenticate'
     | '/reset-password'
     | '/sign-in'
+    | '/_authenticated/app'
     | '/_authenticated/settings'
     | '/_authenticated/tax'
     | '/oauth/authorize'
-    | '/_authenticated/'
     | '/_authenticated/w/$workspaceId'
     | '/_authenticated/brokerage/callback'
     | '/_authenticated/brokerage/connections'
@@ -234,6 +246,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthenticateRoute: typeof AuthenticateRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -243,6 +256,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -271,11 +291,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/': {
-      id: '/_authenticated/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+    '/_authenticated/app': {
+      id: '/_authenticated/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AuthenticatedAppRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings': {
@@ -389,9 +409,9 @@ const AuthenticatedWWorkspaceIdRouteRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAppRoute: typeof AuthenticatedAppRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTaxRoute: typeof AuthenticatedTaxRoute
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedWWorkspaceIdRouteRoute: typeof AuthenticatedWWorkspaceIdRouteRouteWithChildren
   AuthenticatedBrokerageCallbackRoute: typeof AuthenticatedBrokerageCallbackRoute
   AuthenticatedBrokerageConnectionsRoute: typeof AuthenticatedBrokerageConnectionsRoute
@@ -400,9 +420,9 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAppRoute: AuthenticatedAppRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTaxRoute: AuthenticatedTaxRoute,
-  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedWWorkspaceIdRouteRoute:
     AuthenticatedWWorkspaceIdRouteRouteWithChildren,
   AuthenticatedBrokerageCallbackRoute: AuthenticatedBrokerageCallbackRoute,
@@ -418,6 +438,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthenticateRoute: AuthenticateRoute,
   ResetPasswordRoute: ResetPasswordRoute,

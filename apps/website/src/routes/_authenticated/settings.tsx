@@ -19,7 +19,7 @@ function Settings() {
       tab={tab}
       onTabChange={(value) => void navigate({ search: value === 'general' ? {} : { tab: value }, replace: true })}
       onOpenChange={(open) => {
-        if (!open) void navigate({ to: '/', replace: true })
+        if (!open) void navigate({ to: '/app', replace: true })
       }}
     />
   )

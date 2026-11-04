@@ -110,7 +110,7 @@ export function ConnectBrokerMenu() {
         <DropdownMenuItem
           className={`${itemClass} shrink-0 py-2.5`}
           disabled={start.isPending}
-          render={<a href="https://www.tradstry.com/support" target="_blank" rel="noreferrer" />}
+          render={<a href="https://tradstry.com/support" target="_blank" rel="noreferrer" />}
         >
           <HugeiconsIcon icon={Search01Icon} className="size-5" strokeWidth={1.5} aria-hidden />
           Can’t find my broker

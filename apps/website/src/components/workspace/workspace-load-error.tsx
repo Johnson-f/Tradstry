@@ -59,7 +59,7 @@ export function WorkspaceLoadError() {
             variant="outline"
             className="h-10 px-4 transition-none active:not-aria-[haspopup]:translate-y-0 sm:w-32"
             nativeButton={false}
-            render={<a href="https://www.tradstry.com/support" target="_blank" rel="noreferrer" />}
+            render={<a href="https://tradstry.com/support" target="_blank" rel="noreferrer" />}
           >
             Get help
           </Button>

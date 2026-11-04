@@ -83,7 +83,7 @@ function AppLayout() {
           aria-label="App navigation"
           className="grid w-13 shrink-0 grid-rows-[1fr_auto_1fr] justify-items-center py-1 max-sm:w-14"
         >
-          <RailItem label="Tradstry" render={<Link to="/" aria-label="Tradstry home" className={railLinkClass} />}>
+          <RailItem label="Tradstry" render={<Link to="/app" aria-label="Tradstry home" className={railLinkClass} />}>
             <img
               src="/favicon.svg"
               width="24"
@@ -156,7 +156,7 @@ function AppLayout() {
             )}
             <RailItem
               label="Help"
-              render={<a href="https://www.tradstry.com/#faq" aria-label="Help" className={railLinkClass} />}
+              render={<a href="https://tradstry.com/#faq" aria-label="Help" className={railLinkClass} />}
             >
               <LifeBuoy className="size-4.5" aria-hidden />
             </RailItem>

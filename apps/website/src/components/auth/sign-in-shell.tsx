@@ -77,7 +77,7 @@ export function SignInShell({ children }: { children: ReactNode }) {
 
       <a
         className="absolute top-[7svh] rounded-lg"
-        href="https://www.tradstry.com"
+        href="https://tradstry.com"
         aria-label="Tradstry home"
       >
         <img className="size-9 rounded-lg dark:ring-1 dark:ring-white/15" src="/favicon.svg" width="36" height="36" alt="" />
@@ -112,15 +112,15 @@ export function SignInShell({ children }: { children: ReactNode }) {
 
       <footer className="mt-auto w-[calc(100%-40px)] max-w-125 shrink-0 pb-12 text-center text-sm leading-[1.45] text-neutral-500 max-[600px]:pb-7 max-[600px]:text-[13px] [&_a:hover]:text-neutral-900">
         <nav className="mb-3 flex flex-wrap justify-center gap-x-4.5 gap-y-2" aria-label="Helpful links">
-          <a href="https://www.tradstry.com/#product">Product</a>
-          <a href="https://www.tradstry.com/#faq">FAQ</a>
-          <a href="https://www.tradstry.com/security">Security</a>
-          <a href="https://www.tradstry.com/support">Contact us</a>
+          <a href="https://tradstry.com/#product">Product</a>
+          <a href="https://tradstry.com/#faq">FAQ</a>
+          <a href="https://tradstry.com/security">Security</a>
+          <a href="https://tradstry.com/support">Contact us</a>
         </nav>
         <p className="[&_a]:underline [&_a]:underline-offset-2">
           By continuing, you agree to our{' '}
-          <a href="https://www.tradstry.com/terms">Terms</a>
-          <br />and <a href="https://www.tradstry.com/privacy">Privacy Policy</a>.
+          <a href="https://tradstry.com/terms">Terms</a>
+          <br />and <a href="https://tradstry.com/privacy">Privacy Policy</a>.
         </p>
       </footer>
     </div>

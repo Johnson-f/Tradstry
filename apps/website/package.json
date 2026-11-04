@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && bun scripts/prerender.ts",
     "lint": "oxlint",
     "test": "bun test src",
     "preview": "vite preview"

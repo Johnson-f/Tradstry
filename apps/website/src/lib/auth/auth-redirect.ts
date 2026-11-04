@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'tradstry:return-to'
 
-export const DEFAULT_RETURN_PATH = '/'
+export const DEFAULT_RETURN_PATH = '/app'
 
 export function safeReturnPath(
   value: string | null | undefined,

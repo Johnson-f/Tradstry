@@ -66,7 +66,7 @@ test('settings opens over the current page, supports search and nested dialogs, 
       component: () => h('textarea', { 'aria-label': 'Draft', defaultValue: 'Keep this draft' }) });
     const journal = createRoute({ getParentRoute: () => authRoute, path: '/w/$workspaceId/journal',
       component: () => h('p', null, 'Journal page') });
-    const home = createRoute({ getParentRoute: () => authRoute, path: '/', component: () => h('p', null, 'Home') });
+    const home = createRoute({ getParentRoute: () => authRoute, path: '/app', component: () => h('p', null, 'Home') });
     settings.update({ id: '/settings', path: '/settings', getParentRoute: () => authRoute });
     const router = createRouter({ routeTree: rootRoute.addChildren([authRoute.addChildren([dashboard, journal, home, settings])]),
       history: createMemoryHistory({ initialEntries: ['/w/w1?period=ytd'] }) });
@@ -183,7 +183,7 @@ test('settings opens over the current page, supports search and nested dialogs, 
       await click(tab('Workspaces'));
       assert.equal(router.state.location.search.tab, 'workspaces');
       await click(button('Close'));
-      assert.equal(router.state.location.pathname, '/');
+      assert.equal(router.state.location.pathname, '/app');
       assert.equal(dialog(), null);
       assert.ok(queries.some(query => query.includes('query JournalLabels')));
       assert.ok(queries.some(query => query.includes('query AuthSessions')));

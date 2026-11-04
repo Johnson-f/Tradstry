@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /w/
+Disallow: /settings
+Disallow: /tax
+Disallow: /brokerage
+Disallow: /authenticate
+Disallow: /oauth/
+Disallow: /reset-password
+
+Sitemap: https://tradstry.com/sitemap.xml

@@ -75,7 +75,7 @@ export function UserMenu() {
               <Receipt className="size-4" aria-hidden />
               Realized gains
             </DropdownMenuItem>
-            <DropdownMenuItem className={menuItemClass} render={<a href="https://www.tradstry.com/support" />}>
+            <DropdownMenuItem className={menuItemClass} render={<a href="https://tradstry.com/support" />}>
               <Mail className="size-4" aria-hidden />
               Get help
             </DropdownMenuItem>

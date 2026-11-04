@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { pageTitle, workspaceLocation, workspaceSection } from './navigation'
 
 test('the breadcrumb names the section', () => {
-  expect(pageTitle('/')).toBe('Dashboard')
+  expect(pageTitle('/app')).toBe('Dashboard')
   expect(pageTitle('/brokerage')).toBe('Journal')
   expect(pageTitle('/settings')).toBe('Settings')
   expect(pageTitle('/tax')).toBe('Realized gains')
@@ -22,7 +22,7 @@ test('switching or creating a workspace keeps Home or Journal selected', () => {
     to: '/w/$workspaceId',
     params: { workspaceId: 'second' },
   })
-  expect(workspaceLocation('second', workspaceSection('/'))).toEqual({
+  expect(workspaceLocation('second', workspaceSection('/app'))).toEqual({
     to: '/w/$workspaceId',
     params: { workspaceId: 'second' },
   })
@@ -58,5 +58,5 @@ test('switching workspace keeps Analytics selected', () => {
 
 test('Journal without a selected workspace uses its entry route instead of Home', () => {
   expect(workspaceLocation()).toEqual({ to: '/brokerage' })
-  expect(workspaceLocation(undefined, 'home')).toEqual({ to: '/' })
+  expect(workspaceLocation(undefined, 'home')).toEqual({ to: '/app' })
 })

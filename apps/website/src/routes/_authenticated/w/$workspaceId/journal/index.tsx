@@ -413,7 +413,7 @@ function JournalLoadError({
               variant="outline"
               className="h-9 px-4"
               nativeButton={false}
-              render={<a href="https://www.tradstry.com/support" target="_blank" rel="noreferrer" />}
+              render={<a href="https://tradstry.com/support" target="_blank" rel="noreferrer" />}
             >
               Get help
             </Button>
