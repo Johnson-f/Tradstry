@@ -63,8 +63,10 @@ services:
     deploy:
       resources:
         limits:
+          memory: 2G
+          cpus: "3.0"
+        reservations:
           memory: 1G
-          cpus: "2.0"
     logging: *logging
 
   caddy:
