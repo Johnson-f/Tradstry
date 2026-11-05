@@ -29,6 +29,8 @@ use tradstry::{
 const PROJECT: &str = "project-test-123";
 const SECRET: &str = "secret-test-456";
 
+const DEFAULT_ROLE: &str = "stytch_user";
+
 #[derive(Clone, Default)]
 struct Seen {
     requests: Arc<Mutex<Vec<String>>>,
@@ -63,10 +65,10 @@ async fn get_user(
 ) -> Json<Value> {
     seen.record(&headers, format!("get {user_id}"));
     let roles = seen.roles.lock().unwrap();
-    Json(user_response(
-        &user_id,
-        roles.get(&user_id).map_or(&[], Vec::as_slice),
-    ))
+    // Like Stytch, report the project's default role on every user.
+    let mut listed = roles.get(&user_id).cloned().unwrap_or_default();
+    listed.push(DEFAULT_ROLE.to_owned());
+    Json(user_response(&user_id, &listed))
 }
 
 async fn update_user(
@@ -89,6 +91,17 @@ async fn update_user(
         );
     }
     let roles: Vec<String> = serde_json::from_value(body["roles"].clone()).unwrap();
+    if roles.iter().any(|role| role == DEFAULT_ROLE) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "request_id": "request-default-role", "status_code": 400,
+                "error_type": "cannot_assign_default_rbac_role_id",
+                "error_message": "The default role is implicitly assigned to all members in the project and cannot be explicitly assigned.",
+                "error_url": "https://stytch.com/docs/api/errors",
+            })),
+        );
+    }
     seen.roles
         .lock()
         .unwrap()

@@ -10,6 +10,7 @@ use super::verifier::{AuthError, SessionAuthenticator};
 
 const TEST_API: &str = "https://test.stytch.com";
 const LIVE_API: &str = "https://api.stytch.com";
+const STYTCH_DEFAULT_ROLE: &str = "stytch_user";
 
 /// Stytch serves `project-test-*` projects from a separate host. `api_url`
 /// overrides the choice, for a local fake or a regional endpoint.
@@ -140,6 +141,8 @@ impl StytchApi for StytchClient {
         if roles.iter().any(|existing| existing == role) {
             return Ok(());
         }
+        // Stytch lists its default role on every user but rejects updates that name it.
+        roles.retain(|existing| existing != STYTCH_DEFAULT_ROLE);
         roles.push(role.to_owned());
         self.client
             .users
