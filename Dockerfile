@@ -28,7 +28,7 @@ COPY backend/ .
 RUN cargo build --release --locked --bin tradstry
 
 FROM scratch AS backend
-LABEL org.opencontainers.image.source=https://github.com/Johnson-f/Tradstry-v2-
+LABEL org.opencontainers.image.source=https://github.com/Johnson-f/Tradstry
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /app/target/release/tradstry /tradstry
 USER 65532:65532
