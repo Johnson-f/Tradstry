@@ -71,7 +71,7 @@ The forced command's v1 check is what keeps a deploy from running too early.
    ```
 2. Clone into `/srv/tradstry` as `tradstry-deploy`:
    ```bash
-   git clone git@github-tradstry-v2:Johnson-f/Tradstry-v2-.git /srv/tradstry
+   git clone git@github-tradstry-v2:Johnson-f/Tradstry.git /srv/tradstry
    ```
 3. Put `deploy/.env` and `deploy/backend.env` in `/srv/tradstry/deploy/`, mode 600, owned by `tradstry-deploy`. They have examples in the repo.
 4. Install the forced command, root-owned:
