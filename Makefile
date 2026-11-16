@@ -14,7 +14,7 @@ help:
 	@echo "  make backend    Start local Postgres, then the Rust backend (port from backend/.env)"
 	@echo "  make postgres   Start local Postgres only (Docker, localhost:5432)"
 	@echo "  make docker     Build and run Postgres and the backend in Docker (localhost:7900)"
-	@echo "  make frontend   Start the website (bun dev, localhost:5173)"
+	@echo "  make frontend   Start the website (bun dev, localhost:4005)"
 
 # Local Postgres from compose.yml at the repo root. Idempotent; the volume
 # keeps data across restarts.

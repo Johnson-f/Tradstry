@@ -1,9 +1,6 @@
 import { Combobox } from '@base-ui/react/combobox'
-import { Check, CircleAlert, LoaderCircle, MousePointer2, Plus, Tag, Target, X } from 'lucide-react'
-import { useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Check, CircleAlert, MousePointer2, Plus, Tag, Target, X } from 'lucide-react'
+import { useState } from 'react'
 import { type JournalLabel, labelsOf, useCreateLabel, useJournalLabels } from '@/lib/client/trades/labels'
 import { type LabelKind, type LabelRef, tradeErrorMessage } from '@/lib/client/trades/trades-model'
 
@@ -52,9 +49,9 @@ export function LabelDot({ color }: { color: string | null }) {
 }
 
 const groupClass =
-  'flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-transparent bg-muted/60 px-2 py-1 text-sm focus-within:border-ring focus-within:bg-transparent focus-within:ring-3 focus-within:ring-ring/50 has-disabled:opacity-60 dark:bg-white/5'
+  'flex min-h-10 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-input bg-background px-2 py-1 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 has-disabled:opacity-60 dark:bg-input/30'
 const inputClass =
-  'h-7 min-w-16 flex-1 border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground/70'
+  'h-7 min-w-16 flex-1 border-0 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground'
 
 function Options({ empty, kind }: { empty: string; kind: LabelKind }) {
   const Icon = LABEL_ICONS[kind]
@@ -110,205 +107,78 @@ function useCreate(kind: LabelKind, onError: PickerProps['onError']) {
   const create = useCreateLabel()
   return {
     pending: create.isPending,
-    run: async (name: string, reportError = onError) => {
-      reportError(null)
+    run: async (name: string) => {
+      onError(null)
       try {
         return await create.mutateAsync({ kind, input: { name } })
       } catch (error) {
-        reportError(tradeErrorMessage(error, 'Could not create that label.'))
+        onError(tradeErrorMessage(error, 'Could not create that label.'))
         return null
       }
     },
   }
 }
 
-/** Any number of labels of a kind, created on the fly when new. */
+/** Any number of labels of a kind; typing a new name offers to create it. */
 export function LabelMultiSelect({
   value,
   onChange,
   ...props
 }: PickerProps & { value: string[]; onChange: (ids: string[]) => void }) {
   const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [newProblem, setNewProblem] = useState<string | null>(null)
-  const pickerInput = useRef<HTMLInputElement>(null)
-  const newInput = useRef<HTMLInputElement>(null)
   const Icon = LABEL_ICONS[props.kind]
-  const singular = LABEL_NAMES[props.kind]
   const { items, byId } = useOptions(props.kind, props.chosen, query)
   const create = useCreate(props.kind, props.onError)
   const selected = value.map((id) => byId(id)).filter((option): option is Option => Boolean(option))
 
-  const closeCreate = () => {
-    setCreating(false)
-    setName('')
-    setNewProblem(null)
-    requestAnimationFrame(() => pickerInput.current?.focus())
-  }
-  const addNew = async () => {
-    const trimmed = name.trim()
-    if (!trimmed || create.pending || props.disabled) return
-    const id = await create.run(trimmed, setNewProblem)
-    if (!id) return
-    if (!value.includes(id)) onChange([...value, id])
-    setQuery('')
-    setOpen(false)
-    closeCreate()
-  }
-
   return (
-    <div className="min-w-0 space-y-2">
-      <div className="flex min-w-0 items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <Combobox.Root<Option, true>
-            multiple
-            open={open}
-            onOpenChange={setOpen}
-            items={items}
-            value={selected}
-            inputValue={query}
-            autoHighlight
-            disabled={props.disabled || create.pending}
-            itemToStringLabel={(option) => option.label}
-            isItemEqualToValue={(a, b) => a.id === b.id}
-            onInputValueChange={setQuery}
-            onValueChange={async (next) => {
-              const added = next.find((option) => option.create)
-              setQuery('')
-              if (added) {
-                const id = await create.run(added.label)
-                if (id && !value.includes(id)) onChange([...value, id])
-                return
-              }
-              onChange(next.map((option) => option.id))
-            }}
-          >
-            <Combobox.InputGroup className={groupClass}>
-              <Combobox.Chips className="contents">
-                {selected.map((option) => (
-                  <Combobox.Chip
-                    key={option.id}
-                    aria-label={option.label}
-                    className="flex h-6 items-center gap-1.5 rounded-md bg-background px-1.5 text-[13px] ring-1 ring-foreground/10 outline-none focus-within:ring-ring data-highlighted:ring-ring dark:bg-white/10"
-                  >
-                    <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} aria-hidden />
-                    {option.label}
-                    <Combobox.ChipRemove
-                      aria-label={`Remove ${option.label}`}
-                      className="flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-3" aria-hidden />
-                    </Combobox.ChipRemove>
-                  </Combobox.Chip>
-                ))}
-                <Combobox.Input
-                  ref={pickerInput}
-                  id={props.id}
-                  placeholder={selected.length ? '' : props.placeholder}
-                  className={inputClass}
-                />
-              </Combobox.Chips>
-            </Combobox.InputGroup>
-            <Options kind={props.kind} empty="Type a name to create one." />
-          </Combobox.Root>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-9 gap-1 text-xs text-muted-foreground"
-          aria-label={`New ${singular}`}
-          aria-expanded={creating}
-          aria-controls={creating ? `${props.id}-new-panel` : undefined}
-          disabled={props.disabled || create.pending}
-          onClick={() => {
-            setOpen(false)
-            if (creating) {
-              closeCreate()
-            } else {
-              setName(query.trim())
-              setNewProblem(null)
-              setCreating(true)
-              requestAnimationFrame(() => newInput.current?.focus())
-            }
-          }}
-        >
-          <Plus className="size-3.5" aria-hidden />
-          New
-        </Button>
-      </div>
-      {creating && (
-        <div
-          id={`${props.id}-new-panel`}
-          role="group"
-          aria-labelledby={`${props.id}-new-heading`}
-          className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
-              event.preventDefault()
-              event.stopPropagation()
-              if (!create.pending) closeCreate()
-            }
-          }}
-        >
-          <Label id={`${props.id}-new-heading`} htmlFor={`${props.id}-new-name`} className="text-xs font-medium">
-            New {singular}
-          </Label>
-          <div className="flex items-center gap-2">
-            <Input
-              ref={newInput}
-              id={`${props.id}-new-name`}
-              value={name}
-              maxLength={60}
-              placeholder={`Name your ${singular}…`}
-              disabled={props.disabled || create.pending}
-              aria-invalid={Boolean(newProblem)}
-              aria-describedby={newProblem ? `${props.id}-new-error` : undefined}
-              onChange={(event) => {
-                setName(event.target.value)
-                setNewProblem(null)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  void addNew()
-                }
-              }}
-              className="h-8 min-w-0 flex-1 bg-background text-[13px]"
-            />
-            <Button
-              type="button"
-              size="sm"
-              className="h-8"
-              disabled={!name.trim() || props.disabled || create.pending}
-              onClick={() => void addNew()}
+    <Combobox.Root<Option, true>
+      multiple
+      items={items}
+      value={selected}
+      inputValue={query}
+      autoHighlight
+      disabled={props.disabled || create.pending}
+      itemToStringLabel={(option) => option.label}
+      isItemEqualToValue={(a, b) => a.id === b.id}
+      onInputValueChange={setQuery}
+      onValueChange={async (next) => {
+        const added = next.find((option) => option.create)
+        setQuery('')
+        if (added) {
+          const id = await create.run(added.label)
+          if (id && !value.includes(id)) onChange([...value, id])
+          return
+        }
+        onChange(next.map((option) => option.id))
+      }}
+    >
+      <Combobox.InputGroup className={groupClass}>
+        <Combobox.Chips className="contents">
+          {selected.map((option) => (
+            <Combobox.Chip
+              key={option.id}
+              aria-label={option.label}
+              className="flex h-6 items-center gap-1.5 rounded-md bg-muted px-1.5 text-[13px] outline-none focus-within:ring-2 focus-within:ring-ring data-highlighted:ring-2 data-highlighted:ring-ring dark:bg-white/10"
             >
-              {create.pending && (
-                <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
-              )}
-              Add
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`Cancel new ${singular}`}
-              disabled={create.pending}
-              onClick={closeCreate}
-            >
-              <X className="size-3.5" aria-hidden />
-            </Button>
-          </div>
-          {newProblem && (
-            <p id={`${props.id}-new-error`} role="alert" className="text-xs text-destructive">
-              {newProblem}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+              {option.label}
+              <Combobox.ChipRemove
+                aria-label={`Remove ${option.label}`}
+                className="flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" aria-hidden />
+              </Combobox.ChipRemove>
+            </Combobox.Chip>
+          ))}
+          <Combobox.Input
+            id={props.id}
+            placeholder={selected.length ? '' : props.placeholder}
+            className={inputClass}
+          />
+        </Combobox.Chips>
+      </Combobox.InputGroup>
+      <Options kind={props.kind} empty={`Type a name to create a ${LABEL_NAMES[props.kind]}.`} />
+    </Combobox.Root>
   )
 }

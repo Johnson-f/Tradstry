@@ -11,12 +11,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { GraphQLRequestError } from '@/lib/client/api'
-import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PlanLink } from '@/components/plans/plan-link'
 import { BehaviorFields } from '@/components/trades/behavior-fields'
+import { FormField, MoneyInput } from '@/components/trades/instrument-fields'
 import { LabelDot, LabelMultiSelect } from '@/components/trades/label-picker'
 import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
 import { TradeNoteEditor } from '@/components/trades/trade-note-editor'
@@ -40,8 +39,6 @@ import {
 } from '@/lib/client/trades/trades-model'
 import { formatDate, formatDateTime } from '@/lib/format'
 
-const detailInputClass = 'h-9 border-transparent bg-muted/60 shadow-none focus-visible:bg-transparent dark:bg-white/5'
-const fieldLabelClass = 'text-xs font-normal text-muted-foreground'
 
 const ORDER_TYPE: Record<string, string> = {
   stop: 'stop',
@@ -52,6 +49,32 @@ const ORDER_TYPE: Record<string, string> = {
 
 function orderTypeLabel(type: string): string {
   return ORDER_TYPE[type.toLowerCase().replace(/[\s_-]/g, '')] ?? type.toLowerCase()
+}
+
+function DetailSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: React.ReactNode
+}) {
+  const headingId = useId()
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="space-y-4 border-t border-border/60 pt-5 first:border-t-0 first:pt-0"
+    >
+      <div className="space-y-0.5">
+        <h3 id={headingId} className="text-sm font-semibold">
+          {title}
+        </h3>
+        {description && <p className="text-xs leading-5 text-muted-foreground">{description}</p>}
+      </div>
+      {children}
+    </section>
+  )
 }
 
 function LabelChips({ labels, prefix }: { labels: LabelRef[]; prefix?: string }) {
@@ -386,16 +409,18 @@ export function AnnotationEditor({
           </p>
         </footer>
       </div>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl p-6 font-sans sm:max-w-lg data-open:animate-none data-closed:animate-none">
-        <DialogHeader className="pr-6">
-          <DialogTitle className="text-lg font-semibold">Trade Detail</DialogTitle>
-          <DialogDescription className="text-xs leading-5">
-            Label the trade, set its initial risk and note how you traded it. Changes save automatically.{' '}
-            <ManageLabelsDialog triggerStyle="link" />
+      <DialogContent
+        overlayClassName="bg-black/40 data-open:animate-none data-closed:animate-none"
+        className="flex h-[min(38rem,calc(100dvh-2rem))] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 font-sans shadow-2xl sm:max-w-lg data-open:animate-none data-closed:animate-none [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
+      >
+        <DialogHeader className="shrink-0 gap-1.5 px-6 pt-6 pb-4 pr-12">
+          <DialogTitle className="text-lg leading-6 font-semibold">Trade Detail</DialogTitle>
+          <DialogDescription className="text-[13px] leading-5">
+            Label the trade, set its risk and note how you traded it. Changes save automatically.
           </DialogDescription>
         </DialogHeader>
         <form
-          className="space-y-5"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault()
             if (input.ok) {
@@ -404,150 +429,115 @@ export function AnnotationEditor({
             }
           }}
         >
-          <fieldset disabled={reloading} className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor={`${id}-edge`} className={fieldLabelClass}>
-                Edges · what gave this trade an advantage?
-              </Label>
-              <LabelMultiSelect
-                id={`${id}-edge`}
-                kind="EDGE"
-                value={draft.edgeIds}
-                chosen={chosen(saved.edgeIds)}
-                placeholder="Strong relative volume"
-                onChange={(edgeIds) => set({ edgeIds })}
-                onError={setProblem}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor={`${id}-tactic`} className={fieldLabelClass}>
-                Entry tactics · what triggered your entry?
-              </Label>
-              <LabelMultiSelect
-                id={`${id}-tactic`}
-                kind="ENTRY_TACTIC"
-                value={draft.entryTacticIds}
-                chosen={chosen(saved.entryTacticIds)}
-                placeholder="Breakout retest"
-                onChange={(entryTacticIds) => set({ entryTacticIds })}
-                onError={setProblem}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor={`${id}-tags`} className={fieldLabelClass}>
-                Tags
-              </Label>
-              <LabelMultiSelect
-                id={`${id}-tags`}
-                kind="TAG"
-                value={draft.tagIds}
-                chosen={chosen(saved.tagIds)}
-                placeholder="Gap up, earnings"
-                onChange={(tagIds) => set({ tagIds })}
-                onError={setProblem}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor={`${id}-mistakes`} className={fieldLabelClass}>
-                Mistakes
-              </Label>
-              <LabelMultiSelect
-                id={`${id}-mistakes`}
-                kind="MISTAKE"
-                value={draft.mistakeIds}
-                chosen={chosen(saved.mistakeIds)}
-                placeholder="Chased the entry"
-                onChange={(mistakeIds) => set({ mistakeIds })}
-                onError={setProblem}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${id}-stop`} className={fieldLabelClass}>
-                Initial stop<span className="sr-only"> (dollars)</span>
-              </Label>
-              <div className="relative">
-                <span
-                  className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground"
-                  aria-hidden
-                >
-                  $
-                </span>
-                <Input
-                  id={`${id}-stop`}
-                  inputMode="decimal"
-                  value={draft.initialStop}
-                  placeholder="0.00"
-                  aria-describedby={`${id}-risk-hint`}
-                  onChange={(event) => set({ initialStop: event.target.value })}
-                  className={`${detailInputClass} pl-7 tabular-nums`}
+          <ScrollArea className="min-h-0 flex-1 overflow-hidden border-t border-border/60 [&>[data-slot=scroll-area-viewport]]:overscroll-contain">
+            <fieldset disabled={reloading} className="min-w-0 space-y-6 px-6 py-5">
+              <DetailSection title="Labels">
+                <FormField id={`${id}-edge`} label="Edges">
+                  <LabelMultiSelect
+                    id={`${id}-edge`}
+                    kind="EDGE"
+                    value={draft.edgeIds}
+                    chosen={chosen(saved.edgeIds)}
+                    placeholder="Strong relative volume"
+                    onChange={(edgeIds) => set({ edgeIds })}
+                    onError={setProblem}
+                  />
+                </FormField>
+                <FormField id={`${id}-tactic`} label="Entry tactics">
+                  <LabelMultiSelect
+                    id={`${id}-tactic`}
+                    kind="ENTRY_TACTIC"
+                    value={draft.entryTacticIds}
+                    chosen={chosen(saved.entryTacticIds)}
+                    placeholder="Breakout retest"
+                    onChange={(entryTacticIds) => set({ entryTacticIds })}
+                    onError={setProblem}
+                  />
+                </FormField>
+                <FormField id={`${id}-tags`} label="Tags">
+                  <LabelMultiSelect
+                    id={`${id}-tags`}
+                    kind="TAG"
+                    value={draft.tagIds}
+                    chosen={chosen(saved.tagIds)}
+                    placeholder="Gap up, earnings"
+                    onChange={(tagIds) => set({ tagIds })}
+                    onError={setProblem}
+                  />
+                </FormField>
+                <FormField id={`${id}-mistakes`} label="Mistakes">
+                  <LabelMultiSelect
+                    id={`${id}-mistakes`}
+                    kind="MISTAKE"
+                    value={draft.mistakeIds}
+                    chosen={chosen(saved.mistakeIds)}
+                    placeholder="Chased the entry"
+                    onChange={(mistakeIds) => set({ mistakeIds })}
+                    onError={setProblem}
+                  />
+                </FormField>
+              </DetailSection>
+              <DetailSection title="Risk">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField id={`${id}-stop`} label="Initial stop">
+                    <MoneyInput
+                      id={`${id}-stop`}
+                      value={draft.initialStop}
+                      placeholder="0.00"
+                      aria-describedby={`${id}-risk-hint`}
+                      onChange={(event) => set({ initialStop: event.target.value })}
+                    />
+                  </FormField>
+                  <FormField id={`${id}-risk`} label="Planned risk">
+                    <MoneyInput
+                      id={`${id}-risk`}
+                      value={draft.plannedRisk}
+                      placeholder="Optional"
+                      aria-describedby={`${id}-risk-hint`}
+                      onChange={(event) => set({ plannedRisk: event.target.value })}
+                    />
+                  </FormField>
+                </div>
+                <div id={`${id}-risk-hint`} className="space-y-1.5 text-xs leading-5 text-muted-foreground">
+                  {suggestedStop && draft.initialStop.trim() === '' && (
+                    <p>
+                      Your {orderTypeLabel(suggestedStop.orderType)} order on {formatDate(suggestedStop.placedAt)} put
+                      the stop at <span className="text-foreground tabular-nums">{price(suggestedStop.price)}</span>.{' '}
+                      <button
+                        type="button"
+                        className="font-medium text-foreground underline underline-offset-4"
+                        onClick={() => set({ initialStop: suggestedStop.price })}
+                      >
+                        Use it
+                      </button>
+                    </p>
+                  )}
+                  <p>
+                    {risk === null
+                      ? 'R uses your initial stop, or your planned risk if you set one.'
+                      : `Risk ${money(String(risk))}${r === null ? '' : ` · ${rMultiple(String(r))}`}${
+                          draft.plannedRisk.trim() ? ', from your planned risk.' : ', from the initial stop.'
+                        }`}
+                  </p>
+                </div>
+              </DetailSection>
+              <DetailSection title="How you traded it" description="Optional. Pick an answer again to clear it.">
+                <BehaviorFields
+                  value={draft.behavior}
+                  onChange={(change) => set({ behavior: { ...latest.current.draft.behavior, ...change } })}
                 />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${id}-risk`} className={fieldLabelClass}>
-                Planned risk ($)
-              </Label>
-              <div className="relative">
-                <span
-                  className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground"
-                  aria-hidden
-                >
-                  $
-                </span>
-                <Input
-                  id={`${id}-risk`}
-                  inputMode="decimal"
-                  value={draft.plannedRisk}
-                  placeholder="Optional"
-                  aria-describedby={`${id}-risk-hint`}
-                  onChange={(event) => set({ plannedRisk: event.target.value })}
-                  className={`${detailInputClass} pl-7 tabular-nums`}
-                />
-              </div>
-            </div>
-            <div id={`${id}-risk-hint`} className="space-y-1.5 text-xs leading-5 text-muted-foreground sm:col-span-2">
-              {suggestedStop && draft.initialStop.trim() === '' && (
-                <p>
-                  Your {orderTypeLabel(suggestedStop.orderType)} order on {formatDate(suggestedStop.placedAt)} put the
-                  stop at <span className="text-foreground tabular-nums">{price(suggestedStop.price)}</span>.{' '}
-                  <button
-                    type="button"
-                    className="font-medium text-foreground underline underline-offset-4"
-                    onClick={() => set({ initialStop: suggestedStop.price })}
-                  >
-                    Use it
-                  </button>
+              </DetailSection>
+              {(problem || !input.ok) && (
+                <p role="alert" className="text-xs text-destructive">
+                  {problem ?? (input.ok ? null : input.message)}
                 </p>
               )}
-              <p>
-                {risk === null
-                  ? 'R is measured against the stop you planned at entry. A planned risk in dollars takes its place.'
-                  : `Risk ${money(String(risk))}${r === null ? '' : ` · ${rMultiple(String(r))}`}${
-                      draft.plannedRisk.trim() ? ', from your planned risk.' : ', from the initial stop.'
-                    }`}
-              </p>
-            </div>
-            <section aria-labelledby={`${id}-behavior`} className="space-y-3 border-t pt-4 sm:col-span-2">
-              <div>
-                <h3 id={`${id}-behavior`} className="text-sm font-medium">
-                  How you traded it
-                </h3>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Optional. Analytics compares your results by each answer. Pick an answer again to clear it.
-                </p>
-              </div>
-              <BehaviorFields
-                value={draft.behavior}
-                onChange={(change) => set({ behavior: { ...latest.current.draft.behavior, ...change } })}
-              />
-            </section>
-          </fieldset>
-          {(problem || !input.ok) && (
-            <p role="alert" className="text-xs text-destructive">
-              {problem ?? (input.ok ? null : input.message)}
+            </fieldset>
+          </ScrollArea>
+          <DialogFooter className="m-0 shrink-0 flex-row items-center justify-between gap-3 rounded-b-2xl bg-muted/20 px-6 py-3 sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              <ManageLabelsDialog triggerStyle="link" />
             </p>
-          )}
-          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
             <Button type="submit" variant="outline" className="h-8 px-4">
               Done
             </Button>
