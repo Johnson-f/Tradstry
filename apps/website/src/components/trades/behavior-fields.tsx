@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { fieldLabelClass } from '@/components/trades/form-styles'
 import { MARKET_REGIMES, type TradeBehavior } from '@/lib/client/trades/trades-model'
 
 const SCORES = [1, 2, 3, 4, 5]
@@ -55,12 +56,12 @@ function Field({
   const id = useId()
   return (
     <div className="flex flex-col gap-1.5">
-      <span id={`${id}-label`} className="text-xs text-muted-foreground">
+      <span id={`${id}-label`} className={fieldLabelClass}>
         {label}
       </span>
       {children({ labelledBy: `${id}-label`, describedBy: hint ? `${id}-hint` : undefined })}
       {hint && (
-        <span id={`${id}-hint`} className="text-[11px] text-muted-foreground">
+        <span id={`${id}-hint`} className="text-xs text-muted-foreground">
           {hint}
         </span>
       )}

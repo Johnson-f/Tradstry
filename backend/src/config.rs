@@ -4,7 +4,7 @@ use axum::http::HeaderValue;
 use crate::snaptrade::{OAuthClientConfig, SnapTradeConfig};
 
 pub const DEFAULT_PORT: u16 = 7900;
-const DEFAULT_CORS_ORIGIN: &str = "http://localhost:5173";
+const DEFAULT_CORS_ORIGIN: &str = "http://localhost:4005";
 
 #[derive(Clone)]
 pub struct StytchConfig {
