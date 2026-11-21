@@ -46,6 +46,14 @@ Secrets live only on the server, in two files next to `deploy/compose.yml`. Both
 
 ## One-time setup
 
+Provision the private screenshot directory on the VPS before starting or updating the backend:
+
+```sh
+sudo install -d -m 0700 -o 65532 -g 65532 /var/lib/tradstry/note-images
+```
+
+The backend reads and writes this directory at `/data/note-images` inside its container. Include it with Postgres in backups and restores. Local `make backend` and `make docker` share `backend/.data/note-images`.
+
 **Semaphore secrets:**
 
 | Secret | Holds | Used by |

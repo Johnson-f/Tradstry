@@ -2,11 +2,12 @@ import { Alert02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { ChevronRight, CircleAlert, CircleCheck, Clock3, Plus } from 'lucide-react'
-import { Fragment, useCallback, useId, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type Ref } from 'react'
 import { DecisionDialog } from '@/components/trades/decision-dialog'
 import { FillDialog } from '@/components/trades/fill-dialog'
 import { TradeExecutionChart } from '@/components/trades/trade-execution-chart'
 import { TradeNotePanel } from '@/components/trades/trade-note-panel'
+import { taggedFillIndex, type TaggedFill } from '@/components/trades/note-fill-mention'
 import { LabelDot } from '@/components/trades/label-picker'
 import { DirectionBadge, Pnl } from '@/components/trades/trade-bits'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -59,10 +60,43 @@ function TradeWorkspace({ workspaceId, tradeId }: { workspaceId: string; tradeId
   }, [])
   const [noteOpen, setNoteOpen] = useState(false)
   const [tradeWidth, setTradeWidth] = useState(50)
+  const [taggedFill, setTaggedFill] = useState<TaggedFill | null>(null)
+  const [fillNotice, setFillNotice] = useState<string | null>(null)
+  const highlightedRow = useRef<HTMLTableRowElement>(null)
+  const highlightedIndex = taggedFill && detail.data ? taggedFillIndex(taggedFill, tradeId, detail.data.fills) : -1
   const showNote = noteOpen && Boolean(detail.data)
+  useEffect(() => {
+    if (!taggedFill) return
+    const row = highlightedRow.current
+    if (row) {
+      row.focus({ preventScroll: true })
+      row.scrollIntoView({
+        block: 'center', inline: 'nearest',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      })
+    }
+    const timer = window.setTimeout(() => setTaggedFill(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [taggedFill, highlightedIndex])
+
+  const revealFill = async (tag: TaggedFill) => {
+    if (!detail.data || detail.isError || taggedFillIndex(tag, tradeId, detail.data.fills) < 0) {
+      setTaggedFill(null)
+      setFillNotice('This tagged fill is unavailable in this trade’s Fills table.')
+      return
+    }
+    setFillNotice(null)
+    // On narrow screens the note covers the trade. Save pending edits before showing the table.
+    if (noteButton.current?.getClientRects().length === 0) {
+      if (flushNote.current && !(await flushNote.current())) return
+      setNoteOpen(false)
+    }
+    setTaggedFill(tag)
+  }
   const closeNote = async () => {
     if (flushNote.current && !(await flushNote.current())) return
     setNoteOpen(false)
+    setFillNotice(null)
     requestAnimationFrame(() => noteButton.current?.focus())
   }
 
@@ -123,7 +157,13 @@ function TradeWorkspace({ workspaceId, tradeId }: { workspaceId: string; tradeId
                 </p>
               </Card>
             ) : (
-              <TradeView key={tradeId} workspaceId={workspaceId} detail={detail.data} />
+              <TradeView
+                key={tradeId}
+                workspaceId={workspaceId}
+                detail={detail.data}
+                highlightedIndex={highlightedIndex}
+                highlightedRow={highlightedRow}
+              />
             )}
           </div>
         </ScrollArea>
@@ -172,7 +212,10 @@ function TradeWorkspace({ workspaceId, tradeId }: { workspaceId: string; tradeId
             id={`${id}-note`}
             workspaceId={workspaceId}
             trade={detail.data.trade}
+            fills={detail.data.fills}
             suggestedStop={detail.data.suggestedStop}
+            fillNotice={fillNotice}
+            onRevealFill={revealFill}
             onClose={closeNote}
             onFlushChange={onFlushChange}
             reloadAnnotation={async () => {
@@ -260,7 +303,12 @@ function TradeLink({ workspaceId, trade }: { workspaceId: string; trade: TradeSu
   )
 }
 
-function TradeView({ workspaceId, detail }: { workspaceId: string; detail: TradeDetail }) {
+function TradeView({ workspaceId, detail, highlightedIndex, highlightedRow }: {
+  workspaceId: string
+  detail: TradeDetail
+  highlightedIndex: number
+  highlightedRow: Ref<HTMLTableRowElement>
+}) {
   const { trade } = detail
   const hasManual = detail.fills.some((f) => f.manual)
   const manualFills = useManualFills(workspaceId, hasManual)
@@ -430,7 +478,13 @@ function TradeView({ workspaceId, detail }: { workspaceId: string; detail: Trade
                   </TableHeader>
                   <TableBody>
                     {detail.fills.map((fill, index) => (
-                      <TableRow key={`${fill.key}-${index}`}>
+                      <TableRow
+                        key={`${fill.key}-${index}`}
+                        ref={index === highlightedIndex ? highlightedRow : undefined}
+                        tabIndex={index === highlightedIndex ? -1 : undefined}
+                        aria-current={index === highlightedIndex ? 'true' : undefined}
+                        className="aria-current:bg-amber-100 aria-current:hover:bg-amber-100 dark:aria-current:bg-amber-400/20 dark:aria-current:hover:bg-amber-400/20"
+                      >
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                           {formatDateTime(fill.executedAt)}
                         </TableCell>

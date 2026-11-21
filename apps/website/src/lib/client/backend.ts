@@ -1,5 +1,7 @@
 import { stytchTokens } from '@/lib/auth/stytch'
-import { createGraphQLFetcher, createSubscriptionClient } from '@/lib/client/api'
+import { createAuthenticatedFetch, createGraphQLFetcher, createSubscriptionClient } from '@/lib/client/api'
+
+export const authenticatedFetch = createAuthenticatedFetch(stytchTokens)
 
 /** GraphQL over HTTP to the Tradstry backend, as the signed-in user. */
 export const graphql = createGraphQLFetcher(stytchTokens)

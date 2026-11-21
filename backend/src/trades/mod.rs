@@ -10,6 +10,7 @@ pub mod labels;
 pub mod measure;
 pub mod model;
 pub mod normalize;
+pub mod note_images;
 pub mod notes;
 pub mod plans;
 pub mod positions;

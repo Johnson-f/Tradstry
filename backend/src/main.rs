@@ -18,6 +18,7 @@ use tradstry::{
     db,
     mcp::McpSettings,
     snaptrade::SnapTradeClient,
+    trades::note_images,
 };
 
 // musl's allocator serialises threads, which slows the server in the Docker image.
@@ -99,7 +100,9 @@ async fn main() -> Result<()> {
             None
         }
     };
+    note_images::start_cleanup(pool.clone(), config.note_images_dir.clone());
     let state = AppState::new(Services {
+        note_images_dir: config.note_images_dir.clone(),
         verifier,
         pool,
         stytch,

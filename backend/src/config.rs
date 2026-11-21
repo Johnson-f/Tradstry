@@ -35,6 +35,7 @@ impl std::fmt::Debug for BrokerageConfig {
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
+    pub note_images_dir: std::path::PathBuf,
     pub database_url: String,
     /// The Postgres schema every table lives in: `dev` locally, `prod` in production.
     pub database_schema: String,
@@ -118,6 +119,9 @@ impl Config {
 
         Ok(Self {
             port,
+            note_images_dir: var("NOTE_IMAGES_DIR")
+                .unwrap_or_else(|| ".data/note-images".to_owned())
+                .into(),
             database_url: required("DATABASE_URL")?,
             database_schema: database_schema(var("DATABASE_SCHEMA"))?,
             stytch: StytchConfig {
@@ -257,12 +261,12 @@ mod tests {
         let mut vars = REQUIRED.to_vec();
         vars.push((
             "CORS_ALLOWED_ORIGINS",
-            "https://tradstry.com/, http://localhost:5173 ,",
+            "https://tradstry.com/, http://localhost:4005 ,",
         ));
         let config = config(&vars).unwrap();
         assert_eq!(
             config.cors_allowed_origins,
-            ["https://tradstry.com", "http://localhost:5173"]
+            ["https://tradstry.com", DEFAULT_CORS_ORIGIN]
         );
     }
 

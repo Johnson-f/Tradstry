@@ -136,7 +136,16 @@ async fn save(
     version: Option<i32>,
     input: AnnotationInput,
 ) -> Result<Uuid, TradeError> {
-    service::save_annotation(pool, owner, workspace, trade, version, &input).await
+    service::save_annotation(
+        pool,
+        &std::env::temp_dir(),
+        owner,
+        workspace,
+        trade,
+        version,
+        &input,
+    )
+    .await
 }
 
 #[sqlx::test]

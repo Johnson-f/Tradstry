@@ -651,6 +651,7 @@ async fn imported_data_is_read_per_workspace(pool: PgPool) {
         pool.clone(),
         Arc::new(FakeStytch::default()),
         Some(l.brokerage.clone()),
+        std::env::temp_dir(),
     )
     .execute(
         Request::new(query)

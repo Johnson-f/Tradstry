@@ -1,9 +1,10 @@
 import { NotebookPen, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { AnnotationEditor } from '@/components/trades/annotation-editor'
+import { taggedFillFromTarget, type TaggedFill } from '@/components/trades/note-fill-mention'
 import { DirectionBadge } from '@/components/trades/trade-bits'
 import { Button } from '@/components/ui/button'
-import type { SuggestedStop } from '@/lib/client/trades/trades'
+import type { SuggestedStop, TradeFill } from '@/lib/client/trades/trades'
 import { type TradeAnnotation, type TradeSummary, instrumentLabel } from '@/lib/client/trades/trades-model'
 import { formatDateTime } from '@/lib/format'
 
@@ -11,7 +12,10 @@ export function TradeNotePanel({
   id,
   workspaceId,
   trade,
+  fills,
   suggestedStop,
+  fillNotice,
+  onRevealFill,
   onClose,
   onFlushChange,
   reloadAnnotation,
@@ -19,7 +23,10 @@ export function TradeNotePanel({
   id: string
   workspaceId: string
   trade: TradeSummary
+  fills: TradeFill[]
   suggestedStop: SuggestedStop | null
+  fillNotice: string | null
+  onRevealFill: (tag: TaggedFill) => void
   onClose: () => void
   onFlushChange: (flush: (() => Promise<boolean>) | null) => void
   reloadAnnotation: () => Promise<TradeAnnotation | null>
@@ -35,6 +42,20 @@ export function TradeNotePanel({
       id={id}
       aria-labelledby={`${id}-heading`}
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white dark:bg-neutral-900"
+      onClick={(event) => {
+        if (event.shiftKey || event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false) return
+        const tag = taggedFillFromTarget(event.target)
+        if (tag) onRevealFill(tag)
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+        const tag = taggedFillFromTarget(event.target)
+        if (tag) {
+          event.preventDefault()
+          event.stopPropagation()
+          onRevealFill(tag)
+        }
+      }}
       onKeyDown={(event) => {
         if (
           event.key === 'Escape' &&
@@ -62,10 +83,12 @@ export function TradeNotePanel({
           <X aria-hidden />
         </Button>
       </header>
+      {fillNotice && <p role="status" className="px-6 pt-3 text-sm text-muted-foreground">{fillNotice}</p>}
       <AnnotationEditor
         key={trade.id}
         workspaceId={workspaceId}
         trade={trade}
+        fills={fills}
         suggestedStop={suggestedStop}
         onFlushChange={onFlushChange}
         reloadAnnotation={reloadAnnotation}

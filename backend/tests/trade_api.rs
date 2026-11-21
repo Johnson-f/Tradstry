@@ -42,14 +42,19 @@ async fn claims(token: &Value) -> AuthClaims {
 }
 
 async fn gql(pool: &PgPool, token: &Value, query: &str, variables: Value) -> Response {
-    build_schema(pool.clone(), Arc::new(FakeStytch::default()), None)
-        .execute(
-            Request::new(query)
-                .variables(Variables::from_json(variables))
-                .data(claims(token).await)
-                .data(RequestUser::default()),
-        )
-        .await
+    build_schema(
+        pool.clone(),
+        Arc::new(FakeStytch::default()),
+        None,
+        std::env::temp_dir(),
+    )
+    .execute(
+        Request::new(query)
+            .variables(Variables::from_json(variables))
+            .data(claims(token).await)
+            .data(RequestUser::default()),
+    )
+    .await
 }
 
 async fn data(pool: &PgPool, token: &Value, query: &str, variables: Value) -> Value {

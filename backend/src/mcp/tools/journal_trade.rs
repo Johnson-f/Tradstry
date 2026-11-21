@@ -151,6 +151,7 @@ impl TradstryMcp {
                 .map(|_| row.annotation_version.unwrap_or(1));
             match service::save_annotation(
                 &self.pool,
+                &self.note_images_dir,
                 user_id,
                 row.workspace_id,
                 &row.id,

@@ -33,7 +33,7 @@ pub struct McpSettings {
 }
 
 /// `/mcp` plus its protected resource metadata, at both paths clients probe.
-pub fn router(pool: PgPool, settings: McpSettings) -> Router {
+pub fn router(pool: PgPool, settings: McpSettings, note_images_dir: std::path::PathBuf) -> Router {
     let origin = settings.public_origin.trim_end_matches('/').to_owned();
     let auth = Arc::new(McpAuth {
         pool: pool.clone(),
@@ -57,7 +57,13 @@ pub fn router(pool: PgPool, settings: McpSettings) -> Router {
         .with_allowed_hosts(allowed_hosts);
     let metadata_url: Arc<str> = Arc::from(auth.metadata_url.as_str());
     let service = StreamableHttpService::new(
-        move || Ok(TradstryMcp::new(pool.clone(), metadata_url.clone())),
+        move || {
+            Ok(TradstryMcp::new(
+                pool.clone(),
+                metadata_url.clone(),
+                note_images_dir.clone(),
+            ))
+        },
         LocalSessionManager::default().into(),
         config,
     );

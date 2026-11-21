@@ -4,6 +4,7 @@ import { createEmptyHistoryState, registerHistory } from '@lexical/history'
 import { registerRichText } from '@lexical/rich-text'
 import { $getRoot, $isTextNode, FORMAT_TEXT_COMMAND, HISTORY_PUSH_TAG, REDO_COMMAND, UNDO_COMMAND } from 'lexical'
 import { NOTE_NODES } from '@/components/trades/note-editor-config'
+import { NoteImageNode } from '@/components/trades/note-image-node'
 import {
   createNoteDocument,
   isNoteDocument,
@@ -33,16 +34,38 @@ test('converted text preserves blank lines, tabs and Unicode in Lexical', () => 
   }
 })
 
-test('the shared API fixture retains headings, lists, links and inline formatting', async () => {
+test('the shared API fixture retains the title, fill references, tables, headings, lists, links and inline formatting', async () => {
   const document = await Bun.file(
     new URL('../../../../../../backend/tests/fixtures/rich_trade_note.json', import.meta.url),
   ).json()
   const restored = editor().parseEditorState(JSON.stringify(document)).toJSON()
   expect(noteKey(restored)).toBe(noteKey(document))
   expect(noteText(restored)).toBe(
-    'Trade plan\n\nWaited for the retest\nrisk\treduced Chart\n\nFollow the plan.\n\nEntry\nExit\n\nReview',
+    'Breakout review\n\nTrade plan\n\nWaited for the retest\nrisk\treduced Chart\n\nFollow the plan. @Fill #1 · Open · 5 at $100.00 · Nov 3, 12:04 PM\n\nEntry\nExit\n\nReview\n\nSetup\tResult',
   )
   expect(noteDocumentError(restored)).toBeNull()
+})
+
+test('image-only notes keep the disk ID through Lexical reload and pending pastes block autosave', () => {
+  const document = createNoteDocument()
+  const image = { type: 'note-image', version: 1, imageId: null as string | null }
+  Object.assign(document.root.children[0], { children: [image] })
+  expect(noteDocumentError(document)).toContain('uploading')
+  image.imageId = crypto.randomUUID()
+  expect(noteDocumentError(document)).toBeNull()
+  expect(noteText(document)).toBe('[Image]')
+  expect(noteKey(editor().parseEditorState(JSON.stringify(document)).toJSON())).toBe(noteKey(document))
+
+  const instance = editor()
+  instance.setEditorState(instance.parseEditorState(JSON.stringify(document)))
+  instance.update(() => {
+    const node = $getRoot().getFirstDescendant()
+    if (!(node instanceof NoteImageNode)) throw new Error('Expected the saved image')
+    node.setDisplayWidth(320)
+  }, { discrete: true })
+  const resized = instance.getEditorState().toJSON()
+  expect(resized.root.children[0]).toMatchObject({ children: [{ imageId: image.imageId, $: { displayWidth: 320 } }] })
+  expect(noteKey(editor().parseEditorState(JSON.stringify(resized)).toJSON())).toBe(noteKey(resized))
 })
 
 test('formatting-only changes are dirty and undo/redo restores them', async () => {

@@ -3,6 +3,7 @@ import type { SerializedEditorState } from 'lexical'
 export type NoteDocument = SerializedEditorState
 export const MAX_NOTE_CHARACTERS = 20_000
 export const MAX_NOTE_BYTES = 256_000
+export const PENDING_IMAGE_MESSAGE = 'Finish uploading or remove the pending image before saving this note.'
 
 /** Canonical empty document; text is also useful for migrations and fixtures. */
 export function createNoteDocument(text = ''): NoteDocument {
@@ -40,25 +41,49 @@ const NODE_TYPES = new Set([
   'text',
   'tab',
   'linebreak',
+  'table',
+  'tablerow',
+  'tablecell',
+  'note-image',
 ])
 
 export function isNoteDocument(value: unknown): value is NoteDocument {
   let count = 0
-  const valid = (node: unknown, depth: number): boolean => {
+  const valid = (node: unknown, depth: number, parent?: string): boolean => {
     if (!record(node) || depth > 32 || ++count > 5_000 || node.version !== 1 || !NODE_TYPES.has(String(node.type)))
       return false
+    if (node.type === 'table' && parent !== 'root') return false
+    if ((node.type === 'tablerow') !== (parent === 'table')) return false
+    if ((node.type === 'tablecell') !== (parent === 'tablerow')) return false
+    if (parent === 'tablecell' && !['paragraph', 'heading', 'quote', 'list'].includes(String(node.type))) return false
+    if (node.type === 'tablecell' && ((node.colSpan ?? 1) !== 1 || (node.rowSpan ?? 1) !== 1)) return false
+    if (node.type === 'note-image') {
+      return ['paragraph', 'heading', 'quote', 'listitem', 'link'].includes(parent ?? '') &&
+        (node.imageId === null || (typeof node.imageId === 'string' && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(node.imageId)))
+    }
     if (node.type === 'text' || node.type === 'tab') return typeof node.text === 'string'
     if (node.type === 'linebreak') return true
-    return Array.isArray(node.children) && node.children.every((child) => valid(child, depth + 1))
+    if (!Array.isArray(node.children)) return false
+    if (['table', 'tablerow', 'tablecell'].includes(String(node.type)) && !node.children.length) return false
+    return node.children.every((child) => valid(child, depth + 1, String(node.type)))
   }
   return (
     record(value) &&
     record(value.root) &&
     value.root.type === 'root' &&
+    (!record(value.root.$) || value.root.$.title === undefined || typeof value.root.$.title === 'string') &&
     Array.isArray(value.root.children) &&
     value.root.children.length > 0 &&
     valid(value.root, 0)
   )
+}
+
+const BLOCK_SEPARATORS: Record<string, string> = {
+  root: '\n\n',
+  list: '\n',
+  table: '\n',
+  tablerow: '\t',
+  tablecell: '\n',
 }
 
 /** Readable previews and limits, derived from the single stored document. */
@@ -67,15 +92,18 @@ export function noteText(document: NoteDocument): string {
     if (!record(node) || depth > 32) return ''
     if (node.type === 'text' || node.type === 'tab') return typeof node.text === 'string' ? node.text : ''
     if (node.type === 'linebreak') return '\n'
+    if (node.type === 'note-image') return '[Image]'
     if (!Array.isArray(node.children)) return ''
     return node.children
       .map((child) => {
         const prefix = node.type === 'listitem' && record(child) && child.type === 'list' ? '\n' : ''
         return prefix + text(child, depth + 1)
       })
-      .join(node.type === 'root' ? '\n\n' : node.type === 'list' ? '\n' : '')
+      .join(BLOCK_SEPARATORS[String(node.type)] ?? '')
   }
-  return text(document?.root)
+  const body = text(document?.root)
+  const title = document?.root?.$?.title
+  return typeof title === 'string' && title ? [title, body].filter(Boolean).join('\n\n') : body
 }
 
 /** JSONB reorders object keys; that must not make an unchanged note dirty. */
@@ -95,6 +123,9 @@ export function noteKey(document: NoteDocument): string {
 
 export function noteDocumentError(document: NoteDocument): string | null {
   if (!isNoteDocument(document)) return 'This note could not be opened. Reload the page before editing it.'
+  const pendingImage = (node: unknown): boolean => record(node) &&
+    ((node.type === 'note-image' && node.imageId === null) || (Array.isArray(node.children) && node.children.some(pendingImage)))
+  if (pendingImage(document.root)) return PENDING_IMAGE_MESSAGE
   if (Array.from(noteText(document)).length > MAX_NOTE_CHARACTERS) return 'Notes can contain up to 20,000 characters.'
   if (new TextEncoder().encode(JSON.stringify(document)).length > MAX_NOTE_BYTES) {
     return 'This note has too much formatting. Simplify it before saving.'

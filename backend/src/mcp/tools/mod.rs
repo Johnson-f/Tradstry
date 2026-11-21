@@ -37,6 +37,7 @@ then get_trade for specific trades. Ask the user before calling journal_trade, s
 #[derive(Clone)]
 pub struct TradstryMcp {
     pool: PgPool,
+    note_images_dir: std::path::PathBuf,
     /// The protected resource metadata URL, for write-permission challenges.
     metadata_url: Arc<str>,
     tool_router: ToolRouter<Self>,
@@ -44,9 +45,10 @@ pub struct TradstryMcp {
 }
 
 impl TradstryMcp {
-    pub fn new(pool: PgPool, metadata_url: Arc<str>) -> Self {
+    pub fn new(pool: PgPool, metadata_url: Arc<str>, note_images_dir: std::path::PathBuf) -> Self {
         Self {
             pool,
+            note_images_dir,
             metadata_url,
             tool_router: Self::get_overview_router()
                 + Self::review_period_router()

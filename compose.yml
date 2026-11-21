@@ -39,15 +39,19 @@ services:
 
   backend:
     build: .
+    user: "${TRADSTRY_DEV_UID:-1000}:${TRADSTRY_DEV_GID:-1000}"
     image: tradstry-backend:latest
     restart: unless-stopped
     stop_grace_period: 30s
     env_file: backend/.env
     environment:
       DATABASE_URL: postgres://tradstry:tradstry@postgres:5432/tradstry
+      NOTE_IMAGES_DIR: /data/note-images
       PORT: "7900"
     ports:
       - "127.0.0.1:7900:7900"
+    volumes:
+      - ./backend/.data/note-images:/data/note-images
     networks:
       - tradstry-network
     depends_on:

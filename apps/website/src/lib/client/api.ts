@@ -58,24 +58,15 @@ async function errorCode(response: Response): Promise<string | undefined> {
  * the session the user is signed out; if the backend still refuses a fresh
  * token, that is reported as an error rather than signing the user out.
  */
-export function createGraphQLFetcher(
-  tokens: TokenSource,
-  fetchImpl: typeof fetch = fetch,
-): GraphQLFetcher {
-  return async <T>(query: string, variables?: Record<string, unknown>) => {
+export function createAuthenticatedFetch(tokens: TokenSource, fetchImpl: typeof fetch = fetch) {
+  return async (path: string, init: RequestInit = {}): Promise<Response> => {
     let sent: string | null = null
     const send = () => {
       const token = tokens.getToken()
       sent = token
-      return fetchImpl(`${BACKEND_URL}/graphql`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/graphql-response+json, application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ query, variables }),
-      })
+      const headers = new Headers(init.headers)
+      if (token) headers.set('Authorization', `Bearer ${token}`)
+      return fetchImpl(`${BACKEND_URL}${path}`, { ...init, headers })
     }
 
     let response = await send()
@@ -100,6 +91,18 @@ export function createGraphQLFetcher(
         )
       }
     }
+    return response
+  }
+}
+
+export function createGraphQLFetcher(tokens: TokenSource, fetchImpl: typeof fetch = fetch): GraphQLFetcher {
+  const request = createAuthenticatedFetch(tokens, fetchImpl)
+  return async <T>(query: string, variables?: Record<string, unknown>) => {
+    const response = await request('/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/graphql-response+json, application/json' },
+      body: JSON.stringify({ query, variables }),
+    })
     if (!response.ok) {
       throw new GraphQLRequestError(
         `Request failed: ${response.status} ${response.statusText}`,

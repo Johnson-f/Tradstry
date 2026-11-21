@@ -6,11 +6,9 @@ import {
   REMOVE_LIST_COMMAND,
 } from '@lexical/list'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from '@lexical/rich-text'
-import { $setBlocksType } from '@lexical/selection'
+import { $isHeadingNode, $isQuoteNode } from '@lexical/rich-text'
 import { mergeRegister } from '@lexical/utils'
 import {
-  $createParagraphNode,
   $getRoot,
   $getSelection,
   $isRangeSelection,
@@ -53,6 +51,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { safeNoteUrl } from '@/lib/client/trades/note-document'
+import { $setNoteBlock } from '@/components/trades/note-editor-config'
 
 type Block = 'paragraph' | 'h2' | 'h3' | 'quote' | 'bullet' | 'number'
 const FORMATS: Array<{ format: TextFormatType; label: string; icon: LucideIcon }> = [
@@ -178,18 +177,7 @@ export function NoteEditorToolbar({ disabled }: { disabled: boolean }) {
     editor.focus()
   }
   const setParagraph = (next: 'paragraph' | 'h2' | 'h3' | 'quote') =>
-    withSelection(() => {
-      if (block === 'bullet' || block === 'number') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined)
-      const current = $getSelection()
-      if (!$isRangeSelection(current)) return
-      $setBlocksType(current, () =>
-        next === 'paragraph'
-          ? $createParagraphNode()
-          : next === 'quote'
-            ? $createQuoteNode()
-            : $createHeadingNode(next),
-      )
-    })
+    withSelection(() => $setNoteBlock(editor, next))
   const applyLink = (url: string | null) => {
     editor.update(() => {
       if (selection.current) $setSelection(selection.current.clone())

@@ -63,7 +63,8 @@ backend: postgres
 	@bash -c "$$BACKEND_SCRIPT"
 
 docker:
-	docker compose -f "$(ROOT)/compose.yml" up -d --build --wait
+	@mkdir -p -m 0700 "$(ROOT)/backend/.data/note-images"
+	@TRADSTRY_DEV_UID=$$(id -u) TRADSTRY_DEV_GID=$$(id -g) docker compose -f "$(ROOT)/compose.yml" up -d --build --wait
 
 frontend:
 	@bash -c "$$FRONTEND_SCRIPT"

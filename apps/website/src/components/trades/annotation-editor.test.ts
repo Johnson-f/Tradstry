@@ -58,7 +58,7 @@ test('autosave preserves edits during writes, flushes navigation, and recovers f
     function Note() {
       const detail = useTrade('w', 't');
       if (!detail.data) return h('p', null, 'Loading');
-      return h(AnnotationEditor, { workspaceId: 'w', trade: detail.data.trade, suggestedStop: null,
+      return h(AnnotationEditor, { workspaceId: 'w', trade: detail.data.trade, fills: [], suggestedStop: null,
         onFlushChange: register, reloadAnnotation: async () => {
           const result = await detail.refetch({ throwOnError: true });
           return result.data.trade.annotation;
@@ -192,6 +192,7 @@ test('autosave preserves edits during writes, flushes navigation, and recovers f
       assert.equal(noteText(editor().getEditorState().toJSON()), 'Phone again');
 
       await act(async () => { button('Trade Detail').click(); await wait(); });
+      await act(async () => { button('Risk').click(); await wait(); });
       const stopLabel = [...document.querySelectorAll('label')].find(el => el.textContent.startsWith('Initial stop'));
       const stop = document.getElementById(stopLabel.htmlFor);
       async function setStop(value) {
@@ -207,8 +208,9 @@ test('autosave preserves edits during writes, flushes navigation, and recovers f
       assert.equal(calls.length, beforeRisk, 'invalid risk must not save');
       await act(async () => { assert.equal(await flush(), false); });
       await setStop('9.50');
+      await act(async () => { button('Labels').click(); await wait(); });
       await settle(850);
-      assert.equal(annotation.initialStop, '9.50', 'valid trade details save automatically');
+      assert.equal(annotation.initialStop, '9.50', 'valid trade details save after switching tabs');
       await act(async () => { button('Done').click(); await wait(); });
     } finally {
       await act(async () => { root.unmount(); await wait(); });
